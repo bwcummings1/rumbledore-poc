@@ -38,6 +38,7 @@ model User {
   invitations Invitation[] @relation("InvitationCreator")
   leagueSettings LeagueSettings[] @relation("SettingsUpdater")
   agentConversations AgentConversation[] @relation("UserConversations")
+  agentSummons AgentSummon[]
 
   @@map("users")
 }
@@ -83,6 +84,8 @@ model League {
   blogPosts BlogPost[]
   contentSchedules ContentSchedule[]
   contentTemplates ContentTemplate[]
+  chatMessages ChatMessage[]
+  chatSessions ChatSession[]
 
   @@unique([espnLeagueId, season])
   @@index([sandboxNamespace])
@@ -929,6 +932,11 @@ model AgentConversation {
   leagueSandbox String?   @map("league_sandbox") @db.VarChar(255)
   messages      Json      @default("[]")
   summary       String?   @db.Text
+  // WebSocket integration fields
+  socketId      String?   @map("socket_id") @db.VarChar(255)
+  isStreaming   Boolean   @default(false) @map("is_streaming")
+  lastToken     String?   @map("last_token") @db.Text
+  streamMetadata Json?    @map("stream_metadata") @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   
@@ -937,6 +945,7 @@ model AgentConversation {
   
   @@index([sessionId, agentId])
   @@index([userId, createdAt])
+  @@index([socketId])
   @@map("agent_conversations")
 }
 
@@ -1069,6 +1078,100 @@ model ContentTemplate {
   @@index([type, isGlobal])
   @@index([leagueId])
   @@map("content_templates")
+}
+
+// ========== CHAT INTEGRATION MODELS (Sprint 11) ==========
+
+// Chat messages for all conversations (user and agent)
+model ChatMessage {
+  id              String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId        String            @map("league_id") @db.Uuid
+  leagueSandbox   String            @map("league_sandbox") @db.VarChar(255)
+  sessionId       String            @map("session_id") @db.VarChar(255)
+  conversationId  String?           @map("conversation_id") @db.VarChar(255)
+  senderId        String            @map("sender_id") @db.VarChar(255) // userId or agentId
+  senderType      ChatMessageType   @map("sender_type")
+  content         String            @db.Text
+  metadata        Json              @default("{}") // tools used, tokens, etc.
+  replyToId       String?           @map("reply_to_id") @db.Uuid
+  edited          Boolean           @default(false)
+  editedAt        DateTime?         @map("edited_at")
+  deleted         Boolean           @default(false)
+  deletedAt       DateTime?         @map("deleted_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  
+  // Relations
+  league   League          @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  session  ChatSession     @relation(fields: [sessionId], references: [id])
+  replyTo  ChatMessage?    @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies  ChatMessage[]   @relation("MessageReplies")
+  
+  @@index([leagueId, sessionId])
+  @@index([conversationId])
+  @@index([senderId, senderType])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// Chat sessions for tracking conversations
+model ChatSession {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sessionId       String        @unique @map("session_id") @db.VarChar(255)
+  leagueId        String        @map("league_id") @db.Uuid
+  leagueSandbox   String        @map("league_sandbox") @db.VarChar(255)
+  title           String?       @db.VarChar(255)
+  participants    Json          @default("[]") // Array of participant IDs
+  activeAgents    Json          @default("[]") // Currently active agent IDs
+  context         Json          @default("{}") // Session context data
+  metadata        Json          @default("{}") // WebSocket info, etc.
+  startedAt       DateTime      @default(now()) @map("started_at")
+  lastActivityAt  DateTime      @default(now()) @map("last_activity_at")
+  endedAt         DateTime?     @map("ended_at")
+  
+  // Relations
+  league   League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+  summons  AgentSummon[]
+  
+  @@index([leagueId, startedAt])
+  @@index([lastActivityAt])
+  @@map("chat_sessions")
+}
+
+// Track when agents are summoned into conversations
+model AgentSummon {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sessionId       String        @map("session_id") @db.VarChar(255)
+  agentId         String        @map("agent_id") @db.VarChar(255)
+  agentType       AgentType     @map("agent_type")
+  summonedBy      String        @map("summoned_by") @db.Uuid // User who summoned
+  reason          String?       @db.Text // Why agent was summoned
+  introMessage    String?       @map("intro_message") @db.Text
+  active          Boolean       @default(true)
+  messageCount    Int           @default(0) @map("message_count")
+  toolsUsed       Json          @default("[]") @map("tools_used")
+  summonedAt      DateTime      @default(now()) @map("summoned_at")
+  dismissedAt     DateTime?     @map("dismissed_at")
+  
+  // Relations
+  session  ChatSession      @relation(fields: [sessionId], references: [sessionId])
+  user     User            @relation(fields: [summonedBy], references: [id])
+  
+  @@unique([sessionId, agentId])
+  @@index([agentType, active])
+  @@index([summonedAt])
+  @@map("agent_summons")
+}
+
+// Enum for chat message types
+enum ChatMessageType {
+  USER
+  AGENT
+  SYSTEM
+  COMMAND
+  NOTIFICATION
+  
+  @@map("chat_message_type")
 }
 
 // Enums for content pipeline

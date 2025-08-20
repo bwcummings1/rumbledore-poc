@@ -1,9 +1,11 @@
 import { Server } from 'socket.io';
 import { prisma } from '@/lib/prisma';
+import { ChatAgentManager } from '@/lib/ai/chat/chat-agent-manager';
 
 export class WebSocketServer {
   private io: Server | null = null;
   private connections: Map<string, Set<string>> = new Map();
+  private chatAgentManager: ChatAgentManager | null = null;
   private static instance: WebSocketServer;
 
   private constructor() {}
@@ -29,8 +31,11 @@ export class WebSocketServer {
       transports: ['websocket', 'polling'],
     });
 
+    // Initialize ChatAgentManager with the Socket.io server
+    this.chatAgentManager = new ChatAgentManager(this.io);
+    
     this.setupEventHandlers();
-    console.log('WebSocket server initialized');
+    console.log('WebSocket server initialized with AI chat integration');
   }
 
   private setupEventHandlers() {
@@ -39,8 +44,9 @@ export class WebSocketServer {
     this.io.on('connection', async (socket) => {
       console.log('Client connected:', socket.id);
 
-      // Get user from socket handshake
+      // Get user and league info from socket handshake
       const userId = socket.handshake.auth.userId as string;
+      const leagueId = socket.handshake.auth.leagueId as string;
       
       if (!userId) {
         console.error('No userId provided in socket auth');
@@ -50,6 +56,10 @@ export class WebSocketServer {
 
       // Join user's personal room
       socket.join(`user:${userId}`);
+      
+      // Store auth info for ChatAgentManager
+      socket.data.userId = userId;
+      socket.data.leagueId = leagueId;
 
       // Handle joining league rooms
       socket.on('join:league', async (leagueId: string) => {
@@ -171,6 +181,107 @@ export class WebSocketServer {
 
   emitNewsUpdate(leagueId: string, data: any) {
     this.emitToLeague(leagueId, 'news:update', data);
+  }
+
+  // Agent-specific event emitters
+  
+  emitAgentMessage(leagueId: string, data: {
+    agentType: string;
+    message: string;
+    sessionId: string;
+    userId?: string;
+    metadata?: any;
+  }) {
+    this.emitToLeague(leagueId, 'agent:message', data);
+  }
+
+  emitAgentTyping(leagueId: string, data: {
+    agentType: string;
+    sessionId: string;
+    isTyping: boolean;
+  }) {
+    this.emitToLeague(leagueId, 'agent:typing', data);
+  }
+
+  emitAgentArrived(leagueId: string, data: {
+    agentType: string;
+    message: string;
+    summonedBy: string;
+    reason?: string;
+  }) {
+    this.emitToLeague(leagueId, 'agent:arrived', data);
+  }
+
+  emitAgentDismissed(leagueId: string, data: {
+    agentType: string;
+    dismissedBy: string;
+  }) {
+    this.emitToLeague(leagueId, 'agent:dismissed', data);
+  }
+
+  emitAgentStreamChunk(socketId: string, data: {
+    agentType: string;
+    chunk: string;
+    sessionId: string;
+  }) {
+    if (!this.io) {
+      console.warn('WebSocket server not initialized');
+      return;
+    }
+    const socket = this.io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.emit('agent:stream:chunk', data);
+    }
+  }
+
+  emitAgentStreamEnd(socketId: string, data: {
+    agentType: string;
+    sessionId: string;
+    toolsUsed?: string[];
+  }) {
+    if (!this.io) {
+      console.warn('WebSocket server not initialized');
+      return;
+    }
+    const socket = this.io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.emit('agent:stream:end', data);
+    }
+  }
+
+  emitAgentError(socketId: string, error: {
+    error: string;
+    code: string;
+    details?: any;
+  }) {
+    if (!this.io) {
+      console.warn('WebSocket server not initialized');
+      return;
+    }
+    const socket = this.io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.emit('agent:error', error);
+    }
+  }
+
+  emitAgentCommandResult(socketId: string, data: {
+    command: string;
+    result: any;
+    sessionId: string;
+  }) {
+    if (!this.io) {
+      console.warn('WebSocket server not initialized');
+      return;
+    }
+    const socket = this.io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.emit('agent:command:result', data);
+    }
+  }
+
+  // Get the ChatAgentManager instance
+  getChatAgentManager(): ChatAgentManager | null {
+    return this.chatAgentManager;
   }
 
   getConnectionCount(leagueId: string): number {
