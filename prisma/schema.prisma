@@ -1,0 +1,388 @@
+// Prisma schema for Rumbledore Fantasy Football Platform
+// This schema implements a sandboxed league architecture where each league
+// operates in complete isolation with dedicated storage and AI agents
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [uuid_ossp(map: "uuid-ossp"), vector, pg_trgm, btree_gist]
+}
+
+// Core user model for authentication and identity
+model User {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email       String   @unique @db.VarChar(255)
+  username    String   @unique @db.VarChar(100)
+  displayName String?  @map("display_name") @db.VarChar(255)
+  avatarUrl   String?  @map("avatar_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  leagues     LeagueMember[]
+  credentials EspnCredential[]
+  createdLeagues League[] @relation("LeagueCreator")
+
+  @@map("users")
+}
+
+// League model with sandboxed namespace for complete isolation
+model League {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  espnLeagueId     BigInt   @unique @map("espn_league_id")
+  name             String   @db.VarChar(255)
+  season           Int
+  sandboxNamespace String   @unique @map("sandbox_namespace") @db.VarChar(100)
+  settings         Json     @default("{}")
+  isActive         Boolean  @default(true) @map("is_active")
+  lastSyncAt       DateTime? @map("last_sync_at")
+  createdBy        String?  @map("created_by") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  creator     User? @relation("LeagueCreator", fields: [createdBy], references: [id])
+  members     LeagueMember[]
+  players     LeaguePlayer[]
+  credentials EspnCredential[]
+  teams       LeagueTeam[]
+  matchups    LeagueMatchup[]
+  agentMemory LeagueAgentMemory[]
+  historicalData LeagueHistoricalData[]
+  importCheckpoints ImportCheckpoint[]
+  archives    LeagueArchive[]
+  syncMetadata SyncMetadata?
+  transactions LeagueTransaction[]
+  playerStats LeaguePlayerStats[]
+
+  @@unique([espnLeagueId, season])
+  @@index([sandboxNamespace])
+  @@index([espnLeagueId])
+  @@map("leagues")
+}
+
+// League membership with role-based access control
+model LeagueMember {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId   String   @map("league_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  espnTeamId Int?     @map("espn_team_id")
+  teamName   String?  @map("team_name") @db.VarChar(255)
+  role       MemberRole @default(MEMBER)
+  joinedAt   DateTime @default(now()) @map("joined_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team   LeagueTeam? @relation(fields: [leagueId, espnTeamId], references: [leagueId, espnTeamId])
+
+  @@unique([leagueId, userId])
+  @@index([userId])
+  @@index([leagueId])
+  @@map("league_members")
+}
+
+// ESPN credentials stored with encryption
+model EspnCredential {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  leagueId        String    @map("league_id") @db.Uuid
+  encryptedSwid   String    @map("encrypted_swid")
+  encryptedEspnS2 String    @map("encrypted_espn_s2")
+  expiresAt       DateTime? @map("expires_at")
+  lastValidated   DateTime? @map("last_validated")
+  isValid         Boolean   @default(true) @map("is_valid")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, leagueId])
+  @@index([leagueId])
+  @@map("espn_credentials")
+}
+
+// League-scoped player data with vector embeddings for AI
+model LeaguePlayer {
+  id            String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId      String                 @map("league_id") @db.Uuid
+  espnPlayerId  BigInt                 @map("espn_player_id")
+  name          String                 @db.VarChar(255)
+  position      String?                @db.VarChar(10)
+  nflTeam       String?                @map("nfl_team") @db.VarChar(10)
+  stats         Json                   @default("{}")
+  projections   Json                   @default("{}")
+  embeddings    Unsupported("vector(1536)")? @map("embeddings")
+  imageUrl      String?                @map("image_url")
+  injuryStatus  String?                @map("injury_status") @db.VarChar(50)
+  updatedAt     DateTime               @default(now()) @map("updated_at")
+
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  rosterSpots LeagueRosterSpot[]
+
+  @@unique([leagueId, espnPlayerId])
+  @@index([leagueId])
+  @@index([espnPlayerId])
+  @@map("league_players")
+}
+
+// League teams (fantasy teams within a league)
+model LeagueTeam {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId     String   @map("league_id") @db.Uuid
+  espnTeamId   Int      @map("espn_team_id")
+  name         String   @db.VarChar(255)
+  abbreviation String?  @db.VarChar(10)
+  logoUrl      String?  @map("logo_url")
+  wins         Int      @default(0)
+  losses       Int      @default(0)
+  ties         Int      @default(0)
+  pointsFor    Float    @default(0) @map("points_for")
+  pointsAgainst Float   @default(0) @map("points_against")
+  standing     Int?
+  playoffSeed  Int?     @map("playoff_seed")
+  updatedAt    DateTime @default(now()) @map("updated_at")
+
+  // Relations
+  league  League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  members LeagueMember[]
+  roster  LeagueRosterSpot[]
+  homeMatchups LeagueMatchup[] @relation("HomeTeam")
+  awayMatchups LeagueMatchup[] @relation("AwayTeam")
+
+  @@unique([leagueId, espnTeamId])
+  @@index([leagueId])
+  @@map("league_teams")
+}
+
+// Fantasy roster spots
+model LeagueRosterSpot {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId   String   @map("league_id") @db.Uuid
+  teamId     String   @map("team_id") @db.Uuid
+  playerId   String   @map("player_id") @db.Uuid
+  slotPosition String @map("slot_position") @db.VarChar(20)
+  week       Int
+  points     Float    @default(0)
+  
+  // Relations
+  team   LeagueTeam   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player LeaguePlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, playerId, week])
+  @@index([teamId])
+  @@index([playerId])
+  @@map("league_roster_spots")
+}
+
+// League matchups (games between fantasy teams)
+model LeagueMatchup {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId     String   @map("league_id") @db.Uuid
+  week         Int
+  matchupPeriod Int     @map("matchup_period")
+  homeTeamId   String   @map("home_team_id") @db.Uuid
+  awayTeamId   String   @map("away_team_id") @db.Uuid
+  homeScore    Float?   @map("home_score")
+  awayScore    Float?   @map("away_score")
+  isPlayoffs   Boolean  @default(false) @map("is_playoffs")
+  isComplete   Boolean  @default(false) @map("is_complete")
+  
+  // Relations
+  league   League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  homeTeam LeagueTeam @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam LeagueTeam @relation("AwayTeam", fields: [awayTeamId], references: [id])
+
+  @@unique([leagueId, week, homeTeamId, awayTeamId])
+  @@index([leagueId, week])
+  @@map("league_matchups")
+}
+
+// AI agent memory for league-specific context
+model LeagueAgentMemory {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId    String   @map("league_id") @db.Uuid
+  agentType   AgentType @map("agent_type")
+  memoryType  MemoryType @map("memory_type")
+  content     String   @db.Text
+  metadata    Json     @default("{}")
+  embeddings  Unsupported("vector(1536)")? @map("embeddings")
+  createdAt   DateTime @default(now()) @map("created_at")
+  expiresAt   DateTime? @map("expires_at")
+
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId, agentType])
+  @@index([createdAt])
+  @@map("league_agent_memory")
+}
+
+// Historical data storage for multiple seasons
+model LeagueHistoricalData {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId          String   @map("league_id") @db.Uuid
+  season            Int
+  dataType          String   @map("data_type") @db.VarChar(50) // 'matchups', 'players', 'transactions', 'teams'
+  data              Json     // Full season data
+  dataHash          String   @map("data_hash") @db.VarChar(64) // SHA256 hash for deduplication
+  recordCount       Int      @map("record_count")
+  importedAt        DateTime @default(now()) @map("imported_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, season, dataType])
+  @@index([leagueId, season])
+  @@index([dataHash])
+  @@map("league_historical_data")
+}
+
+// Import progress tracking for resumability
+model ImportCheckpoint {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  importId        String   @map("import_id") @db.VarChar(255)
+  leagueId        String   @map("league_id") @db.Uuid
+  processedItems  Int      @map("processed_items")
+  totalItems      Int      @map("total_items")
+  currentSeason   Int?     @map("current_season")
+  currentWeek     Int?     @map("current_week")
+  metadata        Json     @default("{}")
+  status          ImportStatus @default(PENDING)
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@index([importId])
+  @@index([leagueId])
+  @@map("import_checkpoints")
+}
+
+// Archive storage for old season data
+model LeagueArchive {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId        String   @map("league_id") @db.Uuid
+  season          Int
+  dataType        String   @map("data_type") @db.VarChar(50)
+  compressedData  Bytes    @map("compressed_data")
+  originalSize    Int      @map("original_size")
+  compressedSize  Int      @map("compressed_size")
+  compressionRatio Float   @map("compression_ratio")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, season, dataType])
+  @@index([leagueId, season])
+  @@map("league_archives")
+}
+
+// Sync metadata for incremental updates
+model SyncMetadata {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId        String   @unique @map("league_id") @db.Uuid
+  lastSyncedAt    DateTime @map("last_synced_at")
+  lastSyncedWeek  Int?     @map("last_synced_week")
+  lastSyncedSeason Int?    @map("last_synced_season")
+  totalSeasons    Int      @default(0) @map("total_seasons")
+  totalMatchups   Int      @default(0) @map("total_matchups")
+  totalPlayers    Int      @default(0) @map("total_players")
+  metadata        Json     @default("{}")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@map("sync_metadata")
+}
+
+// League transactions for historical tracking
+model LeagueTransaction {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId         String   @map("league_id") @db.Uuid
+  transactionId    BigInt   @map("transaction_id")
+  season           Int
+  type             String   @db.VarChar(50)
+  status           String   @db.VarChar(50)
+  teamId           Int?     @map("team_id")
+  playerId         BigInt?  @map("player_id")
+  bidAmount        Int?     @map("bid_amount")
+  transactionDate  DateTime @map("transaction_date")
+  metadata         Json     @default("{}")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, transactionId, season])
+  @@index([leagueId, season])
+  @@index([transactionDate])
+  @@map("league_transactions")
+}
+
+// Player stats by season
+model LeaguePlayerStats {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId      String   @map("league_id") @db.Uuid
+  playerId      BigInt   @map("player_id")
+  season        Int
+  week          Int?
+  points        Float    @default(0)
+  projectedPoints Float? @map("projected_points")
+  stats         Json     @default("{}")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, playerId, season, week])
+  @@index([leagueId, season])
+  @@index([playerId, season])
+  @@map("league_player_stats")
+}
+
+// Enums
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  
+  @@map("member_role")
+}
+
+enum AgentType {
+  COMMISSIONER
+  ANALYST
+  NARRATOR
+  TRASH_TALKER
+  BETTING_ADVISOR
+  
+  @@map("agent_type")
+}
+
+enum MemoryType {
+  SHORT_TERM
+  LONG_TERM
+  EPISODIC
+  SEMANTIC
+  
+  @@map("memory_type")
+}
+
+enum ImportStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PAUSED
+  
+  @@map("import_status")
+}

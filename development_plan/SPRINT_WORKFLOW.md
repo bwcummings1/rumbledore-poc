@@ -15,10 +15,11 @@ This document defines the standard workflow for executing any sprint in the Rumb
 
 ### Step 1.1: Load Context (AI)
 ```
-Please read and understand:
-1. /CLAUDE.md - Current project state
+Please read and understand IN THIS ORDER:
+1. 🔴 /CLAUDE.md - CRITICAL: Current project state and context
 2. /development_plan/phase_X/sprint_N.md - Sprint details
-3. Previous sprint summary (if exists)
+3. /development_plan/INTRODUCTION_PROMPT.md - Sprint start template
+4. Previous sprint summary (if exists)
 ```
 
 ### Step 1.2: Verify Prerequisites
@@ -210,14 +211,17 @@ Use `/development_plan/SUMMARY_PROMPT.md`:
 
 ### Step 5.1: Update Critical Documentation
 
-**CLAUDE.md Updates** (REQUIRED):
-- [ ] Mark sprint as completed
-- [ ] Add new capabilities
-- [ ] Update file structure
-- [ ] Add new commands
-- [ ] Document known issues
-- [ ] Update performance metrics
-- [ ] Change "Last Updated" footer
+**🔴 CLAUDE.md Updates** (ABSOLUTELY REQUIRED - DO NOT SKIP):
+- [ ] Mark sprint as completed in status section
+- [ ] Add new capabilities and features
+- [ ] Update file structure if changed
+- [ ] Add new commands discovered
+- [ ] Document known issues for next sprint
+- [ ] Update performance metrics with actuals
+- [ ] Document any UI/UX patterns created
+- [ ] Add new environment variables
+- [ ] Update troubleshooting section
+- [ ] Change "Last Updated" footer to current sprint
 
 **Save Sprint Summary**:
 ```bash

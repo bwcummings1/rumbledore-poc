@@ -81,7 +81,7 @@ npm run verify:setup
    cat development_plan/CURRENT_SPRINT.txt
    
    # View sprint documentation
-   code development_plan/phase_1_espn_foundation/sprint_1_local_setup.md
+   code development_plan/phase_1_espn_foundation/sprint_1_Local_Development_Setup.md
    ```
 
 2. **Start Development Server**:
@@ -226,7 +226,7 @@ npm run db:generate
 ---
 
 **Ready to start?** 
-- For Sprint 1: Open `/development_plan/phase_1_espn_foundation/sprint_1_local_setup.md`
+- For Sprint 1: Open `/development_plan/phase_1_espn_foundation/sprint_1_Local_Development_Setup.md`
 - For AI: Load `/development_plan/INTRODUCTION_PROMPT.md` with Sprint 1 details
 
 *Remember: Update CLAUDE.md after EVERY sprint!*

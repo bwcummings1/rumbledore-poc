@@ -1,0 +1,19 @@
+Icon files needed for Chrome extension:
+
+1. icon-16.png (16x16 pixels)
+2. icon-48.png (48x48 pixels)  
+3. icon-128.png (128x128 pixels)
+
+These should be PNG images with a football or fantasy sports theme.
+For now, the extension will work without them, but Chrome will show warnings.
+
+To create icons:
+1. Use any image editor or online tool
+2. Create a simple football icon or use the Rumbledore logo
+3. Export in the three required sizes
+4. Place in this icons directory
+
+Suggested design:
+- Dark background (#1a1a2e)
+- Football emoji or icon in center
+- Blue accent color (#3b82f6)

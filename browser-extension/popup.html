@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rumbledore ESPN Integration</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 380px;
+      min-height: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(to bottom, #1a1a2e, #0f0f1e);
+      color: #e5e7eb;
+    }
+    
+    .container {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    
+    .header {
+      text-align: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #374151;
+    }
+    
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #f3f4f6;
+      margin-bottom: 4px;
+    }
+    
+    .header p {
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    
+    .status-card {
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.3s ease;
+    }
+    
+    .status-card.success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid #10b981;
+      color: #10b981;
+    }
+    
+    .status-card.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid #ef4444;
+      color: #ef4444;
+    }
+    
+    .status-card.warning {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid #f59e0b;
+      color: #f59e0b;
+    }
+    
+    .status-card.info {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid #3b82f6;
+      color: #93bbfc;
+    }
+    
+    .status-icon {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    
+    .button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .button.primary {
+      background: #3b82f6;
+      color: white;
+    }
+    
+    .button.primary:hover:not(:disabled) {
+      background: #2563eb;
+    }
+    
+    .button.secondary {
+      background: #374151;
+      color: #e5e7eb;
+    }
+    
+    .button.secondary:hover:not(:disabled) {
+      background: #4b5563;
+    }
+    
+    .button.danger {
+      background: #dc2626;
+      color: white;
+    }
+    
+    .button.danger:hover:not(:disabled) {
+      background: #b91c1c;
+    }
+    
+    .cookie-info {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 12px;
+      color: #9ca3af;
+      word-break: break-all;
+    }
+    
+    .cookie-info strong {
+      color: #e5e7eb;
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    
+    .cookie-info .cookie-row {
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .cookie-info .label {
+      font-weight: 500;
+      color: #6b7280;
+      min-width: 70px;
+    }
+    
+    .cookie-info .value {
+      color: #d1d5db;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .league-input {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .league-input label {
+      font-size: 13px;
+      color: #9ca3af;
+      font-weight: 500;
+    }
+    
+    .league-input input {
+      padding: 8px 12px;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      color: #e5e7eb;
+      font-size: 14px;
+      transition: border-color 0.2s ease;
+    }
+    
+    .league-input input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    
+    .league-input input::placeholder {
+      color: #6b7280;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .actions button {
+      flex: 1;
+    }
+    
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #374151;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .link {
+      color: #3b82f6;
+      text-decoration: none;
+      font-size: 13px;
+      text-align: center;
+      margin-top: 8px;
+      display: block;
+    }
+    
+    .link:hover {
+      text-decoration: underline;
+    }
+    
+    .divider {
+      height: 1px;
+      background: #374151;
+      margin: 8px 0;
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🏈 Rumbledore</h1>
+      <p>ESPN Fantasy Cookie Manager</p>
+    </div>
+    
+    <!-- Status Display -->
+    <div id="status" class="status-card hidden">
+      <svg class="status-icon" id="status-icon" fill="currentColor" viewBox="0 0 20 20">
+        <!-- Icon will be inserted dynamically -->
+      </svg>
+      <span id="status-text"></span>
+    </div>
+    
+    <!-- Login Check -->
+    <div id="login-section" class="hidden">
+      <div class="status-card warning">
+        <svg class="status-icon" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+        </svg>
+        <span>Please log in to ESPN Fantasy first</span>
+      </div>
+      <button id="open-espn" class="button primary">
+        Open ESPN Fantasy
+      </button>
+    </div>
+    
+    <!-- Main Actions -->
+    <div id="main-section" class="hidden">
+      <!-- Capture Button -->
+      <button id="capture" class="button primary">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z"></path>
+          <path d="M3 5a2 2 0 012-2 1 1 0 000 2H5a2 2 0 00-2 2v6h2V7h8v6h2V7a2 2 0 00-2-2h-.08a1 1 0 100-2H13a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"></path>
+        </svg>
+        Capture ESPN Cookies
+      </button>
+      
+      <!-- Cookie Info (shown after capture) -->
+      <div id="cookie-info" class="cookie-info hidden">
+        <strong>📦 Captured Cookies</strong>
+        <div class="cookie-row">
+          <span class="label">SWID:</span>
+          <span class="value" id="swid-preview"></span>
+        </div>
+        <div class="cookie-row">
+          <span class="label">ESPN_S2:</span>
+          <span class="value" id="espn-s2-preview"></span>
+        </div>
+        <div class="cookie-row">
+          <span class="label">Captured:</span>
+          <span class="value" id="capture-time"></span>
+        </div>
+      </div>
+      
+      <!-- League Input (shown after capture) -->
+      <div id="league-section" class="league-input hidden">
+        <label for="league-id">League ID (UUID)</label>
+        <input 
+          type="text" 
+          id="league-id" 
+          placeholder="e.g., 123e4567-e89b-12d3-a456-426614174000"
+        />
+        <small style="color: #6b7280; font-size: 11px;">
+          Get this from your Rumbledore dashboard
+        </small>
+      </div>
+      
+      <!-- Action Buttons (shown after capture) -->
+      <div id="actions" class="actions hidden">
+        <button id="validate" class="button secondary">
+          Validate
+        </button>
+        <button id="send" class="button primary">
+          Send to Rumbledore
+        </button>
+      </div>
+      
+      <!-- Clear Button (shown after capture) -->
+      <button id="clear" class="button danger hidden">
+        Clear Captured Cookies
+      </button>
+    </div>
+    
+    <div class="divider"></div>
+    
+    <!-- Footer Links -->
+    <a href="https://fantasy.espn.com" target="_blank" class="link">
+      Go to ESPN Fantasy →
+    </a>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

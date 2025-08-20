@@ -66,7 +66,7 @@ docker-compose ps
    Please read and understand:
    - /CLAUDE.md
    - /development_plan/SPRINT_WORKFLOW.md
-   - /development_plan/phase_1_espn_foundation/sprint_1_local_setup.md
+   - /development_plan/phase_1_espn_foundation/sprint_1_Local_Development_Setup.md
    ```
 
 2. **Use the Introduction Prompt:**
@@ -94,7 +94,7 @@ docker-compose ps
 
 2. **Open Sprint Documentation:**
    ```bash
-   code development_plan/phase_1_espn_foundation/sprint_1_local_setup.md
+   code development_plan/phase_1_espn_foundation/sprint_1_Local_Development_Setup.md
    ```
 
 3. **Start Development Environment:**
@@ -212,7 +212,7 @@ npm run sprint:status
 cat CLAUDE.md | head -50
 
 # Review current sprint
-code development_plan/phase_1_espn_foundation/sprint_1_local_setup.md
+code development_plan/phase_1_espn_foundation/sprint_1_Local_Development_Setup.md
 ```
 
 ## 💡 Critical Success Factors
@@ -248,7 +248,7 @@ code development_plan/phase_1_espn_foundation/sprint_1_local_setup.md
 
 3. **Begin Development:**
    - AI: Load INTRODUCTION_PROMPT.md with Sprint 1 details
-   - Human: Open sprint_1_local_setup.md and start coding
+   - Human: Open sprint_1_Local_Development_Setup.md and start coding
 
 4. **Track Progress:**
    - Use TodoWrite (AI)
@@ -258,7 +258,7 @@ code development_plan/phase_1_espn_foundation/sprint_1_local_setup.md
 ## 📚 Resources
 
 - **Documentation**: `/development_plan/`
-- **Current Sprint**: `/development_plan/phase_1_espn_foundation/sprint_1_local_setup.md`
+- **Current Sprint**: `/development_plan/phase_1_espn_foundation/sprint_1_Local_Development_Setup.md`
 - **AI Context**: `/CLAUDE.md`
 - **Architecture**: `/development_plan/ARCHITECTURE.md`
 - **Principles**: `/development_plan/PRINCIPLES.md`

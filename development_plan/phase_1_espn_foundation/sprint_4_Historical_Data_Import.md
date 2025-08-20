@@ -98,7 +98,7 @@ export class HistoricalImportManager {
 
     // Queue import job
     await this.queue.addJob(
-      QueueName.HISTORICAL_IMPORT,
+      QueueName.Historical_Data_Import,
       {
         importId,
         config,

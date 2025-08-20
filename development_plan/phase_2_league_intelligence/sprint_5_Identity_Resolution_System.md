@@ -27,7 +27,7 @@
 
 #### 1.1 Identity Resolution Tables
 ```sql
--- migrations/add_identity_resolution.sql
+-- migrations/add_Identity_Resolution_System.sql
 
 -- Master player identity table
 CREATE TABLE player_identities (
