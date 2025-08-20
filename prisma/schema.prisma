@@ -15,13 +15,15 @@ datasource db {
 
 // Core user model for authentication and identity
 model User {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  email       String   @unique @db.VarChar(255)
-  username    String   @unique @db.VarChar(100)
-  displayName String?  @map("display_name") @db.VarChar(255)
-  avatarUrl   String?  @map("avatar_url")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  username      String    @unique @db.VarChar(100)
+  displayName   String?   @map("display_name") @db.VarChar(255)
+  avatarUrl     String?   @map("avatar_url")
+  password      String?   @db.VarChar(255)
+  emailVerified DateTime? @map("email_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relations
   leagues     LeagueMember[]
@@ -29,7 +31,12 @@ model User {
   createdLeagues League[] @relation("LeagueCreator")
   createdPlayerIdentities PlayerIdentity[]
   createdPlayerMappings PlayerIdentityMapping[]
-  auditLogs IdentityAuditLog[]
+  identityAuditLogs IdentityAuditLog[]
+  userRoles   UserRole[]
+  auditLogs   AuditLog[]
+  systemConfigs SystemConfig[] @relation("ConfigUpdater")
+  invitations Invitation[] @relation("InvitationCreator")
+  leagueSettings LeagueSettings[] @relation("SettingsUpdater")
 
   @@map("users")
 }
@@ -64,6 +71,13 @@ model League {
   playerStats LeaguePlayerStats[]
   teamIdentities TeamIdentity[]
   teamMappings TeamIdentityMapping[]
+  allTimeRecords AllTimeRecord[]
+  headToHeadRecords HeadToHeadRecord[]
+  performanceTrends PerformanceTrend[]
+  championshipRecords ChampionshipRecord[]
+  statisticsCalculations StatisticsCalculation[]
+  seasonStatistics SeasonStatistics[]
+  weeklyStatistics WeeklyStatistics[]
 
   @@unique([espnLeagueId, season])
   @@index([sandboxNamespace])
@@ -519,4 +533,364 @@ enum AuditAction {
   ROLLBACK
   
   @@map("audit_action")
+}
+
+// Statistics Models
+
+// All-time records tracking
+model AllTimeRecord {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId         String   @map("league_id") @db.Uuid
+  recordType       String   @map("record_type") @db.VarChar(100)
+  recordHolderType String   @map("record_holder_type") @db.VarChar(50)
+  recordHolderId   String   @map("record_holder_id") @db.VarChar(255)
+  recordValue      Decimal  @map("record_value") @db.Decimal(10, 2)
+  season           String?  @db.VarChar(50)
+  week             Int?
+  opponentId       String?  @map("opponent_id") @db.VarChar(255)
+  dateAchieved     DateTime? @map("date_achieved")
+  metadata         Json     @default("{}")
+  previousRecordId String?  @map("previous_record_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @map("updated_at")
+  
+  // Relations
+  league         League         @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  previousRecord AllTimeRecord? @relation("RecordHistory", fields: [previousRecordId], references: [id])
+  nextRecords    AllTimeRecord[] @relation("RecordHistory")
+  
+  @@unique([leagueId, recordType, recordHolderType], map: "idx_all_time_records_unique")
+  @@index([leagueId], map: "idx_all_time_records_league")
+  @@index([recordType], map: "idx_all_time_records_type")
+  @@map("all_time_records")
+}
+
+// Head-to-head records
+model HeadToHeadRecord {
+  id                   String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId             String   @map("league_id") @db.Uuid
+  team1Id              String   @map("team1_id") @db.VarChar(255)
+  team2Id              String   @map("team2_id") @db.VarChar(255)
+  totalMatchups        Int      @default(0) @map("total_matchups")
+  team1Wins            Int      @default(0) @map("team1_wins")
+  team2Wins            Int      @default(0) @map("team2_wins")
+  ties                 Int      @default(0)
+  team1TotalPoints     Decimal  @default(0) @map("team1_total_points") @db.Decimal(10, 2)
+  team2TotalPoints     Decimal  @default(0) @map("team2_total_points") @db.Decimal(10, 2)
+  team1HighestScore    Decimal? @map("team1_highest_score") @db.Decimal(10, 2)
+  team2HighestScore    Decimal? @map("team2_highest_score") @db.Decimal(10, 2)
+  lastMatchupDate      DateTime? @map("last_matchup_date")
+  playoffMatchups      Int      @default(0) @map("playoff_matchups")
+  championshipMatchups Int      @default(0) @map("championship_matchups")
+  metadata             Json     @default("{}")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @default(now()) @map("updated_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, team1Id, team2Id], map: "idx_h2h_unique")
+  @@index([leagueId], map: "idx_h2h_league")
+  @@index([team1Id], map: "idx_h2h_team1")
+  @@index([team2Id], map: "idx_h2h_team2")
+  @@map("head_to_head_records")
+}
+
+// Performance trends
+model PerformanceTrend {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId       String   @map("league_id") @db.Uuid
+  entityType     String   @map("entity_type") @db.VarChar(50)
+  entityId       String   @map("entity_id") @db.VarChar(255)
+  periodType     String   @map("period_type") @db.VarChar(50)
+  periodValue    String   @map("period_value") @db.VarChar(50)
+  metrics        Json
+  trendDirection String?  @map("trend_direction") @db.VarChar(20)
+  trendStrength  Decimal? @map("trend_strength") @db.Decimal(5, 2)
+  calculatedAt   DateTime @default(now()) @map("calculated_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, entityType, entityId, periodType, periodValue], map: "idx_trends_unique")
+  @@index([leagueId], map: "idx_trends_league")
+  @@index([entityType, entityId], map: "idx_trends_entity")
+  @@index([calculatedAt], map: "idx_trends_calculated")
+  @@map("performance_trends")
+}
+
+// Championship records
+model ChampionshipRecord {
+  id                    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId              String   @map("league_id") @db.Uuid
+  season                String   @db.VarChar(50)
+  championId            String   @map("champion_id") @db.VarChar(255)
+  runnerUpId            String?  @map("runner_up_id") @db.VarChar(255)
+  thirdPlaceId          String?  @map("third_place_id") @db.VarChar(255)
+  regularSeasonWinnerId String?  @map("regular_season_winner_id") @db.VarChar(255)
+  championshipScore     Decimal? @map("championship_score") @db.Decimal(10, 2)
+  runnerUpScore         Decimal? @map("runner_up_score") @db.Decimal(10, 2)
+  playoffBracket        Json?    @map("playoff_bracket")
+  createdAt             DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, season], map: "idx_championships_unique")
+  @@index([leagueId], map: "idx_championships_league")
+  @@index([championId], map: "idx_championships_champion")
+  @@map("championship_records")
+}
+
+// Statistics calculation log
+model StatisticsCalculation {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId        String    @map("league_id") @db.Uuid
+  calculationType String    @map("calculation_type") @db.VarChar(100)
+  status          String    @default("PENDING") @db.VarChar(50)
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  errorMessage    String?   @map("error_message") @db.Text
+  recordsProcessed Int      @default(0) @map("records_processed")
+  executionTimeMs  Int?     @map("execution_time_ms")
+  metadata        Json      @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@index([leagueId], map: "idx_calc_league")
+  @@index([status], map: "idx_calc_status")
+  @@index([createdAt], map: "idx_calc_created")
+  @@map("statistics_calculations")
+}
+
+// Season statistics
+model SeasonStatistics {
+  id                      String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId                String   @map("league_id") @db.Uuid
+  season                  String   @db.VarChar(50)
+  teamId                  String   @map("team_id") @db.VarChar(255)
+  wins                    Int      @default(0)
+  losses                  Int      @default(0)
+  ties                    Int      @default(0)
+  pointsFor               Decimal  @default(0) @map("points_for") @db.Decimal(10, 2)
+  pointsAgainst           Decimal  @default(0) @map("points_against") @db.Decimal(10, 2)
+  avgPointsFor            Decimal? @map("avg_points_for") @db.Decimal(10, 2)
+  avgPointsAgainst        Decimal? @map("avg_points_against") @db.Decimal(10, 2)
+  highestScore            Decimal? @map("highest_score") @db.Decimal(10, 2)
+  lowestScore             Decimal? @map("lowest_score") @db.Decimal(10, 2)
+  pointsStdDev            Decimal? @map("points_std_dev") @db.Decimal(10, 2)
+  longestWinStreak        Int      @default(0) @map("longest_win_streak")
+  longestLossStreak       Int      @default(0) @map("longest_loss_streak")
+  currentStreakType       String?  @map("current_streak_type") @db.VarChar(10)
+  currentStreakCount      Int      @default(0) @map("current_streak_count")
+  playoffAppearance       Boolean  @default(false) @map("playoff_appearance")
+  championshipAppearance  Boolean  @default(false) @map("championship_appearance")
+  divisionWinner          Boolean  @default(false) @map("division_winner")
+  calculatedAt            DateTime @default(now()) @map("calculated_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, season, teamId], map: "idx_season_stats_unique")
+  @@index([leagueId], map: "idx_season_stats_league")
+  @@index([season], map: "idx_season_stats_season")
+  @@index([teamId], map: "idx_season_stats_team")
+  @@map("season_statistics")
+}
+
+// Weekly statistics
+model WeeklyStatistics {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueId         String   @map("league_id") @db.Uuid
+  season           String   @db.VarChar(50)
+  week             Int
+  teamId           String   @map("team_id") @db.VarChar(255)
+  opponentId       String?  @map("opponent_id") @db.VarChar(255)
+  pointsFor        Decimal  @map("points_for") @db.Decimal(10, 2)
+  pointsAgainst    Decimal? @map("points_against") @db.Decimal(10, 2)
+  result           String?  @db.VarChar(10) // 'WIN', 'LOSS', 'TIE'
+  isPlayoff        Boolean  @default(false) @map("is_playoff")
+  isChampionship   Boolean  @default(false) @map("is_championship")
+  marginOfVictory  Decimal? @map("margin_of_victory") @db.Decimal(10, 2)
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, season, week, teamId], map: "idx_weekly_stats_unique")
+  @@index([leagueId], map: "idx_weekly_stats_league")
+  @@index([season, week], map: "idx_weekly_stats_season")
+  @@index([teamId], map: "idx_weekly_stats_team")
+  @@map("weekly_statistics")
+}
+
+// Admin Portal Models
+
+// Role model for RBAC
+model Role {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  permissions RolePermission[]
+  userRoles   UserRole[]
+  
+  @@map("roles")
+}
+
+// Permission model
+model Permission {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  resource    String   @db.VarChar(100)
+  action      String   @db.VarChar(50)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  roles RolePermission[]
+  
+  @@map("permissions")
+}
+
+// User-Role mapping
+model UserRole {
+  userId     String   @map("user_id") @db.Uuid
+  roleId     String   @map("role_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  assignedBy String?  @map("assigned_by") @db.Uuid
+  
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// Role-Permission mapping
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+  
+  // Relations
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// League settings
+model LeagueSettings {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueSandbox     String   @unique @map("league_sandbox") @db.VarChar(255)
+  settings          Json     @default("{}")
+  features          Json     @default("{\"espn\": true, \"ai_content\": false, \"betting\": false}")
+  syncConfig        Json     @default("{\"auto_sync\": true, \"sync_interval\": 3600}") @map("sync_config")
+  notificationConfig Json    @default("{}") @map("notification_config")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  updatedBy         String?  @map("updated_by") @db.Uuid
+  
+  // Relations
+  updater User? @relation("SettingsUpdater", fields: [updatedBy], references: [id])
+  
+  @@map("league_settings")
+}
+
+// System configuration
+model SystemConfig {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  key         String   @unique @db.VarChar(255)
+  value       Json
+  description String?  @db.Text
+  category    String?  @db.VarChar(100)
+  isSecret    Boolean  @default(false) @map("is_secret")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  
+  // Relations
+  updater User? @relation("ConfigUpdater", fields: [updatedBy], references: [id])
+  
+  @@map("system_config")
+}
+
+// Audit logs
+model AuditLog {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String?  @map("entity_type") @db.VarChar(100)
+  entityId   String?  @map("entity_id") @db.VarChar(255)
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  metadata   Json     @default("{}")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+  
+  @@index([userId], map: "idx_audit_logs_user")
+  @@index([entityType, entityId], map: "idx_audit_logs_entity")
+  @@index([createdAt], map: "idx_audit_logs_created")
+  @@map("audit_logs")
+}
+
+// System health metrics
+model SystemMetric {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  metricType String   @map("metric_type") @db.VarChar(100)
+  metricName String   @map("metric_name") @db.VarChar(255)
+  value      Decimal  @db.Decimal(20, 4)
+  unit       String?  @db.VarChar(50)
+  tags       Json     @default("{}")
+  recordedAt DateTime @default(now()) @map("recorded_at")
+  
+  @@index([metricType, metricName, recordedAt], map: "idx_system_metrics_lookup")
+  @@map("system_metrics")
+}
+
+// Data sync status
+model SyncStatus {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueSandbox    String   @map("league_sandbox") @db.VarChar(255)
+  syncType         String   @map("sync_type") @db.VarChar(100)
+  status           String   @default("PENDING") @db.VarChar(50)
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  recordsProcessed Int      @default(0) @map("records_processed")
+  recordsFailed    Int      @default(0) @map("records_failed")
+  errorMessage     String?  @map("error_message") @db.Text
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+  
+  @@index([leagueSandbox, syncType, createdAt], map: "idx_sync_status_lookup")
+  @@map("sync_status")
+}
+
+// Invitations
+model Invitation {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leagueSandbox String    @map("league_sandbox") @db.VarChar(255)
+  email         String    @db.VarChar(255)
+  role          String    @default("MEMBER") @db.VarChar(50)
+  token         String    @unique @db.VarChar(255)
+  expiresAt     DateTime  @map("expires_at")
+  acceptedAt    DateTime? @map("accepted_at")
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  creator User? @relation("InvitationCreator", fields: [createdBy], references: [id])
+  
+  @@unique([leagueSandbox, email])
+  @@map("invitations")
 }
