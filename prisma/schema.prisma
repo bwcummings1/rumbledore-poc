@@ -27,6 +27,9 @@ model User {
   leagues     LeagueMember[]
   credentials EspnCredential[]
   createdLeagues League[] @relation("LeagueCreator")
+  createdPlayerIdentities PlayerIdentity[]
+  createdPlayerMappings PlayerIdentityMapping[]
+  auditLogs IdentityAuditLog[]
 
   @@map("users")
 }
@@ -59,6 +62,8 @@ model League {
   syncMetadata SyncMetadata?
   transactions LeagueTransaction[]
   playerStats LeaguePlayerStats[]
+  teamIdentities TeamIdentity[]
+  teamMappings TeamIdentityMapping[]
 
   @@unique([espnLeagueId, season])
   @@index([sandboxNamespace])
@@ -385,4 +390,133 @@ enum ImportStatus {
   PAUSED
   
   @@map("import_status")
+}
+
+// Identity Resolution Models
+
+// Master player identity table
+model PlayerIdentity {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  masterPlayerId  String   @unique @map("master_player_id") @db.Uuid
+  canonicalName   String   @map("canonical_name") @db.VarChar(255)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       String?  @map("created_by") @db.Uuid
+  confidenceScore Float    @default(1.00) @map("confidence_score")
+  verified        Boolean  @default(false)
+  metadata        Json     @default("{}")
+  
+  // Relations
+  creator  User? @relation(fields: [createdBy], references: [id])
+  mappings PlayerIdentityMapping[]
+  
+  @@map("player_identities")
+}
+
+// Player identity mappings across seasons
+model PlayerIdentityMapping {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  masterPlayerId  String   @map("master_player_id") @db.Uuid
+  espnPlayerId    BigInt   @map("espn_player_id")
+  season          Int
+  nameVariation   String   @map("name_variation") @db.VarChar(255)
+  confidenceScore Float    @map("confidence_score")
+  mappingMethod   MappingMethod @map("mapping_method")
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdBy       String?  @map("created_by") @db.Uuid
+  
+  // Relations
+  playerIdentity PlayerIdentity @relation(fields: [masterPlayerId], references: [masterPlayerId], onDelete: Cascade)
+  creator        User? @relation(fields: [createdBy], references: [id])
+  
+  @@unique([espnPlayerId, season])
+  @@index([masterPlayerId])
+  @@index([espnPlayerId])
+  @@map("player_identity_mappings")
+}
+
+// Team identity continuity
+model TeamIdentity {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  masterTeamId  String   @unique @map("master_team_id") @db.Uuid
+  leagueId      String   @map("league_id") @db.Uuid
+  canonicalName String   @map("canonical_name") @db.VarChar(255)
+  ownerHistory  Json     @default("[]") @map("owner_history")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  league   League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  mappings TeamIdentityMapping[]
+  
+  @@index([leagueId])
+  @@map("team_identities")
+}
+
+// Team identity mappings across seasons
+model TeamIdentityMapping {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  masterTeamId    String   @map("master_team_id") @db.Uuid
+  leagueId        String   @map("league_id") @db.Uuid
+  espnTeamId      Int      @map("espn_team_id")
+  season          Int
+  teamName        String   @map("team_name") @db.VarChar(255)
+  ownerName       String?  @map("owner_name") @db.VarChar(255)
+  confidenceScore Float    @map("confidence_score")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  teamIdentity TeamIdentity @relation(fields: [masterTeamId], references: [masterTeamId], onDelete: Cascade)
+  league       League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, espnTeamId, season])
+  @@index([masterTeamId])
+  @@index([leagueId])
+  @@map("team_identity_mappings")
+}
+
+// Audit trail for all identity changes
+model IdentityAuditLog {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  entityType  EntityType @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  action      AuditAction
+  beforeState Json?    @map("before_state")
+  afterState  Json?    @map("after_state")
+  reason      String?  @db.Text
+  performedBy String?  @map("performed_by") @db.Uuid
+  performedAt DateTime @default(now()) @map("performed_at")
+  
+  // Relations
+  performer User? @relation(fields: [performedBy], references: [id])
+  
+  @@index([entityType, entityId])
+  @@index([performedBy])
+  @@map("identity_audit_log")
+}
+
+enum MappingMethod {
+  AUTOMATIC
+  MANUAL
+  FUZZY_MATCH
+  
+  @@map("mapping_method")
+}
+
+enum EntityType {
+  PLAYER
+  TEAM
+  
+  @@map("entity_type")
+}
+
+enum AuditAction {
+  CREATE
+  MERGE
+  SPLIT
+  UPDATE
+  DELETE
+  ROLLBACK
+  
+  @@map("audit_action")
 }
