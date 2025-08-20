@@ -8,16 +8,24 @@
 import { BaseAgent } from './base-agent';
 import { CommissionerAgent } from './agents/commissioner';
 import { AnalystAgent } from './agents/analyst';
+import { NarratorAgent } from './agents/narrator';
+import { TrashTalkerAgent } from './agents/trash-talker';
+import { BettingAdvisorAgent } from './agents/betting-advisor';
+import { LeagueHistorianAgent } from './agents/league-historian';
+import { LeagueOracleAgent } from './agents/league-oracle';
 import { AgentType } from '@prisma/client';
 
 // Agent cache to avoid recreating agents unnecessarily
 const agentCache = new Map<string, BaseAgent>();
 
+// Extended agent types for additional agents not in enum
+export type ExtendedAgentType = AgentType | 'HISTORIAN' | 'ORACLE';
+
 /**
  * Agent factory configuration
  */
 export interface AgentFactoryConfig {
-  agentType: AgentType;
+  agentType: ExtendedAgentType;
   leagueSandbox?: string;
   forceNew?: boolean; // Force creation of new instance
 }
@@ -55,18 +63,23 @@ export async function createAgent(config: AgentFactoryConfig): Promise<BaseAgent
       break;
 
     case AgentType.NARRATOR:
-      // TODO: Implement NarratorAgent
-      agent = new CommissionerAgent(config.leagueSandbox); // Fallback for now
+      agent = new NarratorAgent(config.leagueSandbox);
       break;
 
     case AgentType.TRASH_TALKER:
-      // TODO: Implement TrashTalkerAgent
-      agent = new CommissionerAgent(config.leagueSandbox); // Fallback for now
+      agent = new TrashTalkerAgent(config.leagueSandbox);
       break;
 
     case AgentType.BETTING_ADVISOR:
-      // TODO: Implement BettingAdvisorAgent
-      agent = new AnalystAgent(config.leagueSandbox); // Fallback for now
+      agent = new BettingAdvisorAgent(config.leagueSandbox);
+      break;
+
+    case 'HISTORIAN':
+      agent = new LeagueHistorianAgent(config.leagueSandbox);
+      break;
+
+    case 'ORACLE':
+      agent = new LeagueOracleAgent(config.leagueSandbox);
       break;
 
     default:

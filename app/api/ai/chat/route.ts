@@ -8,21 +8,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/auth-config';
-import { CommissionerAgent } from '@/lib/ai/agents/commissioner';
-import { AnalystAgent } from '@/lib/ai/agents/analyst';
-import { BaseAgent } from '@/lib/ai/base-agent';
+import { createAgent, ExtendedAgentType } from '@/lib/ai/agent-factory';
+import { SSEHandler } from '@/lib/ai/streaming/sse-handler';
+import { getAIResponseCache } from '@/lib/ai/cache/response-cache';
+import { withAgentRateLimit } from '@/lib/middleware/rate-limiter';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Request schema
+// Request schema - now supports all agent types
 const ChatRequestSchema = z.object({
   message: z.string().min(1).max(2000),
-  agentType: z.enum(['COMMISSIONER', 'ANALYST', 'NARRATOR', 'TRASH_TALKER', 'BETTING_ADVISOR']),
+  agentType: z.enum([
+    'COMMISSIONER',
+    'ANALYST',
+    'NARRATOR',
+    'TRASH_TALKER',
+    'BETTING_ADVISOR',
+    'HISTORIAN',
+    'ORACLE'
+  ] as const),
   sessionId: z.string().optional(),
   leagueSandbox: z.string().optional(),
   context: z.record(z.any()).optional(),
+  streaming: z.boolean().optional().default(false),
 });
 
 // Response schema
@@ -33,21 +43,8 @@ const ChatResponseSchema = z.object({
   toolsUsed: z.array(z.string()),
   processingTime: z.number(),
   timestamp: z.string(),
+  cached: z.boolean().optional(),
 });
-
-// Agent factory
-function createAgent(agentType: string, leagueSandbox?: string): BaseAgent {
-  switch (agentType) {
-    case 'COMMISSIONER':
-      return new CommissionerAgent(leagueSandbox);
-    case 'ANALYST':
-      return new AnalystAgent(leagueSandbox);
-    // TODO: Add other agent types as they're implemented
-    default:
-      // Default to Commissioner for now
-      return new CommissionerAgent(leagueSandbox);
-  }
-}
 
 export async function POST(request: NextRequest) {
   try {

@@ -227,6 +227,70 @@ Remember: You're not just an analyst, you're part of the league experience!`;
   }
 
   /**
+   * Process a message with streaming response
+   */
+  async *processMessageStreaming(
+    message: string,
+    sessionId: string,
+    userId?: string,
+    context?: any
+  ): AsyncGenerator<any> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      // Retrieve relevant memories
+      const memories = await this.memory.retrieveRelevant(message, 5, 0.7);
+      
+      // Get conversation history
+      const history = await this.getConversationHistory(sessionId);
+      
+      // Build enhanced context
+      const enhancedInput = this.buildContext(message, memories, context);
+      
+      // Create streaming callbacks
+      const streamCallbacks = {
+        handleLLMNewToken: async (token: string) => {
+          yield token;
+        },
+        handleToolStart: async (tool: any) => {
+          yield { type: 'tool_start', tool: tool.tool };
+        },
+        handleToolEnd: async (output: any) => {
+          yield { type: 'tool_end', tool: output.tool, result: output.output };
+        },
+      };
+      
+      // Execute agent with streaming
+      const result = await this.executor!.invoke({
+        input: enhancedInput,
+        chat_history: history,
+      }, {
+        callbacks: [streamCallbacks],
+      });
+      
+      // Store interaction in memory (after completion)
+      await this.memory.store({
+        content: `User: ${message}\nAssistant: ${result.output}`,
+        metadata: {
+          sessionId,
+          userId,
+          timestamp: new Date(),
+          toolsUsed: result.intermediateSteps?.map((s: any) => s.action?.tool) || [],
+        },
+        importance: 0.7,
+      });
+      
+      // Update conversation history
+      await this.updateConversationHistory(sessionId, userId, message, result.output);
+    } catch (error) {
+      console.error(`Agent ${this.config.id} streaming error:`, error);
+      yield { type: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /**
    * Build context from message, memories, and additional data
    */
   protected buildContext(
