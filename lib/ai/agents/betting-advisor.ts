@@ -73,6 +73,9 @@ export class BettingAdvisorAgent extends BaseAgent {
       this.createParlayBuilderTool(),
       this.createLiveAdjustmentTool(),
       this.createInjuryImpactTool(),
+      this.createRealTimeOddsTool(),
+      this.createLineMovementTool(),
+      this.createHistoricalOddsTool(),
     ];
     
     return [...standardTools, ...bettingTools];
@@ -545,5 +548,158 @@ Always remind users that this is for entertainment purposes with paper money onl
     const prompt = `Analyze this betting performance and provide insights and improvements: ${JSON.stringify(bettingHistory)}`;
     const response = await this.processMessage(prompt, `performance-review-${Date.now()}`);
     return response.response;
+  }
+
+  /**
+   * Tool for fetching real-time odds data
+   */
+  private createRealTimeOddsTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'get_real_time_odds',
+      description: 'Fetch current NFL betting odds from major sportsbooks',
+      schema: z.object({
+        gameId: z.string().optional().describe('Specific game ID to fetch odds for'),
+        market: z.enum(['moneyline', 'spread', 'total']).optional().describe('Type of betting market'),
+      }),
+      func: async ({ gameId, market }) => {
+        try {
+          // In a real implementation, this would call the OddsApiClient
+          // For now, returning a structured response
+          const params = new URLSearchParams();
+          if (gameId) params.append('gameId', gameId);
+          
+          const response = await fetch(`/api/odds/nfl?${params}`);
+          const data = await response.json();
+          
+          if (!data.success) {
+            return JSON.stringify({ error: data.error || 'Failed to fetch odds' });
+          }
+          
+          // Format the response for the agent
+          const odds = data.data;
+          const formatted = odds.slice(0, 3).map((game: any) => ({
+            game: `${game.awayTeam} @ ${game.homeTeam}`,
+            time: game.commenceTime,
+            spread: game.spread || 'N/A',
+            total: game.total || 'N/A',
+            moneyline: game.moneyline || 'N/A',
+            bookmakers: game.bookmakers.length
+          }));
+          
+          return JSON.stringify({
+            odds: formatted,
+            rateLimit: data.rateLimit,
+            cached: data.cached || false
+          });
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to fetch real-time odds',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Tool for analyzing line movements
+   */
+  private createLineMovementTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'analyze_line_movement',
+      description: 'Analyze betting line movements and identify sharp action',
+      schema: z.object({
+        gameId: z.string().describe('Game ID to analyze movements for'),
+        marketType: z.enum(['spreads', 'totals', 'h2h']).optional().describe('Market to analyze'),
+      }),
+      func: async ({ gameId, marketType }) => {
+        try {
+          const params = new URLSearchParams();
+          params.append('gameId', gameId);
+          if (marketType) params.append('marketType', marketType);
+          
+          const response = await fetch(`/api/odds/movement?${params}`);
+          const data = await response.json();
+          
+          if (!data.success) {
+            return JSON.stringify({ error: data.error || 'Failed to fetch movement data' });
+          }
+          
+          // Analyze the movement data
+          const movements = data.data.movements || [];
+          const sharpAction = data.data.sharpAction;
+          
+          const analysis = {
+            gameId,
+            significantMovements: movements.filter((m: any) => 
+              Math.abs(m.totalMovement?.line || 0) > 1 || 
+              Math.abs(m.totalMovement?.odds || 0) > 15
+            ),
+            sharpIndicators: sharpAction?.sharpIndicators || [],
+            recommendation: sharpAction?.confidence > 0.6 ? 
+              'Potential sharp action detected - consider following the money' :
+              'No clear sharp action indicators',
+            openingLines: data.data.openingLines,
+            currentLines: data.data.closingLines,
+          };
+          
+          return JSON.stringify(analysis);
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to analyze line movements',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Tool for accessing historical odds data
+   */
+  private createHistoricalOddsTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'get_historical_odds',
+      description: 'Retrieve historical odds data for trend analysis',
+      schema: z.object({
+        gameId: z.string().optional().describe('Specific game to get history for'),
+        dateFrom: z.string().describe('Start date (YYYY-MM-DD)'),
+        dateTo: z.string().describe('End date (YYYY-MM-DD)'),
+        sport: z.string().default('NFL').describe('Sport to fetch odds for'),
+      }),
+      func: async ({ gameId, dateFrom, dateTo, sport }) => {
+        try {
+          const params = new URLSearchParams();
+          if (gameId) params.append('gameId', gameId);
+          params.append('dateFrom', dateFrom);
+          params.append('dateTo', dateTo);
+          params.append('sport', sport);
+          
+          const response = await fetch(`/api/odds/history?${params}`);
+          const data = await response.json();
+          
+          if (!data.success) {
+            return JSON.stringify({ error: data.error || 'Failed to fetch historical odds' });
+          }
+          
+          // Summarize historical data
+          const historicalData = data.data;
+          const summary = {
+            totalGames: historicalData.total || 0,
+            dateRange: { from: dateFrom, to: dateTo },
+            sport,
+            samples: historicalData.data?.slice(0, 5) || [],
+            hasMore: historicalData.hasMore || false
+          };
+          
+          return JSON.stringify(summary);
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to fetch historical odds',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
   }
 }

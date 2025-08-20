@@ -1102,7 +1102,7 @@ model ChatMessage {
   
   // Relations
   league   League          @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  session  ChatSession     @relation(fields: [sessionId], references: [id])
+  session  ChatSession     @relation(fields: [sessionId], references: [sessionId])
   replyTo  ChatMessage?    @relation("MessageReplies", fields: [replyToId], references: [id])
   replies  ChatMessage[]   @relation("MessageReplies")
   
@@ -1161,6 +1161,121 @@ model AgentSummon {
   @@index([agentType, active])
   @@index([summonedAt])
   @@map("agent_summons")
+}
+
+// =============================================================================
+// BETTING SYSTEM MODELS
+// =============================================================================
+
+// Store snapshots of odds data from The Odds API
+model OddsSnapshot {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sport        String    @db.VarChar(50) // NFL, NBA, etc.
+  gameId       String?   @map("game_id") @db.VarChar(100) // External game ID from API
+  eventId      String?   @map("event_id") @db.VarChar(100) // Optional event identifier
+  homeTeam     String?   @map("home_team") @db.VarChar(100)
+  awayTeam     String?   @map("away_team") @db.VarChar(100)
+  commenceTime DateTime? @map("commence_time") // When the game starts
+  data         Json      // Full odds data from API
+  createdAt    DateTime  @default(now()) @map("created_at")
+  
+  @@index([sport, createdAt(sort: Desc)])
+  @@index([gameId])
+  @@index([commenceTime])
+  @@map("odds_snapshots")
+}
+
+// Current betting lines from various bookmakers
+model BettingLine {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  gameId        String   @map("game_id") @db.VarChar(100)
+  bookmaker     String   @db.VarChar(50) // draftkings, fanduel, etc.
+  marketType    MarketType @map("market_type")
+  lineValue     Decimal? @map("line_value") @db.Decimal(10, 2) // Spread or total line
+  oddsValue     Int?     @map("odds_value") // American odds format (-110, +150, etc.)
+  team          String?  @db.VarChar(100) // Team name for spread/moneyline
+  isHome        Boolean? @map("is_home") // Whether this is the home team
+  impliedProb   Decimal? @map("implied_probability") @db.Decimal(5, 4) // Calculated probability
+  lastUpdate    DateTime @default(now()) @map("last_update")
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  @@unique([gameId, bookmaker, marketType, team])
+  @@index([gameId])
+  @@index([marketType])
+  @@index([bookmaker])
+  @@map("betting_lines")
+}
+
+// Track line movements over time
+model OddsMovement {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  gameId         String   @map("game_id") @db.VarChar(100)
+  bookmaker      String   @db.VarChar(50)
+  marketType     MarketType @map("market_type")
+  team           String?  @db.VarChar(100)
+  openingLine    Decimal? @map("opening_line") @db.Decimal(10, 2)
+  openingOdds    Int?     @map("opening_odds")
+  currentLine    Decimal? @map("current_line") @db.Decimal(10, 2)
+  currentOdds    Int?     @map("current_odds")
+  lineMovement   Decimal? @map("line_movement") @db.Decimal(10, 2) // Change in line
+  oddsMovement   Int?     @map("odds_movement") // Change in odds
+  movementCount  Int      @default(0) @map("movement_count") // Number of changes
+  lastMovement   DateTime @default(now()) @map("last_movement")
+  createdAt      DateTime @default(now()) @map("created_at")
+  
+  @@unique([gameId, bookmaker, marketType, team])
+  @@index([gameId, marketType])
+  @@index([lastMovement])
+  @@map("odds_movements")
+}
+
+// Player prop bets
+model PlayerProp {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  gameId        String   @map("game_id") @db.VarChar(100)
+  playerId      String   @map("player_id") @db.VarChar(100)
+  playerName    String   @map("player_name") @db.VarChar(255)
+  propType      PropType @map("prop_type")
+  line          Decimal  @db.Decimal(10, 2)
+  overOdds      Int?     @map("over_odds")
+  underOdds     Int?     @map("under_odds")
+  bookmaker     String   @db.VarChar(50)
+  lastUpdate    DateTime @default(now()) @map("last_update")
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  @@unique([gameId, playerId, propType, bookmaker])
+  @@index([gameId, playerId])
+  @@index([propType])
+  @@map("player_props")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+// Market types for betting
+enum MarketType {
+  H2H         // Head to head (moneyline)
+  SPREADS     // Point spreads
+  TOTALS      // Over/under totals
+  
+  @@map("market_type")
+}
+
+// Player prop types
+enum PropType {
+  PASS_TDS         // Passing touchdowns
+  PASS_YDS         // Passing yards
+  RUSH_YDS         // Rushing yards
+  RUSH_TDS         // Rushing touchdowns
+  REC_YDS          // Receiving yards
+  REC_TDS          // Receiving touchdowns
+  RECEPTIONS       // Number of receptions
+  TACKLES          // Defensive tackles
+  SACKS            // Defensive sacks
+  INTERCEPTIONS    // Defensive interceptions
+  
+  @@map("prop_type")
 }
 
 // Enum for chat message types
