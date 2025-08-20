@@ -37,6 +37,7 @@ model User {
   systemConfigs SystemConfig[] @relation("ConfigUpdater")
   invitations Invitation[] @relation("InvitationCreator")
   leagueSettings LeagueSettings[] @relation("SettingsUpdater")
+  agentConversations AgentConversation[] @relation("UserConversations")
 
   @@map("users")
 }
@@ -893,4 +894,62 @@ model Invitation {
   
   @@unique([leagueSandbox, email])
   @@map("invitations")
+}
+
+// ========== AI AGENT MODELS (Sprint 8) ==========
+
+// Agent memory storage for LangChain integration
+model AgentMemory {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  agentId       String    @map("agent_id") @db.VarChar(255)
+  leagueSandbox String?   @map("league_sandbox") @db.VarChar(255)
+  content       String    @db.Text
+  embedding     Unsupported("vector(1536)")?
+  metadata      Json      @default("{}")
+  importance    Float     @default(0.5) @db.Real
+  createdAt     DateTime  @default(now()) @map("created_at")
+  accessedAt    DateTime  @default(now()) @map("accessed_at")
+  accessCount   Int       @default(0) @map("access_count")
+  
+  @@index([agentId, leagueSandbox])
+  @@index([createdAt])
+  @@map("agent_memories")
+}
+
+// Conversation history for agent interactions
+model AgentConversation {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sessionId     String    @map("session_id") @db.VarChar(255)
+  userId        String?   @map("user_id") @db.Uuid
+  agentId       String    @map("agent_id") @db.VarChar(255)
+  leagueSandbox String?   @map("league_sandbox") @db.VarChar(255)
+  messages      Json      @default("[]")
+  summary       String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  user User? @relation("UserConversations", fields: [userId], references: [id])
+  
+  @@index([sessionId, agentId])
+  @@index([userId, createdAt])
+  @@map("agent_conversations")
+}
+
+// Agent configuration and personality settings
+model AgentConfig {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  agentId       String    @unique @map("agent_id") @db.VarChar(255)
+  agentType     AgentType @map("agent_type")
+  leagueSandbox String?   @map("league_sandbox") @db.VarChar(255)
+  personality   Json      // traits, tone, expertise
+  tools         Json      @default("[]")
+  parameters    Json      @default("{}") // temperature, maxTokens, etc.
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  @@unique([agentId, leagueSandbox])
+  @@index([agentType, leagueSandbox])
+  @@map("agent_configs")
 }
