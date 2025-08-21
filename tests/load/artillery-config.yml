@@ -1,0 +1,226 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    # Warm up phase
+    - duration: 60
+      arrivalRate: 2
+      name: "Warm up"
+    
+    # Ramp up phase
+    - duration: 120
+      arrivalRate: 5
+      rampTo: 20
+      name: "Ramp up"
+    
+    # Sustained load phase
+    - duration: 300
+      arrivalRate: 20
+      name: "Sustained load"
+    
+    # Spike phase
+    - duration: 60
+      arrivalRate: 50
+      name: "Spike test"
+    
+    # Cool down phase
+    - duration: 60
+      arrivalRate: 5
+      name: "Cool down"
+  
+  # Default headers
+  defaults:
+    headers:
+      User-Agent: "Artillery Load Test"
+      Accept: "application/json"
+      Content-Type: "application/json"
+  
+  # Plugins
+  plugins:
+    expect: {}
+    metrics-by-endpoint: {}
+  
+  # Processor for custom logic
+  processor: "./load-test-processor.js"
+  
+  # Variables
+  variables:
+    leagueId: "test-league-123"
+    userId: "test-user-456"
+    authToken: "test-jwt-token"
+  
+  # Thresholds
+  ensure:
+    - http.response_time.p95: 1000
+    - http.response_time.p99: 2000
+    - http.codes.200: 95
+
+scenarios:
+  # Homepage load test
+  - name: "Homepage Visit"
+    weight: 30
+    flow:
+      - get:
+          url: "/"
+          expect:
+            - statusCode: 200
+            - contentType: "text/html"
+          capture:
+            - header: "x-response-time"
+              as: "responseTime"
+      
+      - think: 5
+      
+      - get:
+          url: "/_next/static/chunks/main.js"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/images/logo.png"
+          expect:
+            - statusCode: 200
+
+  # API endpoint tests
+  - name: "API League Data"
+    weight: 20
+    flow:
+      - get:
+          url: "/api/leagues/{{ leagueId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
+            - hasProperty: "data.league"
+          capture:
+            - json: "$.data.league.id"
+              as: "leagueId"
+      
+      - think: 2
+      
+      - get:
+          url: "/api/leagues/{{ leagueId }}/teams"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "data.teams"
+
+  # WebSocket connection test
+  - name: "WebSocket Connection"
+    weight: 15
+    engine: "ws"
+    flow:
+      - connect:
+          url: "ws://localhost:3000/socket.io"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      
+      - send:
+          data:
+            type: "join:league"
+            leagueId: "{{ leagueId }}"
+      
+      - think: 10
+      
+      - send:
+          data:
+            type: "request:sync"
+            leagueId: "{{ leagueId }}"
+      
+      - think: 5
+      
+      - disconnect: {}
+
+  # Database intensive operations
+  - name: "Statistics Query"
+    weight: 15
+    flow:
+      - get:
+          url: "/api/statistics/season/{{ leagueId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+            - responseTime: 500
+          capture:
+            - json: "$.data.statistics"
+              as: "stats"
+      
+      - think: 3
+      
+      - get:
+          url: "/api/statistics/h2h/{{ leagueId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+            - responseTime: 1000
+
+  # Betting system test
+  - name: "Betting Operations"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/odds/nfl"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+          capture:
+            - json: "$.data.odds[0].gameId"
+              as: "gameId"
+      
+      - think: 2
+      
+      - post:
+          url: "/api/betting/bet"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            leagueId: "{{ leagueId }}"
+            userId: "{{ userId }}"
+            gameId: "{{ gameId }}"
+            betType: "STRAIGHT"
+            marketType: "SPREAD"
+            selection: "home"
+            stake: 100
+            odds: -110
+          expect:
+            - statusCode: 201
+            - hasProperty: "data.bet.id"
+
+  # AI Agent interaction
+  - name: "AI Chat"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/ai/chat"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            leagueId: "{{ leagueId }}"
+            userId: "{{ userId }}"
+            message: "What are the current standings?"
+            agentType: "analyst"
+          expect:
+            - statusCode: 200
+            - hasProperty: "data.response"
+          capture:
+            - json: "$.data.sessionId"
+              as: "sessionId"
+      
+      - think: 5
+      
+      - post:
+          url: "/api/ai/chat"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            leagueId: "{{ leagueId }}"
+            userId: "{{ userId }}"
+            sessionId: "{{ sessionId }}"
+            message: "Who has the best record?"
+            agentType: "analyst"
+          expect:
+            - statusCode: 200

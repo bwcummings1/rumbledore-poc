@@ -50,7 +50,10 @@
     "worker:pm2:restart": "pm2 restart ecosystem.config.js",
     "worker:pm2:logs": "pm2 logs",
     "worker:pm2:status": "pm2 status",
-    "admin:create": "tsx scripts/create-admin.ts"
+    "admin:create": "tsx scripts/create-admin.ts",
+    "db:optimize": "tsx scripts/optimize-database.ts",
+    "perf:bench": "tsx scripts/benchmark.ts",
+    "perf:analyze": "tsx scripts/analyze-performance.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",

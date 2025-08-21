@@ -14,8 +14,12 @@ export class WebSocketClient {
   private socket: Socket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private reconnectDelay = 1000;
   private handlers: WebSocketEventHandlers = {};
   private currentLeagues: Set<string> = new Set();
+  private connectionStartTime = 0;
+  private lastPingTime = 0;
+  private latency = 0;
   private static instance: WebSocketClient;
 
   private constructor() {}
@@ -40,40 +44,116 @@ export class WebSocketClient {
     return new Promise((resolve, reject) => {
       const url = process.env.NEXT_PUBLIC_WS_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       
+      this.connectionStartTime = Date.now();
+      
       this.socket = io(url, {
         auth: { userId },
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: 1000,
+        reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 5000,
         transports: ['websocket', 'polling'],
+        // Performance optimizations
+        upgrade: true, // Start with polling and upgrade to websocket
+        rememberUpgrade: true, // Remember the upgrade
+        perMessageDeflate: {
+          threshold: 1024, // Compress messages > 1KB
+        },
+        // Timeout configurations
+        timeout: 20000,
+        ackTimeout: 10000,
       });
 
       this.socket.on('connect', () => {
-        console.log('WebSocket connected');
+        const connectionTime = Date.now() - this.connectionStartTime;
+        console.log(`WebSocket connected in ${connectionTime}ms`);
         this.reconnectAttempts = 0;
+        this.reconnectDelay = 1000; // Reset delay on successful connection
         
-        // Rejoin all leagues
-        this.currentLeagues.forEach(leagueId => {
-          this.joinLeague(leagueId);
-        });
+        // Setup ping/pong for latency tracking
+        this.setupPingPong();
+        
+        // Rejoin all leagues with optimized batch join
+        if (this.currentLeagues.size > 0) {
+          this.batchJoinLeagues(Array.from(this.currentLeagues));
+        }
         
         resolve();
       });
 
       this.socket.on('connect_error', (error) => {
         console.error('WebSocket connection error:', error);
+        this.reconnectAttempts++;
+        
+        // Exponential backoff for reconnection
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+        
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          console.error('Max reconnection attempts reached');
           reject(error);
         }
-        this.reconnectAttempts++;
       });
 
       this.socket.on('disconnect', (reason) => {
         console.log('WebSocket disconnected:', reason);
+        
+        // Handle different disconnect reasons
+        if (reason === 'io server disconnect') {
+          // Server initiated disconnect, attempt reconnection
+          console.log('Server disconnected, attempting to reconnect...');
+          this.socket?.connect();
+        } else if (reason === 'ping timeout') {
+          // Connection lost, exponential backoff
+          console.log('Connection lost (ping timeout), will reconnect with backoff');
+        }
+      });
+
+      this.socket.on('reconnect', (attemptNumber) => {
+        console.log(`Reconnected after ${attemptNumber} attempts`);
+        this.reconnectDelay = 1000; // Reset delay after successful reconnection
+      });
+
+      this.socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`Reconnection attempt ${attemptNumber}`);
+      });
+
+      this.socket.on('reconnect_error', (error) => {
+        console.error('Reconnection error:', error);
+      });
+
+      this.socket.on('reconnect_failed', () => {
+        console.error('Failed to reconnect after maximum attempts');
+        this.handlers.onError?.({ 
+          type: 'reconnect_failed', 
+          message: 'Unable to reconnect to server' 
+        });
       });
 
       this.setupEventListeners();
+    });
+  }
+
+  private setupPingPong() {
+    if (!this.socket) return;
+
+    // Handle ping from server
+    this.socket.on('ping', (timestamp: number) => {
+      this.lastPingTime = timestamp;
+      this.socket?.emit('pong', timestamp);
+      this.latency = Date.now() - timestamp;
+      
+      if (this.latency > 100) {
+        console.warn(`High latency detected: ${this.latency}ms`);
+      }
+    });
+  }
+
+  private batchJoinLeagues(leagueIds: string[]) {
+    if (!this.socket?.connected) return;
+    
+    // Join all leagues in a single batch if server supports it
+    leagueIds.forEach(leagueId => {
+      this.socket?.emit('join:league', leagueId);
     });
   }
 
@@ -189,6 +269,23 @@ export class WebSocketClient {
 
   getCurrentLeagues(): string[] {
     return Array.from(this.currentLeagues);
+  }
+
+  getLatency(): number {
+    return this.latency;
+  }
+
+  getConnectionState(): string {
+    if (!this.socket) return 'disconnected';
+    return this.socket.connected ? 'connected' : 'connecting';
+  }
+
+  // Force reconnect with fresh connection
+  forceReconnect(): void {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket.connect();
+    }
   }
 
   // Convenience method for React hooks

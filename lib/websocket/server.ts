@@ -1,6 +1,8 @@
 import { Server } from 'socket.io';
 import { prisma } from '@/lib/prisma';
 import { ChatAgentManager } from '@/lib/ai/chat/chat-agent-manager';
+import { wsConnectionPool } from './connection-pool';
+import performanceMonitor from '../monitoring/performance-monitor';
 
 export class WebSocketServer {
   private io: Server | null = null;
@@ -29,7 +31,22 @@ export class WebSocketServer {
         credentials: true,
       },
       transports: ['websocket', 'polling'],
+      // Performance optimizations
+      perMessageDeflate: {
+        threshold: 1024, // Compress messages > 1KB
+      },
+      httpCompression: {
+        threshold: 1024,
+      },
+      connectTimeout: 45000,
+      pingTimeout: 60000,
+      pingInterval: 25000,
+      upgradeTimeout: 10000,
+      maxHttpBufferSize: 1e6, // 1MB
     });
+
+    // Configure with connection pool optimizations
+    wsConnectionPool.configureServer(this.io);
 
     // Initialize ChatAgentManager with the Socket.io server
     this.chatAgentManager = new ChatAgentManager(this.io);
@@ -42,6 +59,7 @@ export class WebSocketServer {
     if (!this.io) return;
 
     this.io.on('connection', async (socket) => {
+      const startTime = Date.now();
       console.log('Client connected:', socket.id);
 
       // Get user and league info from socket handshake
@@ -54,6 +72,9 @@ export class WebSocketServer {
         return;
       }
 
+      // Register with connection pool
+      wsConnectionPool.registerConnection(socket, userId, leagueId);
+
       // Join user's personal room
       socket.join(`user:${userId}`);
       
@@ -61,14 +82,33 @@ export class WebSocketServer {
       socket.data.userId = userId;
       socket.data.leagueId = leagueId;
 
+      // Track connection time
+      const connectionTime = Date.now() - startTime;
+      performanceMonitor.recordMetric({
+        name: 'websocket.connection.time',
+        value: connectionTime,
+        unit: 'ms',
+        timestamp: Date.now(),
+      });
+
       // Handle joining league rooms
       socket.on('join:league', async (leagueId: string) => {
+        const startTime = Date.now();
         const hasAccess = await this.verifyLeagueAccess(userId, leagueId);
         if (hasAccess) {
           socket.join(`league:${leagueId}`);
           this.trackConnection(leagueId, socket.id);
+          wsConnectionPool.updateConnectionLeague(socket.id, leagueId);
           socket.emit('joined:league', { leagueId });
           console.log(`Socket ${socket.id} joined league ${leagueId}`);
+          
+          // Track join time
+          performanceMonitor.recordMetric({
+            name: 'websocket.league.join',
+            value: Date.now() - startTime,
+            unit: 'ms',
+            timestamp: Date.now(),
+          });
         } else {
           socket.emit('error:unauthorized', { 
             message: 'You do not have access to this league' 
@@ -93,10 +133,16 @@ export class WebSocketServer {
         }
       });
 
+      // Handle ping/pong for latency tracking
+      socket.on('pong', (timestamp: number) => {
+        // Handled by connection pool
+      });
+
       // Handle disconnection
       socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
         this.removeAllConnections(socket.id);
+        wsConnectionPool.unregisterConnection(socket.id);
       });
 
       // Send initial connection confirmation
@@ -148,7 +194,16 @@ export class WebSocketServer {
       console.warn('WebSocket server not initialized');
       return;
     }
-    this.io.to(`league:${leagueId}`).emit(event, data);
+    
+    // Optimize message before sending
+    const optimizedData = wsConnectionPool.optimizeMessage(data);
+    
+    // Use compression for large messages
+    if (wsConnectionPool.shouldCompress(optimizedData)) {
+      this.io.to(`league:${leagueId}`).compress(true).emit(event, optimizedData);
+    } else {
+      this.io.to(`league:${leagueId}`).emit(event, optimizedData);
+    }
   }
 
   emitToUser(userId: string, event: string, data: any) {
@@ -156,7 +211,16 @@ export class WebSocketServer {
       console.warn('WebSocket server not initialized');
       return;
     }
-    this.io.to(`user:${userId}`).emit(event, data);
+    
+    // Optimize message before sending
+    const optimizedData = wsConnectionPool.optimizeMessage(data);
+    
+    // Use compression for large messages
+    if (wsConnectionPool.shouldCompress(optimizedData)) {
+      this.io.to(`user:${userId}`).compress(true).emit(event, optimizedData);
+    } else {
+      this.io.to(`user:${userId}`).emit(event, optimizedData);
+    }
   }
 
   emitScoreUpdate(leagueId: string, data: any) {
@@ -294,6 +358,10 @@ export class WebSocketServer {
       result.set(leagueId, socketIds.size);
     });
     return result;
+  }
+
+  getPoolMetrics() {
+    return wsConnectionPool.getMetrics();
   }
 
   isInitialized(): boolean {
