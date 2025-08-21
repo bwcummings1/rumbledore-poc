@@ -141,12 +141,22 @@ export class BankrollManager {
   }
 
   /**
+   * Get current week's bankroll
+   */
+  async getCurrentBankroll(
+    userId: string,
+    leagueId: string
+  ): Promise<BankrollInfo | null> {
+    return this.getBankroll(userId, leagueId);
+  }
+
+  /**
    * Update bankroll balance
    */
   async updateBalance(
     bankrollId: string,
     amount: number,
-    operation: 'debit' | 'credit'
+    operation: 'debit' | 'credit' | 'ENTRY_FEE' | 'ENTRY_FEE_REFUND'
   ): Promise<BankrollInfo> {
     const bankroll = await this.prisma.bankroll.findUnique({
       where: { id: bankrollId },
@@ -156,9 +166,10 @@ export class BankrollManager {
       throw new Error('Bankroll not found');
     }
 
-    const newBalance = operation === 'debit' 
-      ? Number(bankroll.currentBalance) - amount
-      : Number(bankroll.currentBalance) + amount;
+    const isDebit = operation === 'debit' || operation === 'ENTRY_FEE';
+    const newBalance = isDebit 
+      ? Number(bankroll.currentBalance) - Math.abs(amount)
+      : Number(bankroll.currentBalance) + Math.abs(amount);
 
     if (newBalance < 0) {
       throw new Error('Insufficient funds');

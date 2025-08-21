@@ -10,7 +10,12 @@ import {
   BetStatus,
   BetResult,
   BetSlipType,
-  BankrollStatus
+  BankrollStatus,
+  CompetitionType,
+  CompetitionScope,
+  CompetitionStatus,
+  AchievementType,
+  RewardType
 } from '@prisma/client';
 
 // =============================================================================
@@ -742,4 +747,292 @@ export function calculateROI(totalWon: number, totalWagered: number): number {
  */
 export function formatAmericanOdds(odds: number): string {
   return odds > 0 ? `+${odds}` : `${odds}`;
+}
+
+// =============================================================================
+// COMPETITION TYPES (Sprint 14)
+// =============================================================================
+
+/**
+ * Competition configuration
+ */
+export interface CompetitionConfig {
+  name: string;
+  description?: string;
+  type: CompetitionType;
+  scope: CompetitionScope;
+  leagueId?: string;
+  leagueSandbox?: string;
+  startDate: Date;
+  endDate: Date;
+  week?: number;
+  season?: number;
+  entryFee?: number;
+  prizePool?: number;
+  maxEntrants?: number;
+  minEntrants?: number;
+  scoringRules: ScoringRules;
+}
+
+/**
+ * Competition details
+ */
+export interface Competition {
+  id: string;
+  name: string;
+  description?: string;
+  type: CompetitionType;
+  scope: CompetitionScope;
+  leagueId?: string;
+  leagueSandbox?: string;
+  startDate: Date;
+  endDate: Date;
+  week?: number;
+  season?: number;
+  entryFee: number;
+  prizePool: number;
+  maxEntrants?: number;
+  minEntrants: number;
+  currentEntrants: number;
+  scoringRules: ScoringRules;
+  status: CompetitionStatus;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Scoring rules for competitions
+ */
+export interface ScoringRules {
+  profitWeight: number;      // Weight for profit in scoring
+  roiWeight: number;          // Weight for ROI
+  winRateWeight: number;      // Weight for win rate
+  activityBonus: number;      // Bonus for activity
+  minBetsRequired?: number;   // Minimum bets to qualify
+  tieBreaker?: 'PROFIT' | 'ROI' | 'WIN_RATE' | 'TOTAL_BETS';
+}
+
+/**
+ * Competition entry
+ */
+export interface CompetitionEntry {
+  id: string;
+  competitionId: string;
+  userId: string;
+  userName?: string;
+  joinedAt: Date;
+  rank?: number;
+  score: number;
+  profit: number;
+  roi?: number;
+  winRate?: number;
+  totalBets: number;
+  wonBets: number;
+  stats?: CompetitionStats;
+  lastUpdate?: Date;
+}
+
+/**
+ * Competition statistics
+ */
+export interface CompetitionStats {
+  totalBets: number;
+  wonBets: number;
+  totalWagered: number;
+  totalWon: number;
+  bestBet?: BetInfo;
+  worstBet?: BetInfo;
+  currentStreak: number;
+  longestStreak: number;
+  averageOdds: number;
+  favoriteMarket: MarketType;
+}
+
+/**
+ * Leaderboard standings
+ */
+export interface LeaderboardStandings {
+  competitionId: string;
+  standings: LeaderboardEntry[];
+  lastCalculated: Date;
+  version: number;
+}
+
+/**
+ * Individual leaderboard entry
+ */
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  score: number;
+  profit: number;
+  roi: number;
+  winRate: number;
+  totalBets: number;
+  movement?: number; // Position change since last update
+  trend?: 'up' | 'down' | 'unchanged';
+}
+
+/**
+ * Achievement information
+ */
+export interface Achievement {
+  id: string;
+  userId: string;
+  leagueId?: string;
+  type: AchievementType;
+  name: string;
+  description: string;
+  icon?: string;
+  metadata?: any;
+  progress?: number;
+  target?: number;
+  unlockedAt: Date;
+}
+
+/**
+ * Competition reward
+ */
+export interface CompetitionReward {
+  id: string;
+  competitionId: string;
+  userId: string;
+  placement: number;
+  rewardType: RewardType;
+  rewardValue: RewardValue;
+  claimedAt?: Date;
+  expiresAt?: Date;
+  createdAt: Date;
+}
+
+/**
+ * Reward value details
+ */
+export interface RewardValue {
+  units?: number;         // For UNITS reward type
+  badgeName?: string;     // For BADGE reward type
+  badgeIcon?: string;     // Badge icon URL
+  title?: string;         // For TITLE reward type
+  multiplier?: number;    // For MULTIPLIER reward type
+  duration?: number;      // Duration in days for temporary rewards
+}
+
+/**
+ * Competition filters
+ */
+export interface CompetitionFilters {
+  status?: CompetitionStatus[];
+  type?: CompetitionType[];
+  scope?: CompetitionScope;
+  leagueId?: string;
+  userId?: string; // Filter by participant
+  dateFrom?: Date;
+  dateTo?: Date;
+}
+
+/**
+ * Competition summary stats
+ */
+export interface CompetitionSummary {
+  totalCompetitions: number;
+  activeCompetitions: number;
+  totalParticipants: number;
+  totalPrizePool: number;
+  averageEntrants: number;
+  topCompetitor?: {
+    userId: string;
+    userName: string;
+    wins: number;
+    totalEarnings: number;
+  };
+}
+
+/**
+ * Calculate competition score
+ */
+export function calculateCompetitionScore(
+  stats: CompetitionStats,
+  rules: ScoringRules
+): number {
+  const profitScore = (stats.totalWon - stats.totalWagered) * rules.profitWeight;
+  const roiScore = calculateROI(stats.totalWon, stats.totalWagered) * rules.roiWeight;
+  const winRateScore = ((stats.wonBets / stats.totalBets) * 100) * rules.winRateWeight;
+  const activityScore = Math.min(stats.totalBets * rules.activityBonus, 10); // Cap activity bonus
+  
+  return profitScore + roiScore + winRateScore + activityScore;
+}
+
+/**
+ * Determine reward distribution
+ */
+export function calculateRewardDistribution(
+  prizePool: number,
+  participantCount: number
+): RewardValue[] {
+  if (participantCount === 0 || prizePool === 0) return [];
+  
+  const rewards: RewardValue[] = [];
+  
+  // Standard payout structure
+  if (participantCount >= 3) {
+    rewards.push(
+      { units: Math.floor(prizePool * 0.5), badgeName: '🏆 Champion' },
+      { units: Math.floor(prizePool * 0.3), badgeName: '🥈 Runner-up' },
+      { units: Math.floor(prizePool * 0.2), badgeName: '🥉 Third Place' }
+    );
+  } else if (participantCount === 2) {
+    rewards.push(
+      { units: Math.floor(prizePool * 0.7), badgeName: '🏆 Champion' },
+      { units: Math.floor(prizePool * 0.3), badgeName: '🥈 Runner-up' }
+    );
+  } else {
+    rewards.push({ units: prizePool, badgeName: '🏆 Champion' });
+  }
+  
+  // Add participation badges for places 4-10
+  for (let i = 4; i <= Math.min(10, participantCount); i++) {
+    rewards.push({ badgeName: `🏅 Top ${i}` });
+  }
+  
+  return rewards;
+}
+
+/**
+ * Check if user is eligible for competition
+ */
+export function checkCompetitionEligibility(
+  competition: Competition,
+  userBalance: number,
+  userCompetitions: string[]
+): { eligible: boolean; reason?: string } {
+  // Check if competition is open
+  if (competition.status !== 'PENDING') {
+    return { eligible: false, reason: 'Competition is not open for entries' };
+  }
+  
+  // Check max entrants
+  if (competition.maxEntrants && competition.currentEntrants >= competition.maxEntrants) {
+    return { eligible: false, reason: 'Competition is full' };
+  }
+  
+  // Check if already entered
+  if (userCompetitions.includes(competition.id)) {
+    return { eligible: false, reason: 'Already entered in this competition' };
+  }
+  
+  // Check entry fee
+  if (competition.entryFee > 0 && userBalance < competition.entryFee) {
+    return { eligible: false, reason: 'Insufficient balance for entry fee' };
+  }
+  
+  // Check date range
+  const now = new Date();
+  if (now > competition.endDate) {
+    return { eligible: false, reason: 'Competition has ended' };
+  }
+  
+  return { eligible: true };
 }

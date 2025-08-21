@@ -43,6 +43,10 @@ model User {
   bets        Bet[]
   betSlips    BetSlip[]
   settlements Settlement[]
+  competitionsCreated Competition[] @relation("CompetitionCreator")
+  competitionEntries CompetitionEntry[]
+  achievements Achievement[]
+  competitionRewards CompetitionReward[]
 
   @@map("users")
 }
@@ -94,6 +98,8 @@ model League {
   bets         Bet[]
   betSlips     BetSlip[]
   settlements  Settlement[]
+  competitions Competition[]
+  achievements Achievement[]
 
   @@unique([espnLeagueId, season])
   @@index([sandboxNamespace])
@@ -1389,6 +1395,130 @@ model Settlement {
   @@map("settlements")
 }
 
+// ============================================================================
+// COMPETITION MODELS (Sprint 14)
+// ============================================================================
+
+model Competition {
+  id            String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name          String            @db.VarChar(255)
+  description   String?           @db.Text
+  type          CompetitionType
+  scope         CompetitionScope
+  leagueId      String?           @map("league_id") @db.Uuid // null for platform-wide
+  leagueSandbox String?           @map("league_sandbox") @db.VarChar(255)
+  startDate     DateTime          @map("start_date")
+  endDate       DateTime          @map("end_date")
+  week          Int?              // For weekly competitions
+  season        Int?              // Year
+  entryFee      Decimal           @map("entry_fee") @db.Decimal(10, 2) @default(0)
+  prizePool     Decimal           @map("prize_pool") @db.Decimal(10, 2) @default(0)
+  maxEntrants   Int?              @map("max_entrants")
+  minEntrants   Int               @map("min_entrants") @default(2)
+  scoringRules  Json              @map("scoring_rules") // Configurable scoring weights
+  status        CompetitionStatus @default(PENDING)
+  createdBy     String            @map("created_by") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  league        League?           @relation(fields: [leagueId], references: [id])
+  creator       User              @relation("CompetitionCreator", fields: [createdBy], references: [id])
+  entries       CompetitionEntry[]
+  leaderboard   Leaderboard?
+  rewards       CompetitionReward[]
+  
+  @@index([leagueId, status])
+  @@index([scope, status])
+  @@index([startDate, endDate])
+  @@index([createdBy])
+  @@map("competitions")
+}
+
+model CompetitionEntry {
+  id            String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  competitionId String       @map("competition_id") @db.Uuid
+  userId        String       @map("user_id") @db.Uuid
+  joinedAt      DateTime     @default(now()) @map("joined_at")
+  rank          Int?
+  score         Decimal      @db.Decimal(10, 2) @default(0)
+  profit        Decimal      @db.Decimal(10, 2) @default(0)
+  roi           Decimal?     @db.Decimal(10, 4)
+  winRate       Decimal?     @map("win_rate") @db.Decimal(5, 2)
+  totalBets     Int          @map("total_bets") @default(0)
+  wonBets       Int          @map("won_bets") @default(0)
+  stats         Json?        // Cached user stats for the competition period
+  lastUpdate    DateTime?    @map("last_update")
+  
+  // Relations
+  competition   Competition  @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  user          User         @relation(fields: [userId], references: [id])
+  
+  @@unique([competitionId, userId])
+  @@index([competitionId, rank])
+  @@index([userId])
+  @@map("competition_entries")
+}
+
+model Leaderboard {
+  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  competitionId  String      @unique @map("competition_id") @db.Uuid
+  standings      Json        // Denormalized standings for fast retrieval
+  lastCalculated DateTime    @map("last_calculated")
+  version        Int         @default(1) // For optimistic locking
+  calculatedBy   String?     @map("calculated_by") @db.VarChar(50) // 'SYSTEM' or user ID
+  
+  // Relations
+  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  
+  @@index([lastCalculated])
+  @@map("leaderboards")
+}
+
+model Achievement {
+  id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
+  leagueId    String?         @map("league_id") @db.Uuid // null for platform achievements
+  type        AchievementType
+  name        String          @db.VarChar(255)
+  description String          @db.Text
+  icon        String?         @db.VarChar(255) // Icon URL or identifier
+  metadata    Json?           // Additional achievement data
+  progress    Int             @default(0) // For progressive achievements
+  target      Int?            // Target for progressive achievements
+  unlockedAt  DateTime        @default(now()) @map("unlocked_at")
+  
+  // Relations
+  user        User            @relation(fields: [userId], references: [id])
+  league      League?         @relation(fields: [leagueId], references: [id])
+  
+  @@index([userId, type])
+  @@index([leagueId])
+  @@index([unlockedAt])
+  @@map("achievements")
+}
+
+model CompetitionReward {
+  id            String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  competitionId String      @map("competition_id") @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  placement     Int         // 1st, 2nd, 3rd, etc.
+  rewardType    RewardType  @map("reward_type")
+  rewardValue   Json        @map("reward_value") // Units amount, badge details, etc.
+  claimedAt     DateTime?   @map("claimed_at")
+  expiresAt     DateTime?   @map("expires_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  
+  // Relations
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id])
+  
+  @@unique([competitionId, userId, rewardType])
+  @@index([userId, claimedAt])
+  @@index([competitionId, placement])
+  @@map("competition_rewards")
+}
+
 // =============================================================================
 // ENUMS
 // =============================================================================
@@ -1503,4 +1633,54 @@ enum BankrollStatus {
   ARCHIVED      // Historical data
   
   @@map("bankroll_status")
+}
+
+// Competition enums
+
+enum CompetitionType {
+  WEEKLY        // Single week competition
+  SEASON        // Full season competition
+  TOURNAMENT    // Bracket-style tournament
+  CUSTOM        // Custom duration
+  
+  @@map("competition_type")
+}
+
+enum CompetitionScope {
+  LEAGUE        // League-specific competition
+  PLATFORM      // Platform-wide competition
+  
+  @@map("competition_scope")
+}
+
+enum CompetitionStatus {
+  PENDING       // Not yet started
+  ACTIVE        // Currently running
+  SETTLING      // Calculating final results
+  COMPLETED     // Finished and settled
+  CANCELLED     // Cancelled before completion
+  
+  @@map("competition_status")
+}
+
+enum AchievementType {
+  COMPETITION_WIN       // Won a competition
+  COMPETITION_PLACE     // Placed top 3
+  WEEKLY_BEST          // Best weekly performance
+  PERFECT_WEEK         // All bets won in a week
+  STREAK_MASTER        // Long winning streak
+  ROI_CHAMPION         // High ROI achievement
+  PARTICIPATION        // Participated in X competitions
+  BETTING_MILESTONE    // Placed X number of bets
+  
+  @@map("achievement_type")
+}
+
+enum RewardType {
+  UNITS         // Bonus betting units
+  BADGE         // Achievement badge
+  TITLE         // Display title
+  MULTIPLIER    // Odds multiplier
+  
+  @@map("reward_type")
 }
