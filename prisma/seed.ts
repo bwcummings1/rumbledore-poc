@@ -7,15 +7,15 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting seed...');
 
-  // Clean existing data
+  // Clean existing data (in reverse order of dependencies)
   console.log('🧹 Cleaning existing data...');
   await prisma.leagueAgentMemory.deleteMany();
   await prisma.leagueMatchup.deleteMany();
   await prisma.leagueRosterSpot.deleteMany();
+  await prisma.leagueMember.deleteMany(); // Delete members before teams
   await prisma.leagueTeam.deleteMany();
   await prisma.leaguePlayer.deleteMany();
   await prisma.espnCredential.deleteMany();
-  await prisma.leagueMember.deleteMany();
   await prisma.league.deleteMany();
   await prisma.user.deleteMany();
 
@@ -97,6 +97,83 @@ async function main() {
     }),
   ]);
 
+  // Create teams with full data
+  console.log('🏈 Creating teams...');
+  const teams = await Promise.all([
+    // Teams for first league
+    prisma.leagueTeam.create({
+      data: {
+        leagueId: leagues[0].id,
+        espnTeamId: 1,
+        name: 'Admin All-Stars',
+        abbreviation: 'AAS',
+        wins: 8,
+        losses: 2,
+        ties: 0,
+        pointsFor: 1256.5,
+        pointsAgainst: 1089.3,
+        standing: 1,
+      },
+    }),
+    prisma.leagueTeam.create({
+      data: {
+        leagueId: leagues[0].id,
+        espnTeamId: 2,
+        name: 'Touchdown Titans',
+        abbreviation: 'TDT',
+        wins: 6,
+        losses: 4,
+        ties: 0,
+        pointsFor: 1189.2,
+        pointsAgainst: 1123.7,
+        standing: 2,
+      },
+    }),
+    prisma.leagueTeam.create({
+      data: {
+        leagueId: leagues[0].id,
+        espnTeamId: 3,
+        name: 'Gridiron Gladiators',
+        abbreviation: 'GG',
+        wins: 5,
+        losses: 5,
+        ties: 0,
+        pointsFor: 1098.8,
+        pointsAgainst: 1134.2,
+        standing: 3,
+      },
+    }),
+    // Teams for second league
+    prisma.leagueTeam.create({
+      data: {
+        leagueId: leagues[1].id,
+        espnTeamId: 1,
+        name: 'Dynasty Kings',
+        abbreviation: 'DK',
+        wins: 7,
+        losses: 3,
+        ties: 0,
+        pointsFor: 1345.2,
+        pointsAgainst: 1189.4,
+        standing: 1,
+      },
+    }),
+    prisma.leagueTeam.create({
+      data: {
+        leagueId: leagues[1].id,
+        espnTeamId: 2,
+        name: 'Future Champions',
+        abbreviation: 'FC',
+        wins: 4,
+        losses: 6,
+        ties: 0,
+        pointsFor: 1067.9,
+        pointsAgainst: 1234.1,
+        standing: 2,
+      },
+    }),
+  ]);
+
   // Add members to leagues
   console.log('👥 Adding league members...');
   await Promise.all([
@@ -149,52 +226,6 @@ async function main() {
     }),
   ]);
 
-  // Create fantasy teams for first league
-  console.log('🏈 Creating fantasy teams...');
-  const teams = await Promise.all([
-    prisma.leagueTeam.create({
-      data: {
-        leagueId: leagues[0].id,
-        espnTeamId: 1,
-        name: 'Admin All-Stars',
-        abbreviation: 'AAS',
-        wins: 8,
-        losses: 2,
-        ties: 0,
-        pointsFor: 1256.5,
-        pointsAgainst: 1089.3,
-        standing: 1,
-      },
-    }),
-    prisma.leagueTeam.create({
-      data: {
-        leagueId: leagues[0].id,
-        espnTeamId: 2,
-        name: 'Touchdown Titans',
-        abbreviation: 'TDT',
-        wins: 6,
-        losses: 4,
-        ties: 0,
-        pointsFor: 1189.2,
-        pointsAgainst: 1123.7,
-        standing: 2,
-      },
-    }),
-    prisma.leagueTeam.create({
-      data: {
-        leagueId: leagues[0].id,
-        espnTeamId: 3,
-        name: 'Gridiron Gladiators',
-        abbreviation: 'GG',
-        wins: 5,
-        losses: 5,
-        ties: 0,
-        pointsFor: 1098.8,
-        pointsAgainst: 1134.2,
-        standing: 3,
-      },
-    }),
-  ]);
 
   // Create sample players
   console.log('🏃 Creating players...');

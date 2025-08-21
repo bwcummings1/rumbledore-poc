@@ -45,6 +45,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${rebelGrotesk.variable} ${robotoMono.variable} antialiased`}
+        suppressHydrationWarning
       >
         <V0Provider isV0={isV0}>{children}</V0Provider>
       </body>
