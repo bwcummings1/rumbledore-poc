@@ -39,6 +39,10 @@ model User {
   leagueSettings LeagueSettings[] @relation("SettingsUpdater")
   agentConversations AgentConversation[] @relation("UserConversations")
   agentSummons AgentSummon[]
+  bankrolls   Bankroll[]
+  bets        Bet[]
+  betSlips    BetSlip[]
+  settlements Settlement[]
 
   @@map("users")
 }
@@ -86,6 +90,10 @@ model League {
   contentTemplates ContentTemplate[]
   chatMessages ChatMessage[]
   chatSessions ChatSession[]
+  bankrolls    Bankroll[]
+  bets         Bet[]
+  betSlips     BetSlip[]
+  settlements  Settlement[]
 
   @@unique([espnLeagueId, season])
   @@index([sandboxNamespace])
@@ -1250,6 +1258,138 @@ model PlayerProp {
 }
 
 // =============================================================================
+// BETTING ENGINE MODELS (Sprint 13)
+// =============================================================================
+
+// User bankroll for paper betting
+model Bankroll {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  leagueId        String   @map("league_id") @db.Uuid
+  leagueSandbox   String   @map("league_sandbox") @db.VarChar(255)
+  week            Int      // NFL week number
+  season          Int      // Year
+  startingBalance Decimal  @map("starting_balance") @db.Decimal(10, 2) @default(1000.00)
+  currentBalance  Decimal  @map("current_balance") @db.Decimal(10, 2)
+  totalBets       Int      @default(0) @map("total_bets")
+  pendingBets     Int      @default(0) @map("pending_bets")
+  wonBets         Int      @default(0) @map("won_bets")
+  lostBets        Int      @default(0) @map("lost_bets")
+  totalWagered    Decimal  @default(0.00) @map("total_wagered") @db.Decimal(10, 2)
+  totalWon        Decimal  @default(0.00) @map("total_won") @db.Decimal(10, 2)
+  totalLost       Decimal  @default(0.00) @map("total_lost") @db.Decimal(10, 2)
+  profitLoss      Decimal  @default(0.00) @map("profit_loss") @db.Decimal(10, 2)
+  roi             Decimal? @map("roi") @db.Decimal(5, 2) // Return on investment %
+  status          BankrollStatus @default(ACTIVE)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  user     User      @relation(fields: [userId], references: [id])
+  league   League    @relation(fields: [leagueId], references: [id])
+  bets     Bet[]
+  
+  @@unique([userId, leagueId, week, season])
+  @@index([userId, leagueId])
+  @@index([week, season])
+  @@index([status])
+  @@map("bankrolls")
+}
+
+// Individual bets placed by users
+model Bet {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  leagueId        String    @map("league_id") @db.Uuid
+  leagueSandbox   String    @map("league_sandbox") @db.VarChar(255)
+  bankrollId      String    @map("bankroll_id") @db.Uuid
+  betSlipId       String?   @map("bet_slip_id") @db.Uuid // For parlays
+  gameId          String    @map("game_id") @db.VarChar(100) // External game ID
+  eventDate       DateTime  @map("event_date") // When the game occurs
+  betType         BetType   @map("bet_type")
+  marketType      MarketType @map("market_type")
+  selection       String    @db.VarChar(255) // Team name or Over/Under
+  line            Decimal?  @db.Decimal(10, 2) // Spread or total line
+  odds            Int       // American odds format
+  stake           Decimal   @db.Decimal(10, 2)
+  potentialPayout Decimal   @map("potential_payout") @db.Decimal(10, 2)
+  actualPayout    Decimal?  @map("actual_payout") @db.Decimal(10, 2)
+  status          BetStatus @default(PENDING)
+  result          BetResult?
+  settledAt       DateTime? @map("settled_at")
+  metadata        Json      @default("{}") // Additional bet details
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  user      User       @relation(fields: [userId], references: [id])
+  league    League     @relation(fields: [leagueId], references: [id])
+  bankroll  Bankroll   @relation(fields: [bankrollId], references: [id])
+  betSlip   BetSlip?   @relation(fields: [betSlipId], references: [id])
+  
+  @@index([userId, status])
+  @@index([leagueId, createdAt])
+  @@index([gameId])
+  @@index([status, eventDate])
+  @@index([betSlipId])
+  @@map("bets")
+}
+
+// Bet slip for managing multiple bets (parlays)
+model BetSlip {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  leagueId        String    @map("league_id") @db.Uuid
+  leagueSandbox   String    @map("league_sandbox") @db.VarChar(255)
+  type            BetSlipType @default(SINGLE)
+  totalStake      Decimal   @map("total_stake") @db.Decimal(10, 2)
+  totalOdds       Int       @map("total_odds") // Combined odds for parlay
+  potentialPayout Decimal   @map("potential_payout") @db.Decimal(10, 2)
+  actualPayout    Decimal?  @map("actual_payout") @db.Decimal(10, 2)
+  status          BetStatus @default(PENDING)
+  result          BetResult?
+  settledAt       DateTime? @map("settled_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  user   User     @relation(fields: [userId], references: [id])
+  league League   @relation(fields: [leagueId], references: [id])
+  bets   Bet[]    // Individual legs of the parlay
+  
+  @@index([userId, status])
+  @@index([leagueId, createdAt])
+  @@map("bet_slips")
+}
+
+// Settlement history for tracking payouts
+model Settlement {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  betId         String    @map("bet_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  leagueId      String    @map("league_id") @db.Uuid
+  leagueSandbox String    @map("league_sandbox") @db.VarChar(255)
+  gameId        String    @map("game_id") @db.VarChar(100)
+  betAmount     Decimal   @map("bet_amount") @db.Decimal(10, 2)
+  payoutAmount  Decimal   @map("payout_amount") @db.Decimal(10, 2)
+  result        BetResult
+  gameScore     Json      @map("game_score") // Final score data
+  settledBy     String?   @map("settled_by") @db.VarChar(50) // 'AUTO' or 'MANUAL'
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  user   User    @relation(fields: [userId], references: [id])
+  league League  @relation(fields: [leagueId], references: [id])
+  
+  @@index([userId, leagueId])
+  @@index([betId])
+  @@index([gameId])
+  @@index([createdAt])
+  @@map("settlements")
+}
+
+// =============================================================================
 // ENUMS
 // =============================================================================
 
@@ -1317,4 +1457,50 @@ enum ContentStatus {
   ARCHIVED
   
   @@map("content_status")
+}
+
+// Betting engine enums
+
+enum BetType {
+  STRAIGHT      // Single bet
+  PARLAY        // Multiple bets combined
+  
+  @@map("bet_type")
+}
+
+enum BetStatus {
+  PENDING       // Bet placed, game not started
+  LIVE          // Game in progress
+  WON           // Bet won
+  LOST          // Bet lost
+  PUSH          // Tie/push
+  CANCELLED     // Bet cancelled before game
+  VOID          // Bet voided (game cancelled, etc.)
+  
+  @@map("bet_status")
+}
+
+enum BetResult {
+  WIN
+  LOSS
+  PUSH
+  VOID
+  
+  @@map("bet_result")
+}
+
+enum BetSlipType {
+  SINGLE        // Individual bet
+  PARLAY        // Multiple selections
+  ROUND_ROBIN   // Multiple parlays
+  
+  @@map("bet_slip_type")
+}
+
+enum BankrollStatus {
+  ACTIVE        // Current week active
+  COMPLETED     // Week completed
+  ARCHIVED      // Historical data
+  
+  @@map("bankroll_status")
 }

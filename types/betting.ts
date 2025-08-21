@@ -3,7 +3,15 @@
  * These types define the structure of data from The Odds API and our internal betting system
  */
 
-import { MarketType, PropType } from '@prisma/client';
+import { 
+  MarketType, 
+  PropType,
+  BetType,
+  BetStatus,
+  BetResult,
+  BetSlipType,
+  BankrollStatus
+} from '@prisma/client';
 
 // =============================================================================
 // THE ODDS API RESPONSE TYPES
@@ -481,4 +489,257 @@ export class BettingError extends Error {
     super(message);
     this.name = 'BettingError';
   }
+}
+
+// =============================================================================
+// BETTING ENGINE TYPES (Sprint 13)
+// =============================================================================
+
+/**
+ * Bankroll information for a user
+ */
+export interface BankrollInfo {
+  id: string;
+  userId: string;
+  leagueId: string;
+  leagueSandbox: string;
+  week: number;
+  season: number;
+  startingBalance: number;
+  currentBalance: number;
+  totalBets: number;
+  pendingBets: number;
+  wonBets: number;
+  lostBets: number;
+  totalWagered: number;
+  totalWon: number;
+  totalLost: number;
+  profitLoss: number;
+  roi: number | null;
+  status: BankrollStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Request to place a bet
+ */
+export interface BetRequest {
+  userId: string;
+  leagueId: string;
+  leagueSandbox: string;
+  gameId: string;
+  eventDate: Date;
+  betType: BetType;
+  marketType: MarketType;
+  selection: string; // Team name or Over/Under
+  line?: number; // For spreads and totals
+  odds: number; // American odds format
+  stake: number;
+}
+
+/**
+ * Bet information
+ */
+export interface BetInfo {
+  id: string;
+  userId: string;
+  leagueId: string;
+  leagueSandbox: string;
+  bankrollId: string;
+  betSlipId?: string;
+  gameId: string;
+  eventDate: Date;
+  betType: BetType;
+  marketType: MarketType;
+  selection: string;
+  line?: number;
+  odds: number;
+  stake: number;
+  potentialPayout: number;
+  actualPayout?: number;
+  status: BetStatus;
+  result?: BetResult;
+  settledAt?: Date;
+  metadata: any;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Parlay bet slip
+ */
+export interface BetSlipInfo {
+  id: string;
+  userId: string;
+  leagueId: string;
+  leagueSandbox: string;
+  type: BetSlipType;
+  totalStake: number;
+  totalOdds: number;
+  potentialPayout: number;
+  actualPayout?: number;
+  status: BetStatus;
+  result?: BetResult;
+  settledAt?: Date;
+  legs: BetInfo[]; // Individual bets in the parlay
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Settlement information
+ */
+export interface SettlementInfo {
+  id: string;
+  betId: string;
+  userId: string;
+  leagueId: string;
+  leagueSandbox: string;
+  gameId: string;
+  betAmount: number;
+  payoutAmount: number;
+  result: BetResult;
+  gameScore: any;
+  settledBy?: string;
+  notes?: string;
+  createdAt: Date;
+}
+
+/**
+ * Bet validation errors
+ */
+export enum BetValidationError {
+  INSUFFICIENT_FUNDS = 'INSUFFICIENT_FUNDS',
+  INVALID_STAKE = 'INVALID_STAKE',
+  GAME_ALREADY_STARTED = 'GAME_ALREADY_STARTED',
+  INVALID_ODDS = 'INVALID_ODDS',
+  BANKROLL_NOT_FOUND = 'BANKROLL_NOT_FOUND',
+  DUPLICATE_BET = 'DUPLICATE_BET',
+  MAX_BETS_EXCEEDED = 'MAX_BETS_EXCEEDED',
+}
+
+/**
+ * Betting statistics for a user
+ */
+export interface BettingStats {
+  totalBets: number;
+  wonBets: number;
+  lostBets: number;
+  pushBets: number;
+  winRate: number;
+  totalWagered: number;
+  totalWon: number;
+  totalLost: number;
+  netProfit: number;
+  roi: number;
+  averageStake: number;
+  averageOdds: number;
+  bestWin: BetInfo | null;
+  worstLoss: BetInfo | null;
+  currentStreak: {
+    type: 'winning' | 'losing';
+    count: number;
+  };
+  longestWinStreak: number;
+  longestLoseStreak: number;
+}
+
+/**
+ * Weekly betting limits
+ */
+export interface BettingLimits {
+  minBet: number;
+  maxBet: number;
+  maxWeeklyBets: number;
+  maxParlayLegs: number;
+  weeklyBankroll: number;
+}
+
+export const DEFAULT_BETTING_LIMITS: BettingLimits = {
+  minBet: 1,
+  maxBet: 500,
+  maxWeeklyBets: 100,
+  maxParlayLegs: 10,
+  weeklyBankroll: 1000,
+};
+
+/**
+ * Game result for settlement
+ */
+export interface GameResult {
+  gameId: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  status: 'completed' | 'cancelled' | 'postponed';
+  completedAt: Date;
+}
+
+/**
+ * Calculate payout for American odds
+ */
+export function calculatePayout(stake: number, odds: number): number {
+  if (odds > 0) {
+    // Positive odds (e.g., +150)
+    return stake * (1 + odds / 100);
+  } else {
+    // Negative odds (e.g., -110)
+    return stake * (1 + 100 / Math.abs(odds));
+  }
+}
+
+/**
+ * Calculate parlay odds
+ */
+export function calculateParlayOdds(odds: number[]): number {
+  const decimalOdds = odds.map(o => {
+    if (o > 0) {
+      return 1 + o / 100;
+    } else {
+      return 1 + 100 / Math.abs(o);
+    }
+  });
+  
+  const totalDecimal = decimalOdds.reduce((acc, curr) => acc * curr, 1);
+  
+  // Convert back to American odds
+  if (totalDecimal >= 2) {
+    return Math.round((totalDecimal - 1) * 100);
+  } else {
+    return Math.round(-100 / (totalDecimal - 1));
+  }
+}
+
+/**
+ * Validate bet amount
+ */
+export function validateBetAmount(
+  amount: number, 
+  currentBalance: number,
+  limits: BettingLimits = DEFAULT_BETTING_LIMITS
+): BetValidationError | null {
+  if (amount < limits.minBet || amount > limits.maxBet) {
+    return BetValidationError.INVALID_STAKE;
+  }
+  if (amount > currentBalance) {
+    return BetValidationError.INSUFFICIENT_FUNDS;
+  }
+  return null;
+}
+
+/**
+ * Calculate ROI (Return on Investment)
+ */
+export function calculateROI(totalWon: number, totalWagered: number): number {
+  if (totalWagered === 0) return 0;
+  return ((totalWon - totalWagered) / totalWagered) * 100;
+}
+
+/**
+ * Format American odds for display
+ */
+export function formatAmericanOdds(odds: number): string {
+  return odds > 0 ? `+${odds}` : `${odds}`;
 }

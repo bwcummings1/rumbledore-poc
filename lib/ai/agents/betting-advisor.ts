@@ -76,6 +76,12 @@ export class BettingAdvisorAgent extends BaseAgent {
       this.createRealTimeOddsTool(),
       this.createLineMovementTool(),
       this.createHistoricalOddsTool(),
+      // New betting engine tools
+      this.createGetBankrollTool(),
+      this.createGetActiveBetsTool(),
+      this.createGetBettingHistoryTool(),
+      this.createCalculatePayoutTool(),
+      this.createBettingStatsTool(),
     ];
     
     return [...standardTools, ...bettingTools];
@@ -701,5 +707,390 @@ Always remind users that this is for entertainment purposes with paper money onl
         }
       },
     });
+  }
+
+  /**
+   * Tool for getting current bankroll status
+   */
+  private createGetBankrollTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'get_bankroll_status',
+      description: 'Get current bankroll balance and betting statistics',
+      schema: z.object({
+        leagueId: z.string().describe('League ID to get bankroll for'),
+        userId: z.string().optional().describe('User ID (defaults to current user)'),
+      }),
+      func: async ({ leagueId, userId }) => {
+        try {
+          const params = new URLSearchParams();
+          params.append('leagueId', leagueId);
+          if (userId) params.append('userId', userId);
+          
+          const response = await fetch(`/api/betting/bankroll?${params}`);
+          const data = await response.json();
+          
+          if (!response.ok) {
+            return JSON.stringify({ error: data.error || 'Failed to fetch bankroll' });
+          }
+          
+          return JSON.stringify({
+            currentBalance: data.currentBalance,
+            initialBalance: data.initialBalance,
+            week: data.week,
+            profitLoss: data.profitLoss,
+            roi: data.roi,
+            totalBets: data.totalBets,
+            wonBets: data.wonBets,
+            lostBets: data.lostBets,
+            winRate: data.totalBets > 0 ? (data.wonBets / data.totalBets * 100).toFixed(1) + '%' : '0%',
+            status: data.status,
+            lastUpdated: data.updatedAt,
+          });
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to fetch bankroll status',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Tool for getting active/pending bets
+   */
+  private createGetActiveBetsTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'get_active_bets',
+      description: 'Get all active and pending bets for analysis',
+      schema: z.object({
+        leagueId: z.string().describe('League ID to get bets for'),
+        status: z.enum(['PENDING', 'LIVE', 'all']).default('all').describe('Filter by bet status'),
+      }),
+      func: async ({ leagueId, status }) => {
+        try {
+          const params = new URLSearchParams();
+          params.append('leagueId', leagueId);
+          params.append('status', status === 'all' ? 'active' : status);
+          
+          const response = await fetch(`/api/betting/bets?${params}`);
+          const data = await response.json();
+          
+          if (!response.ok) {
+            return JSON.stringify({ error: data.error || 'Failed to fetch active bets' });
+          }
+          
+          const bets = Array.isArray(data) ? data : [];
+          const summary = {
+            totalBets: bets.length,
+            totalStaked: bets.reduce((sum: number, bet: any) => sum + bet.stake, 0),
+            totalPotentialPayout: bets.reduce((sum: number, bet: any) => sum + bet.potentialPayout, 0),
+            byType: {
+              straight: bets.filter((b: any) => b.betType === 'STRAIGHT').length,
+              parlay: bets.filter((b: any) => b.betType === 'PARLAY').length,
+            },
+            byMarket: {
+              moneyline: bets.filter((b: any) => b.marketType === 'H2H').length,
+              spread: bets.filter((b: any) => b.marketType === 'SPREADS').length,
+              total: bets.filter((b: any) => b.marketType === 'TOTALS').length,
+            },
+            activeBets: bets.slice(0, 5).map((bet: any) => ({
+              id: bet.id,
+              type: bet.betType,
+              selection: bet.selection,
+              market: bet.marketType,
+              odds: bet.odds,
+              stake: bet.stake,
+              potentialPayout: bet.potentialPayout,
+              status: bet.status,
+              eventDate: bet.eventDate,
+            })),
+          };
+          
+          return JSON.stringify(summary);
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to fetch active bets',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Tool for getting betting history
+   */
+  private createGetBettingHistoryTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'get_betting_history',
+      description: 'Get settled betting history for performance analysis',
+      schema: z.object({
+        leagueId: z.string().describe('League ID to get history for'),
+        limit: z.number().default(50).describe('Number of bets to retrieve'),
+        weekNumber: z.number().optional().describe('Filter by specific week'),
+      }),
+      func: async ({ leagueId, limit, weekNumber }) => {
+        try {
+          const params = new URLSearchParams();
+          params.append('leagueId', leagueId);
+          params.append('status', 'history');
+          params.append('limit', limit.toString());
+          if (weekNumber) params.append('week', weekNumber.toString());
+          
+          const response = await fetch(`/api/betting/bets?${params}`);
+          const data = await response.json();
+          
+          if (!response.ok) {
+            return JSON.stringify({ error: data.error || 'Failed to fetch betting history' });
+          }
+          
+          const bets = Array.isArray(data) ? data : [];
+          const wins = bets.filter((b: any) => b.result === 'WIN');
+          const losses = bets.filter((b: any) => b.result === 'LOSS');
+          const pushes = bets.filter((b: any) => b.result === 'PUSH');
+          
+          const totalStaked = bets.reduce((sum: number, bet: any) => sum + bet.stake, 0);
+          const totalPayout = bets.reduce((sum: number, bet: any) => sum + (bet.actualPayout || 0), 0);
+          const profit = totalPayout - totalStaked;
+          
+          const summary = {
+            totalBets: bets.length,
+            record: `${wins.length}-${losses.length}-${pushes.length}`,
+            winRate: bets.length > 0 ? (wins.length / bets.length * 100).toFixed(1) + '%' : '0%',
+            totalStaked,
+            totalPayout,
+            netProfit: profit,
+            roi: totalStaked > 0 ? (profit / totalStaked * 100).toFixed(1) + '%' : '0%',
+            byMarket: {
+              moneyline: {
+                bets: bets.filter((b: any) => b.marketType === 'H2H').length,
+                wins: wins.filter((b: any) => b.marketType === 'H2H').length,
+              },
+              spread: {
+                bets: bets.filter((b: any) => b.marketType === 'SPREADS').length,
+                wins: wins.filter((b: any) => b.marketType === 'SPREADS').length,
+              },
+              total: {
+                bets: bets.filter((b: any) => b.marketType === 'TOTALS').length,
+                wins: wins.filter((b: any) => b.marketType === 'TOTALS').length,
+              },
+            },
+            recentBets: bets.slice(0, 5).map((bet: any) => ({
+              id: bet.id,
+              result: bet.result,
+              selection: bet.selection,
+              market: bet.marketType,
+              odds: bet.odds,
+              stake: bet.stake,
+              payout: bet.actualPayout || 0,
+              settledAt: bet.settledAt,
+            })),
+          };
+          
+          return JSON.stringify(summary);
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to fetch betting history',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Tool for calculating potential payouts
+   */
+  private createCalculatePayoutTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'calculate_payout',
+      description: 'Calculate potential payouts for single or parlay bets',
+      schema: z.object({
+        betType: z.enum(['single', 'parlay']).describe('Type of bet'),
+        stake: z.number().describe('Amount to bet'),
+        legs: z.array(z.object({
+          odds: z.number().describe('American odds for this leg'),
+          description: z.string().optional().describe('Description of the bet'),
+        })).describe('Bet legs with odds'),
+      }),
+      func: async ({ betType, stake, legs }) => {
+        try {
+          // Convert American odds to decimal for each leg
+          const decimalOdds = legs.map(leg => {
+            if (leg.odds > 0) {
+              return (leg.odds / 100) + 1;
+            } else {
+              return (100 / Math.abs(leg.odds)) + 1;
+            }
+          });
+          
+          let totalOdds: number;
+          let potentialPayout: number;
+          let potentialProfit: number;
+          
+          if (betType === 'single') {
+            totalOdds = decimalOdds[0] || 1;
+            potentialPayout = stake * totalOdds;
+            potentialProfit = potentialPayout - stake;
+          } else {
+            // Parlay - multiply all odds
+            totalOdds = decimalOdds.reduce((acc, odds) => acc * odds, 1);
+            potentialPayout = stake * totalOdds;
+            potentialProfit = potentialPayout - stake;
+          }
+          
+          // Calculate break-even probability
+          const breakEvenProb = (1 / totalOdds) * 100;
+          
+          return JSON.stringify({
+            betType,
+            stake,
+            numberOfLegs: legs.length,
+            legs: legs.map((leg, i) => ({
+              ...leg,
+              decimalOdds: decimalOdds[i].toFixed(2),
+              impliedProbability: ((1 / decimalOdds[i]) * 100).toFixed(1) + '%',
+            })),
+            combinedOdds: {
+              decimal: totalOdds.toFixed(2),
+              american: totalOdds >= 2 ? `+${((totalOdds - 1) * 100).toFixed(0)}` : `-${(100 / (totalOdds - 1)).toFixed(0)}`,
+            },
+            potentialPayout: potentialPayout.toFixed(2),
+            potentialProfit: potentialProfit.toFixed(2),
+            roi: ((potentialProfit / stake) * 100).toFixed(1) + '%',
+            breakEvenProbability: breakEvenProb.toFixed(1) + '%',
+            recommendation: breakEvenProb > 60 ? 'High risk - requires ' + breakEvenProb.toFixed(0) + '% success rate' :
+                           breakEvenProb > 40 ? 'Moderate risk - reasonable if confident' :
+                           'Good value - favorable risk/reward ratio',
+          });
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to calculate payout',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Tool for getting comprehensive betting statistics
+   */
+  private createBettingStatsTool(): DynamicStructuredTool {
+    return new DynamicStructuredTool({
+      name: 'get_betting_stats',
+      description: 'Get comprehensive betting statistics and performance metrics',
+      schema: z.object({
+        leagueId: z.string().describe('League ID to get stats for'),
+        timeframe: z.enum(['week', 'month', 'season', 'all']).default('season').describe('Timeframe for statistics'),
+      }),
+      func: async ({ leagueId, timeframe }) => {
+        try {
+          // Get bankroll history for stats
+          const params = new URLSearchParams();
+          params.append('leagueId', leagueId);
+          
+          const [bankrollRes, historyRes] = await Promise.all([
+            fetch(`/api/betting/bankroll?${params}`),
+            fetch(`/api/betting/bankroll/history?${params}`),
+          ]);
+          
+          if (!bankrollRes.ok || !historyRes.ok) {
+            return JSON.stringify({ error: 'Failed to fetch betting statistics' });
+          }
+          
+          const bankroll = await bankrollRes.json();
+          const { history, stats } = await historyRes.json();
+          
+          // Calculate additional metrics
+          const avgStake = stats?.averageStake || 0;
+          const bestWin = stats?.bestWin || null;
+          const worstLoss = stats?.worstLoss || null;
+          const currentStreak = stats?.currentStreak || { type: 'none', count: 0 };
+          const longestWinStreak = stats?.longestWinStreak || 0;
+          const longestLossStreak = stats?.longestLossStreak || 0;
+          
+          return JSON.stringify({
+            timeframe,
+            currentStatus: {
+              balance: bankroll.currentBalance,
+              week: bankroll.week,
+              profitLoss: bankroll.profitLoss,
+              roi: bankroll.roi,
+              status: bankroll.status,
+            },
+            overallStats: {
+              totalBets: stats?.totalBets || 0,
+              totalWagered: stats?.totalWagered || 0,
+              netProfit: stats?.netProfit || 0,
+              roi: stats?.roi || 0,
+              winRate: stats?.winRate || 0,
+              averageStake: avgStake,
+              averageOdds: stats?.averageOdds || 0,
+            },
+            performance: {
+              wonBets: stats?.wonBets || 0,
+              lostBets: stats?.lostBets || 0,
+              pushBets: stats?.pushBets || 0,
+              currentStreak,
+              longestWinStreak,
+              longestLossStreak,
+            },
+            bestAndWorst: {
+              bestWin,
+              worstLoss,
+              biggestBet: stats?.biggestBet || null,
+              bestROIWeek: stats?.bestROIWeek || null,
+            },
+            byMarketType: stats?.byMarketType || {},
+            weeklyProgress: history?.slice(0, 4).map((week: any) => ({
+              week: week.week,
+              balance: week.currentBalance,
+              profit: week.profitLoss,
+              bets: week.totalBets,
+              winRate: week.totalBets > 0 ? (week.wonBets / week.totalBets * 100).toFixed(1) + '%' : '0%',
+            })) || [],
+            insights: this.generateBettingInsights(stats),
+          });
+        } catch (error) {
+          return JSON.stringify({ 
+            error: 'Unable to fetch betting statistics',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      },
+    });
+  }
+
+  /**
+   * Generate insights from betting statistics
+   */
+  private generateBettingInsights(stats: any): string[] {
+    const insights: string[] = [];
+    
+    if (stats?.winRate > 55) {
+      insights.push('Strong win rate above 55% - maintain current strategy');
+    } else if (stats?.winRate < 45) {
+      insights.push('Win rate below 45% - consider adjusting selection criteria');
+    }
+    
+    if (stats?.roi > 10) {
+      insights.push('Excellent ROI - you\'re finding value consistently');
+    } else if (stats?.roi < -10) {
+      insights.push('Negative ROI suggests need for better bankroll management');
+    }
+    
+    if (stats?.currentStreak?.type === 'winning' && stats?.currentStreak?.count >= 3) {
+      insights.push(`On a ${stats.currentStreak.count}-bet win streak - don't get overconfident`);
+    } else if (stats?.currentStreak?.type === 'losing' && stats?.currentStreak?.count >= 3) {
+      insights.push(`${stats.currentStreak.count}-bet losing streak - consider reducing stake size`);
+    }
+    
+    if (stats?.averageStake > 50) {
+      insights.push('High average stake - ensure proper bankroll management');
+    }
+    
+    return insights.length > 0 ? insights : ['Continue monitoring performance for patterns'];
   }
 }
