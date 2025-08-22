@@ -32,8 +32,8 @@ export default withAuth(
         
         // Public routes that don't require authentication
         const publicPaths = [
-          '/auth/login',
-          '/auth/signup',
+          '/login',
+          '/signup',
           '/auth/forgot-password',
           '/auth/reset-password',
           '/auth/error',
@@ -62,7 +62,7 @@ export default withAuth(
       },
     },
     pages: {
-      signIn: '/auth/login',
+      signIn: '/login',
       error: '/auth/error',
     },
   }

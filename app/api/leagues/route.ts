@@ -47,7 +47,17 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     }
   });
   
-  return createSuccessResponse(leagues);
+  // Convert BigInt to number for JSON serialization
+  const serializedLeagues = leagues.map(league => ({
+    ...league,
+    espnLeagueId: league.espnLeagueId ? Number(league.espnLeagueId) : null,
+    _count: {
+      players: Number(league._count.players),
+      teams: Number(league._count.teams)
+    }
+  }));
+  
+  return createSuccessResponse(serializedLeagues);
 });
 
 // POST /api/leagues - Create a new league

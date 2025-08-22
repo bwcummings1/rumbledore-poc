@@ -1,8 +1,8 @@
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Metadata } from "next";
-import { Providers } from "./providers";
-import { headers } from "next/headers";
+import React from "react";
+import { Providers } from "./client-providers";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -19,14 +19,11 @@ export const metadata: Metadata = {
   keywords: ["fantasy football", "ESPN", "betting", "AI", "league management"],
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // This will be used to get the session server-side
-  // For now, we'll pass null and let the SessionProvider handle client-side session
-  
   return (
     <html lang="en" suppressHydrationWarning>
       <body

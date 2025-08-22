@@ -59,7 +59,7 @@ export function LeagueSwitcher() {
           <CommandInput placeholder="Search leagues..." />
           <CommandEmpty>No league found.</CommandEmpty>
           <CommandGroup>
-            {leagues.map((league) => (
+            {(leagues || []).map((league) => (
               <CommandItem
                 key={league.id}
                 onSelect={() => {

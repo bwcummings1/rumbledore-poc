@@ -36,7 +36,7 @@ import {
   BarChart3,
   PieChartIcon
 } from 'lucide-react';
-import { BankrollDisplay } from './bankroll-display';
+// import { BankrollDisplay } from './bankroll-display'; // Component not yet created
 import { BetSlip } from './bet-slip';
 import { ActiveBets } from './active-bets';
 import { BettingHistory } from './betting-history';
@@ -192,10 +192,10 @@ export function BettingDashboard({
 
         <TabsContent value="overview" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <BankrollDisplay 
+            {/* <BankrollDisplay 
               leagueId={leagueId}
               onRefresh={fetchDashboardData}
-            />
+            /> */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

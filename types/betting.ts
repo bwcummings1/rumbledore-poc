@@ -742,13 +742,6 @@ export function calculateROI(totalWon: number, totalWagered: number): number {
   return ((totalWon - totalWagered) / totalWagered) * 100;
 }
 
-/**
- * Format American odds for display
- */
-export function formatAmericanOdds(odds: number): string {
-  return odds > 0 ? `+${odds}` : `${odds}`;
-}
-
 // =============================================================================
 // COMPETITION TYPES (Sprint 14)
 // =============================================================================
