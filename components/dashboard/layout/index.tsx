@@ -7,6 +7,7 @@ interface DashboardPageLayoutProps {
     title: string;
     description?: string;
     icon: React.ElementType;
+    actions?: React.ReactNode;
   };
 }
 
@@ -27,6 +28,11 @@ export default function DashboardPageLayout({
           <span className="ml-auto text-xs md:text-sm text-muted-foreground block">
             {header.description}
           </span>
+        )}
+        {header.actions && (
+          <div className="ml-auto">
+            {header.actions}
+          </div>
         )}
       </div>
       <div className="flex flex-col gap-8 md:gap-14 px-3 lg:px-6 py-6 md:py-10 ring-2 ring-pop bg-background">

@@ -57,6 +57,9 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@emotion/is-prop-valid": "latest",
     "@eslint/eslintrc": "latest",
     "@faker-js/faker": "^9.9.0",
@@ -92,6 +95,8 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "latest",
+    "@tanstack/react-query": "^5.85.5",
+    "@tanstack/react-query-devtools": "^5.85.5",
     "@types/bull": "^3.15.9",
     "autoprefixer": "^10.4.20",
     "axios": "^1.11.0",

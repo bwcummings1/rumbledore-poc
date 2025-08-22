@@ -1,53 +1,41 @@
-import { Roboto_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { Metadata } from "next";
-import { V0Provider } from "@/lib/v0-context";
-import localFont from "next/font/local";
+import { Providers } from "./providers";
+import { headers } from "next/headers";
 
-const robotoMono = Roboto_Mono({
-  variable: "--font-roboto-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const rebelGrotesk = localFont({
-  src: "../public/fonts/Rebels-Fett.woff2",
-  variable: "--font-rebels",
-  display: "swap",
-});
-
-const isV0 = process.env["VERCEL_URL"]?.includes("vusercontent.net") ?? false;
-
 export const metadata: Metadata = {
   title: {
-    template: "%s – M.O.N.K.Y OS",
-    default: "M.O.N.K.Y OS",
+    template: "%s | Rumbledore",
+    default: "Rumbledore - Fantasy Football Platform",
   },
   description:
-    "The ultimate OS for rebels. Making the web for brave individuals.",
-    generator: 'v0.app'
+    "The ultimate fantasy football platform with AI-driven insights, paper betting, and league management.",
+  keywords: ["fantasy football", "ESPN", "betting", "AI", "league management"],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // This will be used to get the session server-side
+  // For now, we'll pass null and let the SessionProvider handle client-side session
+  
   return (
-    <html lang="en" className="dark">
-      <head>
-        <link
-          rel="preload"
-          href="/fonts/Rebels-Fett.woff2"
-          as="font"
-          type="font/woff2"
-          crossOrigin="anonymous"
-        />
-      </head>
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${rebelGrotesk.variable} ${robotoMono.variable} antialiased`}
+        className={`${inter.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
-        <V0Provider isV0={isV0}>{children}</V0Provider>
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

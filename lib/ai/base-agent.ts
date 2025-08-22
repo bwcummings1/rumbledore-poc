@@ -252,13 +252,16 @@ Remember: You're not just an analyst, you're part of the league experience!`;
       // Create streaming callbacks
       const streamCallbacks = {
         handleLLMNewToken: async (token: string) => {
-          yield token;
+          // Token streaming - not yet implemented in async context
+          console.log('Token:', token);
         },
         handleToolStart: async (tool: any) => {
-          yield { type: 'tool_start', tool: tool.tool };
+          // Tool start event handling - streaming not yet implemented
+          console.log('Tool started:', tool);
         },
         handleToolEnd: async (output: any) => {
-          yield { type: 'tool_end', tool: output.tool, result: output.output };
+          // Tool end event handling - streaming not yet implemented
+          console.log('Tool ended:', output);
         },
       };
       

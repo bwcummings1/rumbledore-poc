@@ -17,14 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { ResponsiveTable, ResponsiveTableColumn } from '@/components/ui/responsive-table';
 import { 
   History, 
   TrendingUp, 
@@ -81,6 +74,129 @@ export function BettingHistory({
       setLoading(false);
     }
   };
+
+  // Define columns for responsive table
+  const columns: ResponsiveTableColumn<BetInfo>[] = [
+    {
+      key: 'date',
+      label: 'Date',
+      priority: 2,
+      render: (_, bet) => (
+        <span className="text-sm">
+          {format(new Date(bet.settledAt || bet.createdAt), 'MMM d')}
+        </span>
+      ),
+    },
+    {
+      key: 'bet',
+      label: 'Bet',
+      priority: 1,
+      render: (_, bet) => (
+        <div>
+          <div className="font-medium">{bet.selection}</div>
+          <div className="text-xs text-muted-foreground">
+            {bet.betType === 'PARLAY' ? `${bet.parlayLegs?.length || 0}-leg parlay` : bet.marketType}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'odds',
+      label: 'Odds',
+      priority: 3,
+      align: 'center',
+      render: (_, bet) => formatAmericanOdds(bet.odds),
+    },
+    {
+      key: 'stake',
+      label: 'Stake',
+      priority: 2,
+      align: 'right',
+      render: (_, bet) => `$${bet.stake.toFixed(2)}`,
+    },
+    {
+      key: 'result',
+      label: 'Result',
+      priority: 1,
+      align: 'center',
+      render: (_, bet) => {
+        const getBadge = () => {
+          switch (bet.result) {
+            case 'WON':
+              return <Badge className="bg-green-500 text-white">Won</Badge>;
+            case 'LOST':
+              return <Badge variant="destructive">Lost</Badge>;
+            case 'PUSH':
+              return <Badge variant="secondary">Push</Badge>;
+            default:
+              return <Badge variant="outline">Pending</Badge>;
+          }
+        };
+        return getBadge();
+      },
+    },
+    {
+      key: 'payout',
+      label: 'Payout',
+      priority: 1,
+      align: 'right',
+      render: (_, bet) => {
+        const payout = bet.actualPayout || 0;
+        const profit = payout - bet.stake;
+        return (
+          <div className="text-right">
+            <div className="font-medium">${payout.toFixed(2)}</div>
+            {profit !== 0 && (
+              <div className={`text-xs ${profit > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {profit > 0 ? '+' : ''}{profit.toFixed(2)}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
+  // Mobile card renderer
+  const mobileCard = (bet: BetInfo) => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-medium">{bet.selection}</div>
+          <div className="text-xs text-muted-foreground">
+            {format(new Date(bet.settledAt || bet.createdAt), 'MMM d, h:mm a')}
+          </div>
+        </div>
+        {bet.result === 'WON' && <Badge className="bg-green-500 text-white">Won</Badge>}
+        {bet.result === 'LOST' && <Badge variant="destructive">Lost</Badge>}
+        {bet.result === 'PUSH' && <Badge variant="secondary">Push</Badge>}
+      </div>
+      <div className="flex justify-between text-sm">
+        <span className="text-muted-foreground">Type</span>
+        <span>{bet.betType === 'PARLAY' ? `${bet.parlayLegs?.length || 0}-leg parlay` : bet.marketType}</span>
+      </div>
+      <div className="flex justify-between text-sm">
+        <span className="text-muted-foreground">Odds</span>
+        <span>{formatAmericanOdds(bet.odds)}</span>
+      </div>
+      <div className="flex justify-between text-sm">
+        <span className="text-muted-foreground">Stake / Payout</span>
+        <div className="text-right">
+          <span>${bet.stake.toFixed(2)}</span>
+          {' → '}
+          <span className="font-medium">${(bet.actualPayout || 0).toFixed(2)}</span>
+        </div>
+      </div>
+      {bet.actualPayout && bet.actualPayout !== bet.stake && (
+        <div className="text-right">
+          <span className={`text-sm font-medium ${bet.actualPayout > bet.stake ? 'text-green-500' : 'text-red-500'}`}>
+            {bet.actualPayout > bet.stake ? '+' : ''}
+            ${(bet.actualPayout - bet.stake).toFixed(2)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 
   const exportHistory = () => {
     // Create CSV content
@@ -283,63 +399,12 @@ export function BettingHistory({
           </div>
         ) : (
           <>
-            <ScrollArea className="h-[400px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Selection</TableHead>
-                    <TableHead>Odds</TableHead>
-                    <TableHead>Stake</TableHead>
-                    <TableHead>Result</TableHead>
-                    <TableHead className="text-right">Payout</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedBets.map((bet) => (
-                    <TableRow key={bet.id}>
-                      <TableCell className="text-xs">
-                        {format(new Date(bet.settledAt || bet.createdAt), 'MMM d')}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm font-medium">{bet.selection}</p>
-                          <div className="flex items-center gap-1 mt-1">
-                            <Badge variant="outline" className="text-xs">
-                              {bet.marketType}
-                            </Badge>
-                            {bet.line && (
-                              <span className="text-xs text-muted-foreground">
-                                {bet.line > 0 ? `+${bet.line}` : bet.line}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {formatAmericanOdds(bet.odds)}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        ${bet.stake.toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        {getResultBadge(bet.result)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {getResultIcon(bet.result)}
-                          <span className={`text-sm font-medium ${
-                            bet.result === 'WIN' ? 'text-green-600' : ''
-                          }`}>
-                            ${(bet.actualPayout || 0).toFixed(2)}
-                          </span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+            <ResponsiveTable
+              columns={columns}
+              data={sortedBets}
+              mobileCard={mobileCard}
+              keyExtractor={(bet) => bet.id}
+            />
             
             {/* Load More */}
             {hasMore && (

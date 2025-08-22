@@ -1,60 +1,41 @@
-/**
- * Optimized Image Component
- * Implements lazy loading, responsive images, and performance optimizations
- */
-
 'use client';
 
-import { useState, useEffect, useRef, CSSProperties } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image, { ImageProps } from 'next/image';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface OptimizedImageProps extends Omit<ImageProps, 'onLoad' | 'onError'> {
-  fallbackSrc?: string;
-  lazyBoundary?: string;
-  fadeIn?: boolean;
+  fallback?: string;
+  showSkeleton?: boolean;
   aspectRatio?: number;
-  objectFit?: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down';
-  lowQualitySrc?: string;
-  enableLQIP?: boolean; // Low Quality Image Placeholder
+  lazyLoad?: boolean;
+  fadeIn?: boolean;
   onLoad?: () => void;
   onError?: () => void;
-  critical?: boolean; // For above-the-fold images
 }
 
 export function OptimizedImage({
   src,
   alt,
-  width,
-  height,
-  className,
-  fallbackSrc = '/images/placeholder.jpg',
-  lazyBoundary = '200px',
-  fadeIn = true,
+  fallback = '/images/placeholder.png',
+  showSkeleton = true,
   aspectRatio,
-  objectFit = 'cover',
-  lowQualitySrc,
-  enableLQIP = true,
+  lazyLoad = true,
+  fadeIn = true,
+  className,
   onLoad,
   onError,
-  critical = false,
   priority = false,
-  quality = 75,
-  sizes,
   ...props
 }: OptimizedImageProps) {
-  const [imageSrc, setImageSrc] = useState<string | typeof src>(src);
   const [isLoading, setIsLoading] = useState(true);
-  const [isInView, setIsInView] = useState(critical || priority);
-  const [showLQIP, setShowLQIP] = useState(enableLQIP && !critical && !priority);
+  const [error, setError] = useState(false);
+  const [isInView, setIsInView] = useState(!lazyLoad);
   const imgRef = useRef<HTMLDivElement>(null);
 
-  // Generate responsive sizes if not provided
-  const responsiveSizes = sizes || generateResponsiveSizes();
-
-  // Setup Intersection Observer for lazy loading
   useEffect(() => {
-    if (critical || priority || !imgRef.current) {
+    if (!lazyLoad || priority) {
       setIsInView(true);
       return;
     }
@@ -69,393 +50,245 @@ export function OptimizedImage({
         });
       },
       {
-        rootMargin: lazyBoundary,
+        rootMargin: '50px', // Start loading 50px before entering viewport
         threshold: 0.01,
       }
     );
 
-    observer.observe(imgRef.current);
+    if (imgRef.current) {
+      observer.observe(imgRef.current);
+    }
 
-    return () => {
-      observer.disconnect();
-    };
-  }, [critical, priority, lazyBoundary]);
+    return () => observer.disconnect();
+  }, [lazyLoad, priority]);
 
-  // Handle image load
   const handleLoad = () => {
     setIsLoading(false);
-    setShowLQIP(false);
     onLoad?.();
   };
 
-  // Handle image error
   const handleError = () => {
-    console.error(`Failed to load image: ${src}`);
-    if (fallbackSrc && imageSrc !== fallbackSrc) {
-      setImageSrc(fallbackSrc);
-    }
+    setError(true);
     setIsLoading(false);
     onError?.();
   };
 
-  // Calculate dimensions for aspect ratio
-  const getDimensions = () => {
-    if (aspectRatio && width && !height) {
-      return {
-        width,
-        height: Number(width) / aspectRatio,
-      };
-    }
-    if (aspectRatio && height && !width) {
-      return {
-        width: Number(height) * aspectRatio,
-        height,
-      };
-    }
-    return { width, height };
-  };
-
-  const dimensions = getDimensions();
-
-  // Container styles for aspect ratio
-  const containerStyle: CSSProperties = aspectRatio
-    ? {
-        position: 'relative',
-        width: '100%',
-        paddingBottom: `${(1 / aspectRatio) * 100}%`,
-      }
-    : {};
-
-  // Image wrapper styles
-  const imageWrapperStyle: CSSProperties = aspectRatio
-    ? {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-      }
-    : {};
+  const wrapperStyle = aspectRatio
+    ? { aspectRatio: aspectRatio.toString() }
+    : undefined;
 
   return (
-    <div
+    <div 
       ref={imgRef}
-      className={cn('relative overflow-hidden', className)}
-      style={containerStyle}
+      className={cn("relative overflow-hidden", className)}
+      style={wrapperStyle}
     >
-      <div style={imageWrapperStyle} className="relative w-full h-full">
-        {/* Low Quality Image Placeholder */}
-        {showLQIP && lowQualitySrc && (
-          <Image
-            src={lowQualitySrc}
-            alt={alt}
-            {...dimensions}
-            className={cn(
-              'absolute inset-0 w-full h-full filter blur-sm',
-              objectFit === 'contain' && 'object-contain',
-              objectFit === 'cover' && 'object-cover',
-              objectFit === 'fill' && 'object-fill',
-              objectFit === 'none' && 'object-none',
-              objectFit === 'scale-down' && 'object-scale-down'
-            )}
-            quality={10}
-            priority
-            unoptimized
-          />
-        )}
+      {/* Skeleton loader */}
+      {showSkeleton && isLoading && (
+        <Skeleton className="absolute inset-0" />
+      )}
 
-        {/* Main Image */}
-        {isInView && (
-          <Image
-            src={imageSrc}
-            alt={alt}
-            {...dimensions}
-            className={cn(
-              'w-full h-full',
-              objectFit === 'contain' && 'object-contain',
-              objectFit === 'cover' && 'object-cover',
-              objectFit === 'fill' && 'object-fill',
-              objectFit === 'none' && 'object-none',
-              objectFit === 'scale-down' && 'object-scale-down',
-              fadeIn && 'transition-opacity duration-300',
-              isLoading ? 'opacity-0' : 'opacity-100'
-            )}
-            onLoad={handleLoad}
-            onError={handleError}
-            priority={priority || critical}
-            quality={quality}
-            sizes={responsiveSizes}
-            {...props}
-          />
-        )}
+      {/* Image */}
+      {isInView && (
+        <Image
+          src={error ? fallback : src}
+          alt={alt}
+          className={cn(
+            "object-cover",
+            fadeIn && "transition-opacity duration-300",
+            isLoading ? "opacity-0" : "opacity-100",
+            className
+          )}
+          onLoad={handleLoad}
+          onError={handleError}
+          priority={priority}
+          {...props}
+        />
+      )}
 
-        {/* Loading skeleton */}
-        {isLoading && !showLQIP && (
-          <div className="absolute inset-0 bg-gray-200 dark:bg-gray-800 animate-pulse" />
-        )}
-      </div>
+      {/* Low quality image placeholder for blur effect */}
+      {!isInView && showSkeleton && (
+        <div className="absolute inset-0 bg-muted animate-pulse" />
+      )}
     </div>
   );
 }
 
-/**
- * Generate responsive sizes string based on common breakpoints
- */
-function generateResponsiveSizes(): string {
-  return [
-    '(max-width: 640px) 100vw',
-    '(max-width: 768px) 80vw',
-    '(max-width: 1024px) 60vw',
-    '(max-width: 1280px) 40vw',
-    '33vw',
-  ].join(', ');
+// Responsive image component with srcset support
+interface ResponsiveImageProps extends OptimizedImageProps {
+  sizes?: string;
+  mobileSrc?: string;
+  tabletSrc?: string;
+  desktopSrc?: string;
 }
 
-/**
- * Preload critical images for better performance
- */
-export function preloadImage(src: string): void {
-  if (typeof window === 'undefined') return;
-  
-  const link = document.createElement('link');
-  link.rel = 'preload';
-  link.as = 'image';
-  link.href = src;
-  document.head.appendChild(link);
-}
+export function ResponsiveImage({
+  mobileSrc,
+  tabletSrc,
+  desktopSrc,
+  sizes = "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw",
+  ...props
+}: ResponsiveImageProps) {
+  const [currentSrc, setCurrentSrc] = useState(props.src);
 
-/**
- * Picture component for art direction
- */
-interface PictureSource {
-  srcSet: string;
-  media?: string;
-  type?: string;
-}
+  useEffect(() => {
+    const updateSrc = () => {
+      const width = window.innerWidth;
+      if (width <= 640 && mobileSrc) {
+        setCurrentSrc(mobileSrc);
+      } else if (width <= 1024 && tabletSrc) {
+        setCurrentSrc(tabletSrc);
+      } else if (desktopSrc) {
+        setCurrentSrc(desktopSrc);
+      } else {
+        setCurrentSrc(props.src);
+      }
+    };
 
-interface OptimizedPictureProps {
-  sources: PictureSource[];
-  fallback: OptimizedImageProps;
-  className?: string;
-}
+    updateSrc();
+    window.addEventListener('resize', updateSrc);
+    return () => window.removeEventListener('resize', updateSrc);
+  }, [mobileSrc, tabletSrc, desktopSrc, props.src]);
 
-export function OptimizedPicture({
-  sources,
-  fallback,
-  className,
-}: OptimizedPictureProps) {
   return (
-    <picture className={className}>
-      {sources.map((source, index) => (
-        <source
-          key={index}
-          srcSet={source.srcSet}
-          media={source.media}
-          type={source.type}
-        />
-      ))}
-      <OptimizedImage {...fallback} />
-    </picture>
+    <OptimizedImage
+      {...props}
+      src={currentSrc}
+      sizes={sizes}
+    />
   );
 }
 
-/**
- * Background image component with lazy loading
- */
-interface OptimizedBackgroundProps {
-  src: string;
-  fallbackSrc?: string;
+// Avatar image component with fallback
+interface AvatarImageProps {
+  src?: string | null;
+  alt: string;
+  fallbackText?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
-  children?: React.ReactNode;
-  lazyBoundary?: string;
-  overlay?: boolean;
-  overlayOpacity?: number;
 }
 
-export function OptimizedBackground({
+export function AvatarImage({
   src,
-  fallbackSrc = '/images/placeholder.jpg',
+  alt,
+  fallbackText,
+  size = 'md',
   className,
-  children,
-  lazyBoundary = '200px',
-  overlay = false,
-  overlayOpacity = 0.5,
-}: OptimizedBackgroundProps) {
-  const [backgroundSrc, setBackgroundSrc] = useState<string>('');
-  const [isLoaded, setIsLoaded] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            loadBackgroundImage();
-            observer.disconnect();
-          }
-        });
-      },
-      {
-        rootMargin: lazyBoundary,
-        threshold: 0.01,
-      }
-    );
-
-    observer.observe(containerRef.current);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [src, lazyBoundary]);
-
-  const loadBackgroundImage = () => {
-    const img = new window.Image();
-    img.src = src;
-    
-    img.onload = () => {
-      setBackgroundSrc(src);
-      setIsLoaded(true);
-    };
-    
-    img.onerror = () => {
-      if (fallbackSrc) {
-        setBackgroundSrc(fallbackSrc);
-        setIsLoaded(true);
-      }
-    };
+}: AvatarImageProps) {
+  const sizeClasses = {
+    sm: 'h-8 w-8',
+    md: 'h-10 w-10',
+    lg: 'h-12 w-12',
+    xl: 'h-16 w-16',
   };
 
+  const textSizeClasses = {
+    sm: 'text-xs',
+    md: 'text-sm',
+    lg: 'text-base',
+    xl: 'text-lg',
+  };
+
+  if (!src) {
+    const initials = fallbackText
+      ? fallbackText
+          .split(' ')
+          .map((word) => word[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2)
+      : '?';
+
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-full bg-muted",
+          sizeClasses[size],
+          textSizeClasses[size],
+          "font-medium",
+          className
+        )}
+      >
+        {initials}
+      </div>
+    );
+  }
+
   return (
-    <div
-      ref={containerRef}
-      className={cn('relative', className)}
-      style={{
-        backgroundImage: backgroundSrc ? `url(${backgroundSrc})` : undefined,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        transition: isLoaded ? 'opacity 0.3s ease-in-out' : undefined,
-      }}
-    >
+    <div className={cn("relative rounded-full overflow-hidden", sizeClasses[size], className)}>
+      <OptimizedImage
+        src={src}
+        alt={alt}
+        fill
+        className="object-cover"
+        showSkeleton={false}
+      />
+    </div>
+  );
+}
+
+// Background image component with parallax effect
+interface BackgroundImageProps {
+  src: string;
+  alt: string;
+  parallax?: boolean;
+  overlay?: boolean;
+  overlayOpacity?: number;
+  children?: React.ReactNode;
+  className?: string;
+}
+
+export function BackgroundImage({
+  src,
+  alt,
+  parallax = false,
+  overlay = true,
+  overlayOpacity = 0.5,
+  children,
+  className,
+}: BackgroundImageProps) {
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    if (!parallax) return;
+
+    const handleScroll = () => {
+      setOffset(window.pageYOffset * 0.5);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [parallax]);
+
+  return (
+    <div className={cn("relative overflow-hidden", className)}>
+      <div
+        className="absolute inset-0"
+        style={{
+          transform: parallax ? `translateY(${offset}px)` : undefined,
+        }}
+      >
+        <OptimizedImage
+          src={src}
+          alt={alt}
+          fill
+          className="object-cover"
+          priority
+        />
+      </div>
+      
       {overlay && (
         <div
           className="absolute inset-0 bg-black"
           style={{ opacity: overlayOpacity }}
         />
       )}
-      {children}
-    </div>
-  );
-}
-
-/**
- * Image gallery with optimized loading
- */
-interface GalleryImage {
-  src: string;
-  alt: string;
-  width?: number;
-  height?: number;
-  caption?: string;
-}
-
-interface OptimizedGalleryProps {
-  images: GalleryImage[];
-  columns?: number;
-  gap?: number;
-  className?: string;
-  onImageClick?: (index: number) => void;
-}
-
-export function OptimizedGallery({
-  images,
-  columns = 3,
-  gap = 16,
-  className,
-  onImageClick,
-}: OptimizedGalleryProps) {
-  const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
-
-  const handleImageLoad = (index: number) => {
-    setLoadedImages((prev) => new Set(prev).add(index));
-  };
-
-  return (
-    <div
-      className={cn('grid', className)}
-      style={{
-        gridTemplateColumns: `repeat(${columns}, 1fr)`,
-        gap: `${gap}px`,
-      }}
-    >
-      {images.map((image, index) => (
-        <div
-          key={index}
-          className="relative cursor-pointer group"
-          onClick={() => onImageClick?.(index)}
-        >
-          <OptimizedImage
-            src={image.src}
-            alt={image.alt}
-            width={image.width || 400}
-            height={image.height || 300}
-            className="w-full h-full"
-            onLoad={() => handleImageLoad(index)}
-            fadeIn
-          />
-          {image.caption && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 text-sm opacity-0 group-hover:opacity-100 transition-opacity">
-              {image.caption}
-            </div>
-          )}
+      
+      {children && (
+        <div className="relative z-10">
+          {children}
         </div>
-      ))}
+      )}
     </div>
   );
 }
-
-/**
- * Avatar component with optimized loading
- */
-interface OptimizedAvatarProps {
-  src?: string;
-  alt: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
-  fallback?: string;
-  className?: string;
-}
-
-const avatarSizes = {
-  xs: 24,
-  sm: 32,
-  md: 40,
-  lg: 48,
-  xl: 64,
-};
-
-export function OptimizedAvatar({
-  src,
-  alt,
-  size = 'md',
-  fallback = '/images/default-avatar.png',
-  className,
-}: OptimizedAvatarProps) {
-  const dimension = avatarSizes[size];
-
-  return (
-    <OptimizedImage
-      src={src || fallback}
-      alt={alt}
-      width={dimension}
-      height={dimension}
-      className={cn('rounded-full', className)}
-      fallbackSrc={fallback}
-      priority // Avatars are usually above the fold
-      quality={90} // Higher quality for avatars
-    />
-  );
-}
-
-export default OptimizedImage;
