@@ -1,13 +1,18 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import io, { Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { leagueKeys } from '@/hooks/api/use-leagues';
 import { bettingKeys } from '@/hooks/api/use-betting';
 import { statsKeys } from '@/hooks/api/use-statistics';
+
+// Only import io if WebSocket is enabled
+const io = process.env.NEXT_PUBLIC_ENABLE_WEBSOCKET === 'true' 
+  ? require('socket.io-client').io 
+  : null;
 
 interface WebSocketContextType {
   socket: Socket | null;
@@ -40,8 +45,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
   const reconnectDelay = useRef(1000);
+  
+  // Check if WebSocket is enabled at module level
+  const isWebSocketEnabled = process.env.NEXT_PUBLIC_ENABLE_WEBSOCKET === 'true';
 
   useEffect(() => {
+    // Check if WebSocket is enabled
+    if (!isWebSocketEnabled) {
+      console.log('WebSocket disabled. Set NEXT_PUBLIC_ENABLE_WEBSOCKET=true to enable.');
+      return;
+    }
+    
     if (!session?.user) {
       // Disconnect socket if user logs out
       if (socket) {
@@ -49,6 +63,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         setSocket(null);
         setConnected(false);
       }
+      return;
+    }
+
+    // Double-check io is available
+    if (!io) {
+      console.warn('Socket.io client not loaded - WebSocket is disabled');
       return;
     }
 

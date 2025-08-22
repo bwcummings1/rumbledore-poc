@@ -115,44 +115,62 @@
 }
 
 .dark {
-  --background: oklch(0.2029 0.0037 345.62);
-  --foreground: oklch(0.9851 0 0);
-  --card: oklch(0.2029 0.0037 345.62);
-  --card-foreground: oklch(0.9851 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.4703 0.2364 263.19);
-  --primary-foreground: oklch(0.9851 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.2393 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.9851 0 0 / 5%);
-  --accent-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --pop: oklch(0.9851 0 0 / 2.5%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Core Background Colors - Clean Dark */
+  --background: oklch(0.11 0 0);
+  --foreground: oklch(0.95 0 0);
+  
+  /* Cards - Slightly Elevated */
+  --card: oklch(0.14 0 0);
+  --card-foreground: oklch(0.95 0 0);
+  
+  /* Popover - More Elevated */
+  --popover: oklch(0.16 0 0);
+  --popover-foreground: oklch(0.95 0 0);
+  
+  /* Primary - Accent Blue */
+  --primary: oklch(0.50 0.20 250);
+  --primary-foreground: oklch(1 0 0);
+  
+  /* Secondary - Dark Grey */
+  --secondary: oklch(0.20 0 0);
+  --secondary-foreground: oklch(0.95 0 0);
+  
+  /* Muted - Subtle Grey */
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.60 0 0);
+  
+  /* Accent - Subtle Highlight */
+  --accent: oklch(0.20 0 0);
+  --accent-foreground: oklch(0.95 0 0);
+  
+  /* Borders & Input */
+  --border: oklch(0.22 0 0);
+  --pop: oklch(0.25 0 0);
+  --input: oklch(0.18 0 0);
+  --ring: oklch(0.50 0.20 250);
 
-  --success: oklch(0.7775 0.2447 144.9);
-  --warning: oklch(0.769 0.188 70.08);
-  --destructive: oklch(0.5961 0.2006 36.48);
+  /* Status Colors */
+  --success: oklch(0.60 0.20 145);
+  --warning: oklch(0.65 0.18 70);
+  --destructive: oklch(0.50 0.20 30);
 
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  /* Chart Colors - Balanced */
+  --chart-1: oklch(0.50 0.20 250);
+  --chart-2: oklch(0.60 0.15 160);
+  --chart-3: oklch(0.65 0.18 70);
+  --chart-4: oklch(0.55 0.20 300);
+  --chart-5: oklch(0.55 0.20 20);
 
-  --sidebar: oklch(0.2029 0.0037 345.62);
-  --sidebar-foreground: oklch(0.9851 0 0);
-  --sidebar-primary: oklch(0.4703 0.2364 263.19);
-  --sidebar-primary-foreground: oklch(0.9851 0 0);
-  --sidebar-accent: oklch(0.9851 0 0 / 5%);
-  --sidebar-accent-hover: oklch(0.9851 0 0 / 10%);
-  --sidebar-accent-foreground: oklch(0.9851 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Sidebar - Darker than main */
+  --sidebar: oklch(0.09 0 0);
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-primary: oklch(0.50 0.20 250);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.15 0 0);
+  --sidebar-accent-hover: oklch(0.18 0 0);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.20 0 0);
+  --sidebar-ring: oklch(0.50 0.20 250);
 }
 
 @layer base {
@@ -160,7 +178,78 @@
     @apply border-border outline-ring/50 overscroll-none;
   }
   body {
-    @apply bg-muted text-foreground font-mono;
+    @apply bg-background text-foreground font-mono;
+  }
+  
+  /* Dark mode scrollbar styling */
+  .dark ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .dark ::-webkit-scrollbar-track {
+    @apply bg-muted/30 rounded-full;
+  }
+  
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50 transition-colors;
+  }
+  
+  /* Better focus states in dark mode */
+  .dark input:focus,
+  .dark textarea:focus,
+  .dark select:focus {
+    @apply ring-2 ring-primary/50 ring-offset-2 ring-offset-background;
+  }
+  
+  /* Smooth transitions for theme switching */
+  * {
+    @apply transition-colors duration-200;
+  }
+  
+  /* Glass morphism effect for cards in dark mode */
+  .dark .glass-card {
+    @apply bg-card/80 backdrop-blur-md border-border/50;
+  }
+  
+  /* Enhanced button hover effects */
+  .dark button:not(:disabled):hover {
+    @apply shadow-lg;
+  }
+  
+  /* Subtle glow for primary buttons */
+  .dark .bg-primary {
+    box-shadow: 0 0 20px rgba(85, 85, 255, 0.15);
+  }
+  
+  .dark .bg-primary:hover {
+    box-shadow: 0 0 30px rgba(85, 85, 255, 0.25);
+  }
+  
+  /* Improved card hover states */
+  .dark .hover-lift {
+    @apply transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl;
+  }
+  
+  /* Loading skeleton animation */
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  
+  .dark .skeleton {
+    background: linear-gradient(
+      90deg,
+      oklch(0.22 0.01 250) 25%,
+      oklch(0.25 0.01 250) 50%,
+      oklch(0.22 0.01 250) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
   }
 }
 

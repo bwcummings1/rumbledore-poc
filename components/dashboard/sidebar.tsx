@@ -18,40 +18,53 @@ import {
   TrendingUp,
   Award,
   LogOut,
+  History,
+  Globe,
+  Zap,
+  Palette,
+  User,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { signOut } from 'next-auth/react';
 
 const navigation = [
   {
-    title: 'Main',
+    title: 'Overview',
     items: [
-      { name: 'Overview', href: '/', icon: Home },
-      { name: 'Leagues', href: '/leagues', icon: Users },
-      { name: 'Statistics', href: '/stats', icon: BarChart3 },
-      { name: 'AI Assistant', href: '/chat', icon: MessageSquare },
+      { name: 'Dashboard', href: '/', icon: Home },
+    ],
+  },
+  {
+    title: 'Fantasy News',
+    items: [
+      { name: 'Latest News', href: '/news', icon: Newspaper },
+      { name: 'Player Updates', href: '/news/players', icon: Users },
+      { name: 'NFL News', href: '/news/nfl', icon: TrendingUp },
+    ],
+  },
+  {
+    title: 'League Portals',
+    items: [
+      { name: 'My Leagues', href: '/leagues', icon: Users },
+      { name: 'League History', href: '/leagues/history', icon: History },
     ],
   },
   {
     title: 'Rumble',
     items: [
-      { name: 'Paper Betting', href: '/rumble/betting', icon: DollarSign },
-      { name: 'Competitions', href: '/rumble/competitions', icon: Trophy },
+      { name: 'League Competitions', href: '/rumble/league', icon: Trophy },
+      { name: 'Platform Competitions', href: '/rumble/platform', icon: Globe },
+      { name: 'Betting Dashboard', href: '/rumble/betting', icon: DollarSign },
+      { name: 'Global Leaderboards', href: '/rumble/leaderboards', icon: BarChart3 },
     ],
   },
   {
-    title: 'Content',
+    title: 'Wizkit',
     items: [
-      { name: 'Fantasy News', href: '/news', icon: Newspaper },
-      { name: 'Schedule', href: '/schedule', icon: Calendar },
-    ],
-  },
-  {
-    title: 'League',
-    items: [
-      { name: 'My Teams', href: '/teams', icon: Users },
-      { name: 'Matchups', href: '/matchups', icon: TrendingUp },
-      { name: 'History', href: '/history', icon: Award },
+      { name: 'Profile Settings', href: '/wizkit/profile', icon: User },
+      { name: 'League Settings', href: '/wizkit/leagues', icon: Settings },
+      { name: 'UI Customization', href: '/wizkit/ui', icon: Palette },
+      { name: 'AI Assistants', href: '/wizkit/ai', icon: MessageSquare },
     ],
   },
 ];
@@ -92,13 +105,16 @@ export function DashboardSidebar() {
                       key={item.name}
                       href={item.href}
                       className={cn(
-                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200',
                         isActive
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                          ? 'bg-primary text-primary-foreground shadow-md'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground hover:translate-x-0.5'
                       )}
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon className={cn(
+                        "h-4 w-4 transition-transform duration-200",
+                        isActive && "scale-110"
+                      )} />
                       <span>{item.name}</span>
                     </Link>
                   );
@@ -112,19 +128,6 @@ export function DashboardSidebar() {
       <Separator className="mx-3" />
 
       <div className="p-3 space-y-2">
-        <Link
-          href="/settings"
-          className={cn(
-            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-            pathname === '/settings'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          )}
-        >
-          <Settings className="h-4 w-4" />
-          <span>Settings</span>
-        </Link>
-        
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-muted-foreground hover:bg-accent hover:text-accent-foreground"

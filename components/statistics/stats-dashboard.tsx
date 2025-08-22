@@ -6,7 +6,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, TrendingDown, Minus, Trophy, Award, Target } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
+
+// Only import io if WebSocket is enabled
+const io = process.env.NEXT_PUBLIC_ENABLE_WEBSOCKET === 'true' 
+  ? require('socket.io-client').io 
+  : null;
 import {
   SeasonStatistics,
   AllTimeRecord,
@@ -32,7 +37,20 @@ export function StatsDashboard({ leagueId, seasonId }: StatsDashboardProps) {
   const [activeTab, setActiveTab] = useState('season');
 
   useEffect(() => {
-    // Initialize WebSocket connection
+    // Check if WebSocket is enabled
+    if (process.env.NEXT_PUBLIC_ENABLE_WEBSOCKET !== 'true') {
+      // Just fetch data without WebSocket
+      fetchAllStats();
+      return;
+    }
+
+    // Double-check io is available
+    if (!io) {
+      console.warn('Socket.io client not loaded - WebSocket is disabled');
+      fetchAllStats();
+      return;
+    }
+
     const newSocket = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001');
     setSocket(newSocket);
 

@@ -110,12 +110,7 @@ const nextConfig = {
       config.optimization.sideEffects = false;
       
       // Ignore moment locales to reduce bundle size
-      config.plugins.push(
-        new (require('webpack').IgnorePlugin)({
-          resourceRegExp: /^\.\/locale$/,
-          contextRegExp: /moment$/,
-        })
-      );
+      // Note: Webpack IgnorePlugin is already included in Next.js webpack config
     }
     
     // Alias for smaller lodash imports

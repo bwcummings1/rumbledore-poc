@@ -1,4 +1,9 @@
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
+
+// Only import io if WebSocket is enabled
+const io = process.env.NEXT_PUBLIC_ENABLE_WEBSOCKET === 'true' 
+  ? require('socket.io-client').io 
+  : null;
 
 export interface WebSocketEventHandlers {
   onScoreUpdate?: (data: any) => void;
@@ -32,6 +37,12 @@ export class WebSocketClient {
   }
 
   connect(userId: string, handlers?: WebSocketEventHandlers): Promise<void> {
+    // Check if WebSocket is enabled
+    if (process.env.NEXT_PUBLIC_ENABLE_WEBSOCKET !== 'true') {
+      console.log('WebSocket disabled in WebSocketClient. Set NEXT_PUBLIC_ENABLE_WEBSOCKET=true to enable.');
+      return Promise.resolve();
+    }
+
     if (this.socket?.connected) {
       console.log('WebSocket already connected');
       return Promise.resolve();
@@ -42,6 +53,13 @@ export class WebSocketClient {
     }
 
     return new Promise((resolve, reject) => {
+      // Double-check io is available
+      if (!io) {
+        console.warn('Socket.io client not loaded - WebSocket is disabled in client.ts');
+        resolve();
+        return;
+      }
+
       const url = process.env.NEXT_PUBLIC_WS_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       
       this.connectionStartTime = Date.now();

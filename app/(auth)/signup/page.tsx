@@ -309,7 +309,7 @@ export default function SignupPage() {
               </div>
             </div>
             
-            <Link href="/auth/login" className="w-full">
+            <Link href="/login" className="w-full">
               <Button variant="outline" className="w-full" size="lg">
                 Sign in instead
               </Button>

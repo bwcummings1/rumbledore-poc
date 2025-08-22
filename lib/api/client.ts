@@ -77,7 +77,7 @@ class ApiClient {
         if (error.response?.status === 401) {
           // Handle token refresh or redirect to login
           if (typeof window !== 'undefined') {
-            window.location.href = '/auth/login';
+            window.location.href = '/login';
           }
         }
         

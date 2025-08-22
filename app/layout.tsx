@@ -2,7 +2,6 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Metadata } from "next";
 import React from "react";
-import { Providers } from "./client-providers";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -30,9 +29,7 @@ export default function RootLayout({
         className={`${inter.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
-        <Providers>
-          {children}
-        </Providers>
+        {children}
       </body>
     </html>
   );
