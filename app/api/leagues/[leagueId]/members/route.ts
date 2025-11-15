@@ -10,13 +10,9 @@ const addMemberSchema = z.object({
   teamName: z.string().optional()
 });
 
-interface RouteParams {
-  params: Promise<{ leagueId: string }>;
-}
-
 // GET /api/leagues/[leagueId]/members - List league members
-export const GET = createApiHandler(async (request: NextRequest, { params }: RouteParams) => {
-  const { leagueId } = await params;
+export const GET = createApiHandler(async (request: NextRequest, context) => {
+  const { leagueId } = context.params!;
   
   const members = await prisma.leagueMember.findMany({
     where: { leagueId },
@@ -40,8 +36,8 @@ export const GET = createApiHandler(async (request: NextRequest, { params }: Rou
 });
 
 // POST /api/leagues/[leagueId]/members - Add a member to the league
-export const POST = createApiHandler(async (request: NextRequest, { params }: RouteParams) => {
-  const { leagueId } = await params;
+export const POST = createApiHandler(async (request: NextRequest, context) => {
+  const { leagueId } = context.params!;
   const body = await parseRequestBody(request);
   const { userId, role, espnTeamId, teamName } = validateRequest(addMemberSchema, body);
   

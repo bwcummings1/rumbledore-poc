@@ -2,13 +2,9 @@ import { NextRequest } from 'next/server';
 import { createApiHandler, createSuccessResponse, ApiError } from '@/lib/api/handler';
 import prisma from '@/lib/prisma';
 
-interface RouteParams {
-  params: Promise<{ leagueId: string }>;
-}
-
 // POST /api/leagues/[leagueId]/sync - Trigger ESPN data sync
-export const POST = createApiHandler(async (request: NextRequest, { params }: RouteParams) => {
-  const { leagueId } = await params;
+export const POST = createApiHandler(async (request: NextRequest, context) => {
+  const { leagueId } = context.params!;
   
   // Check if league exists
   const league = await prisma.league.findUnique({

@@ -9,13 +9,9 @@ const updateLeagueSchema = z.object({
   isActive: z.boolean().optional()
 });
 
-interface RouteParams {
-  params: Promise<{ leagueId: string }>;
-}
-
 // GET /api/leagues/[leagueId] - Get a specific league
-export const GET = createApiHandler(async (request: NextRequest, { params }: RouteParams) => {
-  const { leagueId } = await params;
+export const GET = createApiHandler(async (request: NextRequest, context) => {
+  const { leagueId } = context.params!
   
   const league = await prisma.league.findUnique({
     where: { id: leagueId },
@@ -54,8 +50,8 @@ export const GET = createApiHandler(async (request: NextRequest, { params }: Rou
 });
 
 // PUT /api/leagues/[leagueId] - Update a league
-export const PUT = createApiHandler(async (request: NextRequest, { params }: RouteParams) => {
-  const { leagueId } = await params;
+export const PUT = createApiHandler(async (request: NextRequest, context) => {
+  const { leagueId } = context.params!;
   const body = await parseRequestBody(request);
   const data = validateRequest(updateLeagueSchema, body);
   
@@ -81,8 +77,8 @@ export const PUT = createApiHandler(async (request: NextRequest, { params }: Rou
 });
 
 // DELETE /api/leagues/[leagueId] - Delete a league
-export const DELETE = createApiHandler(async (request: NextRequest, { params }: RouteParams) => {
-  const { leagueId } = await params;
+export const DELETE = createApiHandler(async (request: NextRequest, context) => {
+  const { leagueId } = context.params!;
   
   // Check if league exists
   const existingLeague = await prisma.league.findUnique({

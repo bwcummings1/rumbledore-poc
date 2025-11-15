@@ -12,6 +12,11 @@ export type ApiHandler<T = any> = (
   context: ApiContext
 ) => Promise<NextResponse<T>>;
 
+// Next.js 15 compatible route handler type
+export type NextJSRouteContext = {
+  params: Promise<Record<string, string>> | Record<string, string>;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -25,8 +30,11 @@ export class ApiError extends Error {
 
 export function createApiHandler<T>(
   handler: ApiHandler<T>
-): ApiHandler<T> {
-  return async (request, context) => {
+) {
+  return async (
+    request: NextRequest,
+    routeContext?: NextJSRouteContext
+  ): Promise<NextResponse<T>> => {
     try {
       // Log incoming request in development
       if (process.env.NODE_ENV === 'development') {
@@ -35,38 +43,49 @@ export function createApiHandler<T>(
 
       // Add timing in development
       const startTime = Date.now();
-      
+
+      // Handle Next.js 15 Promise-based params or Next.js 14 sync params
+      const params = routeContext?.params
+        ? (routeContext.params instanceof Promise
+            ? await routeContext.params
+            : routeContext.params)
+        : undefined;
+
+      const context: ApiContext = {
+        params,
+      };
+
       const response = await handler(request, context);
-      
+
       if (process.env.NODE_ENV === 'development') {
         const duration = Date.now() - startTime;
         console.log(`[API] ${request.method} ${request.url} - ${duration}ms`);
       }
-      
+
       return response;
     } catch (error) {
       console.error('[API Error]:', error);
-      
+
       if (error instanceof ApiError) {
         return NextResponse.json(
-          { 
-            error: error.message, 
-            code: error.code 
+          {
+            error: error.message,
+            code: error.code
           },
           { status: error.statusCode }
         );
       }
-      
+
       if (error instanceof z.ZodError) {
         return NextResponse.json(
-          { 
-            error: 'Validation Error', 
-            details: error.errors 
+          {
+            error: 'Validation Error',
+            details: error.errors
           },
           { status: 400 }
         );
       }
-      
+
       return NextResponse.json(
         { error: 'Internal Server Error' },
         { status: 500 }

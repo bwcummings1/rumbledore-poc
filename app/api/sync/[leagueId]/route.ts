@@ -12,10 +12,10 @@ const syncRequestSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { leagueId: string } }
+  { params }: { params: Promise<{ leagueId: string }> }
 ) {
   try {
-    const { leagueId } = params;
+    const { leagueId } = await params;
     
     // TODO: Get actual user ID from session/auth
     // For now, using mock user ID
@@ -94,10 +94,10 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { leagueId: string } }
+  { params }: { params: Promise<{ leagueId: string }> }
 ) {
   try {
-    const { leagueId } = params;
+    const { leagueId } = await params;
     
     // Get sync status
     const status = await syncManager.getSyncStatus(leagueId);
@@ -138,10 +138,10 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { leagueId: string } }
+  { params }: { params: Promise<{ leagueId: string }> }
 ) {
   try {
-    const { leagueId } = params;
+    const { leagueId } = await params;
     
     // TODO: Get actual user ID from session/auth
     const userId = 'mock-user-id';
