@@ -2,11 +2,11 @@ import { withRetry, ESPN_RETRY_CONFIG } from '@/lib/retry';
 import { getCookieManager } from '@/lib/crypto/cookie-manager';
 import { ESPNError, handleESPNError } from './error-handler';
 import { RateLimiter } from './rate-limiter';
-import { 
-  ESPNLeague, 
-  ESPNPlayer, 
+import {
+  ESPNLeague,
+  ESPNPlayer,
   ESPNMatchup,
-  ESPNTeam 
+  ESPNTeam
 } from '@/types/espn';
 
 export interface ESPNConfig {
@@ -23,6 +23,7 @@ export interface PlayerFilters {
   position?: string;
   teamId?: number;
   scoringPeriodId?: number;
+  seasonId?: number;
 }
 
 export interface ESPNScoreboard {
@@ -58,12 +59,40 @@ export interface ESPNTransaction {
   type: string;
 }
 
+/**
+ * ESPN Fantasy Football API Client
+ *
+ * Provides methods to interact with ESPN's Fantasy Football API.
+ * Includes rate limiting (30 requests/minute) and automatic retries.
+ *
+ * @example
+ * ```typescript
+ * const client = new ESPNClient({
+ *   leagueId: 123456,
+ *   seasonId: 2024,
+ *   cookies: { swid: '...', espnS2: '...' }
+ * });
+ *
+ * const league = await client.getLeague();
+ * ```
+ */
 export class ESPNClient {
   private baseUrl = 'https://fantasy.espn.com/apis/v3/games/ffl';
   private rateLimiter: RateLimiter;
   private config: ESPNConfig;
 
   constructor(config: ESPNConfig) {
+    // Validate configuration
+    if (!config.leagueId || config.leagueId <= 0) {
+      throw new Error('Invalid leagueId: must be a positive number');
+    }
+    if (!config.seasonId || config.seasonId < 2000 || config.seasonId > 2100) {
+      throw new Error('Invalid seasonId: must be between 2000 and 2100');
+    }
+    if (!config.cookies?.swid || !config.cookies?.espnS2) {
+      throw new Error('Invalid cookies: both swid and espnS2 are required');
+    }
+
     this.config = config;
     this.rateLimiter = new RateLimiter({
       maxRequests: 30,
@@ -71,6 +100,10 @@ export class ESPNClient {
     });
   }
 
+  /**
+   * Make an authenticated request to the ESPN API
+   * @private
+   */
   private async makeRequest<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -100,7 +133,7 @@ export class ESPNClient {
         {
           ...ESPN_RETRY_CONFIG,
           shouldRetry: (error) => {
-            const status = error.statusCode || error.response?.status;
+            const status = (error as any).statusCode || (error as any).response?.status;
             return status === 429 || status >= 500;
           },
         }
@@ -108,10 +141,14 @@ export class ESPNClient {
 
       return await response.json();
     } catch (error) {
-      handleESPNError(error);
+      throw handleESPNError(error);
     }
   }
 
+  /**
+   * Fetch complete league data including teams, rosters, settings, and schedule
+   * @returns Promise<ESPNLeague> Complete league data
+   */
   async getLeague(): Promise<ESPNLeague> {
     const { seasonId, leagueId } = this.config;
     return this.makeRequest<ESPNLeague>(
@@ -119,6 +156,11 @@ export class ESPNClient {
     );
   }
 
+  /**
+   * Fetch scoreboard for a specific scoring period
+   * @param scoringPeriodId - Optional scoring period (week number)
+   * @returns Promise<ESPNScoreboard> Scoreboard with matchups and scores
+   */
   async getScoreboard(scoringPeriodId?: number): Promise<ESPNScoreboard> {
     const { seasonId, leagueId } = this.config;
     const params = scoringPeriodId ? `&scoringPeriodId=${scoringPeriodId}` : '';
@@ -127,6 +169,11 @@ export class ESPNClient {
     );
   }
 
+  /**
+   * Fetch players with optional filters
+   * @param filters - Optional filters (position, playerIds, etc.)
+   * @returns Promise<ESPNPlayer[]> Array of players
+   */
   async getPlayers(filters?: PlayerFilters): Promise<ESPNPlayer[]> {
     const { seasonId, leagueId } = this.config;
     const filterParam = filters ? this.buildFilterParam(filters) : '';
@@ -136,6 +183,12 @@ export class ESPNClient {
     return response.players || [];
   }
 
+  /**
+   * Fetch detailed box score for a specific matchup
+   * @param matchupId - Matchup period ID
+   * @param scoringPeriodId - Scoring period (week number)
+   * @returns Promise<ESPNBoxScore> Detailed matchup data
+   */
   async getBoxScore(matchupId: number, scoringPeriodId: number): Promise<ESPNBoxScore> {
     const { seasonId, leagueId } = this.config;
     return this.makeRequest<ESPNBoxScore>(
@@ -143,14 +196,31 @@ export class ESPNClient {
     );
   }
 
+  /**
+   * Fetch league transactions with pagination
+   * @param offset - Starting offset for pagination
+   * @param limit - Maximum number of transactions to return
+   * @returns Promise<ESPNTransaction[]> Array of transactions
+   */
   async getTransactions(offset = 0, limit = 25): Promise<ESPNTransaction[]> {
     const { seasonId, leagueId } = this.config;
+
+    // Validate pagination parameters
+    if (offset < 0) offset = 0;
+    if (limit < 1 || limit > 100) limit = 25;
+
     const response = await this.makeRequest<{ transactions?: ESPNTransaction[] }>(
       `/seasons/${seasonId}/segments/0/leagues/${leagueId}/transactions?offset=${offset}&limit=${limit}`
     );
     return response.transactions || [];
   }
 
+  /**
+   * Fetch roster for a specific team
+   * @param teamId - ESPN team ID
+   * @param scoringPeriodId - Optional scoring period (week number)
+   * @returns Promise<ESPNTeam | null> Team data with roster
+   */
   async getRoster(teamId: number, scoringPeriodId?: number): Promise<ESPNTeam | null> {
     const { seasonId, leagueId } = this.config;
     const params = scoringPeriodId ? `&scoringPeriodId=${scoringPeriodId}` : '';
@@ -160,6 +230,11 @@ export class ESPNClient {
     return response.teams?.[0] || null;
   }
 
+  /**
+   * Fetch recent league activity and communications
+   * @param scoringPeriodId - Optional scoring period (week number)
+   * @returns Promise<any> Recent activity data
+   */
   async getRecentActivity(scoringPeriodId?: number): Promise<any> {
     const { seasonId, leagueId } = this.config;
     const params = scoringPeriodId ? `&scoringPeriodId=${scoringPeriodId}` : '';
@@ -168,23 +243,32 @@ export class ESPNClient {
     );
   }
 
+  /**
+   * Fetch news for a specific player
+   * @param playerId - ESPN player ID
+   * @returns Promise<any> Player news data
+   */
   async getPlayerNews(playerId: number): Promise<any> {
     return this.makeRequest(
       `/players/${playerId}/news`
     );
   }
 
+  /**
+   * Build ESPN API filter parameter from filters object
+   * @private
+   */
   private buildFilterParam(filters: PlayerFilters): string {
     const filterObj: any = {};
-    
+
     if (filters.playerIds && filters.playerIds.length > 0) {
-      filterObj.players = { 
-        filterIds: { 
-          value: filters.playerIds 
-        } 
+      filterObj.players = {
+        filterIds: {
+          value: filters.playerIds
+        }
       };
     }
-    
+
     if (filters.position) {
       const positionMap: Record<string, number> = {
         'QB': 0,
@@ -195,31 +279,36 @@ export class ESPNClient {
         'K': 17,
         'FLEX': 23,
       };
-      
-      const slotId = positionMap[filters.position];
+
+      const slotId = positionMap[filters.position.toUpperCase()];
       if (slotId !== undefined) {
-        filterObj.players = { 
+        filterObj.players = {
           ...filterObj.players,
-          filterSlotIds: { 
-            value: [slotId] 
+          filterSlotIds: {
+            value: [slotId]
           }
         };
       }
     }
-    
+
     if (filters.scoringPeriodId) {
+      const seasonId = filters.seasonId || this.config.seasonId;
       filterObj.players = {
         ...filterObj.players,
         filterStatsForCurrentScoringPeriod: {
           value: true,
-          additionalValue: [`00${filters.seasonId || 2024}`, `10${filters.scoringPeriodId}`]
+          additionalValue: [`00${seasonId}`, `10${filters.scoringPeriodId}`]
         }
       };
     }
-    
+
     return filterObj.players ? `&x-fantasy-filter=${encodeURIComponent(JSON.stringify(filterObj))}` : '';
   }
 
+  /**
+   * Get current rate limiter status
+   * @returns Rate limiter status with remaining requests and reset time
+   */
   getRateLimiterStatus(): {
     remainingRequests: number;
     resetTime: number;
@@ -230,6 +319,10 @@ export class ESPNClient {
     };
   }
 
+  /**
+   * Test connection to ESPN API
+   * @returns Promise<boolean> True if connection successful
+   */
   async testConnection(): Promise<boolean> {
     try {
       await this.getLeague();
