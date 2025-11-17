@@ -6,7 +6,9 @@
   "permissions": [
     "cookies",
     "storage",
-    "tabs"
+    "tabs",
+    "notifications",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://*.espn.com/*",
@@ -14,8 +16,7 @@
     "http://localhost:3001/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",

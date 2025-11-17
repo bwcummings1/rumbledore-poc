@@ -1,8 +1,7 @@
 // Rumbledore ESPN Cookie Capture - Background Service Worker
 
-const RUMBLEDORE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://rumbledore.app' 
-  : 'http://localhost:3000';
+// Default to localhost, can be configured via extension options
+const RUMBLEDORE_URL = 'http://localhost:3000';
 const ESPN_DOMAIN = '.espn.com';
 const ESPN_FANTASY_URL = 'https://fantasy.espn.com';
 
