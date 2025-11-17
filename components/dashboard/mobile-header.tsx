@@ -99,8 +99,10 @@ export function MobileHeader() {
                 <Button variant="ghost" size="icon" className="h-8 w-8">
                   <Avatar className="h-7 w-7">
                     <AvatarImage src={session?.user?.image || undefined} />
-                    <AvatarFallback>
-                      {session?.user?.name?.[0]?.toUpperCase() || 'U'}
+                    <AvatarFallback suppressHydrationWarning>
+                      {typeof window !== 'undefined' 
+                        ? (session?.user?.name?.[0] || 'U').toUpperCase()
+                        : 'U'}
                     </AvatarFallback>
                   </Avatar>
                 </Button>

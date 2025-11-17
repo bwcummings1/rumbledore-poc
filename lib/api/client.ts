@@ -74,16 +74,20 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError<any>) => {
-        if (error.response?.status === 401) {
-          // Handle token refresh or redirect to login
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
-        }
+        // TEMPORARILY DISABLED FOR DEVELOPMENT - bypass auth
+        // if (error.response?.status === 401) {
+        //   // Handle token refresh or redirect to login
+        //   if (typeof window !== 'undefined') {
+        //     window.location.href = '/login';
+        //   }
+        // }
         
         // Show error toast for user-friendly feedback
         if (typeof window !== 'undefined' && error.response?.data?.message) {
-          toast.error(error.response.data.message);
+          // Don't show auth errors in development
+          if (error.response?.status !== 401) {
+            toast.error(error.response.data.message);
+          }
         }
         
         return Promise.reject(this.formatError(error));

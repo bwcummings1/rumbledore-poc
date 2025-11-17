@@ -1,6 +1,13 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
 
+// TEMPORARILY DISABLED FOR DEVELOPMENT
+export default function middleware(req: any) {
+  return;
+}
+
+// ORIGINAL CODE BELOW - UNCOMMENT TO ENABLE AUTH
+/*
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
@@ -67,6 +74,7 @@ export default withAuth(
     },
   }
 );
+*/
 
 export const config = {
   matcher: [

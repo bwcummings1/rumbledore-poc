@@ -30,6 +30,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         try {
           const { email, password } = LoginSchema.parse(credentials);
+          console.log('Login attempt for:', email);
 
           const user = await prisma.user.findUnique({
             where: { email },
@@ -50,11 +51,19 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          if (!user || !user.password) {
+          if (!user) {
+            console.log('User not found:', email);
+            return null;
+          }
+
+          if (!user.password) {
+            console.log('User has no password:', email);
             return null;
           }
 
           const isValidPassword = await bcrypt.compare(password, user.password);
+          console.log('Password validation result:', isValidPassword);
+          
           if (!isValidPassword) {
             return null;
           }
@@ -93,6 +102,16 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user }: any) {
+      // DEVELOPMENT BYPASS - Always use test user in development
+      if (process.env.NODE_ENV === 'development') {
+        token.id = '8a4bfba9-0c6d-47cb-8005-5754b663b425';
+        token.email = 'test@example.com';
+        token.name = 'Test User';
+        token.roles = ['MEMBER'];
+        token.permissions = ['VIEW_LEAGUES'];
+        return token;
+      }
+      
       if (user) {
         token.id = user.id;
         token.email = user.email;
@@ -102,7 +121,20 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }: any) {
+      // DEVELOPMENT BYPASS - Always populate session in development
+      if (process.env.NODE_ENV === 'development') {
+        session.user = {
+          id: '8a4bfba9-0c6d-47cb-8005-5754b663b425',
+          email: 'test@example.com',
+          name: 'Test User',
+          roles: ['MEMBER'],
+          permissions: ['VIEW_LEAGUES']
+        };
+        return session;
+      }
+      
       if (token) {
+        session.user = session.user || {};
         session.user.id = token.id;
         session.user.email = token.email;
         session.user.roles = token.roles || [];

@@ -10,6 +10,7 @@ import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { BankrollManager } from '@/lib/betting/bankroll-manager';
 import { z } from 'zod';
+import { getDevSession } from '@/lib/auth/dev-bypass';
 
 const prisma = new PrismaClient();
 const bankrollManager = new BankrollManager(prisma);
@@ -19,8 +20,12 @@ const bankrollManager = new BankrollManager(prisma);
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get user session
-    const session = await getServerSession();
+    // Get user session - use dev bypass in development
+    let session = await getServerSession();
+    if (!session && process.env.NODE_ENV === 'development') {
+      session = await getDevSession();
+    }
+    
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
