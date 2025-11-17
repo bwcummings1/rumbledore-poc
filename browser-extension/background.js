@@ -258,16 +258,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 /**
- * Open ESPN Fantasy when extension is installed
+ * Handle extension installation and setup
  */
 chrome.runtime.onInstalled.addListener((details) => {
+  // Create context menu (always, on install and update)
+  chrome.contextMenus.create({
+    id: 'captureESPNCookies',
+    title: 'Capture ESPN Cookies',
+    contexts: ['page'],
+    documentUrlPatterns: ['https://fantasy.espn.com/*']
+  });
+
+  // Show welcome only on first install
   if (details.reason === 'install') {
     // Open ESPN Fantasy in a new tab
     chrome.tabs.create({
       url: 'https://fantasy.espn.com/',
       active: true
     });
-    
+
     // Show notification
     chrome.notifications.create({
       type: 'basic',
@@ -276,18 +285,6 @@ chrome.runtime.onInstalled.addListener((details) => {
       message: 'Please log in to ESPN Fantasy to capture your cookies.'
     });
   }
-});
-
-/**
- * Context menu for quick actions
- */
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'captureESPNCookies',
-    title: 'Capture ESPN Cookies',
-    contexts: ['page'],
-    documentUrlPatterns: ['https://fantasy.espn.com/*']
-  });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
