@@ -271,7 +271,6 @@ chrome.runtime.onInstalled.addListener((details) => {
     // Show notification
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icons/icon-128.png',
       title: 'Rumbledore Extension Installed',
       message: 'Please log in to ESPN Fantasy to capture your cookies.'
     });
@@ -296,7 +295,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       .then(() => {
         chrome.notifications.create({
           type: 'basic',
-          iconUrl: 'icons/icon-128.png',
           title: 'Cookies Captured',
           message: 'ESPN cookies captured successfully. Click the extension icon to send them to Rumbledore.'
         });
@@ -304,7 +302,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       .catch(error => {
         chrome.notifications.create({
           type: 'basic',
-          iconUrl: 'icons/icon-128.png',
           title: 'Capture Failed',
           message: error.message
         });
