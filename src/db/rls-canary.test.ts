@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { withLeagueContext } from "./rls";
 import { type LeagueMember, leagueMembers, leagues, users } from "./schema";
+import { migrateSerialized } from "./test-support";
 
 /**
  * THE league-isolation canary (spec 02 §7): two leagues, one RLS-bound role,
@@ -58,7 +58,7 @@ beforeAll(async () => {
       { cause },
     );
   }
-  await migrate(admin.db, { migrationsFolder: "src/db/migrations" });
+  await migrateSerialized(admin);
 
   // Provision the RLS-bound role idempotently. ALTER (re)asserts the flags
   // and password even when the role survived a previous run.

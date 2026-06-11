@@ -38,11 +38,14 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 ## Code conventions
 - Config: server code reads env ONLY via `getEnv()` from `src/core/env` (server-only, validated). Paid services are discriminated unions `{mock:true}|{mock:false,apiKey}` — branch on `.mock`, never read key vars directly.
 - RLS: every new league-scoped table declares a `pgPolicy` `USING/WITH CHECK league_id = current_league_id()` in `src/db/schema.ts` AND gets `FORCE ROW LEVEL SECURITY` hand-added to the generated migration (drizzle-kit doesn't emit FORCE). League-scoped access goes through `withLeagueContext()` (`src/db/rls.ts`).
+- Auth: server code uses `getAuth()` from `src/auth` (pure factory in `src/auth/instance.ts` for tests). Better Auth owns the central auth plane (users/sessions/accounts/verifications/members/invitations + leagues-as-organizations) — NO restrictive RLS there (membership must be readable before a league context exists). Leagues are created by domain code, never `createOrganization`. Role strings must match the `league_role` pg enum.
+- DB tests: call `migrateSerialized()` (`src/db/test-support.ts`), never `migrate()` directly — parallel vitest processes race on unapplied migrations.
+- Never call `getEnv()`/`getAuth()` at module scope in route files — `next build` evaluates them with NODE_ENV=production; resolve per-request.
 
 ## Environment gotchas
 - `node` on PATH is a bun shim that breaks Next/tsc — run pnpm scripts with `PATH=/usr/bin:$PATH` (real Node v22).
 - `rm -rf` is blocked by a command guard; use `mv` to `/tmp` instead.
-- `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real.
+- `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real. EXCEPTION: the "secret compared with ==/!=" checker strips comments before honoring `ubs:ignore` — restructure the code instead (switch/truthiness instead of `==`/`!=`).
 
 ## Runtime note (for humans starting the loop)
 The loop runs on Claude account `bxbxbxbxbxr@gmail.com` via `HOME=/home/ubuntu` (see `loop.sh`). `bwcummings1` is reserved for other running agents.

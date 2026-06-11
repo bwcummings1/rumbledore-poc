@@ -9,5 +9,5 @@ export function getEnv(): Env {
   return cached;
 }
 
-export type { Env, ServiceConfig } from "./schema";
+export type { Env, GoogleOAuthConfig, ServiceConfig } from "./schema";
 export { LOCAL_DATABASE_URL, LOCAL_REDIS_URL, parseEnv } from "./schema";

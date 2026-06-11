@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { LOCAL_DATABASE_URL, LOCAL_REDIS_URL, parseEnv } from "./schema";
+import {
+  DEV_AUTH_SECRET,
+  LOCAL_DATABASE_URL,
+  LOCAL_REDIS_URL,
+  parseEnv,
+} from "./schema";
 
 describe("parseEnv", () => {
   it("runs with zero config: local URLs by default and all paid services mocked", () => {
@@ -84,6 +89,42 @@ describe("parseEnv", () => {
     }
     expect(message).toContain("ESPN_SWID");
     expect(message).not.toContain("super-secret-but-malformed");
+  });
+
+  it("defaults auth to the dev secret, localhost URL, and a mocked Google provider", () => {
+    const env = parseEnv({});
+    expect(env.auth.secret).toBe(DEV_AUTH_SECRET);
+    expect(env.auth.url).toBe("http://localhost:3000");
+    expect(env.auth.google).toEqual({ mock: true });
+  });
+
+  it("requires BETTER_AUTH_SECRET in production", () => {
+    expect(() => parseEnv({ NODE_ENV: "production" })).toThrow(
+      /BETTER_AUTH_SECRET is required when NODE_ENV=production/,
+    );
+    const env = parseEnv({
+      NODE_ENV: "production",
+      BETTER_AUTH_SECRET: "prod-secret", // ubs:ignore — fake fixture value
+    });
+    expect(env.auth.secret).toBe("prod-secret");
+  });
+
+  it("goes real for Google when both OAuth vars are set", () => {
+    const env = parseEnv({
+      GOOGLE_CLIENT_ID: "gid.apps.googleusercontent.com",
+      GOOGLE_CLIENT_SECRET: "gsecret", // ubs:ignore — fake fixture value
+    });
+    expect(env.auth.google).toEqual({
+      mock: false,
+      clientId: "gid.apps.googleusercontent.com",
+      clientSecret: "gsecret", // ubs:ignore — fake fixture value
+    });
+  });
+
+  it("rejects a lone Google OAuth var", () => {
+    expect(() => parseEnv({ GOOGLE_CLIENT_ID: "gid-only" })).toThrow(
+      /GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together/,
+    );
   });
 
   it("reports every invalid var in one error", () => {

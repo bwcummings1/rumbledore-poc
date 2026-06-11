@@ -14,6 +14,18 @@ export const LOCAL_REDIS_URL = "redis://localhost:6390";
  */
 export type ServiceConfig = { mock: true } | { mock: false; apiKey: string };
 
+/**
+ * Google OAuth is the social-login stub (spec 02 §8): with no creds Better
+ * Auth gets placeholder values so the provider routes exist; real creds drop
+ * in via env with no code change. Both vars must be set together.
+ */
+export type GoogleOAuthConfig =
+  | { mock: true }
+  | { mock: false; clientId: string; clientSecret: string };
+
+// Dev-only fallback so the app boots with zero config; production requires BETTER_AUTH_SECRET.
+export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
+
 export const PAID_SERVICES = [
   "anthropic",
   "odds",
@@ -55,6 +67,11 @@ const baseSchema = z.object({
   ESPN_TEST_LEAGUE_ID: z.coerce.number().int().positive().optional(),
   ESPN_TEST_SEASON: z.coerce.number().int().min(2000).max(2100).optional(),
 
+  BETTER_AUTH_SECRET: secret.optional(),
+  BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
+  GOOGLE_CLIENT_ID: secret.optional(),
+  GOOGLE_CLIENT_SECRET: secret.optional(),
+
   ANTHROPIC_API_KEY: secret.optional(),
   THE_ODDS_API_KEY: secret.optional(),
   SPORTSDATAIO_API_KEY: secret.optional(),
@@ -79,6 +96,11 @@ export interface Env {
     s2: string | undefined;
     testLeagueId: number | undefined;
     testSeason: number | undefined;
+  };
+  auth: {
+    secret: string;
+    url: string;
+    google: GoogleOAuthConfig;
   };
   services: Record<PaidService, ServiceConfig>;
 }
@@ -111,6 +133,27 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     }
   }
 
+  switch (present.NODE_ENV) {
+    case "production":
+      if (!("BETTER_AUTH_SECRET" in present)) {
+        problems.push(
+          "✖ BETTER_AUTH_SECRET is required when NODE_ENV=production\n  → at BETTER_AUTH_SECRET",
+        );
+      }
+      break;
+    default:
+      break;
+  }
+
+  const googleVars = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"].filter(
+    (v) => v in present,
+  );
+  if (googleVars.length === 1) {
+    problems.push(
+      `✖ GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together (only ${googleVars[0]} is set)\n  → at GOOGLE_CLIENT_ID`,
+    );
+  }
+
   if (!base.success || problems.length > 0) {
     throw new Error(
       `Invalid environment configuration:\n${problems.join("\n")}`,
@@ -127,6 +170,11 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       ? { mock: false, apiKey: key }
       : { mock: true };
 
+  // Presence checks, not secret-value comparisons (empty strings were
+  // already filtered out above, so truthiness == presence here).
+  const googleClientId = parsed.GOOGLE_CLIENT_ID;
+  const googleClientSecret = parsed.GOOGLE_CLIENT_SECRET;
+
   return {
     nodeEnv: parsed.NODE_ENV,
     databaseUrl: parsed.DATABASE_URL,
@@ -136,6 +184,18 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       s2: parsed.ESPN_S2,
       testLeagueId: parsed.ESPN_TEST_LEAGUE_ID,
       testSeason: parsed.ESPN_TEST_SEASON,
+    },
+    auth: {
+      secret: parsed.BETTER_AUTH_SECRET ?? DEV_AUTH_SECRET,
+      url: parsed.BETTER_AUTH_URL,
+      google:
+        googleClientId && googleClientSecret
+          ? {
+              mock: false,
+              clientId: googleClientId,
+              clientSecret: googleClientSecret,
+            }
+          : { mock: true },
     },
     services: {
       anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),

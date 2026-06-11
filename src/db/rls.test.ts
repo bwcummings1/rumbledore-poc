@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { withLeagueContext } from "./rls";
+import { migrateSerialized } from "./test-support";
 
 /**
  * Integration test for the RLS plumbing (migration 0002 + `withLeagueContext`)
@@ -28,7 +28,7 @@ beforeAll(async () => {
       { cause },
     );
   }
-  await migrate(handle.db, { migrationsFolder: "src/db/migrations" });
+  await migrateSerialized(handle);
 });
 
 afterAll(async () => {

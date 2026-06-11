@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { leagueMembers, leagues, users } from "./schema";
+import { migrateSerialized } from "./test-support";
 
 /**
  * Integration test against the local stack (`pnpm db:up`). Verifies the
@@ -39,7 +39,7 @@ beforeAll(async () => {
     );
   }
   // Idempotent: re-applying on an already-migrated database is a no-op.
-  await migrate(handle.db, { migrationsFolder: "src/db/migrations" });
+  await migrateSerialized(handle);
 });
 
 afterAll(async () => {
