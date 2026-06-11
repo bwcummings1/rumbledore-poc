@@ -37,6 +37,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 
 ## Code conventions
 - Config: server code reads env ONLY via `getEnv()` from `src/core/env` (server-only, validated). Paid services are discriminated unions `{mock:true}|{mock:false,apiKey}` — branch on `.mock`, never read key vars directly.
+- RLS: every new league-scoped table declares a `pgPolicy` `USING/WITH CHECK league_id = current_league_id()` in `src/db/schema.ts` AND gets `FORCE ROW LEVEL SECURITY` hand-added to the generated migration (drizzle-kit doesn't emit FORCE). League-scoped access goes through `withLeagueContext()` (`src/db/rls.ts`).
 
 ## Environment gotchas
 - `node` on PATH is a bun shim that breaks Next/tsc — run pnpm scripts with `PATH=/usr/bin:$PATH` (real Node v22).

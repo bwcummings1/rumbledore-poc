@@ -12,4 +12,5 @@ export function getDb(): Db {
 }
 
 export type { Db } from "./client";
+export * from "./rls";
 export * from "./schema";

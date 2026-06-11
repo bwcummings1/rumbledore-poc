@@ -1,0 +1,120 @@
+// @vitest-environment node
+import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { parseEnv } from "@/core/env/schema";
+import { createDb, type DbHandle } from "./client";
+import { withLeagueContext } from "./rls";
+
+/**
+ * Integration test for the RLS plumbing (migration 0002 + `withLeagueContext`)
+ * against the local stack (`pnpm db:up`). The compose user is a superuser, so
+ * row filtering is bypassed here — this suite proves the catalog state
+ * (RLS enabled + forced, policy shape) and the transaction-local setting
+ * mechanics. The two-league isolation canary under a non-superuser role is
+ * the follow-up task.
+ */
+
+let handle: DbHandle;
+
+beforeAll(async () => {
+  handle = createDb(parseEnv(process.env).databaseUrl);
+  try {
+    await handle.pool.query("select 1");
+  } catch (cause) {
+    throw new Error(
+      "Postgres is unreachable — start the local stack with `pnpm db:up` before running tests.",
+      { cause },
+    );
+  }
+  await migrate(handle.db, { migrationsFolder: "src/db/migrations" });
+});
+
+afterAll(async () => {
+  await handle?.pool.end();
+});
+
+describe("RLS catalog state (migration 0002)", () => {
+  it("has row security enabled AND forced on league_members", async () => {
+    const { rows } = await handle.pool.query(
+      `select relrowsecurity, relforcerowsecurity
+       from pg_class where relname = 'league_members'`,
+    );
+    expect(rows).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
+  });
+
+  it("scopes the isolation policy to current_league_id() for all commands", async () => {
+    const { rows } = await handle.pool.query(
+      `select policyname, cmd, qual, with_check
+       from pg_policies where tablename = 'league_members'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].policyname).toBe("league_members_isolation");
+    expect(rows[0].cmd).toBe("ALL");
+    expect(rows[0].qual).toContain("current_league_id()");
+    expect(rows[0].with_check).toContain("current_league_id()");
+  });
+});
+
+describe("current_league_id()", () => {
+  it("is NULL outside any league context", async () => {
+    const { rows } = await handle.pool.query(
+      "select current_league_id() as league_id",
+    );
+    expect(rows[0].league_id).toBeNull();
+  });
+
+  it("treats an empty setting as no context instead of failing the uuid cast", async () => {
+    const { rows } = await handle.pool.query(
+      `select set_config('app.current_league_id', '', true),
+              current_league_id() as league_id`,
+    );
+    expect(rows[0].league_id).toBeNull();
+  });
+});
+
+describe("withLeagueContext", () => {
+  it("exposes the league id to SQL inside the callback transaction", async () => {
+    const leagueId = randomUUID();
+    const seen = await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const result = await tx.execute(
+        sql`select current_league_id() as league_id`,
+      );
+      return result.rows[0].league_id;
+    });
+    expect(seen).toBe(leagueId);
+  });
+
+  it("does not leak the setting past the transaction", async () => {
+    const leagueId = randomUUID();
+    await withLeagueContext(handle.db, leagueId, async () => undefined);
+    // set_config(..., is_local => true) resets at commit, so no pooled
+    // connection can still carry this league's context.
+    const { rows } = await handle.pool.query(
+      "select current_league_id() as league_id",
+    );
+    expect(rows[0].league_id).toBeNull();
+  });
+
+  it("resets the setting when the callback throws and rolls back", async () => {
+    const leagueId = randomUUID();
+    await expect(
+      withLeagueContext(handle.db, leagueId, async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    const { rows } = await handle.pool.query(
+      "select current_league_id() as league_id",
+    );
+    expect(rows[0].league_id).toBeNull();
+  });
+
+  it("rejects a non-UUID league id before touching the database", async () => {
+    await expect(
+      withLeagueContext(handle.db, "95050; drop table users", async () => {
+        throw new Error("callback must not run");
+      }),
+    ).rejects.toThrow(/must be a UUID/);
+  });
+});

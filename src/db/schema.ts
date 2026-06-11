@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   pgEnum,
+  pgPolicy,
   pgTable,
   text,
   timestamp,
@@ -11,8 +13,12 @@ import {
 /**
  * Baseline tables (spec 02 §6): users, leagues, league_members.
  * - `users` is central (cross-league by design — no restrictive RLS).
- * - `leagues` is the tenant root; `league_members` is league-scoped and will
- *   get RLS on `league_id` in the follow-up RLS migration.
+ * - `leagues` is the tenant root; `league_members` is league-scoped: RLS
+ *   restricts every command to rows whose `league_id` matches the
+ *   transaction-local `app.current_league_id` setting (see `src/db/rls.ts`;
+ *   the `current_league_id()` SQL function lives in migration 0002).
+ *
+ * Every future league-scoped table must declare the same isolation policy.
  */
 
 export const fantasyProvider = pgEnum("fantasy_provider", [
@@ -87,6 +93,11 @@ export const leagueMembers = pgTable(
       table.userId,
     ),
     index("league_members_user_idx").on(table.userId),
+    pgPolicy("league_members_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
   ],
 );
 

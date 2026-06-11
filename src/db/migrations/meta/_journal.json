@@ -15,6 +15,13 @@
       "when": 1781181541541,
       "tag": "0001_baseline-users-leagues-members",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781181986995,
+      "tag": "0002_rls-league-members",
+      "breakpoints": true
     }
   ]
 }
