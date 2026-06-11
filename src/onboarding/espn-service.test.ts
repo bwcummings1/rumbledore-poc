@@ -28,6 +28,7 @@ import {
   connectEspnManual,
   type EspnOnboardingDependencies,
   importEspnDiscoveredLeague,
+  listEspnDiscoveredLeagues,
   startEspnBrowserConnect,
 } from "./espn-service";
 
@@ -245,6 +246,23 @@ describe("ESPN onboarding service", () => {
     expect(connected.ok).toBe(true);
     if (!connected.ok) throw connected.error;
 
+    const listedBeforeImport = await listEspnDiscoveredLeagues(testDeps, {
+      userId: user.id,
+    });
+    expect(listedBeforeImport.ok).toBe(true);
+    if (!listedBeforeImport.ok) throw listedBeforeImport.error;
+    expect(listedBeforeImport.value).toHaveLength(1);
+    expect(listedBeforeImport.value[0]).toMatchObject({
+      imported: false,
+      isRecommendedImport: true,
+      name: `${marker} league ${providerLeagueId}`,
+      provider: "espn",
+      providerId: providerLeagueId,
+      season: 2026,
+      sport: "ffl",
+    });
+    expect(listedBeforeImport.value[0]?.lastDiscoveredAt).toBeInstanceOf(Date);
+
     const imported = await importEspnDiscoveredLeague(testDeps, {
       providerLeagueId,
       season: 2026,
@@ -284,5 +302,16 @@ describe("ESPN onboarding service", () => {
       .from(fantasyMatchups)
       .where(eq(fantasyMatchups.leagueId, imported.value.leagueId));
     expect(matchupRows).toHaveLength(84);
+
+    const listedAfterImport = await listEspnDiscoveredLeagues(testDeps, {
+      userId: user.id,
+    });
+    expect(listedAfterImport.ok).toBe(true);
+    if (!listedAfterImport.ok) throw listedAfterImport.error;
+    expect(listedAfterImport.value[0]).toMatchObject({
+      imported: true,
+      isRecommendedImport: false,
+      leagueId: imported.value.leagueId,
+    });
   });
 });

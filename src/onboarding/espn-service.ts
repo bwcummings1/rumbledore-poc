@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import {
+  leagues,
   members,
   onboardingBrowserSessions,
   onboardingDiscoveredLeagues,
@@ -39,6 +40,13 @@ export interface DiscoveredLeague {
 export interface EspnConnectResult {
   credentialId: string;
   discoveredLeagues: DiscoveredLeague[];
+}
+
+export interface EspnDiscoveredLeagueImportCandidate extends DiscoveredLeague {
+  imported: boolean;
+  isRecommendedImport: boolean;
+  lastDiscoveredAt: Date;
+  leagueId?: string;
 }
 
 export interface BrowserConnectStartResult {
@@ -391,6 +399,83 @@ export async function connectEspnManual(
     flow: "manual",
     userId: input.userId,
   });
+}
+
+export async function listEspnDiscoveredLeagues(
+  deps: Pick<EspnOnboardingDependencies, "db">,
+  input: { userId: string },
+): Promise<Result<EspnDiscoveredLeagueImportCandidate[], OnboardingError>> {
+  const rows = await deps.db
+    .select({
+      importedLeagueId: leagues.id,
+      lastDiscoveredAt: onboardingDiscoveredLeagues.lastDiscoveredAt,
+      memberUserId: members.userId,
+      name: onboardingDiscoveredLeagues.name,
+      provider: onboardingDiscoveredLeagues.provider,
+      providerLeagueId: onboardingDiscoveredLeagues.providerLeagueId,
+      season: onboardingDiscoveredLeagues.season,
+      size: onboardingDiscoveredLeagues.size,
+      sport: onboardingDiscoveredLeagues.sport,
+      teamName: onboardingDiscoveredLeagues.teamName,
+    })
+    .from(onboardingDiscoveredLeagues)
+    .leftJoin(
+      leagues,
+      and(
+        eq(leagues.provider, onboardingDiscoveredLeagues.provider),
+        eq(
+          leagues.providerLeagueId,
+          onboardingDiscoveredLeagues.providerLeagueId,
+        ),
+      ),
+    )
+    .leftJoin(
+      members,
+      and(
+        eq(members.organizationId, leagues.id),
+        eq(members.userId, input.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(onboardingDiscoveredLeagues.userId, input.userId),
+        eq(onboardingDiscoveredLeagues.provider, ESPN_PROVIDER_ID),
+      ),
+    )
+    .orderBy(
+      desc(onboardingDiscoveredLeagues.season),
+      asc(onboardingDiscoveredLeagues.name),
+    );
+
+  const latestFflSeason = rows.reduce<number | null>((latest, row) => {
+    if (row.sport !== "ffl") {
+      return latest;
+    }
+    return latest === null ? row.season : Math.max(latest, row.season);
+  }, null);
+
+  return ok(
+    rows.map((row) => {
+      const imported =
+        row.memberUserId !== null && row.importedLeagueId !== null;
+      return {
+        imported,
+        isRecommendedImport:
+          !imported && row.sport === "ffl" && row.season === latestFflSeason,
+        lastDiscoveredAt: row.lastDiscoveredAt,
+        name: row.name,
+        provider: ESPN_PROVIDER_ID,
+        providerId: row.providerLeagueId,
+        season: row.season,
+        sport: row.sport,
+        ...(row.teamName ? { teamName: row.teamName } : {}),
+        ...(row.size === null ? {} : { size: row.size }),
+        ...(imported && row.importedLeagueId
+          ? { leagueId: row.importedLeagueId }
+          : {}),
+      };
+    }),
+  );
 }
 
 async function loadStoredCredentials(
