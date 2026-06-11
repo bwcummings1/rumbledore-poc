@@ -7,7 +7,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Initialize Next.js App Router + TypeScript strict + pnpm with scripts typecheck/lint/test/build (next.config must NOT ignore type/lint errors). (done 2026-06-11: Next 16.2.9, all gates green; tasks 2+3 were inseparable — the gate scripts require lint/test to exist and pass)
 - [x] Add Biome wired into `pnpm lint` and format. (done 2026-06-11: Biome 2.2 via create-next-app --biome, next/react domains on)
 - [x] Add Vitest with one real passing unit test. (done 2026-06-11: vitest+jsdom+RTL, real render test of the home page)
-- [ ] Initialize Tailwind + shadcn/ui and wire tokens from DESIGN.md.
+- [x] Initialize Tailwind + shadcn/ui and wire tokens from DESIGN.md. (done 2026-06-11: Tailwind v4 + shadcn base-nova/Base UI; DESIGN.md oklch palette, 6-step type scale, radii wired into :root + @theme dark-first; home page converted to Tailwind, Button smoke test)
 - [ ] Add PWA manifest + service worker producing an installable mobile-first app shell.
 - [ ] Add docker-compose for local Postgres (pgvector) + Redis.
 - [ ] Add `src/core/env` zod-validated env with MOCK_* toggles defaulting paid APIs to mocks.
@@ -43,6 +43,9 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [ ] Realtime live updates; push notifications; performance/observability; Sleeper then Yahoo providers.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-11: Biome 2.2 doesn't parse Tailwind v4 at-rules (`@theme`/`@custom-variant`/`@apply`) — `noUnknownAtRules` is off for `**/*.css` via biome.json override; revisit when Biome ships Tailwind syntax support.
+- 2026-06-11: shadcn now defaults to the "base-nova" style on Base UI (`@base-ui/react`), not Radix — future `shadcn add <component>` pulls Base UI primitives.
+- 2026-06-11: DESIGN.md's sparing live/odds "accent" is exposed as `--highlight`/`text-highlight` (shadcn reserves `accent` for hover surfaces); shadcn surface mapping: surface→card/muted, elevated→secondary/accent/popover.
 - 2026-06-11: `node` on PATH is a bun shim; real Node v22 is `/usr/bin/node` — prefix `PATH=/usr/bin:$PATH` for pnpm/next commands (recorded in AGENTS.md).
 - 2026-06-11: stray `~/bun.lock` made Next infer the wrong workspace root — pinned `turbopack.root` in `next.config.ts`.
 - 2026-06-11: pnpm 10 blocks postinstall scripts; esbuild approved via `onlyBuiltDependencies` in `pnpm-workspace.yaml` (add future native deps there, e.g. sharp if needed).
