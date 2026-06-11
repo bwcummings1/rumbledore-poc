@@ -71,3 +71,6 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 3. Run a PLAN loop to refine `IMPLEMENTATION_PLAN.md` from specs.
 4. Launch BUILD loop (Fable, account `bxbxbxbxbxr`) in a dedicated tmux session; supervise + tune.
 - **First milestone:** Foundation (P0) + the flagship vertical slice — connect league → ingest (real, via league 95050) → league home shows standings/stats — all test-backed behind green gates.
+
+## 8. Recent (loop log; newest first)
+- 2026-06-11: P0 scaffold landed — Next 16.2.9 App Router + TS strict + Biome + Vitest(+RTL); all gates (typecheck/lint/test/build/ubs/impeccable) green.

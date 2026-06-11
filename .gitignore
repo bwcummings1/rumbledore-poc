@@ -25,4 +25,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-/lib/generated/prisma
+
+# tests
+/coverage
+
+# swc
+/.swc
