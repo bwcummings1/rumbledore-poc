@@ -1,0 +1,39 @@
+# AGENTS.md — Rumbledore v2 operational guide
+
+Keep this lean and operational. Vision/architecture/state live in `docs/PROGRESS.md` and `specs/`.
+Status notes do NOT go here — they go in `IMPLEMENTATION_PLAN.md`.
+
+## What this is
+Sandboxed per-league fantasy-football companion (ESPN now; Sleeper/Yahoo later): per-league home, AI blogger,
+paper betting with a central inter-league arena, league records. Mobile-first PWA. See `docs/PROGRESS.md` §1.
+
+## Stack
+Next.js (App Router) PWA · TypeScript (strict) · Drizzle + Neon Postgres + pgvector · Better Auth ·
+Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangChain) · provider-abstracted ingestion.
+
+## Commands / validation gates (run after every change; ALL must pass before commit)
+- Typecheck: `pnpm typecheck`
+- Lint: `pnpm lint`
+- Tests: `pnpm test` (unit/integration) — run the tests for the unit you touched, plus the suite before commit
+- Build: `pnpm build`
+- Bug scan: `ubs <changed files>` (exit 0 required; see /home/ubuntu/AGENTS.md UBS section)
+- UI (only if you touched UI): `npx impeccable detect src/` must pass
+
+## Hard rules
+- NEVER disable gates. No `ignoreBuildErrors`, no `eslint.ignoreDuringBuilds`, no skipping tests to go green.
+- Implement COMPLETELY. No stubs/placeholders/TODO-as-done. If you must defer, write it in `IMPLEMENTATION_PLAN.md`.
+- League isolation is sacred: every league-scoped query filters `WHERE league_id = …` AND relies on Postgres RLS. Central/arena tables are the only cross-league ones.
+- Secrets live ONLY in `.env.local` (gitignored). Never commit secrets. Never log cookies/tokens.
+- ESPN calls are server-side only. Real test fixture: league `95050` season `2026` (creds in `.env.local`). Mock paid APIs (Anthropic/Odds/SportsDataIO/Tavily/Browserbase) behind interfaces until keys exist.
+- "Don't assume not implemented" — search the codebase before building something.
+
+## Git
+- Work on `rebuild/foundation` (or a child branch). Commit small, descriptive, often. Push the current branch.
+- NEVER force-push. NEVER touch `main` or `v0.62`.
+
+## Mining the old code (reference only; do not copy patterns blindly)
+`git show v0.62:<path>` — e.g. `prisma/schema.prisma`, `lib/crypto/encryption.ts`, `lib/identity/*`, ESPN client headers.
+The old build had disabled gates + fake auth — DO NOT reproduce those.
+
+## Runtime note (for humans starting the loop)
+The loop runs on Claude account `bxbxbxbxbxr@gmail.com` via `HOME=/home/ubuntu` (see `loop.sh`). `bwcummings1` is reserved for other running agents.
