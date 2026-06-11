@@ -52,6 +52,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 ## Environment gotchas
 - `node` on PATH is a bun shim that breaks Next/tsc — run pnpm scripts with `PATH=/usr/bin:$PATH` (real Node v22).
 - `rm -rf` is blocked by a command guard; use `mv` to `/tmp` instead.
+- In zsh, build changed-file UBS args as an array (or run the expansion under bash); a single space-joined string is treated as one filename.
 - `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real. EXCEPTION: the "secret compared with ==/!=" checker strips comments before honoring `ubs:ignore` — restructure the code instead (switch/truthiness instead of `==`/`!=`).
 
 ## Runtime note (for humans starting the loop)

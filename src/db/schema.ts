@@ -145,6 +145,34 @@ export const aiMemorySource = pgEnum("ai_memory_source", [
   "storyline",
 ]);
 
+export const bettingSport = pgEnum("betting_sport", ["nfl"]);
+
+export const bettingEventStatus = pgEnum("betting_event_status", [
+  "scheduled",
+  "in_progress",
+  "final",
+  "postponed",
+  "canceled",
+]);
+
+export const bettingMarketType = pgEnum("betting_market_type", [
+  "moneyline",
+  "spread",
+  "total",
+  "player_prop",
+]);
+
+export const bettingMarketPeriod = pgEnum("betting_market_period", [
+  "full_game",
+]);
+
+export const bettingMarketStatus = pgEnum("betting_market_status", [
+  "open",
+  "suspended",
+  "settled",
+  "void",
+]);
+
 export interface LeagueFeedMatchedEntity {
   provider: string;
   type: "player" | "team" | "member" | "storyline";
@@ -1006,6 +1034,104 @@ export const statsCalculations = pgTable(
   ],
 );
 
+// ── Paper betting central catalog (cross-league; no restrictive RLS) ──────
+
+export const bettingEvents = pgTable(
+  "betting_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    sport: bettingSport("sport").notNull().default("nfl"),
+    homeTeam: text("home_team").notNull(),
+    awayTeam: text("away_team").notNull(),
+    startTime: timestamp("start_time", { withTimezone: true }).notNull(),
+    status: bettingEventStatus("status").notNull().default("scheduled"),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    lastUpdated: timestamp("last_updated", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("betting_event_provider_event_unique").on(
+      table.provider,
+      table.providerEventId,
+    ),
+    index("betting_event_sport_start_idx").on(table.sport, table.startTime),
+    index("betting_event_status_start_idx").on(table.status, table.startTime),
+  ],
+);
+
+export const bettingMarkets = pgTable(
+  "betting_market",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => bettingEvents.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerMarketId: text("provider_market_id").notNull(),
+    type: bettingMarketType("type").notNull(),
+    subject: text("subject").notNull().default("game"),
+    propType: text("prop_type"),
+    period: bettingMarketPeriod("period").notNull().default("full_game"),
+    status: bettingMarketStatus("status").notNull().default("open"),
+    lastUpdated: timestamp("last_updated", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    contentHash: text("content_hash").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("betting_market_provider_market_unique").on(
+      table.provider,
+      table.providerMarketId,
+    ),
+    index("betting_market_event_status_idx").on(table.eventId, table.status),
+    index("betting_market_type_status_idx").on(table.type, table.status),
+  ],
+);
+
+export const oddsSnapshots = pgTable(
+  "odds_snapshot",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => bettingMarkets.id, { onDelete: "cascade" }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    provider: text("provider").notNull(),
+    line: numeric("line", { mode: "number", precision: 10, scale: 2 }),
+    overPrice: integer("over_price"),
+    underPrice: integer("under_price"),
+    homePrice: integer("home_price"),
+    awayPrice: integer("away_price"),
+    outcomePrice: integer("outcome_price"),
+    sourcePayloadHash: text("source_payload_hash").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("odds_snapshot_market_captured_idx").on(
+      table.marketId,
+      table.capturedAt,
+    ),
+    index("odds_snapshot_hash_idx").on(table.marketId, table.sourcePayloadHash),
+  ],
+);
+
 // ── Content and AI blogger state ──────────────────────────────────────────
 
 export const contentItems = pgTable(
@@ -1440,6 +1566,12 @@ export type HistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferSelect;
 export type NewHistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferInsert;
+export type BettingEvent = typeof bettingEvents.$inferSelect;
+export type NewBettingEvent = typeof bettingEvents.$inferInsert;
+export type BettingMarket = typeof bettingMarkets.$inferSelect;
+export type NewBettingMarket = typeof bettingMarkets.$inferInsert;
+export type OddsSnapshot = typeof oddsSnapshots.$inferSelect;
+export type NewOddsSnapshot = typeof oddsSnapshots.$inferInsert;
 export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
 export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;

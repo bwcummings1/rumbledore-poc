@@ -48,12 +48,18 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Emit realtime `blog.published` events after publication. (done 2026-06-12: added a typed `src/realtime` publisher with mock/no-op default and Supabase Broadcast REST implementation, wired AI generation to emit `blog.published` on `league:{leagueId}:blog` after a new blog post commits, documented Supabase realtime env, and covered first-publish/reuse/skip plus REST request shape)
 
 ## P4 — Paper betting + arena (see specs/08 — to be written)
-- [ ] Odds ingest; bet slips (single+parlay) with locked odds; settlement; rolling-minimum bankroll ledger; central inter-league arena + leaderboards.
+- [x] Add the central odds/event catalog with a mockable odds provider and idempotent append-only snapshot ingestion. (done 2026-06-12: central `betting_event`/`betting_market`/`odds_snapshot` tables landed with mock + The Odds API providers, idempotent `refreshOddsCatalog()`, registered `odds.poll`, and DB/job tests proving central no-RLS catalog access plus append-only changed-snapshot ingestion)
+- [ ] Implement bankroll weeks and append-only bankroll ledger opening/rollover logic.
+- [ ] Implement single and parlay bet placement with locked odds and stake validation.
+- [ ] Implement `game.final` settlement for singles and parlays with push/void handling.
+- [ ] Build the central arena leaderboard from betting ledgers across leagues.
 
 ## P5 — Realtime, scale, multi-provider (see specs/09 — to be written)
 - [ ] Realtime live updates; push notifications; performance/observability; Sleeper then Yahoo providers.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-12: Betting odds catalog tables are central/open-read (`betting_event`, `betting_market`, `odds_snapshot`); league-scoped betting state starts with bankroll/slip/settlement tables later and must add RLS/FORCE at that point.
+- 2026-06-12: The Odds API v4 featured NFL endpoint can feed initial MVP odds via `americanfootball_nfl` with `markets=h2h,spreads,totals`; player props remain represented in the internal contract/mock and need an additional real endpoint mapping later.
 - 2026-06-12: Realtime blog broadcasts are best-effort until a durable outbox exists; AI generation logs a redacted warning if Supabase Broadcast fails after the post is committed, and duplicate/retry delivery should be solved in the broader realtime phase if strict delivery is required.
 - 2026-06-12: Supabase Realtime Broadcast server publishing can use the REST endpoint `/realtime/v1/api/broadcast/{topic}/events/{event}?private=true` with the server key in the `apikey` header; per-league blog uses topic `league:{leagueId}:blog` and event `blog.published`.
 - 2026-06-11: `@inngest/test` executes `step.sendEvent` through the real client path; without `INNGEST_EVENT_KEY`, test the durable planning step via `executeStep(...)` and assert the planned payloads directly, then cover generation idempotency through the target event handler.

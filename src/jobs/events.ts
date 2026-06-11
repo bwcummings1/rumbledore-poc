@@ -47,3 +47,8 @@ export interface NewsRefreshData {
   topic?: string;
   limit?: number;
 }
+
+export interface OddsPollData {
+  limit?: number;
+  sport?: "nfl";
+}

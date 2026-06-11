@@ -8,6 +8,7 @@ import {
 import { contentPlanGameFinal } from "./functions/content-plan-game-final";
 import { importRequested } from "./functions/import-requested";
 import { newsRefresh } from "./functions/news-refresh";
+import { oddsPoll } from "./functions/odds-poll";
 
 export { inngest } from "./client";
 export { JOB_EVENTS } from "./events";
@@ -21,6 +22,7 @@ export {
 export { contentPlanGameFinal } from "./functions/content-plan-game-final";
 export { importRequested } from "./functions/import-requested";
 export { newsRefresh } from "./functions/news-refresh";
+export { oddsPoll } from "./functions/odds-poll";
 
 export const functions = [
   appPing,
@@ -31,4 +33,5 @@ export const functions = [
   contentPlanPostOddsRefresh,
   contentPlanGameFinal,
   newsRefresh,
+  oddsPoll,
 ] as const;
