@@ -9,7 +9,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Add Vitest with one real passing unit test. (done 2026-06-11: vitest+jsdom+RTL, real render test of the home page)
 - [x] Initialize Tailwind + shadcn/ui and wire tokens from DESIGN.md. (done 2026-06-11: Tailwind v4 + shadcn base-nova/Base UI; DESIGN.md oklch palette, 6-step type scale, radii wired into :root + @theme dark-first; home page converted to Tailwind, Button smoke test)
 - [x] Add PWA manifest + service worker producing an installable mobile-first app shell. (done 2026-06-11: app/manifest.ts + hand-rolled public/sw.js — offline app-shell with network-first navigations falling back to precached /offline, cache-first hashed assets; prod-only registration component; generated icon set incl. maskable + apple-touch via scripts/generate-icons.mjs; viewport-fit=cover + pt/pb/pl/pr-safe utilities; verified served manifest/sw/offline via pnpm start)
-- [ ] Add docker-compose for local Postgres (pgvector) + Redis.
+- [x] Add docker-compose for local Postgres (pgvector) + Redis. (done 2026-06-11: pgvector/pgvector:pg17 + redis:7-alpine with healthchecks/volumes, `pnpm db:up`/`db:down`; verified vector 0.8.2 installs + PONG + host connectivity)
 - [ ] Add `src/core/env` zod-validated env with MOCK_* toggles defaulting paid APIs to mocks.
 - [ ] Set up Drizzle client + first migration for users, leagues, league_members.
 - [ ] Add an RLS helper that sets `app.current_league_id` and enable RLS on league-scoped tables. (blocked-by: Drizzle migration)
@@ -43,6 +43,8 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [ ] Realtime live updates; push notifications; performance/observability; Sleeper then Yahoo providers.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-11: host ports 5432/6379 are taken on this shared dev box — local stack listens on **5440 (Postgres) / 6390 (Redis)**, overridable via `RUMBLEDORE_DB_PORT`/`RUMBLEDORE_REDIS_PORT`; dev URLs: `postgres://rumbledore:rumbledore@localhost:5440/rumbledore`, `redis://localhost:6390` (use these as `.env` defaults in the env/Drizzle tasks).
+- 2026-06-11: the first Drizzle migration must `CREATE EXTENSION IF NOT EXISTS vector` (verified it works as the compose superuser; don't rely on the extension pre-existing in fresh volumes).
 - 2026-06-11: the old `#15171c` themeColor was a bad eyeball of DESIGN.md background; true sRGB of oklch(16% 0.01 250) is `#0a0e11` — single source in `src/lib/pwa.ts` (manifest route files reject extra exports, so shared constants can't live in `app/manifest.ts`).
 - 2026-06-11: sharp 0.35 works as a devDep without postinstall scripts (prebuilt binaries); icon regeneration: `PATH=/usr/bin:$PATH node scripts/generate-icons.mjs`.
 - 2026-06-11: Biome 2.2 doesn't parse Tailwind v4 at-rules (`@theme`/`@custom-variant`/`@apply`) — `noUnknownAtRules` is off for `**/*.css` via biome.json override; revisit when Biome ships Tailwind syntax support.

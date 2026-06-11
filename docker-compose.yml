@@ -1,0 +1,42 @@
+# Local dev infrastructure: Postgres (with pgvector) + Redis.
+# Usage: pnpm db:up / pnpm db:down (or: docker compose up -d --wait)
+#
+# Host ports default to 5440/6390 because 5432/6379 are taken on shared dev
+# hosts; override with RUMBLEDORE_DB_PORT / RUMBLEDORE_REDIS_PORT.
+# Dev-only credentials — production uses Neon/Upstash via env.
+
+name: rumbledore
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "${RUMBLEDORE_DB_PORT:-5440}:5432"
+    environment:
+      POSTGRES_USER: rumbledore
+      POSTGRES_PASSWORD: rumbledore
+      POSTGRES_DB: rumbledore
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rumbledore -d rumbledore"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${RUMBLEDORE_REDIS_PORT:-6390}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
