@@ -7,10 +7,12 @@ import {
   fantasyMembers,
   fantasyTeams,
   leagues,
+  providerFinalStandings,
 } from "@/db/schema";
 import type {
   FantasyProvider,
   FantasyProviderSession,
+  NormalizedFinalStanding,
   NormalizedLeague,
   NormalizedMatchup,
   NormalizedMember,
@@ -48,6 +50,7 @@ export interface CurrentLeagueSyncResult {
 
 export interface PersistNormalizedLeagueRowsInput {
   db: Db;
+  finalStandings?: readonly NormalizedFinalStanding[];
   leagueId: string;
   matchups: readonly NormalizedMatchup[];
   members: readonly NormalizedMember[];
@@ -58,6 +61,7 @@ export interface PersistNormalizedLeagueRowsResult {
   teamStats: EntitySyncStats;
   memberStats: EntitySyncStats;
   matchupStats: EntitySyncStats;
+  finalStandingStats: EntitySyncStats;
 }
 
 export type CurrentLeagueSyncError = ProviderError;
@@ -132,6 +136,22 @@ function matchupHashPayload(matchup: NormalizedMatchup) {
     season: matchup.season,
     status: matchup.status,
     winner: matchup.winner,
+  };
+}
+
+function finalStandingHashPayload(standing: NormalizedFinalStanding) {
+  return {
+    finalRank: standing.rank,
+    leagueProviderId: standing.leagueProviderId,
+    losses: standing.losses,
+    playoffSeed: standing.playoffSeed ?? null,
+    pointsAgainst: standing.pointsAgainst,
+    pointsFor: standing.pointsFor,
+    provider: standing.teamRef.provider,
+    providerTeamId: standing.teamRef.providerId,
+    season: standing.teamRef.season,
+    ties: standing.ties,
+    wins: standing.wins,
   };
 }
 
@@ -357,8 +377,63 @@ async function upsertMatchups(
   return stats(rows.length, changed.length);
 }
 
+async function upsertFinalStandings(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  finalStandings: readonly NormalizedFinalStanding[],
+): Promise<EntitySyncStats> {
+  if (finalStandings.length === 0) {
+    return stats(0, 0);
+  }
+
+  const rows = finalStandings.map((standing) => ({
+    contentHash: stableContentHash(finalStandingHashPayload(standing)),
+    finalRank: standing.rank,
+    leagueId,
+    leagueProviderId: standing.leagueProviderId,
+    losses: standing.losses,
+    playoffSeed: standing.playoffSeed ?? null,
+    pointsAgainst: standing.pointsAgainst,
+    pointsFor: standing.pointsFor,
+    provider: standing.teamRef.provider,
+    providerTeamId: standing.teamRef.providerId,
+    season: standing.teamRef.season,
+    ties: standing.ties,
+    wins: standing.wins,
+  }));
+
+  const changed = await tx
+    .insert(providerFinalStandings)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        providerFinalStandings.leagueId,
+        providerFinalStandings.provider,
+        providerFinalStandings.leagueProviderId,
+        providerFinalStandings.providerTeamId,
+        providerFinalStandings.season,
+      ],
+      set: {
+        contentHash: sql`excluded.content_hash`,
+        finalRank: sql`excluded.final_rank`,
+        losses: sql`excluded.losses`,
+        playoffSeed: sql`excluded.playoff_seed`,
+        pointsAgainst: sql`excluded.points_against`,
+        pointsFor: sql`excluded.points_for`,
+        ties: sql`excluded.ties`,
+        updatedAt: sql`now()`,
+        wins: sql`excluded.wins`,
+      },
+      where: sql`${providerFinalStandings.contentHash} is distinct from excluded.content_hash`,
+    })
+    .returning({ id: providerFinalStandings.id });
+
+  return stats(rows.length, changed.length);
+}
+
 export async function persistNormalizedLeagueRows({
   db,
+  finalStandings = [],
   leagueId,
   matchups,
   members,
@@ -368,8 +443,13 @@ export async function persistNormalizedLeagueRows({
     const teamStats = await upsertTeams(tx, leagueId, teams);
     const memberStats = await upsertMembers(tx, leagueId, members);
     const matchupStats = await upsertMatchups(tx, leagueId, matchups);
+    const finalStandingStats = await upsertFinalStandings(
+      tx,
+      leagueId,
+      finalStandings,
+    );
 
-    return { matchupStats, memberStats, teamStats };
+    return { finalStandingStats, matchupStats, memberStats, teamStats };
   });
 }
 

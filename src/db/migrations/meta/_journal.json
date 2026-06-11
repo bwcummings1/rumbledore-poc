@@ -71,6 +71,13 @@
       "when": 1781206626974,
       "tag": "0009_ambiguous_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781208677223,
+      "tag": "0010_wet_supernaut",
+      "breakpoints": true
     }
   ]
 }

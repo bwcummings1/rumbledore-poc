@@ -12,6 +12,7 @@ import {
   fantasyTeams,
   historicalImportCheckpoints,
   leagues,
+  providerFinalStandings,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
@@ -131,7 +132,30 @@ function bundleFor(
         status: "final",
       },
     ],
-    finalStandings: [],
+    finalStandings: [
+      {
+        leagueProviderId: ref.providerId,
+        teamRef: { provider: "espn", providerId: "2", season },
+        rank: 1,
+        playoffSeed: 2,
+        wins: 0,
+        losses: 1,
+        ties: 0,
+        pointsFor: 95,
+        pointsAgainst: 110 + (2026 - season),
+      },
+      {
+        leagueProviderId: ref.providerId,
+        teamRef: { provider: "espn", providerId: "1", season },
+        rank: 2,
+        playoffSeed: 1,
+        wins: 1,
+        losses: 0,
+        ties: 0,
+        pointsFor: 110 + (2026 - season),
+        pointsAgainst: 95,
+      },
+    ],
     transactions: [],
   };
 }
@@ -181,13 +205,21 @@ async function selectHistoricalRows(leagueId: string) {
       .from(fantasyMatchups)
       .where(eq(fantasyMatchups.leagueId, leagueId))
       .orderBy(asc(fantasyMatchups.season));
+    const finalStandings = await tx
+      .select()
+      .from(providerFinalStandings)
+      .where(eq(providerFinalStandings.leagueId, leagueId))
+      .orderBy(
+        asc(providerFinalStandings.season),
+        asc(providerFinalStandings.finalRank),
+      );
     const [checkpoint] = await tx
       .select()
       .from(historicalImportCheckpoints)
       .where(eq(historicalImportCheckpoints.leagueId, leagueId))
       .limit(1);
 
-    return { checkpoint, matchups, members, teams };
+    return { checkpoint, finalStandings, matchups, members, teams };
   });
 }
 
@@ -244,6 +276,11 @@ describe("importLeagueHistory", () => {
       changed: 2,
       unchanged: 0,
     });
+    expect(first.value.finalStandings).toEqual({
+      total: 4,
+      changed: 4,
+      unchanged: 0,
+    });
     expect(first.value.checkpoint).toMatchObject({
       status: "completed",
       lastCompletedSeason: 2024,
@@ -256,6 +293,13 @@ describe("importLeagueHistory", () => {
     expect(rows.teams).toHaveLength(4);
     expect(rows.members).toHaveLength(4);
     expect(rows.matchups).toHaveLength(2);
+    expect(rows.finalStandings).toHaveLength(4);
+    expect(rows.finalStandings[0]).toMatchObject({
+      season: 2024,
+      providerTeamId: "2",
+      finalRank: 1,
+      playoffSeed: 2,
+    });
     expect(rows.checkpoint).toMatchObject({
       status: "completed",
       lastCompletedSeason: 2024,
@@ -290,6 +334,11 @@ describe("importLeagueHistory", () => {
       changed: 0,
       unchanged: 0,
     });
+    expect(second.value.finalStandings).toEqual({
+      total: 0,
+      changed: 0,
+      unchanged: 0,
+    });
   });
 
   it("keeps a failed checkpoint and resumes at the next unfinished season", async () => {
@@ -319,6 +368,7 @@ describe("importLeagueHistory", () => {
     const afterFailure = await selectHistoricalRows(leagueId);
     expect(afterFailure.teams).toHaveLength(2);
     expect(afterFailure.matchups).toHaveLength(1);
+    expect(afterFailure.finalStandings).toHaveLength(2);
     expect(afterFailure.checkpoint).toMatchObject({
       status: "failed",
       lastCompletedSeason: 2025,
@@ -351,6 +401,11 @@ describe("importLeagueHistory", () => {
       changed: 1,
       unchanged: 0,
     });
+    expect(resumed.value.finalStandings).toEqual({
+      total: 2,
+      changed: 2,
+      unchanged: 0,
+    });
     expect(resumed.value.checkpoint).toMatchObject({
       status: "completed",
       lastCompletedSeason: 2024,
@@ -362,5 +417,6 @@ describe("importLeagueHistory", () => {
     const afterResume = await selectHistoricalRows(leagueId);
     expect(afterResume.teams).toHaveLength(4);
     expect(afterResume.matchups).toHaveLength(2);
+    expect(afterResume.finalStandings).toHaveLength(4);
   });
 });

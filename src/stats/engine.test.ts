@@ -7,6 +7,7 @@ import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
+  championshipRecords,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
@@ -15,6 +16,7 @@ import {
   identityMappings,
   leagues,
   persons,
+  providerFinalStandings,
   seasonStatistics,
   teamSeasons,
   weeklyStatistics,
@@ -285,6 +287,11 @@ async function selectStatsRows(leagueId: string) {
       .select()
       .from(allTimeRecords)
       .where(eq(allTimeRecords.leagueId, leagueId));
+    const championshipRows = await tx
+      .select()
+      .from(championshipRecords)
+      .where(eq(championshipRecords.leagueId, leagueId))
+      .orderBy(asc(championshipRecords.season));
     const auditRows = await tx
       .select()
       .from(identityAuditLog)
@@ -292,6 +299,7 @@ async function selectStatsRows(leagueId: string) {
 
     return {
       auditRows,
+      championshipRows,
       h2hRows,
       mappingRows,
       personRows,
@@ -404,6 +412,118 @@ describe("recomputeLeagueStatistics", () => {
     expect(previousHighScore).toMatchObject({
       holderPersonId: alex2024.personId,
       value: 110,
+    });
+  });
+
+  it("uses provider final standings for postseason placement and championship records", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague("official");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(providerFinalStandings).values([
+        {
+          contentHash: `${marker}-official-2024-3`,
+          finalRank: 1,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 1,
+          playoffSeed: 3,
+          pointsAgainst: 110,
+          pointsFor: 90,
+          provider: "espn",
+          providerTeamId: "3",
+          season: 2024,
+          ties: 0,
+          wins: 0,
+        },
+        {
+          contentHash: `${marker}-official-2024-1`,
+          finalRank: 2,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          playoffSeed: 1,
+          pointsAgainst: 90,
+          pointsFor: 110,
+          provider: "espn",
+          providerTeamId: "1",
+          season: 2024,
+          ties: 0,
+          wins: 1,
+        },
+        {
+          contentHash: `${marker}-official-2024-2`,
+          finalRank: 3,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          playoffSeed: 2,
+          pointsAgainst: 80,
+          pointsFor: 100,
+          provider: "espn",
+          providerTeamId: "2",
+          season: 2024,
+          ties: 0,
+          wins: 1,
+        },
+        {
+          contentHash: `${marker}-official-2024-4`,
+          finalRank: 4,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 1,
+          playoffSeed: null,
+          pointsAgainst: 100,
+          pointsFor: 80,
+          provider: "espn",
+          providerTeamId: "4",
+          season: 2024,
+          ties: 0,
+          wins: 0,
+        },
+      ]);
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    const rows = await selectStatsRows(leagueId);
+    const mappingFor = (providerTeamId: string, season: number) => {
+      const mapping = rows.mappingRows.find(
+        (row) => row.providerTeamId === providerTeamId && row.season === season,
+      );
+      if (!mapping) {
+        throw new Error(`mapping ${providerTeamId}/${season} was not found`);
+      }
+      return mapping;
+    };
+    const alex2024 = mappingFor("1", 2024);
+    const blair2024 = mappingFor("2", 2024);
+    const drew2024 = mappingFor("3", 2024);
+    const drewSeason = rows.seasonRows.find(
+      (row) => row.personId === drew2024.personId && row.season === 2024,
+    );
+    const alexSeason = rows.seasonRows.find(
+      (row) => row.personId === alex2024.personId && row.season === 2024,
+    );
+
+    expect(drewSeason).toMatchObject({
+      finalPlacement: "champ",
+      finalRank: 1,
+      losses: 1,
+      madeChampionship: true,
+      madePlayoffs: true,
+    });
+    expect(alexSeason).toMatchObject({
+      finalPlacement: "runner_up",
+      finalRank: 2,
+      wins: 1,
+    });
+    expect(
+      rows.championshipRows.find((row) => row.season === 2024),
+    ).toMatchObject({
+      championPersonId: drew2024.personId,
+      regularSeasonWinnerPersonId: alex2024.personId,
+      runnerUpPersonId: alex2024.personId,
+      thirdPlacePersonId: blair2024.personId,
     });
   });
 

@@ -130,8 +130,10 @@ export interface NormalizedTransaction extends SeasonScopedProviderEntityRef {
 }
 
 export interface NormalizedFinalStanding {
+  leagueProviderId: string;
   teamRef: SeasonScopedProviderEntityRef;
   rank: number;
+  playoffSeed?: number;
   wins: number;
   losses: number;
   ties: number;

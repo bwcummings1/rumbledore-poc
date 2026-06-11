@@ -307,6 +307,48 @@ export const fantasyMatchups = pgTable(
   ],
 );
 
+export const providerFinalStandings = pgTable(
+  "provider_final_standings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerTeamId: text("provider_team_id").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    season: integer("season").notNull(),
+    finalRank: integer("final_rank").notNull(),
+    playoffSeed: integer("playoff_seed"),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    ties: integer("ties").notNull().default(0),
+    pointsFor: doublePrecision("points_for").notNull().default(0),
+    pointsAgainst: doublePrecision("points_against").notNull().default(0),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("provider_final_standings_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.providerTeamId,
+      table.season,
+    ),
+    index("provider_final_standings_league_rank_idx").on(
+      table.leagueId,
+      table.season,
+      table.finalRank,
+    ),
+    pgPolicy("provider_final_standings_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const historicalImportCheckpoints = pgTable(
   "historical_import_checkpoints",
   {
@@ -1133,6 +1175,9 @@ export type FantasyMember = typeof fantasyMembers.$inferSelect;
 export type NewFantasyMember = typeof fantasyMembers.$inferInsert;
 export type FantasyMatchup = typeof fantasyMatchups.$inferSelect;
 export type NewFantasyMatchup = typeof fantasyMatchups.$inferInsert;
+export type ProviderFinalStanding = typeof providerFinalStandings.$inferSelect;
+export type NewProviderFinalStanding =
+  typeof providerFinalStandings.$inferInsert;
 export type HistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferSelect;
 export type NewHistoricalImportCheckpoint =

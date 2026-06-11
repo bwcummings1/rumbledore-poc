@@ -47,6 +47,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "identity_audit_log",
     "identity_mapping",
     "person",
+    "provider_final_standings",
     "season_statistics",
     "stats_calculation",
     "team_season",

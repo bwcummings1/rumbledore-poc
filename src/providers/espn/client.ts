@@ -115,7 +115,10 @@ const espnTeamSchema = z
     name: z.string().optional(),
     nickname: z.string().optional(),
     owners: z.array(z.string()).optional(),
+    playoffSeed: numericValue.optional(),
     primaryOwner: z.string().nullable().optional(),
+    rankCalculatedFinal: numericValue.optional(),
+    rankFinal: numericValue.optional(),
     record: z
       .object({
         overall: z
@@ -647,26 +650,60 @@ function normalizeMatchup(
 
 function finalStandingsFromTeams(
   teams: readonly NormalizedTeam[],
+  sourceTeams: readonly EspnTeam[] = [],
 ): NormalizedFinalStanding[] {
+  const rawTeamById = new Map(
+    sourceTeams.map((team) => [String(toInteger(team.id) ?? team.id), team]),
+  );
+  const explicitRankFor = (team: NormalizedTeam) => {
+    const source = rawTeamById.get(team.providerId);
+    const rank = source?.rankCalculatedFinal ?? source?.rankFinal;
+    const parsed = toInteger(rank);
+    return parsed && parsed > 0 ? parsed : undefined;
+  };
+  const playoffSeedFor = (team: NormalizedTeam) => {
+    const parsed = toInteger(rawTeamById.get(team.providerId)?.playoffSeed);
+    return parsed && parsed > 0 ? parsed : undefined;
+  };
+  const fallbackSorted = [...teams].sort((left, right) => {
+    const leftRecord = left.record;
+    const rightRecord = right.record;
+    return (
+      rightRecord.wins - leftRecord.wins ||
+      rightRecord.ties - leftRecord.ties ||
+      rightRecord.pointsFor - leftRecord.pointsFor ||
+      left.name.localeCompare(right.name) ||
+      left.providerId.localeCompare(right.providerId)
+    );
+  });
+  const fallbackRankByTeam = new Map(
+    fallbackSorted.map((team, index) => [team.providerId, index + 1]),
+  );
+
   return [...teams]
     .sort((left, right) => {
-      const leftRecord = left.record;
-      const rightRecord = right.record;
+      const leftRank =
+        explicitRankFor(left) ?? fallbackRankByTeam.get(left.providerId) ?? 0;
+      const rightRank =
+        explicitRankFor(right) ?? fallbackRankByTeam.get(right.providerId) ?? 0;
       return (
-        rightRecord.wins - leftRecord.wins ||
-        rightRecord.ties - leftRecord.ties ||
-        rightRecord.pointsFor - leftRecord.pointsFor ||
+        leftRank - rightRank ||
         left.name.localeCompare(right.name) ||
         left.providerId.localeCompare(right.providerId)
       );
     })
     .map((team, index) => ({
+      leagueProviderId: team.leagueProviderId,
       teamRef: {
         provider: team.provider,
         providerId: team.providerId,
         season: team.season,
       },
-      rank: index + 1,
+      rank:
+        explicitRankFor(team) ??
+        fallbackRankByTeam.get(team.providerId) ??
+        index + 1,
+      ...(playoffSeedFor(team) ? { playoffSeed: playoffSeedFor(team) } : {}),
       wins: team.record.wins,
       losses: team.record.losses,
       ties: team.record.ties,
@@ -701,7 +738,7 @@ function normalizeHistoryBundle(
     teams,
     members,
     matchups,
-    finalStandings: finalStandingsFromTeams(teams),
+    finalStandings: finalStandingsFromTeams(teams, league.teams ?? []),
     transactions: [],
   };
 }
@@ -787,7 +824,7 @@ export class EspnDiscoveryClient {
       ref,
       resource: "league-teams",
       session,
-      views: ["mTeam"],
+      views: ["mTeam", "mStandings"],
     });
     if (!league.ok) {
       return league;
@@ -863,7 +900,14 @@ export class EspnDiscoveryClient {
         resource: "league-history",
         season,
         session,
-        views: ["mSettings", "mTeam", "mMembers", "mMatchup", "mMatchupScore"],
+        views: [
+          "mSettings",
+          "mTeam",
+          "mStandings",
+          "mMembers",
+          "mMatchup",
+          "mMatchupScore",
+        ],
       });
       if (!history.ok) {
         return err(history.error);

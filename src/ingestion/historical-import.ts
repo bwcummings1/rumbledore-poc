@@ -46,6 +46,7 @@ export interface HistoricalImportResult {
   teams: EntitySyncStats;
   members: EntitySyncStats;
   matchups: EntitySyncStats;
+  finalStandings: EntitySyncStats;
   checkpoint: {
     status: "running" | "completed" | "failed";
     lastCompletedSeason: number | null;
@@ -367,6 +368,7 @@ async function persistBundle({
 }) {
   return persistNormalizedLeagueRows({
     db,
+    finalStandings: bundle.finalStandings,
     leagueId,
     matchups: bundle.matchups,
     members: bundle.members,
@@ -416,6 +418,7 @@ export async function importLeagueHistory<
       teams: emptyStats(),
       members: emptyStats(),
       matchups: emptyStats(),
+      finalStandings: emptyStats(),
       checkpoint: {
         status: completedCheckpoint.status,
         lastCompletedSeason: completedCheckpoint.lastCompletedSeason,
@@ -451,6 +454,7 @@ export async function importLeagueHistory<
   let teams = emptyStats();
   let members = emptyStats();
   let matchups = emptyStats();
+  let finalStandings = emptyStats();
   let latestCheckpoint = activeCheckpoint;
 
   for (let index = startIndex; index < seasons.length; index += 1) {
@@ -479,6 +483,7 @@ export async function importLeagueHistory<
       teams = addStats(teams, persisted.teamStats);
       members = addStats(members, persisted.memberStats);
       matchups = addStats(matchups, persisted.matchupStats);
+      finalStandings = addStats(finalStandings, persisted.finalStandingStats);
     }
 
     imported.push(season);
@@ -508,6 +513,7 @@ export async function importLeagueHistory<
     teams,
     members,
     matchups,
+    finalStandings,
     checkpoint: {
       status: latestCheckpoint.status,
       lastCompletedSeason: latestCheckpoint.lastCompletedSeason,

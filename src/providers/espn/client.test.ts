@@ -355,6 +355,18 @@ describe("ESPN current league client", () => {
     historyFixture.teams[0].record.overall.losses = 3;
     historyFixture.teams[0].record.overall.pointsFor = 1777.25;
     historyFixture.teams[0].record.overall.pointsAgainst = 1450.5;
+    Object.assign(historyFixture.teams[0], {
+      playoffSeed: 4,
+      rankCalculatedFinal: 1,
+      rankFinal: 3,
+    });
+    historyFixture.teams[1].record.overall.wins = 12;
+    historyFixture.teams[1].record.overall.pointsFor = 2000;
+    Object.assign(historyFixture.teams[1], {
+      playoffSeed: 1,
+      rankCalculatedFinal: 2,
+      rankFinal: 1,
+    });
     historyFixture.schedule[0].winner = "HOME";
     historyFixture.schedule[0].home.totalPoints = 120.5;
     historyFixture.schedule[0].away.totalPoints = 99.25;
@@ -391,6 +403,8 @@ describe("ESPN current league client", () => {
     expect(result.value[0].finalStandings[0]).toMatchObject({
       rank: 1,
       teamRef: { provider: "espn", providerId: "1", season: 2025 },
+      leagueProviderId: "95050",
+      playoffSeed: 4,
       wins: 11,
       losses: 3,
       pointsFor: 1777.25,
@@ -398,7 +412,7 @@ describe("ESPN current league client", () => {
     });
     expect(result.value[0].transactions).toEqual([]);
     expect(calls[0].url).toBe(
-      "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/95050?seasonId=2025&view=mSettings&view=mTeam&view=mMembers&view=mMatchup&view=mMatchupScore",
+      "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/95050?seasonId=2025&view=mSettings&view=mTeam&view=mStandings&view=mMembers&view=mMatchup&view=mMatchupScore",
     );
   });
 
