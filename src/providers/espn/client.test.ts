@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import fanApiFixture from "../../../test/fixtures/espn/fan-api-95050.json";
+import leagueFixture from "../../../test/fixtures/espn/league-95050-2026.json";
 import {
   AuthExpiredError,
   ProviderBlockedError,
+  type ProviderLeagueRef,
   ProviderParseError,
 } from "../model";
 import {
@@ -17,6 +19,13 @@ import {
 
 const fixtureSwid = "{00000000-0000-4000-8000-000000000001}";
 const fixtureEspnS2 = "fixture-session-value"; // ubs:ignore — fake ESPN cookie value for adapter tests
+const leagueRef = {
+  provider: "espn",
+  providerId: "95050",
+  season: 2026,
+  sport: "ffl",
+  name: "NHS Alumni Annual",
+} satisfies ProviderLeagueRef;
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -103,6 +112,10 @@ describe("ESPN Fan API discovery client", () => {
     await expect(
       provider.authenticate(fixtureCredentials()),
     ).resolves.toMatchObject({ ok: true });
+    expect(provider.getLeague).toBeTypeOf("function");
+    expect(provider.getTeams).toBeTypeOf("function");
+    expect(provider.getMembers).toBeTypeOf("function");
+    expect(provider.getMatchups).toBeTypeOf("function");
   });
 
   it("uses ESPN's required spoofed headers on Fan API requests", async () => {
@@ -210,5 +223,157 @@ describe("ESPN Fan API discovery client", () => {
     );
 
     expect(source).toContain('import "server-only";');
+  });
+});
+
+describe("ESPN current league client", () => {
+  it("normalizes the scrubbed 95050 league fixture", async () => {
+    const { calls, fetch } = createCapturingFetch(jsonResponse(leagueFixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getLeague(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toEqual({
+      provider: "espn",
+      providerId: "95050",
+      season: 2026,
+      sport: "ffl",
+      name: "NHS Alumni Annual",
+      scoringType: "H2H_POINTS",
+      size: 12,
+      currentScoringPeriod: 0,
+      status: "preseason",
+    });
+    expect(calls[0].url).toBe(
+      "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leagues/95050?view=mSettings",
+    );
+    expect(calls[0].init?.headers).toMatchObject({
+      Accept: "application/json",
+      "x-fantasy-source": "kona",
+      "x-fantasy-platform": "kona",
+      "X-Personalization-Source": "ESPN.com - FAM",
+    });
+  });
+
+  it("normalizes 12 ESPN teams with owner member links", async () => {
+    const { fetch } = createCapturingFetch(jsonResponse(leagueFixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getTeams(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(12);
+    expect(result.value[0]).toMatchObject({
+      provider: "espn",
+      providerId: "1",
+      leagueProviderId: "95050",
+      season: 2026,
+      name: "Fixture Team 01",
+      abbrev: "T01",
+      ownerMemberIds: ["member-12"],
+    });
+  });
+
+  it("normalizes ESPN members to durable provider ids", async () => {
+    const { fetch } = createCapturingFetch(jsonResponse(leagueFixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getMembers(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(16);
+    expect(result.value[0]).toEqual({
+      provider: "espn",
+      providerId: "member-01",
+      leagueProviderId: "95050",
+      season: 2026,
+      displayName: "Fixture Manager 01",
+      role: "member",
+    });
+  });
+
+  it("normalizes all ESPN schedule matchups", async () => {
+    const { fetch } = createCapturingFetch(jsonResponse(leagueFixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getMatchups(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(84);
+    expect(result.value[0]).toMatchObject({
+      provider: "espn",
+      providerId: "1",
+      leagueProviderId: "95050",
+      season: 2026,
+      scoringPeriod: 1,
+      homeTeamRef: { provider: "espn", providerId: "7", season: 2026 },
+      awayTeamRef: { provider: "espn", providerId: "5", season: 2026 },
+      homeScore: 0,
+      awayScore: 0,
+      winner: "unknown",
+      status: "scheduled",
+    });
+  });
+
+  it("passes scoringPeriodId and locally filters matchup periods", async () => {
+    const { calls, fetch } = createCapturingFetch(jsonResponse(leagueFixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getMatchups(fixtureSession(), leagueRef, 1);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(6);
+    expect(result.value.map((matchup) => matchup.scoringPeriod)).toEqual([
+      1, 1, 1, 1, 1, 1,
+    ]);
+    expect(calls[0].url).toBe(
+      "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leagues/95050?view=mMatchup&view=mMatchupScore&scoringPeriodId=1",
+    );
+  });
+
+  it("falls back cleanly when ESPN omits optional team fields", async () => {
+    const sparseFixture = structuredClone(leagueFixture);
+    sparseFixture.teams[0].abbrev = "";
+    sparseFixture.teams[0].logo = "";
+    sparseFixture.teams[0].name = "";
+
+    const { fetch } = createCapturingFetch(jsonResponse(sparseFixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getTeams(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0]).toMatchObject({
+      providerId: "1",
+      name: "ESPN Team 1",
+      abbrev: "1",
+    });
+    expect(result.value[0]).not.toHaveProperty("logo");
+  });
+
+  it("maps unknown ESPN matchup winners without throwing", async () => {
+    const unknownWinnerFixture = structuredClone(leagueFixture);
+    unknownWinnerFixture.schedule[0].winner = "COIN_FLIP";
+    unknownWinnerFixture.schedule[0].home.totalPoints = 12;
+    unknownWinnerFixture.schedule[0].away.totalPoints = 12;
+
+    const { fetch } = createCapturingFetch(jsonResponse(unknownWinnerFixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getMatchups(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0]).toMatchObject({
+      winner: "unknown",
+      status: "unknown",
+    });
   });
 });

@@ -9,5 +9,6 @@ export {
   type EspnDiscoveryClientOptions,
   type EspnDiscoveryProvider,
   type EspnFetch,
+  type EspnProvider,
   type EspnSession,
 } from "./client";
