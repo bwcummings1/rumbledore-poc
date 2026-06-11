@@ -146,6 +146,7 @@ describe("getLeagueHomeData", () => {
     });
     expect(result.data.currentScoringPeriod).toBe(1);
     expect(result.data.currentMatchups).toHaveLength(6);
+    expect(result.data.records).toHaveLength(0);
     expect(result.data.standings).toHaveLength(12);
     expect(result.data.standings[0]).toMatchObject({
       managerNames: ["Fixture Manager 12"],

@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ListOrdered,
   Newspaper,
+  Trophy,
   Users,
 } from "lucide-react";
 import type {
@@ -17,6 +18,16 @@ function formatPoints(value: number): string {
     maximumFractionDigits: 2,
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
   }).format(value);
+}
+
+function formatRecordValue(
+  recordType: LeagueHomeData["records"][number]["recordType"],
+  value: number,
+): string {
+  if (recordType === "best_career_win_percentage") {
+    return `${Math.round(value * 1000) / 10}%`;
+  }
+  return formatPoints(value);
 }
 
 function formatGamesBack(value: number): string {
@@ -253,6 +264,45 @@ function TeamsSection({ data }: { data: LeagueHomeData }) {
   );
 }
 
+function RecordsSection({ data }: { data: LeagueHomeData }) {
+  const featured = data.records.slice(0, 6);
+  return (
+    <section className="grid gap-3">
+      <SectionTitle icon={Trophy} title="Record book" />
+      {featured.length > 0 ? (
+        <div className="grid gap-3">
+          {featured.map((record) => (
+            <article
+              key={record.id}
+              className="rounded-card border border-border bg-card p-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{record.label}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {record.holderName ?? "Unknown holder"}
+                    {record.season ? ` · ${record.season}` : ""}
+                    {record.scoringPeriod
+                      ? ` · Week ${record.scoringPeriod}`
+                      : ""}
+                  </p>
+                </div>
+                <p className="shrink-0 font-mono text-sm font-semibold tabular-nums">
+                  {formatRecordValue(record.recordType, record.value)}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState>
+          No finalized matchup records have been calculated yet.
+        </EmptyState>
+      )}
+    </section>
+  );
+}
+
 function EmptyLeagueSections() {
   return (
     <section className="grid gap-3">
@@ -292,6 +342,7 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
           <ScoresSection data={data} />
         </div>
         <aside className="grid content-start gap-6">
+          <RecordsSection data={data} />
           <TeamsSection data={data} />
           <section className="grid gap-3">
             <SectionTitle icon={CalendarDays} title="Upcoming" />

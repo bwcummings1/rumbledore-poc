@@ -1,15 +1,18 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  allTimeRecords,
   members as authMembers,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
   leagues,
   type Member,
+  persons,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import { RECORD_TYPE_LABELS, type RecordType } from "@/stats";
 
 export interface LeagueHomeTeam {
   id: string;
@@ -47,6 +50,18 @@ export interface LeagueHomeMatchup {
   away: LeagueHomeMatchupSide;
 }
 
+export interface LeagueHomeRecord {
+  id: string;
+  label: string;
+  recordType: RecordType;
+  holderName: string | null;
+  opponentName: string | null;
+  value: number;
+  season: number | null;
+  scoringPeriod: number | null;
+  previousRecordId: string | null;
+}
+
 export interface LeagueHomeData {
   league: {
     id: string;
@@ -61,6 +76,7 @@ export interface LeagueHomeData {
     status: "preseason" | "in_season" | "complete" | "unknown";
   };
   userRole: Member["role"];
+  records: LeagueHomeRecord[];
   standings: LeagueHomeStanding[];
   teams: LeagueHomeTeam[];
   currentScoringPeriod: number | null;
@@ -113,11 +129,27 @@ type FantasyMatchupRow = Pick<
   | "winner"
 >;
 
+type RecordRow = Pick<
+  typeof allTimeRecords.$inferSelect,
+  | "holderPersonId"
+  | "id"
+  | "opponentPersonId"
+  | "previousRecordId"
+  | "recordType"
+  | "scoringPeriod"
+  | "season"
+  | "value"
+>;
+
 function compareTeamsByProviderId(left: string, right: string): number {
   return left.localeCompare(right, undefined, {
     numeric: true,
     sensitivity: "base",
   });
+}
+
+function sortedUnique(values: readonly string[]): string[] {
+  return [...new Set(values)].sort(compareTeamsByProviderId);
 }
 
 function managerNamesFor(
@@ -240,6 +272,39 @@ function buildCurrentMatchups(
     });
 }
 
+function recordLabel(recordType: string): string {
+  return (
+    RECORD_TYPE_LABELS[recordType as RecordType] ??
+    recordType.replaceAll("_", " ")
+  );
+}
+
+function buildRecords(
+  records: readonly RecordRow[],
+  personNamesById: ReadonlyMap<string, string>,
+): LeagueHomeRecord[] {
+  return records
+    .filter((record) => record.recordType in RECORD_TYPE_LABELS)
+    .sort((left, right) =>
+      recordLabel(left.recordType).localeCompare(recordLabel(right.recordType)),
+    )
+    .map((record) => ({
+      holderName: record.holderPersonId
+        ? (personNamesById.get(record.holderPersonId) ?? null)
+        : null,
+      id: record.id,
+      label: recordLabel(record.recordType),
+      opponentName: record.opponentPersonId
+        ? (personNamesById.get(record.opponentPersonId) ?? null)
+        : null,
+      previousRecordId: record.previousRecordId,
+      recordType: record.recordType as RecordType,
+      scoringPeriod: record.scoringPeriod,
+      season: record.season,
+      value: record.value,
+    }));
+}
+
 export async function getLeagueHomeData(
   db: Db,
   input: { leagueId: string; userId: string },
@@ -345,9 +410,55 @@ export async function getLeagueHomeData(
         asc(fantasyMatchups.providerMatchupId),
       );
 
+    const recordRows = await tx
+      .select({
+        holderPersonId: allTimeRecords.holderPersonId,
+        id: allTimeRecords.id,
+        opponentPersonId: allTimeRecords.opponentPersonId,
+        previousRecordId: allTimeRecords.previousRecordId,
+        recordType: allTimeRecords.recordType,
+        scoringPeriod: allTimeRecords.scoringPeriod,
+        season: allTimeRecords.season,
+        value: allTimeRecords.value,
+      })
+      .from(allTimeRecords)
+      .where(
+        and(
+          eq(allTimeRecords.leagueId, input.leagueId),
+          eq(allTimeRecords.isCurrent, true),
+        ),
+      )
+      .orderBy(asc(allTimeRecords.recordType));
+
+    const personIds = sortedUnique(
+      recordRows.flatMap((record) => [
+        ...(record.holderPersonId ? [record.holderPersonId] : []),
+        ...(record.opponentPersonId ? [record.opponentPersonId] : []),
+      ]),
+    );
+    const personRows =
+      personIds.length > 0
+        ? await tx
+            .select({
+              canonicalName: persons.canonicalName,
+              id: persons.id,
+            })
+            .from(persons)
+            .where(
+              and(
+                eq(persons.leagueId, input.leagueId),
+                inArray(persons.id, personIds),
+              ),
+            )
+        : [];
+
     return {
       matchups: matchupRows satisfies FantasyMatchupRow[],
       members: memberRows satisfies FantasyMemberRow[],
+      personNamesById: new Map(
+        personRows.map((person) => [person.id, person.canonicalName]),
+      ),
+      records: recordRows satisfies RecordRow[],
       teams: teamRows satisfies FantasyTeamRow[],
     };
   });
@@ -379,6 +490,7 @@ export async function getLeagueHomeData(
       ),
       currentScoringPeriod: currentPeriod,
       league,
+      records: buildRecords(scoped.records, scoped.personNamesById),
       standings: buildStandings(scoped.teams, membersByProviderId),
       teams,
       totals: {

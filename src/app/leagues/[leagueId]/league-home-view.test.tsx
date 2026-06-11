@@ -38,6 +38,19 @@ const data: LeagueHomeData = {
     sport: "ffl",
     status: "preseason",
   },
+  records: [
+    {
+      holderName: "Fixture Manager 12",
+      id: "record-1",
+      label: "Highest weekly score",
+      opponentName: "Fixture Manager 15",
+      previousRecordId: null,
+      recordType: "highest_single_week_score",
+      scoringPeriod: 1,
+      season: 2025,
+      value: 142.5,
+    },
+  ],
   standings: [
     {
       abbrev: "T01",
@@ -112,4 +125,7 @@ test("league home view renders standings, teams, and current matchups", () => {
     screen.getByRole("heading", { name: "Week 1 matchups" }),
   ).toBeDefined();
   expect(screen.getByRole("heading", { name: "Teams" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Record book" })).toBeDefined();
+  expect(screen.getByText("Highest weekly score")).toBeDefined();
+  expect(screen.getByText("142.50")).toBeDefined();
 });

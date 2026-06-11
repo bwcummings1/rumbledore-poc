@@ -34,7 +34,8 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Wire `import.requested` Inngest handling to run historical import from stored provider credentials after onboarding import. (done 2026-06-11: `import.requested` is now a registered Inngest function that validates event payloads, authorizes the stored credential against league membership, decrypts ESPN cookies server-side, authenticates, and runs resumable `importLeagueHistory`; onboarding import now emits the history request through an injectable publisher; DB-backed job tests and the onboarding vertical slice are green)
 
 ## P2 — Intelligence & Records (see specs/06)
-- [ ] Statistics engine; cross-season identity resolution; all-time league records section.
+- [x] Statistics engine; cross-season identity resolution; all-time league records section. (done 2026-06-11: added RLS-protected `person`/`team_season`/`identity_mapping`/audit/stat/record tables; deterministic resolver uses owner-id continuity, provider-slot prior, and weighted fuzzy fallback with same-season safeguards; recompute materializes weekly facts, season luck/standings, H2H, championship, all-time record events with previous-record pointers; steward merge/split corrections are sticky/manual/audited; onboarding and `import.requested` recompute stats; league home renders a record-book section; focused DB/UI tests cover renamed teams, reused provider slots, luck math, H2H, record history, and merge/split)
+- [ ] Persist provider final standings/playoff bracket data from historical import so championship records can use official postseason placement instead of computed season-rank fallback.
 
 ## P3 — AI content & news (see specs/07, specs/05 — to be written)
 - [ ] Per-league blogger + personas; web-grounded generation pipeline; central news hub; league-tailored feed; pgvector memory with isolation.
@@ -46,6 +47,8 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [ ] Realtime live updates; push notifications; performance/observability; Sleeper then Yahoo providers.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-11: ESPN `NormalizedSeasonBundle.finalStandings` is available from providers but is not persisted yet; P2 championship records now derive champion/runner-up/third from computed season ranks until final standings/playoff bracket rows are stored.
+- 2026-06-11: Cross-season identity auto-resolution must not fuzzy-merge two different provider team slots in the same season unless exact owner/member ids overlap; generic owner/team tokens can otherwise over-link current-season opponents.
 - 2026-06-11: Local/test onboarding imports do not contact Inngest unless `INNGEST_DEV` or `INNGEST_EVENT_KEY` is set; run the app with `INNGEST_DEV=true`/`pnpm jobs:dev` (or production event key) when manually verifying enqueue delivery beyond the DB-backed job handler tests.
 - 2026-06-11: ESPN Fan API discovery currently preserves `teamName` but not a durable provider team id, and fixture `teamName` can be generic; current-user team highlighting needs provider team identity captured during discovery or identity resolution rather than fuzzy team-name matching.
 - 2026-06-11: Playwright writes `test-results/` and `playwright-report/`; keep both ignored, and run `pnpm exec playwright install chromium` once on machines without the browser cache before `pnpm test:e2e`.

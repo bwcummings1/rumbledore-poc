@@ -15,6 +15,7 @@ import {
   type EspnProvider,
 } from "@/providers/espn/client";
 import type { ProviderError, ProviderLeagueRef } from "@/providers/model";
+import { recomputeLeagueStatistics } from "@/stats";
 import { inngest } from "../client";
 import { type ImportRequestedData, JOB_EVENTS } from "../events";
 
@@ -27,12 +28,14 @@ interface ImportRequestedDependencies {
   cipher: CredentialCipher;
   db: Db;
   provider: ImportRequestedProvider;
+  recomputeStats?: typeof recomputeLeagueStatistics;
   now?: () => Date;
 }
 
 export interface ImportRequestedResponse extends HistoricalImportResult {
   ok: true;
   eventName: typeof JOB_EVENTS.importRequested;
+  stats: Awaited<ReturnType<typeof recomputeLeagueStatistics>>;
 }
 
 const storedEspnCredentialsSchema = z.object({
@@ -255,9 +258,15 @@ export async function runImportRequested({
     throwProviderError(history.error);
   }
 
+  const stats = await (deps.recomputeStats ?? recomputeLeagueStatistics)(
+    deps.db,
+    { leagueId: data.leagueId },
+  );
+
   return {
     ok: true,
     eventName: JOB_EVENTS.importRequested,
+    stats,
     ...history.value,
   };
 }

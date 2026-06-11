@@ -37,10 +37,20 @@ afterAll(async () => {
 
 describe("RLS catalog state (migration 0002)", () => {
   const leagueScopedTables = [
+    "all_time_record",
+    "championship_record",
     "fantasy_teams",
     "fantasy_members",
     "fantasy_matchups",
+    "head_to_head_record",
     "historical_import_checkpoints",
+    "identity_audit_log",
+    "identity_mapping",
+    "person",
+    "season_statistics",
+    "stats_calculation",
+    "team_season",
+    "weekly_statistics",
   ] as const;
 
   it("has row security enabled AND forced on league-scoped tables", async () => {

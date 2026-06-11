@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   doublePrecision,
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgPolicy,
   pgTable,
@@ -80,6 +82,40 @@ export const onboardingBrowserSessionStatus = pgEnum(
   "onboarding_browser_session_status",
   ["awaiting_login", "connected", "failed", "ended"],
 );
+
+export const identityMappingMethod = pgEnum("identity_mapping_method", [
+  "auto",
+  "fuzzy",
+  "manual",
+]);
+
+export const identityAuditAction = pgEnum("identity_audit_action", [
+  "create",
+  "merge",
+  "split",
+  "remap",
+  "rename",
+]);
+
+export const statisticsResult = pgEnum("statistics_result", [
+  "win",
+  "loss",
+  "tie",
+]);
+
+export const statsCalculationType = pgEnum("stats_calculation_type", [
+  "season",
+  "head_to_head",
+  "records",
+  "championships",
+  "all",
+]);
+
+export const statsCalculationStatus = pgEnum("stats_calculation_status", [
+  "running",
+  "completed",
+  "failed",
+]);
 
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
 export const leagueRole = pgEnum("league_role", [
@@ -302,6 +338,571 @@ export const historicalImportCheckpoints = pgTable(
       table.status,
     ),
     pgPolicy("historical_import_checkpoints_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+// ── Statistics, identity resolution, and record book (league-scoped) ───────
+
+export interface PersonOwnerHistoryEntry {
+  providerMemberIds: string[];
+  ownerNames: string[];
+  startSeason: number;
+  endSeason: number | null;
+}
+
+export const persons = pgTable(
+  "person",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    canonicalName: text("canonical_name").notNull(),
+    ownerHistory: jsonb("owner_history")
+      .$type<PersonOwnerHistoryEntry[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    index("person_league_name_idx").on(table.leagueId, table.canonicalName),
+    pgPolicy("person_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const teamSeasons = pgTable(
+  "team_season",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    fantasyTeamId: uuid("fantasy_team_id")
+      .notNull()
+      .references(() => fantasyTeams.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerTeamId: text("provider_team_id").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    season: integer("season").notNull(),
+    teamName: text("team_name").notNull(),
+    ownerMemberIds: jsonb("owner_member_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    ownerNames: jsonb("owner_names")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("team_season_provider_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.providerTeamId,
+      table.season,
+    ),
+    uniqueIndex("team_season_fantasy_team_unique").on(table.fantasyTeamId),
+    index("team_season_league_season_idx").on(table.leagueId, table.season),
+    pgPolicy("team_season_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const identityMappings = pgTable(
+  "identity_mapping",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    teamSeasonId: uuid("team_season_id")
+      .notNull()
+      .references(() => teamSeasons.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerTeamId: text("provider_team_id").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    season: integer("season").notNull(),
+    confidence: numeric("confidence", {
+      mode: "number",
+      precision: 5,
+      scale: 4,
+    })
+      .notNull()
+      .default(1),
+    method: identityMappingMethod("method").notNull().default("auto"),
+    resolvedBy: text("resolved_by").notNull().default("system"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("identity_mapping_team_season_unique").on(table.teamSeasonId),
+    uniqueIndex("identity_mapping_provider_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.providerTeamId,
+      table.season,
+    ),
+    index("identity_mapping_person_idx").on(table.leagueId, table.personId),
+    pgPolicy("identity_mapping_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const identityAuditLog = pgTable(
+  "identity_audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    action: identityAuditAction("action").notNull(),
+    personId: uuid("person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    teamSeasonId: uuid("team_season_id").references(() => teamSeasons.id, {
+      onDelete: "set null",
+    }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    beforeState: jsonb("before_state")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    afterState: jsonb("after_state")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("identity_audit_log_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    pgPolicy("identity_audit_log_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const weeklyStatistics = pgTable(
+  "weekly_statistics",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    teamSeasonId: uuid("team_season_id")
+      .notNull()
+      .references(() => teamSeasons.id, { onDelete: "cascade" }),
+    opponentPersonId: uuid("opponent_person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    matchupId: uuid("matchup_id")
+      .notNull()
+      .references(() => fantasyMatchups.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    scoringPeriod: integer("scoring_period").notNull(),
+    pointsFor: numeric("points_for", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+    pointsAgainst: numeric("points_against", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+    result: statisticsResult("result").notNull(),
+    margin: numeric("margin", { mode: "number", precision: 12, scale: 2 })
+      .notNull()
+      .default(0),
+    isPlayoff: boolean("is_playoff").notNull().default(false),
+    isChampionship: boolean("is_championship").notNull().default(false),
+    weeklyRank: integer("weekly_rank").notNull(),
+    isTopScorer: boolean("is_top_scorer").notNull().default(false),
+    isBottomScorer: boolean("is_bottom_scorer").notNull().default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("weekly_statistics_identity_unique").on(
+      table.leagueId,
+      table.season,
+      table.scoringPeriod,
+      table.personId,
+    ),
+    index("weekly_statistics_matchup_idx").on(table.matchupId),
+    pgPolicy("weekly_statistics_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const seasonStatistics = pgTable(
+  "season_statistics",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    ties: integer("ties").notNull().default(0),
+    winPercentage: numeric("win_percentage", {
+      mode: "number",
+      precision: 8,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    pointsFor: numeric("points_for", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    pointsAgainst: numeric("points_against", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    pointDifferential: numeric("point_differential", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    avgPointsFor: numeric("avg_points_for", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    avgPointsAgainst: numeric("avg_points_against", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    medianPointsFor: numeric("median_points_for", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    medianPointsAgainst: numeric("median_points_against", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    highestScore: numeric("highest_score", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    lowestScore: numeric("lowest_score", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    scoringStdDev: numeric("scoring_std_dev", {
+      mode: "number",
+      precision: 12,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    longestWinStreak: integer("longest_win_streak").notNull().default(0),
+    longestLossStreak: integer("longest_loss_streak").notNull().default(0),
+    currentStreakType: statisticsResult("current_streak_type"),
+    currentStreakLength: integer("current_streak_length").notNull().default(0),
+    expectedWins: numeric("expected_wins", {
+      mode: "number",
+      precision: 10,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    luck: numeric("luck", { mode: "number", precision: 10, scale: 4 })
+      .notNull()
+      .default(0),
+    allPlayWins: integer("all_play_wins").notNull().default(0),
+    allPlayLosses: integer("all_play_losses").notNull().default(0),
+    allPlayTies: integer("all_play_ties").notNull().default(0),
+    finalRank: integer("final_rank").notNull().default(0),
+    finalPlacement: text("final_placement").notNull().default("out"),
+    divisionWinner: boolean("division_winner").notNull().default(false),
+    madePlayoffs: boolean("made_playoffs").notNull().default(false),
+    madeChampionship: boolean("made_championship").notNull().default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("season_statistics_identity_unique").on(
+      table.leagueId,
+      table.personId,
+      table.season,
+    ),
+    index("season_statistics_league_season_rank_idx").on(
+      table.leagueId,
+      table.season,
+      table.finalRank,
+    ),
+    pgPolicy("season_statistics_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const headToHeadRecords = pgTable(
+  "head_to_head_record",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    season: integer("season").notNull().default(0),
+    personAId: uuid("person_a_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    personBId: uuid("person_b_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    meetings: integer("meetings").notNull().default(0),
+    personAWins: integer("person_a_wins").notNull().default(0),
+    personBWins: integer("person_b_wins").notNull().default(0),
+    ties: integer("ties").notNull().default(0),
+    personAPoints: numeric("person_a_points", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    personBPoints: numeric("person_b_points", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    personAHighestScore: numeric("person_a_highest_score", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    personBHighestScore: numeric("person_b_highest_score", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    playoffMeetings: integer("playoff_meetings").notNull().default(0),
+    championshipMeetings: integer("championship_meetings").notNull().default(0),
+    lastSeason: integer("last_season"),
+    lastScoringPeriod: integer("last_scoring_period"),
+    currentStreakPersonId: uuid("current_streak_person_id").references(
+      () => persons.id,
+      { onDelete: "set null" },
+    ),
+    currentStreakLength: integer("current_streak_length").notNull().default(0),
+    longestStreakPersonId: uuid("longest_streak_person_id").references(
+      () => persons.id,
+      { onDelete: "set null" },
+    ),
+    longestStreakLength: integer("longest_streak_length").notNull().default(0),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("head_to_head_record_identity_unique").on(
+      table.leagueId,
+      table.season,
+      table.personAId,
+      table.personBId,
+    ),
+    index("head_to_head_record_person_a_idx").on(
+      table.leagueId,
+      table.personAId,
+    ),
+    index("head_to_head_record_person_b_idx").on(
+      table.leagueId,
+      table.personBId,
+    ),
+    pgPolicy("head_to_head_record_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const championshipRecords = pgTable(
+  "championship_record",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    championPersonId: uuid("champion_person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    runnerUpPersonId: uuid("runner_up_person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    thirdPlacePersonId: uuid("third_place_person_id").references(
+      () => persons.id,
+      { onDelete: "set null" },
+    ),
+    regularSeasonWinnerPersonId: uuid(
+      "regular_season_winner_person_id",
+    ).references(() => persons.id, { onDelete: "set null" }),
+    championshipScore: numeric("championship_score", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    }),
+    runnerUpScore: numeric("runner_up_score", {
+      mode: "number",
+      precision: 12,
+      scale: 2,
+    }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("championship_record_season_unique").on(
+      table.leagueId,
+      table.season,
+    ),
+    pgPolicy("championship_record_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const allTimeRecords = pgTable(
+  "all_time_record",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    recordType: text("record_type").notNull(),
+    holderPersonId: uuid("holder_person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    value: numeric("value", { mode: "number", precision: 14, scale: 4 })
+      .notNull()
+      .default(0),
+    season: integer("season"),
+    scoringPeriod: integer("scoring_period"),
+    opponentPersonId: uuid("opponent_person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    previousRecordId: uuid("previous_record_id").references(
+      (): AnyPgColumn => allTimeRecords.id,
+      { onDelete: "set null" },
+    ),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    isCurrent: boolean("is_current").notNull().default(true),
+    ...timestamps,
+  },
+  (table) => [
+    index("all_time_record_current_idx").on(
+      table.leagueId,
+      table.recordType,
+      table.isCurrent,
+    ),
+    pgPolicy("all_time_record_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const statsCalculations = pgTable(
+  "stats_calculation",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    calculationType: statsCalculationType("calculation_type").notNull(),
+    status: statsCalculationStatus("status").notNull().default("running"),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    durationMs: integer("duration_ms"),
+    rowsProcessed: integer("rows_processed").notNull().default(0),
+    errorMessage: text("error_message"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("stats_calculation_league_started_idx").on(
+      table.leagueId,
+      table.startedAt,
+    ),
+    pgPolicy("stats_calculation_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,

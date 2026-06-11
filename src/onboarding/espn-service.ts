@@ -17,6 +17,7 @@ import type {
   EspnProvider,
 } from "@/providers/espn/client";
 import type { ProviderError, ProviderLeagueRef } from "@/providers/model";
+import { recomputeLeagueStatistics } from "@/stats";
 import type { BrowserSession } from "./browser-session";
 import type { CredentialCipher } from "./credential-crypto";
 
@@ -607,6 +608,8 @@ export async function importEspnDiscoveredLeague(
   if (!sync.ok) {
     return sync;
   }
+
+  await recomputeLeagueStatistics(deps.db, { leagueId: sync.value.league.id });
 
   await deps.db
     .insert(members)
