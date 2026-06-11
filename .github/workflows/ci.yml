@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: rumbledore
+          POSTGRES_PASSWORD: rumbledore
+          POSTGRES_DB: rumbledore
+        ports:
+          - 5440:5432
+        options: >-
+          --health-cmd "pg_isready -U rumbledore -d rumbledore"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6390:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      BETTER_AUTH_SECRET: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+      BETTER_AUTH_URL: http://localhost:3000
+      CI: "true"
+      DATABASE_URL: postgres://rumbledore:rumbledore@localhost:5440/rumbledore
+      NEXT_TELEMETRY_DISABLED: "1"
+      REDIS_URL: redis://localhost:6390
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Secret scan
+        run: pnpm secret-scan
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Install UBS
+        run: |
+          curl -sSL https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Collect changed files for UBS
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+              base="$(git rev-list --max-parents=0 HEAD)"
+            fi
+          fi
+          git diff --name-only --diff-filter=ACMRT "$base" "$GITHUB_SHA" > /tmp/ubs-files
+          cat /tmp/ubs-files
+
+      - name: Bug scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < /tmp/ubs-files
+          if (( ${#files[@]} == 0 )); then
+            echo "No changed files to scan."
+            exit 0
+          fi
+          ubs "${files[@]}"
