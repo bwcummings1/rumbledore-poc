@@ -2,7 +2,12 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { BlogDraft, LlmClient, LlmGenerateRequest } from "@/ai";
+import type {
+  BlogDraft,
+  LlmClient,
+  LlmGenerateRequest,
+  WebGrounding,
+} from "@/ai";
 import {
   ConstantEmbeddingProvider,
   DeterministicEmbeddingProvider,
@@ -36,6 +41,13 @@ class DuplicateLlmClient implements LlmClient {
       summary: "This duplicate summary is intentionally unchanged.",
       title: "Duplicate league note",
     };
+  }
+}
+
+class FailingWebGrounding implements WebGrounding {
+  async fetch(): Promise<never> {
+    // ubs:ignore — interface test double named fetch; it performs no network request.
+    throw new Error("web grounding unavailable");
   }
 }
 
@@ -284,6 +296,31 @@ describe("generateLeagueBlogPost", () => {
     expect(rows.run).toMatchObject({
       skipReason: expect.stringMatching(/^near_duplicate:/),
       status: "skipped",
+    });
+  });
+
+  it("continues league-only generation when web grounding fails", async () => {
+    const league = await seedLeague("webfail");
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        llm: new MockLlmClient(),
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        web: new FailingWebGrounding(),
+      },
+      input: {
+        leagueId: league.id,
+        persona: "commissioner",
+        triggerKey: "weekly:webfail",
+      },
+    });
+
+    expect(result).toMatchObject({
+      reused: false,
+      status: "published",
+      title: `Commissioner: ${marker} webfail snapshot`,
     });
   });
 });

@@ -42,8 +42,8 @@ Optional real integrations:
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` must be set together; leaving both empty keeps the OAuth route mounted with placeholders.
 - `ESPN_SWID` and `ESPN_S2` are server-side ESPN cookies. Keep real values only in `.env.local`.
 - `ESPN_TEST_LEAGUE_ID=95050` and `ESPN_TEST_SEASON=2026` are the known real fixture when ESPN credentials are present.
-- `ANTHROPIC_API_KEY`, `THE_ODDS_API_KEY`, `SPORTSDATAIO_API_KEY`, `TAVILY_API_KEY`, and `BROWSERBASE_API_KEY` are optional until their integrations are enabled.
-- `MOCK_ANTHROPIC`, `MOCK_ODDS`, `MOCK_SPORTSDATAIO`, `MOCK_TAVILY`, and `MOCK_BROWSERBASE` accept boolean strings: `true` forces mock mode, `false` requires the corresponding key, and empty uses the key when present.
+- `ANTHROPIC_API_KEY`, `THE_ODDS_API_KEY`, `SPORTSDATAIO_API_KEY`, `TAVILY_API_KEY`, `VOYAGE_API_KEY`, and `BROWSERBASE_API_KEY` are optional until their integrations are enabled.
+- `MOCK_ANTHROPIC`, `MOCK_ODDS`, `MOCK_SPORTSDATAIO`, `MOCK_TAVILY`, `MOCK_VOYAGE`, and `MOCK_BROWSERBASE` accept boolean strings: `true` forces mock mode, `false` requires the corresponding key, and empty uses the key when present.
 
 ## Development Commands
 

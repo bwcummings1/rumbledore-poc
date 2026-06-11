@@ -33,6 +33,7 @@ export const PAID_SERVICES = [
   "odds",
   "sportsdataio",
   "tavily",
+  "voyage",
   "browserbase",
 ] as const;
 export type PaidService = (typeof PAID_SERVICES)[number];
@@ -45,6 +46,7 @@ const SERVICE_VARS: Record<PaidService, { keyVar: string; mockVar: string }> = {
     mockVar: "MOCK_SPORTSDATAIO",
   },
   tavily: { keyVar: "TAVILY_API_KEY", mockVar: "MOCK_TAVILY" },
+  voyage: { keyVar: "VOYAGE_API_KEY", mockVar: "MOCK_VOYAGE" },
   browserbase: { keyVar: "BROWSERBASE_API_KEY", mockVar: "MOCK_BROWSERBASE" },
 };
 
@@ -79,12 +81,14 @@ const baseSchema = z.object({
   THE_ODDS_API_KEY: secret.optional(),
   SPORTSDATAIO_API_KEY: secret.optional(),
   TAVILY_API_KEY: secret.optional(),
+  VOYAGE_API_KEY: secret.optional(),
   BROWSERBASE_API_KEY: secret.optional(),
 
   MOCK_ANTHROPIC: stringbool.optional(),
   MOCK_ODDS: stringbool.optional(),
   MOCK_SPORTSDATAIO: stringbool.optional(),
   MOCK_TAVILY: stringbool.optional(),
+  MOCK_VOYAGE: stringbool.optional(),
   MOCK_BROWSERBASE: stringbool.optional(),
 });
 
@@ -220,6 +224,7 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         parsed.MOCK_SPORTSDATAIO,
       ),
       tavily: service(parsed.TAVILY_API_KEY, parsed.MOCK_TAVILY),
+      voyage: service(parsed.VOYAGE_API_KEY, parsed.MOCK_VOYAGE),
       browserbase: service(parsed.BROWSERBASE_API_KEY, parsed.MOCK_BROWSERBASE),
     },
   };

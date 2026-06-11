@@ -762,12 +762,17 @@ export async function generateLeagueBlogPost({
     return prepared;
   }
 
-  const newsItems = await deps.web.fetch({
-    leagueId: input.leagueId,
-    leagueName: prepared.context.league.name,
-    persona: input.persona,
-    triggerKey: input.triggerKey,
-  });
+  let newsItems: NewsItem[] = [];
+  try {
+    newsItems = await deps.web.fetch({
+      leagueId: input.leagueId,
+      leagueName: prepared.context.league.name,
+      persona: input.persona,
+      triggerKey: input.triggerKey,
+    });
+  } catch {
+    newsItems = [];
+  }
   const prompt = buildPromptParts({
     context: prepared.context,
     newsItems,

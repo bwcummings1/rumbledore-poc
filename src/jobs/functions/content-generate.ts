@@ -3,10 +3,10 @@ import { z } from "zod";
 import {
   AI_PERSONAS,
   type AiGenerationDependencies,
-  createMockAiDependencies,
   type GenerateLeagueBlogPostResult,
   generateLeagueBlogPost,
 } from "@/ai";
+import { createAiDependencies } from "@/ai/dependencies";
 import { AppError } from "@/core/result";
 import { inngest } from "../client";
 import { type ContentGenerateData, JOB_EVENTS } from "../events";
@@ -49,17 +49,7 @@ async function getDefaultContentGenerateDependencies(): Promise<ContentGenerateD
     import("@/db"),
     import("@/core/env"),
   ]);
-  const env = getEnv();
-  if (!env.services.anthropic.mock || !env.services.tavily.mock) {
-    throw new AppError({
-      code: "AI_REAL_CLIENT_NOT_CONFIGURED",
-      message:
-        "Real AI content clients are not wired yet; keep MOCK_ANTHROPIC and MOCK_TAVILY enabled for this slice",
-      status: 501,
-    });
-  }
-
-  return createMockAiDependencies(getDb());
+  return createAiDependencies(getDb(), getEnv());
 }
 
 export async function runContentGenerate({

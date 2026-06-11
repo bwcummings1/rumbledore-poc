@@ -3,10 +3,10 @@ import { z } from "zod";
 import { AppError } from "@/core/result";
 import {
   type CentralNewsIngestionDependencies,
-  createMockNewsDependencies,
   type RefreshCentralNewsResult,
   refreshCentralNews,
 } from "@/news";
+import { createNewsDependencies } from "@/news/dependencies";
 import { inngest } from "../client";
 import { JOB_EVENTS, type NewsRefreshData } from "../events";
 
@@ -47,17 +47,7 @@ async function getDefaultNewsRefreshDependencies(): Promise<NewsRefreshDependenc
     import("@/db"),
     import("@/core/env"),
   ]);
-  const env = getEnv();
-  if (!env.services.tavily.mock) {
-    throw new AppError({
-      code: "NEWS_REAL_CLIENT_NOT_CONFIGURED",
-      message:
-        "Real central news clients are not wired yet; keep MOCK_TAVILY enabled for this slice",
-      status: 501,
-    });
-  }
-
-  return createMockNewsDependencies(getDb());
+  return createNewsDependencies(getDb(), getEnv());
 }
 
 export async function runNewsRefresh({

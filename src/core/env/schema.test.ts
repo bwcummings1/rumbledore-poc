@@ -17,6 +17,7 @@ describe("parseEnv", () => {
     expect(env.services.odds).toEqual({ mock: true });
     expect(env.services.sportsdataio).toEqual({ mock: true });
     expect(env.services.tavily).toEqual({ mock: true });
+    expect(env.services.voyage).toEqual({ mock: true });
     expect(env.services.browserbase).toEqual({ mock: true });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
   });
@@ -48,6 +49,17 @@ describe("parseEnv", () => {
   it("MOCK_<X>=false with a key goes real", () => {
     const env = parseEnv({ MOCK_ODDS: "false", THE_ODDS_API_KEY: "odds-key" });
     expect(env.services.odds).toEqual({ mock: false, apiKey: "odds-key" });
+  });
+
+  it("supports a separate real embeddings provider through Voyage", () => {
+    const env = parseEnv({
+      MOCK_VOYAGE: "false",
+      VOYAGE_API_KEY: "voyage-key", // ubs:ignore — fake fixture value
+    });
+    expect(env.services.voyage).toEqual({
+      mock: false,
+      apiKey: "voyage-key", // ubs:ignore — fake fixture value
+    });
   });
 
   it("treats empty and whitespace-only values as unset", () => {
@@ -138,6 +150,7 @@ describe("parseEnv", () => {
     try {
       parseEnv({
         MOCK_TAVILY: "false",
+        MOCK_VOYAGE: "false",
         MOCK_BROWSERBASE: "false",
         REDIS_URL: "nope",
       });
@@ -145,6 +158,7 @@ describe("parseEnv", () => {
       message = (error as Error).message;
     }
     expect(message).toContain("TAVILY_API_KEY");
+    expect(message).toContain("VOYAGE_API_KEY");
     expect(message).toContain("BROWSERBASE_API_KEY");
     expect(message).toContain("REDIS_URL");
   });
