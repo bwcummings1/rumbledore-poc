@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "content_item_central_scope_dedup_unique" ON "content_item" USING btree ("kind","dedup_key") WHERE "content_item"."league_id" is null;

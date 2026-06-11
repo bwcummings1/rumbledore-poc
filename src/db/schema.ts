@@ -1034,6 +1034,11 @@ export const contentItems = pgTable(
       table.kind,
       table.dedupKey,
     ),
+    // PostgreSQL treats NULLs as distinct in normal unique indexes, so central
+    // rows need their own partial dedup guard.
+    uniqueIndex("content_item_central_scope_dedup_unique")
+      .on(table.kind, table.dedupKey)
+      .where(sql`${table.leagueId} is null`),
     index("content_item_league_published_idx").on(
       table.leagueId,
       table.publishedAt,

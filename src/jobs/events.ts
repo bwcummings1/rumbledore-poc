@@ -36,3 +36,8 @@ export interface ContentGenerateData {
   persona: AiPersona;
   triggerKey: string;
 }
+
+export interface NewsRefreshData {
+  topic?: string;
+  limit?: number;
+}
