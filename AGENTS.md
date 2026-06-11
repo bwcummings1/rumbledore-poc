@@ -35,9 +35,13 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 `git show v0.62:<path>` — e.g. `prisma/schema.prisma`, `lib/crypto/encryption.ts`, `lib/identity/*`, ESPN client headers.
 The old build had disabled gates + fake auth — DO NOT reproduce those.
 
+## Code conventions
+- Config: server code reads env ONLY via `getEnv()` from `src/core/env` (server-only, validated). Paid services are discriminated unions `{mock:true}|{mock:false,apiKey}` — branch on `.mock`, never read key vars directly.
+
 ## Environment gotchas
 - `node` on PATH is a bun shim that breaks Next/tsc — run pnpm scripts with `PATH=/usr/bin:$PATH` (real Node v22).
 - `rm -rf` is blocked by a command guard; use `mv` to `/tmp` instead.
+- `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real.
 
 ## Runtime note (for humans starting the loop)
 The loop runs on Claude account `bxbxbxbxbxr@gmail.com` via `HOME=/home/ubuntu` (see `loop.sh`). `bwcummings1` is reserved for other running agents.
