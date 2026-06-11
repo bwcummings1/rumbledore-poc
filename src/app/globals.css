@@ -129,6 +129,21 @@ html {
   --sidebar-ring: var(--ring);
 }
 
+/* Safe-area utilities (viewport-fit=cover draws edge-to-edge; DESIGN.md mobile-first).
+ * Use pb-safe on bottom-fixed chrome (nav/action bars), pt-safe on top-fixed chrome. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
