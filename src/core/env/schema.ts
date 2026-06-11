@@ -25,6 +25,8 @@ export type GoogleOAuthConfig =
 
 // Dev-only fallback so the app boots with zero config; production requires BETTER_AUTH_SECRET.
 export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
+export const DEV_CREDENTIAL_ENCRYPTION_KEY =
+  "rumbledore-dev-only-credential-key-32chars"; // ubs:ignore — not a credential, dev placeholder rejected in production
 
 export const PAID_SERVICES = [
   "anthropic",
@@ -71,6 +73,7 @@ const baseSchema = z.object({
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
   GOOGLE_CLIENT_ID: secret.optional(),
   GOOGLE_CLIENT_SECRET: secret.optional(),
+  CREDENTIAL_ENCRYPTION_KEY: secret.optional(),
 
   ANTHROPIC_API_KEY: secret.optional(),
   THE_ODDS_API_KEY: secret.optional(),
@@ -101,6 +104,9 @@ export interface Env {
     secret: string;
     url: string;
     google: GoogleOAuthConfig;
+  };
+  credentials: {
+    encryptionKey: string;
   };
   services: Record<PaidService, ServiceConfig>;
 }
@@ -138,6 +144,11 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       if (!("BETTER_AUTH_SECRET" in present)) {
         problems.push(
           "✖ BETTER_AUTH_SECRET is required when NODE_ENV=production\n  → at BETTER_AUTH_SECRET",
+        );
+      }
+      if (!("CREDENTIAL_ENCRYPTION_KEY" in present)) {
+        problems.push(
+          "✖ CREDENTIAL_ENCRYPTION_KEY is required when NODE_ENV=production\n  → at CREDENTIAL_ENCRYPTION_KEY",
         );
       }
       break;
@@ -196,6 +207,10 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
               clientSecret: googleClientSecret,
             }
           : { mock: true },
+    },
+    credentials: {
+      encryptionKey:
+        parsed.CREDENTIAL_ENCRYPTION_KEY ?? DEV_CREDENTIAL_ENCRYPTION_KEY,
     },
     services: {
       anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),

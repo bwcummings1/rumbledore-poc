@@ -59,6 +59,22 @@ export const fantasyMatchupStatus = pgEnum("fantasy_matchup_status", [
   "unknown",
 ]);
 
+export const onboardingCredentialStatus = pgEnum(
+  "onboarding_credential_status",
+  ["connected", "invalid"],
+);
+
+export const onboardingConnectionFlow = pgEnum("onboarding_connection_flow", [
+  "browser",
+  "manual",
+  "extension",
+]);
+
+export const onboardingBrowserSessionStatus = pgEnum(
+  "onboarding_browser_session_status",
+  ["awaiting_login", "connected", "failed", "ended"],
+);
+
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
 export const leagueRole = pgEnum("league_role", [
   "commissioner",
@@ -358,6 +374,105 @@ export const invitations = pgTable(
   (table) => [index("invitations_organization_idx").on(table.organizationId)],
 );
 
+// ── Onboarding credential plane (central; no restrictive RLS) ─────────────
+
+export const providerCredentials = pgTable(
+  "provider_credentials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    subjectProviderId: text("subject_provider_id").notNull(),
+    encryptedPayload: text("encrypted_payload").notNull(),
+    status: onboardingCredentialStatus("status").notNull().default("connected"),
+    connectionFlow: onboardingConnectionFlow("connection_flow").notNull(),
+    lastValidatedAt: timestamp("last_validated_at", {
+      withTimezone: true,
+    }).notNull(),
+    invalidAt: timestamp("invalid_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("provider_credentials_user_provider_subject_unique").on(
+      table.userId,
+      table.provider,
+      table.subjectProviderId,
+    ),
+    index("provider_credentials_user_provider_idx").on(
+      table.userId,
+      table.provider,
+    ),
+  ],
+);
+
+export const onboardingBrowserSessions = pgTable(
+  "onboarding_browser_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    status: onboardingBrowserSessionStatus("status")
+      .notNull()
+      .default("awaiting_login"),
+    liveViewUrl: text("live_view_url").notNull(),
+    credentialId: uuid("credential_id").references(
+      () => providerCredentials.id,
+      {
+        onDelete: "set null",
+      },
+    ),
+    errorCode: text("error_code"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("onboarding_browser_sessions_user_status_idx").on(
+      table.userId,
+      table.status,
+    ),
+  ],
+);
+
+export const onboardingDiscoveredLeagues = pgTable(
+  "onboarding_discovered_leagues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    credentialId: uuid("credential_id")
+      .notNull()
+      .references(() => providerCredentials.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerLeagueId: text("provider_league_id").notNull(),
+    season: integer("season").notNull(),
+    sport: fantasySport("sport").notNull().default("unknown"),
+    name: text("name").notNull(),
+    teamName: text("team_name"),
+    size: integer("size"),
+    lastDiscoveredAt: timestamp("last_discovered_at", {
+      withTimezone: true,
+    }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("onboarding_discovered_leagues_user_identity_unique").on(
+      table.userId,
+      table.provider,
+      table.providerLeagueId,
+      table.season,
+    ),
+    index("onboarding_discovered_leagues_credential_idx").on(
+      table.credentialId,
+    ),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type League = typeof leagues.$inferSelect;
@@ -372,3 +487,13 @@ export type Session = typeof sessions.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type Member = typeof members.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;
+export type ProviderCredential = typeof providerCredentials.$inferSelect;
+export type NewProviderCredential = typeof providerCredentials.$inferInsert;
+export type OnboardingBrowserSession =
+  typeof onboardingBrowserSessions.$inferSelect;
+export type NewOnboardingBrowserSession =
+  typeof onboardingBrowserSessions.$inferInsert;
+export type OnboardingDiscoveredLeague =
+  typeof onboardingDiscoveredLeagues.$inferSelect;
+export type NewOnboardingDiscoveredLeague =
+  typeof onboardingDiscoveredLeagues.$inferInsert;

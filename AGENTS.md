@@ -34,6 +34,7 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 
 ## Mining the old code (reference only; do not copy patterns blindly)
 `git show v0.62:<path>` — e.g. `prisma/schema.prisma`, `lib/crypto/encryption.ts`, `lib/identity/*`, ESPN client headers.
+If the local `v0.62` ref is absent, use `git show origin/v0.62:<path>`.
 The old build had disabled gates + fake auth — DO NOT reproduce those.
 
 ## Code conventions

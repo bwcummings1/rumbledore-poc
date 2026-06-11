@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEV_AUTH_SECRET,
+  DEV_CREDENTIAL_ENCRYPTION_KEY,
   LOCAL_DATABASE_URL,
   LOCAL_REDIS_URL,
   parseEnv,
@@ -17,6 +18,7 @@ describe("parseEnv", () => {
     expect(env.services.sportsdataio).toEqual({ mock: true });
     expect(env.services.tavily).toEqual({ mock: true });
     expect(env.services.browserbase).toEqual({ mock: true });
+    expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
   });
 
   it("goes real for a service when its key is set", () => {
@@ -98,15 +100,19 @@ describe("parseEnv", () => {
     expect(env.auth.google).toEqual({ mock: true });
   });
 
-  it("requires BETTER_AUTH_SECRET in production", () => {
+  it("requires production-only secrets in production", () => {
     expect(() => parseEnv({ NODE_ENV: "production" })).toThrow(
       /BETTER_AUTH_SECRET is required when NODE_ENV=production/,
     );
     const env = parseEnv({
       NODE_ENV: "production",
       BETTER_AUTH_SECRET: "prod-secret", // ubs:ignore — fake fixture value
+      CREDENTIAL_ENCRYPTION_KEY: "prod-credential-key-minimum-32-chars", // ubs:ignore — fake fixture value
     });
     expect(env.auth.secret).toBe("prod-secret");
+    expect(env.credentials.encryptionKey).toBe(
+      "prod-credential-key-minimum-32-chars",
+    );
   });
 
   it("goes real for Google when both OAuth vars are set", () => {
