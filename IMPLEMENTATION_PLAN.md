@@ -42,7 +42,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Implement central news ingestion with source deduplication. (done 2026-06-11: added central news source interfaces/mock, canonical URL/source dedup, idempotent `content_item` `kind='news'` persistence, `news.refresh` Inngest wiring, and a partial central dedup index with service/job/DB coverage)
 - [x] Build the central news hub from central `content_item` rows. (done 2026-06-11: added `/news` as a logged-out central hub rendered from `content_item` rows with `league_id IS NULL` and `kind='news'`, source attribution/external links, home/league navigation, and focused DB/UI coverage)
 - [x] Wire real Anthropic, Tavily, and embedding clients behind the AI interfaces. (done 2026-06-11: added env-selected real clients for Anthropic structured blog generation, Tavily AI grounding/central news, and Voyage embeddings; mocks remain default, `content.generate`/`news.refresh` now use real clients when keys are present, web grounding degrades to league-only on failure, and adapter/factory/pipeline tests cover the seams)
-- [ ] Add content planning for cron triggers and `game.final` triggers.
+- [x] Add content planning for cron triggers and `game.final` triggers. (done 2026-06-11: added DB-backed content planning that scans active leagues for scheduled weekly cadences, resolves finalized matchup IDs under RLS for `game.final`, emits stable `content.generate` event IDs/trigger keys, registers weekly-preview/wrap/post-odds cron planners plus a `game.final` planner, and proves duplicate planning/generation idempotency with focused tests)
 - [ ] Build the league-tailored feed that joins league posts with relevant central items.
 - [ ] Add post detail pages for league blog content.
 - [ ] Emit realtime `blog.published` events after publication.
@@ -54,6 +54,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [ ] Realtime live updates; push notifications; performance/observability; Sleeper then Yahoo providers.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-11: `@inngest/test` executes `step.sendEvent` through the real client path; without `INNGEST_EVENT_KEY`, test the durable planning step via `executeStep(...)` and assert the planned payloads directly, then cover generation idempotency through the target event handler.
 - 2026-06-11: `content_item_scope_dedup_unique (league_id, kind, dedup_key)` does not dedupe central rows because Postgres treats NULL `league_id` values as distinct; central/open content needs partial unique indexes with `WHERE league_id IS NULL` for DB-level dedup.
 - 2026-06-11: DB-backed App Router pages with static-looking paths (for example `/news`) need `export const dynamic = "force-dynamic"` when they should read Postgres at request time instead of being prerendered during `next build`.
 - 2026-06-11: `content_item` intentionally uses mixed-scope RLS (`league_id IS NULL OR league_id = current_league_id()`) so central news can be open-read; league home/storyline queries must still explicitly filter `league_id = current` and `kind = 'blog'` inside `withLeagueContext()`.

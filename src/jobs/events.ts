@@ -37,6 +37,12 @@ export interface ContentGenerateData {
   triggerKey: string;
 }
 
+export interface GameFinalData {
+  leagueId: string;
+  gameId: string;
+  milestoneKeys?: string[];
+}
+
 export interface NewsRefreshData {
   topic?: string;
   limit?: number;

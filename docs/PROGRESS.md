@@ -73,6 +73,7 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **First milestone:** Foundation (P0) + the flagship vertical slice — connect league → ingest (real, via league 95050) → league home shows standings/stats — all test-backed behind green gates.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-11: Content planning landed — scheduled weekly planners and `game.final` fan-out now emit stable idempotent `content.generate` events for AI blogger personas.
 - 2026-06-11: Real AI/news clients landed — Anthropic structured blog generation, Tavily grounding/news search, and Voyage embeddings are env-selected behind mocks.
 - 2026-06-11: Central news hub landed — `/news` renders central `content_item` headlines with attribution, excludes league-scoped rows, and is reachable from home and league pages.
 - 2026-06-11: Central news ingestion landed — canonical source dedup, central `content_item` news persistence, `news.refresh` job wiring, and DB-level central dedup are green.
