@@ -145,6 +145,13 @@ export const aiMemorySource = pgEnum("ai_memory_source", [
   "storyline",
 ]);
 
+export interface LeagueFeedMatchedEntity {
+  provider: string;
+  type: "player" | "team" | "member" | "storyline";
+  providerId: string;
+  label?: string;
+}
+
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
 export const leagueRole = pgEnum("league_role", [
   "commissioner",
@@ -1055,6 +1062,46 @@ export const contentItems = pgTable(
   ],
 );
 
+export const leagueFeedReferences = pgTable(
+  "league_feed_reference",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    // Points at a central content_item row. The league-specific row stores
+    // relevance and framing without copying or mutating the shared story.
+    contentItemId: uuid("content_item_id")
+      .notNull()
+      .references(() => contentItems.id, { onDelete: "cascade" }),
+    relevanceScore: doublePrecision("relevance_score").notNull().default(1),
+    reason: text("reason").notNull().default(""),
+    framingTitle: text("framing_title"),
+    framingSummary: text("framing_summary"),
+    matchedEntities: jsonb("matched_entities")
+      .$type<LeagueFeedMatchedEntity[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("league_feed_reference_identity_unique").on(
+      table.leagueId,
+      table.contentItemId,
+    ),
+    index("league_feed_reference_league_score_idx").on(
+      table.leagueId,
+      table.relevanceScore,
+      table.createdAt,
+    ),
+    pgPolicy("league_feed_reference_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const aiPersonaCards = pgTable(
   "ai_persona_card",
   {
@@ -1395,6 +1442,8 @@ export type NewHistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferInsert;
 export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
+export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;
+export type NewLeagueFeedReference = typeof leagueFeedReferences.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;

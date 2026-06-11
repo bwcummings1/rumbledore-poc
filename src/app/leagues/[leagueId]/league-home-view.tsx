@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ListOrdered,
   Newspaper,
+  Rss,
   Trophy,
   Users,
 } from "lucide-react";
@@ -385,15 +386,24 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
               {leagueStatusLabel(data.league.status)}
             </p>
           </div>
-          <Link
-            href="/news"
-            className={cn(
-              buttonVariants({ className: "w-fit", variant: "outline" }),
-            )}
-          >
-            <Newspaper data-icon="inline-start" />
-            Central news
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/leagues/${data.league.id}/feed`}
+              className={cn(buttonVariants({ className: "w-fit" }))}
+            >
+              <Rss data-icon="inline-start" />
+              League feed
+            </Link>
+            <Link
+              href="/news"
+              className={cn(
+                buttonVariants({ className: "w-fit", variant: "outline" }),
+              )}
+            >
+              <Newspaper data-icon="inline-start" />
+              Central news
+            </Link>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <StatPill label="Teams" value={data.totals.teams} />
