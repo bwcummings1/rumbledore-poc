@@ -1,7 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  doublePrecision,
   index,
+  integer,
+  jsonb,
   pgEnum,
   pgPolicy,
   pgTable,
@@ -10,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { FANTASY_PROVIDER_IDS } from "../providers/ids";
 
 /**
  * Baseline tables (spec 02 §6): users, leagues, league_members.
@@ -29,10 +33,29 @@ import {
  * `app.current_league_id` FROM the session's active organization (spec 01).
  */
 
-export const fantasyProvider = pgEnum("fantasy_provider", [
-  "espn",
-  "sleeper",
-  "yahoo",
+export const fantasyProvider = pgEnum("fantasy_provider", FANTASY_PROVIDER_IDS);
+
+export const fantasySport = pgEnum("fantasy_sport", ["ffl", "unknown"]);
+
+export const fantasyLeagueStatus = pgEnum("fantasy_league_status", [
+  "preseason",
+  "in_season",
+  "complete",
+  "unknown",
+]);
+
+export const fantasyMatchupWinner = pgEnum("fantasy_matchup_winner", [
+  "home",
+  "away",
+  "tie",
+  "unknown",
+]);
+
+export const fantasyMatchupStatus = pgEnum("fantasy_matchup_status", [
+  "scheduled",
+  "in_progress",
+  "final",
+  "unknown",
 ]);
 
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
@@ -75,6 +98,14 @@ export const leagues = pgTable(
     // Stable composite identity {provider, providerId} per spec 03 — never the raw numeric id alone.
     providerLeagueId: text("provider_league_id").notNull(),
     name: text("name").notNull(),
+    season: integer("season").notNull().default(0),
+    sport: fantasySport("sport").notNull().default("unknown"),
+    scoringType: text("scoring_type").notNull().default("unknown"),
+    size: integer("size").notNull().default(0),
+    currentScoringPeriod: integer("current_scoring_period")
+      .notNull()
+      .default(0),
+    status: fantasyLeagueStatus("status").notNull().default("unknown"),
     // Better Auth organization fields (league=org). Slug defaults to a UUID
     // until onboarding (P1) assigns human slugs; leagues are created by
     // domain code, never via Better Auth's createOrganization (provider
@@ -115,6 +146,123 @@ export const leagueMembers = pgTable(
     ),
     index("league_members_user_idx").on(table.userId),
     pgPolicy("league_members_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+// ── Provider-normalized league data (league-scoped; RLS enforced) ─────────
+
+export const fantasyTeams = pgTable(
+  "fantasy_teams",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerTeamId: text("provider_team_id").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    season: integer("season").notNull(),
+    name: text("name").notNull(),
+    abbrev: text("abbrev").notNull().default(""),
+    logo: text("logo"),
+    ownerMemberIds: jsonb("owner_member_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_teams_provider_identity_unique").on(
+      table.provider,
+      table.leagueProviderId,
+      table.providerTeamId,
+      table.season,
+    ),
+    index("fantasy_teams_league_idx").on(table.leagueId),
+    pgPolicy("fantasy_teams_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const fantasyMembers = pgTable(
+  "fantasy_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerMemberId: text("provider_member_id").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    season: integer("season").notNull(),
+    displayName: text("display_name").notNull(),
+    role: text("role").notNull().default("unknown"),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_members_provider_identity_unique").on(
+      table.provider,
+      table.leagueProviderId,
+      table.providerMemberId,
+      table.season,
+    ),
+    index("fantasy_members_league_idx").on(table.leagueId),
+    index("fantasy_members_provider_member_idx").on(
+      table.provider,
+      table.providerMemberId,
+    ),
+    pgPolicy("fantasy_members_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const fantasyMatchups = pgTable(
+  "fantasy_matchups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerMatchupId: text("provider_matchup_id").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    season: integer("season").notNull(),
+    scoringPeriod: integer("scoring_period").notNull(),
+    homeTeamProviderId: text("home_team_provider_id").notNull(),
+    awayTeamProviderId: text("away_team_provider_id").notNull(),
+    homeScore: doublePrecision("home_score").notNull().default(0),
+    awayScore: doublePrecision("away_score").notNull().default(0),
+    winner: fantasyMatchupWinner("winner").notNull().default("unknown"),
+    status: fantasyMatchupStatus("status").notNull().default("unknown"),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_matchups_provider_identity_unique").on(
+      table.provider,
+      table.leagueProviderId,
+      table.providerMatchupId,
+      table.season,
+      table.scoringPeriod,
+    ),
+    index("fantasy_matchups_league_period_idx").on(
+      table.leagueId,
+      table.season,
+      table.scoringPeriod,
+    ),
+    pgPolicy("fantasy_matchups_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -242,6 +390,12 @@ export type League = typeof leagues.$inferSelect;
 export type NewLeague = typeof leagues.$inferInsert;
 export type LeagueMember = typeof leagueMembers.$inferSelect;
 export type NewLeagueMember = typeof leagueMembers.$inferInsert;
+export type FantasyTeam = typeof fantasyTeams.$inferSelect;
+export type NewFantasyTeam = typeof fantasyTeams.$inferInsert;
+export type FantasyMember = typeof fantasyMembers.$inferSelect;
+export type NewFantasyMember = typeof fantasyMembers.$inferInsert;
+export type FantasyMatchup = typeof fantasyMatchups.$inferSelect;
+export type NewFantasyMatchup = typeof fantasyMatchups.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type Member = typeof members.$inferSelect;

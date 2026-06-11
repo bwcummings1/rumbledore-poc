@@ -36,24 +36,46 @@ afterAll(async () => {
 });
 
 describe("RLS catalog state (migration 0002)", () => {
-  it("has row security enabled AND forced on league_members", async () => {
+  const leagueScopedTables = [
+    "league_members",
+    "fantasy_teams",
+    "fantasy_members",
+    "fantasy_matchups",
+  ] as const;
+
+  it("has row security enabled AND forced on league-scoped tables", async () => {
     const { rows } = await handle.pool.query(
-      `select relrowsecurity, relforcerowsecurity
-       from pg_class where relname = 'league_members'`,
+      `select relname, relrowsecurity, relforcerowsecurity
+       from pg_class
+       where relname = any($1)
+       order by relname`,
+      [leagueScopedTables],
     );
-    expect(rows).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
+    expect(rows).toHaveLength(leagueScopedTables.length);
+    for (const tableName of leagueScopedTables) {
+      expect(rows).toContainEqual({
+        relname: tableName,
+        relrowsecurity: true,
+        relforcerowsecurity: true,
+      });
+    }
   });
 
-  it("scopes the isolation policy to current_league_id() for all commands", async () => {
+  it("scopes every isolation policy to current_league_id() for all commands", async () => {
     const { rows } = await handle.pool.query(
-      `select policyname, cmd, qual, with_check
-       from pg_policies where tablename = 'league_members'`,
+      `select tablename, policyname, cmd, qual, with_check
+       from pg_policies
+       where tablename = any($1)
+       order by tablename`,
+      [leagueScopedTables],
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].policyname).toBe("league_members_isolation");
-    expect(rows[0].cmd).toBe("ALL");
-    expect(rows[0].qual).toContain("current_league_id()");
-    expect(rows[0].with_check).toContain("current_league_id()");
+    expect(rows).toHaveLength(leagueScopedTables.length);
+    for (const row of rows) {
+      expect(row.policyname).toBe(`${row.tablename}_isolation`);
+      expect(row.cmd).toBe("ALL");
+      expect(row.qual).toContain("current_league_id()");
+      expect(row.with_check).toContain("current_league_id()");
+    }
   });
 });
 

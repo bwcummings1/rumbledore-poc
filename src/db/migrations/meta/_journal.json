@@ -29,6 +29,13 @@
       "when": 1781185945354,
       "tag": "0003_round_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781191620103,
+      "tag": "0004_fixed_gargoyle",
+      "breakpoints": true
     }
   ]
 }

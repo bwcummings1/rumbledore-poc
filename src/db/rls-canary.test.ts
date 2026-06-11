@@ -5,7 +5,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { withLeagueContext } from "./rls";
-import { type LeagueMember, leagueMembers, leagues, users } from "./schema";
+import {
+  type FantasyTeam,
+  fantasyTeams,
+  type LeagueMember,
+  leagueMembers,
+  leagues,
+  users,
+} from "./schema";
 import { migrateSerialized } from "./test-support";
 
 /**
@@ -35,6 +42,8 @@ let userA: string;
 let userB: string;
 let memberA: LeagueMember;
 let memberB: LeagueMember;
+let teamA: FantasyTeam;
+let teamB: FantasyTeam;
 
 /** Drizzle wraps pg errors; the SQLSTATE lives on `cause.code`. */
 async function sqlstateOf(query: Promise<unknown>): Promise<string> {
@@ -74,7 +83,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON users, leagues, league_members TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON users, leagues, league_members, fantasy_teams, fantasy_members, fantasy_matchups TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one member each — as admin, outside any league
@@ -103,6 +112,31 @@ beforeAll(async () => {
     .values([
       { leagueId: leagueA, userId: userA, role: "commissioner" },
       { leagueId: leagueB, userId: userB, role: "commissioner" },
+    ])
+    .returning();
+  [teamA, teamB] = await admin.db
+    .insert(fantasyTeams)
+    .values([
+      {
+        leagueId: leagueA,
+        provider: "espn",
+        providerTeamId: `${marker}-team-a`,
+        leagueProviderId: `${marker}-a`,
+        season: 2026,
+        name: "Team A",
+        abbrev: "A",
+        contentHash: `${marker}-team-a-hash`,
+      },
+      {
+        leagueId: leagueB,
+        provider: "espn",
+        providerTeamId: `${marker}-team-b`,
+        leagueProviderId: `${marker}-b`,
+        season: 2026,
+        name: "Team B",
+        abbrev: "B",
+        contentHash: `${marker}-team-b-hash`,
+      },
     ])
     .returning();
 
@@ -237,5 +271,42 @@ describe("two-league isolation under withLeagueContext", () => {
     );
     expect(rows.map((m) => m.id)).toContain(memberB.id);
     expect(rows.every((row) => row.leagueId === leagueB)).toBe(true);
+  });
+
+  it("applies the same isolation to normalized fantasy team rows", async () => {
+    const outside = await canary.db
+      .select()
+      .from(fantasyTeams)
+      .where(inArray(fantasyTeams.id, [teamA.id, teamB.id]));
+    expect(outside).toHaveLength(0);
+
+    const scoped = await withLeagueContext(canary.db, leagueA, async (tx) => ({
+      all: await tx.select().from(fantasyTeams),
+      crossLeague: await tx
+        .select()
+        .from(fantasyTeams)
+        .where(eq(fantasyTeams.id, teamB.id)),
+    }));
+    expect(scoped.all.map((row) => row.id)).toContain(teamA.id);
+    expect(scoped.all.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(scoped.crossLeague).toHaveLength(0);
+  });
+
+  it("rejects cross-league fantasy team inserts with WITH CHECK", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(fantasyTeams).values({
+            leagueId: leagueB,
+            provider: "espn",
+            providerTeamId: `${marker}-bad-team`,
+            leagueProviderId: `${marker}-b`,
+            season: 2026,
+            name: "Bad Team",
+            contentHash: `${marker}-bad-team-hash`,
+          }),
+        ),
+      ),
+    ).toBe("42501");
   });
 });
