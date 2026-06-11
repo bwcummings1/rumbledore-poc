@@ -46,6 +46,20 @@ export interface CurrentLeagueSyncResult {
   matchups: EntitySyncStats;
 }
 
+export interface PersistNormalizedLeagueRowsInput {
+  db: Db;
+  leagueId: string;
+  matchups: readonly NormalizedMatchup[];
+  members: readonly NormalizedMember[];
+  teams: readonly NormalizedTeam[];
+}
+
+export interface PersistNormalizedLeagueRowsResult {
+  teamStats: EntitySyncStats;
+  memberStats: EntitySyncStats;
+  matchupStats: EntitySyncStats;
+}
+
 export type CurrentLeagueSyncError = ProviderError;
 
 export interface CurrentLeagueSyncInput<
@@ -343,6 +357,22 @@ async function upsertMatchups(
   return stats(rows.length, changed.length);
 }
 
+export async function persistNormalizedLeagueRows({
+  db,
+  leagueId,
+  matchups,
+  members,
+  teams,
+}: PersistNormalizedLeagueRowsInput): Promise<PersistNormalizedLeagueRowsResult> {
+  return withLeagueContext(db, leagueId, async (tx) => {
+    const teamStats = await upsertTeams(tx, leagueId, teams);
+    const memberStats = await upsertMembers(tx, leagueId, members);
+    const matchupStats = await upsertMatchups(tx, leagueId, matchups);
+
+    return { matchupStats, memberStats, teamStats };
+  });
+}
+
 export async function syncCurrentLeague<
   Session extends FantasyProviderSession,
 >({
@@ -375,16 +405,12 @@ export async function syncCurrentLeague<
   }
 
   const leagueWrite = await upsertLeague(db, league.value);
-  const scoped = await withLeagueContext(db, leagueWrite.id, async (tx) => {
-    const teamStats = await upsertTeams(tx, leagueWrite.id, teams.value);
-    const memberStats = await upsertMembers(tx, leagueWrite.id, members.value);
-    const matchupStats = await upsertMatchups(
-      tx,
-      leagueWrite.id,
-      matchups.value,
-    );
-
-    return { matchupStats, memberStats, teamStats };
+  const scoped = await persistNormalizedLeagueRows({
+    db,
+    leagueId: leagueWrite.id,
+    matchups: matchups.value,
+    members: members.value,
+    teams: teams.value,
   });
 
   return ok({

@@ -116,6 +116,7 @@ describe("ESPN Fan API discovery client", () => {
     expect(provider.getTeams).toBeTypeOf("function");
     expect(provider.getMembers).toBeTypeOf("function");
     expect(provider.getMatchups).toBeTypeOf("function");
+    expect(provider.getHistory).toBeTypeOf("function");
   });
 
   it("uses ESPN's required spoofed headers on Fan API requests", async () => {
@@ -341,6 +342,63 @@ describe("ESPN current league client", () => {
     ]);
     expect(calls[0].url).toBe(
       "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leagues/95050?view=mMatchup&view=mMatchupScore&scoringPeriodId=1",
+    );
+  });
+
+  it("normalizes ESPN leagueHistory seasons into season bundles", async () => {
+    const historyFixture = structuredClone(leagueFixture);
+    historyFixture.seasonId = 2025;
+    historyFixture.scoringPeriodId = 14;
+    historyFixture.status.isExpired = true;
+    historyFixture.status.isActive = false;
+    historyFixture.teams[0].record.overall.wins = 11;
+    historyFixture.teams[0].record.overall.losses = 3;
+    historyFixture.teams[0].record.overall.pointsFor = 1777.25;
+    historyFixture.teams[0].record.overall.pointsAgainst = 1450.5;
+    historyFixture.schedule[0].winner = "HOME";
+    historyFixture.schedule[0].home.totalPoints = 120.5;
+    historyFixture.schedule[0].away.totalPoints = 99.25;
+
+    const { calls, fetch } = createCapturingFetch(
+      jsonResponse([historyFixture]),
+    );
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getHistory(fixtureSession(), leagueRef, {
+      seasons: [2025],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0].league).toMatchObject({
+      provider: "espn",
+      providerId: "95050",
+      season: 2025,
+      status: "complete",
+    });
+    expect(result.value[0].teams).toHaveLength(12);
+    expect(result.value[0].members).toHaveLength(16);
+    expect(result.value[0].matchups[0]).toMatchObject({
+      provider: "espn",
+      providerId: "1",
+      season: 2025,
+      homeScore: 120.5,
+      awayScore: 99.25,
+      winner: "home",
+      status: "final",
+    });
+    expect(result.value[0].finalStandings[0]).toMatchObject({
+      rank: 1,
+      teamRef: { provider: "espn", providerId: "1", season: 2025 },
+      wins: 11,
+      losses: 3,
+      pointsFor: 1777.25,
+      pointsAgainst: 1450.5,
+    });
+    expect(result.value[0].transactions).toEqual([]);
+    expect(calls[0].url).toBe(
+      "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/95050?seasonId=2025&view=mSettings&view=mTeam&view=mMembers&view=mMatchup&view=mMatchupScore",
     );
   });
 

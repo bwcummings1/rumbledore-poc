@@ -23,6 +23,9 @@ export function createFixtureEspnFetch(): EspnFetch {
       return jsonResponse(fanApiFixture);
     }
     if (url.hostname === "lm-api-reads.fantasy.espn.com") {
+      if (url.pathname.includes("/leagueHistory/")) {
+        return jsonResponse([leagueFixture]);
+      }
       return jsonResponse(leagueFixture);
     }
     return jsonResponse({ error: "fixture not found" }, { status: 404 });

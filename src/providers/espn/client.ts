@@ -5,12 +5,14 @@ import {
   type FantasyProvider,
   type FantasyProviderCapabilities,
   type FantasyProviderSession,
+  type NormalizedFinalStanding,
   type NormalizedLeague,
   type NormalizedMatchup,
   type NormalizedMatchupStatus,
   type NormalizedMatchupWinner,
   type NormalizedMember,
   type NormalizedMemberRole,
+  type NormalizedSeasonBundle,
   type NormalizedTeam,
   ProviderBlockedError,
   type ProviderLeagueRef,
@@ -50,6 +52,7 @@ export type EspnProvider = Pick<
   | "authenticate"
   | "capabilities"
   | "discoverLeagues"
+  | "getHistory"
   | "getLeague"
   | "getMatchups"
   | "getMembers"
@@ -172,6 +175,8 @@ const leagueApiResponseSchema = z
   })
   .passthrough();
 
+const leagueHistoryApiResponseSchema = z.array(leagueApiResponseSchema);
+
 const fanLeagueGroupSchema = z
   .object({
     groupId: numericValue,
@@ -216,6 +221,9 @@ const fanApiResponseSchema = z
 
 type EspnFanApiResponse = z.infer<typeof fanApiResponseSchema>;
 type EspnLeagueApiResponse = z.infer<typeof leagueApiResponseSchema>;
+type EspnLeagueHistoryApiResponse = z.infer<
+  typeof leagueHistoryApiResponseSchema
+>;
 type EspnMatchup = z.infer<typeof espnMatchupSchema>;
 type EspnMember = z.infer<typeof espnMemberSchema>;
 type EspnTeam = z.infer<typeof espnTeamSchema>;
@@ -335,6 +343,28 @@ function currentLeagueApiUrl({
   }
   if (scoringPeriod !== undefined) {
     url.searchParams.set("scoringPeriodId", String(scoringPeriod));
+  }
+
+  return url.toString();
+}
+
+function historyLeagueApiUrl({
+  ref,
+  season,
+  views,
+}: {
+  ref: ProviderLeagueRef;
+  season: number;
+  views: string[];
+}): string {
+  const url = new URL(
+    `/apis/v3/games/ffl/leagueHistory/${ref.providerId}`,
+    LEAGUE_API_ORIGIN,
+  );
+
+  url.searchParams.set("seasonId", String(season));
+  for (const view of views) {
+    url.searchParams.append("view", view);
   }
 
   return url.toString();
@@ -615,6 +645,67 @@ function normalizeMatchup(
   };
 }
 
+function finalStandingsFromTeams(
+  teams: readonly NormalizedTeam[],
+): NormalizedFinalStanding[] {
+  return [...teams]
+    .sort((left, right) => {
+      const leftRecord = left.record;
+      const rightRecord = right.record;
+      return (
+        rightRecord.wins - leftRecord.wins ||
+        rightRecord.ties - leftRecord.ties ||
+        rightRecord.pointsFor - leftRecord.pointsFor ||
+        left.name.localeCompare(right.name) ||
+        left.providerId.localeCompare(right.providerId)
+      );
+    })
+    .map((team, index) => ({
+      teamRef: {
+        provider: team.provider,
+        providerId: team.providerId,
+        season: team.season,
+      },
+      rank: index + 1,
+      wins: team.record.wins,
+      losses: team.record.losses,
+      ties: team.record.ties,
+      pointsFor: team.record.pointsFor,
+      pointsAgainst: team.record.pointsAgainst,
+    }));
+}
+
+function normalizeHistoryBundle(
+  league: EspnLeagueApiResponse,
+  ref: ProviderLeagueRef,
+): NormalizedSeasonBundle {
+  const normalizedLeague = normalizeLeague(league);
+  const seasonRef = {
+    ...ref,
+    name: normalizedLeague.name,
+    season: normalizedLeague.season,
+    size: normalizedLeague.size,
+  };
+  const teams = (league.teams ?? []).map((team) =>
+    normalizeTeam(team, seasonRef),
+  );
+  const members = (league.members ?? []).map((member) =>
+    normalizeMember(member, seasonRef),
+  );
+  const matchups = (league.schedule ?? []).map((matchup) =>
+    normalizeMatchup(matchup, seasonRef, league),
+  );
+
+  return {
+    league: normalizedLeague,
+    teams,
+    members,
+    matchups,
+    finalStandings: finalStandingsFromTeams(teams),
+    transactions: [],
+  };
+}
+
 function createSession(
   cookies: NormalizedEspnCookies,
   fan: EspnFanApiResponse,
@@ -756,6 +847,38 @@ export class EspnDiscoveryClient {
     return ok(matchups);
   }
 
+  async getHistory(
+    session: EspnSession,
+    ref: ProviderLeagueRef,
+    options: { seasons: number[] },
+  ): Promise<ProviderResult<NormalizedSeasonBundle[]>> {
+    const seasons = [...new Set(options.seasons)]
+      .filter((season) => Number.isInteger(season))
+      .sort((left, right) => right - left);
+    const bundles: NormalizedSeasonBundle[] = [];
+
+    for (const season of seasons) {
+      const history = await this.fetchHistoricalLeagueApi({
+        ref,
+        resource: "league-history",
+        season,
+        session,
+        views: ["mSettings", "mTeam", "mMembers", "mMatchup", "mMatchupScore"],
+      });
+      if (!history.ok) {
+        return err(history.error);
+      }
+
+      for (const league of history.value) {
+        bundles.push(normalizeHistoryBundle(league, ref));
+      }
+    }
+
+    return ok(
+      bundles.sort((left, right) => right.league.season - left.league.season),
+    );
+  }
+
   private async fetchFanApi(
     session: Pick<EspnSession, "espn_s2" | "swid">,
   ): Promise<ProviderResult<EspnFanApiResponse>> {
@@ -815,6 +938,51 @@ export class EspnDiscoveryClient {
 
         if (response.ok) {
           return await parseLeagueApiResponse(response);
+        }
+
+        const providerError = errorForStatus(response, resource);
+        if (!shouldRetry(response.status) || attempt >= this.maxAttempts) {
+          return err(providerError);
+        }
+      } catch (cause) {
+        if (attempt >= this.maxAttempts) {
+          return err(new ProviderBlockedError(ESPN_PROVIDER_ID, cause));
+        }
+      }
+
+      await this.waitBeforeRetry(attempt);
+    }
+
+    return err(new ProviderBlockedError(ESPN_PROVIDER_ID));
+  }
+
+  private async fetchHistoricalLeagueApi({
+    ref,
+    resource,
+    season,
+    session,
+    views,
+  }: {
+    ref: ProviderLeagueRef;
+    resource: string;
+    season: number;
+    session: EspnSession;
+    views: string[];
+  }): Promise<ProviderResult<EspnLeagueHistoryApiResponse>> {
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      try {
+        const response = await this.fetchImpl(
+          historyLeagueApiUrl({ ref, season, views }),
+          {
+            cache: "no-store",
+            headers: espnHeaders(session),
+            method: "GET",
+            signal: AbortSignal.timeout(this.timeoutMs),
+          },
+        );
+
+        if (response.ok) {
+          return await parseLeagueHistoryApiResponse(response);
         }
 
         const providerError = errorForStatus(response, resource);
@@ -897,6 +1065,33 @@ async function parseLeagueApiResponse(
   }
 }
 
+async function parseLeagueHistoryApiResponse(
+  response: Response,
+): Promise<ProviderResult<EspnLeagueHistoryApiResponse>> {
+  try {
+    const json = (await response.json()) as unknown;
+    const parsed = leagueHistoryApiResponseSchema.safeParse(json);
+    if (!parsed.success) {
+      return err(
+        new ProviderParseError(
+          ESPN_PROVIDER_ID,
+          "ESPN League History API returned an unexpected shape",
+          parsed.error,
+        ),
+      );
+    }
+    return ok(parsed.data);
+  } catch (cause) {
+    return err(
+      new ProviderParseError(
+        ESPN_PROVIDER_ID,
+        "ESPN League History API response was not valid JSON",
+        cause,
+      ),
+    );
+  }
+}
+
 export function createEspnDiscoveryClient(
   options?: EspnDiscoveryClientOptions,
 ): EspnDiscoveryClient {
@@ -913,6 +1108,8 @@ export function createEspnDiscoveryProvider(
     capabilities: ESPN_PROVIDER_CAPABILITIES,
     authenticate: (credentials) => client.authenticate(credentials),
     discoverLeagues: (session) => client.discoverLeagues(session),
+    getHistory: (session, ref, options) =>
+      client.getHistory(session, ref, options),
     getLeague: (session, ref) => client.getLeague(session, ref),
     getMatchups: (session, ref, scoringPeriod) =>
       client.getMatchups(session, ref, scoringPeriod),

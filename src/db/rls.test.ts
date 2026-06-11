@@ -40,6 +40,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "fantasy_teams",
     "fantasy_members",
     "fantasy_matchups",
+    "historical_import_checkpoints",
   ] as const;
 
   it("has row security enabled AND forced on league-scoped tables", async () => {

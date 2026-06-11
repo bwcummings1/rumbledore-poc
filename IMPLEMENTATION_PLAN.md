@@ -30,8 +30,10 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Build the league auto-discovery screen listing a user's discovered leagues to import. (done 2026-06-11: persisted discovered-league list API returns imported/recommended state; onboarding UI now reloads stored discoveries, defaults latest ESPN FFL leagues to selected, and imports selected leagues with focused service/UI coverage)
 - [x] Build the league home page showing real standings + teams from ingested data, mobile-first. (done 2026-06-11: ESPN team records are now normalized/persisted on `fantasy_teams`; `/leagues/[leagueId]` verifies auth-plane membership before RLS-scoped reads, renders mobile-first standings/current matchups/team cards from the DB, and imported onboarding cards link directly to the league home)
 - [x] Add a Playwright e2e proving connect(mock) → ingest(fixture) → home shows standings. (done 2026-06-11: Playwright is wired via `pnpm test:e2e`; the spec signs up through Better Auth, drives the mock hosted ESPN flow, imports the 95050 fixture, opens the generated league home, and asserts standings/team/matchup text from ingested data)
+- [x] Implement resumable ESPN historical import with checkpointed season persistence. (done 2026-06-11: ESPN `getHistory` now reads leagueHistory array responses and normalizes season bundles; `importLeagueHistory` persists historical teams/members/matchups one season at a time under RLS; `historical_import_checkpoints` records completed/failed/resumable state with FORCE RLS; provider + DB-backed checkpoint/resume tests are green)
+- [ ] Wire `import.requested` Inngest handling to run historical import from stored provider credentials after onboarding import.
 
-## P2 — Intelligence & Records (see specs/06 — to be written)
+## P2 — Intelligence & Records (see specs/06)
 - [ ] Statistics engine; cross-season identity resolution; all-time league records section.
 
 ## P3 — AI content & news (see specs/07, specs/05 — to be written)

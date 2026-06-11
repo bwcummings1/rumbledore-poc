@@ -59,6 +59,12 @@ export const fantasyMatchupStatus = pgEnum("fantasy_matchup_status", [
   "unknown",
 ]);
 
+export const historicalImportStatus = pgEnum("historical_import_status", [
+  "running",
+  "completed",
+  "failed",
+]);
+
 export const onboardingCredentialStatus = pgEnum(
   "onboarding_credential_status",
   ["connected", "invalid"],
@@ -258,6 +264,44 @@ export const fantasyMatchups = pgTable(
       table.scoringPeriod,
     ),
     pgPolicy("fantasy_matchups_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const historicalImportCheckpoints = pgTable(
+  "historical_import_checkpoints",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerLeagueId: text("provider_league_id").notNull(),
+    startSeason: integer("start_season").notNull(),
+    endSeason: integer("end_season").notNull(),
+    lastCompletedSeason: integer("last_completed_season"),
+    nextSeason: integer("next_season"),
+    status: historicalImportStatus("status").notNull().default("running"),
+    seasonsTotal: integer("seasons_total").notNull().default(0),
+    seasonsCompleted: integer("seasons_completed").notNull().default(0),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("historical_import_checkpoints_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.providerLeagueId,
+    ),
+    index("historical_import_checkpoints_league_status_idx").on(
+      table.leagueId,
+      table.status,
+    ),
+    pgPolicy("historical_import_checkpoints_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -488,6 +532,10 @@ export type FantasyMember = typeof fantasyMembers.$inferSelect;
 export type NewFantasyMember = typeof fantasyMembers.$inferInsert;
 export type FantasyMatchup = typeof fantasyMatchups.$inferSelect;
 export type NewFantasyMatchup = typeof fantasyMatchups.$inferInsert;
+export type HistoricalImportCheckpoint =
+  typeof historicalImportCheckpoints.$inferSelect;
+export type NewHistoricalImportCheckpoint =
+  typeof historicalImportCheckpoints.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type Member = typeof members.$inferSelect;
