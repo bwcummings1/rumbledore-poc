@@ -1,0 +1,60 @@
+{
+  "id": "{00000000-0000-4000-8000-000000000001}",
+  "anon": false,
+  "preferences": [
+    {
+      "id": "fixture-ffl-entry",
+      "metaData": {
+        "currentScoringPeriodId": 1,
+        "entry": {
+          "entryId": 9,
+          "gameId": 1,
+          "seasonId": 2026,
+          "abbrev": "FFL",
+          "name": "Fantasy Football 2026",
+          "entryMetadata": {
+            "teamName": "Fixture Team",
+            "teamAbbrev": "FIX",
+            "active": true,
+            "draftComplete": true,
+            "scoringTypeName": "Head to Head Points"
+          },
+          "groups": [
+            {
+              "groupId": 95050,
+              "groupSize": 12,
+              "groupName": "NHS Alumni Annual",
+              "leagueStatus": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fixture-non-football-entry",
+      "metaData": {
+        "entry": {
+          "entryId": 1,
+          "gameId": 3,
+          "seasonId": 2026,
+          "abbrev": "FBA",
+          "name": "Fantasy Baseball 2026",
+          "groups": [
+            {
+              "groupId": 111,
+              "groupSize": 10,
+              "groupName": "Ignored Baseball League",
+              "leagueStatus": 1
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "fantasyData": {
+    "totalFantasyLeagues": 1,
+    "leaguesBySportLeague": {
+      "NFL": 1
+    }
+  }
+}
