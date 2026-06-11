@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
+  customType,
   doublePrecision,
   index,
   integer,
@@ -117,6 +118,33 @@ export const statsCalculationStatus = pgEnum("stats_calculation_status", [
   "failed",
 ]);
 
+export const contentItemKind = pgEnum("content_item_kind", [
+  "news",
+  "blog",
+  "ingest_event",
+]);
+
+export const aiPersona = pgEnum("ai_persona", [
+  "commissioner",
+  "analyst",
+  "narrator",
+  "trash_talker",
+  "betting_advisor",
+]);
+
+export const aiGenerationStatus = pgEnum("ai_generation_status", [
+  "running",
+  "published",
+  "skipped",
+  "failed",
+]);
+
+export const aiMemorySource = pgEnum("ai_memory_source", [
+  "blog_post",
+  "league_fact",
+  "storyline",
+]);
+
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
 export const leagueRole = pgEnum("league_role", [
   "commissioner",
@@ -134,6 +162,25 @@ const timestamps = {
     .defaultNow()
     .$onUpdate(() => new Date()),
 };
+
+const vectorColumn = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector";
+  },
+  fromDriver(value) {
+    if (Array.isArray(value)) {
+      return value.map(Number);
+    }
+    return String(value)
+      .slice(1, -1)
+      .split(",")
+      .filter(Boolean)
+      .map((item) => Number.parseFloat(item));
+  },
+  toDriver(value) {
+    return JSON.stringify(value);
+  },
+});
 
 export const users = pgTable(
   "users",
@@ -952,6 +999,165 @@ export const statsCalculations = pgTable(
   ],
 );
 
+// ── Content and AI blogger state ──────────────────────────────────────────
+
+export const contentItems = pgTable(
+  "content_item",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // NULL means central/shared content. Non-null rows are league-scoped and
+    // must be read under the matching RLS context.
+    leagueId: uuid("league_id").references(() => leagues.id, {
+      onDelete: "cascade",
+    }),
+    kind: contentItemKind("kind").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull().default(""),
+    body: text("body").notNull().default(""),
+    source: text("source"),
+    sourceUrl: text("source_url"),
+    authorPersona: aiPersona("author_persona"),
+    publishedAt: timestamp("published_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    dedupKey: text("dedup_key").notNull(),
+    contentHash: text("content_hash").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("content_item_scope_dedup_unique").on(
+      table.leagueId,
+      table.kind,
+      table.dedupKey,
+    ),
+    index("content_item_league_published_idx").on(
+      table.leagueId,
+      table.publishedAt,
+    ),
+    index("content_item_central_published_idx").on(
+      table.kind,
+      table.publishedAt,
+    ),
+    pgPolicy("content_item_scope_policy", {
+      for: "all",
+      using: sql`${table.leagueId} is null or ${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} is null or ${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const aiPersonaCards = pgTable(
+  "ai_persona_card",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    persona: aiPersona("persona").notNull(),
+    name: text("name").notNull(),
+    purpose: text("purpose").notNull(),
+    tone: text("tone").notNull(),
+    promptTemplate: text("prompt_template").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    minWords: integer("min_words").notNull().default(80),
+    maxWords: integer("max_words").notNull().default(220),
+    triggerConfig: jsonb("trigger_config")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("ai_persona_card_league_persona_unique").on(
+      table.leagueId,
+      table.persona,
+    ),
+    index("ai_persona_card_league_enabled_idx").on(
+      table.leagueId,
+      table.enabled,
+    ),
+    pgPolicy("ai_persona_card_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const aiGenerationRuns = pgTable(
+  "ai_generation_run",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    persona: aiPersona("persona").notNull(),
+    triggerKey: text("trigger_key").notNull(),
+    status: aiGenerationStatus("status").notNull().default("running"),
+    contentItemId: uuid("content_item_id").references(() => contentItems.id, {
+      onDelete: "set null",
+    }),
+    skipReason: text("skip_reason"),
+    promptPrefixHash: text("prompt_prefix_hash"),
+    errorMessage: text("error_message"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("ai_generation_run_idempotency_unique").on(
+      table.leagueId,
+      table.persona,
+      table.triggerKey,
+    ),
+    index("ai_generation_run_league_status_idx").on(
+      table.leagueId,
+      table.status,
+    ),
+    pgPolicy("ai_generation_run_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const aiMemory = pgTable(
+  "ai_memory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    contentItemId: uuid("content_item_id").references(() => contentItems.id, {
+      onDelete: "cascade",
+    }),
+    source: aiMemorySource("source").notNull(),
+    textContent: text("text_content").notNull(),
+    embedding: vectorColumn("embedding").notNull(),
+    embeddingModel: text("embedding_model").notNull(),
+    embeddingDimensions: integer("embedding_dimensions").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("ai_memory_league_source_idx").on(table.leagueId, table.source),
+    index("ai_memory_content_item_idx").on(table.contentItemId),
+    pgPolicy("ai_memory_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 // ── Auth plane (Better Auth; central, no restrictive RLS) ──────────────────
 
 export const sessions = pgTable(
@@ -1182,6 +1388,14 @@ export type HistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferSelect;
 export type NewHistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferInsert;
+export type ContentItem = typeof contentItems.$inferSelect;
+export type NewContentItem = typeof contentItems.$inferInsert;
+export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
+export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
+export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;
+export type NewAiGenerationRun = typeof aiGenerationRuns.$inferInsert;
+export type AiMemory = typeof aiMemory.$inferSelect;
+export type NewAiMemory = typeof aiMemory.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type Member = typeof members.$inferSelect;

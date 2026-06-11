@@ -1,9 +1,10 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
   members as authMembers,
+  contentItems,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
@@ -62,6 +63,20 @@ export interface LeagueHomeRecord {
   previousRecordId: string | null;
 }
 
+export interface LeagueHomeStoryline {
+  id: string;
+  title: string;
+  summary: string;
+  authorPersona:
+    | "commissioner"
+    | "analyst"
+    | "narrator"
+    | "trash_talker"
+    | "betting_advisor"
+    | null;
+  publishedAt: string;
+}
+
 export interface LeagueHomeData {
   league: {
     id: string;
@@ -77,6 +92,7 @@ export interface LeagueHomeData {
   };
   userRole: Member["role"];
   records: LeagueHomeRecord[];
+  storylines: LeagueHomeStoryline[];
   standings: LeagueHomeStanding[];
   teams: LeagueHomeTeam[];
   currentScoringPeriod: number | null;
@@ -139,6 +155,11 @@ type RecordRow = Pick<
   | "scoringPeriod"
   | "season"
   | "value"
+>;
+
+type StorylineRow = Pick<
+  typeof contentItems.$inferSelect,
+  "authorPersona" | "id" | "publishedAt" | "summary" | "title"
 >;
 
 function compareTeamsByProviderId(left: string, right: string): number {
@@ -305,6 +326,16 @@ function buildRecords(
     }));
 }
 
+function buildStorylines(rows: readonly StorylineRow[]): LeagueHomeStoryline[] {
+  return rows.map((row) => ({
+    authorPersona: row.authorPersona,
+    id: row.id,
+    publishedAt: row.publishedAt.toISOString(),
+    summary: row.summary,
+    title: row.title,
+  }));
+}
+
 export async function getLeagueHomeData(
   db: Db,
   input: { leagueId: string; userId: string },
@@ -452,6 +483,24 @@ export async function getLeagueHomeData(
             )
         : [];
 
+    const storylineRows = await tx
+      .select({
+        authorPersona: contentItems.authorPersona,
+        id: contentItems.id,
+        publishedAt: contentItems.publishedAt,
+        summary: contentItems.summary,
+        title: contentItems.title,
+      })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.leagueId, input.leagueId),
+          eq(contentItems.kind, "blog"),
+        ),
+      )
+      .orderBy(desc(contentItems.publishedAt))
+      .limit(3);
+
     return {
       matchups: matchupRows satisfies FantasyMatchupRow[],
       members: memberRows satisfies FantasyMemberRow[],
@@ -459,6 +508,7 @@ export async function getLeagueHomeData(
         personRows.map((person) => [person.id, person.canonicalName]),
       ),
       records: recordRows satisfies RecordRow[],
+      storylines: storylineRows satisfies StorylineRow[],
       teams: teamRows satisfies FantasyTeamRow[],
     };
   });
@@ -491,6 +541,7 @@ export async function getLeagueHomeData(
       currentScoringPeriod: currentPeriod,
       league,
       records: buildRecords(scoped.records, scoped.personNamesById),
+      storylines: buildStorylines(scoped.storylines),
       standings: buildStandings(scoped.teams, membersByProviderId),
       teams,
       totals: {

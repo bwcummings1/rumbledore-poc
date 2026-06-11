@@ -37,6 +37,9 @@ afterAll(async () => {
 
 describe("RLS catalog state (migration 0002)", () => {
   const leagueScopedTables = [
+    "ai_generation_run",
+    "ai_memory",
+    "ai_persona_card",
     "all_time_record",
     "championship_record",
     "fantasy_teams",
@@ -53,6 +56,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "team_season",
     "weekly_statistics",
   ] as const;
+  const mixedScopeTables = ["content_item"] as const;
 
   it("has row security enabled AND forced on league-scoped tables", async () => {
     const { rows } = await handle.pool.query(
@@ -87,6 +91,40 @@ describe("RLS catalog state (migration 0002)", () => {
       expect(row.qual).toContain("current_league_id()");
       expect(row.with_check).toContain("current_league_id()");
     }
+  });
+
+  it("has row security enabled AND forced on mixed central/league content tables", async () => {
+    const { rows } = await handle.pool.query(
+      `select relname, relrowsecurity, relforcerowsecurity
+       from pg_class
+       where relname = any($1)
+       order by relname`,
+      [mixedScopeTables],
+    );
+    expect(rows).toEqual([
+      {
+        relforcerowsecurity: true,
+        relname: "content_item",
+        relrowsecurity: true,
+      },
+    ]);
+  });
+
+  it("allows central content rows while scoping league content rows", async () => {
+    const { rows } = await handle.pool.query(
+      `select tablename, policyname, cmd, qual, with_check
+       from pg_policies
+       where tablename = any($1)
+       order by tablename`,
+      [mixedScopeTables],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].policyname).toBe("content_item_scope_policy");
+    expect(rows[0].cmd).toBe("ALL");
+    expect(rows[0].qual.toLowerCase()).toContain("is null");
+    expect(rows[0].qual).toContain("current_league_id()");
+    expect(rows[0].with_check.toLowerCase()).toContain("is null");
+    expect(rows[0].with_check).toContain("current_league_id()");
   });
 });
 

@@ -4,7 +4,8 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
-import { leagues, members, users } from "@/db/schema";
+import { withLeagueContext } from "@/db/rls";
+import { contentItems, leagues, members, users } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { syncCurrentLeague } from "@/ingestion";
 import {
@@ -158,6 +159,64 @@ describe("getLeagueHomeData", () => {
       losses: 0,
       ties: 0,
     });
+  });
+
+  it("loads only this league's published AI blog storylines", async () => {
+    const [otherLeague] = await handle.db
+      .insert(leagues)
+      .values({
+        name: `${marker} other league`,
+        provider: "espn",
+        providerLeagueId: `${marker}-other`,
+        season: 2026,
+        sport: "ffl",
+      })
+      .returning({ id: leagues.id });
+    if (!otherLeague) throw new Error("other league was not inserted");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(contentItems).values({
+        authorPersona: "commissioner",
+        body: "Only the requested league should see this body.",
+        contentHash: `${marker}-storyline-hash`,
+        dedupKey: `${marker}-storyline`,
+        kind: "blog",
+        leagueId,
+        publishedAt: new Date("2026-06-11T00:00:00.000Z"),
+        summary: "Only the requested league should see this summary.",
+        title: "Commissioner: Home league storyline",
+      });
+    });
+
+    await withLeagueContext(handle.db, otherLeague.id, async (tx) => {
+      await tx.insert(contentItems).values({
+        authorPersona: "narrator",
+        body: "Other league body",
+        contentHash: `${marker}-other-storyline-hash`,
+        dedupKey: `${marker}-other-storyline`,
+        kind: "blog",
+        leagueId: otherLeague.id,
+        publishedAt: new Date("2026-06-12T00:00:00.000Z"),
+        summary: "Other league summary",
+        title: "Narrator: Other league storyline",
+      });
+    });
+
+    const result = await getLeagueHomeData(handle.db, { leagueId, userId });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected home result: ${result.status}`);
+    }
+    expect(result.data.storylines).toEqual([
+      {
+        authorPersona: "commissioner",
+        id: expect.any(String),
+        publishedAt: "2026-06-11T00:00:00.000Z",
+        summary: "Only the requested league should see this summary.",
+        title: "Commissioner: Home league storyline",
+      },
+    ]);
   });
 
   it("rejects a user who is not a member of the league", async () => {

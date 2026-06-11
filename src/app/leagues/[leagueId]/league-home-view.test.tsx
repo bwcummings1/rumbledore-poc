@@ -51,6 +51,15 @@ const data: LeagueHomeData = {
       value: 142.5,
     },
   ],
+  storylines: [
+    {
+      authorPersona: "commissioner",
+      id: "storyline-1",
+      publishedAt: "2026-06-11T00:00:00.000Z",
+      summary: "Fixture Team 01 is the first team to watch this week.",
+      title: "Commissioner: NHS Alumni Annual snapshot",
+    },
+  ],
   standings: [
     {
       abbrev: "T01",
@@ -128,4 +137,9 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(screen.getByRole("heading", { name: "Record book" })).toBeDefined();
   expect(screen.getByText("Highest weekly score")).toBeDefined();
   expect(screen.getByText("142.50")).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Storylines" })).toBeDefined();
+  expect(
+    screen.getByText("Commissioner: NHS Alumni Annual snapshot"),
+  ).toBeDefined();
+  expect(screen.getByText("Commissioner")).toBeDefined();
 });

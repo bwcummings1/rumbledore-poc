@@ -10,6 +10,7 @@ import type {
   LeagueHomeData,
   LeagueHomeMatchup,
   LeagueHomeStanding,
+  LeagueHomeStoryline,
   LeagueHomeTeam,
 } from "@/home/league-home";
 
@@ -61,6 +62,31 @@ function matchupStatusLabel(status: LeagueHomeMatchup["status"]): string {
     case "unknown":
       return "Unknown";
   }
+}
+
+function personaLabel(persona: LeagueHomeStoryline["authorPersona"]): string {
+  switch (persona) {
+    case "commissioner":
+      return "Commissioner";
+    case "analyst":
+      return "Analyst";
+    case "narrator":
+      return "Narrator";
+    case "trash_talker":
+      return "Trash-Talker";
+    case "betting_advisor":
+      return "Betting-Advisor";
+    case null:
+      return "League blog";
+  }
+}
+
+function formatPublishedAt(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(value));
 }
 
 function SectionTitle({
@@ -303,13 +329,40 @@ function RecordsSection({ data }: { data: LeagueHomeData }) {
   );
 }
 
-function EmptyLeagueSections() {
+function StorylinesSection({ data }: { data: LeagueHomeData }) {
   return (
     <section className="grid gap-3">
       <SectionTitle icon={Newspaper} title="Storylines" />
-      <EmptyState>
-        No league posts or activity items have been published yet.
-      </EmptyState>
+      {data.storylines.length > 0 ? (
+        <div className="grid gap-3">
+          {data.storylines.map((storyline) => (
+            <article
+              key={storyline.id}
+              className="rounded-card border border-border bg-card p-3"
+            >
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-primary">
+                  {personaLabel(storyline.authorPersona)}
+                </p>
+                <time
+                  className="shrink-0 text-xs text-muted-foreground"
+                  dateTime={storyline.publishedAt}
+                >
+                  {formatPublishedAt(storyline.publishedAt)}
+                </time>
+              </div>
+              <h3 className="text-sm font-semibold">{storyline.title}</h3>
+              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                {storyline.summary}
+              </p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState>
+          No league posts or activity items have been published yet.
+        </EmptyState>
+      )}
     </section>
   );
 }
@@ -355,7 +408,7 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
               <EmptyState>No upcoming matchups are available.</EmptyState>
             )}
           </section>
-          <EmptyLeagueSections />
+          <StorylinesSection data={data} />
         </aside>
       </div>
     </main>

@@ -1,3 +1,5 @@
+import type { AiPersona } from "@/ai";
+
 export const JOB_EVENTS = {
   appPing: "app.ping",
   leagueConnected: "league.connected",
@@ -27,4 +29,10 @@ export interface ImportRequestedData {
   size?: number;
   seasons?: number[];
   maxSeasons?: number;
+}
+
+export interface ContentGenerateData {
+  leagueId: string;
+  persona: AiPersona;
+  triggerKey: string;
 }
