@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "secret-scan": "node scripts/secret-scan.mjs",
+    "test:e2e": "playwright test",
     "jobs:dev": "inngest dev -u http://localhost:3000/api/inngest",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
     "@inngest/test": "^1.0.0",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",

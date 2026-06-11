@@ -29,6 +29,8 @@ next-env.d.ts
 
 # tests
 /coverage
+/playwright-report
+/test-results
 
 # swc
 /.swc

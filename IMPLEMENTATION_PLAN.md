@@ -29,7 +29,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Build the onboarding connect flow behind a Browserbase-style interface (mocked) with a manual-cookie fallback that stores creds encrypted and triggers ingest. (done 2026-06-11: central encrypted provider credential storage + browser session/discovered league tables; mock BrowserSession uses scrubbed ESPN fixtures; manual and hosted-browser APIs validate via the ESPN adapter, persist encrypted cookies only, discover leagues, and selected-league import calls current sync then grants commissioner membership; focused DB/service/UI tests are green)
 - [x] Build the league auto-discovery screen listing a user's discovered leagues to import. (done 2026-06-11: persisted discovered-league list API returns imported/recommended state; onboarding UI now reloads stored discoveries, defaults latest ESPN FFL leagues to selected, and imports selected leagues with focused service/UI coverage)
 - [x] Build the league home page showing real standings + teams from ingested data, mobile-first. (done 2026-06-11: ESPN team records are now normalized/persisted on `fantasy_teams`; `/leagues/[leagueId]` verifies auth-plane membership before RLS-scoped reads, renders mobile-first standings/current matchups/team cards from the DB, and imported onboarding cards link directly to the league home)
-- [ ] Add a Playwright e2e proving connect(mock) → ingest(fixture) → home shows standings. (blocked-by: league home)
+- [x] Add a Playwright e2e proving connect(mock) → ingest(fixture) → home shows standings. (done 2026-06-11: Playwright is wired via `pnpm test:e2e`; the spec signs up through Better Auth, drives the mock hosted ESPN flow, imports the 95050 fixture, opens the generated league home, and asserts standings/team/matchup text from ingested data)
 
 ## P2 — Intelligence & Records (see specs/06 — to be written)
 - [ ] Statistics engine; cross-season identity resolution; all-time league records section.
@@ -45,6 +45,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 
 ## Discoveries / bugs (loop appends here)
 - 2026-06-11: ESPN Fan API discovery currently preserves `teamName` but not a durable provider team id, and fixture `teamName` can be generic; current-user team highlighting needs provider team identity captured during discovery or identity resolution rather than fuzzy team-name matching.
+- 2026-06-11: Playwright writes `test-results/` and `playwright-report/`; keep both ignored, and run `pnpm exec playwright install chromium` once on machines without the browser cache before `pnpm test:e2e`.
 - 2026-06-11: Inside a single Drizzle transaction/`withLeagueContext`, execute DB queries sequentially; `Promise.all` on the same transaction shares one pg client and can trigger "client already executing" warnings.
 - 2026-06-11: Onboarding discovered-league imported state is currently inferred from `leagues` + auth-plane `members`; no separate import-status column exists, so list screens should join those central tables rather than duplicating status.
 - 2026-06-11: This clone may not have a local `v0.62` ref; when mining old code, use `git show origin/v0.62:<path>` if `git show v0.62:<path>` fails.
