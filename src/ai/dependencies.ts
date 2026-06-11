@@ -1,5 +1,6 @@
 import type { Env } from "@/core/env/schema";
 import type { Db } from "@/db/client";
+import { createRealtimePublisher } from "@/realtime";
 import {
   DeterministicEmbeddingProvider,
   MockLlmClient,
@@ -14,7 +15,7 @@ import {
 
 export function createAiDependencies(
   db: Db,
-  env: Pick<Env, "services">,
+  env: Pick<Env, "realtime" | "services">,
 ): AiGenerationDependencies {
   return {
     db,
@@ -27,5 +28,6 @@ export function createAiDependencies(
     web: env.services.tavily.mock
       ? new MockWebGrounding()
       : new TavilyWebGrounding({ apiKey: env.services.tavily.apiKey }),
+    realtime: createRealtimePublisher(env),
   };
 }

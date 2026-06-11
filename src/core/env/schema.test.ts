@@ -19,6 +19,7 @@ describe("parseEnv", () => {
     expect(env.services.tavily).toEqual({ mock: true });
     expect(env.services.voyage).toEqual({ mock: true });
     expect(env.services.browserbase).toEqual({ mock: true });
+    expect(env.realtime).toEqual({ mock: true });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
   });
 
@@ -62,15 +63,49 @@ describe("parseEnv", () => {
     });
   });
 
+  it("goes real for realtime when Supabase publish credentials are set", () => {
+    const env = parseEnv({
+      SUPABASE_SERVICE_ROLE_KEY: "supabase-service-key", // ubs:ignore — fake fixture value
+      SUPABASE_URL: "https://project.supabase.co",
+    });
+    expect(env.realtime).toEqual({
+      mock: false,
+      serviceRoleKey: "supabase-service-key", // ubs:ignore — fake fixture value
+      url: "https://project.supabase.co",
+    });
+  });
+
+  it("MOCK_REALTIME=false requires Supabase publish credentials", () => {
+    expect(() => parseEnv({ MOCK_REALTIME: "false" })).toThrow(/SUPABASE_URL/);
+    expect(() =>
+      parseEnv({
+        MOCK_REALTIME: "false",
+        SUPABASE_URL: "https://project.supabase.co",
+      }),
+    ).toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
+  });
+
+  it("MOCK_REALTIME=true forces the mock publisher even when Supabase is configured", () => {
+    const env = parseEnv({
+      MOCK_REALTIME: "true",
+      SUPABASE_SERVICE_ROLE_KEY: "supabase-service-key", // ubs:ignore — fake fixture value
+      SUPABASE_URL: "https://project.supabase.co",
+    });
+    expect(env.realtime).toEqual({ mock: true });
+  });
+
   it("treats empty and whitespace-only values as unset", () => {
     const env = parseEnv({
       ANTHROPIC_API_KEY: "",
       TAVILY_API_KEY: "   ",
       DATABASE_URL: "",
+      SUPABASE_SERVICE_ROLE_KEY: "",
+      SUPABASE_URL: "   ",
     });
     expect(env.services.anthropic).toEqual({ mock: true });
     expect(env.services.tavily).toEqual({ mock: true });
     expect(env.databaseUrl).toBe(LOCAL_DATABASE_URL);
+    expect(env.realtime).toEqual({ mock: true });
   });
 
   it("rejects a malformed DATABASE_URL", () => {
@@ -152,6 +187,7 @@ describe("parseEnv", () => {
         MOCK_TAVILY: "false",
         MOCK_VOYAGE: "false",
         MOCK_BROWSERBASE: "false",
+        MOCK_REALTIME: "false",
         REDIS_URL: "nope",
       });
     } catch (error) {
@@ -160,6 +196,8 @@ describe("parseEnv", () => {
     expect(message).toContain("TAVILY_API_KEY");
     expect(message).toContain("VOYAGE_API_KEY");
     expect(message).toContain("BROWSERBASE_API_KEY");
+    expect(message).toContain("SUPABASE_URL");
+    expect(message).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(message).toContain("REDIS_URL");
   });
 });

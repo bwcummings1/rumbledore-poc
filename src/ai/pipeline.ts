@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import type { LeagueScopedTx } from "@/db/rls";
@@ -15,6 +16,11 @@ import {
   leagues,
   persons,
 } from "@/db/schema";
+import {
+  NoopRealtimePublisher,
+  REALTIME_EVENTS,
+  type RealtimePublisher,
+} from "@/realtime";
 import { RECORD_TYPE_LABELS, type RecordType } from "@/stats";
 import type {
   BlogDraft,
@@ -46,6 +52,7 @@ export interface GenerateLeagueBlogPostInput {
 export interface AiGenerationDependencies {
   db: Db;
   llm: LlmClient;
+  realtime: RealtimePublisher;
   web: WebGrounding;
   embeddings: EmbeddingProvider;
   duplicateThreshold?: number;
@@ -59,6 +66,7 @@ export type GenerateLeagueBlogPostResult =
       contentItemId: string;
       title: string;
       promptPrefixHash: string;
+      publishedAt: string;
     }
   | {
       status: "skipped";
@@ -362,6 +370,7 @@ async function prepareGeneration({
     const [item] = await tx
       .select({
         id: contentItems.id,
+        publishedAt: contentItems.publishedAt,
         title: contentItems.title,
       })
       .from(contentItems)
@@ -375,6 +384,7 @@ async function prepareGeneration({
     if (item) {
       return {
         contentItemId: item.id,
+        publishedAt: item.publishedAt.toISOString(),
         promptPrefixHash: existingRun.promptPrefixHash ?? "",
         reused: true,
         status: "published",
@@ -634,97 +644,128 @@ async function publishDraft({
   const dedupKey = `blog:${input.persona}:${input.triggerKey}`;
   const contentHash = hashText(draftText(draft));
 
-  return withLeagueContext(deps.db, input.leagueId, async (tx) => {
-    const [inserted] = await tx
-      .insert(contentItems)
-      .values({
-        authorPersona: input.persona,
-        body: draft.body,
-        contentHash,
-        dedupKey,
-        kind: "blog",
-        leagueId: input.leagueId,
-        metadata: { triggerKey: input.triggerKey },
-        publishedAt: timestamp,
-        summary: draft.summary,
-        title: draft.title,
-      })
-      .onConflictDoNothing({
-        target: [
-          contentItems.leagueId,
-          contentItems.kind,
-          contentItems.dedupKey,
-        ],
-      })
-      .returning({
-        id: contentItems.id,
-        title: contentItems.title,
-      });
+  const result = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (tx) => {
+      const [inserted] = await tx
+        .insert(contentItems)
+        .values({
+          authorPersona: input.persona,
+          body: draft.body,
+          contentHash,
+          dedupKey,
+          kind: "blog",
+          leagueId: input.leagueId,
+          metadata: { triggerKey: input.triggerKey },
+          publishedAt: timestamp,
+          summary: draft.summary,
+          title: draft.title,
+        })
+        .onConflictDoNothing({
+          target: [
+            contentItems.leagueId,
+            contentItems.kind,
+            contentItems.dedupKey,
+          ],
+        })
+        .returning({
+          id: contentItems.id,
+          publishedAt: contentItems.publishedAt,
+          title: contentItems.title,
+        });
 
-    const item =
-      inserted ??
-      (
-        await tx
-          .select({
-            id: contentItems.id,
-            title: contentItems.title,
-          })
-          .from(contentItems)
-          .where(
-            and(
-              eq(contentItems.leagueId, input.leagueId),
-              eq(contentItems.kind, "blog"),
-              eq(contentItems.dedupKey, dedupKey),
-            ),
-          )
-          .limit(1)
-      )[0];
+      const item =
+        inserted ??
+        (
+          await tx
+            .select({
+              id: contentItems.id,
+              publishedAt: contentItems.publishedAt,
+              title: contentItems.title,
+            })
+            .from(contentItems)
+            .where(
+              and(
+                eq(contentItems.leagueId, input.leagueId),
+                eq(contentItems.kind, "blog"),
+                eq(contentItems.dedupKey, dedupKey),
+              ),
+            )
+            .limit(1)
+        )[0];
 
-    if (!item) {
-      throw new AppError({
-        code: "AI_CONTENT_PUBLISH_FAILED",
-        message: "AI content item could not be persisted",
-        status: 500,
-      });
-    }
+      if (!item) {
+        throw new AppError({
+          code: "AI_CONTENT_PUBLISH_FAILED",
+          message: "AI content item could not be persisted",
+          status: 500,
+        });
+      }
 
-    if (inserted) {
-      await tx.insert(aiMemory).values({
+      if (inserted) {
+        await tx.insert(aiMemory).values({
+          contentItemId: item.id,
+          embedding,
+          embeddingDimensions: embedding.length,
+          embeddingModel: deps.embeddings.model,
+          leagueId: input.leagueId,
+          metadata: { contentHash },
+          source: "blog_post",
+          textContent: draftText(draft),
+        });
+      }
+
+      await tx
+        .update(aiGenerationRuns)
+        .set({
+          contentItemId: item.id,
+          promptPrefixHash,
+          status: "published",
+          updatedAt: timestamp,
+        })
+        .where(
+          and(
+            eq(aiGenerationRuns.leagueId, input.leagueId),
+            eq(aiGenerationRuns.persona, input.persona),
+            eq(aiGenerationRuns.triggerKey, input.triggerKey),
+          ),
+        );
+
+      return {
         contentItemId: item.id,
-        embedding,
-        embeddingDimensions: embedding.length,
-        embeddingModel: deps.embeddings.model,
-        leagueId: input.leagueId,
-        metadata: { contentHash },
-        source: "blog_post",
-        textContent: draftText(draft),
-      });
-    }
-
-    await tx
-      .update(aiGenerationRuns)
-      .set({
-        contentItemId: item.id,
+        publishedAt: item.publishedAt.toISOString(),
         promptPrefixHash,
-        status: "published",
-        updatedAt: timestamp,
-      })
-      .where(
-        and(
-          eq(aiGenerationRuns.leagueId, input.leagueId),
-          eq(aiGenerationRuns.persona, input.persona),
-          eq(aiGenerationRuns.triggerKey, input.triggerKey),
-        ),
-      );
+        reused: !inserted,
+        status: "published" as const,
+        title: item.title,
+      };
+    },
+  );
 
-    return {
-      contentItemId: item.id,
-      promptPrefixHash,
-      reused: !inserted,
-      status: "published",
-      title: item.title,
-    };
-  });
+  if (!result.reused) {
+    try {
+      await deps.realtime.publishLeagueBlogPublished({
+        at: now(deps).toISOString(),
+        contentItemId: result.contentItemId,
+        leagueId: input.leagueId,
+        persona: input.persona,
+        publishedAt: result.publishedAt,
+        title: result.title,
+        triggerKey: input.triggerKey,
+        type: REALTIME_EVENTS.blogPublished,
+        v: 1,
+      });
+    } catch (error) {
+      logger.warn("Realtime blog publish event failed", {
+        contentItemId: result.contentItemId,
+        error,
+        leagueId: input.leagueId,
+      });
+    }
+  }
+
+  return result;
 }
 
 export function createMockAiDependencies(db: Db): AiGenerationDependencies {
@@ -732,6 +773,7 @@ export function createMockAiDependencies(db: Db): AiGenerationDependencies {
     db,
     embeddings: new DeterministicEmbeddingProvider(),
     llm: new MockLlmClient(),
+    realtime: new NoopRealtimePublisher(),
     web: new MockWebGrounding(),
   };
 }

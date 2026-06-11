@@ -27,6 +27,7 @@ import {
   leagues,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { RecordingRealtimePublisher } from "@/realtime";
 
 const marker = `aipipeline-${randomUUID()}`;
 let handle: DbHandle;
@@ -126,12 +127,14 @@ describe("generateLeagueBlogPost", () => {
     const league = await seedLeague("alpha");
     await seedLeague("beta");
     const llm = new MockLlmClient();
+    const realtime = new RecordingRealtimePublisher();
     const deps = {
       db: handle.db,
       duplicateThreshold: 1.1,
       embeddings: new DeterministicEmbeddingProvider(),
       llm,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
+      realtime,
       web: new MockWebGrounding(),
     };
 
@@ -179,6 +182,36 @@ describe("generateLeagueBlogPost", () => {
     expect(llm.requests[0]?.prompt.volatileContext).not.toBe(
       llm.requests[1]?.prompt.volatileContext,
     );
+    expect(realtime.blogPublished).toEqual([
+      {
+        at: "2026-06-11T12:00:00.000Z",
+        contentItemId:
+          first.status === "published"
+            ? first.contentItemId
+            : expect.any(String),
+        leagueId: league.id,
+        persona: "commissioner",
+        publishedAt: "2026-06-11T12:00:00.000Z",
+        title: `Commissioner: ${marker} alpha snapshot`,
+        triggerKey: "weekly:2026:1",
+        type: "blog.published",
+        v: 1,
+      },
+      {
+        at: "2026-06-11T12:00:00.000Z",
+        contentItemId:
+          third.status === "published"
+            ? third.contentItemId
+            : expect.any(String),
+        leagueId: league.id,
+        persona: "commissioner",
+        publishedAt: "2026-06-11T12:00:00.000Z",
+        title: `Commissioner: ${marker} alpha snapshot`,
+        triggerKey: "weekly:2026:2",
+        type: "blog.published",
+        v: 1,
+      },
+    ]);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
       const posts = await tx
@@ -218,6 +251,7 @@ describe("generateLeagueBlogPost", () => {
     const league = await seedLeague("duplicate");
     const llm = new DuplicateLlmClient();
     const embeddings = new ConstantEmbeddingProvider();
+    const realtime = new RecordingRealtimePublisher();
 
     await withLeagueContext(handle.db, league.id, async (tx) => {
       const [prior] = await tx
@@ -252,6 +286,7 @@ describe("generateLeagueBlogPost", () => {
         embeddings,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
+        realtime,
         web: new MockWebGrounding(),
       },
       input: {
@@ -269,6 +304,7 @@ describe("generateLeagueBlogPost", () => {
       /^near_duplicate:/,
     );
     expect(llm.requests.map((request) => request.attempt)).toEqual([1, 2]);
+    expect(realtime.blogPublished).toHaveLength(0);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
       const posts = await tx
@@ -308,6 +344,7 @@ describe("generateLeagueBlogPost", () => {
         embeddings: new DeterministicEmbeddingProvider(),
         llm: new MockLlmClient(),
         now: () => new Date("2026-06-11T12:00:00.000Z"),
+        realtime: new RecordingRealtimePublisher(),
         web: new FailingWebGrounding(),
       },
       input: {

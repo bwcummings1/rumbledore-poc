@@ -23,6 +23,10 @@ export type GoogleOAuthConfig =
   | { mock: true }
   | { mock: false; clientId: string; clientSecret: string };
 
+export type RealtimeConfig =
+  | { mock: true }
+  | { mock: false; serviceRoleKey: string; url: string };
+
 // Dev-only fallback so the app boots with zero config; production requires BETTER_AUTH_SECRET.
 export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
 export const DEV_CREDENTIAL_ENCRYPTION_KEY =
@@ -76,6 +80,9 @@ const baseSchema = z.object({
   GOOGLE_CLIENT_ID: secret.optional(),
   GOOGLE_CLIENT_SECRET: secret.optional(),
   CREDENTIAL_ENCRYPTION_KEY: secret.optional(),
+  SUPABASE_URL: z.url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: secret.optional(),
+  MOCK_REALTIME: stringbool.optional(),
 
   ANTHROPIC_API_KEY: secret.optional(),
   THE_ODDS_API_KEY: secret.optional(),
@@ -112,6 +119,7 @@ export interface Env {
   credentials: {
     encryptionKey: string;
   };
+  realtime: RealtimeConfig;
   services: Record<PaidService, ServiceConfig>;
 }
 
@@ -169,6 +177,23 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     );
   }
 
+  const realtimeFlag =
+    "MOCK_REALTIME" in present
+      ? stringbool.safeParse(present.MOCK_REALTIME)
+      : undefined;
+  if (realtimeFlag?.success && realtimeFlag.data === false) {
+    if (!("SUPABASE_URL" in present)) {
+      problems.push(
+        "✖ MOCK_REALTIME=false requires SUPABASE_URL to be set\n  → at SUPABASE_URL",
+      );
+    }
+    if (!("SUPABASE_SERVICE_ROLE_KEY" in present)) {
+      problems.push(
+        "✖ MOCK_REALTIME=false requires SUPABASE_SERVICE_ROLE_KEY to be set\n  → at SUPABASE_SERVICE_ROLE_KEY",
+      );
+    }
+  }
+
   if (!base.success || problems.length > 0) {
     throw new Error(
       `Invalid environment configuration:\n${problems.join("\n")}`,
@@ -189,6 +214,10 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
   // already filtered out above, so truthiness == presence here).
   const googleClientId = parsed.GOOGLE_CLIENT_ID;
   const googleClientSecret = parsed.GOOGLE_CLIENT_SECRET;
+  const realtimeIsReal =
+    parsed.MOCK_REALTIME !== true &&
+    parsed.SUPABASE_URL !== undefined &&
+    parsed.SUPABASE_SERVICE_ROLE_KEY !== undefined;
 
   return {
     nodeEnv: parsed.NODE_ENV,
@@ -216,6 +245,13 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       encryptionKey:
         parsed.CREDENTIAL_ENCRYPTION_KEY ?? DEV_CREDENTIAL_ENCRYPTION_KEY,
     },
+    realtime: realtimeIsReal
+      ? {
+          mock: false,
+          serviceRoleKey: parsed.SUPABASE_SERVICE_ROLE_KEY as string,
+          url: parsed.SUPABASE_URL as string,
+        }
+      : { mock: true },
     services: {
       anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),
       odds: service(parsed.THE_ODDS_API_KEY, parsed.MOCK_ODDS),

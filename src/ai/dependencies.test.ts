@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import type { Db } from "@/db/client";
+import { NoopRealtimePublisher, SupabaseRealtimePublisher } from "@/realtime";
 import { createAiDependencies } from "./dependencies";
 import {
   DeterministicEmbeddingProvider,
@@ -25,6 +26,7 @@ describe("createAiDependencies", () => {
     expect(deps.llm).toBeInstanceOf(MockLlmClient);
     expect(deps.web).toBeInstanceOf(MockWebGrounding);
     expect(deps.embeddings).toBeInstanceOf(DeterministicEmbeddingProvider);
+    expect(deps.realtime).toBeInstanceOf(NoopRealtimePublisher);
   });
 
   it("selects real Anthropic, Tavily, and Voyage clients when keys are present", () => {
@@ -40,5 +42,17 @@ describe("createAiDependencies", () => {
     expect(deps.llm).toBeInstanceOf(AnthropicLlmClient);
     expect(deps.web).toBeInstanceOf(TavilyWebGrounding);
     expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
+  });
+
+  it("selects the Supabase realtime publisher when publish credentials are present", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        SUPABASE_SERVICE_ROLE_KEY: fakeKey(),
+        SUPABASE_URL: "https://project.supabase.co",
+      }),
+    );
+
+    expect(deps.realtime).toBeInstanceOf(SupabaseRealtimePublisher);
   });
 });
