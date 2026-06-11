@@ -78,6 +78,9 @@ test("league feed view renders league posts and relevant central stories", () =>
     screen.getByRole("link", { name: /read source/i }).getAttribute("href"),
   ).toBe("https://news.example.com/relevant");
   expect(
+    screen.getByRole("link", { name: /read post/i }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/posts/blog-content-1");
+  expect(
     screen.getByRole("link", { name: /league home/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001");
 });

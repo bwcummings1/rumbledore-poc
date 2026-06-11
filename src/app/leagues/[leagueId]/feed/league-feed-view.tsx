@@ -1,4 +1,10 @@
-import { ArrowLeft, ExternalLink, Newspaper, Rss } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  Newspaper,
+  Rss,
+} from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -38,8 +44,18 @@ function sourceLabel(item: LeagueFeedItem): string {
   return item.sourceLabel;
 }
 
-function FeedCard({ item }: { item: LeagueFeedItem }) {
+function FeedCard({
+  item,
+  leagueId,
+}: {
+  item: LeagueFeedItem;
+  leagueId: string;
+}) {
   const hasSource = item.scope === "central" && item.sourceUrl.length > 0;
+  const postHref =
+    item.scope === "league" && item.kind === "blog"
+      ? `/leagues/${leagueId}/posts/${item.contentItemId}`
+      : null;
   const Icon = item.scope === "central" ? Newspaper : Rss;
 
   return (
@@ -85,6 +101,21 @@ function FeedCard({ item }: { item: LeagueFeedItem }) {
           Read source
           <ExternalLink data-icon="inline-end" />
         </a>
+      ) : null}
+      {postHref ? (
+        <Link
+          href={postHref}
+          className={cn(
+            buttonVariants({
+              className: "mt-4 w-fit",
+              size: "sm",
+              variant: "outline",
+            }),
+          )}
+        >
+          Read post
+          <ArrowRight data-icon="inline-end" />
+        </Link>
       ) : null}
     </article>
   );
@@ -137,7 +168,11 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
           aria-label="League feed items"
         >
           {data.items.map((item) => (
-            <FeedCard key={`${item.scope}-${item.id}`} item={item} />
+            <FeedCard
+              key={`${item.scope}-${item.id}`}
+              item={item}
+              leagueId={data.league.id}
+            />
           ))}
         </section>
       ) : (

@@ -142,4 +142,7 @@ test("league home view renders standings, teams, and current matchups", () => {
     screen.getByText("Commissioner: NHS Alumni Annual snapshot"),
   ).toBeDefined();
   expect(screen.getByText("Commissioner")).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: /read post/i }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/posts/storyline-1");
 });

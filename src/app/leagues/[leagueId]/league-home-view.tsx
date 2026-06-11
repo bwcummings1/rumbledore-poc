@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowRight,
   CalendarDays,
   ListOrdered,
   Newspaper,
@@ -359,6 +360,19 @@ function StorylinesSection({ data }: { data: LeagueHomeData }) {
               <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
                 {storyline.summary}
               </p>
+              <Link
+                href={`/leagues/${data.league.id}/posts/${storyline.id}`}
+                className={cn(
+                  buttonVariants({
+                    className: "mt-3 w-fit",
+                    size: "sm",
+                    variant: "outline",
+                  }),
+                )}
+              >
+                Read post
+                <ArrowRight data-icon="inline-end" />
+              </Link>
             </article>
           ))}
         </div>
