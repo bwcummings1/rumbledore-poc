@@ -42,6 +42,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - Auth: server code uses `getAuth()` from `src/auth` (pure factory in `src/auth/instance.ts` for tests). Better Auth owns the central auth plane (users/sessions/accounts/verifications/members/invitations + leagues-as-organizations) — NO restrictive RLS there (membership must be readable before a league context exists). Leagues are created by domain code, never `createOrganization`. Role strings must match the `league_role` pg enum.
 - DB tests: call `migrateSerialized()` (`src/db/test-support.ts`), never `migrate()` directly — parallel vitest processes race on unapplied migrations.
 - DB tests: after an expected constraint/RLS error, do not keep using that same transaction (Postgres marks it aborted); assert expected failures in their own `withLeagueContext()`/transaction.
+- DB code/tests: do not `Promise.all` queries on the same Drizzle transaction/`withLeagueContext`; one transaction is one pg client, so run queries sequentially inside it.
 - Never call `getEnv()`/`getAuth()` at module scope in route files — `next build` evaluates them with NODE_ENV=production; resolve per-request.
 
 ## Environment gotchas
