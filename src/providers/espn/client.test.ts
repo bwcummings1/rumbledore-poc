@@ -274,6 +274,13 @@ describe("ESPN current league client", () => {
       name: "Fixture Team 01",
       abbrev: "T01",
       ownerMemberIds: ["member-12"],
+      record: {
+        losses: 0,
+        pointsAgainst: 0,
+        pointsFor: 0,
+        ties: 0,
+        wins: 0,
+      },
     });
   });
 

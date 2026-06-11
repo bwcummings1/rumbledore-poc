@@ -113,6 +113,21 @@ const espnTeamSchema = z
     nickname: z.string().optional(),
     owners: z.array(z.string()).optional(),
     primaryOwner: z.string().nullable().optional(),
+    record: z
+      .object({
+        overall: z
+          .object({
+            losses: numericValue.optional(),
+            pointsAgainst: numericValue.optional(),
+            pointsFor: numericValue.optional(),
+            ties: numericValue.optional(),
+            wins: numericValue.optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -469,6 +484,13 @@ function normalizeTeam(
     abbrev: team.abbrev?.trim() || providerId,
     ...(logo ? { logo } : {}),
     ownerMemberIds,
+    record: {
+      losses: toInteger(team.record?.overall?.losses) ?? 0,
+      pointsAgainst: toNumber(team.record?.overall?.pointsAgainst) ?? 0,
+      pointsFor: toNumber(team.record?.overall?.pointsFor) ?? 0,
+      ties: toInteger(team.record?.overall?.ties) ?? 0,
+      wins: toInteger(team.record?.overall?.wins) ?? 0,
+    },
   };
 }
 

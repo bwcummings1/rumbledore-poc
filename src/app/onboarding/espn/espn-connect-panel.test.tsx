@@ -95,4 +95,8 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
     expect(importBodies).toEqual([{ providerLeagueId: "95050", season: 2026 }]);
   });
   expect(await screen.findByText("Imported")).toBeDefined();
+  const homeLink = screen.getByRole("link", {
+    name: /open home/i,
+  }) as HTMLAnchorElement;
+  expect(homeLink.getAttribute("href")).toBe("/leagues/league-95050");
 });

@@ -3,11 +3,13 @@
 import {
   CheckCircle2,
   ExternalLink,
+  House,
   KeyRound,
   ListChecks,
   Plug,
   RefreshCw,
 } from "lucide-react";
+import Link from "next/link";
 import {
   type FormEvent,
   useCallback,
@@ -15,7 +17,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface DiscoveredLeague {
   provider: "espn";
@@ -523,14 +526,26 @@ export function EspnConnectPanel() {
                         ? "Selected by default"
                         : `ESPN league ${league.providerId}`}
                 </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => importLeague(league)}
-                  disabled={isBusy || league.imported}
-                >
-                  Import
-                </Button>
+                {league.imported && league.leagueId ? (
+                  <Link
+                    href={`/leagues/${league.leagueId}`}
+                    className={cn(
+                      buttonVariants({ size: "sm", variant: "secondary" }),
+                    )}
+                  >
+                    <House data-icon="inline-start" />
+                    Open home
+                  </Link>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => importLeague(league)}
+                    disabled={isBusy || league.imported}
+                  >
+                    Import
+                  </Button>
+                )}
               </div>
             </article>
           );

@@ -175,6 +175,11 @@ describe("syncCurrentLeague", () => {
       name: "Fixture Team 01",
       abbrev: "T01",
       ownerMemberIds: ["member-12"],
+      wins: 0,
+      losses: 0,
+      ties: 0,
+      pointsFor: 0,
+      pointsAgainst: 0,
     });
     expect(firstRows.members[0]).toMatchObject({
       providerMemberId: "member-01",

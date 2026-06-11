@@ -81,6 +81,13 @@ function teamHashPayload(team: NormalizedTeam) {
     logo: team.logo ?? null,
     name: team.name,
     ownerMemberIds: sortedUnique(team.ownerMemberIds),
+    record: {
+      losses: team.record.losses,
+      pointsAgainst: team.record.pointsAgainst,
+      pointsFor: team.record.pointsFor,
+      ties: team.record.ties,
+      wins: team.record.wins,
+    },
     provider: team.provider,
     providerId: team.providerId,
     season: team.season,
@@ -197,11 +204,16 @@ async function upsertTeams(
       leagueId,
       leagueProviderId: team.leagueProviderId,
       logo: team.logo ?? null,
+      losses: team.record.losses,
       name: team.name,
       ownerMemberIds,
+      pointsAgainst: team.record.pointsAgainst,
+      pointsFor: team.record.pointsFor,
       provider: team.provider,
       providerTeamId: team.providerId,
       season: team.season,
+      ties: team.record.ties,
+      wins: team.record.wins,
     };
   });
 
@@ -218,10 +230,15 @@ async function upsertTeams(
       set: {
         abbrev: sql`excluded.abbrev`,
         contentHash: sql`excluded.content_hash`,
+        losses: sql`excluded.losses`,
         logo: sql`excluded.logo`,
         name: sql`excluded.name`,
         ownerMemberIds: sql`excluded.owner_member_ids`,
+        pointsAgainst: sql`excluded.points_against`,
+        pointsFor: sql`excluded.points_for`,
+        ties: sql`excluded.ties`,
         updatedAt: sql`now()`,
+        wins: sql`excluded.wins`,
       },
       where: sql`${fantasyTeams.contentHash} is distinct from excluded.content_hash`,
     })

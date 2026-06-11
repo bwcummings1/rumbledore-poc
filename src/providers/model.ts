@@ -51,6 +51,13 @@ export interface NormalizedTeam extends SeasonScopedProviderEntityRef {
   abbrev: string;
   logo?: string;
   ownerMemberIds: string[];
+  record: {
+    wins: number;
+    losses: number;
+    ties: number;
+    pointsFor: number;
+    pointsAgainst: number;
+  };
 }
 
 export type NormalizedMemberRole =

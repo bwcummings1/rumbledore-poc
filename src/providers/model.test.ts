@@ -70,6 +70,13 @@ const fixtureProvider: FantasyProvider<FixtureCredentials, FixtureSession> = {
         name: "Fixture Team",
         abbrev: "FIX",
         ownerMemberIds: ["member-1"],
+        record: {
+          losses: 0,
+          pointsAgainst: 97.25,
+          pointsFor: 101.5,
+          ties: 0,
+          wins: 1,
+        },
       },
     ]);
   },

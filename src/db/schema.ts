@@ -159,6 +159,11 @@ export const fantasyTeams = pgTable(
     name: text("name").notNull(),
     abbrev: text("abbrev").notNull().default(""),
     logo: text("logo"),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    ties: integer("ties").notNull().default(0),
+    pointsFor: doublePrecision("points_for").notNull().default(0),
+    pointsAgainst: doublePrecision("points_against").notNull().default(0),
     ownerMemberIds: jsonb("owner_member_ids")
       .$type<string[]>()
       .notNull()
