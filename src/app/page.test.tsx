@@ -8,4 +8,7 @@ test("home page renders the product name and pitch", () => {
     screen.getByRole("heading", { level: 1, name: "Rumbledore" }),
   ).toBeDefined();
   expect(screen.getByText(/home base/i)).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: "Central news" }).getAttribute("href"),
+  ).toBe("/news");
 });

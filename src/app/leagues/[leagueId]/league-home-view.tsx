@@ -6,6 +6,8 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import type {
   LeagueHomeData,
   LeagueHomeMatchup,
@@ -13,6 +15,7 @@ import type {
   LeagueHomeStoryline,
   LeagueHomeTeam,
 } from "@/home/league-home";
+import { cn } from "@/lib/utils";
 
 function formatPoints(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -371,15 +374,26 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <header className="grid gap-4">
-        <div>
-          <p className="text-sm font-medium text-primary">League home</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-            {data.league.name}
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {data.league.season} ESPN fantasy football ·{" "}
-            {leagueStatusLabel(data.league.status)}
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-primary">League home</p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+              {data.league.name}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {data.league.season} ESPN fantasy football ·{" "}
+              {leagueStatusLabel(data.league.status)}
+            </p>
+          </div>
+          <Link
+            href="/news"
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "outline" }),
+            )}
+          >
+            <Newspaper data-icon="inline-start" />
+            Central news
+          </Link>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <StatPill label="Teams" value={data.totals.teams} />

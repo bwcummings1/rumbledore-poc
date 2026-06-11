@@ -1,4 +1,9 @@
 export {
+  type CentralNewsHubData,
+  type CentralNewsHubItem,
+  getCentralNewsHubData,
+} from "./hub";
+export {
   type CentralNewsIngestionDependencies,
   canonicalizeNewsUrl,
   createMockNewsDependencies,

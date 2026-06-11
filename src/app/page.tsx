@@ -1,4 +1,4 @@
-import { Plug } from "lucide-react";
+import { Newspaper, Plug } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,13 +13,24 @@ export default function Home() {
           league news, AI takes, and paper betting. Connect your league once;
           everything else follows.
         </p>
-        <Link
-          href="/onboarding/espn"
-          className={cn(buttonVariants({ className: "mt-2 w-fit" }))}
-        >
-          <Plug data-icon="inline-start" />
-          Connect ESPN
-        </Link>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link
+            href="/onboarding/espn"
+            className={cn(buttonVariants({ className: "w-fit" }))}
+          >
+            <Plug data-icon="inline-start" />
+            Connect ESPN
+          </Link>
+          <Link
+            href="/news"
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "outline" }),
+            )}
+          >
+            <Newspaper data-icon="inline-start" />
+            Central news
+          </Link>
+        </div>
       </main>
     </div>
   );

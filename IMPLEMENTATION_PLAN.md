@@ -40,7 +40,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 ## P3 — AI content & news (see specs/07, specs/05 — to be written)
 - [x] Add league-scoped AI blogger foundation. (done 2026-06-11: added `content_item`, per-league persona cards, idempotent generation runs, and pgvector-backed `ai_memory` with FORCE RLS; implemented deterministic mock LLM/web/embeddings, prompt-prefix stability, adversarial-news fencing, near-dup skip, `content.generate` Inngest handling, and league-home storylines; focused pipeline/job/home/RLS tests green)
 - [x] Implement central news ingestion with source deduplication. (done 2026-06-11: added central news source interfaces/mock, canonical URL/source dedup, idempotent `content_item` `kind='news'` persistence, `news.refresh` Inngest wiring, and a partial central dedup index with service/job/DB coverage)
-- [ ] Build the central news hub from central `content_item` rows.
+- [x] Build the central news hub from central `content_item` rows. (done 2026-06-11: added `/news` as a logged-out central hub rendered from `content_item` rows with `league_id IS NULL` and `kind='news'`, source attribution/external links, home/league navigation, and focused DB/UI coverage)
 - [ ] Wire real Anthropic, Tavily, and embedding clients behind the AI interfaces.
 - [ ] Add content planning for cron triggers and `game.final` triggers.
 - [ ] Build the league-tailored feed that joins league posts with relevant central items.
@@ -55,6 +55,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 
 ## Discoveries / bugs (loop appends here)
 - 2026-06-11: `content_item_scope_dedup_unique (league_id, kind, dedup_key)` does not dedupe central rows because Postgres treats NULL `league_id` values as distinct; central/open content needs partial unique indexes with `WHERE league_id IS NULL` for DB-level dedup.
+- 2026-06-11: DB-backed App Router pages with static-looking paths (for example `/news`) need `export const dynamic = "force-dynamic"` when they should read Postgres at request time instead of being prerendered during `next build`.
 - 2026-06-11: `content_item` intentionally uses mixed-scope RLS (`league_id IS NULL OR league_id = current_league_id()`) so central news can be open-read; league home/storyline queries must still explicitly filter `league_id = current` and `kind = 'blog'` inside `withLeagueContext()`.
 - 2026-06-11: The first AI content slice is mock-only for paid clients; `MOCK_ANTHROPIC=false` or `MOCK_TAVILY=false` now fails content generation until real Anthropic/Tavily clients are wired behind the existing interfaces.
 - 2026-06-11: ESPN final standings now persist through `provider_final_standings`; the adapter prefers `rankCalculatedFinal`/`rankFinal` and `playoffSeed` when ESPN exposes them, while the checked-in preseason fixture still needs synthetic rank fields in tests.
