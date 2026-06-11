@@ -14,7 +14,7 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 ## Commands / validation gates (run after every change; ALL must pass before commit)
 - Typecheck: `pnpm typecheck`
 - Lint: `pnpm lint`
-- Tests: `pnpm test` (unit/integration) — run the tests for the unit you touched, plus the suite before commit
+- Tests: `pnpm test` (unit/integration) — run the tests for the unit you touched, plus the suite before commit. Requires the local stack (`pnpm db:up`) for db integration tests.
 - Build: `pnpm build`
 - Bug scan: `ubs <changed files>` (exit 0 required; see /home/ubuntu/AGENTS.md UBS section)
 - UI (only if you touched UI): `npx impeccable detect src/` must pass

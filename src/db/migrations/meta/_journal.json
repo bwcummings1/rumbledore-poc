@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1781181516906,
+      "tag": "0000_enable-pgvector",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781181541541,
+      "tag": "0001_baseline-users-leagues-members",
+      "breakpoints": true
+    }
+  ]
+}
