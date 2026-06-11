@@ -14,3 +14,17 @@ export interface AppPingData {
   message?: unknown;
   requestedAt?: unknown;
 }
+
+export interface ImportRequestedData {
+  credentialId: string;
+  leagueId: string;
+  provider: "espn";
+  providerLeagueId: string;
+  season: number;
+  sport: "ffl" | "unknown";
+  name: string;
+  teamName?: string;
+  size?: number;
+  seasons?: number[];
+  maxSeasons?: number;
+}

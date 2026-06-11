@@ -234,7 +234,13 @@ describe("ESPN onboarding service", () => {
     const providerLeagueId = numericProviderLeagueId();
     const user = await seedUser("import");
     const provider = providerFor(providerLeagueId);
-    const testDeps = deps(provider);
+    const requestedImports: unknown[] = [];
+    const testDeps: EspnOnboardingDependencies = {
+      ...deps(provider),
+      requestHistoricalImport: async (data) => {
+        requestedImports.push(data);
+      },
+    };
 
     const connected = await connectEspnManual(testDeps, {
       credentials: {
@@ -271,6 +277,19 @@ describe("ESPN onboarding service", () => {
 
     expect(imported.ok).toBe(true);
     if (!imported.ok) throw imported.error;
+    expect(requestedImports).toEqual([
+      {
+        credentialId: imported.value.credentialId,
+        leagueId: imported.value.leagueId,
+        name: `${marker} league ${providerLeagueId}`,
+        provider: "espn",
+        providerLeagueId,
+        season: 2026,
+        size: 12,
+        sport: "ffl",
+        teamName: "Fixture Team",
+      },
+    ]);
     expect(imported.value.sync.teams).toEqual({
       total: 12,
       changed: 12,

@@ -1,6 +1,8 @@
 import "server-only";
 import { getEnv } from "@/core/env";
 import { getDb } from "@/db";
+import { inngest } from "@/jobs/client";
+import { type ImportRequestedData, JOB_EVENTS } from "@/jobs/events";
 import { createEspnDiscoveryProvider } from "@/providers/espn";
 import { type BrowserSession, MockBrowserSession } from "./browser-session";
 import { createCredentialCipher } from "./credential-crypto";
@@ -21,6 +23,26 @@ class BrowserbaseSessionNotConfigured implements BrowserSession {
   }
 }
 
+async function requestHistoricalImport(
+  data: ImportRequestedData,
+): Promise<void> {
+  const hasInngestConfig = Boolean(
+    process.env.INNGEST_DEV || process.env.INNGEST_EVENT_KEY,
+  );
+  const isProduction = ["production"].includes(process.env.NODE_ENV ?? "");
+  const shouldSend = isProduction || hasInngestConfig;
+
+  if (!shouldSend) {
+    return;
+  }
+
+  await inngest.send({
+    id: `import.requested:${data.leagueId}:${data.provider}:${data.providerLeagueId}`,
+    name: JOB_EVENTS.importRequested,
+    data,
+  });
+}
+
 export function getEspnOnboardingDependencies(): EspnOnboardingDependencies {
   const env = getEnv();
   const browserbase = env.services.browserbase;
@@ -33,5 +55,6 @@ export function getEspnOnboardingDependencies(): EspnOnboardingDependencies {
     provider: browserbase.mock
       ? createFixtureEspnProvider()
       : createEspnDiscoveryProvider(),
+    requestHistoricalImport,
   };
 }

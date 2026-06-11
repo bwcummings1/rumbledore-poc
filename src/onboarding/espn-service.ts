@@ -11,6 +11,7 @@ import {
   providerCredentials,
 } from "@/db/schema";
 import { type CurrentLeagueSyncResult, syncCurrentLeague } from "@/ingestion";
+import type { ImportRequestedData } from "@/jobs/events";
 import type {
   EspnCookieCredentials,
   EspnProvider,
@@ -61,12 +62,17 @@ export interface EspnImportResult {
   sync: CurrentLeagueSyncResult;
 }
 
+export type RequestHistoricalImport = (
+  data: ImportRequestedData,
+) => Promise<void>;
+
 export interface EspnOnboardingDependencies {
   browserSession: BrowserSession;
   cipher: CredentialCipher;
   db: Db;
   now?: () => Date;
   provider: EspnProvider;
+  requestHistoricalImport?: RequestHistoricalImport;
 }
 
 type EspnOnboardingError = AppError | ProviderError;
@@ -612,6 +618,29 @@ export async function importEspnDiscoveredLeague(
     .onConflictDoNothing({
       target: [members.organizationId, members.userId],
     });
+
+  try {
+    await deps.requestHistoricalImport?.({
+      credentialId: discovered.credentialId,
+      leagueId: sync.value.league.id,
+      name: ref.name,
+      provider: ESPN_PROVIDER_ID,
+      providerLeagueId: ref.providerId,
+      season: ref.season,
+      sport: ref.sport,
+      ...(ref.teamName ? { teamName: ref.teamName } : {}),
+      ...(ref.size === undefined ? {} : { size: ref.size }),
+    });
+  } catch (cause) {
+    return err(
+      new OnboardingError({
+        cause,
+        code: "ONBOARDING_IMPORT_JOB_ENQUEUE_FAILED",
+        message: "Historical import could not be enqueued",
+        status: 500,
+      }),
+    );
+  }
 
   return ok({
     credentialId: discovered.credentialId,
