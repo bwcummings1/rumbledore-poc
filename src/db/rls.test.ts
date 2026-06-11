@@ -37,7 +37,6 @@ afterAll(async () => {
 
 describe("RLS catalog state (migration 0002)", () => {
   const leagueScopedTables = [
-    "league_members",
     "fantasy_teams",
     "fantasy_members",
     "fantasy_matchups",

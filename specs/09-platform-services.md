@@ -143,7 +143,7 @@ Every job carries the `leagueId` in its event data for league-scoped work and ru
 5. **Secrets never logged:** redaction test passes; no client bundle references service keys.
 
 ## Dependencies / blocked-by
-- **Blocked-by `02-foundation.md`:** Better Auth scaffold + roles enum, `withLeagueContext`/RLS helper, env validation + `MOCK_*`, Inngest scaffold, `/api/health`, structured logger, `users`/`leagues`/`league_members` baseline. This spec **completes** those into the full platform behavior above.
+- **Blocked-by `02-foundation.md`:** Better Auth scaffold + roles enum, `withLeagueContext`/RLS helper, env validation + `MOCK_*`, Inngest scaffold, `/api/health`, structured logger, `users`/`leagues`/auth-plane `members` baseline. This spec **completes** those into the full platform behavior above.
 - **Consumed by:** onboarding (`league.connected`, invites, steward role), ingestion (`game.final`, scores channel, sync jobs), AI (`content.generate`, blog channel), betting/arena (`odds.poll`, settlement, leaderboard/arena channels). Those specs must use these guards/events/channels rather than rolling their own.
 - **External:** Supabase project (realtime), Inngest account (cloud jobs), Vercel project, Neon + Upstash. All have local/mock equivalents so build proceeds without them.
 

@@ -10,7 +10,7 @@
 3. **Test runner**: Vitest (unit + integration). Playwright installed for later e2e. At least one real passing test (not a placeholder).
 4. **PWA**: web manifest + service worker; installable; mobile-first base layout + safe-area handling; offline app shell. Lighthouse PWA basics pass.
 5. **Styling**: Tailwind + shadcn/ui initialized; design tokens wired from `DESIGN.md`.
-6. **Data**: Drizzle + `pg`; `docker-compose.yml` for local Postgres (pgvector image) + Redis. First migration. **RLS helper** that sets `app.current_league_id` per request/tx. A `users` + `leagues` + `league_members` baseline.
+6. **Data**: Drizzle + `pg`; `docker-compose.yml` for local Postgres (pgvector image) + Redis. First migration. **RLS helper** that sets `app.current_league_id` per request/tx. A `users` + `leagues` + auth-plane `members` baseline; real league-scoped fantasy domain tables host RLS canaries once P1 begins.
 7. **Isolation proof**: an integration test that creates two leagues and proves a league-scoped query under RLS cannot read the other league's rows. This test is the canary for the whole isolation model.
 8. **Auth**: Better Auth scaffold (email/password + one social provider stub), session, organization plugin baseline (org = league) with roles enum incl. `data_steward`.
 9. **Jobs**: Inngest scaffold (dev server wired) + one sample function + its test.

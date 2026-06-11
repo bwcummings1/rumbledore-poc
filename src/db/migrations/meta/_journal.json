@@ -36,6 +36,13 @@
       "when": 1781191620103,
       "tag": "0004_fixed_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781192474142,
+      "tag": "0005_salty_dragon_lord",
+      "breakpoints": true
     }
   ]
 }

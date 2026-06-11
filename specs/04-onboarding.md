@@ -111,7 +111,7 @@ Each league can designate a member as **data steward** — the human guardian of
 11. PWA: the entire PRIMARY connect flow is operable on a mobile viewport (no desktop-only affordances on mobile; extension never advertised on mobile).
 
 ## Dependencies / blocked-by
-- **Blocked-by `specs/02-foundation.md` (P0):** auth + roles (incl. `data_steward`), RLS + `app.current_league_id`, `MOCK_*` env toggles, crypto/encryption, Inngest scaffold, Drizzle baseline (`users`/`leagues`/`league_members`).
+- **Blocked-by `specs/02-foundation.md` (P0):** auth + roles (incl. `data_steward`), RLS + `app.current_league_id`, `MOCK_*` env toggles, crypto/encryption, Inngest scaffold, Drizzle baseline (`users`/`leagues`/auth-plane `members`).
 - **Needs the `FantasyProvider` ESPN adapter** (`specs/01-architecture.md`; `specs/03-ingestion-providers.md` when authored) for `discoverLeagues`/`getMembers` and the ingest jobs that `league.connected` triggers.
 - **Needs identity resolution** (`src/stats/`) for leaguemate match-back and steward duplicate merge/split.
 - **External (deferred behind mocks):** real Browserbase (or equivalent) account; real SMS (e.g. Twilio) + email (e.g. Resend) providers. Wire real impls only when keys exist; mocks ship now.

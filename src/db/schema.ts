@@ -16,12 +16,13 @@ import {
 import { FANTASY_PROVIDER_IDS } from "../providers/ids";
 
 /**
- * Baseline tables (spec 02 §6): users, leagues, league_members.
+ * Baseline tables (spec 02 §6): users, leagues, auth members.
  * - `users` is central (cross-league by design — no restrictive RLS).
- * - `leagues` is the tenant root; `league_members` is league-scoped: RLS
- *   restricts every command to rows whose `league_id` matches the
- *   transaction-local `app.current_league_id` setting (see `src/db/rls.ts`;
- *   the `current_league_id()` SQL function lives in migration 0002).
+ * - `leagues` is the tenant root and Better Auth organization table.
+ * - provider-normalized fantasy tables are league-scoped: RLS restricts every
+ *   command to rows whose `league_id` matches the transaction-local
+ *   `app.current_league_id` setting (see `src/db/rls.ts`; the
+ *   `current_league_id()` SQL function lives in migration 0002).
  *
  * Every future league-scoped table must declare the same isolation policy.
  *
@@ -123,33 +124,6 @@ export const leagues = pgTable(
       table.providerLeagueId,
     ),
     uniqueIndex("leagues_slug_unique").on(table.slug),
-  ],
-);
-
-export const leagueMembers = pgTable(
-  "league_members",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    leagueId: uuid("league_id")
-      .notNull()
-      .references(() => leagues.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    role: leagueRole("role").notNull().default("member"),
-    ...timestamps,
-  },
-  (table) => [
-    uniqueIndex("league_members_league_user_unique").on(
-      table.leagueId,
-      table.userId,
-    ),
-    index("league_members_user_idx").on(table.userId),
-    pgPolicy("league_members_isolation", {
-      for: "all",
-      using: sql`${table.leagueId} = current_league_id()`,
-      withCheck: sql`${table.leagueId} = current_league_id()`,
-    }),
   ],
 );
 
@@ -388,8 +362,6 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type League = typeof leagues.$inferSelect;
 export type NewLeague = typeof leagues.$inferInsert;
-export type LeagueMember = typeof leagueMembers.$inferSelect;
-export type NewLeagueMember = typeof leagueMembers.$inferInsert;
 export type FantasyTeam = typeof fantasyTeams.$inferSelect;
 export type NewFantasyTeam = typeof fantasyTeams.$inferInsert;
 export type FantasyMember = typeof fantasyMembers.$inferSelect;

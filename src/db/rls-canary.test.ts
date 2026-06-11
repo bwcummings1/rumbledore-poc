@@ -5,14 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { withLeagueContext } from "./rls";
-import {
-  type FantasyTeam,
-  fantasyTeams,
-  type LeagueMember,
-  leagueMembers,
-  leagues,
-  users,
-} from "./schema";
+import { type FantasyTeam, fantasyTeams, leagues } from "./schema";
 import { migrateSerialized } from "./test-support";
 
 /**
@@ -38,10 +31,6 @@ let admin: DbHandle;
 let canary: DbHandle;
 let leagueA: string;
 let leagueB: string;
-let userA: string;
-let userB: string;
-let memberA: LeagueMember;
-let memberB: LeagueMember;
 let teamA: FantasyTeam;
 let teamB: FantasyTeam;
 
@@ -83,21 +72,12 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON users, leagues, league_members, fantasy_teams, fantasy_members, fantasy_matchups TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups TO ${CANARY_ROLE}`,
   );
 
-  // Seed two leagues with one member each — as admin, outside any league
-  // context (the superuser bypasses RLS; that's exactly why it can't be the
-  // role under test).
-  const [ua, ub] = await admin.db
-    .insert(users)
-    .values([
-      { email: `${marker}-a@example.com`, displayName: "Canary A" },
-      { email: `${marker}-b@example.com`, displayName: "Canary B" },
-    ])
-    .returning();
-  userA = ua.id;
-  userB = ub.id;
+  // Seed two leagues with one fantasy team each — as admin, outside any
+  // league context (the superuser bypasses RLS; that's exactly why it can't be
+  // the role under test).
   const [la, lb] = await admin.db
     .insert(leagues)
     .values([
@@ -107,13 +87,6 @@ beforeAll(async () => {
     .returning();
   leagueA = la.id;
   leagueB = lb.id;
-  [memberA, memberB] = await admin.db
-    .insert(leagueMembers)
-    .values([
-      { leagueId: leagueA, userId: userA, role: "commissioner" },
-      { leagueId: leagueB, userId: userB, role: "commissioner" },
-    ])
-    .returning();
   [teamA, teamB] = await admin.db
     .insert(fantasyTeams)
     .values([
@@ -147,12 +120,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Users/leagues cascade to league_members. The role stays — it is
+  // Leagues cascade to fantasy domain rows. The role stays — it is
   // provisioned idempotently and another run may be mid-flight.
   if (admin) {
-    await admin.db
-      .delete(users)
-      .where(sql`${users.email} like ${`${marker}-%`}`);
     await admin.db
       .delete(leagues)
       .where(sql`${leagues.providerLeagueId} like ${`${marker}-%`}`);
@@ -171,128 +141,42 @@ describe("canary preconditions", () => {
 });
 
 describe("two-league isolation under withLeagueContext", () => {
-  it("sees no league_members rows at all outside a league context", async () => {
+  it("sees no fantasy team rows at all outside a league context", async () => {
     const rows = await canary.db
       .select()
-      .from(leagueMembers)
-      .where(inArray(leagueMembers.id, [memberA.id, memberB.id]));
+      .from(fantasyTeams)
+      .where(inArray(fantasyTeams.id, [teamA.id, teamB.id]));
     expect(rows).toHaveLength(0);
   });
 
-  it("scoped to league A, sees A's membership and nothing of league B", async () => {
+  it("scoped to league A, sees A's fantasy team and nothing of league B", async () => {
     const { mine, theirs } = await withLeagueContext(
       canary.db,
       leagueA,
       async (tx) => ({
         mine: await tx
           .select()
-          .from(leagueMembers)
-          .where(eq(leagueMembers.leagueId, leagueA)),
+          .from(fantasyTeams)
+          .where(eq(fantasyTeams.leagueId, leagueA)),
         theirs: await tx
           .select()
-          .from(leagueMembers)
-          .where(eq(leagueMembers.id, memberB.id)),
+          .from(fantasyTeams)
+          .where(eq(fantasyTeams.id, teamB.id)),
       }),
     );
-    expect(mine.map((m) => m.id)).toContain(memberA.id);
+    expect(mine.map((m) => m.id)).toContain(teamA.id);
     expect(theirs).toHaveLength(0);
   });
 
   it("scoped to league A, an unfiltered scan still yields only league A rows", async () => {
     const all = await withLeagueContext(canary.db, leagueA, (tx) =>
-      tx.select().from(leagueMembers),
+      tx.select().from(fantasyTeams),
     );
     expect(all.length).toBeGreaterThan(0);
     expect(all.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
   it("rejects writing a league B row from league A context (WITH CHECK)", async () => {
-    expect(
-      await sqlstateOf(
-        withLeagueContext(canary.db, leagueA, (tx) =>
-          tx.insert(leagueMembers).values({ leagueId: leagueB, userId: userA }),
-        ),
-      ),
-    ).toBe("42501"); // insufficient_privilege: new row violates row-level security policy
-  });
-
-  it("cannot update league B's rows from league A context", async () => {
-    const updated = await withLeagueContext(canary.db, leagueA, (tx) =>
-      tx
-        .update(leagueMembers)
-        .set({ role: "member" })
-        .where(eq(leagueMembers.id, memberB.id))
-        .returning(),
-    );
-    expect(updated).toHaveLength(0);
-
-    const [intact] = await admin.db
-      .select()
-      .from(leagueMembers)
-      .where(eq(leagueMembers.id, memberB.id));
-    expect(intact.role).toBe("commissioner");
-  });
-
-  it("cannot delete league B's rows from league A context", async () => {
-    const deleted = await withLeagueContext(canary.db, leagueA, (tx) =>
-      tx
-        .delete(leagueMembers)
-        .where(eq(leagueMembers.id, memberB.id))
-        .returning(),
-    );
-    expect(deleted).toHaveLength(0);
-
-    const survivors = await admin.db
-      .select()
-      .from(leagueMembers)
-      .where(eq(leagueMembers.id, memberB.id));
-    expect(survivors).toHaveLength(1);
-  });
-
-  it("allows normal reads and writes within the scoped league (positive control)", async () => {
-    const inserted = await withLeagueContext(canary.db, leagueA, async (tx) => {
-      const [row] = await tx
-        .insert(leagueMembers)
-        .values({ leagueId: leagueA, userId: userB, role: "member" })
-        .returning();
-      return row;
-    });
-    expect(inserted.leagueId).toBe(leagueA);
-
-    const seen = await withLeagueContext(canary.db, leagueA, (tx) =>
-      tx.select().from(leagueMembers).where(eq(leagueMembers.id, inserted.id)),
-    );
-    expect(seen).toHaveLength(1);
-  });
-
-  it("keeps league B's own view intact when scoped to league B", async () => {
-    const rows = await withLeagueContext(canary.db, leagueB, (tx) =>
-      tx.select().from(leagueMembers),
-    );
-    expect(rows.map((m) => m.id)).toContain(memberB.id);
-    expect(rows.every((row) => row.leagueId === leagueB)).toBe(true);
-  });
-
-  it("applies the same isolation to normalized fantasy team rows", async () => {
-    const outside = await canary.db
-      .select()
-      .from(fantasyTeams)
-      .where(inArray(fantasyTeams.id, [teamA.id, teamB.id]));
-    expect(outside).toHaveLength(0);
-
-    const scoped = await withLeagueContext(canary.db, leagueA, async (tx) => ({
-      all: await tx.select().from(fantasyTeams),
-      crossLeague: await tx
-        .select()
-        .from(fantasyTeams)
-        .where(eq(fantasyTeams.id, teamB.id)),
-    }));
-    expect(scoped.all.map((row) => row.id)).toContain(teamA.id);
-    expect(scoped.all.every((row) => row.leagueId === leagueA)).toBe(true);
-    expect(scoped.crossLeague).toHaveLength(0);
-  });
-
-  it("rejects cross-league fantasy team inserts with WITH CHECK", async () => {
     expect(
       await sqlstateOf(
         withLeagueContext(canary.db, leagueA, (tx) =>
@@ -307,6 +191,69 @@ describe("two-league isolation under withLeagueContext", () => {
           }),
         ),
       ),
-    ).toBe("42501");
+    ).toBe("42501"); // insufficient_privilege: new row violates row-level security policy
+  });
+
+  it("cannot update league B's rows from league A context", async () => {
+    const updated = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx
+        .update(fantasyTeams)
+        .set({ name: "Should Not Change" })
+        .where(eq(fantasyTeams.id, teamB.id))
+        .returning(),
+    );
+    expect(updated).toHaveLength(0);
+
+    const [intact] = await admin.db
+      .select()
+      .from(fantasyTeams)
+      .where(eq(fantasyTeams.id, teamB.id));
+    expect(intact.name).toBe("Team B");
+  });
+
+  it("cannot delete league B's rows from league A context", async () => {
+    const deleted = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.delete(fantasyTeams).where(eq(fantasyTeams.id, teamB.id)).returning(),
+    );
+    expect(deleted).toHaveLength(0);
+
+    const survivors = await admin.db
+      .select()
+      .from(fantasyTeams)
+      .where(eq(fantasyTeams.id, teamB.id));
+    expect(survivors).toHaveLength(1);
+  });
+
+  it("allows normal reads and writes within the scoped league (positive control)", async () => {
+    const inserted = await withLeagueContext(canary.db, leagueA, async (tx) => {
+      const [row] = await tx
+        .insert(fantasyTeams)
+        .values({
+          leagueId: leagueA,
+          provider: "espn",
+          providerTeamId: `${marker}-team-c`,
+          leagueProviderId: `${marker}-a`,
+          season: 2026,
+          name: "Team C",
+          abbrev: "C",
+          contentHash: `${marker}-team-c-hash`,
+        })
+        .returning();
+      return row;
+    });
+    expect(inserted.leagueId).toBe(leagueA);
+
+    const seen = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(fantasyTeams).where(eq(fantasyTeams.id, inserted.id)),
+    );
+    expect(seen).toHaveLength(1);
+  });
+
+  it("keeps league B's own view intact when scoped to league B", async () => {
+    const rows = await withLeagueContext(canary.db, leagueB, (tx) =>
+      tx.select().from(fantasyTeams),
+    );
+    expect(rows.map((m) => m.id)).toContain(teamB.id);
+    expect(rows.every((row) => row.leagueId === leagueB)).toBe(true);
   });
 });

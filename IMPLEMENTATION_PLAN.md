@@ -22,8 +22,8 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 
 ## P1 — Ingestion + Onboarding (flagship vertical slice; see specs/03, specs/04)
 - [x] Define the FantasyProvider interface and the normalized league/team/member/matchup model. (done 2026-06-11: `src/providers` now exports the provider contract, normalized refs/entities, capabilities, and typed provider errors; `leagues` carries normalized league metadata; `fantasy_teams`/`fantasy_members`/`fantasy_matchups` persist provider identities + content hashes under `league_id` with FORCE RLS; provider/domain/RLS tests green)
-- [ ] Collapse `league_members` into the auth-plane `members` table once a real league-scoped domain table exists to host the RLS canary — membership must have ONE source of truth (auth `members` is it; `league_members` only persists today because the spec-02 canary lives on it). (unblocked: fantasy domain tables now exist)
-- [ ] Implement the ESPN adapter auth + league discovery via the Fan API (server-side, spoofed headers). (blocked-by: provider interface)
+- [x] Collapse `league_members` into the auth-plane `members` table once a real league-scoped domain table exists to host the RLS canary — membership must have ONE source of truth (auth `members` is it; `league_members` only persists today because the spec-02 canary lives on it). (done 2026-06-11: Drizzle schema no longer exports legacy `league_members`; migration 0005 backfills missing rows into auth-plane `members` before dropping the table; baseline membership tests target `members`; RLS catalog/canary coverage now uses real `fantasy_*` domain tables, with `fantasy_teams` as the behavioral canary)
+- [ ] Implement the ESPN adapter auth + league discovery via the Fan API (server-side, spoofed headers). (unblocked: provider interface landed)
 - [ ] Implement ESPN league/teams/members/matchups fetch for league 95050 season 2026. (blocked-by: ESPN adapter auth)
 - [ ] Normalize and upsert ingested ESPN data idempotently with fixture-based tests. (blocked-by: ESPN fetch)
 - [ ] Build the onboarding connect flow behind a Browserbase-style interface (mocked) with a manual-cookie fallback that stores creds encrypted and triggers ingest. (blocked-by: ESPN adapter auth)
@@ -45,6 +45,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 
 ## Discoveries / bugs (loop appends here)
 - 2026-06-11: In Postgres tests, an expected constraint/RLS error aborts the current transaction (`25P02` on later statements); put expected-failure assertions in their own `withLeagueContext()`/transaction instead of continuing after catching the error.
+- 2026-06-11: When migrating data out of a FORCE-RLS table, disable row security before `INSERT ... SELECT`; otherwise a non-superuser table owner can see zero source rows under the active policies. Preserve auth-plane rows on conflict when collapsing duplicate membership sources.
 - 2026-06-11: `.env.example` is intentionally tracked via `!.env.example`; empty secret/API placeholder assignments may need same-line `secret-scan:ignore` comments because the repo secret scanner can flag adjacent empty env placeholders.
 - 2026-06-11: Full-repo `ubs --ci --fail-on-warning .` is not currently a green gate because it scans generated `.next` output plus existing PWA/service-worker warnings; CI mirrors the project gate by diffing push/PR changed files and running `ubs` only on ACMRT paths.
 - 2026-06-11: `pnpm secret-scan` is the repo-local committed-secret gate. It scans git-tracked text files by default, accepts explicit file args for smoke tests, redacts matched values, skips binary/generated migration snapshots/icons, and honors inline `secret-scan:ignore` for verified false positives.

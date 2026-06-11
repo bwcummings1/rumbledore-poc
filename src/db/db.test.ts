@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
-import { leagueMembers, leagues, users } from "./schema";
+import { leagues, members, users } from "./schema";
 import { migrateSerialized } from "./test-support";
 
 /**
@@ -44,7 +44,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!handle) return;
-  // Users/leagues cascade to league_members.
+  // Users/leagues cascade to auth-plane members.
   await handle.db
     .delete(users)
     .where(sql`${users.email} like ${`${marker}-%`}`);
@@ -54,12 +54,19 @@ afterAll(async () => {
   await handle.pool.end();
 });
 
-describe("baseline schema (users, leagues, league_members)", () => {
+describe("baseline schema (users, leagues, auth-plane members)", () => {
   it("has the pgvector extension installed", async () => {
     const { rows } = await handle.pool.query(
       "select extname from pg_extension where extname = 'vector'",
     );
     expect(rows).toHaveLength(1);
+  });
+
+  it("does not expose the legacy league_members table", async () => {
+    const { rows } = await handle.pool.query(
+      "select to_regclass('public.league_members') as table_name",
+    );
+    expect(rows).toEqual([{ table_name: null }]);
   });
 
   it("inserts a user, league, and membership with generated defaults", async () => {
@@ -76,13 +83,17 @@ describe("baseline schema (users, leagues, league_members)", () => {
       })
       .returning();
     const [member] = await handle.db
-      .insert(leagueMembers)
-      .values({ leagueId: league.id, userId: user.id, role: "commissioner" })
+      .insert(members)
+      .values({
+        organizationId: league.id,
+        userId: user.id,
+        role: "commissioner",
+      })
       .returning();
 
     expect(user.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(user.createdAt).toBeInstanceOf(Date);
-    expect(member.leagueId).toBe(league.id);
+    expect(member.organizationId).toBe(league.id);
     expect(member.role).toBe("commissioner");
   });
 
@@ -100,8 +111,8 @@ describe("baseline schema (users, leagues, league_members)", () => {
       })
       .returning();
     const [member] = await handle.db
-      .insert(leagueMembers)
-      .values({ leagueId: league.id, userId: user.id })
+      .insert(members)
+      .values({ organizationId: league.id, userId: user.id })
       .returning();
     expect(member.role).toBe("member");
   });
@@ -150,17 +161,17 @@ describe("baseline schema (users, leagues, league_members)", () => {
       })
       .returning();
     await handle.db
-      .insert(leagueMembers)
-      .values({ leagueId: league.id, userId: user.id });
+      .insert(members)
+      .values({ organizationId: league.id, userId: user.id });
     expect(
       await violatedConstraint(
-        handle.db.insert(leagueMembers).values({
-          leagueId: league.id,
+        handle.db.insert(members).values({
+          organizationId: league.id,
           userId: user.id,
           role: "data_steward",
         }),
       ),
-    ).toBe("league_members_league_user_unique");
+    ).toBe("members_organization_user_unique");
   });
 
   it("cascades league deletion to memberships without touching the user", async () => {
@@ -177,15 +188,15 @@ describe("baseline schema (users, leagues, league_members)", () => {
       })
       .returning();
     await handle.db
-      .insert(leagueMembers)
-      .values({ leagueId: league.id, userId: user.id });
+      .insert(members)
+      .values({ organizationId: league.id, userId: user.id });
 
     await handle.db.delete(leagues).where(sql`${leagues.id} = ${league.id}`);
 
     const orphaned = await handle.db
       .select()
-      .from(leagueMembers)
-      .where(sql`${leagueMembers.leagueId} = ${league.id}`);
+      .from(members)
+      .where(sql`${members.organizationId} = ${league.id}`);
     expect(orphaned).toHaveLength(0);
 
     const stillThere = await handle.db
@@ -203,9 +214,9 @@ describe("baseline schema (users, leagues, league_members)", () => {
     expect(
       await violatedConstraint(
         handle.db
-          .insert(leagueMembers)
-          .values({ leagueId: randomUUID(), userId: user.id }),
+          .insert(members)
+          .values({ organizationId: randomUUID(), userId: user.id }),
       ),
-    ).toBe("league_members_league_id_leagues_id_fk");
+    ).toBe("members_organization_id_leagues_id_fk");
   });
 });
