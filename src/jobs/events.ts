@@ -21,7 +21,7 @@ export interface AppPingData {
 export interface ImportRequestedData {
   credentialId: string;
   leagueId: string;
-  provider: Extract<FantasyProviderId, "espn" | "sleeper">;
+  provider: Extract<FantasyProviderId, "espn" | "sleeper" | "yahoo">;
   providerLeagueId: string;
   season: number;
   sport: "ffl" | "unknown";

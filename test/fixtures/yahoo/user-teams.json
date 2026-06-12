@@ -1,0 +1,99 @@
+{
+  "fantasy_content": {
+    "users": {
+      "0": {
+        "user": [
+          {
+            "guid": "YAHOO-GUID-123"
+          },
+          {
+            "games": {
+              "0": {
+                "game": [
+                  {
+                    "game_key": "461"
+                  },
+                  {
+                    "code": "nfl"
+                  },
+                  {
+                    "season": "2026"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          {
+                            "team_key": "461.l.95050.t.1"
+                          },
+                          {
+                            "team_id": "1"
+                          },
+                          {
+                            "name": "Yahoo Alpha"
+                          },
+                          {
+                            "league_key": "461.l.95050"
+                          },
+                          {
+                            "league_name": "Yahoo Fixture League"
+                          },
+                          {
+                            "num_teams": "4"
+                          }
+                        ]
+                      },
+                      "count": 1
+                    }
+                  }
+                ]
+              },
+              "1": {
+                "game": [
+                  {
+                    "game_key": "449"
+                  },
+                  {
+                    "code": "nfl"
+                  },
+                  {
+                    "season": "2025"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          {
+                            "team_key": "449.l.95050.t.1"
+                          },
+                          {
+                            "team_id": "1"
+                          },
+                          {
+                            "name": "Yahoo Alpha 2025"
+                          },
+                          {
+                            "league_key": "449.l.95050"
+                          },
+                          {
+                            "league_name": "Yahoo Fixture League 2025"
+                          },
+                          {
+                            "num_teams": "4"
+                          }
+                        ]
+                      },
+                      "count": 1
+                    }
+                  }
+                ]
+              },
+              "count": 2
+            }
+          }
+        ]
+      },
+      "count": 1
+    }
+  }
+}

@@ -17,6 +17,7 @@ import type {
   ProviderError,
   ProviderLeagueRef,
 } from "@/providers";
+import { yahooCredentialsSchema } from "@/providers/yahoo/client";
 import { recomputeLeagueStatistics } from "@/stats";
 import type { CredentialCipher } from "./credential-crypto";
 
@@ -118,6 +119,7 @@ export const storedSleeperCredentialsSchema = z.object({
 const storedCredentialSchemas = {
   espn: storedEspnCredentialsSchema,
   sleeper: storedSleeperCredentialsSchema,
+  yahoo: yahooCredentialsSchema,
 } satisfies Partial<Record<FantasyProviderId, z.ZodType<unknown>>>;
 type HistoricalImportProviderId = ImportRequestedData["provider"];
 
@@ -562,7 +564,11 @@ export async function importDiscoveredLeague(
   }
 
   const importProvider = ref.provider;
-  if (importProvider !== "espn" && importProvider !== "sleeper") {
+  if (
+    importProvider !== "espn" &&
+    importProvider !== "sleeper" &&
+    importProvider !== "yahoo"
+  ) {
     return err(providerUnsupported(importProvider));
   }
 

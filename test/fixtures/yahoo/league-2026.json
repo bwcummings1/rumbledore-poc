@@ -1,0 +1,247 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "league_key": "461.l.95050"
+      },
+      {
+        "league_id": "95050"
+      },
+      {
+        "name": "Yahoo Fixture League"
+      },
+      {
+        "num_teams": "4"
+      },
+      {
+        "draft_status": "postdraft"
+      },
+      {
+        "scoring_type": "head"
+      },
+      {
+        "current_week": "2"
+      },
+      {
+        "start_week": "1"
+      },
+      {
+        "end_week": "2"
+      },
+      {
+        "is_finished": "0"
+      },
+      {
+        "season": "2026"
+      },
+      {
+        "standings": {
+          "teams": {
+            "0": {
+              "team": [
+                {
+                  "team_key": "461.l.95050.t.1"
+                },
+                {
+                  "team_id": "1"
+                },
+                {
+                  "name": "Alpha Aces"
+                },
+                {
+                  "team_abbr": "AAA"
+                },
+                {
+                  "team_logos": {
+                    "team_logo": {
+                      "size": "medium",
+                      "url": "https://s.yimg.com/cv/apiv2/default/nfl/icon_01_48.gif"
+                    }
+                  }
+                },
+                {
+                  "managers": {
+                    "0": {
+                      "manager": {
+                        "manager_id": "1",
+                        "nickname": "Alpha Manager",
+                        "guid": "YAHOO-MANAGER-1",
+                        "is_commissioner": "1"
+                      }
+                    },
+                    "count": 1
+                  }
+                },
+                {
+                  "team_points": {
+                    "coverage_type": "season",
+                    "season": "2026",
+                    "total": "250.75"
+                  }
+                },
+                {
+                  "points_against": "199.05"
+                },
+                {
+                  "team_standings": {
+                    "rank": "1",
+                    "outcome_totals": {
+                      "wins": "2",
+                      "losses": "0",
+                      "ties": "0"
+                    }
+                  }
+                }
+              ]
+            },
+            "1": {
+              "team": [
+                {
+                  "team_key": "461.l.95050.t.2"
+                },
+                {
+                  "team_id": "2"
+                },
+                {
+                  "name": "Beta Brigade"
+                },
+                {
+                  "team_abbr": "BBB"
+                },
+                {
+                  "managers": {
+                    "0": {
+                      "manager": {
+                        "manager_id": "2",
+                        "nickname": "Beta Manager",
+                        "guid": "YAHOO-MANAGER-2"
+                      }
+                    },
+                    "count": 1
+                  }
+                },
+                {
+                  "team_points": {
+                    "coverage_type": "season",
+                    "season": "2026",
+                    "total": "210.02"
+                  }
+                },
+                {
+                  "points_against": "230.50"
+                },
+                {
+                  "team_standings": {
+                    "rank": "2",
+                    "outcome_totals": {
+                      "wins": "1",
+                      "losses": "1",
+                      "ties": "0"
+                    }
+                  }
+                }
+              ]
+            },
+            "2": {
+              "team": [
+                {
+                  "team_key": "461.l.95050.t.3"
+                },
+                {
+                  "team_id": "3"
+                },
+                {
+                  "name": "Gamma Guild"
+                },
+                {
+                  "team_abbr": "GGG"
+                },
+                {
+                  "managers": {
+                    "0": {
+                      "manager": {
+                        "manager_id": "3",
+                        "nickname": "Gamma Manager",
+                        "guid": "YAHOO-MANAGER-3"
+                      }
+                    },
+                    "count": 1
+                  }
+                },
+                {
+                  "team_points": {
+                    "coverage_type": "season",
+                    "season": "2026",
+                    "total": "180"
+                  }
+                },
+                {
+                  "points_against": "190"
+                },
+                {
+                  "team_standings": {
+                    "rank": "3",
+                    "outcome_totals": {
+                      "wins": "1",
+                      "losses": "1",
+                      "ties": "0"
+                    }
+                  }
+                }
+              ]
+            },
+            "3": {
+              "team": [
+                {
+                  "team_key": "461.l.95050.t.4"
+                },
+                {
+                  "team_id": "4"
+                },
+                {
+                  "name": "Delta Dynasty"
+                },
+                {
+                  "team_abbr": "DDD"
+                },
+                {
+                  "managers": {
+                    "0": {
+                      "manager": {
+                        "manager_id": "4",
+                        "nickname": "Delta Manager",
+                        "guid": "YAHOO-MANAGER-4"
+                      }
+                    },
+                    "count": 1
+                  }
+                },
+                {
+                  "team_points": {
+                    "coverage_type": "season",
+                    "season": "2026",
+                    "total": "170"
+                  }
+                },
+                {
+                  "points_against": "191"
+                },
+                {
+                  "team_standings": {
+                    "rank": "4",
+                    "outcome_totals": {
+                      "wins": "0",
+                      "losses": "2",
+                      "ties": "0"
+                    }
+                  }
+                }
+              ]
+            },
+            "count": 4
+          }
+        }
+      }
+    ]
+  }
+}

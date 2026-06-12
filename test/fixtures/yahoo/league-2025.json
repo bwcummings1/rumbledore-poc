@@ -1,0 +1,142 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "league_key": "449.l.95050"
+      },
+      {
+        "league_id": "95050"
+      },
+      {
+        "name": "Yahoo Fixture League 2025"
+      },
+      {
+        "num_teams": "4"
+      },
+      {
+        "draft_status": "postdraft"
+      },
+      {
+        "scoring_type": "head"
+      },
+      {
+        "current_week": "2"
+      },
+      {
+        "start_week": "1"
+      },
+      {
+        "end_week": "2"
+      },
+      {
+        "is_finished": "1"
+      },
+      {
+        "season": "2025"
+      },
+      {
+        "standings": {
+          "teams": {
+            "0": {
+              "team": [
+                {
+                  "team_key": "449.l.95050.t.1"
+                },
+                {
+                  "team_id": "1"
+                },
+                {
+                  "name": "Alpha Aces 2025"
+                },
+                {
+                  "team_abbr": "AAA"
+                },
+                {
+                  "managers": {
+                    "0": {
+                      "manager": {
+                        "manager_id": "1",
+                        "nickname": "Alpha Manager",
+                        "guid": "YAHOO-MANAGER-1"
+                      }
+                    },
+                    "count": 1
+                  }
+                },
+                {
+                  "team_points": {
+                    "coverage_type": "season",
+                    "season": "2025",
+                    "total": "240"
+                  }
+                },
+                {
+                  "points_against": "200"
+                },
+                {
+                  "team_standings": {
+                    "rank": "1",
+                    "outcome_totals": {
+                      "wins": "2",
+                      "losses": "0",
+                      "ties": "0"
+                    }
+                  }
+                }
+              ]
+            },
+            "1": {
+              "team": [
+                {
+                  "team_key": "449.l.95050.t.2"
+                },
+                {
+                  "team_id": "2"
+                },
+                {
+                  "name": "Beta Brigade 2025"
+                },
+                {
+                  "team_abbr": "BBB"
+                },
+                {
+                  "managers": {
+                    "0": {
+                      "manager": {
+                        "manager_id": "2",
+                        "nickname": "Beta Manager",
+                        "guid": "YAHOO-MANAGER-2"
+                      }
+                    },
+                    "count": 1
+                  }
+                },
+                {
+                  "team_points": {
+                    "coverage_type": "season",
+                    "season": "2025",
+                    "total": "190"
+                  }
+                },
+                {
+                  "points_against": "210"
+                },
+                {
+                  "team_standings": {
+                    "rank": "2",
+                    "outcome_totals": {
+                      "wins": "1",
+                      "losses": "1",
+                      "ties": "0"
+                    }
+                  }
+                }
+              ]
+            },
+            "count": 2
+          }
+        }
+      }
+    ]
+  }
+}

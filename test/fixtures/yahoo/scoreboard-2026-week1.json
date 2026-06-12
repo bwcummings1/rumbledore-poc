@@ -1,0 +1,78 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "league_key": "461.l.95050"
+      },
+      {
+        "scoreboard": {
+          "week": "1",
+          "matchups": {
+            "0": {
+              "matchup": [
+                {
+                  "week": "1"
+                },
+                {
+                  "status": "postevent"
+                },
+                {
+                  "is_tied": "0"
+                },
+                {
+                  "winner_team_key": "461.l.95050.t.1"
+                },
+                {
+                  "teams": {
+                    "0": {
+                      "team": [
+                        {
+                          "team_key": "461.l.95050.t.1"
+                        },
+                        {
+                          "team_id": "1"
+                        },
+                        {
+                          "name": "Alpha Aces"
+                        },
+                        {
+                          "team_points": {
+                            "coverage_type": "week",
+                            "week": "1",
+                            "total": "125.75"
+                          }
+                        }
+                      ]
+                    },
+                    "1": {
+                      "team": [
+                        {
+                          "team_key": "461.l.95050.t.2"
+                        },
+                        {
+                          "team_id": "2"
+                        },
+                        {
+                          "name": "Beta Brigade"
+                        },
+                        {
+                          "team_points": {
+                            "coverage_type": "week",
+                            "week": "1",
+                            "total": "110.02"
+                          }
+                        }
+                      ]
+                    },
+                    "count": 2
+                  }
+                }
+              ]
+            },
+            "count": 1
+          }
+        }
+      }
+    ]
+  }
+}

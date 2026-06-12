@@ -1,0 +1,75 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "league_key": "461.l.95050"
+      },
+      {
+        "scoreboard": {
+          "week": "2",
+          "matchups": {
+            "0": {
+              "matchup": [
+                {
+                  "week": "2"
+                },
+                {
+                  "status": "midevent"
+                },
+                {
+                  "is_tied": "0"
+                },
+                {
+                  "teams": {
+                    "0": {
+                      "team": [
+                        {
+                          "team_key": "461.l.95050.t.1"
+                        },
+                        {
+                          "team_id": "1"
+                        },
+                        {
+                          "name": "Alpha Aces"
+                        },
+                        {
+                          "team_points": {
+                            "coverage_type": "week",
+                            "week": "2",
+                            "total": "12"
+                          }
+                        }
+                      ]
+                    },
+                    "1": {
+                      "team": [
+                        {
+                          "team_key": "461.l.95050.t.3"
+                        },
+                        {
+                          "team_id": "3"
+                        },
+                        {
+                          "name": "Gamma Guild"
+                        },
+                        {
+                          "team_points": {
+                            "coverage_type": "week",
+                            "week": "2",
+                            "total": "8"
+                          }
+                        }
+                      ]
+                    },
+                    "count": 2
+                  }
+                }
+              ]
+            },
+            "count": 1
+          }
+        }
+      }
+    ]
+  }
+}

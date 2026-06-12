@@ -20,6 +20,10 @@ import type {
   ProviderLeagueRef,
 } from "@/providers/model";
 import { createSleeperProvider } from "@/providers/sleeper/client";
+import {
+  createYahooProvider,
+  yahooCredentialsSchema,
+} from "@/providers/yahoo/client";
 import { recomputeLeagueStatistics } from "@/stats";
 import { inngest } from "../client";
 import { type ImportRequestedData, JOB_EVENTS } from "../events";
@@ -28,7 +32,10 @@ type ImportRequestedProvider = Pick<
   FantasyProvider<unknown, FantasyProviderSession>,
   "authenticate" | "getHistory"
 >;
-type ImportableProviderId = Extract<FantasyProviderId, "espn" | "sleeper">;
+type ImportableProviderId = Extract<
+  FantasyProviderId,
+  "espn" | "sleeper" | "yahoo"
+>;
 type ImportRequestedProviderRegistry = Partial<
   Record<ImportableProviderId, unknown>
 >;
@@ -55,12 +62,13 @@ const storedEspnCredentialsSchema = z.object({
 const storedCredentialSchemas = {
   espn: storedEspnCredentialsSchema,
   sleeper: storedSleeperCredentialsSchema,
+  yahoo: yahooCredentialsSchema,
 } satisfies Record<ImportableProviderId, z.ZodType<unknown>>;
 
 const importRequestedDataSchema = z.object({
   credentialId: z.uuid(),
   leagueId: z.uuid(),
-  provider: z.enum(["espn", "sleeper"]),
+  provider: z.enum(["espn", "sleeper", "yahoo"]),
   providerLeagueId: z.string().trim().min(1),
   season: z.number().int().min(2000).max(2100),
   sport: z.enum(["ffl", "unknown"]),
@@ -257,6 +265,7 @@ async function getDefaultImportRequestedDependencies(): Promise<ImportRequestedD
     providers: {
       espn: createEspnDiscoveryProvider(),
       sleeper: createSleeperProvider(),
+      yahoo: createYahooProvider(),
     },
   };
 }

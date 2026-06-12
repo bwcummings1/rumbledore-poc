@@ -1,0 +1,52 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "league_key": "449.l.95050"
+      },
+      {
+        "transactions": {
+          "0": {
+            "transaction": [
+              {
+                "transaction_key": "449.l.95050.tr.1"
+              },
+              {
+                "type": "add/drop"
+              },
+              {
+                "timestamp": "1800000000"
+              },
+              {
+                "players": {
+                  "0": {
+                    "player": [
+                      {
+                        "player_key": "449.p.1001"
+                      },
+                      {
+                        "player_id": "1001"
+                      }
+                    ]
+                  },
+                  "1": {
+                    "player": [
+                      {
+                        "player_key": "449.p.2001"
+                      },
+                      {
+                        "player_id": "2001"
+                      }
+                    ]
+                  },
+                  "count": 2
+                }
+              }
+            ]
+          },
+          "count": 1
+        }
+      }
+    ]
+  }
+}

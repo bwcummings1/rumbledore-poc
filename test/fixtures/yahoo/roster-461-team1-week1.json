@@ -1,0 +1,79 @@
+{
+  "fantasy_content": {
+    "team": [
+      {
+        "team_key": "461.l.95050.t.1"
+      },
+      {
+        "roster": {
+          "coverage_type": "week",
+          "week": "1",
+          "players": {
+            "0": {
+              "player": [
+                {
+                  "player_key": "461.p.1001"
+                },
+                {
+                  "player_id": "1001"
+                },
+                {
+                  "name": {
+                    "full": "Quarterback One"
+                  }
+                },
+                {
+                  "display_position": "QB"
+                },
+                {
+                  "editorial_team_abbr": "KC"
+                },
+                {
+                  "selected_position": {
+                    "position": "QB"
+                  }
+                },
+                {
+                  "player_points": {
+                    "coverage_type": "week",
+                    "week": "1",
+                    "total": "22.4"
+                  }
+                }
+              ]
+            },
+            "1": {
+              "player": [
+                {
+                  "player_key": "461.p.2001"
+                },
+                {
+                  "player_id": "2001"
+                },
+                {
+                  "name": {
+                    "full": "Bench Runner"
+                  }
+                },
+                {
+                  "display_position": "RB"
+                },
+                {
+                  "selected_position": {
+                    "position": "BN"
+                  }
+                },
+                {
+                  "player_points": {
+                    "total": "7"
+                  }
+                }
+              ]
+            },
+            "count": 2
+          }
+        }
+      }
+    ]
+  }
+}

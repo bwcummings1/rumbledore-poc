@@ -32,6 +32,7 @@ import type {
   SleeperCredentials,
   SleeperSession,
 } from "@/providers/sleeper/client";
+import type { YahooCredentials, YahooSession } from "@/providers/yahoo/client";
 import { JOB_EVENTS } from "./events";
 import {
   createImportRequestedFunction,
@@ -44,6 +45,7 @@ const marker = `importjobtest-${randomUUID()}`;
 const masterKey = "test-import-job-master-key-minimum-32"; // ubs:ignore — fake fixture value
 const fixtureSwid = "{00000000-0000-4000-8000-000000000001}";
 const fixtureEspnS2 = "fixture-session-value"; // ubs:ignore — fake ESPN cookie value for job tests
+const fixtureYahooAccessToken = "fixture-yahoo-access-token"; // ubs:ignore — fake OAuth token for job tests
 
 let handle: DbHandle;
 let cipher: CredentialCipher;
@@ -51,7 +53,7 @@ let cipher: CredentialCipher;
 interface SeededImport {
   credentialId: string;
   leagueId: string;
-  provider: "espn" | "sleeper";
+  provider: "espn" | "sleeper" | "yahoo";
   providerLeagueId: string;
   userId: string;
 }
@@ -62,6 +64,8 @@ function connectionFlowFor(provider: SeededImport["provider"]) {
       return "manual";
     case "sleeper":
       return "public";
+    case "yahoo":
+      return "manual";
   }
 }
 
@@ -100,6 +104,28 @@ interface SleeperImportProvider {
       session: SleeperSession,
       ref: {
         provider: "sleeper";
+        providerId: string;
+        season: number;
+        sport: "ffl" | "unknown";
+        name: string;
+        size?: number;
+      },
+      options: { seasons: number[] },
+    ): Promise<{ ok: true; value: NormalizedSeasonBundle[] }>;
+  };
+}
+
+interface YahooImportProvider {
+  calls: number[];
+  credentials: YahooCredentials[];
+  provider: {
+    authenticate(
+      credentials: YahooCredentials,
+    ): Promise<{ ok: true; value: YahooSession }>;
+    getHistory(
+      session: YahooSession,
+      ref: {
+        provider: "yahoo";
         providerId: string;
         season: number;
         sport: "ffl" | "unknown";
@@ -293,6 +319,97 @@ function sleeperBundleFor({
   };
 }
 
+function yahooBundleFor({
+  providerLeagueId,
+  season,
+}: {
+  providerLeagueId: string;
+  season: number;
+}): NormalizedSeasonBundle {
+  return {
+    league: {
+      provider: "yahoo",
+      providerId: providerLeagueId,
+      season,
+      sport: "ffl",
+      name: `${marker} yahoo ${season}`,
+      size: 2,
+      currentScoringPeriod: 14,
+      scoringType: "H2H",
+      status: "complete",
+    },
+    teams: [
+      {
+        provider: "yahoo",
+        providerId: "1",
+        leagueProviderId: providerLeagueId,
+        season,
+        name: `Yahoo One ${season}`,
+        abbrev: "YON",
+        ownerMemberIds: [`yahoo-owner-one-${season}`],
+        record: {
+          wins: 1,
+          losses: 0,
+          ties: 0,
+          pointsFor: 120,
+          pointsAgainst: 100,
+        },
+      },
+      {
+        provider: "yahoo",
+        providerId: "2",
+        leagueProviderId: providerLeagueId,
+        season,
+        name: `Yahoo Two ${season}`,
+        abbrev: "YTW",
+        ownerMemberIds: [`yahoo-owner-two-${season}`],
+        record: {
+          wins: 0,
+          losses: 1,
+          ties: 0,
+          pointsFor: 100,
+          pointsAgainst: 120,
+        },
+      },
+    ],
+    members: [
+      {
+        provider: "yahoo",
+        providerId: `yahoo-owner-one-${season}`,
+        leagueProviderId: providerLeagueId,
+        season,
+        displayName: `Yahoo Owner One ${season}`,
+        role: "member",
+      },
+      {
+        provider: "yahoo",
+        providerId: `yahoo-owner-two-${season}`,
+        leagueProviderId: providerLeagueId,
+        season,
+        displayName: `Yahoo Owner Two ${season}`,
+        role: "member",
+      },
+    ],
+    matchups: [
+      {
+        provider: "yahoo",
+        providerId: "matchup-1",
+        leagueProviderId: providerLeagueId,
+        season,
+        scoringPeriod: 1,
+        homeTeamRef: { provider: "yahoo", providerId: "1", season },
+        awayTeamRef: { provider: "yahoo", providerId: "2", season },
+        homeScore: 120,
+        awayScore: 100,
+        winner: "home",
+        status: "final",
+      },
+    ],
+    finalStandings: [],
+    transactions: [],
+  };
+}
+
 function historyProvider({
   authExpired = false,
 }: {
@@ -364,6 +481,43 @@ function sleeperHistoryProvider(): SleeperImportProvider {
   };
 }
 
+function yahooHistoryProvider(): YahooImportProvider {
+  const calls: number[] = [];
+  const credentials: YahooCredentials[] = [];
+  return {
+    calls,
+    credentials,
+    provider: {
+      async authenticate(input) {
+        credentials.push(input);
+        return ok({
+          provider: "yahoo",
+          authKind: "oauth2",
+          subjectProviderId: "YAHOO-GUID-123",
+          accessToken: input.accessToken,
+          discoveryGameKeys: input.discoveryGameKeys ?? ["nfl"],
+          discoverySeasons: input.discoverySeasons ?? [],
+          historicalLeagueKeysByLeagueKey:
+            input.historicalLeagueKeysByLeagueKey ?? {},
+          leagueKeys: input.leagueKeys ?? [],
+          tokenType: input.tokenType ?? "Bearer",
+        });
+      },
+      async getHistory(_session, ref, options) {
+        const season = options.seasons[0];
+        if (season === undefined) {
+          return ok([]);
+        }
+
+        calls.push(season);
+        return ok([
+          yahooBundleFor({ providerLeagueId: ref.providerId, season }),
+        ]);
+      },
+    },
+  };
+}
+
 async function seedImport(
   tag: string,
   {
@@ -375,7 +529,7 @@ async function seedImport(
     subjectProviderId = fixtureSwid,
   }: {
     credentialPayload?: unknown;
-    provider?: "espn" | "sleeper";
+    provider?: "espn" | "sleeper" | "yahoo";
     subjectProviderId?: string;
   } = {},
 ): Promise<SeededImport> {
@@ -627,6 +781,67 @@ describe("import.requested Inngest function", () => {
       {
         seasons: [2026, 2025],
         usernameOrUserId: "fixture_sleeper",
+      },
+    ]);
+    expect(fixtureProvider.calls).toEqual([2025]);
+
+    const rows = await selectHistoricalRows(seeded.leagueId);
+    expect(rows.teams).toHaveLength(2);
+    expect(rows.members).toHaveLength(2);
+    expect(rows.matchups).toHaveLength(1);
+  });
+
+  it("dispatches Yahoo imports with OAuth credentials", async () => {
+    const seeded = await seedImport("yahoo", {
+      credentialPayload: {
+        accessToken: fixtureYahooAccessToken,
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        historicalLeagueKeysByLeagueKey: {
+          "461.l.95050": ["449.l.95050"],
+        },
+        leagueKeys: ["449.l.95050"],
+      },
+      provider: "yahoo",
+      subjectProviderId: "YAHOO-GUID-123",
+    });
+    const fixtureProvider = yahooHistoryProvider();
+    const response = await runImportRequested({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        provider: "yahoo",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+        name: `${marker} yahoo league`,
+        size: 2,
+        seasons: [2025],
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { yahoo: fixtureProvider.provider },
+      },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      eventName: JOB_EVENTS.importRequested,
+      seasons: {
+        requested: [2025],
+        imported: [2025],
+        skipped: [],
+      },
+    });
+    expect(fixtureProvider.credentials).toEqual([
+      {
+        accessToken: fixtureYahooAccessToken,
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        historicalLeagueKeysByLeagueKey: {
+          "461.l.95050": ["449.l.95050"],
+        },
+        leagueKeys: ["449.l.95050"],
+        tokenType: "Bearer",
       },
     ]);
     expect(fixtureProvider.calls).toEqual([2025]);

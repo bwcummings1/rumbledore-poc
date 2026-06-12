@@ -73,6 +73,7 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **First milestone:** Foundation (P0) + the flagship vertical slice — connect league → ingest (real, via league 95050) → league home shows standings/stats — all test-backed behind green gates.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-12: Yahoo provider landed — a server-only OAuth2 adapter now normalizes Yahoo Fantasy leagues, teams, members, rosters, scoreboards, historical season bundles, and transactions behind the `FantasyProvider` interface with fixture-backed coverage.
 - 2026-06-12: Sleeper onboarding/import landed — public username/user-id connect now discovers Sleeper leagues, imports selected leagues through provider-generic current sync, and dispatches historical import jobs to Sleeper.
 - 2026-06-12: Sleeper provider landed — a server-only no-auth adapter now normalizes public Sleeper leagues, teams, members, rosters, matchups, historical seasons, and transactions behind the `FantasyProvider` interface with fixture-backed coverage.
 - 2026-06-12: Observability health/metrics landed; `/api/health` now checks DB, Redis, configured Supabase Realtime and Inngest reachability, exposes process-local API/job metrics, and app-owned API routes plus registered Inngest functions record status/duration without leaking secrets.
