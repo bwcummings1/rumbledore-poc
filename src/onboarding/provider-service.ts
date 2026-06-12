@@ -25,7 +25,8 @@ export type OnboardingConnectionFlow =
   | "browser"
   | "manual"
   | "extension"
-  | "public";
+  | "public"
+  | "oauth";
 
 export interface DiscoveredLeague {
   provider: FantasyProviderId;

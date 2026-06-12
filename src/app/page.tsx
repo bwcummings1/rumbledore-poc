@@ -31,6 +31,15 @@ export default function Home() {
             Connect Sleeper
           </Link>
           <Link
+            href="/onboarding/yahoo"
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "secondary" }),
+            )}
+          >
+            <Plug data-icon="inline-start" />
+            Connect Yahoo
+          </Link>
+          <Link
             href="/news"
             className={cn(
               buttonVariants({ className: "w-fit", variant: "outline" }),

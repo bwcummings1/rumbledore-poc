@@ -148,6 +148,13 @@
       "when": 1781235992857,
       "tag": "0020_zippy_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781239669458,
+      "tag": "0021_lonely_goblin_queen",
+      "breakpoints": true
     }
   ]
 }

@@ -26,6 +26,16 @@ export type GoogleOAuthConfig =
   | { mock: true }
   | { mock: false; clientId: string; clientSecret: string };
 
+export type YahooOAuthConfig =
+  | { mock: true }
+  | {
+      mock: false;
+      clientId: string;
+      clientSecret: string;
+      redirectUri: string;
+      scope: string;
+    };
+
 export type RealtimeConfig =
   | { mock: true }
   | {
@@ -117,6 +127,10 @@ const baseSchema = z.object({
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
   GOOGLE_CLIENT_ID: secret.optional(),
   GOOGLE_CLIENT_SECRET: secret.optional(),
+  YAHOO_CLIENT_ID: secret.optional(),
+  YAHOO_CLIENT_SECRET: secret.optional(),
+  YAHOO_REDIRECT_URI: z.url().optional(),
+  YAHOO_OAUTH_SCOPE: secret.default("fspt-r"),
   CREDENTIAL_ENCRYPTION_KEY: secret.optional(),
   SUPABASE_URL: z.url().optional(),
   SUPABASE_PUBLISHABLE_KEY: secret.optional(),
@@ -167,6 +181,7 @@ export interface Env {
     secret: string;
     url: string;
     google: GoogleOAuthConfig;
+    yahoo: YahooOAuthConfig;
   };
   credentials: {
     encryptionKey: string;
@@ -230,6 +245,15 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
   if (googleVars.length === 1) {
     problems.push(
       `✖ GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together (only ${googleVars[0]} is set)\n  → at GOOGLE_CLIENT_ID`,
+    );
+  }
+
+  const yahooVars = ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET"].filter(
+    (v) => v in present,
+  );
+  if (yahooVars.length === 1) {
+    problems.push(
+      `✖ YAHOO_CLIENT_ID and YAHOO_CLIENT_SECRET must be set together (only ${yahooVars[0]} is set)\n  → at YAHOO_CLIENT_ID`,
     );
   }
 
@@ -316,6 +340,8 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
   // already filtered out above, so truthiness == presence here).
   const googleClientId = parsed.GOOGLE_CLIENT_ID;
   const googleClientSecret = parsed.GOOGLE_CLIENT_SECRET;
+  const yahooClientId = parsed.YAHOO_CLIENT_ID;
+  const yahooClientSecret = parsed.YAHOO_CLIENT_SECRET;
   const realtimeIsReal =
     parsed.MOCK_REALTIME !== true &&
     parsed.SUPABASE_URL !== undefined &&
@@ -389,6 +415,21 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
               mock: false,
               clientId: googleClientId,
               clientSecret: googleClientSecret,
+            }
+          : { mock: true },
+      yahoo:
+        yahooClientId && yahooClientSecret
+          ? {
+              mock: false,
+              clientId: yahooClientId,
+              clientSecret: yahooClientSecret,
+              redirectUri:
+                parsed.YAHOO_REDIRECT_URI ??
+                new URL(
+                  "/api/onboarding/yahoo/callback",
+                  parsed.BETTER_AUTH_URL,
+                ).toString(),
+              scope: parsed.YAHOO_OAUTH_SCOPE,
             }
           : { mock: true },
     },

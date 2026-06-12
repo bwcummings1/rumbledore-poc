@@ -277,11 +277,12 @@ describe("parseEnv", () => {
     expect(message).not.toContain("super-secret-but-malformed");
   });
 
-  it("defaults auth to the dev secret, localhost URL, and a mocked Google provider", () => {
+  it("defaults auth to the dev secret, localhost URL, and mocked OAuth providers", () => {
     const env = parseEnv({});
     expect(env.auth.secret).toBe(DEV_AUTH_SECRET);
     expect(env.auth.url).toBe("http://localhost:3000");
     expect(env.auth.google).toEqual({ mock: true });
+    expect(env.auth.yahoo).toEqual({ mock: true });
   });
 
   it("requires production-only secrets in production", () => {
@@ -314,6 +315,27 @@ describe("parseEnv", () => {
   it("rejects a lone Google OAuth var", () => {
     expect(() => parseEnv({ GOOGLE_CLIENT_ID: "gid-only" })).toThrow(
       /GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together/,
+    );
+  });
+
+  it("goes real for Yahoo when both OAuth vars are set", () => {
+    const env = parseEnv({
+      BETTER_AUTH_URL: "https://app.example.com",
+      YAHOO_CLIENT_ID: "yahoo-client-id",
+      YAHOO_CLIENT_SECRET: "yahoo-client-secret", // secret-scan:ignore - fake fixture value; ubs:ignore — fake fixture value
+    });
+    expect(env.auth.yahoo).toEqual({
+      mock: false,
+      clientId: "yahoo-client-id",
+      clientSecret: "yahoo-client-secret", // ubs:ignore — fake fixture value
+      redirectUri: "https://app.example.com/api/onboarding/yahoo/callback",
+      scope: "fspt-r",
+    });
+  });
+
+  it("rejects a lone Yahoo OAuth var", () => {
+    expect(() => parseEnv({ YAHOO_CLIENT_ID: "yahoo-client-only" })).toThrow(
+      /YAHOO_CLIENT_ID and YAHOO_CLIENT_SECRET must be set together/,
     );
   });
 
