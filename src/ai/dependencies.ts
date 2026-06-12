@@ -1,5 +1,6 @@
 import type { Env } from "@/core/env/schema";
 import type { Db } from "@/db/client";
+import { createPushNotifier } from "@/push";
 import { createRealtimePublisher } from "@/realtime";
 import {
   DeterministicEmbeddingProvider,
@@ -15,7 +16,7 @@ import {
 
 export function createAiDependencies(
   db: Db,
-  env: Pick<Env, "realtime" | "services">,
+  env: Pick<Env, "push" | "realtime" | "services">,
 ): AiGenerationDependencies {
   return {
     db,
@@ -25,6 +26,7 @@ export function createAiDependencies(
     llm: env.services.anthropic.mock
       ? new MockLlmClient()
       : new AnthropicLlmClient({ apiKey: env.services.anthropic.apiKey }),
+    push: createPushNotifier(db, env),
     web: env.services.tavily.mock
       ? new MockWebGrounding()
       : new TavilyWebGrounding({ apiKey: env.services.tavily.apiKey }),

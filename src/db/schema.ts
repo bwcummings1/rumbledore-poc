@@ -224,6 +224,11 @@ export const arenaStandingKind = pgEnum("arena_standing_kind", [
   "individual",
 ]);
 
+export const pushSubscriptionStatus = pgEnum("push_subscription_status", [
+  "active",
+  "disabled",
+]);
+
 export interface LeagueFeedMatchedEntity {
   provider: string;
   type: "player" | "team" | "member" | "storyline";
@@ -1568,6 +1573,51 @@ export const leagueFeedReferences = pgTable(
   ],
 );
 
+// ── PWA web push subscriptions (league-scoped; RLS enforced) ──────────────
+
+export const pushSubscriptions = pgTable(
+  "push_subscription",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    endpointHash: text("endpoint_hash").notNull(),
+    p256dh: text("p256dh").notNull(),
+    authSecret: text("auth_secret").notNull(),
+    expirationTime: timestamp("expiration_time", { withTimezone: true }),
+    userAgent: text("user_agent"),
+    status: pushSubscriptionStatus("status").notNull().default("active"),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("push_subscription_member_endpoint_unique").on(
+      table.leagueId,
+      table.userId,
+      table.endpointHash,
+    ),
+    index("push_subscription_league_active_idx").on(
+      table.leagueId,
+      table.status,
+      table.userId,
+    ),
+    index("push_subscription_endpoint_hash_idx").on(table.endpointHash),
+    pgPolicy("push_subscription_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const aiPersonaCards = pgTable(
   "ai_persona_card",
   {
@@ -1930,6 +1980,8 @@ export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
 export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;
 export type NewLeagueFeedReference = typeof leagueFeedReferences.$inferInsert;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;

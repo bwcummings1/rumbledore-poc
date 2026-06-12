@@ -28,6 +28,7 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { RecordingPushNotifier } from "@/push";
 import { JOB_EVENTS } from "./events";
 import {
   bettingSettleGameFinal,
@@ -168,8 +169,10 @@ describe("betting game.final settlement job", () => {
       name: `${marker}-arena`,
       startsAt: new Date("2037-09-01T00:00:00.000Z"),
     });
+    const push = new RecordingPushNotifier();
     const fn = createBettingSettleGameFinalFunction(() => ({
       db: handle.db,
+      push,
       resultsProvider: new StaticResultsProvider(),
     }));
     const testEngine = new InngestTestEngine({ function: fn });
@@ -208,6 +211,16 @@ describe("betting game.final settlement job", () => {
       "individual",
       "league",
     ]);
+    expect(push.notifications).toEqual([
+      {
+        body: "1 betting slip settled for this league.",
+        leagueId: league.id,
+        tag: `league:${league.id}:betting:${seeded.event.id}`,
+        title: "Betting results are in",
+        type: "league.bet.settled",
+        url: `/leagues/${league.id}`,
+      },
+    ]);
   });
 
   it("rejects invalid game.final payloads without retrying", async () => {
@@ -219,6 +232,7 @@ describe("betting game.final settlement job", () => {
         },
         deps: {
           db: handle.db,
+          push: new RecordingPushNotifier(),
           resultsProvider: new StaticResultsProvider(),
         },
       }),

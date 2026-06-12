@@ -38,7 +38,13 @@ describe("service worker", () => {
     const swPath = path.join(publicDir, "sw.js");
     expect(existsSync(swPath)).toBe(true);
     const sw = readFileSync(swPath, "utf8");
-    for (const event of ["install", "activate", "fetch"]) {
+    for (const event of [
+      "install",
+      "activate",
+      "fetch",
+      "push",
+      "notificationclick",
+    ]) {
       expect(sw).toContain(`addEventListener("${event}"`);
     }
     expect(sw).toContain('"/offline"');

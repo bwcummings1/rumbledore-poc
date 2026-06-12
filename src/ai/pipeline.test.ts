@@ -27,6 +27,7 @@ import {
   leagues,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
 
 const marker = `aipipeline-${randomUUID()}`;
@@ -127,6 +128,7 @@ describe("generateLeagueBlogPost", () => {
     const league = await seedLeague("alpha");
     await seedLeague("beta");
     const llm = new MockLlmClient();
+    const push = new RecordingPushNotifier();
     const realtime = new RecordingRealtimePublisher();
     const deps = {
       db: handle.db,
@@ -134,6 +136,7 @@ describe("generateLeagueBlogPost", () => {
       embeddings: new DeterministicEmbeddingProvider(),
       llm,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
+      push,
       realtime,
       web: new MockWebGrounding(),
     };
@@ -212,6 +215,42 @@ describe("generateLeagueBlogPost", () => {
         v: 1,
       },
     ]);
+    expect(push.notifications).toEqual([
+      {
+        at: new Date("2026-06-11T12:00:00.000Z"),
+        body: `Commissioner: ${marker} alpha snapshot`,
+        leagueId: league.id,
+        tag: `league:${league.id}:blog:${
+          first.status === "published"
+            ? first.contentItemId
+            : expect.any(String)
+        }`,
+        title: "New league post",
+        type: "league.blog.published",
+        url: `/leagues/${league.id}/posts/${
+          first.status === "published"
+            ? first.contentItemId
+            : expect.any(String)
+        }`,
+      },
+      {
+        at: new Date("2026-06-11T12:00:00.000Z"),
+        body: `Commissioner: ${marker} alpha snapshot`,
+        leagueId: league.id,
+        tag: `league:${league.id}:blog:${
+          third.status === "published"
+            ? third.contentItemId
+            : expect.any(String)
+        }`,
+        title: "New league post",
+        type: "league.blog.published",
+        url: `/leagues/${league.id}/posts/${
+          third.status === "published"
+            ? third.contentItemId
+            : expect.any(String)
+        }`,
+      },
+    ]);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
       const posts = await tx
@@ -286,6 +325,7 @@ describe("generateLeagueBlogPost", () => {
         embeddings,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
         realtime,
         web: new MockWebGrounding(),
       },
@@ -344,6 +384,7 @@ describe("generateLeagueBlogPost", () => {
         embeddings: new DeterministicEmbeddingProvider(),
         llm: new MockLlmClient(),
         now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
         realtime: new RecordingRealtimePublisher(),
         web: new FailingWebGrounding(),
       },

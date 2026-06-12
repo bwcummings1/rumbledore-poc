@@ -90,3 +90,67 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(cacheFirst(request));
   }
 });
+
+function safeNotificationPayload(event) {
+  if (!event.data) {
+    return {};
+  }
+  try {
+    const payload = event.data.json();
+    return payload && typeof payload === "object" ? payload : {};
+  } catch {
+    return {};
+  }
+}
+
+self.addEventListener("push", (event) => {
+  const payload = safeNotificationPayload(event);
+  const title =
+    typeof payload.title === "string" && payload.title.trim()
+      ? payload.title
+      : "Rumbledore";
+  const body = typeof payload.body === "string" ? payload.body : "";
+  const tag =
+    typeof payload.tag === "string" && payload.tag.trim()
+      ? payload.tag
+      : "rumbledore-update";
+  const url = typeof payload.url === "string" ? payload.url : "/";
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      badge: "/icons/icon-192.png",
+      body,
+      data: { url },
+      icon: "/icons/icon-192.png",
+      tag,
+    }),
+  );
+});
+
+async function focusOrOpenNotificationUrl(url) {
+  const target = new URL(url, self.location.origin);
+  if (target.origin !== self.location.origin) {
+    target.href = self.location.origin;
+  }
+
+  const windows = await self.clients.matchAll({
+    includeUncontrolled: true,
+    type: "window",
+  });
+  for (const client of windows) {
+    if ("focus" in client) {
+      if ("navigate" in client && client.url !== target.href) {
+        await client.navigate(target.href);
+      }
+      return client.focus();
+    }
+  }
+  return self.clients.openWindow(target.href);
+}
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    focusOrOpenNotificationUrl(event.notification.data?.url ?? "/"),
+  );
+});

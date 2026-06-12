@@ -33,10 +33,21 @@ export type RealtimeConfig =
       url: string;
     };
 
+export type PushConfig =
+  | { mock: true; publicKey: string }
+  | {
+      mock: false;
+      privateKey: string;
+      publicKey: string;
+      subject: string;
+    };
+
 // Dev-only fallback so the app boots with zero config; production requires BETTER_AUTH_SECRET.
 export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
 export const DEV_CREDENTIAL_ENCRYPTION_KEY =
   "rumbledore-dev-only-credential-key-32chars"; // ubs:ignore — not a credential, dev placeholder rejected in production
+export const DEV_PUSH_PUBLIC_KEY =
+  "BF_-asb0YkmLyoUqIg_c4WoJJHyU0xf1kviNES_xMb-a_41mQdPMnlBa_7r4rjFb8dnk6X4XuGp8-P95kLLLTjc";
 
 export const PAID_SERVICES = [
   "anthropic",
@@ -91,6 +102,10 @@ const baseSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: secret.optional(),
   SUPABASE_JWT_SECRET: secret.optional(),
   MOCK_REALTIME: stringbool.optional(),
+  WEB_PUSH_PUBLIC_KEY: secret.optional(),
+  WEB_PUSH_PRIVATE_KEY: secret.optional(),
+  WEB_PUSH_SUBJECT: secret.optional(),
+  MOCK_PUSH: stringbool.optional(),
 
   ANTHROPIC_API_KEY: secret.optional(),
   THE_ODDS_API_KEY: secret.optional(),
@@ -128,6 +143,7 @@ export interface Env {
     encryptionKey: string;
   };
   realtime: RealtimeConfig;
+  push: PushConfig;
   services: Record<PaidService, ServiceConfig>;
 }
 
@@ -212,6 +228,28 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     }
   }
 
+  const pushFlag =
+    "MOCK_PUSH" in present
+      ? stringbool.safeParse(present.MOCK_PUSH)
+      : undefined;
+  if (pushFlag?.success && pushFlag.data === false) {
+    if (!("WEB_PUSH_PUBLIC_KEY" in present)) {
+      problems.push(
+        "✖ MOCK_PUSH=false requires WEB_PUSH_PUBLIC_KEY to be set\n  → at WEB_PUSH_PUBLIC_KEY",
+      );
+    }
+    if (!("WEB_PUSH_PRIVATE_KEY" in present)) {
+      problems.push(
+        "✖ MOCK_PUSH=false requires WEB_PUSH_PRIVATE_KEY to be set\n  → at WEB_PUSH_PRIVATE_KEY",
+      );
+    }
+    if (!("WEB_PUSH_SUBJECT" in present)) {
+      problems.push(
+        "✖ MOCK_PUSH=false requires WEB_PUSH_SUBJECT to be set\n  → at WEB_PUSH_SUBJECT",
+      );
+    }
+  }
+
   if (!base.success || problems.length > 0) {
     throw new Error(
       `Invalid environment configuration:\n${problems.join("\n")}`,
@@ -238,6 +276,11 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     parsed.SUPABASE_PUBLISHABLE_KEY !== undefined &&
     parsed.SUPABASE_JWT_SECRET !== undefined &&
     parsed.SUPABASE_SERVICE_ROLE_KEY !== undefined;
+  const pushIsReal =
+    parsed.MOCK_PUSH !== true &&
+    parsed.WEB_PUSH_PUBLIC_KEY !== undefined &&
+    parsed.WEB_PUSH_PRIVATE_KEY !== undefined &&
+    parsed.WEB_PUSH_SUBJECT !== undefined;
 
   return {
     nodeEnv: parsed.NODE_ENV,
@@ -274,6 +317,17 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
           url: parsed.SUPABASE_URL as string,
         }
       : { mock: true },
+    push: pushIsReal
+      ? {
+          mock: false,
+          privateKey: parsed.WEB_PUSH_PRIVATE_KEY as string,
+          publicKey: parsed.WEB_PUSH_PUBLIC_KEY as string,
+          subject: parsed.WEB_PUSH_SUBJECT as string,
+        }
+      : {
+          mock: true,
+          publicKey: parsed.WEB_PUSH_PUBLIC_KEY ?? DEV_PUSH_PUBLIC_KEY,
+        },
     services: {
       anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),
       odds: service(parsed.THE_ODDS_API_KEY, parsed.MOCK_ODDS),

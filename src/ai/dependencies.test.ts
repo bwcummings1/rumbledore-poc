@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import type { Db } from "@/db/client";
+import { NoopPushNotifier, WebPushNotifier } from "@/push";
 import { NoopRealtimePublisher, SupabaseRealtimePublisher } from "@/realtime";
 import { createAiDependencies } from "./dependencies";
 import {
@@ -27,6 +28,7 @@ describe("createAiDependencies", () => {
     expect(deps.web).toBeInstanceOf(MockWebGrounding);
     expect(deps.embeddings).toBeInstanceOf(DeterministicEmbeddingProvider);
     expect(deps.realtime).toBeInstanceOf(NoopRealtimePublisher);
+    expect(deps.push).toBeInstanceOf(NoopPushNotifier);
   });
 
   it("selects real Anthropic, Tavily, and Voyage clients when keys are present", () => {
@@ -56,5 +58,19 @@ describe("createAiDependencies", () => {
     );
 
     expect(deps.realtime).toBeInstanceOf(SupabaseRealtimePublisher);
+  });
+
+  it("selects the web push notifier when VAPID config is present", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        WEB_PUSH_PRIVATE_KEY: "6ZfvaEkuyWBKllOiVJI4YAjobzGhKFjAvfQIjUe84xU", // ubs:ignore secret-scan:ignore — generated test-only VAPID fixture
+        WEB_PUSH_PUBLIC_KEY:
+          "BFXTO-LWlA9jYrLXQ_oIdz44ChgSjlqr0ZGxPTohbi9J_vtBUgYucGhVs4ywXvlcS8tTLFl2mPmgEw70cjNveAk",
+        WEB_PUSH_SUBJECT: "mailto:ops@example.invalid",
+      }),
+    );
+
+    expect(deps.push).toBeInstanceOf(WebPushNotifier);
   });
 });

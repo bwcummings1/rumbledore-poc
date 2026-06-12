@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEV_AUTH_SECRET,
   DEV_CREDENTIAL_ENCRYPTION_KEY,
+  DEV_PUSH_PUBLIC_KEY,
   LOCAL_DATABASE_URL,
   LOCAL_REDIS_URL,
   parseEnv,
@@ -24,6 +25,7 @@ describe("parseEnv", () => {
     expect(env.services.voyage).toEqual({ mock: true });
     expect(env.services.browserbase).toEqual({ mock: true });
     expect(env.realtime).toEqual({ mock: true });
+    expect(env.push).toEqual({ mock: true, publicKey: DEV_PUSH_PUBLIC_KEY });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
   });
 
@@ -135,6 +137,42 @@ describe("parseEnv", () => {
     expect(env.realtime).toEqual({ mock: true });
   });
 
+  it("goes real for web push when VAPID config is present", () => {
+    const publicKey = fixtureValue("web", "push", "public");
+    const privateKey = fixtureValue("web", "push", "private");
+    const subject = "mailto:ops@example.invalid";
+    const env = parseEnv({
+      WEB_PUSH_PRIVATE_KEY: privateKey,
+      WEB_PUSH_PUBLIC_KEY: publicKey,
+      WEB_PUSH_SUBJECT: subject,
+    });
+    expect(env.push).toEqual({
+      mock: false,
+      privateKey,
+      publicKey,
+      subject,
+    });
+  });
+
+  it("MOCK_PUSH=false requires VAPID config", () => {
+    expect(() => parseEnv({ MOCK_PUSH: "false" })).toThrow(
+      /WEB_PUSH_PUBLIC_KEY/,
+    );
+    expect(() =>
+      parseEnv({
+        MOCK_PUSH: "false",
+        WEB_PUSH_PUBLIC_KEY: fixtureValue("web", "push", "public"),
+      }),
+    ).toThrow(/WEB_PUSH_PRIVATE_KEY/);
+    expect(() =>
+      parseEnv({
+        MOCK_PUSH: "false",
+        WEB_PUSH_PRIVATE_KEY: fixtureValue("web", "push", "private"),
+        WEB_PUSH_PUBLIC_KEY: fixtureValue("web", "push", "public"),
+      }),
+    ).toThrow(/WEB_PUSH_SUBJECT/);
+  });
+
   it("treats empty and whitespace-only values as unset", () => {
     const env = parseEnv({
       ANTHROPIC_API_KEY: "",
@@ -229,6 +267,7 @@ describe("parseEnv", () => {
         MOCK_VOYAGE: "false",
         MOCK_BROWSERBASE: "false",
         MOCK_REALTIME: "false",
+        MOCK_PUSH: "false",
         REDIS_URL: "nope",
       });
     } catch (error) {
@@ -241,6 +280,7 @@ describe("parseEnv", () => {
     expect(message).toContain("SUPABASE_PUBLISHABLE_KEY");
     expect(message).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(message).toContain("SUPABASE_JWT_SECRET");
+    expect(message).toContain("WEB_PUSH_PUBLIC_KEY");
     expect(message).toContain("REDIS_URL");
   });
 });

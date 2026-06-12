@@ -16,6 +16,7 @@ import {
   leagues,
   persons,
 } from "@/db/schema";
+import { NoopPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
   NoopRealtimePublisher,
   REALTIME_EVENTS,
@@ -52,6 +53,7 @@ export interface GenerateLeagueBlogPostInput {
 export interface AiGenerationDependencies {
   db: Db;
   llm: LlmClient;
+  push: PushNotifier;
   realtime: RealtimePublisher;
   web: WebGrounding;
   embeddings: EmbeddingProvider;
@@ -763,6 +765,24 @@ async function publishDraft({
         leagueId: input.leagueId,
       });
     }
+
+    try {
+      await deps.push.notifyLeague({
+        at: now(deps),
+        body: result.title,
+        leagueId: input.leagueId,
+        tag: `league:${input.leagueId}:blog:${result.contentItemId}`,
+        title: "New league post",
+        type: PUSH_EVENTS.leagueBlogPublished,
+        url: `/leagues/${input.leagueId}/posts/${result.contentItemId}`,
+      });
+    } catch (error) {
+      logger.warn("Push blog publish notification failed", {
+        contentItemId: result.contentItemId,
+        error,
+        leagueId: input.leagueId,
+      });
+    }
   }
 
   return result;
@@ -773,6 +793,7 @@ export function createMockAiDependencies(db: Db): AiGenerationDependencies {
     db,
     embeddings: new DeterministicEmbeddingProvider(),
     llm: new MockLlmClient(),
+    push: new NoopPushNotifier(),
     realtime: new NoopRealtimePublisher(),
     web: new MockWebGrounding(),
   };

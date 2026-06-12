@@ -7,7 +7,9 @@ import {
   type SettleBettingEventResult,
   settleBettingEvent,
 } from "@/betting/settlement";
+import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
+import { createPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import { inngest } from "../client";
 import { type GameFinalData, JOB_EVENTS } from "../events";
 
@@ -20,6 +22,11 @@ export type BettingSettleGameFinalResponse = Omit<
   ok: true;
   settlementIds: string[];
 };
+
+export interface BettingSettleGameFinalDependencies
+  extends BettingSettlementDependencies {
+  push: PushNotifier;
+}
 
 const gameFinalDataSchema = z.object({
   bettingEventId: z.uuid().optional(),
@@ -48,12 +55,17 @@ function parseGameFinalData(data: unknown): GameFinalData {
   return parsed.data;
 }
 
-async function getDefaultBettingSettleGameFinalDependencies(): Promise<BettingSettlementDependencies> {
+async function getDefaultBettingSettleGameFinalDependencies(): Promise<BettingSettleGameFinalDependencies> {
   const [{ getDb }, { getEnv }] = await Promise.all([
     import("@/db"),
     import("@/core/env"),
   ]);
-  return createBettingSettlementDependencies(getDb(), getEnv());
+  const db = getDb();
+  const env = getEnv();
+  return {
+    ...createBettingSettlementDependencies(db, env),
+    push: createPushNotifier(db, env),
+  };
 }
 
 export async function runBettingSettleGameFinal({
@@ -61,7 +73,7 @@ export async function runBettingSettleGameFinal({
   deps,
 }: {
   data: unknown;
-  deps: BettingSettlementDependencies;
+  deps: BettingSettleGameFinalDependencies;
 }): Promise<BettingSettleGameFinalResponse> {
   const data = parseGameFinalData(rawData);
   const result = await settleBettingEvent({
@@ -73,6 +85,24 @@ export async function runBettingSettleGameFinal({
   });
   if (result.finalizedSlips > 0) {
     await rebuildAllArenaStandings(deps.db);
+    try {
+      await deps.push.notifyLeague({
+        body: `${result.finalizedSlips} betting slip${
+          result.finalizedSlips === 1 ? "" : "s"
+        } settled for this league.`,
+        leagueId: result.leagueId,
+        tag: `league:${result.leagueId}:betting:${result.bettingEventId}`,
+        title: "Betting results are in",
+        type: PUSH_EVENTS.leagueBetSettled,
+        url: `/leagues/${result.leagueId}`,
+      });
+    } catch (error) {
+      logger.warn("Push betting settlement notification failed", {
+        bettingEventId: result.bettingEventId,
+        error,
+        leagueId: result.leagueId,
+      });
+    }
   }
 
   return {
@@ -91,8 +121,8 @@ export async function runBettingSettleGameFinal({
 
 export function createBettingSettleGameFinalFunction(
   resolveDeps: () =>
-    | BettingSettlementDependencies
-    | Promise<BettingSettlementDependencies> = getDefaultBettingSettleGameFinalDependencies,
+    | BettingSettleGameFinalDependencies
+    | Promise<BettingSettleGameFinalDependencies> = getDefaultBettingSettleGameFinalDependencies,
 ) {
   return inngest.createFunction(
     {
