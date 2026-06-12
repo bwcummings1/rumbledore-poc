@@ -205,7 +205,12 @@ export async function upsertLeagueFeedReference(
 
 export async function getLeagueFeedData(
   db: Db,
-  input: { leagueId: string; userId: string; limit?: number },
+  input: {
+    leagueId: string;
+    limit?: number;
+    userId: string;
+    userRole?: Member["role"];
+  },
 ): Promise<LeagueFeedLoadResult> {
   if (!UUID_RE.test(input.leagueId)) {
     return { status: "not_found" };
@@ -227,18 +232,22 @@ export async function getLeagueFeedData(
     return { status: "not_found" };
   }
 
-  const [membership] = await db
-    .select({ role: members.role })
-    .from(members)
-    .where(
-      and(
-        eq(members.organizationId, input.leagueId),
-        eq(members.userId, input.userId),
-      ),
-    )
-    .limit(1);
+  const userRole =
+    input.userRole ??
+    (
+      await db
+        .select({ role: members.role })
+        .from(members)
+        .where(
+          and(
+            eq(members.organizationId, input.leagueId),
+            eq(members.userId, input.userId),
+          ),
+        )
+        .limit(1)
+    )[0]?.role;
 
-  if (!membership) {
+  if (!userRole) {
     return { status: "forbidden" };
   }
 
@@ -335,7 +344,7 @@ export async function getLeagueFeedData(
     data: {
       items: scoped,
       league,
-      userRole: membership.role,
+      userRole,
     },
     status: "ready",
   };

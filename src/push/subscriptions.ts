@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { requireLeagueRoleForUser } from "@/auth/guards";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { members, pushSubscriptions } from "@/db/schema";
+import { pushSubscriptions } from "@/db/schema";
 import type { BrowserPushSubscriptionInput } from "./interfaces";
 
 export interface PushSubscriptionMutationDeps {
@@ -64,19 +65,17 @@ async function requireLeagueMembership(
   db: Db,
   input: { leagueId: string; userId: string },
 ): Promise<Result<void, AppError>> {
-  const [row] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(
-      and(
-        eq(members.organizationId, input.leagueId),
-        eq(members.userId, input.userId),
-      ),
-    )
-    .limit(1);
-
-  if (row) {
+  const access = await requireLeagueRoleForUser(db, {
+    leagueId: input.leagueId,
+    minRole: "member",
+    userId: input.userId,
+  });
+  if (access.ok) {
     return ok(undefined);
+  }
+
+  if (access.error.code !== "LEAGUE_FORBIDDEN") {
+    return access;
   }
 
   return err(

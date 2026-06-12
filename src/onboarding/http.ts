@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuth } from "@/auth";
+import { requireSession } from "@/auth/guards";
 import { AppError, err, ok, type Result } from "@/core/result";
 
 const DEFAULT_MAX_JSON_BYTES = 4096;
@@ -7,17 +7,11 @@ const DEFAULT_MAX_JSON_BYTES = 4096;
 export async function requireUserId(
   request: Request,
 ): Promise<Result<string, AppError>> {
-  const session = await getAuth().api.getSession({ headers: request.headers });
-  if (!session?.user.id) {
-    return err(
-      new AppError({
-        code: "UNAUTHORIZED",
-        message: "Authentication required",
-        status: 401,
-      }),
-    );
+  const session = await requireSession({ headers: request.headers });
+  if (!session.ok) {
+    return session;
   }
-  return { ok: true, value: session.user.id };
+  return ok(session.value.userId);
 }
 
 export function errorJson(error: AppError): NextResponse {

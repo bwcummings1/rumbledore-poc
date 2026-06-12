@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAuth } from "@/auth";
+import { requireLeagueRole } from "@/auth/guards";
 import { buttonVariants } from "@/components/ui/button";
 import { getDb } from "@/db";
 import { cn } from "@/lib/utils";
@@ -41,22 +41,38 @@ function AccessState({ body, title }: { body: string; title: string }) {
 
 export default async function LeagueFeedPage({ params }: LeagueFeedPageProps) {
   const { leagueId } = await params;
-  const session = await getAuth().api.getSession({
+  const db = getDb();
+  const access = await requireLeagueRole({
+    db,
     headers: await headers(),
+    leagueId,
+    minRole: "member",
   });
 
-  if (!session?.user.id) {
+  if (!access.ok) {
+    if (access.error.code === "INVALID_LEAGUE_ID") {
+      notFound();
+    }
+    if (access.error.status === 401) {
+      return (
+        <AccessState
+          title="Sign in required"
+          body="Connect ESPN or sign in before opening a league feed."
+        />
+      );
+    }
     return (
       <AccessState
-        title="Sign in required"
-        body="Connect ESPN or sign in before opening a league feed."
+        title="No league access"
+        body="This account is not a member of that league."
       />
     );
   }
 
-  const result = await getLeagueFeedData(getDb(), {
+  const result = await getLeagueFeedData(db, {
     leagueId,
-    userId: session.user.id,
+    userId: access.value.userId,
+    userRole: access.value.role,
   });
 
   switch (result.status) {

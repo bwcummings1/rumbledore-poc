@@ -338,7 +338,7 @@ function buildStorylines(rows: readonly StorylineRow[]): LeagueHomeStoryline[] {
 
 export async function getLeagueHomeData(
   db: Db,
-  input: { leagueId: string; userId: string },
+  input: { leagueId: string; userId: string; userRole?: Member["role"] },
 ): Promise<LeagueHomeLoadResult> {
   if (!UUID_RE.test(input.leagueId)) {
     return { status: "not_found" };
@@ -365,18 +365,22 @@ export async function getLeagueHomeData(
     return { status: "not_found" };
   }
 
-  const [membership] = await db
-    .select({ role: authMembers.role })
-    .from(authMembers)
-    .where(
-      and(
-        eq(authMembers.organizationId, input.leagueId),
-        eq(authMembers.userId, input.userId),
-      ),
-    )
-    .limit(1);
+  const userRole =
+    input.userRole ??
+    (
+      await db
+        .select({ role: authMembers.role })
+        .from(authMembers)
+        .where(
+          and(
+            eq(authMembers.organizationId, input.leagueId),
+            eq(authMembers.userId, input.userId),
+          ),
+        )
+        .limit(1)
+    )[0]?.role;
 
-  if (!membership) {
+  if (!userRole) {
     return { status: "forbidden" };
   }
 
@@ -549,7 +553,7 @@ export async function getLeagueHomeData(
         members: scoped.members.length,
         teams: scoped.teams.length,
       },
-      userRole: membership.role,
+      userRole,
     },
   };
 }

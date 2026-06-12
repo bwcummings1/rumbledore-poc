@@ -34,7 +34,12 @@ export type LeagueBlogPostLoadResult =
 
 export async function getLeagueBlogPostData(
   db: Db,
-  input: { leagueId: string; postId: string; userId: string },
+  input: {
+    leagueId: string;
+    postId: string;
+    userId: string;
+    userRole?: Member["role"];
+  },
 ): Promise<LeagueBlogPostLoadResult> {
   if (!UUID_RE.test(input.leagueId) || !UUID_RE.test(input.postId)) {
     return { status: "not_found" };
@@ -56,18 +61,22 @@ export async function getLeagueBlogPostData(
     return { status: "not_found" };
   }
 
-  const [membership] = await db
-    .select({ role: members.role })
-    .from(members)
-    .where(
-      and(
-        eq(members.organizationId, input.leagueId),
-        eq(members.userId, input.userId),
-      ),
-    )
-    .limit(1);
+  const userRole =
+    input.userRole ??
+    (
+      await db
+        .select({ role: members.role })
+        .from(members)
+        .where(
+          and(
+            eq(members.organizationId, input.leagueId),
+            eq(members.userId, input.userId),
+          ),
+        )
+        .limit(1)
+    )[0]?.role;
 
-  if (!membership) {
+  if (!userRole) {
     return { status: "forbidden" };
   }
 
@@ -105,7 +114,7 @@ export async function getLeagueBlogPostData(
         ...post,
         publishedAt: post.publishedAt.toISOString(),
       },
-      userRole: membership.role,
+      userRole,
     },
     status: "ready",
   };

@@ -1,9 +1,12 @@
 import { createHmac, randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import {
+  type GetAuthSession,
+  listLeagueMembershipsForUser,
+  requireSession,
+} from "@/auth/guards";
 import type { Env, RealtimeConfig } from "@/core/env/schema";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
-import { members } from "@/db/schema";
 import type {
   RealtimeCapability,
   RealtimeChannelGrant,
@@ -20,13 +23,9 @@ const DEFAULT_TOKEN_TTL_SECONDS = 5 * 60;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export interface RealtimeSession {
-  user: { id: string };
-}
-
 interface GrantDeps {
   db: Db;
-  getSession(headers: Headers): Promise<RealtimeSession | null>;
+  getSession: GetAuthSession;
   realtime: RealtimeConfig;
   fallbackSigningSecret: string;
   now?: () => Date;
@@ -89,22 +88,15 @@ async function resolveMemberLeagueIds(
   db: Db,
   input: { requestedLeagueIds: readonly string[]; userId: string },
 ): Promise<Result<string[], AppError>> {
-  const filters = [eq(members.userId, input.userId)];
-  if (input.requestedLeagueIds.length > 0) {
-    filters.push(inArray(members.organizationId, input.requestedLeagueIds));
-  }
-
-  const rows = await db
-    .select({ leagueId: members.organizationId })
-    .from(members)
-    .where(and(...filters));
-
-  const memberLeagueIds = [...new Set(rows.map((row) => row.leagueId))].sort();
-  if (input.requestedLeagueIds.length === 0) {
-    return ok(memberLeagueIds);
-  }
-
-  if (memberLeagueIds.length !== input.requestedLeagueIds.length) {
+  const memberships = await listLeagueMembershipsForUser(db, {
+    leagueIds: input.requestedLeagueIds,
+    minRole: "member",
+    userId: input.userId,
+  });
+  if (!memberships.ok) {
+    if (memberships.error.code !== "LEAGUE_FORBIDDEN") {
+      return memberships;
+    }
     return err(
       new AppError({
         code: "REALTIME_LEAGUE_FORBIDDEN",
@@ -114,7 +106,7 @@ async function resolveMemberLeagueIds(
     );
   }
 
-  return ok(memberLeagueIds);
+  return ok(memberships.value.map((row) => row.leagueId));
 }
 
 function channelGrant(topic: RealtimeChannel): RealtimeChannelGrant {
@@ -164,15 +156,12 @@ export async function createRealtimeSubscriptionGrant(
     searchParams: URLSearchParams;
   },
 ): Promise<Result<RealtimeSubscriptionGrant, AppError>> {
-  const session = await deps.getSession(input.headers);
-  if (!session?.user.id) {
-    return err(
-      new AppError({
-        code: "UNAUTHORIZED",
-        message: "Authentication required",
-        status: 401,
-      }),
-    );
+  const session = await requireSession({
+    getSession: deps.getSession,
+    headers: input.headers,
+  });
+  if (!session.ok) {
+    return session;
   }
 
   const requestedLeagueIds = parseRequestedLeagueIds(input.searchParams);
@@ -182,7 +171,7 @@ export async function createRealtimeSubscriptionGrant(
 
   const memberLeagueIds = await resolveMemberLeagueIds(deps.db, {
     requestedLeagueIds: requestedLeagueIds.value,
-    userId: session.user.id,
+    userId: session.value.userId,
   });
   if (!memberLeagueIds.ok) {
     return memberLeagueIds;
@@ -204,7 +193,7 @@ export async function createRealtimeSubscriptionGrant(
       channels.map((channel) => [channel.topic, channel.capabilities]),
     ) as Record<RealtimeChannel, RealtimeCapability[]>,
     role: "authenticated",
-    sub: session.user.id,
+    sub: session.value.userId,
   };
 
   return ok({
