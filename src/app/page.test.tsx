@@ -11,4 +11,7 @@ test("home page renders the product name and pitch", () => {
   expect(
     screen.getByRole("link", { name: "Central news" }).getAttribute("href"),
   ).toBe("/news");
+  expect(screen.getByRole("link", { name: "Arena" }).getAttribute("href")).toBe(
+    "/arena",
+  );
 });

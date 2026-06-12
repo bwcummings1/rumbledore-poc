@@ -52,12 +52,13 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [x] Implement bankroll weeks and append-only bankroll ledger opening/rollover logic. (done 2026-06-12: league-scoped `bankroll_weeks` + append-only `bankroll_ledger` landed with FORCE RLS, DB-level direct mutation guard, idempotent week opening, sequential ledger appends, current-balance reads, rolling-minimum rollover with reset-to-floor audit entries, and RLS/canary/service tests)
 - [x] Implement single and parlay bet placement with locked odds and stake validation. (done 2026-06-12: added RLS-protected `bet_slips`/`bet_legs`, idempotent request-hash guarded placement, latest/fresh open-market validation, copied locked line/odds, parlay payout math, and atomic `bet_stake` ledger debits with focused DB coverage)
 - [x] Implement `game.final` settlement for singles and parlays with push/void handling. (done 2026-06-12: added RLS-scoped `bet_settlements` audit rows keyed by slip, mock + SportsDataIO results providers, idempotent `settleBettingEvent()` grading for moneyline/spread/total/player-prop legs, parlay push/void repricing, payout/refund ledger credits, and registered `betting-settle-game-final` Inngest handling with DB/job coverage)
-- [ ] Build the central arena leaderboard from betting ledgers across leagues.
+- [x] Build the central arena leaderboard from betting ledgers across leagues. (done 2026-06-12: central `arena_season`/`arena_standing` tables, RLS-compatible ledger-derived materializer, settlement-triggered rebuilds, `/arena` leaderboards, home navigation, and DB/UI/job coverage are green)
 
 ## P5 — Realtime, scale, multi-provider (see specs/09 — to be written)
 - [ ] Realtime live updates; push notifications; performance/observability; Sleeper then Yahoo providers.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-12: Arena materialization is the deliberate cross-league aggregate path, but raw bankroll reads still enumerate leagues and run inside `withLeagueContext()` with explicit `league_id` filters; central `arena_standing` rows expose rankings/aggregates, not another league's raw slips, and the `game.final` settlement job rebuilds configured arena seasons after finalized slips.
 - 2026-06-12: `game.final.gameId` is already used by AI content as a `fantasy_matchups.id`; betting settlement accepts optional `bettingEventId` and falls back to `gameId` only for direct betting-event producers.
 - 2026-06-12: Settlement idempotency is guarded by `bet_settlements.slip_id` before any payout/refund ledger append; retries that find the settlement row skip money movement.
 - 2026-06-12: Bet placement idempotency is scoped by `(league_id, user_id, idempotency_key)` and stores `request_hash`; exact retries reuse the original slip, while changed payloads return `BET_IDEMPOTENCY_CONFLICT` without touching the append-only ledger.

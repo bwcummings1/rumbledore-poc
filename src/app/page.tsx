@@ -1,4 +1,4 @@
-import { Newspaper, Plug } from "lucide-react";
+import { Newspaper, Plug, Trophy } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,15 @@ export default function Home() {
           >
             <Newspaper data-icon="inline-start" />
             Central news
+          </Link>
+          <Link
+            href="/arena"
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "outline" }),
+            )}
+          >
+            <Trophy data-icon="inline-start" />
+            Arena
           </Link>
         </div>
       </main>

@@ -6,6 +6,7 @@ import { NonRetriableError } from "inngest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   type EventResult,
+  ensureArenaSeason,
   openBankrollWeek,
   placeBetSlip,
   type ResultsProvider,
@@ -15,6 +16,8 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  arenaSeasons,
+  arenaStandings,
   betSlips,
   bettingEvents,
   bettingMarkets,
@@ -57,8 +60,8 @@ async function seedPlacedSingle() {
   const opened = await openBankrollWeek(handle.db, {
     leagueId: league.id,
     userId: user.id,
-    weekEnd: new Date("2026-09-08T00:00:00.000Z"),
-    weekStart: new Date("2026-09-01T00:00:00.000Z"),
+    weekEnd: new Date("2037-09-08T00:00:00.000Z"),
+    weekStart: new Date("2037-09-01T00:00:00.000Z"),
   });
   const [event] = await handle.db
     .insert(bettingEvents)
@@ -69,7 +72,7 @@ async function seedPlacedSingle() {
       provider: marker,
       providerEventId: `${marker}:event`,
       sport: "nfl",
-      startTime: new Date("2026-09-07T17:00:00.000Z"),
+      startTime: new Date("2037-09-07T17:00:00.000Z"),
       status: "scheduled",
     })
     .returning();
@@ -90,7 +93,7 @@ async function seedPlacedSingle() {
     .insert(oddsSnapshots)
     .values({
       awayPrice: 120,
-      capturedAt: new Date("2026-09-07T12:00:00.000Z"),
+      capturedAt: new Date("2037-09-07T12:00:00.000Z"),
       homePrice: -140,
       marketId: market.id,
       provider: marker,
@@ -103,7 +106,7 @@ async function seedPlacedSingle() {
     kind: "single",
     leagueId: league.id,
     legs: [{ oddsSnapshotId: snapshot.id, selection: "home" }],
-    now: new Date("2026-09-07T12:01:00.000Z"),
+    now: new Date("2037-09-07T12:01:00.000Z"),
     stakeCents: 10_000,
     userId: user.id,
   });
@@ -143,6 +146,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!handle) return;
   await handle.db
+    .delete(arenaSeasons)
+    .where(sql`${arenaSeasons.name} = ${`${marker}-arena`}`);
+  await handle.db
     .delete(leagues)
     .where(sql`${leagues.providerLeagueId} = ${marker}`);
   await handle.db
@@ -157,6 +163,11 @@ afterAll(async () => {
 describe("betting game.final settlement job", () => {
   it("settles betting events through the Inngest step API", async () => {
     const seeded = await seedPlacedSingle();
+    const arenaSeason = await ensureArenaSeason(handle.db, {
+      endsAt: new Date("2037-10-01T00:00:00.000Z"),
+      name: `${marker}-arena`,
+      startsAt: new Date("2037-09-01T00:00:00.000Z"),
+    });
     const fn = createBettingSettleGameFinalFunction(() => ({
       db: handle.db,
       resultsProvider: new StaticResultsProvider(),
@@ -187,6 +198,16 @@ describe("betting game.final settlement job", () => {
       tx.select().from(betSlips).where(eq(betSlips.id, seeded.placed.slip.id)),
     );
     expect(slip.status).toBe("won");
+
+    const arenaRows = await handle.db
+      .select()
+      .from(arenaStandings)
+      .where(eq(arenaStandings.seasonId, arenaSeason.id));
+    expect(arenaRows).toHaveLength(2);
+    expect(arenaRows.map((row) => row.kind).sort()).toEqual([
+      "individual",
+      "league",
+    ]);
   });
 
   it("rejects invalid game.final payloads without retrying", async () => {

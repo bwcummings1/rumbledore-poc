@@ -1,5 +1,6 @@
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
+import { rebuildAllArenaStandings } from "@/betting/arena";
 import { createBettingSettlementDependencies } from "@/betting/dependencies";
 import {
   type BettingSettlementDependencies,
@@ -70,6 +71,9 @@ export async function runBettingSettleGameFinal({
       leagueId: data.leagueId,
     },
   });
+  if (result.finalizedSlips > 0) {
+    await rebuildAllArenaStandings(deps.db);
+  }
 
   return {
     bettingEventId: result.bettingEventId,

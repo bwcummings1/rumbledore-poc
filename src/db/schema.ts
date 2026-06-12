@@ -219,6 +219,11 @@ export const betLegStatus = pgEnum("bet_leg_status", [
   "void",
 ]);
 
+export const arenaStandingKind = pgEnum("arena_standing_kind", [
+  "league",
+  "individual",
+]);
+
 export interface LeagueFeedMatchedEntity {
   provider: string;
   type: "player" | "team" | "member" | "storyline";
@@ -1178,6 +1183,71 @@ export const oddsSnapshots = pgTable(
   ],
 );
 
+// ── Central arena standings (cross-league; derived from ledgers) ──────────
+
+export const arenaSeasons = pgTable(
+  "arena_season",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("arena_season_window_unique").on(table.startsAt, table.endsAt),
+    index("arena_season_ends_idx").on(table.endsAt),
+  ],
+);
+
+export const arenaStandings = pgTable(
+  "arena_standing",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => arenaSeasons.id, { onDelete: "cascade" }),
+    kind: arenaStandingKind("kind").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    leagueId: uuid("league_id").references(() => leagues.id, {
+      onDelete: "cascade",
+    }),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    rank: integer("rank").notNull(),
+    netPnlCents: integer("net_pnl_cents").notNull(),
+    roiBps: integer("roi_bps").notNull(),
+    currentBalanceCents: integer("current_balance_cents").notNull(),
+    totalStakeCents: integer("total_stake_cents").notNull(),
+    totalReturnCents: integer("total_return_cents").notNull(),
+    settledSlipCount: integer("settled_slip_count").notNull(),
+    wonSlipCount: integer("won_slip_count").notNull(),
+    pushVoidSlipCount: integer("push_void_slip_count").notNull(),
+    weeksPlayed: integer("weeks_played").notNull(),
+    weeksSurvived: integer("weeks_survived").notNull(),
+    winRateBps: integer("win_rate_bps").notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("arena_standing_subject_unique").on(
+      table.seasonId,
+      table.kind,
+      table.subjectId,
+    ),
+    index("arena_standing_leaderboard_idx").on(
+      table.seasonId,
+      table.kind,
+      table.rank,
+    ),
+    index("arena_standing_league_idx").on(table.leagueId),
+    index("arena_standing_user_idx").on(table.userId),
+  ],
+);
+
 // ── Paper betting bankroll state (league-scoped; RLS enforced) ────────────
 
 export const bankrollWeeks = pgTable(
@@ -1842,6 +1912,10 @@ export type BettingMarket = typeof bettingMarkets.$inferSelect;
 export type NewBettingMarket = typeof bettingMarkets.$inferInsert;
 export type OddsSnapshot = typeof oddsSnapshots.$inferSelect;
 export type NewOddsSnapshot = typeof oddsSnapshots.$inferInsert;
+export type ArenaSeason = typeof arenaSeasons.$inferSelect;
+export type NewArenaSeason = typeof arenaSeasons.$inferInsert;
+export type ArenaStanding = typeof arenaStandings.$inferSelect;
+export type NewArenaStanding = typeof arenaStandings.$inferInsert;
 export type BankrollWeek = typeof bankrollWeeks.$inferSelect;
 export type NewBankrollWeek = typeof bankrollWeeks.$inferInsert;
 export type BetSlip = typeof betSlips.$inferSelect;
