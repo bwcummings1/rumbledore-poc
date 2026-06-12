@@ -25,7 +25,13 @@ export type GoogleOAuthConfig =
 
 export type RealtimeConfig =
   | { mock: true }
-  | { mock: false; serviceRoleKey: string; url: string };
+  | {
+      mock: false;
+      jwtSecret: string;
+      publishableKey: string;
+      serviceRoleKey: string;
+      url: string;
+    };
 
 // Dev-only fallback so the app boots with zero config; production requires BETTER_AUTH_SECRET.
 export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
@@ -81,7 +87,9 @@ const baseSchema = z.object({
   GOOGLE_CLIENT_SECRET: secret.optional(),
   CREDENTIAL_ENCRYPTION_KEY: secret.optional(),
   SUPABASE_URL: z.url().optional(),
+  SUPABASE_PUBLISHABLE_KEY: secret.optional(),
   SUPABASE_SERVICE_ROLE_KEY: secret.optional(),
+  SUPABASE_JWT_SECRET: secret.optional(),
   MOCK_REALTIME: stringbool.optional(),
 
   ANTHROPIC_API_KEY: secret.optional(),
@@ -187,9 +195,19 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         "✖ MOCK_REALTIME=false requires SUPABASE_URL to be set\n  → at SUPABASE_URL",
       );
     }
+    if (!("SUPABASE_PUBLISHABLE_KEY" in present)) {
+      problems.push(
+        "✖ MOCK_REALTIME=false requires SUPABASE_PUBLISHABLE_KEY to be set\n  → at SUPABASE_PUBLISHABLE_KEY",
+      );
+    }
     if (!("SUPABASE_SERVICE_ROLE_KEY" in present)) {
       problems.push(
         "✖ MOCK_REALTIME=false requires SUPABASE_SERVICE_ROLE_KEY to be set\n  → at SUPABASE_SERVICE_ROLE_KEY",
+      );
+    }
+    if (!("SUPABASE_JWT_SECRET" in present)) {
+      problems.push(
+        "✖ MOCK_REALTIME=false requires SUPABASE_JWT_SECRET to be set\n  → at SUPABASE_JWT_SECRET",
       );
     }
   }
@@ -217,6 +235,8 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
   const realtimeIsReal =
     parsed.MOCK_REALTIME !== true &&
     parsed.SUPABASE_URL !== undefined &&
+    parsed.SUPABASE_PUBLISHABLE_KEY !== undefined &&
+    parsed.SUPABASE_JWT_SECRET !== undefined &&
     parsed.SUPABASE_SERVICE_ROLE_KEY !== undefined;
 
   return {
@@ -247,7 +267,9 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     },
     realtime: realtimeIsReal
       ? {
+          jwtSecret: parsed.SUPABASE_JWT_SECRET as string,
           mock: false,
+          publishableKey: parsed.SUPABASE_PUBLISHABLE_KEY as string,
           serviceRoleKey: parsed.SUPABASE_SERVICE_ROLE_KEY as string,
           url: parsed.SUPABASE_URL as string,
         }

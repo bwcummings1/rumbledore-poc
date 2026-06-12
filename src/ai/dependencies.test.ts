@@ -48,6 +48,8 @@ describe("createAiDependencies", () => {
     const deps = createAiDependencies(
       {} as Db,
       parseEnv({
+        SUPABASE_JWT_SECRET: fakeKey(),
+        SUPABASE_PUBLISHABLE_KEY: fakeKey(),
         SUPABASE_SERVICE_ROLE_KEY: fakeKey(),
         SUPABASE_URL: "https://project.supabase.co",
       }),

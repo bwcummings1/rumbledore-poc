@@ -23,6 +23,36 @@ export interface RealtimePublisher {
   publishLeagueBlogPublished(payload: BlogPublishedPayload): Promise<void>;
 }
 
+export const LEAGUE_REALTIME_CHANNEL_KINDS = [
+  "scores",
+  "odds",
+  "leaderboard",
+  "blog",
+  "presence",
+] as const;
+
+export type LeagueRealtimeChannelKind =
+  (typeof LEAGUE_REALTIME_CHANNEL_KINDS)[number];
+
+export type LeagueRealtimeChannel =
+  `league:${string}:${LeagueRealtimeChannelKind}`;
+
+export const PUBLIC_REALTIME_CHANNELS = [
+  "central:news",
+  "arena:leaderboard",
+] as const;
+
+export type PublicRealtimeChannel = (typeof PUBLIC_REALTIME_CHANNELS)[number];
+
+export type RealtimeChannel = LeagueRealtimeChannel | PublicRealtimeChannel;
+
+export function leagueRealtimeChannel(
+  leagueId: string,
+  kind: LeagueRealtimeChannelKind,
+): LeagueRealtimeChannel {
+  return `league:${leagueId}:${kind}`;
+}
+
 export function leagueBlogChannel(leagueId: string): `league:${string}:blog` {
   return `league:${leagueId}:blog`;
 }

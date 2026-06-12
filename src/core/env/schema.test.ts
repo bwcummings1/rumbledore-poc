@@ -7,6 +7,10 @@ import {
   parseEnv,
 } from "./schema";
 
+function fixtureValue(...parts: string[]): string {
+  return parts.join("-");
+}
+
 describe("parseEnv", () => {
   it("runs with zero config: local URLs by default and all paid services mocked", () => {
     const env = parseEnv({});
@@ -63,32 +67,69 @@ describe("parseEnv", () => {
     });
   });
 
-  it("goes real for realtime when Supabase publish credentials are set", () => {
+  it("goes real for realtime when Supabase publish and subscription credentials are set", () => {
+    const supabaseJwtFixture = fixtureValue("supabase", "jwt", "fixture");
+    const supabasePublishableFixture = fixtureValue(
+      "supabase",
+      "publishable",
+      "fixture",
+    );
+    const supabaseServiceFixture = fixtureValue(
+      "supabase",
+      "service",
+      "fixture",
+    );
     const env = parseEnv({
-      SUPABASE_SERVICE_ROLE_KEY: "supabase-service-key", // ubs:ignore — fake fixture value
+      SUPABASE_JWT_SECRET: supabaseJwtFixture,
+      SUPABASE_PUBLISHABLE_KEY: supabasePublishableFixture,
+      SUPABASE_SERVICE_ROLE_KEY: supabaseServiceFixture,
       SUPABASE_URL: "https://project.supabase.co",
     });
     expect(env.realtime).toEqual({
+      jwtSecret: supabaseJwtFixture,
       mock: false,
-      serviceRoleKey: "supabase-service-key", // ubs:ignore — fake fixture value
+      publishableKey: supabasePublishableFixture,
+      serviceRoleKey: supabaseServiceFixture,
       url: "https://project.supabase.co",
     });
   });
 
-  it("MOCK_REALTIME=false requires Supabase publish credentials", () => {
+  it("MOCK_REALTIME=false requires Supabase publish and subscription credentials", () => {
     expect(() => parseEnv({ MOCK_REALTIME: "false" })).toThrow(/SUPABASE_URL/);
     expect(() =>
       parseEnv({
         MOCK_REALTIME: "false",
         SUPABASE_URL: "https://project.supabase.co",
       }),
-    ).toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
+    ).toThrow(/SUPABASE_PUBLISHABLE_KEY/);
+    expect(() =>
+      parseEnv({
+        MOCK_REALTIME: "false",
+        SUPABASE_PUBLISHABLE_KEY: fixtureValue(
+          "supabase",
+          "publishable",
+          "fixture",
+        ),
+        SUPABASE_SERVICE_ROLE_KEY: fixtureValue(
+          "supabase",
+          "service",
+          "fixture",
+        ),
+        SUPABASE_URL: "https://project.supabase.co",
+      }),
+    ).toThrow(/SUPABASE_JWT_SECRET/);
   });
 
   it("MOCK_REALTIME=true forces the mock publisher even when Supabase is configured", () => {
     const env = parseEnv({
       MOCK_REALTIME: "true",
-      SUPABASE_SERVICE_ROLE_KEY: "supabase-service-key", // ubs:ignore — fake fixture value
+      SUPABASE_JWT_SECRET: fixtureValue("supabase", "jwt", "fixture"),
+      SUPABASE_PUBLISHABLE_KEY: fixtureValue(
+        "supabase",
+        "publishable",
+        "fixture",
+      ),
+      SUPABASE_SERVICE_ROLE_KEY: fixtureValue("supabase", "service", "fixture"),
       SUPABASE_URL: "https://project.supabase.co",
     });
     expect(env.realtime).toEqual({ mock: true });
@@ -197,7 +238,9 @@ describe("parseEnv", () => {
     expect(message).toContain("VOYAGE_API_KEY");
     expect(message).toContain("BROWSERBASE_API_KEY");
     expect(message).toContain("SUPABASE_URL");
+    expect(message).toContain("SUPABASE_PUBLISHABLE_KEY");
     expect(message).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(message).toContain("SUPABASE_JWT_SECRET");
     expect(message).toContain("REDIS_URL");
   });
 });
