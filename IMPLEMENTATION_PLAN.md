@@ -49,7 +49,7 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 
 ## P4 — Paper betting + arena (see specs/08 — to be written)
 - [x] Add the central odds/event catalog with a mockable odds provider and idempotent append-only snapshot ingestion. (done 2026-06-12: central `betting_event`/`betting_market`/`odds_snapshot` tables landed with mock + The Odds API providers, idempotent `refreshOddsCatalog()`, registered `odds.poll`, and DB/job tests proving central no-RLS catalog access plus append-only changed-snapshot ingestion)
-- [ ] Implement bankroll weeks and append-only bankroll ledger opening/rollover logic.
+- [x] Implement bankroll weeks and append-only bankroll ledger opening/rollover logic. (done 2026-06-12: league-scoped `bankroll_weeks` + append-only `bankroll_ledger` landed with FORCE RLS, DB-level direct mutation guard, idempotent week opening, sequential ledger appends, current-balance reads, rolling-minimum rollover with reset-to-floor audit entries, and RLS/canary/service tests)
 - [ ] Implement single and parlay bet placement with locked odds and stake validation.
 - [ ] Implement `game.final` settlement for singles and parlays with push/void handling.
 - [ ] Build the central arena leaderboard from betting ledgers across leagues.
@@ -58,6 +58,8 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 - [ ] Realtime live updates; push notifications; performance/observability; Sleeper then Yahoo providers.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-12: `bankroll_ledger` rejects direct UPDATE/DELETE with an append-only trigger, but the trigger must allow FK cascade DELETE via `pg_trigger_depth() > 1`; otherwise normal league/user cleanup fails when cascades reach ledger rows.
+- 2026-06-12: Bankroll rollover starts each new week with a `week_open` amount equal to the carried prior balance (0 when busted) and appends `reset_to_floor` for the top-up, so replaying `amount_cents` reaches `bankroll_weeks.opening_balance_cents`.
 - 2026-06-12: Betting odds catalog tables are central/open-read (`betting_event`, `betting_market`, `odds_snapshot`); league-scoped betting state starts with bankroll/slip/settlement tables later and must add RLS/FORCE at that point.
 - 2026-06-12: The Odds API v4 featured NFL endpoint can feed initial MVP odds via `americanfootball_nfl` with `markets=h2h,spreads,totals`; player props remain represented in the internal contract/mock and need an additional real endpoint mapping later.
 - 2026-06-12: Realtime blog broadcasts are best-effort until a durable outbox exists; AI generation logs a redacted warning if Supabase Broadcast fails after the post is committed, and duplicate/retry delivery should be solved in the broader realtime phase if strict delivery is required.

@@ -41,6 +41,8 @@ describe("RLS catalog state (migration 0002)", () => {
     "ai_memory",
     "ai_persona_card",
     "all_time_record",
+    "bankroll_ledger",
+    "bankroll_weeks",
     "championship_record",
     "fantasy_teams",
     "fantasy_members",

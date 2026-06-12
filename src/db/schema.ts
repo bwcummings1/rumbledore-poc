@@ -173,6 +173,15 @@ export const bettingMarketStatus = pgEnum("betting_market_status", [
   "void",
 ]);
 
+export const bankrollLedgerEntryType = pgEnum("bankroll_ledger_entry_type", [
+  "week_open",
+  "bet_stake",
+  "bet_payout",
+  "bet_refund",
+  "reset_to_floor",
+  "adjustment",
+]);
+
 export interface LeagueFeedMatchedEntity {
   provider: string;
   type: "player" | "team" | "member" | "storyline";
@@ -1132,6 +1141,90 @@ export const oddsSnapshots = pgTable(
   ],
 );
 
+// ── Paper betting bankroll state (league-scoped; RLS enforced) ────────────
+
+export const bankrollWeeks = pgTable(
+  "bankroll_weeks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    weekStart: timestamp("week_start", { withTimezone: true }).notNull(),
+    weekEnd: timestamp("week_end", { withTimezone: true }).notNull(),
+    openingBalanceCents: integer("opening_balance_cents").notNull(),
+    floorCents: integer("floor_cents").notNull(),
+    closingBalanceCents: integer("closing_balance_cents"),
+    closed: boolean("closed").notNull().default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("bankroll_weeks_user_week_unique").on(
+      table.leagueId,
+      table.userId,
+      table.weekStart,
+    ),
+    index("bankroll_weeks_league_week_idx").on(table.leagueId, table.weekStart),
+    index("bankroll_weeks_user_closed_idx").on(
+      table.leagueId,
+      table.userId,
+      table.closed,
+    ),
+    pgPolicy("bankroll_weeks_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const bankrollLedger = pgTable(
+  "bankroll_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bankrollWeekId: uuid("bankroll_week_id")
+      .notNull()
+      .references(() => bankrollWeeks.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    entryType: bankrollLedgerEntryType("entry_type").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    runningBalanceCents: integer("running_balance_cents").notNull(),
+    refSlipId: uuid("ref_slip_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("bankroll_ledger_week_seq_unique").on(
+      table.leagueId,
+      table.userId,
+      table.bankrollWeekId,
+      table.seq,
+    ),
+    index("bankroll_ledger_user_week_latest_idx").on(
+      table.leagueId,
+      table.userId,
+      table.bankrollWeekId,
+      table.seq,
+    ),
+    index("bankroll_ledger_ref_slip_idx").on(table.refSlipId),
+    pgPolicy("bankroll_ledger_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 // ── Content and AI blogger state ──────────────────────────────────────────
 
 export const contentItems = pgTable(
@@ -1572,6 +1665,10 @@ export type BettingMarket = typeof bettingMarkets.$inferSelect;
 export type NewBettingMarket = typeof bettingMarkets.$inferInsert;
 export type OddsSnapshot = typeof oddsSnapshots.$inferSelect;
 export type NewOddsSnapshot = typeof oddsSnapshots.$inferInsert;
+export type BankrollWeek = typeof bankrollWeeks.$inferSelect;
+export type NewBankrollWeek = typeof bankrollWeeks.$inferInsert;
+export type BankrollLedgerEntry = typeof bankrollLedger.$inferSelect;
+export type NewBankrollLedgerEntry = typeof bankrollLedger.$inferInsert;
 export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
 export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;

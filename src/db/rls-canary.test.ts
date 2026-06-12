@@ -6,11 +6,15 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { withLeagueContext } from "./rls";
 import {
+  bankrollLedger,
+  bankrollWeeks,
   type ContentItem,
   contentItems,
   type FantasyTeam,
   fantasyTeams,
   leagues,
+  type User,
+  users,
 } from "./schema";
 import { migrateSerialized } from "./test-support";
 
@@ -42,6 +46,12 @@ let teamB: FantasyTeam;
 let contentA: ContentItem;
 let contentB: ContentItem;
 let centralContent: ContentItem;
+let userA: User;
+let userB: User;
+let bankrollWeekA: { id: string; leagueId: string };
+let bankrollWeekB: { id: string; leagueId: string };
+let bankrollLedgerA: { id: string; leagueId: string };
+let bankrollLedgerB: { id: string; leagueId: string };
 
 /** Drizzle wraps pg errors; the SQLSTATE lives on `cause.code`. */
 async function sqlstateOf(query: Promise<unknown>): Promise<string> {
@@ -81,12 +91,26 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, content_item, ai_persona_card, ai_generation_run, ai_memory TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, content_item, ai_persona_card, ai_generation_run, ai_memory, bankroll_weeks, bankroll_ledger TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
   // league context (the superuser bypasses RLS; that's exactly why it can't be
   // the role under test).
+  [userA, userB] = await admin.db
+    .insert(users)
+    .values([
+      {
+        displayName: "Canary User A",
+        email: `${marker}-a@example.test`,
+      },
+      {
+        displayName: "Canary User B",
+        email: `${marker}-b@example.test`,
+      },
+    ])
+    .returning();
+
   const [la, lb] = await admin.db
     .insert(leagues)
     .values([
@@ -157,6 +181,58 @@ beforeAll(async () => {
     ])
     .returning();
 
+  [bankrollWeekA, bankrollWeekB] = await admin.db
+    .insert(bankrollWeeks)
+    .values([
+      {
+        floorCents: 1_000_000,
+        leagueId: leagueA,
+        openingBalanceCents: 1_000_000,
+        userId: userA.id,
+        weekEnd: new Date("2026-09-08T00:00:00.000Z"),
+        weekStart: new Date("2026-09-01T00:00:00.000Z"),
+      },
+      {
+        floorCents: 1_000_000,
+        leagueId: leagueB,
+        openingBalanceCents: 1_000_000,
+        userId: userB.id,
+        weekEnd: new Date("2026-09-08T00:00:00.000Z"),
+        weekStart: new Date("2026-09-01T00:00:00.000Z"),
+      },
+    ])
+    .returning({
+      id: bankrollWeeks.id,
+      leagueId: bankrollWeeks.leagueId,
+    });
+
+  [bankrollLedgerA, bankrollLedgerB] = await admin.db
+    .insert(bankrollLedger)
+    .values([
+      {
+        amountCents: 1_000_000,
+        bankrollWeekId: bankrollWeekA.id,
+        entryType: "week_open",
+        leagueId: leagueA,
+        runningBalanceCents: 1_000_000,
+        seq: 1,
+        userId: userA.id,
+      },
+      {
+        amountCents: 1_000_000,
+        bankrollWeekId: bankrollWeekB.id,
+        entryType: "week_open",
+        leagueId: leagueB,
+        runningBalanceCents: 1_000_000,
+        seq: 1,
+        userId: userB.id,
+      },
+    ])
+    .returning({
+      id: bankrollLedger.id,
+      leagueId: bankrollLedger.leagueId,
+    });
+
   const canaryUrl = new URL(adminUrl);
   canaryUrl.username = CANARY_ROLE;
   canaryUrl.password = CANARY_PASSWORD;
@@ -173,6 +249,9 @@ afterAll(async () => {
     await admin.db
       .delete(leagues)
       .where(sql`${leagues.providerLeagueId} like ${`${marker}-%`}`);
+    await admin.db
+      .delete(users)
+      .where(sql`${users.email} like ${`${marker}-%`}`);
   }
   await canary?.pool.end();
   await admin?.pool.end();
@@ -209,6 +288,22 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toEqual([{ id: centralContent.id, leagueId: null }]);
   });
 
+  it("sees no bankroll rows at all outside a league context", async () => {
+    const weeks = await canary.db
+      .select()
+      .from(bankrollWeeks)
+      .where(inArray(bankrollWeeks.id, [bankrollWeekA.id, bankrollWeekB.id]));
+    const ledger = await canary.db
+      .select()
+      .from(bankrollLedger)
+      .where(
+        inArray(bankrollLedger.id, [bankrollLedgerA.id, bankrollLedgerB.id]),
+      );
+
+    expect(weeks).toHaveLength(0);
+    expect(ledger).toHaveLength(0);
+  });
+
   it("scoped to league A, sees A's fantasy team and nothing of league B", async () => {
     const { mine, theirs } = await withLeagueContext(
       canary.db,
@@ -234,6 +329,24 @@ describe("two-league isolation under withLeagueContext", () => {
     );
     expect(all.length).toBeGreaterThan(0);
     expect(all.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered bankroll scans still yield only league A rows", async () => {
+    const { ledger, weeks } = await withLeagueContext(
+      canary.db,
+      leagueA,
+      async (tx) => ({
+        ledger: await tx.select().from(bankrollLedger),
+        weeks: await tx.select().from(bankrollWeeks),
+      }),
+    );
+
+    expect(weeks.map((row) => row.id)).toContain(bankrollWeekA.id);
+    expect(weeks.map((row) => row.id)).not.toContain(bankrollWeekB.id);
+    expect(weeks.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(ledger.map((row) => row.id)).toContain(bankrollLedgerA.id);
+    expect(ledger.map((row) => row.id)).not.toContain(bankrollLedgerB.id);
+    expect(ledger.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
   it("scoped to league A, content scans include central rows and league A only", async () => {
@@ -273,6 +386,23 @@ describe("two-league isolation under withLeagueContext", () => {
         ),
       ),
     ).toBe("42501"); // insufficient_privilege: new row violates row-level security policy
+  });
+
+  it("rejects writing a league B bankroll week from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(bankrollWeeks).values({
+            floorCents: 1_000_000,
+            leagueId: leagueB,
+            openingBalanceCents: 1_000_000,
+            userId: userB.id,
+            weekEnd: new Date("2026-09-15T00:00:00.000Z"),
+            weekStart: new Date("2026-09-08T00:00:00.000Z"),
+          }),
+        ),
+      ),
+    ).toBe("42501");
   });
 
   it("rejects writing league B blog content from league A context", async () => {
