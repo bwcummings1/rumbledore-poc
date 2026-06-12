@@ -2,6 +2,8 @@
 
 Mobile-first fantasy-football companion rebuild: Next.js App Router PWA, Better Auth, Drizzle/Postgres with RLS, Redis, Inngest, and provider-abstracted ingestion.
 
+> **Project history, trajectory & current state:** [`docs/HISTORY.md`](docs/HISTORY.md) · [`docs/PROGRESS.md`](docs/PROGRESS.md).
+
 ## Quickstart
 
 Prerequisites: Docker, Node.js 22, and pnpm 10. The shared dev box has a Bun `node` shim on `PATH`, so put the real Node first before running scripts.

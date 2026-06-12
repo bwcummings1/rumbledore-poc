@@ -1,14 +1,14 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-11 (Opus planning session, pre-build).
+Keep it current. Last updated: 2026-06-12 — **build complete** (all P0–P5 scope on `rebuild/foundation`; see §7–§8 + `docs/HISTORY.md`).
 
 ---
 
 ## 0. TL;DR for whoever picks this up
 - We are doing a **clean, first-principles rebuild** of Rumbledore on branch **`rebuild/foundation`**.
 - Execution model: **Ralph loop** (autonomous agents in tmux) — see `docs/methodology` below + `AGENTS.md` + `PROMPT_build.md`.
-- **Run the loop on Claude account `bxbxbxbxbxr@gmail.com`** (launch `claude` with `HOME=/home/ubuntu`). Do NOT use `bwcummings1` — that account is running other agents (`goal1c`, `dg-ui`) and shares a 5-hour limit.
+- **Account routing:** the build runs on `bxbxbxbxbxr`, but the Claude account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME` — `loop.sh` pins it via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`. Use launchers `cbx`/`cbw`/`cx`. Never run heavy work on `bwcummings1` (other agents + shared 5h limit). See `docs/HISTORY.md §3`.
 - ESPN ingestion is **proven working** on a real league (95050). Creds are in gitignored `.env.local`.
 - Quality gates are **ON** from day one (typecheck, lint, test, build, `ubs`). Never disable them.
 
@@ -57,7 +57,7 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **UI taste:** follow **impeccable** — maintain `DESIGN.md` + `PRODUCT.md`; run `npx impeccable detect src/` as a CI gate. (UI polish is not the immediate priority, but new UI must not be "AI slop".)
 - **Secrets:** never commit. `.env*` is gitignored. Add a secret-scan gate.
 - **Git:** work on `rebuild/foundation` (or child branches), commit often, push freely. NEVER force-push; NEVER touch `main`/`v0.62`.
-- **Accounts (caam):** loop → `bxbxbxbxbxr` (`HOME=/home/ubuntu claude …`). `bwcummings1` is busy (`goal1c`/`dg-ui`). caam can't read live usage yet (only expired `claude2` registered) — a one-time `caam login` per account would enable `caam limits`/`monitor`.
+- **Accounts:** the Claude account is the CONFIG DIR, not `HOME` (this run's Fable phase mistakenly used `bwcummings1` because only `HOME` was set — now fixed). Launchers in `~/.local/bin`: `cbx` (Claude bxbxbxbxbxr), `cbw` (Claude bwcummings1 — reserved), `cx` (Codex). `loop.sh` pins Fable via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`.
 - **Model plan:** Fable 5 at max effort for the build window (~2h), then switch to Codex 5.5 high. This doc + the specs make the handoff seamless.
 
 ## 6. Research briefs (full reasoning lives in the planning conversation; key conclusions here)
@@ -65,12 +65,12 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **Betting:** play-money (no real prize) = low legal risk; never add real prizes, never use sportsbook trademarks, license odds (don't scrape a book). Parlays: all legs win; push/void leg drops & re-prices.
 - **AI:** treat all web/RSS as untrusted (prompt-injection); enforce league isolation in SQL (`WHERE league_id`) + RLS, never trust the model; near-dup check generated posts (cosine > ~0.92).
 
-## 7. Where the build picks up (next steps)
-1. Author the control plane: `AGENTS.md`, `PROMPT_plan.md`, `PROMPT_build.md`, `specs/*`, seed `IMPLEMENTATION_PLAN.md`, `DESIGN.md`, `PRODUCT.md`, `loop.sh`.
-2. Clear `rebuild/foundation` to a clean slate; scaffold the monorepo skeleton + CI + quality gates so backpressure works from iteration 1.
-3. Run a PLAN loop to refine `IMPLEMENTATION_PLAN.md` from specs.
-4. Launch BUILD loop (Fable, account `bxbxbxbxbxr`) in a dedicated tmux session; supervise + tune.
-- **First milestone:** Foundation (P0) + the flagship vertical slice — connect league → ingest (real, via league 95050) → league home shows standings/stats — all test-backed behind green gates.
+## 7. Current state & next steps (build complete 2026-06-12)
+All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and behind green gates (typecheck/lint/test/build/ubs; ~300 tests vs a live Postgres). See §8 for the build log and `docs/HISTORY.md` for the trajectory + independent review.
+- **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
+- **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
+- **Known issues to fix (from review; logged in `IMPLEMENTATION_PLAN.md` Icebox):** AI near-dup uses no vector ordering (`src/ai/pipeline.ts`); stats playoff/championship flags hardcoded false (`src/stats/engine.ts`); identity over-merges Sleeper co-owners; invite tokens stored plaintext; bet placement reads balance before the week lock.
+- **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
 - 2026-06-12: Scores realtime publishing landed — current sync now emits typed `scores.updated` broadcasts for changed matchup rows after commit, with Supabase and in-process publish/subscribe coverage.

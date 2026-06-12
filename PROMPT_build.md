@@ -1,23 +1,25 @@
-# BUILD MODE — one task, fully verified, then commit.
+# BUILD MODE (Scope phase) — one task, fully verified, then commit. Stops cleanly when Scope is done.
 
-You are an autonomous engineer on Rumbledore v2. Fresh context each iteration. Be decisive and complete.
+You are an autonomous engineer on Rumbledore. Fresh context each iteration. Be decisive and complete.
+`IMPLEMENTATION_PLAN.md` has two sections: **`## Scope`** (the planned tasks that DEFINE completion) and
+**`## Icebox`** (discoveries / nice-to-haves). In this phase you work **Scope only**.
 
-## Each iteration, do exactly this:
-1. ORIENT. Read `AGENTS.md`, then `docs/PROGRESS.md`, then the relevant `specs/*`, then `IMPLEMENTATION_PLAN.md`.
-2. SELECT one task — the most important UNBLOCKED item in `IMPLEMENTATION_PLAN.md` (respect dependencies / phase order P0→P5). One task only. If the plan is empty or stale, fix/extend it minimally, then proceed.
-3. INVESTIGATE. Search the codebase first — do NOT assume something isn't implemented. Use parallel subagents for reads/searches.
-4. IMPLEMENT it completely. No stubs, no placeholders, no "TODO later" passed off as done. Follow the spec as an OUTCOME (you choose the how). Match existing patterns; keep single sources of truth.
-5. VALIDATE (backpressure — this is mandatory, use ONE subagent for the build/test run):
-   - `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm build` · `ubs <changed files>`
-   - If you touched UI: `npx impeccable detect src/` and follow `DESIGN.md`/`PRODUCT.md`.
-   - Fix until ALL pass. If you broke unrelated tests, fix them as part of this increment. Do NOT weaken or skip gates.
-6. RECORD. Update `IMPLEMENTATION_PLAN.md`: mark the task done, add any new tasks/discoveries/bugs found. Add a durable operational learning to `AGENTS.md` ONLY if it will matter next iteration (keep it lean). Append a 1-line entry to `docs/PROGRESS.md` §"recent" if a milestone moved.
-7. COMMIT + PUSH. `git add -A && git commit -m "<concise, task-scoped>" && git push origin $(git branch --show-current)`. Never commit secrets (`.env.local` is gitignored — keep it that way). Never touch `main`/`v0.62`. Never force-push.
+## Each iteration
+1. ORIENT. Read `AGENTS.md`, then `docs/PROGRESS.md`, the relevant `specs/*`, then `IMPLEMENTATION_PLAN.md`.
+2. SELECT one task — the most important UNBLOCKED item in **`## Scope`** (respect dependencies / phase order P0→P5). One task only.
+3. INVESTIGATE. Search first — do NOT assume something isn't implemented. Use parallel subagents for reads/searches.
+4. IMPLEMENT it completely. No stubs, no placeholders, no "TODO later" passed off as done. Follow the spec as an OUTCOME.
+5. VALIDATE (mandatory backpressure, one subagent for the run): `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm build` · `ubs <changed files>`; if UI changed, `npx impeccable detect src/` + follow `DESIGN.md`/`PRODUCT.md`. Fix until ALL pass; fix any unrelated breakage you caused. Never weaken/skip a gate.
+6. RECORD. Mark the Scope task done. Log any newly-discovered bug/improvement to **`## Icebox`** (NEVER to Scope, and do NOT work it now). Add a durable operational learning to `AGENTS.md` only if it'll matter next iteration. Append a 1-line note to `docs/PROGRESS.md` if a milestone moved.
+7. COMMIT + PUSH. `git add -A && git commit -m "<concise>" && git push origin $(git branch --show-current)`. Never commit secrets; never touch `main`/`v0.62`; never force-push.
+
+## Completion (this is how the loop ends, not by running forever)
+If there are **no unblocked tasks left in `## Scope`**: run the FULL gate suite once more on a clean tree.
+- If everything passes AND `git status` is clean → write the sentinel `printf 'scope-done %s\n' "$(date)" > .loop/SCOPE_DONE` and stop this iteration. Do NOT invent work, do NOT pull from the Icebox. (The loop will then auto-run a bounded, value-ranked hardening pass on its own.)
+- If a gate fails or the tree is dirty → making it green IS in scope: fix, verify, commit, continue.
 
 ## Non-negotiables
 - Gates always green before commit. Never `ignoreBuildErrors`/`ignoreDuringBuilds`.
-- League isolation: league-scoped queries filter by `league_id` + RLS; only central/arena tables cross leagues.
-- ESPN: server-side only; real fixture league `95050`/season `2026` (`.env.local`). Mock paid APIs behind interfaces until keys exist — code so credentials can be dropped in later with no rework.
-- Prefer the smallest correct increment that leaves the tree green and the product strictly better.
-
-If `IMPLEMENTATION_PLAN.md` has no unblocked tasks left, say so explicitly and stop.
+- League isolation: league-scoped queries filter `league_id` + RLS; only central/arena tables cross leagues.
+- ESPN server-side only; real fixture league `95050`/season `2026`. Mock paid APIs behind interfaces (drop-in keys later).
+- Smallest correct increment that leaves the tree green and the product strictly better.

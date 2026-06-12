@@ -67,4 +67,10 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real. EXCEPTION: the "secret compared with ==/!=" checker strips comments before honoring `ubs:ignore` — restructure the code instead (switch/truthiness instead of `==`/`!=`).
 
 ## Runtime note (for humans starting the loop)
-The loop runs on Claude account `bxbxbxbxbxr@gmail.com` via `HOME=/home/ubuntu` (see `loop.sh`). `bwcummings1` is reserved for other running agents.
+Claude's account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME` — a tmux session that
+only sets `HOME` keeps whatever account the inherited config dir points to. Use the verified launchers in `~/.local/bin`:
+`cbx` (Claude `bxbxbxbxbxr` — build account), `cbw` (Claude `bwcummings1` — reserved for other agents), `cx` (Codex).
+`loop.sh` pins Fable to `bxbxbxbxbxr` via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`.
+Harness: `./loop.sh build` = Scope → auto value-ranked Harden ×10 → stop (hard-cap backstop); `./loop.sh harden 10` for a
+bounded hardening run. Stop: `touch ~/rumbledore-loop.STOP`. Monitor: `tail -f ~/rumbledore-loop-logs/STATUS.log`.
+Full trajectory + review: `docs/HISTORY.md`.

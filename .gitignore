@@ -34,3 +34,6 @@ next-env.d.ts
 
 # swc
 /.swc
+
+# ralph loop runtime sentinels (build state, not code)
+/.loop/
