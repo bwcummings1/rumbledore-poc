@@ -86,6 +86,19 @@ export const onboardingBrowserSessionStatus = pgEnum(
   ["awaiting_login", "connected", "failed", "ended"],
 );
 
+export const leagueInviteChannel = pgEnum("league_invite_channel", [
+  "share",
+  "sms",
+  "email",
+]);
+
+export const leagueInviteStatus = pgEnum("league_invite_status", [
+  "pending",
+  "sent",
+  "accepted",
+  "canceled",
+]);
+
 export const identityMappingMethod = pgEnum("identity_mapping_method", [
   "auto",
   "fuzzy",
@@ -1941,6 +1954,63 @@ export const onboardingDiscoveredLeagues = pgTable(
   ],
 );
 
+export const leagueInvites = pgTable(
+  "league_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    inviterUserId: uuid("inviter_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fantasyMemberId: uuid("fantasy_member_id").references(
+      () => fantasyMembers.id,
+      { onDelete: "set null" },
+    ),
+    provider: fantasyProvider("provider").notNull(),
+    providerMemberId: text("provider_member_id").notNull(),
+    providerTeamIds: jsonb("provider_team_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    inviteeDisplayName: text("invitee_display_name").notNull(),
+    teamNames: jsonb("team_names")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    channel: leagueInviteChannel("channel").notNull(),
+    targetHash: text("target_hash").notNull(),
+    targetHint: text("target_hint"),
+    token: text("token").notNull(),
+    status: leagueInviteStatus("status").notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("league_invites_token_unique").on(table.token),
+    uniqueIndex("league_invites_target_unique").on(
+      table.leagueId,
+      table.provider,
+      table.providerMemberId,
+      table.channel,
+      table.targetHash,
+    ),
+    index("league_invites_league_idx").on(table.leagueId),
+    index("league_invites_member_idx").on(
+      table.leagueId,
+      table.provider,
+      table.providerMemberId,
+    ),
+    pgPolicy("league_invites_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type League = typeof leagues.$inferSelect;
@@ -2004,3 +2074,5 @@ export type OnboardingDiscoveredLeague =
   typeof onboardingDiscoveredLeagues.$inferSelect;
 export type NewOnboardingDiscoveredLeague =
   typeof onboardingDiscoveredLeagues.$inferInsert;
+export type LeagueInvite = typeof leagueInvites.$inferSelect;
+export type NewLeagueInvite = typeof leagueInvites.$inferInsert;

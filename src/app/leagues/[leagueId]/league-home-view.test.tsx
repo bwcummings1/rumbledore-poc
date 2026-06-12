@@ -151,4 +151,7 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(
     screen.getByRole("link", { name: /read post/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/posts/storyline-1");
+  expect(
+    screen.getByRole("link", { name: /invite/i }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/invite");
 });

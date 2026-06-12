@@ -11,6 +11,8 @@ import { createCredentialCipher } from "./credential-crypto";
 import type { EspnOnboardingDependencies } from "./espn-service";
 import { createFixtureEspnProvider } from "./fixture-espn";
 import { createFixtureYahooProvider } from "./fixture-yahoo";
+import type { LeagueInviteDependencies } from "./invites";
+import { RecordingInviteNotifier } from "./notifier";
 import type { SleeperOnboardingDependencies } from "./sleeper-service";
 import {
   createMockYahooOAuthClient,
@@ -31,6 +33,8 @@ class BrowserbaseSessionNotConfigured implements BrowserSession {
     return;
   }
 }
+
+const inviteNotifier = new RecordingInviteNotifier();
 
 async function requestHistoricalImport(
   data: ImportRequestedData,
@@ -93,4 +97,15 @@ export function getYahooOnboardingDependencies(): YahooOnboardingDependencies {
       : createYahooProvider(),
     requestHistoricalImport,
   };
+}
+
+export function getLeagueInviteDependencies(): LeagueInviteDependencies {
+  return {
+    db: getDb(),
+    notifier: inviteNotifier,
+  };
+}
+
+export function getRecordedInviteNotifier(): RecordingInviteNotifier {
+  return inviteNotifier;
 }

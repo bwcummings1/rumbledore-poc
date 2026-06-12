@@ -73,6 +73,7 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **First milestone:** Foundation (P0) + the flagship vertical slice — connect league → ingest (real, via league 95050) → league home shows standings/stats — all test-backed behind green gates.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-12: Leaguemate invite MVP landed — league home now opens an invite screen populated from imported fantasy members/teams, creating RLS-scoped share links with public previews plus mock-recorded SMS/email sends.
 - 2026-06-12: Provider reconnect CTAs landed — invalid ESPN/Sleeper/Yahoo credentials now surface provider-specific reconnect actions on onboarding/import screens and only true auth-expired errors mark stored credentials invalid.
 - 2026-06-12: Shared auth guards landed — `requireSession`/`requireLeagueRole` now centralize protected league access for league pages, realtime grants, push subscriptions, and onboarding session wrappers.
 - 2026-06-12: Yahoo onboarding/import landed — Yahoo OAuth connect now persists encrypted credentials, discovers Yahoo Fantasy leagues, imports selected leagues through provider-generic sync/history dispatch, and runs fixture-backed by default without live Yahoo credentials.

@@ -6,6 +6,7 @@ import {
   Newspaper,
   Rss,
   Trophy,
+  UserPlus,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -405,6 +406,15 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <LeagueNotificationToggle leagueId={data.league.id} />
+            <Link
+              href={`/leagues/${data.league.id}/invite`}
+              className={cn(
+                buttonVariants({ className: "w-fit", variant: "secondary" }),
+              )}
+            >
+              <UserPlus data-icon="inline-start" />
+              Invite
+            </Link>
             <Link
               href={`/leagues/${data.league.id}/feed`}
               className={cn(buttonVariants({ className: "w-fit" }))}

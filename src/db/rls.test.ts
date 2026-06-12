@@ -53,6 +53,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "historical_import_checkpoints",
     "identity_audit_log",
     "identity_mapping",
+    "league_invites",
     "person",
     "provider_final_standings",
     "push_subscription",
