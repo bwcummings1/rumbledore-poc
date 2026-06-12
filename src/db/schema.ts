@@ -193,6 +193,14 @@ export const betSlipStatus = pgEnum("bet_slip_status", [
   "partial_void",
 ]);
 
+export const betSettlementOutcome = pgEnum("bet_settlement_outcome", [
+  "won",
+  "lost",
+  "push",
+  "void",
+  "partial_void",
+]);
+
 export const betLegSelection = pgEnum("bet_leg_selection", [
   "home",
   "away",
@@ -1354,6 +1362,46 @@ export const betLegs = pgTable(
   ],
 );
 
+export const betSettlements = pgTable(
+  "bet_settlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    slipId: uuid("slip_id")
+      .notNull()
+      .references(() => betSlips.id, { onDelete: "cascade" }),
+    resultsProvider: text("results_provider").notNull(),
+    resultsPayloadHash: text("results_payload_hash").notNull(),
+    gradedAt: timestamp("graded_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    outcome: betSettlementOutcome("outcome").notNull(),
+    payoutCents: integer("payout_cents").notNull(),
+    notes: text("notes").notNull().default(""),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("bet_settlements_slip_unique").on(table.slipId),
+    index("bet_settlements_league_graded_idx").on(
+      table.leagueId,
+      table.gradedAt,
+    ),
+    pgPolicy("bet_settlements_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 // ── Content and AI blogger state ──────────────────────────────────────────
 
 export const contentItems = pgTable(
@@ -1802,6 +1850,8 @@ export type BankrollLedgerEntry = typeof bankrollLedger.$inferSelect;
 export type NewBankrollLedgerEntry = typeof bankrollLedger.$inferInsert;
 export type BetLeg = typeof betLegs.$inferSelect;
 export type NewBetLeg = typeof betLegs.$inferInsert;
+export type BetSettlement = typeof betSettlements.$inferSelect;
+export type NewBetSettlement = typeof betSettlements.$inferInsert;
 export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
 export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;

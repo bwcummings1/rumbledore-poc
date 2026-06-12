@@ -31,14 +31,18 @@ export type {
   BettingMarketStatus,
   BettingMarketType,
   BettingSport,
+  EventResult,
   OddsEvent,
   OddsMarket,
   OddsProvider,
   OddsProviderEventInput,
   OddsProviderListInput,
   OddsQuote,
+  ResultsPlayerStat,
+  ResultsProvider,
+  ResultsProviderInput,
 } from "./interfaces";
-export { MockOddsProvider } from "./mocks";
+export { MockOddsProvider, MockResultsProvider } from "./mocks";
 export {
   BET_LEG_SELECTIONS,
   BET_SLIP_KINDS,
@@ -50,4 +54,10 @@ export {
   type PlaceBetSlipResult,
   placeBetSlip,
 } from "./placement";
-export { TheOddsApiProvider } from "./real";
+export { SportsDataIoResultsProvider, TheOddsApiProvider } from "./real";
+export {
+  type BettingSettlementDependencies,
+  type SettleBettingEventInput,
+  type SettleBettingEventResult,
+  settleBettingEvent,
+} from "./settlement";

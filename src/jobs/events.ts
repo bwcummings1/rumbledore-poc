@@ -38,6 +38,7 @@ export interface ContentGenerateData {
 }
 
 export interface GameFinalData {
+  bettingEventId?: string;
   leagueId: string;
   gameId: string;
   milestoneKeys?: string[];

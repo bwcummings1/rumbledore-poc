@@ -1,6 +1,8 @@
 export const ODDS_PROVIDER_IDS = ["mock_odds", "the_odds_api"] as const;
+export const RESULTS_PROVIDER_IDS = ["mock_results", "sportsdataio"] as const;
 
 export type OddsProviderId = (typeof ODDS_PROVIDER_IDS)[number] | string;
+export type ResultsProviderId = (typeof RESULTS_PROVIDER_IDS)[number] | string;
 
 export type BettingSport = "nfl";
 
@@ -75,4 +77,38 @@ export interface OddsProvider {
   getMarkets(input: OddsProviderEventInput): Promise<OddsMarket[]>;
   getOdds(input: OddsProviderEventInput): Promise<OddsQuote[]>;
   listEvents(input: OddsProviderListInput): Promise<OddsEvent[]>;
+}
+
+export interface ResultsProviderEvent {
+  awayTeam: string;
+  homeTeam: string;
+  id: string;
+  provider: string;
+  providerEventId: string;
+  sport: BettingSport;
+  startTime: Date;
+}
+
+export interface ResultsProviderInput {
+  event: ResultsProviderEvent;
+  now?: Date;
+}
+
+export interface ResultsPlayerStat {
+  playerId: string;
+  stats: Record<string, number>;
+}
+
+export interface EventResult {
+  awayScore: number | null;
+  finalStatus: BettingEventStatus;
+  homeScore: number | null;
+  playerStats: ResultsPlayerStat[];
+  provider: ResultsProviderId;
+  sourcePayload?: unknown;
+}
+
+export interface ResultsProvider {
+  readonly id: ResultsProviderId;
+  getEventResult(input: ResultsProviderInput): Promise<EventResult>;
 }

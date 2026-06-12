@@ -1,13 +1,17 @@
 import type {
+  EventResult,
   OddsEvent,
   OddsMarket,
   OddsProvider,
   OddsProviderEventInput,
   OddsProviderListInput,
   OddsQuote,
+  ResultsProvider,
+  ResultsProviderInput,
 } from "./interfaces";
 
 const MOCK_PROVIDER = "mock_odds";
+const MOCK_RESULTS_PROVIDER = "mock_results";
 const MOCK_EVENT_ID = "mock-nfl-2026-week-01-ari-sea";
 
 function eventIdFor(index: number): string {
@@ -143,5 +147,32 @@ export class MockOddsProvider implements OddsProvider {
         underPrice: -105,
       },
     ];
+  }
+}
+
+export class MockResultsProvider implements ResultsProvider {
+  readonly id = MOCK_RESULTS_PROVIDER;
+
+  constructor(private readonly results = new Map<string, EventResult>()) {}
+
+  async getEventResult(input: ResultsProviderInput): Promise<EventResult> {
+    return (
+      this.results.get(input.event.providerEventId) ?? {
+        awayScore: 21,
+        finalStatus: "final",
+        homeScore: 24,
+        playerStats: [
+          {
+            playerId: "mock-player-qb",
+            stats: { passing_yards: 251 },
+          },
+        ],
+        provider: this.id,
+        sourcePayload: {
+          providerEventId: input.event.providerEventId,
+          source: this.id,
+        },
+      }
+    );
   }
 }

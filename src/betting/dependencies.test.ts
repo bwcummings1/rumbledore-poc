@@ -2,9 +2,12 @@
 import { describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import type { Db } from "@/db/client";
-import { createOddsDependencies } from "./dependencies";
-import { MockOddsProvider } from "./mocks";
-import { TheOddsApiProvider } from "./real";
+import {
+  createBettingSettlementDependencies,
+  createOddsDependencies,
+} from "./dependencies";
+import { MockOddsProvider, MockResultsProvider } from "./mocks";
+import { SportsDataIoResultsProvider, TheOddsApiProvider } from "./real";
 
 function fakeKey() {
   return ["fixture", "key"].join("-");
@@ -24,5 +27,22 @@ describe("createOddsDependencies", () => {
     );
 
     expect(deps.provider).toBeInstanceOf(TheOddsApiProvider);
+  });
+});
+
+describe("createBettingSettlementDependencies", () => {
+  it("keeps results mocked with zero paid configuration", () => {
+    const deps = createBettingSettlementDependencies({} as Db, parseEnv({}));
+
+    expect(deps.resultsProvider).toBeInstanceOf(MockResultsProvider);
+  });
+
+  it("selects SportsDataIO when its key is present", () => {
+    const deps = createBettingSettlementDependencies(
+      {} as Db,
+      parseEnv({ SPORTSDATAIO_API_KEY: fakeKey() }),
+    );
+
+    expect(deps.resultsProvider).toBeInstanceOf(SportsDataIoResultsProvider);
   });
 });

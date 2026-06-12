@@ -1,4 +1,5 @@
 import { appPing } from "./functions/app-ping";
+import { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
 import { contentGenerate } from "./functions/content-generate";
 import {
   contentPlanPostOddsRefresh,
@@ -13,6 +14,7 @@ import { oddsPoll } from "./functions/odds-poll";
 export { inngest } from "./client";
 export { JOB_EVENTS } from "./events";
 export { appPing } from "./functions/app-ping";
+export { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
 export { contentGenerate } from "./functions/content-generate";
 export {
   contentPlanPostOddsRefresh,
@@ -32,6 +34,7 @@ export const functions = [
   contentPlanWeeklyWrap,
   contentPlanPostOddsRefresh,
   contentPlanGameFinal,
+  bettingSettleGameFinal,
   newsRefresh,
   oddsPoll,
 ] as const;

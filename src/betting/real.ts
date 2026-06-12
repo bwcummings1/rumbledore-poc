@@ -2,16 +2,20 @@ import { AppError } from "@/core/result";
 import type {
   BettingMarketType,
   BettingSport,
+  EventResult,
   OddsEvent,
   OddsMarket,
   OddsProvider,
   OddsProviderEventInput,
   OddsProviderListInput,
   OddsQuote,
+  ResultsPlayerStat,
+  ResultsProvider,
+  ResultsProviderInput,
 } from "./interfaces";
 
 type FetchResponse = Pick<Response, "json" | "ok" | "status" | "statusText">;
-type Fetcher = (url: string) => Promise<FetchResponse>;
+type Fetcher = (url: string, init?: RequestInit) => Promise<FetchResponse>;
 
 interface TheOddsApiOutcome {
   description?: string;
@@ -43,6 +47,12 @@ interface TheOddsApiEvent {
 }
 
 export interface TheOddsApiProviderOptions {
+  apiKey: string;
+  baseUrl?: string;
+  fetcher?: Fetcher;
+}
+
+export interface SportsDataIoResultsProviderOptions {
   apiKey: string;
   baseUrl?: string;
   fetcher?: Fetcher;
@@ -134,6 +144,95 @@ function assertResponseArray(value: unknown): TheOddsApiEvent[] {
   }
 
   return value as TheOddsApiEvent[];
+}
+
+function sportsDataDate(date: Date): string {
+  const month = [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ][date.getUTCMonth()];
+  return `${date.getUTCFullYear()}-${month}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function normalizeTeamName(value: string | undefined): string {
+  return cleanText(value).toLowerCase();
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function idOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" || typeof value === "number"
+    ? String(value)
+    : undefined;
+}
+
+function statusFromSportsData(
+  value: unknown,
+  isOver: unknown,
+): EventResult["finalStatus"] {
+  const status = cleanText(stringOrUndefined(value)).toLowerCase();
+  if (status.includes("cancel")) return "canceled";
+  if (status.includes("postpon")) return "postponed";
+  if (status.includes("final") || isOver === true) return "final";
+  if (status.includes("progress") || status.includes("halftime")) {
+    return "in_progress";
+  }
+  return "scheduled";
+}
+
+function collectPlayerStats(
+  game: Record<string, unknown>,
+): ResultsPlayerStat[] {
+  const rawPlayers = [
+    game.PlayerGames,
+    game.PlayerGameStats,
+    game.PlayerStats,
+  ].find(Array.isArray);
+  if (!Array.isArray(rawPlayers)) {
+    return [];
+  }
+
+  return rawPlayers.flatMap((rawPlayer) => {
+    if (!rawPlayer || typeof rawPlayer !== "object") {
+      return [];
+    }
+    const player = rawPlayer as Record<string, unknown>;
+    const playerId =
+      idOrUndefined(player.PlayerID) ??
+      idOrUndefined(player.PlayerId) ??
+      idOrUndefined(player.GlobalPlayerID) ??
+      idOrUndefined(player.GlobalPlayerId);
+    if (!playerId) {
+      return [];
+    }
+
+    const stats: Record<string, number> = {};
+    for (const [key, value] of Object.entries(player)) {
+      const normalizedKey = key
+        .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+        .toLowerCase();
+      if (typeof value === "number" && Number.isFinite(value)) {
+        stats[normalizedKey] = value;
+      }
+    }
+    return [{ playerId, stats }];
+  });
 }
 
 export class TheOddsApiProvider implements OddsProvider {
@@ -351,5 +450,118 @@ export class TheOddsApiProvider implements OddsProvider {
     });
     this.oddsCache.set(sport, loaded);
     return loaded;
+  }
+}
+
+export class SportsDataIoResultsProvider implements ResultsProvider {
+  readonly id = "sportsdataio";
+
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+  private readonly fetcher: Fetcher;
+
+  constructor(options: SportsDataIoResultsProviderOptions) {
+    this.apiKey = options.apiKey;
+    this.baseUrl = options.baseUrl ?? "https://api.sportsdata.io";
+    this.fetcher = options.fetcher ?? fetch;
+  }
+
+  async getEventResult(input: ResultsProviderInput): Promise<EventResult> {
+    if (input.event.sport !== "nfl") {
+      throw new AppError({
+        code: "RESULTS_PROVIDER_UNSUPPORTED_SPORT",
+        message: "SportsDataIO results currently support NFL events only",
+        status: 400,
+      });
+    }
+
+    const dateKey = sportsDataDate(input.event.startTime);
+    const url = new URL(
+      `/v3/nfl/scores/json/ScoresByDate/${dateKey}`,
+      this.baseUrl,
+    );
+    const response = await this.fetcher(url.toString(), {
+      headers: { "Ocp-Apim-Subscription-Key": this.apiKey },
+    });
+    if (!response.ok) {
+      throw new AppError({
+        code: "RESULTS_PROVIDER_HTTP_ERROR",
+        message: `SportsDataIO request failed with HTTP ${response.status}`,
+        status: response.status >= 500 ? 502 : 400,
+      });
+    }
+
+    const payload = await response.json();
+    if (!Array.isArray(payload)) {
+      throw new AppError({
+        code: "RESULTS_PROVIDER_INVALID_RESPONSE",
+        message: "SportsDataIO returned an invalid results response",
+        status: 502,
+      });
+    }
+
+    const game = this.findGame(payload, input);
+    if (!game) {
+      throw new AppError({
+        code: "RESULTS_EVENT_NOT_FOUND",
+        message: "SportsDataIO did not return a matching event result",
+        status: 404,
+      });
+    }
+
+    return {
+      awayScore: numberOrNull(game.AwayScore),
+      finalStatus: statusFromSportsData(game.Status, game.IsOver),
+      homeScore: numberOrNull(game.HomeScore),
+      playerStats: collectPlayerStats(game),
+      provider: this.id,
+      sourcePayload: game,
+    };
+  }
+
+  private findGame(
+    payload: unknown[],
+    input: ResultsProviderInput,
+  ): Record<string, unknown> | null {
+    const rows = payload.filter(
+      (row): row is Record<string, unknown> =>
+        Boolean(row) && typeof row === "object",
+    );
+
+    const providerId = input.event.providerEventId;
+    const byId = rows.find((row) => {
+      const candidates = [
+        row.GameKey,
+        row.GameID,
+        row.GameId,
+        row.GlobalGameID,
+        row.GlobalGameId,
+        row.ScoreID,
+      ]
+        .filter((value) => value !== undefined && value !== null)
+        .map(String);
+      return candidates.includes(providerId);
+    });
+    if (byId) {
+      return byId;
+    }
+
+    const home = normalizeTeamName(input.event.homeTeam);
+    const away = normalizeTeamName(input.event.awayTeam);
+    return (
+      rows.find((row) => {
+        const rowHome = normalizeTeamName(
+          stringOrUndefined(row.HomeTeam) ??
+            stringOrUndefined(row.HomeTeamName) ??
+            stringOrUndefined(row.Home),
+        );
+        const rowAway = normalizeTeamName(
+          stringOrUndefined(row.AwayTeam) ??
+            stringOrUndefined(row.AwayTeamName) ??
+            stringOrUndefined(row.Away),
+        );
+        return rowHome === home && rowAway === away;
+      }) ?? null
+    );
   }
 }
