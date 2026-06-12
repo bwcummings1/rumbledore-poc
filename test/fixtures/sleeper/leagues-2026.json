@@ -1,0 +1,21 @@
+[
+  {
+    "total_rosters": 4,
+    "status": "in_season",
+    "sport": "nfl",
+    "settings": {
+      "last_scored_leg": 1,
+      "playoff_week_start": 15,
+      "start_week": 1
+    },
+    "season": "2026",
+    "scoring_settings": {
+      "rec": 1
+    },
+    "roster_positions": ["QB", "RB", "WR", "TE", "FLEX", "BN", "BN", "IR"],
+    "previous_league_id": "sleeper-2025",
+    "name": "Sleeper Fixture League",
+    "league_id": "sleeper-2026",
+    "avatar": "avatar-league"
+  }
+]

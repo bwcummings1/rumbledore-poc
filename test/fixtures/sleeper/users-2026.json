@@ -1,0 +1,46 @@
+[
+  {
+    "user_id": "user-1",
+    "username": "alpha",
+    "display_name": "Alpha Manager",
+    "avatar": "avatar-alpha",
+    "metadata": {
+      "team_name": "Alpha Aces",
+      "team_abbr": "AAA"
+    },
+    "is_owner": true
+  },
+  {
+    "user_id": "user-2",
+    "username": "bravo",
+    "display_name": "Bravo Manager",
+    "avatar": "avatar-bravo",
+    "metadata": {
+      "team_name": "Bravo Ballers",
+      "team_abbr": "BBB"
+    },
+    "is_owner": false
+  },
+  {
+    "user_id": "user-3",
+    "username": "charlie",
+    "display_name": "Charlie Manager",
+    "avatar": "avatar-charlie",
+    "metadata": {
+      "team_name": "Charlie Champs",
+      "team_abbr": "CCC"
+    },
+    "is_owner": false
+  },
+  {
+    "user_id": "user-4",
+    "username": "delta",
+    "display_name": "Delta Manager",
+    "avatar": "avatar-delta",
+    "metadata": {
+      "team_name": "Delta Defenders",
+      "team_abbr": "DDD"
+    },
+    "is_owner": false
+  }
+]

@@ -1,0 +1,68 @@
+[
+  {
+    "roster_id": 1,
+    "owner_id": "user-1",
+    "co_owners": ["user-3"],
+    "league_id": "sleeper-2026",
+    "players": ["QB1", "RB1", "WR1", "BN1", "IR1"],
+    "starters": ["QB1", "RB1", "WR1"],
+    "reserve": ["IR1"],
+    "settings": {
+      "wins": 2,
+      "losses": 0,
+      "ties": 0,
+      "fpts": 250,
+      "fpts_decimal": 75,
+      "fpts_against": 199,
+      "fpts_against_decimal": 5
+    }
+  },
+  {
+    "roster_id": 2,
+    "owner_id": "user-2",
+    "league_id": "sleeper-2026",
+    "players": ["QB2", "RB2", "WR2"],
+    "starters": ["QB2", "RB2", "WR2"],
+    "settings": {
+      "wins": 1,
+      "losses": 1,
+      "ties": 0,
+      "fpts": 210,
+      "fpts_decimal": 2,
+      "fpts_against": 205,
+      "fpts_against_decimal": 44
+    }
+  },
+  {
+    "roster_id": 3,
+    "owner_id": "user-3",
+    "league_id": "sleeper-2026",
+    "players": ["QB3", "RB3", "WR3"],
+    "starters": ["QB3", "RB3", "WR3"],
+    "settings": {
+      "wins": 1,
+      "losses": 1,
+      "ties": 0,
+      "fpts": 199,
+      "fpts_decimal": 5,
+      "fpts_against": 250,
+      "fpts_against_decimal": 75
+    }
+  },
+  {
+    "roster_id": 4,
+    "owner_id": "user-4",
+    "league_id": "sleeper-2026",
+    "players": ["QB4", "RB4", "WR4"],
+    "starters": ["QB4", "RB4", "WR4"],
+    "settings": {
+      "wins": 0,
+      "losses": 2,
+      "ties": 0,
+      "fpts": 180,
+      "fpts_decimal": 0,
+      "fpts_against": 220,
+      "fpts_against_decimal": 0
+    }
+  }
+]

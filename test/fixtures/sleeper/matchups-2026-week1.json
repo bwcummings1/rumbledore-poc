@@ -1,0 +1,37 @@
+[
+  {
+    "roster_id": 1,
+    "matchup_id": 1,
+    "points": 125.75,
+    "players": ["QB1", "RB1", "WR1", "BN1", "IR1"],
+    "starters": ["QB1", "RB1", "WR1"],
+    "players_points": {
+      "QB1": 22.4,
+      "RB1": 18.1,
+      "WR1": 14.2,
+      "BN1": 7,
+      "IR1": 0
+    }
+  },
+  {
+    "roster_id": 2,
+    "matchup_id": 1,
+    "points": 110.02,
+    "players": ["QB2", "RB2", "WR2"],
+    "starters": ["QB2", "RB2", "WR2"]
+  },
+  {
+    "roster_id": 3,
+    "matchup_id": 2,
+    "points": 99.05,
+    "players": ["QB3", "RB3", "WR3"],
+    "starters": ["QB3", "RB3", "WR3"]
+  },
+  {
+    "roster_id": 4,
+    "matchup_id": 2,
+    "points": 120,
+    "players": ["QB4", "RB4", "WR4"],
+    "starters": ["QB4", "RB4", "WR4"]
+  }
+]
