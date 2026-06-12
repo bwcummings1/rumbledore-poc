@@ -20,6 +20,10 @@ import type {
 import { yahooCredentialsSchema } from "@/providers/yahoo/client";
 import { recomputeLeagueStatistics } from "@/stats";
 import type { CredentialCipher } from "./credential-crypto";
+import {
+  type ProviderReconnectAction,
+  reconnectActionForProvider,
+} from "./reconnect";
 
 export type OnboardingConnectionFlow =
   | "browser"
@@ -44,10 +48,14 @@ export interface ProviderConnectResult {
 }
 
 export interface DiscoveredLeagueImportCandidate extends DiscoveredLeague {
+  credentialId: string;
+  connectionInvalidAt?: Date;
+  connectionState: "connected" | "invalid";
   imported: boolean;
   isRecommendedImport: boolean;
   lastDiscoveredAt: Date;
   leagueId?: string;
+  reconnect?: ProviderReconnectAction;
 }
 
 export interface ProviderImportResult {
@@ -135,6 +143,49 @@ function providerUnsupported(provider: FantasyProviderId): OnboardingError {
     status: 400,
     details: { provider },
   });
+}
+
+function credentialInvalidError(
+  provider: FantasyProviderId,
+  cause?: unknown,
+): OnboardingError {
+  const reconnect = reconnectActionForProvider(provider);
+  return new OnboardingError({
+    cause,
+    code: "ONBOARDING_CREDENTIAL_INVALID",
+    details: { provider, reconnect },
+    message: reconnect.message,
+    status: 409,
+  });
+}
+
+function providerAuthExpiredError(
+  provider: FantasyProviderId,
+  cause?: unknown,
+): OnboardingError {
+  const reconnect = reconnectActionForProvider(provider);
+  return new OnboardingError({
+    cause,
+    code: "PROVIDER_AUTH_EXPIRED",
+    details: { provider, reconnect },
+    message: reconnect.message,
+    status: 401,
+  });
+}
+
+function shouldInvalidateCredential(error: ProviderError): boolean {
+  return error.code === "PROVIDER_AUTH_EXPIRED";
+}
+
+function reconnectErrorForProviderError(
+  provider: FantasyProviderId,
+  error: ProviderError,
+): ProviderError | OnboardingError {
+  if (!shouldInvalidateCredential(error)) {
+    return error;
+  }
+
+  return providerAuthExpiredError(provider, error);
 }
 
 function resolveProvider(
@@ -337,6 +388,9 @@ export async function listDiscoveredLeagues(
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   const rows = await deps.db
     .select({
+      credentialId: onboardingDiscoveredLeagues.credentialId,
+      connectionInvalidAt: providerCredentials.invalidAt,
+      connectionState: providerCredentials.status,
       importedLeagueId: leagues.id,
       lastDiscoveredAt: onboardingDiscoveredLeagues.lastDiscoveredAt,
       memberUserId: members.userId,
@@ -349,6 +403,13 @@ export async function listDiscoveredLeagues(
       teamName: onboardingDiscoveredLeagues.teamName,
     })
     .from(onboardingDiscoveredLeagues)
+    .innerJoin(
+      providerCredentials,
+      and(
+        eq(providerCredentials.id, onboardingDiscoveredLeagues.credentialId),
+        eq(providerCredentials.userId, input.userId),
+      ),
+    )
     .leftJoin(
       leagues,
       and(
@@ -389,10 +450,23 @@ export async function listDiscoveredLeagues(
     rows.map((row) => {
       const imported =
         row.memberUserId !== null && row.importedLeagueId !== null;
+      let invalidConnection = false;
+      switch (row.connectionState) {
+        case "invalid":
+          invalidConnection = true;
+          break;
+        case "connected":
+          break;
+      }
       return {
+        credentialId: row.credentialId,
+        connectionState: row.connectionState,
         imported,
         isRecommendedImport:
-          !imported && row.sport === "ffl" && row.season === latestFflSeason,
+          !imported &&
+          !invalidConnection &&
+          row.sport === "ffl" &&
+          row.season === latestFflSeason,
         lastDiscoveredAt: row.lastDiscoveredAt,
         name: row.name,
         provider: row.provider,
@@ -401,8 +475,14 @@ export async function listDiscoveredLeagues(
         sport: row.sport,
         ...(row.teamName ? { teamName: row.teamName } : {}),
         ...(row.size === null ? {} : { size: row.size }),
+        ...(row.connectionInvalidAt
+          ? { connectionInvalidAt: row.connectionInvalidAt }
+          : {}),
         ...(imported && row.importedLeagueId
           ? { leagueId: row.importedLeagueId }
+          : {}),
+        ...(invalidConnection
+          ? { reconnect: reconnectActionForProvider(row.provider) }
           : {}),
       };
     }),
@@ -443,6 +523,8 @@ async function loadStoredCredentials({
   switch (credential.status) {
     case "connected":
       break;
+    case "invalid":
+      throw credentialInvalidError(provider);
     default:
       throw new OnboardingError({
         code: "ONBOARDING_CREDENTIAL_NOT_FOUND",
@@ -537,11 +619,13 @@ export async function importDiscoveredLeague(
 
   const session = await provider.value.authenticate(credentials);
   if (!session.ok) {
-    await markCredentialInvalid({
-      credentialId: discovered.credentialId,
-      deps,
-    });
-    return session;
+    if (shouldInvalidateCredential(session.error)) {
+      await markCredentialInvalid({
+        credentialId: discovered.credentialId,
+        deps,
+      });
+    }
+    return err(reconnectErrorForProviderError(input.provider, session.error));
   }
 
   const ref = toProviderRef({

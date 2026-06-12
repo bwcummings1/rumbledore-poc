@@ -34,6 +34,13 @@ const oldLeague = {
   teamName: "Yahoo Alpha 2025",
 } as const;
 
+const yahooReconnect = {
+  href: "/onboarding/yahoo",
+  label: "Reconnect Yahoo",
+  message: "Your Yahoo authorization expired before imports could run.",
+  provider: "yahoo",
+} as const;
+
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return Promise.resolve(
     new Response(JSON.stringify(body), {
@@ -121,4 +128,43 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
     name: /open home/i,
   }) as HTMLAnchorElement;
   expect(homeLink.getAttribute("href")).toBe("/leagues/league-yahoo");
+});
+
+test("Yahoo connect panel blocks invalid stored credentials with a reconnect CTA", async () => {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url === "/api/onboarding/yahoo/discovered") {
+      return jsonResponse([
+        {
+          ...discoveredLeague,
+          connectionState: "invalid",
+          isRecommendedImport: false,
+          reconnect: yahooReconnect,
+        },
+      ]);
+    }
+    return jsonResponse(
+      { error: { message: `Unexpected request: ${url}` } },
+      { status: 500 },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<YahooConnectPanel />);
+
+  const currentLeague = (await screen.findByRole("checkbox", {
+    name: /yahoo fixture league/i,
+  })) as HTMLInputElement;
+  expect(currentLeague.checked).toBe(false);
+  expect(currentLeague.disabled).toBe(true);
+  expect(
+    screen.getByText(/yahoo authorization expired before imports/i),
+  ).toBeDefined();
+  const reconnectLink = screen.getByRole("link", {
+    name: /reconnect yahoo/i,
+  }) as HTMLAnchorElement;
+  expect(reconnectLink.getAttribute("href")).toBe("/onboarding/yahoo");
+  expect(
+    screen.getByRole("button", { name: /import selected/i }),
+  ).toHaveProperty("disabled", true);
 });

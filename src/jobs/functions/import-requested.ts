@@ -283,7 +283,9 @@ export async function runImportRequested({
   const session = await provider.authenticate(credentials);
 
   if (!session.ok) {
-    await markCredentialInvalid({ credentialId: data.credentialId, deps });
+    if (shouldStopRetries(session.error)) {
+      await markCredentialInvalid({ credentialId: data.credentialId, deps });
+    }
     throwProviderError(session.error);
   }
 

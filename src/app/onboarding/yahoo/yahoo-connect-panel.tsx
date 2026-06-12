@@ -12,6 +12,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { ProviderReconnectAction } from "@/onboarding/reconnect";
+import {
+  getJson,
+  type OnboardingPanelError,
+  onboardingPanelError,
+  postJson,
+} from "../client-http";
+import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
 
 interface DiscoveredLeague {
   provider: "yahoo";
@@ -24,10 +32,14 @@ interface DiscoveredLeague {
 }
 
 interface DiscoveredLeagueCandidate extends DiscoveredLeague {
+  credentialId?: string;
+  connectionInvalidAt?: string;
+  connectionState?: "connected" | "invalid";
   imported: boolean;
   isRecommendedImport: boolean;
   lastDiscoveredAt: string;
   leagueId?: string;
+  reconnect?: ProviderReconnectAction;
 }
 
 interface StartResult {
@@ -49,40 +61,15 @@ function leagueKey(league: Pick<DiscoveredLeague, "providerId" | "season">) {
   return `${league.providerId}:${league.season}`;
 }
 
-function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : "Request failed";
-}
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    signal: AbortSignal.timeout(30_000),
-  });
-  const payload = (await response.json().catch(() => ({}))) as {
-    error?: { message?: string };
-  };
-  if (!response.ok) {
-    throw new Error(payload.error?.message ?? "Request failed");
-  }
-  return payload as T;
-}
-
-async function postJson<T>(url: string, body?: unknown): Promise<T> {
-  return requestJson<T>(url, {
-    body: body === undefined ? undefined : JSON.stringify(body),
-    headers:
-      body === undefined ? undefined : { "content-type": "application/json" },
-    method: "POST",
-  });
-}
-
-function getJson<T>(url: string): Promise<T> {
-  return requestJson<T>(url, { method: "GET" });
+function canImportLeague(
+  league: Pick<DiscoveredLeagueCandidate, "imported" | "reconnect">,
+) {
+  return !league.imported && !league.reconnect;
 }
 
 function recommendedKeys(leagues: readonly DiscoveredLeagueCandidate[]) {
   return leagues
-    .filter((league) => league.isRecommendedImport && !league.imported)
+    .filter((league) => league.isRecommendedImport && canImportLeague(league))
     .map(leagueKey);
 }
 
@@ -91,7 +78,7 @@ export function YahooConnectPanel() {
     DiscoveredLeagueCandidate[]
   >([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<OnboardingPanelError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [imports, setImports] = useState<Record<string, ImportResult>>({});
@@ -101,21 +88,19 @@ export function YahooConnectPanel() {
     () =>
       discoveredLeagues.filter(
         (league) =>
-          selectedKeys.includes(leagueKey(league)) && !league.imported,
+          selectedKeys.includes(leagueKey(league)) && canImportLeague(league),
       ),
     [discoveredLeagues, selectedKeys],
   );
 
-  const remainingImportCount = discoveredLeagues.filter(
-    (league) => !league.imported,
-  ).length;
+  const remainingImportCount = discoveredLeagues.filter(canImportLeague).length;
 
   const replaceDiscoveredLeagues = useCallback(
     (nextLeagues: DiscoveredLeagueCandidate[], preserveSelection: boolean) => {
       setDiscoveredLeagues(nextLeagues);
       setSelectedKeys((current) => {
         const selectableKeys = new Set(
-          nextLeagues.filter((league) => !league.imported).map(leagueKey),
+          nextLeagues.filter(canImportLeague).map(leagueKey),
         );
         if (preserveSelection) {
           const retained = current.filter((key) => selectableKeys.has(key));
@@ -144,7 +129,7 @@ export function YahooConnectPanel() {
       return leagues;
     } catch (cause) {
       if (!silent) {
-        setError(errorMessage(cause));
+        setError(onboardingPanelError(cause));
       }
       return null;
     }
@@ -160,7 +145,7 @@ export function YahooConnectPanel() {
         setNotice("Yahoo connected. Choose leagues to import.");
       }
       if (callbackError) {
-        setError("Yahoo authorization could not be completed.");
+        setError({ message: "Yahoo authorization could not be completed." });
       }
 
       const leagues = await getJson<DiscoveredLeagueCandidate[]>(
@@ -185,7 +170,7 @@ export function YahooConnectPanel() {
     try {
       return await action();
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(onboardingPanelError(cause));
       return null;
     } finally {
       setBusy(null);
@@ -311,11 +296,7 @@ export function YahooConnectPanel() {
         </p>
       ) : null}
 
-      {error ? (
-        <p className="rounded-control border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <OnboardingErrorBanner error={error} /> : null}
 
       <section className="grid gap-3">
         <div className="flex items-start justify-between gap-3">
@@ -360,8 +341,9 @@ export function YahooConnectPanel() {
 
         {discoveredLeagues.map((league) => {
           const key = leagueKey(league);
-          const imported = imports[key];
-          const checked = selectedKeys.includes(key) && !league.imported;
+          const importStats = imports[key];
+          const blockedByConnection = Boolean(league.reconnect);
+          const checked = selectedKeys.includes(key) && canImportLeague(league);
           return (
             <article
               key={key}
@@ -372,7 +354,7 @@ export function YahooConnectPanel() {
                   <input
                     type="checkbox"
                     checked={checked}
-                    disabled={isBusy || league.imported}
+                    disabled={isBusy || !canImportLeague(league)}
                     onChange={(event) =>
                       toggleLeague(league, event.target.checked)
                     }
@@ -398,32 +380,39 @@ export function YahooConnectPanel() {
                 <p className="text-sm text-muted-foreground">
                   {league.imported
                     ? "Imported"
-                    : imported
-                      ? `${imported.sync.teams.total} teams · ${imported.sync.members.total} members · ${imported.sync.matchups.total} matchups`
-                      : league.isRecommendedImport
-                        ? "Selected by default"
-                        : `Yahoo league ${league.providerId}`}
+                    : blockedByConnection && league.reconnect
+                      ? league.reconnect.message
+                      : importStats
+                        ? `${importStats.sync.teams.total} teams · ${importStats.sync.members.total} members · ${importStats.sync.matchups.total} matchups`
+                        : league.isRecommendedImport
+                          ? "Selected by default"
+                          : `Yahoo league ${league.providerId}`}
                 </p>
-                {league.imported && league.leagueId ? (
-                  <Link
-                    href={`/leagues/${league.leagueId}`}
-                    className={cn(
-                      buttonVariants({ size: "sm", variant: "secondary" }),
-                    )}
-                  >
-                    <House data-icon="inline-start" />
-                    Open home
-                  </Link>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => importLeague(league)}
-                    disabled={isBusy || league.imported}
-                  >
-                    Import
-                  </Button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {league.imported && league.leagueId ? (
+                    <Link
+                      href={`/leagues/${league.leagueId}`}
+                      className={cn(
+                        buttonVariants({ size: "sm", variant: "secondary" }),
+                      )}
+                    >
+                      <House data-icon="inline-start" />
+                      Open home
+                    </Link>
+                  ) : null}
+                  {blockedByConnection && league.reconnect ? (
+                    <ReconnectActionLink action={league.reconnect} />
+                  ) : !league.imported ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => importLeague(league)}
+                      disabled={isBusy || !canImportLeague(league)}
+                    >
+                      Import
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </article>
           );

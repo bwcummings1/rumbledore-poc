@@ -328,9 +328,116 @@ describe("ESPN onboarding service", () => {
     expect(listedAfterImport.ok).toBe(true);
     if (!listedAfterImport.ok) throw listedAfterImport.error;
     expect(listedAfterImport.value[0]).toMatchObject({
+      connectionState: "connected",
       imported: true,
       isRecommendedImport: false,
       leagueId: imported.value.leagueId,
+    });
+  });
+
+  it("surfaces stored invalid credentials with an ESPN reconnect action", async () => {
+    const providerLeagueId = numericProviderLeagueId();
+    const user = await seedUser("stored-invalid");
+    const testDeps = deps(providerFor(providerLeagueId));
+
+    const connected = await connectEspnManual(testDeps, {
+      credentials: {
+        espn_s2: fixtureEspnS2,
+        swid: fixtureSwid,
+      },
+      userId: user.id,
+    });
+    expect(connected.ok).toBe(true);
+    if (!connected.ok) throw connected.error;
+
+    await handle.db
+      .update(providerCredentials)
+      .set({
+        invalidAt: new Date("2026-06-12T00:00:00.000Z"),
+        status: "invalid",
+      })
+      .where(eq(providerCredentials.id, connected.value.credentialId));
+
+    const listed = await listEspnDiscoveredLeagues(testDeps, {
+      userId: user.id,
+    });
+    expect(listed.ok).toBe(true);
+    if (!listed.ok) throw listed.error;
+    expect(listed.value[0]).toMatchObject({
+      credentialId: connected.value.credentialId,
+      connectionInvalidAt: new Date("2026-06-12T00:00:00.000Z"),
+      connectionState: "invalid",
+      imported: false,
+      isRecommendedImport: false,
+      reconnect: {
+        href: "/onboarding/espn",
+        label: "Reconnect ESPN",
+        provider: "espn",
+      },
+    });
+
+    const imported = await importEspnDiscoveredLeague(testDeps, {
+      providerLeagueId,
+      season: 2026,
+      userId: user.id,
+    });
+    expect(imported.ok).toBe(false);
+    if (imported.ok) throw new Error("expected stored invalid import to fail");
+    expect(imported.error).toMatchObject({
+      code: "ONBOARDING_CREDENTIAL_INVALID",
+      details: {
+        reconnect: {
+          href: "/onboarding/espn",
+          label: "Reconnect ESPN",
+        },
+      },
+      status: 409,
+    });
+  });
+
+  it("marks credentials invalid when an import finds expired provider auth", async () => {
+    const providerLeagueId = numericProviderLeagueId();
+    const user = await seedUser("import-expired");
+    const connected = await connectEspnManual(
+      deps(providerFor(providerLeagueId)),
+      {
+        credentials: {
+          espn_s2: fixtureEspnS2,
+          swid: fixtureSwid,
+        },
+        userId: user.id,
+      },
+    );
+    expect(connected.ok).toBe(true);
+    if (!connected.ok) throw connected.error;
+
+    const imported = await importEspnDiscoveredLeague(
+      deps(authExpiredProvider()),
+      {
+        providerLeagueId,
+        season: 2026,
+        userId: user.id,
+      },
+    );
+    expect(imported.ok).toBe(false);
+    if (imported.ok) throw new Error("expected expired import to fail");
+    expect(imported.error).toMatchObject({
+      code: "PROVIDER_AUTH_EXPIRED",
+      details: {
+        reconnect: {
+          href: "/onboarding/espn",
+          label: "Reconnect ESPN",
+        },
+      },
+      status: 401,
+    });
+
+    const [credential] = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.id, connected.value.credentialId));
+    expect(credential).toMatchObject({
+      status: "invalid",
     });
   });
 });

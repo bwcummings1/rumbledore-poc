@@ -23,7 +23,11 @@ import {
   type CredentialCipher,
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
-import { AuthExpiredError, type NormalizedSeasonBundle } from "@/providers";
+import {
+  AuthExpiredError,
+  type NormalizedSeasonBundle,
+  ProviderBlockedError,
+} from "@/providers";
 import type {
   EspnCookieCredentials,
   EspnSession,
@@ -76,7 +80,8 @@ interface ImportProvider {
     authenticate(
       credentials: EspnCookieCredentials,
     ): Promise<
-      { ok: true; value: EspnSession } | { ok: false; error: AuthExpiredError }
+      | { ok: true; value: EspnSession }
+      | { ok: false; error: AuthExpiredError | ProviderBlockedError }
     >;
     getHistory(
       session: EspnSession,
@@ -412,8 +417,10 @@ function yahooBundleFor({
 
 function historyProvider({
   authExpired = false,
+  blocked = false,
 }: {
   authExpired?: boolean;
+  blocked?: boolean;
 } = {}): ImportProvider {
   const calls: number[] = [];
   const credentials: EspnCookieCredentials[] = [];
@@ -425,6 +432,9 @@ function historyProvider({
         credentials.push(input);
         if (authExpired) {
           return err(new AuthExpiredError("espn"));
+        }
+        if (blocked) {
+          return err(new ProviderBlockedError("espn"));
         }
 
         return ok({
@@ -736,6 +746,41 @@ describe("import.requested Inngest function", () => {
       .limit(1);
     expect(credential).toMatchObject({
       status: "invalid",
+    });
+  });
+
+  it("keeps credentials connected when provider auth is temporarily blocked", async () => {
+    const seeded = await seedImport("blocked-auth");
+    const fixtureProvider = historyProvider({ blocked: true });
+
+    await expect(
+      runImportRequested({
+        data: {
+          credentialId: seeded.credentialId,
+          leagueId: seeded.leagueId,
+          provider: "espn",
+          providerLeagueId: seeded.providerLeagueId,
+          season: 2026,
+          sport: "ffl",
+          name: `${marker} league blocked`,
+          size: 2,
+          seasons: [2025],
+        },
+        deps: {
+          cipher,
+          db: handle.db,
+          providers: { espn: fixtureProvider.provider },
+        },
+      }),
+    ).rejects.toBeInstanceOf(ProviderBlockedError);
+
+    const [credential] = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.id, seeded.credentialId))
+      .limit(1);
+    expect(credential).toMatchObject({
+      status: "connected",
     });
   });
 

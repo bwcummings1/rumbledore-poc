@@ -28,6 +28,7 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 - Secrets live ONLY in `.env.local` (gitignored). Never commit secrets. Never log cookies/tokens.
 - ESPN calls are server-side only. Real test fixture: league `95050` season `2026` (creds in `.env.local`). Mock paid APIs (Anthropic/Odds/SportsDataIO/Tavily/Browserbase) behind interfaces until keys exist.
 - Yahoo OAuth connect defaults to fixture-backed mock mode unless `YAHOO_CLIENT_ID` and `YAHOO_CLIENT_SECRET` are both set; real redirect URI is `YAHOO_REDIRECT_URI` or `${BETTER_AUTH_URL}/api/onboarding/yahoo/callback`, scope defaults to `fspt-r`.
+- Provider credentials only become `invalid` on `PROVIDER_AUTH_EXPIRED`; blocked/rate-limited provider failures should retry/fail without forcing reconnect CTAs.
 - "Don't assume not implemented" — search the codebase before building something.
 
 ## Git

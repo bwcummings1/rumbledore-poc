@@ -32,6 +32,14 @@ const oldLeague = {
   sport: "ffl",
 } as const;
 
+const sleeperReconnect = {
+  href: "/onboarding/sleeper",
+  label: "Reconnect Sleeper",
+  message:
+    "Your Sleeper account lookup needs to be refreshed before imports can run.",
+  provider: "sleeper",
+} as const;
+
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return Promise.resolve(
     new Response(JSON.stringify(body), {
@@ -162,4 +170,43 @@ test("Sleeper connect panel posts public username discovery", async () => {
     expect(connectBodies).toEqual([{ usernameOrUserId: "fixture_sleeper" }]);
   });
   expect(await screen.findByText("Sleeper Fixture League")).toBeDefined();
+});
+
+test("Sleeper connect panel blocks invalid stored credentials with a reconnect CTA", async () => {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url === "/api/onboarding/sleeper/discovered") {
+      return jsonResponse([
+        {
+          ...discoveredLeague,
+          connectionState: "invalid",
+          isRecommendedImport: false,
+          reconnect: sleeperReconnect,
+        },
+      ]);
+    }
+    return jsonResponse(
+      { error: { message: `Unexpected request: ${url}` } },
+      { status: 500 },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<SleeperConnectPanel />);
+
+  const currentLeague = (await screen.findByRole("checkbox", {
+    name: /sleeper fixture league/i,
+  })) as HTMLInputElement;
+  expect(currentLeague.checked).toBe(false);
+  expect(currentLeague.disabled).toBe(true);
+  expect(
+    screen.getByText(/sleeper account lookup needs to be refreshed/i),
+  ).toBeDefined();
+  const reconnectLink = screen.getByRole("link", {
+    name: /reconnect sleeper/i,
+  }) as HTMLAnchorElement;
+  expect(reconnectLink.getAttribute("href")).toBe("/onboarding/sleeper");
+  expect(
+    screen.getByRole("button", { name: /import selected/i }),
+  ).toHaveProperty("disabled", true);
 });

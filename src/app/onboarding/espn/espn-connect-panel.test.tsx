@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { EspnConnectPanel } from "./espn-connect-panel";
 
@@ -27,6 +33,13 @@ const oldLeague = {
   sport: "ffl",
 } as const;
 
+const espnReconnect = {
+  href: "/onboarding/espn",
+  label: "Reconnect ESPN",
+  message: "Your ESPN connection needs fresh cookies before imports can run.",
+  provider: "espn",
+} as const;
+
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return Promise.resolve(
     new Response(JSON.stringify(body), {
@@ -40,6 +53,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 }
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 
@@ -99,4 +113,77 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
     name: /open home/i,
   }) as HTMLAnchorElement;
   expect(homeLink.getAttribute("href")).toBe("/leagues/league-95050");
+});
+
+test("ESPN connect panel blocks invalid stored credentials with a reconnect CTA", async () => {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url === "/api/onboarding/espn/discovered") {
+      return jsonResponse([
+        {
+          ...discoveredLeague,
+          connectionState: "invalid",
+          isRecommendedImport: false,
+          reconnect: espnReconnect,
+        },
+      ]);
+    }
+    return jsonResponse(
+      { error: { message: `Unexpected request: ${url}` } },
+      { status: 500 },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<EspnConnectPanel />);
+
+  const currentLeague = (await screen.findByRole("checkbox", {
+    name: /nhs alumni annual/i,
+  })) as HTMLInputElement;
+  expect(currentLeague.checked).toBe(false);
+  expect(currentLeague.disabled).toBe(true);
+  expect(
+    screen.getByText(/espn connection needs fresh cookies/i),
+  ).toBeDefined();
+  const reconnectLink = screen.getByRole("link", {
+    name: /reconnect espn/i,
+  }) as HTMLAnchorElement;
+  expect(reconnectLink.getAttribute("href")).toBe("/onboarding/espn");
+  expect(
+    screen.getByRole("button", { name: /import selected/i }),
+  ).toHaveProperty("disabled", true);
+});
+
+test("ESPN connect panel renders reconnect CTA from import auth errors", async () => {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url === "/api/onboarding/espn/discovered") {
+      return jsonResponse([discoveredLeague]);
+    }
+    if (url === "/api/onboarding/espn/import") {
+      return jsonResponse(
+        {
+          error: {
+            details: { reconnect: espnReconnect },
+            message: espnReconnect.message,
+          },
+        },
+        { status: 401 },
+      );
+    }
+    return jsonResponse(
+      { error: { message: `Unexpected request: ${url}` } },
+      { status: 500 },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<EspnConnectPanel />);
+
+  await screen.findByRole("checkbox", { name: /nhs alumni annual/i });
+  fireEvent.click(screen.getByRole("button", { name: /^import$/i }));
+
+  expect(
+    await screen.findByRole("link", { name: /reconnect espn/i }),
+  ).toBeDefined();
 });
