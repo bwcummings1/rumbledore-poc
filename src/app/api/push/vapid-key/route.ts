@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getEnv } from "@/core/env";
+import { recordApiHandler } from "@/core/metrics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function vapidKeyGet() {
   const env = getEnv();
   return NextResponse.json(
     {
@@ -16,3 +17,8 @@ export async function GET() {
     },
   );
 }
+
+export const GET = recordApiHandler(
+  { method: "GET", route: "/api/push/vapid-key" },
+  vapidKeyGet,
+);

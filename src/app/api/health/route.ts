@@ -2,14 +2,18 @@ import { NextResponse } from "next/server";
 import { getEnv } from "@/core/env";
 import { runHealthCheck } from "@/core/health";
 import { logger } from "@/core/logging";
+import { recordApiHandler } from "@/core/metrics";
 import { getDb } from "@/db";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+async function healthGet() {
+  const env = getEnv();
   const payload = await runHealthCheck({
     db: getDb(),
-    redisUrl: getEnv().redisUrl,
+    inngest: env.jobs.inngest,
+    realtime: env.realtime,
+    redisUrl: env.redisUrl,
   });
 
   if (payload.status !== "ok") {
@@ -23,3 +27,8 @@ export async function GET() {
     status: payload.status === "ok" ? 200 : 503,
   });
 }
+
+export const GET = recordApiHandler(
+  { method: "GET", route: "/api/health" },
+  healthGet,
+);

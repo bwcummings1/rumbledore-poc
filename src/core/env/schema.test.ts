@@ -3,7 +3,10 @@ import {
   DEV_AUTH_SECRET,
   DEV_CREDENTIAL_ENCRYPTION_KEY,
   DEV_PUSH_PUBLIC_KEY,
+  INNGEST_CLOUD_API_BASE_URL,
+  INNGEST_CLOUD_EVENT_BASE_URL,
   LOCAL_DATABASE_URL,
+  LOCAL_INNGEST_DEV_SERVER_URL,
   LOCAL_REDIS_URL,
   parseEnv,
 } from "./schema";
@@ -25,6 +28,7 @@ describe("parseEnv", () => {
     expect(env.services.voyage).toEqual({ mock: true });
     expect(env.services.browserbase).toEqual({ mock: true });
     expect(env.realtime).toEqual({ mock: true });
+    expect(env.jobs.inngest).toEqual({ mode: "mock" });
     expect(env.push).toEqual({ mock: true, publicKey: DEV_PUSH_PUBLIC_KEY });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
   });
@@ -135,6 +139,60 @@ describe("parseEnv", () => {
       SUPABASE_URL: "https://project.supabase.co",
     });
     expect(env.realtime).toEqual({ mock: true });
+  });
+
+  it("uses the local Inngest dev server when INNGEST_DEV is enabled", () => {
+    const env = parseEnv({ INNGEST_DEV: "true" });
+    expect(env.jobs.inngest).toEqual({
+      baseUrl: LOCAL_INNGEST_DEV_SERVER_URL,
+      eventKey: undefined,
+      mode: "dev",
+      signingKey: undefined,
+      signingKeyFallback: undefined,
+    });
+  });
+
+  it("uses explicit Inngest dev and cloud endpoints when configured", () => {
+    const dev = parseEnv({
+      INNGEST_DEV: "http://127.0.0.1:9999",
+      INNGEST_EVENT_KEY: fixtureValue("inngest", "event", "fixture"),
+      INNGEST_SIGNING_KEY: fixtureValue("inngest", "signing", "fixture"),
+      INNGEST_SIGNING_KEY_FALLBACK: fixtureValue(
+        "inngest",
+        "signing",
+        "fallback",
+      ),
+    });
+    expect(dev.jobs.inngest).toEqual({
+      baseUrl: "http://127.0.0.1:9999/",
+      eventKey: fixtureValue("inngest", "event", "fixture"),
+      mode: "dev",
+      signingKey: fixtureValue("inngest", "signing", "fixture"),
+      signingKeyFallback: fixtureValue("inngest", "signing", "fallback"),
+    });
+
+    const cloud = parseEnv({
+      INNGEST_EVENT_KEY: fixtureValue("inngest", "event", "fixture"),
+    });
+    expect(cloud.jobs.inngest).toEqual({
+      apiBaseUrl: INNGEST_CLOUD_API_BASE_URL,
+      eventApiBaseUrl: INNGEST_CLOUD_EVENT_BASE_URL,
+      eventKey: fixtureValue("inngest", "event", "fixture"),
+      mode: "cloud",
+      signingKey: undefined,
+      signingKeyFallback: undefined,
+    });
+  });
+
+  it("rejects malformed INNGEST_DEV values without echoing them", () => {
+    let message = "";
+    try {
+      parseEnv({ INNGEST_DEV: "fixture private dev value" });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("INNGEST_DEV");
+    expect(message).not.toContain("fixture private dev value");
   });
 
   it("goes real for web push when VAPID config is present", () => {

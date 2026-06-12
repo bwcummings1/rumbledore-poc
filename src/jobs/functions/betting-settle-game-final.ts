@@ -8,6 +8,7 @@ import {
   settleBettingEvent,
 } from "@/betting/settlement";
 import { logger } from "@/core/logging";
+import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { createPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import { inngest } from "../client";
@@ -134,12 +135,13 @@ export function createBettingSettleGameFinalFunction(
       name: "Betting game-final settlement",
       triggers: [{ event: JOB_EVENTS.gameFinal }],
     },
-    async ({ event, step }): Promise<BettingSettleGameFinalResponse> => {
-      const deps = await resolveDeps();
-      return step.run("settle-betting-event", () =>
-        runBettingSettleGameFinal({ data: event.data, deps }),
-      );
-    },
+    async ({ event, step }): Promise<BettingSettleGameFinalResponse> =>
+      recordJobRun("betting-settle-game-final", async () => {
+        const deps = await resolveDeps();
+        return step.run("settle-betting-event", () =>
+          runBettingSettleGameFinal({ data: event.data, deps }),
+        );
+      }),
   );
 }
 

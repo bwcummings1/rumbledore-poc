@@ -4,6 +4,9 @@ import { z } from "zod";
 export const LOCAL_DATABASE_URL =
   "postgres://rumbledore:rumbledore@localhost:5440/rumbledore";
 export const LOCAL_REDIS_URL = "redis://localhost:6390";
+export const LOCAL_INNGEST_DEV_SERVER_URL = "http://localhost:8288";
+export const INNGEST_CLOUD_API_BASE_URL = "https://api.inngest.com";
+export const INNGEST_CLOUD_EVENT_BASE_URL = "https://inn.gs";
 
 /**
  * Paid integrations default to mocks so the app runs with only local Postgres/Redis.
@@ -31,6 +34,24 @@ export type RealtimeConfig =
       publishableKey: string;
       serviceRoleKey: string;
       url: string;
+    };
+
+export type InngestConfig =
+  | { mode: "mock" }
+  | {
+      mode: "dev";
+      baseUrl: string;
+      eventKey: string | undefined;
+      signingKey: string | undefined;
+      signingKeyFallback: string | undefined;
+    }
+  | {
+      mode: "cloud";
+      apiBaseUrl: string;
+      eventApiBaseUrl: string;
+      eventKey: string;
+      signingKey: string | undefined;
+      signingKeyFallback: string | undefined;
     };
 
 export type PushConfig =
@@ -102,6 +123,14 @@ const baseSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: secret.optional(),
   SUPABASE_JWT_SECRET: secret.optional(),
   MOCK_REALTIME: stringbool.optional(),
+  INNGEST_DEV: z.string().trim().min(1).optional(),
+  INNGEST_DEVSERVER_URL: z.url().optional(),
+  INNGEST_BASE_URL: z.url().optional(),
+  INNGEST_API_BASE_URL: z.url().optional(),
+  INNGEST_EVENT_API_BASE_URL: z.url().optional(),
+  INNGEST_EVENT_KEY: secret.optional(),
+  INNGEST_SIGNING_KEY: secret.optional(),
+  INNGEST_SIGNING_KEY_FALLBACK: secret.optional(),
   WEB_PUSH_PUBLIC_KEY: secret.optional(),
   WEB_PUSH_PRIVATE_KEY: secret.optional(),
   WEB_PUSH_SUBJECT: secret.optional(),
@@ -143,6 +172,9 @@ export interface Env {
     encryptionKey: string;
   };
   realtime: RealtimeConfig;
+  jobs: {
+    inngest: InngestConfig;
+  };
   push: PushConfig;
   services: Record<PaidService, ServiceConfig>;
 }
@@ -228,6 +260,20 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     }
   }
 
+  const inngestDevValue = present.INNGEST_DEV;
+  if (typeof inngestDevValue === "string") {
+    const devFlag = stringbool.safeParse(inngestDevValue);
+    if (!devFlag.success) {
+      try {
+        new URL(inngestDevValue);
+      } catch {
+        problems.push(
+          "✖ INNGEST_DEV must be a boolean or URL\n  → at INNGEST_DEV",
+        );
+      }
+    }
+  }
+
   const pushFlag =
     "MOCK_PUSH" in present
       ? stringbool.safeParse(present.MOCK_PUSH)
@@ -281,6 +327,48 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     parsed.WEB_PUSH_PUBLIC_KEY !== undefined &&
     parsed.WEB_PUSH_PRIVATE_KEY !== undefined &&
     parsed.WEB_PUSH_SUBJECT !== undefined;
+  const inngestDevFlag =
+    parsed.INNGEST_DEV === undefined
+      ? undefined
+      : stringbool.safeParse(parsed.INNGEST_DEV);
+  const inngestExplicitDevUrl =
+    parsed.INNGEST_DEV !== undefined && inngestDevFlag?.success !== true
+      ? new URL(parsed.INNGEST_DEV).href
+      : undefined;
+  const inngestDevMode =
+    inngestExplicitDevUrl !== undefined ||
+    inngestDevFlag?.data === true ||
+    parsed.INNGEST_DEVSERVER_URL !== undefined;
+  const inngestCloudMode =
+    !inngestDevMode && parsed.INNGEST_EVENT_KEY !== undefined;
+  const inngest: InngestConfig = inngestDevMode
+    ? {
+        baseUrl:
+          inngestExplicitDevUrl ??
+          parsed.INNGEST_DEVSERVER_URL ??
+          parsed.INNGEST_BASE_URL ??
+          LOCAL_INNGEST_DEV_SERVER_URL,
+        eventKey: parsed.INNGEST_EVENT_KEY,
+        mode: "dev",
+        signingKey: parsed.INNGEST_SIGNING_KEY,
+        signingKeyFallback: parsed.INNGEST_SIGNING_KEY_FALLBACK,
+      }
+    : inngestCloudMode
+      ? {
+          apiBaseUrl:
+            parsed.INNGEST_API_BASE_URL ??
+            parsed.INNGEST_BASE_URL ??
+            INNGEST_CLOUD_API_BASE_URL,
+          eventApiBaseUrl:
+            parsed.INNGEST_EVENT_API_BASE_URL ??
+            parsed.INNGEST_BASE_URL ??
+            INNGEST_CLOUD_EVENT_BASE_URL,
+          eventKey: parsed.INNGEST_EVENT_KEY as string,
+          mode: "cloud",
+          signingKey: parsed.INNGEST_SIGNING_KEY,
+          signingKeyFallback: parsed.INNGEST_SIGNING_KEY_FALLBACK,
+        }
+      : { mode: "mock" };
 
   return {
     nodeEnv: parsed.NODE_ENV,
@@ -317,6 +405,9 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
           url: parsed.SUPABASE_URL as string,
         }
       : { mock: true },
+    jobs: {
+      inngest,
+    },
     push: pushIsReal
       ? {
           mock: false,

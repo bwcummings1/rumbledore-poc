@@ -26,13 +26,7 @@ class BrowserbaseSessionNotConfigured implements BrowserSession {
 async function requestHistoricalImport(
   data: ImportRequestedData,
 ): Promise<void> {
-  const hasInngestConfig = Boolean(
-    process.env.INNGEST_DEV || process.env.INNGEST_EVENT_KEY,
-  );
-  const isProduction = ["production"].includes(process.env.NODE_ENV ?? "");
-  const shouldSend = isProduction || hasInngestConfig;
-
-  if (!shouldSend) {
+  if (getEnv().jobs.inngest.mode === "mock") {
     return;
   }
 

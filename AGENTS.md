@@ -51,6 +51,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - Realtime: browser clients use `/api/realtime/token` for short-lived channel grants; real Supabase mode requires `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_JWT_SECRET` — never expose the service-role key or JWT secret to clients.
 - Realtime: client modules import grant DTOs from `src/realtime/grants.ts`; `src/realtime/subscription-grants.ts` is server-only (Node crypto/DB/auth dependencies) and must not enter a `"use client"` bundle.
 - Push: Web Push subscriptions are per-origin in the browser but stored as per-league RLS rows; real delivery requires `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, and `WEB_PUSH_SUBJECT`, and only the public key may reach the client.
+- Jobs: Inngest config is `getEnv().jobs.inngest`; empty local config is mock/no enqueue, `INNGEST_DEV`/`INNGEST_DEVSERVER_URL` is dev mode, and `INNGEST_EVENT_KEY` is cloud mode; do not read `process.env.INNGEST_*` directly.
 - Jobs: `game.final.gameId` is used by AI content as a `fantasy_matchups.id`; betting settlement should pass `bettingEventId` for central `betting_event.id` and only rely on the `gameId` fallback for direct betting-event producers.
 - Append-only tables that also cascade from leagues/users need triggers that reject direct UPDATE/DELETE but allow FK cascade DELETE (`pg_trigger_depth() > 1`), or test/prod league cleanup will fail.
 

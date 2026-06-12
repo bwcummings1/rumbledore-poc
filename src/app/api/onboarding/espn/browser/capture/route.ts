@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { recordApiHandler } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { getEspnOnboardingDependencies } from "@/onboarding/deps";
 import { completeEspnBrowserConnect } from "@/onboarding/espn-service";
@@ -15,7 +16,7 @@ const bodySchema = z.object({
   sessionId: z.uuid(),
 });
 
-export async function POST(request: Request) {
+async function browserCapturePost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
@@ -46,3 +47,8 @@ export async function POST(request: Request) {
   );
   return resultJson(result);
 }
+
+export const POST = recordApiHandler(
+  { method: "POST", route: "/api/onboarding/espn/browser/capture" },
+  browserCapturePost,
+);

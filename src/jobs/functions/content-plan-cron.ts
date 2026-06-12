@@ -1,4 +1,5 @@
 import { cron } from "inngest";
+import { recordJobRun } from "@/core/metrics";
 import type { Db } from "@/db/client";
 import { inngest } from "../client";
 import {
@@ -65,21 +66,22 @@ export function createContentPlanCronFunction(
       name,
       triggers: [cron(schedule)],
     },
-    async ({ step }): Promise<ContentPlanCronResponse> => {
-      const deps = await resolveDeps();
-      const plan = await step.run("plan-content-generation", () =>
-        runContentPlanCron({ cadence, deps }),
-      );
+    async ({ step }): Promise<ContentPlanCronResponse> =>
+      recordJobRun(functionId, async () => {
+        const deps = await resolveDeps();
+        const plan = await step.run("plan-content-generation", () =>
+          runContentPlanCron({ cadence, deps }),
+        );
 
-      if (plan.planned.length > 0) {
-        await step.sendEvent("send-content-generate-events", plan.planned);
-      }
+        if (plan.planned.length > 0) {
+          await step.sendEvent("send-content-generate-events", plan.planned);
+        }
 
-      return {
-        ...plan,
-        sentCount: plan.planned.length,
-      };
-    },
+        return {
+          ...plan,
+          sentCount: plan.planned.length,
+        };
+      }),
   );
 }
 

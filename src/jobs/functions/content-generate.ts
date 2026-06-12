@@ -7,6 +7,7 @@ import {
   generateLeagueBlogPost,
 } from "@/ai";
 import { createAiDependencies } from "@/ai/dependencies";
+import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { inngest } from "../client";
 import { type ContentGenerateData, JOB_EVENTS } from "../events";
@@ -84,12 +85,13 @@ export function createContentGenerateFunction(
       name: "AI content generate",
       triggers: [{ event: JOB_EVENTS.contentGenerate }],
     },
-    async ({ event, step }): Promise<ContentGenerateResponse> => {
-      const deps = await resolveDeps();
-      return step.run("run-content-generation", () =>
-        runContentGenerate({ data: event.data, deps }),
-      );
-    },
+    async ({ event, step }): Promise<ContentGenerateResponse> =>
+      recordJobRun("content-generate", async () => {
+        const deps = await resolveDeps();
+        return step.run("run-content-generation", () =>
+          runContentGenerate({ data: event.data, deps }),
+        );
+      }),
   );
 }
 

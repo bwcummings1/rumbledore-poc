@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { recordApiHandler } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { getEspnOnboardingDependencies } from "@/onboarding/deps";
 import { importEspnDiscoveredLeague } from "@/onboarding/espn-service";
@@ -16,7 +17,7 @@ const bodySchema = z.object({
   season: z.coerce.number().int().min(2000).max(2100),
 });
 
-export async function POST(request: Request) {
+async function importDiscoveredPost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
@@ -48,3 +49,8 @@ export async function POST(request: Request) {
   );
   return resultJson(result);
 }
+
+export const POST = recordApiHandler(
+  { method: "POST", route: "/api/onboarding/espn/import" },
+  importDiscoveredPost,
+);

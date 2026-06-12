@@ -6,6 +6,7 @@ import type {
 } from "@/betting";
 import { createOddsDependencies } from "@/betting/dependencies";
 import { refreshOddsCatalog } from "@/betting/ingestion";
+import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { inngest } from "../client";
 import { JOB_EVENTS, type OddsPollData } from "../events";
@@ -81,12 +82,13 @@ export function createOddsPollFunction(
       name: "Odds poll",
       triggers: [{ event: JOB_EVENTS.oddsPoll }, cron("TZ=UTC */15 * * * *")],
     },
-    async ({ event, step }): Promise<OddsPollResponse> => {
-      const deps = await resolveDeps();
-      return step.run("refresh-odds-catalog", () =>
-        runOddsPoll({ data: event.data, deps }),
-      );
-    },
+    async ({ event, step }): Promise<OddsPollResponse> =>
+      recordJobRun("odds-poll", async () => {
+        const deps = await resolveDeps();
+        return step.run("refresh-odds-catalog", () =>
+          runOddsPoll({ data: event.data, deps }),
+        );
+      }),
   );
 }
 

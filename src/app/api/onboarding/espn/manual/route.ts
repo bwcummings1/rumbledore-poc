@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { recordApiHandler } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { getEspnOnboardingDependencies } from "@/onboarding/deps";
 import { connectEspnManual } from "@/onboarding/espn-service";
@@ -16,7 +17,7 @@ const bodySchema = z.object({
   swid: z.string().trim().min(1),
 });
 
-export async function POST(request: Request) {
+async function manualConnectPost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
@@ -44,3 +45,8 @@ export async function POST(request: Request) {
   });
   return resultJson(result);
 }
+
+export const POST = recordApiHandler(
+  { method: "POST", route: "/api/onboarding/espn/manual" },
+  manualConnectPost,
+);

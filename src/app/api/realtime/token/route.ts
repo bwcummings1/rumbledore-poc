@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEnv } from "@/core/env";
+import { recordApiHandler } from "@/core/metrics";
 import type { AppError } from "@/core/result";
 import { getDb } from "@/db";
 import {
@@ -14,7 +15,7 @@ function errorJson(error: AppError): NextResponse {
   return NextResponse.json({ error: error.toJSON() }, { status: error.status });
 }
 
-export async function GET(request: Request) {
+async function realtimeTokenGet(request: Request) {
   const env = getEnv();
   const result = await createRealtimeSubscriptionGrant(
     createRealtimeGrantDeps(env, getDb()),
@@ -30,3 +31,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json(result.value);
 }
+
+export const GET = recordApiHandler(
+  { method: "GET", route: "/api/realtime/token" },
+  realtimeTokenGet,
+);

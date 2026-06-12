@@ -1,3 +1,4 @@
+import { recordJobRun } from "@/core/metrics";
 import { inngest } from "../client";
 import { type AppPingData, JOB_EVENTS } from "../events";
 
@@ -31,15 +32,16 @@ export const appPing = inngest.createFunction(
     triggers: [{ event: JOB_EVENTS.appPing }],
     idempotency: "event.id",
   },
-  async ({ event, step }): Promise<AppPingResponse> => {
-    const response = await step.run("build-ping-response", () =>
-      normalizePingData(event.data),
-    );
+  async ({ event, step }): Promise<AppPingResponse> =>
+    recordJobRun("app-ping", async () => {
+      const response = await step.run("build-ping-response", () =>
+        normalizePingData(event.data),
+      );
 
-    return {
-      ok: true,
-      eventName: JOB_EVENTS.appPing,
-      ...response,
-    };
-  },
+      return {
+        ok: true,
+        eventName: JOB_EVENTS.appPing,
+        ...response,
+      };
+    }),
 );

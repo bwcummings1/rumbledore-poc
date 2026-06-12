@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
+import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { leagues, members, providerCredentials } from "@/db/schema";
@@ -286,12 +287,13 @@ export function createImportRequestedFunction(
       idempotency:
         "event.data.leagueId + ':' + event.data.provider + ':' + event.data.providerLeagueId",
     },
-    async ({ event, step }): Promise<ImportRequestedResponse> => {
-      const deps = await resolveDeps();
-      return step.run("run-historical-import", () =>
-        runImportRequested({ data: event.data, deps }),
-      );
-    },
+    async ({ event, step }): Promise<ImportRequestedResponse> =>
+      recordJobRun("import-requested", async () => {
+        const deps = await resolveDeps();
+        return step.run("run-historical-import", () =>
+          runImportRequested({ data: event.data, deps }),
+        );
+      }),
   );
 }
 

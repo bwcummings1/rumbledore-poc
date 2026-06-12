@@ -1,5 +1,6 @@
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
+import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import {
   type CentralNewsIngestionDependencies,
@@ -81,12 +82,13 @@ export function createNewsRefreshFunction(
       name: "Central news refresh",
       triggers: [{ event: JOB_EVENTS.newsRefresh }],
     },
-    async ({ event, step }): Promise<NewsRefreshResponse> => {
-      const deps = await resolveDeps();
-      return step.run("refresh-central-news", () =>
-        runNewsRefresh({ data: event.data, deps }),
-      );
-    },
+    async ({ event, step }): Promise<NewsRefreshResponse> =>
+      recordJobRun("news-refresh", async () => {
+        const deps = await resolveDeps();
+        return step.run("refresh-central-news", () =>
+          runNewsRefresh({ data: event.data, deps }),
+        );
+      }),
   );
 }
 

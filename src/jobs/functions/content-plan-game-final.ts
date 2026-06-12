@@ -1,5 +1,6 @@
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
+import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { inngest } from "../client";
@@ -85,21 +86,22 @@ export function createContentPlanGameFinalFunction(
       name: "AI content game-final planner",
       triggers: [{ event: JOB_EVENTS.gameFinal }],
     },
-    async ({ event, step }): Promise<ContentPlanGameFinalResponse> => {
-      const deps = await resolveDeps();
-      const plan = await step.run("plan-content-generation", () =>
-        runContentPlanGameFinal({ data: event.data, deps }),
-      );
+    async ({ event, step }): Promise<ContentPlanGameFinalResponse> =>
+      recordJobRun("content-plan-game-final", async () => {
+        const deps = await resolveDeps();
+        const plan = await step.run("plan-content-generation", () =>
+          runContentPlanGameFinal({ data: event.data, deps }),
+        );
 
-      if (plan.planned.length > 0) {
-        await step.sendEvent("send-content-generate-events", plan.planned);
-      }
+        if (plan.planned.length > 0) {
+          await step.sendEvent("send-content-generate-events", plan.planned);
+        }
 
-      return {
-        ...plan,
-        sentCount: plan.planned.length,
-      };
-    },
+        return {
+          ...plan,
+          sentCount: plan.planned.length,
+        };
+      }),
   );
 }
 

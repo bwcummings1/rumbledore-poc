@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { recordApiHandler } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { getDb } from "@/db";
 import {
@@ -57,7 +58,7 @@ async function readParsedBody<T>(
   return parsed.data;
 }
 
-export async function POST(request: Request) {
+async function pushSubscriptionsPost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
   return resultJson(result, result.ok ? 201 : 200);
 }
 
-export async function DELETE(request: Request) {
+async function pushSubscriptionsDelete(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
@@ -101,3 +102,13 @@ export async function DELETE(request: Request) {
   );
   return resultJson(result);
 }
+
+export const POST = recordApiHandler(
+  { method: "POST", route: "/api/push/subscriptions" },
+  pushSubscriptionsPost,
+);
+
+export const DELETE = recordApiHandler(
+  { method: "DELETE", route: "/api/push/subscriptions" },
+  pushSubscriptionsDelete,
+);
