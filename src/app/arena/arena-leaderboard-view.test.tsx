@@ -1,7 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { ArenaLeaderboardData } from "@/betting";
 import { ArenaLeaderboardView } from "./arena-leaderboard-view";
+
+const router = vi.hoisted(() => ({ refresh: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
 
 const data: ArenaLeaderboardData = {
   computedAt: "2026-09-09T00:00:00.000Z",

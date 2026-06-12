@@ -1,7 +1,13 @@
 import { render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { LeagueHomeData } from "@/home/league-home";
 import { LeagueHomeView } from "./league-home-view";
+
+const router = vi.hoisted(() => ({ refresh: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
 
 const data: LeagueHomeData = {
   currentMatchups: [

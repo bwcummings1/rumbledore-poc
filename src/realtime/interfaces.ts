@@ -1,7 +1,12 @@
 import type { AiPersona } from "@/ai/personas";
 
 export const REALTIME_EVENTS = {
+  arenaLeaderboardUpdated: "arena.leaderboard.updated",
   blogPublished: "blog.published",
+  centralNewsUpdated: "central.news.updated",
+  leagueLeaderboardUpdated: "league.leaderboard.updated",
+  oddsUpdated: "odds.updated",
+  scoresUpdated: "scores.updated",
 } as const;
 
 export type RealtimeEventType =
@@ -18,6 +23,54 @@ export interface BlogPublishedPayload {
   triggerKey: string;
   publishedAt: string;
 }
+
+export interface ScoresUpdatedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.scoresUpdated;
+  at: string;
+  leagueId: string;
+  scoringPeriod: number | null;
+  matchupIds: string[];
+}
+
+export interface OddsUpdatedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.oddsUpdated;
+  at: string;
+  leagueId: string;
+  bettingEventIds: string[];
+  marketIds: string[];
+}
+
+export interface LeagueLeaderboardUpdatedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.leagueLeaderboardUpdated;
+  at: string;
+  leagueId: string;
+  bankrollWeekId: string | null;
+}
+
+export interface ArenaLeaderboardUpdatedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.arenaLeaderboardUpdated;
+  at: string;
+  seasonId: string | null;
+}
+
+export interface CentralNewsUpdatedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.centralNewsUpdated;
+  at: string;
+  contentItemIds: string[];
+}
+
+export type RealtimePayload =
+  | ArenaLeaderboardUpdatedPayload
+  | BlogPublishedPayload
+  | CentralNewsUpdatedPayload
+  | LeagueLeaderboardUpdatedPayload
+  | OddsUpdatedPayload
+  | ScoresUpdatedPayload;
 
 export interface RealtimePublisher {
   publishLeagueBlogPublished(payload: BlogPublishedPayload): Promise<void>;

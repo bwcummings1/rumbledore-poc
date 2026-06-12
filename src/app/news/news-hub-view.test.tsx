@@ -1,7 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { CentralNewsHubData } from "@/news/hub";
 import { NewsHubView } from "./news-hub-view";
+
+const router = vi.hoisted(() => ({ refresh: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
 
 const data: CentralNewsHubData = {
   items: [

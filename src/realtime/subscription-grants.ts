@@ -4,6 +4,11 @@ import type { Env, RealtimeConfig } from "@/core/env/schema";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { members } from "@/db/schema";
+import type {
+  RealtimeCapability,
+  RealtimeChannelGrant,
+  RealtimeSubscriptionGrant,
+} from "./grants";
 import {
   LEAGUE_REALTIME_CHANNEL_KINDS,
   leagueRealtimeChannel,
@@ -14,28 +19,6 @@ import {
 const DEFAULT_TOKEN_TTL_SECONDS = 5 * 60;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export type RealtimeCapability =
-  | "broadcast:read"
-  | "presence:read"
-  | "presence:write";
-
-export interface RealtimeChannelGrant {
-  topic: RealtimeChannel;
-  private: true;
-  capabilities: RealtimeCapability[];
-}
-
-export interface RealtimeSubscriptionGrant {
-  token: string;
-  issuedAt: string;
-  expiresAt: string;
-  ttlSeconds: number;
-  channels: RealtimeChannelGrant[];
-  transport:
-    | { kind: "mock" }
-    | { kind: "supabase"; url: string; publishableKey: string };
-}
 
 export interface RealtimeSession {
   user: { id: string };

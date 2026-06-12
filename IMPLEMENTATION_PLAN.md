@@ -56,13 +56,14 @@ Seeded by the planning session; the loop refines it. Nothing is done yet (greenf
 
 ## P5 — Realtime, scale, multi-provider (see specs/09)
 - [x] Add guarded realtime subscription grants for per-league and central channels. (done 2026-06-12: `/api/realtime/token` now resolves the Better Auth session, verifies requested league memberships through central `members`, returns public central/arena plus authorized league channel grants, and signs short-lived Supabase-compatible JWTs whose claims list allowed topics/capabilities without exposing the service key; real realtime env now separates publishable, service-role, and JWT-signing credentials; DB-backed grant/env tests are green)
-- [ ] Add client-side Supabase subscription plumbing for blog, scores, odds, league leaderboard, and arena channels.
+- [x] Add client-side Supabase subscription plumbing for blog, scores, odds, league leaderboard, and arena channels. (done 2026-06-12: added the browser Supabase realtime client bridge, token refresh/resubscribe loop, channel-to-`router.refresh()` invalidation, typed update payloads, and mounted live refresh companions on league home/feed, central news, and arena pages)
 - [ ] Add PWA push notifications for high-value league events.
 - [ ] Expand health/observability to include realtime/Inngest reachability and basic job/API metrics.
 - [ ] Implement the Sleeper provider behind the `FantasyProvider` interface.
 - [ ] Implement the Yahoo provider behind the `FantasyProvider` interface.
 
 ## Discoveries / bugs (loop appends here)
+- 2026-06-12: Browser realtime code must import grant DTOs from `src/realtime/grants.ts`; `src/realtime/subscription-grants.ts` is server-only by dependency (`node:crypto`, DB, Better Auth) and will poison client bundles if imported from `"use client"` modules.
 - 2026-06-12: Supabase private Broadcast subscription grants need both browser-safe `SUPABASE_PUBLISHABLE_KEY` and server-only `SUPABASE_JWT_SECRET`; the service-role key remains publish-only and must never be returned by `/api/realtime/token`.
 - 2026-06-12: Arena materialization is the deliberate cross-league aggregate path, but raw bankroll reads still enumerate leagues and run inside `withLeagueContext()` with explicit `league_id` filters; central `arena_standing` rows expose rankings/aggregates, not another league's raw slips, and the `game.final` settlement job rebuilds configured arena seasons after finalized slips.
 - 2026-06-12: `game.final.gameId` is already used by AI content as a `fantasy_matchups.id`; betting settlement accepts optional `bettingEventId` and falls back to `gameId` only for direct betting-event producers.

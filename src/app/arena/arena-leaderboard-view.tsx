@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ArenaLeaderboardData, ArenaLeaderboardRow } from "@/betting";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ArenaRealtimeRefresh } from "@/realtime/client";
 
 function formatPaperMoney(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -123,6 +124,7 @@ function LeaderboardSection({
 export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+      <ArenaRealtimeRefresh />
       <header className="grid gap-4">
         <Link
           href="/"

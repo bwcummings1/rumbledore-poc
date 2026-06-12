@@ -49,6 +49,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - DB-backed App Router pages with static-looking paths must opt into request-time rendering (`export const dynamic = "force-dynamic"`) before calling `getDb()` in the page.
 - Content/feed: `content_item.league_id NULL` is central/open content; league home/feed queries still explicitly filter `league_id = current` inside `withLeagueContext()`, and league feeds include central news only via `league_feed_reference`. DB-level dedup for central rows needs a partial unique index (`WHERE league_id IS NULL`) because normal unique indexes treat NULLs as distinct.
 - Realtime: browser clients use `/api/realtime/token` for short-lived channel grants; real Supabase mode requires `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_JWT_SECRET` — never expose the service-role key or JWT secret to clients.
+- Realtime: client modules import grant DTOs from `src/realtime/grants.ts`; `src/realtime/subscription-grants.ts` is server-only (Node crypto/DB/auth dependencies) and must not enter a `"use client"` bundle.
 - Jobs: `game.final.gameId` is used by AI content as a `fantasy_matchups.id`; betting settlement should pass `bettingEventId` for central `betting_event.id` and only rely on the `gameId` fallback for direct betting-event producers.
 - Append-only tables that also cascade from leagues/users need triggers that reject direct UPDATE/DELETE but allow FK cascade DELETE (`pg_trigger_depth() > 1`), or test/prod league cleanup will fail.
 

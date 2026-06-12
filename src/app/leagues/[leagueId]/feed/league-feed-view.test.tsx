@@ -1,7 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { LeagueFeedData } from "@/news";
 import { LeagueFeedView } from "./league-feed-view";
+
+const router = vi.hoisted(() => ({ refresh: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
 
 const data: LeagueFeedData = {
   items: [

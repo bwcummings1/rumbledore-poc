@@ -73,6 +73,7 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **First milestone:** Foundation (P0) + the flagship vertical slice — connect league → ingest (real, via league 95050) → league home shows standings/stats — all test-backed behind green gates.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-12: Client realtime subscriptions landed — league, feed, central news, and arena pages now use guarded Supabase grants to subscribe to typed broadcast channels and refresh server-rendered data on live updates.
 - 2026-06-12: Realtime subscription grants landed — `/api/realtime/token` now issues membership-guarded, short-lived channel grants for league and central broadcasts without exposing Supabase service credentials.
 - 2026-06-12: Central arena leaderboard landed — central arena seasons/standings now materialize league and individual paper-betting rankings from RLS-scoped bankroll ledgers, rebuild after finalized settlements, and render at `/arena`.
 - 2026-06-12: Betting settlement landed — `game.final` now grades pending singles/parlays from results providers, handles push/void repricing/refunds, writes idempotent settlement audits, and credits bankroll ledgers exactly once.

@@ -18,6 +18,7 @@ import type {
   LeagueHomeTeam,
 } from "@/home/league-home";
 import { cn } from "@/lib/utils";
+import { LeagueRealtimeRefresh } from "@/realtime/client";
 
 function formatPoints(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -388,6 +389,7 @@ function StorylinesSection({ data }: { data: LeagueHomeData }) {
 export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+      <LeagueRealtimeRefresh leagueId={data.league.id} />
       <header className="grid gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
