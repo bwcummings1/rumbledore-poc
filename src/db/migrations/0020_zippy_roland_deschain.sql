@@ -1,0 +1,1 @@
+ALTER TYPE "public"."onboarding_connection_flow" ADD VALUE 'public';

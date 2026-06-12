@@ -4,10 +4,12 @@ import { getDb } from "@/db";
 import { inngest } from "@/jobs/client";
 import { type ImportRequestedData, JOB_EVENTS } from "@/jobs/events";
 import { createEspnDiscoveryProvider } from "@/providers/espn";
+import { createSleeperProvider } from "@/providers/sleeper";
 import { type BrowserSession, MockBrowserSession } from "./browser-session";
 import { createCredentialCipher } from "./credential-crypto";
 import type { EspnOnboardingDependencies } from "./espn-service";
 import { createFixtureEspnProvider } from "./fixture-espn";
+import type { SleeperOnboardingDependencies } from "./sleeper-service";
 
 class BrowserbaseSessionNotConfigured implements BrowserSession {
   async start(): Promise<never> {
@@ -49,6 +51,16 @@ export function getEspnOnboardingDependencies(): EspnOnboardingDependencies {
     provider: browserbase.mock
       ? createFixtureEspnProvider()
       : createEspnDiscoveryProvider(),
+    requestHistoricalImport,
+  };
+}
+
+export function getSleeperOnboardingDependencies(): SleeperOnboardingDependencies {
+  const env = getEnv();
+  return {
+    cipher: createCredentialCipher(env.credentials.encryptionKey),
+    db: getDb(),
+    provider: createSleeperProvider(),
     requestHistoricalImport,
   };
 }

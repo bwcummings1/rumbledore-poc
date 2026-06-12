@@ -141,6 +141,13 @@
       "when": 1781231417726,
       "tag": "0019_glossy_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1781235992857,
+      "tag": "0020_zippy_roland_deschain",
+      "breakpoints": true
     }
   ]
 }

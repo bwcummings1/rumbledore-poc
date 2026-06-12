@@ -28,6 +28,10 @@ import type {
   EspnCookieCredentials,
   EspnSession,
 } from "@/providers/espn/client";
+import type {
+  SleeperCredentials,
+  SleeperSession,
+} from "@/providers/sleeper/client";
 import { JOB_EVENTS } from "./events";
 import {
   createImportRequestedFunction,
@@ -47,8 +51,18 @@ let cipher: CredentialCipher;
 interface SeededImport {
   credentialId: string;
   leagueId: string;
+  provider: "espn" | "sleeper";
   providerLeagueId: string;
   userId: string;
+}
+
+function connectionFlowFor(provider: SeededImport["provider"]) {
+  switch (provider) {
+    case "espn":
+      return "manual";
+    case "sleeper":
+      return "public";
+  }
 }
 
 interface ImportProvider {
@@ -64,6 +78,28 @@ interface ImportProvider {
       session: EspnSession,
       ref: {
         provider: "espn";
+        providerId: string;
+        season: number;
+        sport: "ffl" | "unknown";
+        name: string;
+        size?: number;
+      },
+      options: { seasons: number[] },
+    ): Promise<{ ok: true; value: NormalizedSeasonBundle[] }>;
+  };
+}
+
+interface SleeperImportProvider {
+  calls: number[];
+  credentials: SleeperCredentials[];
+  provider: {
+    authenticate(
+      credentials: SleeperCredentials,
+    ): Promise<{ ok: true; value: SleeperSession }>;
+    getHistory(
+      session: SleeperSession,
+      ref: {
+        provider: "sleeper";
         providerId: string;
         season: number;
         sport: "ffl" | "unknown";
@@ -166,6 +202,97 @@ function bundleFor({
   };
 }
 
+function sleeperBundleFor({
+  providerLeagueId,
+  season,
+}: {
+  providerLeagueId: string;
+  season: number;
+}): NormalizedSeasonBundle {
+  return {
+    league: {
+      provider: "sleeper",
+      providerId: providerLeagueId,
+      season,
+      sport: "ffl",
+      name: `${marker} sleeper ${season}`,
+      size: 2,
+      currentScoringPeriod: 14,
+      scoringType: "PPR",
+      status: "complete",
+    },
+    teams: [
+      {
+        provider: "sleeper",
+        providerId: "1",
+        leagueProviderId: providerLeagueId,
+        season,
+        name: `Sleeper One ${season}`,
+        abbrev: "SON",
+        ownerMemberIds: [`sleeper-owner-one-${season}`],
+        record: {
+          wins: 1,
+          losses: 0,
+          ties: 0,
+          pointsFor: 120,
+          pointsAgainst: 100,
+        },
+      },
+      {
+        provider: "sleeper",
+        providerId: "2",
+        leagueProviderId: providerLeagueId,
+        season,
+        name: `Sleeper Two ${season}`,
+        abbrev: "STW",
+        ownerMemberIds: [`sleeper-owner-two-${season}`],
+        record: {
+          wins: 0,
+          losses: 1,
+          ties: 0,
+          pointsFor: 100,
+          pointsAgainst: 120,
+        },
+      },
+    ],
+    members: [
+      {
+        provider: "sleeper",
+        providerId: `sleeper-owner-one-${season}`,
+        leagueProviderId: providerLeagueId,
+        season,
+        displayName: `Sleeper Owner One ${season}`,
+        role: "member",
+      },
+      {
+        provider: "sleeper",
+        providerId: `sleeper-owner-two-${season}`,
+        leagueProviderId: providerLeagueId,
+        season,
+        displayName: `Sleeper Owner Two ${season}`,
+        role: "member",
+      },
+    ],
+    matchups: [
+      {
+        provider: "sleeper",
+        providerId: "matchup-1",
+        leagueProviderId: providerLeagueId,
+        season,
+        scoringPeriod: 1,
+        homeTeamRef: { provider: "sleeper", providerId: "1", season },
+        awayTeamRef: { provider: "sleeper", providerId: "2", season },
+        homeScore: 120,
+        awayScore: 100,
+        winner: "home",
+        status: "final",
+      },
+    ],
+    finalStandings: [],
+    transactions: [],
+  };
+}
+
 function historyProvider({
   authExpired = false,
 }: {
@@ -204,7 +331,54 @@ function historyProvider({
   };
 }
 
-async function seedImport(tag: string): Promise<SeededImport> {
+function sleeperHistoryProvider(): SleeperImportProvider {
+  const calls: number[] = [];
+  const credentials: SleeperCredentials[] = [];
+  return {
+    calls,
+    credentials,
+    provider: {
+      async authenticate(input) {
+        credentials.push(input);
+        return ok({
+          provider: "sleeper",
+          authKind: "none",
+          subjectProviderId: "user-123",
+          username: input.usernameOrUserId,
+          currentLeagueSeason: 2026,
+          discoverySeasons: input.seasons ?? [2026, 2025],
+        });
+      },
+      async getHistory(_session, ref, options) {
+        const season = options.seasons[0];
+        if (season === undefined) {
+          return ok([]);
+        }
+
+        calls.push(season);
+        return ok([
+          sleeperBundleFor({ providerLeagueId: ref.providerId, season }),
+        ]);
+      },
+    },
+  };
+}
+
+async function seedImport(
+  tag: string,
+  {
+    credentialPayload = {
+      espn_s2: fixtureEspnS2,
+      swid: fixtureSwid,
+    },
+    provider = "espn",
+    subjectProviderId = fixtureSwid,
+  }: {
+    credentialPayload?: unknown;
+    provider?: "espn" | "sleeper";
+    subjectProviderId?: string;
+  } = {},
+): Promise<SeededImport> {
   const providerLeagueId = `${marker}-${tag}`;
   const [user] = await handle.db
     .insert(users)
@@ -220,7 +394,7 @@ async function seedImport(tag: string): Promise<SeededImport> {
     .values({
       currentScoringPeriod: 0,
       name: `${marker} league ${tag}`,
-      provider: "espn",
+      provider,
       providerLeagueId,
       scoringType: "H2H_POINTS",
       season: 2026,
@@ -240,16 +414,13 @@ async function seedImport(tag: string): Promise<SeededImport> {
   const [credential] = await handle.db
     .insert(providerCredentials)
     .values({
-      connectionFlow: "manual",
-      encryptedPayload: cipher.encryptJson({
-        espn_s2: fixtureEspnS2,
-        swid: fixtureSwid,
-      }),
+      connectionFlow: connectionFlowFor(provider),
+      encryptedPayload: cipher.encryptJson(credentialPayload),
       invalidAt: null,
       lastValidatedAt: new Date("2026-06-11T00:00:00.000Z"),
-      provider: "espn",
+      provider,
       status: "connected",
-      subjectProviderId: fixtureSwid,
+      subjectProviderId,
       userId: user.id,
     })
     .returning();
@@ -258,6 +429,7 @@ async function seedImport(tag: string): Promise<SeededImport> {
   return {
     credentialId: credential.id,
     leagueId: league.id,
+    provider,
     providerLeagueId,
     userId: user.id,
   };
@@ -325,7 +497,7 @@ describe("import.requested Inngest function", () => {
     const fn = createImportRequestedFunction(() => ({
       cipher,
       db: handle.db,
-      provider: fixtureProvider.provider,
+      providers: { espn: fixtureProvider.provider },
     }));
     const testEngine = new InngestTestEngine({ function: fn });
     const event = {
@@ -398,7 +570,7 @@ describe("import.requested Inngest function", () => {
         deps: {
           cipher,
           db: handle.db,
-          provider: fixtureProvider.provider,
+          providers: { espn: fixtureProvider.provider },
         },
       }),
     ).rejects.toBeInstanceOf(NonRetriableError);
@@ -411,6 +583,58 @@ describe("import.requested Inngest function", () => {
     expect(credential).toMatchObject({
       status: "invalid",
     });
+  });
+
+  it("dispatches Sleeper imports with public no-auth credentials", async () => {
+    const seeded = await seedImport("sleeper", {
+      credentialPayload: {
+        seasons: [2026, 2025],
+        usernameOrUserId: "fixture_sleeper",
+      },
+      provider: "sleeper",
+      subjectProviderId: "user-123",
+    });
+    const fixtureProvider = sleeperHistoryProvider();
+    const response = await runImportRequested({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        provider: "sleeper",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+        name: `${marker} sleeper league`,
+        size: 2,
+        seasons: [2025],
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { sleeper: fixtureProvider.provider },
+      },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      eventName: JOB_EVENTS.importRequested,
+      seasons: {
+        requested: [2025],
+        imported: [2025],
+        skipped: [],
+      },
+    });
+    expect(fixtureProvider.credentials).toEqual([
+      {
+        seasons: [2026, 2025],
+        usernameOrUserId: "fixture_sleeper",
+      },
+    ]);
+    expect(fixtureProvider.calls).toEqual([2025]);
+
+    const rows = await selectHistoricalRows(seeded.leagueId);
+    expect(rows.teams).toHaveLength(2);
+    expect(rows.members).toHaveLength(2);
+    expect(rows.matchups).toHaveLength(1);
   });
 
   it("is exported through the shared function registry", () => {

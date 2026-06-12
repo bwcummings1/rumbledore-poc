@@ -10,25 +10,33 @@ import {
   type CredentialCipher,
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
-import {
-  createEspnDiscoveryProvider,
-  type EspnCookieCredentials,
-  type EspnProvider,
-} from "@/providers/espn/client";
-import type { ProviderError, ProviderLeagueRef } from "@/providers/model";
+import { storedSleeperCredentialsSchema } from "@/onboarding/provider-service";
+import { createEspnDiscoveryProvider } from "@/providers/espn/client";
+import type {
+  FantasyProvider,
+  FantasyProviderId,
+  FantasyProviderSession,
+  ProviderError,
+  ProviderLeagueRef,
+} from "@/providers/model";
+import { createSleeperProvider } from "@/providers/sleeper/client";
 import { recomputeLeagueStatistics } from "@/stats";
 import { inngest } from "../client";
 import { type ImportRequestedData, JOB_EVENTS } from "../events";
 
 type ImportRequestedProvider = Pick<
-  EspnProvider,
+  FantasyProvider<unknown, FantasyProviderSession>,
   "authenticate" | "getHistory"
+>;
+type ImportableProviderId = Extract<FantasyProviderId, "espn" | "sleeper">;
+type ImportRequestedProviderRegistry = Partial<
+  Record<ImportableProviderId, unknown>
 >;
 
 interface ImportRequestedDependencies {
   cipher: CredentialCipher;
   db: Db;
-  provider: ImportRequestedProvider;
+  providers: ImportRequestedProviderRegistry;
   recomputeStats?: typeof recomputeLeagueStatistics;
   now?: () => Date;
 }
@@ -44,10 +52,15 @@ const storedEspnCredentialsSchema = z.object({
   swid: z.string().min(1),
 });
 
+const storedCredentialSchemas = {
+  espn: storedEspnCredentialsSchema,
+  sleeper: storedSleeperCredentialsSchema,
+} satisfies Record<ImportableProviderId, z.ZodType<unknown>>;
+
 const importRequestedDataSchema = z.object({
   credentialId: z.uuid(),
   leagueId: z.uuid(),
-  provider: z.literal("espn"),
+  provider: z.enum(["espn", "sleeper"]),
   providerLeagueId: z.string().trim().min(1),
   season: z.number().int().min(2000).max(2100),
   sport: z.enum(["ffl", "unknown"]),
@@ -112,13 +125,31 @@ function now(deps: Pick<ImportRequestedDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
 }
 
+function resolveProvider(
+  data: ImportRequestedData,
+  deps: ImportRequestedDependencies,
+): ImportRequestedProvider {
+  const provider = deps.providers[data.provider];
+  if (!provider) {
+    throw toNonRetriable(
+      importJobError({
+        code: "IMPORT_PROVIDER_UNSUPPORTED",
+        message: "Historical import provider is not supported",
+        status: 400,
+      }),
+    );
+  }
+
+  return provider as ImportRequestedProvider;
+}
+
 async function loadCredentialsForImport({
   data,
   deps,
 }: {
   data: ImportRequestedData;
   deps: ImportRequestedDependencies;
-}): Promise<EspnCookieCredentials> {
+}): Promise<unknown> {
   const [row] = await deps.db
     .select({
       encryptedPayload: providerCredentials.encryptedPayload,
@@ -169,7 +200,7 @@ async function loadCredentialsForImport({
   }
 
   try {
-    return storedEspnCredentialsSchema.parse(
+    return storedCredentialSchemas[data.provider].parse(
       deps.cipher.decryptJson(row.encryptedPayload),
     );
   } catch (cause) {
@@ -223,7 +254,10 @@ async function getDefaultImportRequestedDependencies(): Promise<ImportRequestedD
   return {
     cipher: createCredentialCipher(env.credentials.encryptionKey),
     db: getDb(),
-    provider: createEspnDiscoveryProvider(),
+    providers: {
+      espn: createEspnDiscoveryProvider(),
+      sleeper: createSleeperProvider(),
+    },
   };
 }
 
@@ -235,8 +269,9 @@ export async function runImportRequested({
   deps: ImportRequestedDependencies;
 }): Promise<ImportRequestedResponse> {
   const data = parseImportRequestedData(rawData);
+  const provider = resolveProvider(data, deps);
   const credentials = await loadCredentialsForImport({ data, deps });
-  const session = await deps.provider.authenticate(credentials);
+  const session = await provider.authenticate(credentials);
 
   if (!session.ok) {
     await markCredentialInvalid({ credentialId: data.credentialId, deps });
@@ -246,7 +281,7 @@ export async function runImportRequested({
   const history = await importLeagueHistory({
     db: deps.db,
     maxSeasons: data.maxSeasons,
-    provider: deps.provider,
+    provider,
     ref: toProviderRef(data),
     seasons: data.seasons,
     session: session.value,

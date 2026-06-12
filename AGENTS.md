@@ -54,6 +54,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - Jobs: Inngest config is `getEnv().jobs.inngest`; empty local config is mock/no enqueue, `INNGEST_DEV`/`INNGEST_DEVSERVER_URL` is dev mode, and `INNGEST_EVENT_KEY` is cloud mode; do not read `process.env.INNGEST_*` directly.
 - Jobs: `game.final.gameId` is used by AI content as a `fantasy_matchups.id`; betting settlement should pass `bettingEventId` for central `betting_event.id` and only rely on the `gameId` fallback for direct betting-event producers.
 - Append-only tables that also cascade from leagues/users need triggers that reject direct UPDATE/DELETE but allow FK cascade DELETE (`pg_trigger_depth() > 1`), or test/prod league cleanup will fail.
+- Stats identity resolution must keep different same-season provider team slots mapped to separate people even when owner/member ids overlap; Sleeper co-owner data can overlap and weekly stats require one person row per team per week.
 
 ## Environment gotchas
 - `node` on PATH is a bun shim that breaks Next/tsc — run pnpm scripts with `PATH=/usr/bin:$PATH` (real Node v22).

@@ -9,6 +9,9 @@ test("home page renders the product name and pitch", () => {
   ).toBeDefined();
   expect(screen.getByText(/home base/i)).toBeDefined();
   expect(
+    screen.getByRole("link", { name: "Connect Sleeper" }).getAttribute("href"),
+  ).toBe("/onboarding/sleeper");
+  expect(
     screen.getByRole("link", { name: "Central news" }).getAttribute("href"),
   ).toBe("/news");
   expect(screen.getByRole("link", { name: "Arena" }).getAttribute("href")).toBe(

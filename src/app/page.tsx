@@ -22,6 +22,15 @@ export default function Home() {
             Connect ESPN
           </Link>
           <Link
+            href="/onboarding/sleeper"
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "secondary" }),
+            )}
+          >
+            <Plug data-icon="inline-start" />
+            Connect Sleeper
+          </Link>
+          <Link
             href="/news"
             className={cn(
               buttonVariants({ className: "w-fit", variant: "outline" }),

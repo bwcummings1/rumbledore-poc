@@ -197,15 +197,16 @@ function chooseCandidate(
   let best: IdentityCandidate | null = null;
 
   for (const state of states) {
+    const sameProviderSlot = state.providerTeamIds.has(
+      teamSeason.providerTeamId,
+    );
+    if (state.seasons.has(teamSeason.season) && !sameProviderSlot) {
+      continue;
+    }
+
     const hasOwnerOverlap = overlap(
       state.ownerMemberIds,
       teamSeason.ownerMemberIds,
-    );
-    if (!hasOwnerOverlap && state.seasons.has(teamSeason.season)) {
-      continue;
-    }
-    const sameProviderSlot = state.providerTeamIds.has(
-      teamSeason.providerTeamId,
     );
     const ownerSimilarity = maxNameSimilarity(
       state.ownerNames,

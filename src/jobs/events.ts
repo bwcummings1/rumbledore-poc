@@ -1,4 +1,5 @@
 import type { AiPersona } from "@/ai";
+import type { FantasyProviderId } from "@/providers";
 
 export const JOB_EVENTS = {
   appPing: "app.ping",
@@ -20,7 +21,7 @@ export interface AppPingData {
 export interface ImportRequestedData {
   credentialId: string;
   leagueId: string;
-  provider: "espn";
+  provider: Extract<FantasyProviderId, "espn" | "sleeper">;
   providerLeagueId: string;
   season: number;
   sport: "ffl" | "unknown";

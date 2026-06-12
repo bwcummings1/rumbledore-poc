@@ -77,6 +77,7 @@ export const onboardingConnectionFlow = pgEnum("onboarding_connection_flow", [
   "browser",
   "manual",
   "extension",
+  "public",
 ]);
 
 export const onboardingBrowserSessionStatus = pgEnum(
