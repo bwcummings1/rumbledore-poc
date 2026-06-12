@@ -1984,6 +1984,10 @@ export const leagueInvites = pgTable(
     targetHint: text("target_hint"),
     token: text("token").notNull(),
     status: leagueInviteStatus("status").notNull().default("pending"),
+    acceptedUserId: uuid("accepted_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     ...timestamps,
@@ -2004,6 +2008,56 @@ export const leagueInvites = pgTable(
       table.providerMemberId,
     ),
     pgPolicy("league_invites_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const leagueMemberIdentityClaims = pgTable(
+  "league_member_identity_claims",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fantasyMemberId: uuid("fantasy_member_id").references(
+      () => fantasyMembers.id,
+      { onDelete: "set null" },
+    ),
+    sourceInviteId: uuid("source_invite_id").references(
+      () => leagueInvites.id,
+      { onDelete: "set null" },
+    ),
+    provider: fantasyProvider("provider").notNull(),
+    providerMemberId: text("provider_member_id").notNull(),
+    providerTeamIds: jsonb("provider_team_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    claimedAt: timestamp("claimed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("league_member_identity_user_provider_unique").on(
+      table.leagueId,
+      table.userId,
+      table.provider,
+    ),
+    uniqueIndex("league_member_identity_provider_member_unique").on(
+      table.leagueId,
+      table.provider,
+      table.providerMemberId,
+    ),
+    index("league_member_identity_league_idx").on(table.leagueId),
+    index("league_member_identity_user_idx").on(table.userId),
+    pgPolicy("league_member_identity_claims_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -2076,3 +2130,7 @@ export type NewOnboardingDiscoveredLeague =
   typeof onboardingDiscoveredLeagues.$inferInsert;
 export type LeagueInvite = typeof leagueInvites.$inferSelect;
 export type NewLeagueInvite = typeof leagueInvites.$inferInsert;
+export type LeagueMemberIdentityClaim =
+  typeof leagueMemberIdentityClaims.$inferSelect;
+export type NewLeagueMemberIdentityClaim =
+  typeof leagueMemberIdentityClaims.$inferInsert;

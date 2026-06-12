@@ -9,13 +9,18 @@ import {
   fantasyMembers,
   fantasyTeams,
   leagueInvites,
+  leagueMemberIdentityClaims,
   leagues,
   members,
   providerCredentials,
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { createLeaguemateInvite, listLeaguemateInviteTargets } from "./invites";
+import {
+  acceptLeagueInvite,
+  createLeaguemateInvite,
+  listLeaguemateInviteTargets,
+} from "./invites";
 import { RecordingInviteNotifier } from "./notifier";
 
 const marker = `invitetest-${randomUUID()}`;
@@ -335,6 +340,197 @@ describe("leaguemate invites", () => {
     expect(rows.find((row) => row.channel === "email")?.sentAt).toBeInstanceOf(
       Date,
     );
+  });
+
+  it("accepts a share invite by granting membership and recording identity", async () => {
+    const league = await seedLeague();
+    const inviter = await seedUser("accept-inviter");
+    const invitee = await seedUser("accept-invitee");
+    const imported = await seedImportedMembers({
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+    });
+    await handle.db.insert(members).values({
+      organizationId: league.id,
+      role: "commissioner",
+      userId: inviter.id,
+    });
+    await handle.db.insert(providerCredentials).values({
+      connectionFlow: "manual",
+      encryptedPayload: `${marker}-encrypted-accept`,
+      lastValidatedAt: new Date("2026-06-12T00:00:00.000Z"),
+      provider: "espn",
+      subjectProviderId: imported.self.providerMemberId,
+      userId: inviter.id,
+    });
+
+    const deps = {
+      db: handle.db,
+      notifier: new RecordingInviteNotifier(),
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    };
+    const shared = await createLeaguemateInvite(deps, {
+      appBaseUrl: "https://rumbledore.example",
+      channel: "share",
+      leagueId: league.id,
+      providerMemberId: imported.invited.providerMemberId,
+      userId: inviter.id,
+    });
+    expect(shared.ok).toBe(true);
+    if (!shared.ok) throw shared.error;
+
+    const accepted = await acceptLeagueInvite(
+      { db: handle.db, now: () => new Date("2026-06-12T12:05:00.000Z") },
+      {
+        leagueId: league.id,
+        token: shared.value.token,
+        userId: invitee.id,
+      },
+    );
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw accepted.error;
+    expect(accepted.value).toMatchObject({
+      providerMemberId: imported.invited.providerMemberId,
+      providerTeamIds: [`${marker}-team-two`],
+      teamNames: ["Invite Team"],
+    });
+
+    const [membership] = await handle.db
+      .select({ role: members.role })
+      .from(members)
+      .where(
+        and(
+          eq(members.organizationId, league.id),
+          eq(members.userId, invitee.id),
+        ),
+      );
+    expect(membership).toEqual({ role: "member" });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
+      const claims = await tx
+        .select({
+          fantasyMemberId: leagueMemberIdentityClaims.fantasyMemberId,
+          providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+          providerTeamIds: leagueMemberIdentityClaims.providerTeamIds,
+          sourceInviteId: leagueMemberIdentityClaims.sourceInviteId,
+          userId: leagueMemberIdentityClaims.userId,
+        })
+        .from(leagueMemberIdentityClaims)
+        .where(eq(leagueMemberIdentityClaims.leagueId, league.id));
+      const invites = await tx
+        .select({
+          acceptedAt: leagueInvites.acceptedAt,
+          acceptedUserId: leagueInvites.acceptedUserId,
+          status: leagueInvites.status,
+        })
+        .from(leagueInvites)
+        .where(eq(leagueInvites.token, shared.value.token));
+      return { claims, invites };
+    });
+    expect(rows.claims).toEqual([
+      expect.objectContaining({
+        fantasyMemberId: imported.invited.id,
+        providerMemberId: imported.invited.providerMemberId,
+        providerTeamIds: [`${marker}-team-two`],
+        userId: invitee.id,
+      }),
+    ]);
+    expect(rows.claims[0]?.sourceInviteId).toBeTruthy();
+    expect(rows.invites).toEqual([
+      expect.objectContaining({
+        acceptedAt: new Date("2026-06-12T12:05:00.000Z"),
+        acceptedUserId: invitee.id,
+        status: "accepted",
+      }),
+    ]);
+
+    const acceptedAgain = await acceptLeagueInvite(
+      { db: handle.db, now: () => new Date("2026-06-12T12:10:00.000Z") },
+      {
+        leagueId: league.id,
+        token: shared.value.token,
+        userId: invitee.id,
+      },
+    );
+    expect(acceptedAgain.ok).toBe(true);
+    if (!acceptedAgain.ok) throw acceptedAgain.error;
+
+    const afterClaim = await listLeaguemateInviteTargets(deps, {
+      leagueId: league.id,
+      userId: inviter.id,
+    });
+    expect(afterClaim.ok).toBe(true);
+    if (!afterClaim.ok) throw afterClaim.error;
+    expect(
+      afterClaim.value.targets.some(
+        (target) =>
+          target.providerMemberId === imported.invited.providerMemberId,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects an accepted invite claimed by another user", async () => {
+    const league = await seedLeague();
+    const inviter = await seedUser("claimed-inviter");
+    const invitee = await seedUser("claimed-invitee");
+    const otherInvitee = await seedUser("claimed-other");
+    const imported = await seedImportedMembers({
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+    });
+    await handle.db.insert(members).values({
+      organizationId: league.id,
+      role: "commissioner",
+      userId: inviter.id,
+    });
+    await handle.db.insert(providerCredentials).values({
+      connectionFlow: "manual",
+      encryptedPayload: `${marker}-encrypted-claimed`,
+      lastValidatedAt: new Date("2026-06-12T00:00:00.000Z"),
+      provider: "espn",
+      subjectProviderId: imported.self.providerMemberId,
+      userId: inviter.id,
+    });
+
+    const deps = {
+      db: handle.db,
+      notifier: new RecordingInviteNotifier(),
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    };
+    const shared = await createLeaguemateInvite(deps, {
+      appBaseUrl: "https://rumbledore.example",
+      channel: "share",
+      leagueId: league.id,
+      providerMemberId: imported.invited.providerMemberId,
+      userId: inviter.id,
+    });
+    expect(shared.ok).toBe(true);
+    if (!shared.ok) throw shared.error;
+
+    const accepted = await acceptLeagueInvite(
+      { db: handle.db, now: () => new Date("2026-06-12T12:05:00.000Z") },
+      {
+        leagueId: league.id,
+        token: shared.value.token,
+        userId: invitee.id,
+      },
+    );
+    expect(accepted.ok).toBe(true);
+
+    const rejected = await acceptLeagueInvite(
+      { db: handle.db, now: () => new Date("2026-06-12T12:06:00.000Z") },
+      {
+        leagueId: league.id,
+        token: shared.value.token,
+        userId: otherInvitee.id,
+      },
+    );
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error("expected claimed invite to fail");
+    expect(rejected.error).toMatchObject({
+      code: "LEAGUE_INVITE_ALREADY_ACCEPTED",
+      status: 409,
+    });
   });
 
   it("rejects invite listing for a non-member before scoped reads", async () => {

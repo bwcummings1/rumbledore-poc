@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { type LeagueRole, requireLeagueRoleForUser } from "@/auth/guards";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -9,7 +9,9 @@ import {
   fantasyTeams,
   type LeagueInvite,
   leagueInvites,
+  leagueMemberIdentityClaims,
   leagues,
+  members,
   providerCredentials,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
@@ -62,6 +64,19 @@ export interface LeagueInviteLanding {
   teamNames: string[];
 }
 
+export interface AcceptedLeagueInvite {
+  acceptedAt: string;
+  league: {
+    id: string;
+    name: string;
+    provider: FantasyProviderId;
+    season: number;
+  };
+  providerMemberId: string;
+  providerTeamIds: string[];
+  teamNames: string[];
+}
+
 export interface LeagueInviteDependencies {
   db: Db;
   notifier: InviteNotifier;
@@ -83,6 +98,11 @@ type FantasyMemberRow = Pick<
 type FantasyTeamRow = Pick<
   typeof fantasyTeams.$inferSelect,
   "name" | "ownerMemberIds" | "providerTeamId"
+>;
+
+type IdentityClaimRow = Pick<
+  typeof leagueMemberIdentityClaims.$inferSelect,
+  "providerMemberId" | "userId"
 >;
 
 const INVITE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -121,14 +141,72 @@ function invalidDestinationError(): LeagueInviteError {
   });
 }
 
+function alreadyAcceptedError(): LeagueInviteError {
+  return new AppError({
+    code: "LEAGUE_INVITE_ALREADY_ACCEPTED",
+    message: "That league invite has already been accepted",
+    status: 409,
+  });
+}
+
+function claimConflictError(): LeagueInviteError {
+  return new AppError({
+    code: "LEAGUE_INVITE_CLAIM_CONFLICT",
+    message: "That provider identity is already claimed",
+    status: 409,
+  });
+}
+
 function inviteStatusUnavailable(status: LeagueInvite["status"]): boolean {
   switch (status) {
+    case "accepted":
+    case "canceled":
+      return true;
+    case "pending":
+    case "sent":
+      return false;
+  }
+}
+
+function inviteCannotBeAccepted(invite: LeagueInvite, now: Date): boolean {
+  switch (invite.status) {
     case "canceled":
       return true;
     case "accepted":
     case "pending":
     case "sent":
+      return invite.expiresAt <= now;
+  }
+}
+
+function acceptedByAnotherUser(invite: LeagueInvite, userId: string): boolean {
+  switch (invite.status) {
+    case "accepted":
+      break;
+    case "canceled":
+    case "pending":
+    case "sent":
       return false;
+  }
+
+  if (!invite.acceptedUserId) {
+    return false;
+  }
+
+  switch (invite.acceptedUserId) {
+    case userId:
+      return false;
+    default:
+      return true;
+  }
+}
+
+function stringValuesDiffer(left: string, right: string): boolean {
+  switch (left) {
+    case right:
+      return false;
+    default:
+      return true;
   }
 }
 
@@ -340,16 +418,40 @@ async function loadTargets(
           ),
         );
 
+      const identityClaimRows = await tx
+        .select({
+          providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+          userId: leagueMemberIdentityClaims.userId,
+        })
+        .from(leagueMemberIdentityClaims)
+        .where(
+          and(
+            eq(leagueMemberIdentityClaims.leagueId, input.league.id),
+            eq(leagueMemberIdentityClaims.provider, input.league.provider),
+          ),
+        );
+
       return {
+        identityClaims: identityClaimRows satisfies IdentityClaimRow[],
         members: memberRows satisfies FantasyMemberRow[],
         teams: teamRows satisfies FantasyTeamRow[],
       };
     },
   );
 
+  for (const claim of scoped.identityClaims) {
+    if (claim.userId === input.userId) {
+      selfProviderMemberIds.add(claim.providerMemberId);
+    }
+  }
+
+  const claimedProviderMemberIds = new Set(
+    scoped.identityClaims.map((claim) => claim.providerMemberId),
+  );
   const teamsByOwner = teamRefsByOwner(scoped.teams);
   return scoped.members
     .filter((member) => !selfProviderMemberIds.has(member.providerMemberId))
+    .filter((member) => !claimedProviderMemberIds.has(member.providerMemberId))
     .map((member) => toInviteTarget(member, teamsByOwner));
 }
 
@@ -403,12 +505,9 @@ async function countSelfMembers(
   const selfIds = new Set(
     selfCredentials.map((credential) => credential.subjectProviderId),
   );
-  if (selfIds.size === 0) {
-    return 0;
-  }
 
-  const rows = await withLeagueContext(deps.db, input.league.id, (tx) =>
-    tx
+  const rows = await withLeagueContext(deps.db, input.league.id, async (tx) => {
+    const fantasyMemberRows = await tx
       .select({ providerMemberId: fantasyMembers.providerMemberId })
       .from(fantasyMembers)
       .where(
@@ -417,8 +516,25 @@ async function countSelfMembers(
           eq(fantasyMembers.season, input.league.season),
           eq(fantasyMembers.provider, input.league.provider),
         ),
-      ),
-  );
+      );
+
+    const claimRows = await tx
+      .select({ providerMemberId: leagueMemberIdentityClaims.providerMemberId })
+      .from(leagueMemberIdentityClaims)
+      .where(
+        and(
+          eq(leagueMemberIdentityClaims.leagueId, input.league.id),
+          eq(leagueMemberIdentityClaims.userId, input.userId),
+          eq(leagueMemberIdentityClaims.provider, input.league.provider),
+        ),
+      );
+
+    for (const claim of claimRows) {
+      selfIds.add(claim.providerMemberId);
+    }
+
+    return fantasyMemberRows;
+  });
 
   return rows.filter((row) => selfIds.has(row.providerMemberId)).length;
 }
@@ -636,4 +752,171 @@ export async function getLeagueInviteLanding(
     },
     teamNames: invite.teamNames,
   });
+}
+
+type AcceptInviteOutcome =
+  | { kind: "accepted"; value: AcceptedLeagueInvite }
+  | { kind: "already_accepted" }
+  | { kind: "claim_conflict" }
+  | { kind: "not_found" };
+
+export async function acceptLeagueInvite(
+  deps: Pick<LeagueInviteDependencies, "db" | "now">,
+  input: { leagueId: string; token: string; userId: string },
+): Promise<Result<AcceptedLeagueInvite, LeagueInviteError>> {
+  if (!UUID_RE.test(input.leagueId) || input.token.trim().length === 0) {
+    return err(notFoundError());
+  }
+
+  const now = currentTime(deps);
+  const outcome = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (tx): Promise<AcceptInviteOutcome> => {
+      const [invite] = await tx
+        .select()
+        .from(leagueInvites)
+        .where(
+          and(
+            eq(leagueInvites.leagueId, input.leagueId),
+            eq(leagueInvites.token, input.token),
+          ),
+        )
+        .limit(1);
+
+      if (!invite || inviteCannotBeAccepted(invite, now)) {
+        return { kind: "not_found" };
+      }
+
+      if (acceptedByAnotherUser(invite, input.userId)) {
+        return { kind: "already_accepted" };
+      }
+
+      const [league] = await tx
+        .select({
+          id: leagues.id,
+          name: leagues.name,
+          provider: leagues.provider,
+          season: leagues.season,
+        })
+        .from(leagues)
+        .where(eq(leagues.id, input.leagueId))
+        .limit(1);
+      if (!league) {
+        return { kind: "not_found" };
+      }
+
+      await tx
+        .insert(members)
+        .values({
+          organizationId: input.leagueId,
+          role: "member",
+          userId: input.userId,
+        })
+        .onConflictDoNothing({
+          target: [members.organizationId, members.userId],
+        });
+
+      const [claim] = await tx
+        .insert(leagueMemberIdentityClaims)
+        .values({
+          claimedAt: now,
+          fantasyMemberId: invite.fantasyMemberId,
+          leagueId: input.leagueId,
+          provider: invite.provider,
+          providerMemberId: invite.providerMemberId,
+          providerTeamIds: invite.providerTeamIds,
+          sourceInviteId: invite.id,
+          userId: input.userId,
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (!claim) {
+        const [existingForUser] = await tx
+          .select({
+            providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+          })
+          .from(leagueMemberIdentityClaims)
+          .where(
+            and(
+              eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
+              eq(leagueMemberIdentityClaims.userId, input.userId),
+              eq(leagueMemberIdentityClaims.provider, invite.provider),
+            ),
+          )
+          .limit(1);
+        if (
+          existingForUser &&
+          stringValuesDiffer(
+            existingForUser.providerMemberId,
+            invite.providerMemberId,
+          )
+        ) {
+          return { kind: "claim_conflict" };
+        }
+
+        const [existingForProviderMember] = await tx
+          .select({ userId: leagueMemberIdentityClaims.userId })
+          .from(leagueMemberIdentityClaims)
+          .where(
+            and(
+              eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
+              eq(leagueMemberIdentityClaims.provider, invite.provider),
+              eq(
+                leagueMemberIdentityClaims.providerMemberId,
+                invite.providerMemberId,
+              ),
+            ),
+          )
+          .limit(1);
+        if (
+          existingForProviderMember &&
+          stringValuesDiffer(existingForProviderMember.userId, input.userId)
+        ) {
+          return { kind: "claim_conflict" };
+        }
+      }
+
+      const acceptedAt = invite.acceptedAt ?? now;
+      await tx
+        .update(leagueInvites)
+        .set({
+          acceptedAt,
+          acceptedUserId: input.userId,
+          status: "accepted",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(leagueInvites.leagueId, input.leagueId),
+            eq(leagueInvites.provider, invite.provider),
+            eq(leagueInvites.providerMemberId, invite.providerMemberId),
+            ne(leagueInvites.status, "canceled"),
+          ),
+        );
+
+      return {
+        kind: "accepted",
+        value: {
+          acceptedAt: acceptedAt.toISOString(),
+          league,
+          providerMemberId: invite.providerMemberId,
+          providerTeamIds: invite.providerTeamIds,
+          teamNames: invite.teamNames,
+        },
+      };
+    },
+  );
+
+  switch (outcome.kind) {
+    case "accepted":
+      return ok(outcome.value);
+    case "already_accepted":
+      return err(alreadyAcceptedError());
+    case "claim_conflict":
+      return err(claimConflictError());
+    case "not_found":
+      return err(notFoundError());
+  }
 }

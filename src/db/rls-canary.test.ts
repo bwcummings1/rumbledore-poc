@@ -91,7 +91,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, content_item, ai_persona_card, ai_generation_run, ai_memory, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, content_item, ai_persona_card, ai_generation_run, ai_memory, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any

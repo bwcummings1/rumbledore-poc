@@ -1,10 +1,10 @@
-import { ArrowRight, ShieldAlert, UserPlus } from "lucide-react";
-import Link from "next/link";
+import { ShieldAlert, UserPlus } from "lucide-react";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { buttonVariants } from "@/components/ui/button";
+import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
-import { cn } from "@/lib/utils";
 import { getLeagueInviteLanding } from "@/onboarding/invites";
+import { InviteAcceptPanel } from "./invite-accept-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,9 @@ export default async function InvitePreviewPage({
   if (!invite.ok) {
     notFound();
   }
+
+  const session = await requireSession({ headers: await headers() });
+  const isAuthenticated = session.ok;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -58,18 +61,11 @@ export default async function InvitePreviewPage({
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={`/onboarding/${invite.value.league.provider}`}
-          className={cn(buttonVariants())}
-        >
-          Connect fantasy account
-          <ArrowRight data-icon="inline-end" />
-        </Link>
-        <Link href="/" className={cn(buttonVariants({ variant: "outline" }))}>
-          Home
-        </Link>
-      </div>
+      <InviteAcceptPanel
+        acceptUrl={`/api/invite/${leagueId}/${token}/accept`}
+        isAuthenticated={isAuthenticated}
+        onboardingUrl={`/onboarding/${invite.value.league.provider}`}
+      />
     </main>
   );
 }
