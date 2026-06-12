@@ -292,7 +292,7 @@ async function getLatestLedgerEntry(
   return entry ?? null;
 }
 
-async function appendBankrollLedgerEntryInContext(
+export async function appendBankrollLedgerEntryInContext(
   tx: LeagueScopedTx,
   input: AppendBankrollLedgerEntryInput,
 ): Promise<BankrollLedgerEntry> {
@@ -387,7 +387,7 @@ async function appendBankrollLedgerEntryInContext(
   return entry;
 }
 
-async function requireBalanceInContext(
+export async function requireBankrollBalanceInContext(
   tx: LeagueScopedTx,
   input: GetBankrollBalanceInput,
 ): Promise<BankrollBalance> {
@@ -471,7 +471,7 @@ async function openBankrollWeekInContext(
     weekStart,
   });
   if (existing) {
-    const balance = await requireBalanceInContext(tx, {
+    const balance = await requireBankrollBalanceInContext(tx, {
       bankrollWeekId: existing.id,
       leagueId: input.leagueId,
       userId: input.userId,
@@ -575,7 +575,7 @@ export async function getCurrentBankrollBalance(
     if (!week) {
       return null;
     }
-    return requireBalanceInContext(tx, {
+    return requireBankrollBalanceInContext(tx, {
       bankrollWeekId: week.id,
       leagueId: input.leagueId,
       userId: input.userId,

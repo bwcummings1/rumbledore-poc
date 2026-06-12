@@ -43,6 +43,8 @@ describe("RLS catalog state (migration 0002)", () => {
     "all_time_record",
     "bankroll_ledger",
     "bankroll_weeks",
+    "bet_legs",
+    "bet_slips",
     "championship_record",
     "fantasy_teams",
     "fantasy_members",

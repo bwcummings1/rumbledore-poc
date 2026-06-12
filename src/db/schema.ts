@@ -182,6 +182,35 @@ export const bankrollLedgerEntryType = pgEnum("bankroll_ledger_entry_type", [
   "adjustment",
 ]);
 
+export const betSlipKind = pgEnum("bet_slip_kind", ["single", "parlay"]);
+
+export const betSlipStatus = pgEnum("bet_slip_status", [
+  "pending",
+  "won",
+  "lost",
+  "push",
+  "void",
+  "partial_void",
+]);
+
+export const betLegSelection = pgEnum("bet_leg_selection", [
+  "home",
+  "away",
+  "over",
+  "under",
+  "player_over",
+  "player_under",
+  "outcome",
+]);
+
+export const betLegStatus = pgEnum("bet_leg_status", [
+  "pending",
+  "won",
+  "lost",
+  "push",
+  "void",
+]);
+
 export interface LeagueFeedMatchedEntity {
   provider: string;
   type: "player" | "team" | "member" | "storyline";
@@ -1181,6 +1210,56 @@ export const bankrollWeeks = pgTable(
   ],
 );
 
+export const betSlips = pgTable(
+  "bet_slips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bankrollWeekId: uuid("bankroll_week_id")
+      .notNull()
+      .references(() => bankrollWeeks.id, { onDelete: "cascade" }),
+    kind: betSlipKind("kind").notNull(),
+    stakeCents: integer("stake_cents").notNull(),
+    potentialPayoutCents: integer("potential_payout_cents").notNull(),
+    combinedDecimalOdds: numeric("combined_decimal_odds", {
+      mode: "number",
+      precision: 14,
+      scale: 6,
+    }).notNull(),
+    status: betSlipStatus("status").notNull().default("pending"),
+    placedAt: timestamp("placed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("bet_slips_idempotency_unique").on(
+      table.leagueId,
+      table.userId,
+      table.idempotencyKey,
+    ),
+    index("bet_slips_user_week_idx").on(
+      table.leagueId,
+      table.userId,
+      table.bankrollWeekId,
+    ),
+    index("bet_slips_status_idx").on(table.leagueId, table.status),
+    pgPolicy("bet_slips_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const bankrollLedger = pgTable(
   "bankroll_ledger",
   {
@@ -1198,7 +1277,9 @@ export const bankrollLedger = pgTable(
     entryType: bankrollLedgerEntryType("entry_type").notNull(),
     amountCents: integer("amount_cents").notNull(),
     runningBalanceCents: integer("running_balance_cents").notNull(),
-    refSlipId: uuid("ref_slip_id"),
+    refSlipId: uuid("ref_slip_id").references(() => betSlips.id, {
+      onDelete: "cascade",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1218,6 +1299,54 @@ export const bankrollLedger = pgTable(
     ),
     index("bankroll_ledger_ref_slip_idx").on(table.refSlipId),
     pgPolicy("bankroll_ledger_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const betLegs = pgTable(
+  "bet_legs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    slipId: uuid("slip_id")
+      .notNull()
+      .references(() => betSlips.id, { onDelete: "cascade" }),
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => bettingMarkets.id),
+    oddsSnapshotId: uuid("odds_snapshot_id")
+      .notNull()
+      .references(() => oddsSnapshots.id),
+    selection: betLegSelection("selection").notNull(),
+    lockedLine: numeric("locked_line", {
+      mode: "number",
+      precision: 10,
+      scale: 2,
+    }),
+    lockedAmericanOdds: integer("locked_american_odds").notNull(),
+    lockedDecimalOdds: numeric("locked_decimal_odds", {
+      mode: "number",
+      precision: 14,
+      scale: 6,
+    }).notNull(),
+    status: betLegStatus("status").notNull().default("pending"),
+    resultDetail: text("result_detail"),
+    ...timestamps,
+  },
+  (table) => [
+    index("bet_legs_slip_idx").on(table.leagueId, table.slipId),
+    index("bet_legs_market_status_idx").on(
+      table.marketId,
+      table.status,
+      table.leagueId,
+    ),
+    index("bet_legs_snapshot_idx").on(table.oddsSnapshotId),
+    pgPolicy("bet_legs_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -1667,8 +1796,12 @@ export type OddsSnapshot = typeof oddsSnapshots.$inferSelect;
 export type NewOddsSnapshot = typeof oddsSnapshots.$inferInsert;
 export type BankrollWeek = typeof bankrollWeeks.$inferSelect;
 export type NewBankrollWeek = typeof bankrollWeeks.$inferInsert;
+export type BetSlip = typeof betSlips.$inferSelect;
+export type NewBetSlip = typeof betSlips.$inferInsert;
 export type BankrollLedgerEntry = typeof bankrollLedger.$inferSelect;
 export type NewBankrollLedgerEntry = typeof bankrollLedger.$inferInsert;
+export type BetLeg = typeof betLegs.$inferSelect;
+export type NewBetLeg = typeof betLegs.$inferInsert;
 export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
 export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;
