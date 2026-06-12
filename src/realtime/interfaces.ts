@@ -74,6 +74,7 @@ export type RealtimePayload =
 
 export interface RealtimePublisher {
   publishLeagueBlogPublished(payload: BlogPublishedPayload): Promise<void>;
+  publishLeagueScoresUpdated(payload: ScoresUpdatedPayload): Promise<void>;
 }
 
 export const LEAGUE_REALTIME_CHANNEL_KINDS = [
@@ -108,4 +109,10 @@ export function leagueRealtimeChannel(
 
 export function leagueBlogChannel(leagueId: string): `league:${string}:blog` {
   return `league:${leagueId}:blog`;
+}
+
+export function leagueScoresChannel(
+  leagueId: string,
+): `league:${string}:scores` {
+  return `league:${leagueId}:scores`;
 }

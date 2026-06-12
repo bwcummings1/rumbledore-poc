@@ -18,6 +18,7 @@ import {
   type EspnSession,
 } from "@/providers/espn/client";
 import type { ProviderLeagueRef } from "@/providers/model";
+import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import leagueFixture from "../../test/fixtures/espn/league-95050-2026.json";
 import { syncCurrentLeague } from "./current-league";
 import { stableContentHash } from "./hash";
@@ -282,5 +283,78 @@ describe("syncCurrentLeague", () => {
       providerTeamId: "1",
       name: "Fixture Team 01 Renamed",
     });
+  });
+
+  it("publishes scores.updated after changed matchup rows commit", async () => {
+    const providerLeagueId = `${marker}-95050-scores`;
+    const firstProvider = providerFor(leagueFixtureFor(providerLeagueId));
+
+    const first = await syncCurrentLeague({
+      db: handle.db,
+      provider: firstProvider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+
+    const changedFixture = leagueFixtureFor(providerLeagueId);
+    changedFixture.schedule[0].home.totalPoints = 17.5;
+    const realtime = new RecordingRealtimePublisher();
+    const now = new Date("2026-06-12T12:00:00.000Z");
+    const second = await syncCurrentLeague({
+      db: handle.db,
+      now: () => now,
+      provider: providerFor(changedFixture),
+      realtime,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw second.error;
+    expect(second.value.matchups).toEqual({
+      total: 84,
+      changed: 1,
+      unchanged: 83,
+    });
+
+    const rows = await selectIngestedRows(first.value.league.id);
+    const changedMatchup = rows.matchups.find(
+      (matchup) =>
+        matchup.providerMatchupId === "1" && matchup.scoringPeriod === 1,
+    );
+    expect(changedMatchup).toMatchObject({
+      homeScore: 17.5,
+    });
+    if (!changedMatchup) throw new Error("expected changed matchup row");
+
+    expect(realtime.scoresUpdated).toEqual([
+      {
+        at: now.toISOString(),
+        leagueId: first.value.league.id,
+        matchupIds: [changedMatchup.id],
+        scoringPeriod: 1,
+        type: REALTIME_EVENTS.scoresUpdated,
+        v: 1,
+      },
+    ]);
+
+    const third = await syncCurrentLeague({
+      db: handle.db,
+      now: () => new Date("2026-06-12T12:01:00.000Z"),
+      provider: providerFor(changedFixture),
+      realtime,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(third.ok).toBe(true);
+    if (!third.ok) throw third.error;
+    expect(third.value.matchups).toEqual({
+      total: 84,
+      changed: 0,
+      unchanged: 84,
+    });
+    expect(realtime.scoresUpdated).toHaveLength(1);
   });
 });

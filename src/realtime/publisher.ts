@@ -2,8 +2,10 @@ import { AppError } from "@/core/result";
 import {
   type BlogPublishedPayload,
   leagueBlogChannel,
+  leagueScoresChannel,
   REALTIME_EVENTS,
   type RealtimePublisher,
+  type ScoresUpdatedPayload,
 } from "./interfaces";
 
 export interface SupabaseRealtimePublisherOptions {
@@ -35,6 +37,17 @@ export class SupabaseRealtimePublisher implements RealtimePublisher {
       payload,
       private: true,
       topic: leagueBlogChannel(payload.leagueId),
+    });
+  }
+
+  async publishLeagueScoresUpdated(
+    payload: ScoresUpdatedPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.scoresUpdated,
+      payload,
+      private: true,
+      topic: leagueScoresChannel(payload.leagueId),
     });
   }
 

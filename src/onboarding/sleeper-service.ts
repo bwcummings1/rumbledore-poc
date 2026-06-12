@@ -4,6 +4,7 @@ import type {
   SleeperCredentials,
   SleeperProvider,
 } from "@/providers/sleeper/client";
+import type { RealtimePublisher } from "@/realtime";
 import type { CredentialCipher } from "./credential-crypto";
 import {
   connectProviderWithCredentials,
@@ -35,6 +36,7 @@ export interface SleeperOnboardingDependencies {
   db: Db;
   now?: () => Date;
   provider: SleeperProvider;
+  realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
 }
 
@@ -46,6 +48,7 @@ function providerDeps(
     db: deps.db,
     now: deps.now,
     providers: { sleeper: deps.provider },
+    realtime: deps.realtime,
     requestHistoricalImport: deps.requestHistoricalImport,
   };
 }

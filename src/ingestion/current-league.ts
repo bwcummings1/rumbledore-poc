@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { logger } from "@/core/logging";
 import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
@@ -20,6 +21,7 @@ import type {
   ProviderError,
   ProviderLeagueRef,
 } from "@/providers";
+import { REALTIME_EVENTS, type RealtimePublisher } from "@/realtime";
 import { stableContentHash } from "./hash";
 
 export type CurrentLeagueProvider<Session extends FantasyProviderSession> =
@@ -58,6 +60,8 @@ export interface PersistNormalizedLeagueRowsInput {
 }
 
 export interface PersistNormalizedLeagueRowsResult {
+  changedMatchupIds: string[];
+  changedMatchupScoringPeriods: number[];
   teamStats: EntitySyncStats;
   memberStats: EntitySyncStats;
   matchupStats: EntitySyncStats;
@@ -70,8 +74,10 @@ export interface CurrentLeagueSyncInput<
   Session extends FantasyProviderSession,
 > {
   db: Db;
+  now?: () => Date;
   provider: CurrentLeagueProvider<Session>;
   ref: ProviderLeagueRef;
+  realtime?: RealtimePublisher;
   session: Session;
 }
 
@@ -80,12 +86,63 @@ type LeagueUpsertResult = {
   changed: number;
 };
 
+interface MatchupUpsertResult {
+  changedIds: string[];
+  scoringPeriods: number[];
+  stats: EntitySyncStats;
+}
+
 function stats(total: number, changed: number): EntitySyncStats {
   return {
     total,
     changed,
     unchanged: total - changed,
   };
+}
+
+function currentTime(
+  deps: Pick<CurrentLeagueSyncInput<FantasyProviderSession>, "now">,
+): Date {
+  return deps.now?.() ?? new Date();
+}
+
+function changedScoringPeriod(
+  scoringPeriods: readonly number[],
+): number | null {
+  return scoringPeriods.length === 1 ? (scoringPeriods[0] ?? null) : null;
+}
+
+async function publishScoresUpdated<Session extends FantasyProviderSession>({
+  input,
+  leagueId,
+  matchupIds,
+  scoringPeriods,
+}: {
+  input: Pick<CurrentLeagueSyncInput<Session>, "now" | "realtime">;
+  leagueId: string;
+  matchupIds: readonly string[];
+  scoringPeriods: readonly number[];
+}): Promise<void> {
+  if (!input.realtime || matchupIds.length === 0) {
+    return;
+  }
+
+  try {
+    await input.realtime.publishLeagueScoresUpdated({
+      at: currentTime(input).toISOString(),
+      leagueId,
+      matchupIds: [...matchupIds],
+      scoringPeriod: changedScoringPeriod(scoringPeriods),
+      type: REALTIME_EVENTS.scoresUpdated,
+      v: 1,
+    });
+  } catch (error) {
+    logger.warn("Realtime scores update event failed", {
+      error,
+      leagueId,
+      matchupCount: matchupIds.length,
+    });
+  }
 }
 
 function sortedUnique(values: readonly string[]): string[] {
@@ -328,9 +385,9 @@ async function upsertMatchups(
   tx: LeagueScopedTx,
   leagueId: string,
   matchups: readonly NormalizedMatchup[],
-): Promise<EntitySyncStats> {
+): Promise<MatchupUpsertResult> {
   if (matchups.length === 0) {
-    return stats(0, 0);
+    return { changedIds: [], scoringPeriods: [], stats: stats(0, 0) };
   }
 
   const rows = matchups.map((matchup) => ({
@@ -372,9 +429,18 @@ async function upsertMatchups(
       },
       where: sql`${fantasyMatchups.contentHash} is distinct from excluded.content_hash`,
     })
-    .returning({ id: fantasyMatchups.id });
+    .returning({
+      id: fantasyMatchups.id,
+      scoringPeriod: fantasyMatchups.scoringPeriod,
+    });
 
-  return stats(rows.length, changed.length);
+  return {
+    changedIds: changed.map((matchup) => matchup.id).sort(),
+    scoringPeriods: [
+      ...new Set(changed.map((matchup) => matchup.scoringPeriod)),
+    ].sort((left, right) => left - right),
+    stats: stats(rows.length, changed.length),
+  };
 }
 
 async function upsertFinalStandings(
@@ -442,27 +508,28 @@ export async function persistNormalizedLeagueRows({
   return withLeagueContext(db, leagueId, async (tx) => {
     const teamStats = await upsertTeams(tx, leagueId, teams);
     const memberStats = await upsertMembers(tx, leagueId, members);
-    const matchupStats = await upsertMatchups(tx, leagueId, matchups);
+    const matchupUpsert = await upsertMatchups(tx, leagueId, matchups);
     const finalStandingStats = await upsertFinalStandings(
       tx,
       leagueId,
       finalStandings,
     );
 
-    return { finalStandingStats, matchupStats, memberStats, teamStats };
+    return {
+      changedMatchupIds: matchupUpsert.changedIds,
+      changedMatchupScoringPeriods: matchupUpsert.scoringPeriods,
+      finalStandingStats,
+      matchupStats: matchupUpsert.stats,
+      memberStats,
+      teamStats,
+    };
   });
 }
 
-export async function syncCurrentLeague<
-  Session extends FantasyProviderSession,
->({
-  db,
-  provider,
-  ref,
-  session,
-}: CurrentLeagueSyncInput<Session>): Promise<
-  Result<CurrentLeagueSyncResult, CurrentLeagueSyncError>
-> {
+export async function syncCurrentLeague<Session extends FantasyProviderSession>(
+  input: CurrentLeagueSyncInput<Session>,
+): Promise<Result<CurrentLeagueSyncResult, CurrentLeagueSyncError>> {
+  const { db, provider, ref, session } = input;
   const league = await provider.getLeague(session, ref);
   if (!league.ok) {
     return err(league.error);
@@ -491,6 +558,13 @@ export async function syncCurrentLeague<
     matchups: matchups.value,
     members: members.value,
     teams: teams.value,
+  });
+
+  await publishScoresUpdated({
+    input,
+    leagueId: leagueWrite.id,
+    matchupIds: scoped.changedMatchupIds,
+    scoringPeriods: scoped.changedMatchupScoringPeriods,
   });
 
   return ok({

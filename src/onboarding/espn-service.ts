@@ -7,6 +7,7 @@ import type {
   EspnCookieCredentials,
   EspnProvider,
 } from "@/providers/espn/client";
+import type { RealtimePublisher } from "@/realtime";
 import type { BrowserSession } from "./browser-session";
 import type { CredentialCipher } from "./credential-crypto";
 import {
@@ -46,6 +47,7 @@ export interface EspnOnboardingDependencies {
   db: Db;
   now?: () => Date;
   provider: EspnProvider;
+  realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
 }
 
@@ -65,6 +67,7 @@ function providerDeps(
     db: deps.db,
     now: deps.now,
     providers: { espn: deps.provider },
+    realtime: deps.realtime,
     requestHistoricalImport: deps.requestHistoricalImport,
   };
 }

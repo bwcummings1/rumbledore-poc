@@ -73,6 +73,7 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **First milestone:** Foundation (P0) + the flagship vertical slice — connect league → ingest (real, via league 95050) → league home shows standings/stats — all test-backed behind green gates.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-12: Scores realtime publishing landed — current sync now emits typed `scores.updated` broadcasts for changed matchup rows after commit, with Supabase and in-process publish/subscribe coverage.
 - 2026-06-12: Invite acceptance landed — share-token invites now grant member access, persist RLS-scoped provider-member identity claims, and turn accepted invite targets off across active invite links.
 - 2026-06-12: Leaguemate invite MVP landed — league home now opens an invite screen populated from imported fantasy members/teams, creating RLS-scoped share links with public previews plus mock-recorded SMS/email sends.
 - 2026-06-12: Provider reconnect CTAs landed — invalid ESPN/Sleeper/Yahoo credentials now surface provider-specific reconnect actions on onboarding/import screens and only true auth-expired errors mark stored credentials invalid.

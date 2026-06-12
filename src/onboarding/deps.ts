@@ -6,6 +6,7 @@ import { type ImportRequestedData, JOB_EVENTS } from "@/jobs/events";
 import { createEspnDiscoveryProvider } from "@/providers/espn";
 import { createSleeperProvider } from "@/providers/sleeper";
 import { createYahooProvider } from "@/providers/yahoo";
+import { createRealtimePublisher } from "@/realtime";
 import { type BrowserSession, MockBrowserSession } from "./browser-session";
 import { createCredentialCipher } from "./credential-crypto";
 import type { EspnOnboardingDependencies } from "./espn-service";
@@ -62,6 +63,7 @@ export function getEspnOnboardingDependencies(): EspnOnboardingDependencies {
     provider: browserbase.mock
       ? createFixtureEspnProvider()
       : createEspnDiscoveryProvider(),
+    realtime: createRealtimePublisher(env),
     requestHistoricalImport,
   };
 }
@@ -72,6 +74,7 @@ export function getSleeperOnboardingDependencies(): SleeperOnboardingDependencie
     cipher: createCredentialCipher(env.credentials.encryptionKey),
     db: getDb(),
     provider: createSleeperProvider(),
+    realtime: createRealtimePublisher(env),
     requestHistoricalImport,
   };
 }
@@ -95,6 +98,7 @@ export function getYahooOnboardingDependencies(): YahooOnboardingDependencies {
     provider: env.auth.yahoo.mock
       ? createFixtureYahooProvider()
       : createYahooProvider(),
+    realtime: createRealtimePublisher(env),
     requestHistoricalImport,
   };
 }

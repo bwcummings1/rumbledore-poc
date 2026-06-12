@@ -7,6 +7,7 @@ import {
   type YahooProvider,
   yahooCredentialsSchema,
 } from "@/providers/yahoo/client";
+import type { RealtimePublisher } from "@/realtime";
 import type { CredentialCipher } from "./credential-crypto";
 import {
   FIXTURE_YAHOO_ACCESS_TOKEN,
@@ -58,6 +59,7 @@ export interface YahooOnboardingDependencies {
   now?: () => Date;
   oauthClient: YahooOAuthClient;
   provider: YahooProvider;
+  realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
 }
 
@@ -78,6 +80,7 @@ function providerDeps(
     db: deps.db,
     now: deps.now,
     providers: { yahoo: deps.provider },
+    realtime: deps.realtime,
     requestHistoricalImport: deps.requestHistoricalImport,
   };
 }

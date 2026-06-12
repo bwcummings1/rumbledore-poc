@@ -18,6 +18,7 @@ import type {
   ProviderLeagueRef,
 } from "@/providers";
 import { yahooCredentialsSchema } from "@/providers/yahoo/client";
+import type { RealtimePublisher } from "@/realtime";
 import { recomputeLeagueStatistics } from "@/stats";
 import type { CredentialCipher } from "./credential-crypto";
 import {
@@ -87,6 +88,7 @@ export interface ProviderOnboardingDependencies {
   db: Db;
   now?: () => Date;
   providers: OnboardingProviderRegistry;
+  realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
 }
 
@@ -640,7 +642,9 @@ export async function importDiscoveredLeague(
 
   const sync = await syncCurrentLeague({
     db: deps.db,
+    now: deps.now,
     provider: provider.value,
+    realtime: deps.realtime,
     ref,
     session: session.value,
   });

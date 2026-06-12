@@ -6,12 +6,19 @@ export {
   type LeagueRealtimeChannelKind,
   leagueBlogChannel,
   leagueRealtimeChannel,
+  leagueScoresChannel,
   PUBLIC_REALTIME_CHANNELS,
   type PublicRealtimeChannel,
   REALTIME_EVENTS,
   type RealtimeChannel,
   type RealtimeEventType,
   type RealtimePublisher,
+  type ScoresUpdatedPayload,
 } from "./interfaces";
-export { NoopRealtimePublisher, RecordingRealtimePublisher } from "./mocks";
+export {
+  type InProcessRealtimeHandler,
+  InProcessRealtimePublisher,
+  NoopRealtimePublisher,
+  RecordingRealtimePublisher,
+} from "./mocks";
 export { SupabaseRealtimePublisher } from "./publisher";
