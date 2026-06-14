@@ -14,6 +14,7 @@ import {
   fantasyTeams,
   leagueSeasonSettings,
   leagues,
+  statsCalculations,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
@@ -774,5 +775,96 @@ describe("syncCurrentLeague", () => {
       unchanged: 84,
     });
     expect(realtime.scoresUpdated).toHaveLength(1);
+  });
+
+  it("runs targeted stats recompute only when changed matchup rows are finalized", async () => {
+    const providerLeagueId = `${marker}-95050-finalized-stats`;
+    const firstProvider = providerFor(leagueFixtureFor(providerLeagueId));
+
+    const first = await syncCurrentLeague({
+      db: handle.db,
+      provider: firstProvider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+
+    const initialCalculations = await withLeagueContext(
+      handle.db,
+      first.value.league.id,
+      (tx) =>
+        tx
+          .select()
+          .from(statsCalculations)
+          .where(eq(statsCalculations.leagueId, first.value.league.id)),
+    );
+    expect(initialCalculations).toHaveLength(0);
+
+    const finalizedFixture = leagueFixtureFor(providerLeagueId);
+    finalizedFixture.schedule[0].winner = "HOME";
+    finalizedFixture.schedule[0].home.totalPoints = 121;
+    finalizedFixture.schedule[0].away.totalPoints = 99;
+
+    const second = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(finalizedFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw second.error;
+    expect(second.value.matchups).toEqual({
+      total: 84,
+      changed: 1,
+      unchanged: 83,
+    });
+
+    const calculations = await withLeagueContext(
+      handle.db,
+      first.value.league.id,
+      (tx) =>
+        tx
+          .select({
+            calculationType: statsCalculations.calculationType,
+            metadata: statsCalculations.metadata,
+          })
+          .from(statsCalculations)
+          .where(eq(statsCalculations.leagueId, first.value.league.id))
+          .orderBy(asc(statsCalculations.startedAt)),
+    );
+    expect(calculations.map((row) => row.calculationType)).toEqual([
+      "season",
+      "head_to_head",
+    ]);
+    expect(calculations[0]?.metadata).toMatchObject({
+      seasons: [2026],
+      trigger: "changed_finalized_matchup",
+    });
+
+    const third = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(finalizedFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(third.ok).toBe(true);
+    if (!third.ok) throw third.error;
+    expect(third.value.matchups).toEqual({
+      total: 84,
+      changed: 0,
+      unchanged: 84,
+    });
+
+    const afterNoopCalculations = await withLeagueContext(
+      handle.db,
+      first.value.league.id,
+      (tx) =>
+        tx
+          .select()
+          .from(statsCalculations)
+          .where(eq(statsCalculations.leagueId, first.value.league.id)),
+    );
+    expect(afterNoopCalculations).toHaveLength(2);
   });
 });

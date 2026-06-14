@@ -33,6 +33,7 @@ import type {
 } from "@/providers";
 import { PROVIDER_DATA_CLASSES } from "@/providers";
 import { REALTIME_EVENTS, type RealtimePublisher } from "@/realtime";
+import { recomputeChangedMatchupStatistics } from "@/stats";
 import { stableContentHash } from "./hash";
 
 export type CurrentLeagueProvider<Session extends FantasyProviderSession> =
@@ -98,6 +99,7 @@ export interface CurrentLeagueSyncInput<
   provider: CurrentLeagueProvider<Session>;
   ref: ProviderLeagueRef;
   realtime?: RealtimePublisher;
+  recomputeChangedMatchups?: typeof recomputeChangedMatchupStatistics;
   session: Session;
 }
 
@@ -1132,6 +1134,13 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     matchupIds: scoped.changedMatchupIds,
     scoringPeriods: scoped.changedMatchupScoringPeriods,
   });
+  await (input.recomputeChangedMatchups ?? recomputeChangedMatchupStatistics)(
+    db,
+    {
+      leagueId: leagueWrite.id,
+      matchupIds: scoped.changedMatchupIds,
+    },
+  );
 
   return ok({
     league: {

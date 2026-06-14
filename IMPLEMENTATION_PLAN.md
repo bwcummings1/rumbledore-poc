@@ -19,7 +19,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Derive playoff/championship flags from provider settings/finals, fixing the hardcoded-false bug. (specs/14)
 - [x] Handle dynasty/keeper, divisions, and varied/IDP scoring per the edge-case table. (specs/14)
 - [x] Build the data-integrity checks plus the data-steward correction flow. (specs/14)
-- [ ] Implement targeted incremental recompute triggered by new data. (specs/14)
+- [x] Implement targeted incremental recompute triggered by new data. (specs/14)
 
 ### C. Publication system (see specs/11)
 - [ ] Build the Front archetype with an edited lead + secondaries + card river (not a flat list). (specs/11)

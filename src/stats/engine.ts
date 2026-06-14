@@ -159,6 +159,31 @@ interface DataIntegrityCheckDraft {
   status: Extract<DataIntegrityCheckInsert["status"], "pass" | "fail">;
 }
 
+type StatsCalculationType =
+  (typeof statsCalculations.$inferInsert)["calculationType"];
+
+interface StatsCalculationRun {
+  id: string;
+  startedAtMs: number;
+}
+
+interface StatsComputationState {
+  h2hRows: HeadToHeadRow[];
+  mappingRows: IdentityMappingRow[];
+  seasonStats: SeasonStat[];
+  weeklyFacts: WeeklyFact[];
+}
+
+interface ChangedMatchupRecomputeSummary {
+  headToHeadRecords: number;
+  integrityChecks: number;
+  integrityFailures: number;
+  seasonStatistics: number;
+  seasons: number[];
+  targetedPairs: { personAId: string; personBId: string }[];
+  weeklyStatistics: number;
+}
+
 function round(value: number, places = 4): number {
   const factor = 10 ** places;
   return Math.round((value + Number.EPSILON) * factor) / factor;
@@ -175,8 +200,30 @@ function identityKey(providerTeamId: string, season: number): string {
   return `${providerTeamId}:${season}`;
 }
 
+function personPairKey(personAId: string, personBId: string): string {
+  const [left, right] = [personAId, personBId].sort(compareStable);
+  return `${left}\u001f${right}`;
+}
+
+function personPairFromKey(key: string): {
+  personAId: string;
+  personBId: string;
+} {
+  const [personAId, personBId] = key.split("\u001f");
+  if (!personAId || !personBId) {
+    throw new Error("invalid person pair key");
+  }
+  return { personAId, personBId };
+}
+
 function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort(compareStable);
+}
+
+function sortedUniqueNumbers(values: Iterable<number>): number[] {
+  return [...new Set(values)]
+    .filter((value) => Number.isInteger(value))
+    .sort((left, right) => left - right);
 }
 
 function ownerSignature(values: readonly string[]): string {
@@ -2164,6 +2211,250 @@ export async function runDataIntegrityChecks(
   );
 }
 
+async function startStatsCalculation(
+  tx: LeagueScopedTx,
+  input: {
+    calculationType: StatsCalculationType;
+    leagueId: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<StatsCalculationRun> {
+  const [calculation] = await tx
+    .insert(statsCalculations)
+    .values({
+      calculationType: input.calculationType,
+      leagueId: input.leagueId,
+      metadata: input.metadata ?? {},
+      status: "running",
+    })
+    .returning({ id: statsCalculations.id });
+  if (!calculation) {
+    throw new Error("stats calculation log was not created");
+  }
+  return { id: calculation.id, startedAtMs: Date.now() };
+}
+
+async function completeStatsCalculation(
+  tx: LeagueScopedTx,
+  input: StatsCalculationRun & {
+    rowsProcessed: number;
+  },
+): Promise<void> {
+  await tx
+    .update(statsCalculations)
+    .set({
+      completedAt: new Date(),
+      durationMs: Date.now() - input.startedAtMs,
+      rowsProcessed: input.rowsProcessed,
+      status: "completed",
+    })
+    .where(eq(statsCalculations.id, input.id));
+}
+
+async function buildStatsComputationState(
+  tx: LeagueScopedTx,
+  leagueId: string,
+): Promise<StatsComputationState> {
+  const seasonRows = await tx
+    .select()
+    .from(teamSeasons)
+    .where(eq(teamSeasons.leagueId, leagueId));
+  const mappingRows = await tx
+    .select()
+    .from(identityMappings)
+    .where(eq(identityMappings.leagueId, leagueId));
+  const matchups = await loadFinalMatchups(tx, leagueId);
+  const providerStandings = await loadProviderFinalStandings(tx, leagueId);
+  const seasonSettings = await loadLeagueSeasonSettings(tx, leagueId);
+  const teamSeasonByIdentity = new Map(
+    seasonRows.map((row) => [identityKey(row.providerTeamId, row.season), row]),
+  );
+  const weeklyFacts = buildWeeklyFacts({
+    leagueId,
+    mappings: mappingRows,
+    matchups,
+    postseasonFlags: postseasonFlagsByMatchupId({
+      matchups,
+      seasonSettings,
+      standings: providerStandings,
+    }),
+    teamSeasonByIdentity,
+  });
+  const seasonStats = buildSeasonStats(
+    weeklyFacts,
+    leagueId,
+    officialPlacementsByPersonSeason({
+      mappings: mappingRows,
+      standings: providerStandings,
+    }),
+  );
+  return {
+    h2hRows: headToHeadRows(weeklyFacts, leagueId),
+    mappingRows,
+    seasonStats,
+    weeklyFacts,
+  };
+}
+
+function weeklyStatisticValues(fact: WeeklyFact) {
+  return {
+    isBottomScorer: fact.isBottomScorer,
+    isChampionship: fact.isChampionship,
+    isPlayoff: fact.isPlayoff,
+    leagueId: fact.leagueId,
+    margin: fact.margin,
+    matchupKind: fact.matchupKind,
+    matchupId: fact.matchupId,
+    opponentPersonId: fact.opponentPersonId,
+    personId: fact.personId,
+    pointsAgainst: fact.pointsAgainst,
+    pointsFor: fact.pointsFor,
+    result: fact.result,
+    scoringPeriod: fact.scoringPeriod,
+    season: fact.season,
+    teamSeasonId: fact.teamSeasonId,
+    weeklyRank: fact.weeklyRank,
+    isTopScorer: fact.isTopScorer,
+  };
+}
+
+async function insertWeeklyFacts(
+  tx: LeagueScopedTx,
+  facts: readonly WeeklyFact[],
+): Promise<number> {
+  if (facts.length === 0) {
+    return 0;
+  }
+  await tx.insert(weeklyStatistics).values(facts.map(weeklyStatisticValues));
+  return facts.length;
+}
+
+function seasonStatisticValues(row: SeasonStat) {
+  return {
+    allPlayLosses: row.allPlayLosses,
+    allPlayTies: row.allPlayTies,
+    allPlayWins: row.allPlayWins,
+    avgPointsAgainst: row.avgPointsAgainst,
+    avgPointsFor: row.avgPointsFor,
+    currentStreakLength: row.currentStreakLength,
+    currentStreakType: row.currentStreakType,
+    divisionWinner: row.divisionWinner,
+    expectedWins: row.expectedWins,
+    finalPlacement: row.finalPlacement,
+    finalRank: row.finalRank,
+    highestScore: row.highestScore,
+    leagueId: row.leagueId,
+    longestLossStreak: row.longestLossStreak,
+    longestWinStreak: row.longestWinStreak,
+    losses: row.losses,
+    lowestScore: row.lowestScore,
+    luck: row.luck,
+    madeChampionship: row.madeChampionship,
+    madePlayoffs: row.madePlayoffs,
+    medianPointsAgainst: row.medianPointsAgainst,
+    medianPointsFor: row.medianPointsFor,
+    personId: row.personId,
+    pointDifferential: row.pointDifferential,
+    playoffSeed: row.playoffSeed,
+    pointsAgainst: row.pointsAgainst,
+    pointsFor: row.pointsFor,
+    scoringStdDev: row.scoringStdDev,
+    season: row.season,
+    ties: row.ties,
+    winPercentage: row.winPercentage,
+    wins: row.wins,
+  };
+}
+
+async function insertSeasonStats(
+  tx: LeagueScopedTx,
+  rows: readonly SeasonStat[],
+): Promise<number> {
+  if (rows.length === 0) {
+    return 0;
+  }
+  await tx.insert(seasonStatistics).values(rows.map(seasonStatisticValues));
+  return rows.length;
+}
+
+async function insertHeadToHeadStats(
+  tx: LeagueScopedTx,
+  rows: readonly HeadToHeadRow[],
+): Promise<number> {
+  if (rows.length === 0) {
+    return 0;
+  }
+  await tx.insert(headToHeadRecords).values([...rows]);
+  return rows.length;
+}
+
+async function insertChampionshipStats({
+  facts,
+  leagueId,
+  seasonRows,
+  seasons,
+  tx,
+}: {
+  facts: readonly WeeklyFact[];
+  leagueId: string;
+  seasonRows: readonly SeasonStat[];
+  seasons?: ReadonlySet<number>;
+  tx: LeagueScopedTx;
+}): Promise<number> {
+  const champions = seasonRows.filter(
+    (row) => row.finalRank > 0 && (!seasons || seasons.has(row.season)),
+  );
+  const championRows = new Map<number, SeasonStat[]>();
+  for (const row of champions) {
+    championRows.set(row.season, [
+      ...(championRows.get(row.season) ?? []),
+      row,
+    ]);
+  }
+
+  let inserted = 0;
+  for (const [season, rows] of championRows) {
+    const sorted = [...rows].sort(
+      (left, right) =>
+        left.finalRank - right.finalRank ||
+        compareStable(left.personId, right.personId),
+    );
+    const regularSeasonWinner =
+      rows.find((row) => row.playoffSeed === 1) ??
+      [...rows].sort(
+        (left, right) =>
+          left.computedRank - right.computedRank ||
+          compareStable(left.personId, right.personId),
+      )[0];
+    await tx.insert(championshipRecords).values({
+      championPersonId: sorted[0]?.personId ?? null,
+      championshipScore:
+        titleGameScore({
+          facts,
+          personId: sorted[0]?.personId,
+          season,
+        }) ??
+        sorted[0]?.highestScore ??
+        null,
+      leagueId,
+      regularSeasonWinnerPersonId: regularSeasonWinner?.personId ?? null,
+      runnerUpPersonId: sorted[1]?.personId ?? null,
+      runnerUpScore:
+        titleGameScore({
+          facts,
+          personId: sorted[1]?.personId,
+          season,
+        }) ??
+        sorted[1]?.highestScore ??
+        null,
+      season,
+      thirdPlacePersonId: sorted[2]?.personId ?? null,
+    });
+    inserted += 1;
+  }
+  return inserted;
+}
+
 export async function recomputeLeagueStatistics(
   db: Db,
   input: { leagueId: string },
@@ -2177,18 +2468,10 @@ export async function recomputeLeagueStatistics(
 }> {
   await resolveLeagueIdentities(db, input);
   return withLeagueContext(db, input.leagueId, async (tx) => {
-    const startedAt = Date.now();
-    const [calculation] = await tx
-      .insert(statsCalculations)
-      .values({
-        calculationType: "all",
-        leagueId: input.leagueId,
-        status: "running",
-      })
-      .returning({ id: statsCalculations.id });
-    if (!calculation) {
-      throw new Error("stats calculation log was not created");
-    }
+    const calculation = await startStatsCalculation(tx, {
+      calculationType: "all",
+      leagueId: input.leagueId,
+    });
 
     await tx
       .delete(allTimeRecords)
@@ -2206,195 +2489,233 @@ export async function recomputeLeagueStatistics(
       .delete(weeklyStatistics)
       .where(eq(weeklyStatistics.leagueId, input.leagueId));
 
-    const seasonRows = await tx
-      .select()
-      .from(teamSeasons)
-      .where(eq(teamSeasons.leagueId, input.leagueId));
-    const mappingRows = await tx
-      .select()
-      .from(identityMappings)
-      .where(eq(identityMappings.leagueId, input.leagueId));
-    const matchups = await loadFinalMatchups(tx, input.leagueId);
-    const providerStandings = await loadProviderFinalStandings(
-      tx,
-      input.leagueId,
-    );
-    const seasonSettings = await loadLeagueSeasonSettings(tx, input.leagueId);
-    const teamSeasonByIdentity = new Map(
-      seasonRows.map((row) => [
-        identityKey(row.providerTeamId, row.season),
-        row,
-      ]),
-    );
-    const weeklyFacts = buildWeeklyFacts({
+    const state = await buildStatsComputationState(tx, input.leagueId);
+    const weeklyRows = await insertWeeklyFacts(tx, state.weeklyFacts);
+    const seasonRows = await insertSeasonStats(tx, state.seasonStats);
+    const h2hRows = await insertHeadToHeadStats(tx, state.h2hRows);
+    await insertChampionshipStats({
+      facts: state.weeklyFacts,
       leagueId: input.leagueId,
-      mappings: mappingRows,
-      matchups,
-      postseasonFlags: postseasonFlagsByMatchupId({
-        matchups,
-        seasonSettings,
-        standings: providerStandings,
-      }),
-      teamSeasonByIdentity,
+      seasonRows: state.seasonStats,
+      tx,
     });
-
-    if (weeklyFacts.length > 0) {
-      await tx.insert(weeklyStatistics).values(
-        weeklyFacts.map((fact) => ({
-          isBottomScorer: fact.isBottomScorer,
-          isChampionship: fact.isChampionship,
-          isPlayoff: fact.isPlayoff,
-          leagueId: fact.leagueId,
-          margin: fact.margin,
-          matchupKind: fact.matchupKind,
-          matchupId: fact.matchupId,
-          opponentPersonId: fact.opponentPersonId,
-          personId: fact.personId,
-          pointsAgainst: fact.pointsAgainst,
-          pointsFor: fact.pointsFor,
-          result: fact.result,
-          scoringPeriod: fact.scoringPeriod,
-          season: fact.season,
-          teamSeasonId: fact.teamSeasonId,
-          weeklyRank: fact.weeklyRank,
-          isTopScorer: fact.isTopScorer,
-        })),
-      );
-    }
-
-    const seasonStats = buildSeasonStats(
-      weeklyFacts,
-      input.leagueId,
-      officialPlacementsByPersonSeason({
-        mappings: mappingRows,
-        standings: providerStandings,
-      }),
-    );
-    if (seasonStats.length > 0) {
-      await tx.insert(seasonStatistics).values(
-        seasonStats.map((row) => ({
-          allPlayLosses: row.allPlayLosses,
-          allPlayTies: row.allPlayTies,
-          allPlayWins: row.allPlayWins,
-          avgPointsAgainst: row.avgPointsAgainst,
-          avgPointsFor: row.avgPointsFor,
-          currentStreakLength: row.currentStreakLength,
-          currentStreakType: row.currentStreakType,
-          divisionWinner: row.divisionWinner,
-          expectedWins: row.expectedWins,
-          finalPlacement: row.finalPlacement,
-          finalRank: row.finalRank,
-          highestScore: row.highestScore,
-          leagueId: row.leagueId,
-          longestLossStreak: row.longestLossStreak,
-          longestWinStreak: row.longestWinStreak,
-          losses: row.losses,
-          lowestScore: row.lowestScore,
-          luck: row.luck,
-          madeChampionship: row.madeChampionship,
-          madePlayoffs: row.madePlayoffs,
-          medianPointsAgainst: row.medianPointsAgainst,
-          medianPointsFor: row.medianPointsFor,
-          personId: row.personId,
-          pointDifferential: row.pointDifferential,
-          playoffSeed: row.playoffSeed,
-          pointsAgainst: row.pointsAgainst,
-          pointsFor: row.pointsFor,
-          scoringStdDev: row.scoringStdDev,
-          season: row.season,
-          ties: row.ties,
-          winPercentage: row.winPercentage,
-          wins: row.wins,
-        })),
-      );
-    }
-
-    const h2hRows = headToHeadRows(weeklyFacts, input.leagueId);
-    if (h2hRows.length > 0) {
-      await tx.insert(headToHeadRecords).values(h2hRows);
-    }
-
-    const champions = seasonStats.filter((row) => row.finalRank > 0);
-    const championRows = new Map<number, SeasonStat[]>();
-    for (const row of champions) {
-      championRows.set(row.season, [
-        ...(championRows.get(row.season) ?? []),
-        row,
-      ]);
-    }
-    for (const [season, rows] of championRows) {
-      const sorted = [...rows].sort(
-        (left, right) =>
-          left.finalRank - right.finalRank ||
-          compareStable(left.personId, right.personId),
-      );
-      const regularSeasonWinner =
-        rows.find((row) => row.playoffSeed === 1) ??
-        [...rows].sort(
-          (left, right) =>
-            left.computedRank - right.computedRank ||
-            compareStable(left.personId, right.personId),
-        )[0];
-      await tx.insert(championshipRecords).values({
-        championPersonId: sorted[0]?.personId ?? null,
-        championshipScore:
-          titleGameScore({
-            facts: weeklyFacts,
-            personId: sorted[0]?.personId,
-            season,
-          }) ??
-          sorted[0]?.highestScore ??
-          null,
-        leagueId: input.leagueId,
-        regularSeasonWinnerPersonId: regularSeasonWinner?.personId ?? null,
-        runnerUpPersonId: sorted[1]?.personId ?? null,
-        runnerUpScore:
-          titleGameScore({
-            facts: weeklyFacts,
-            personId: sorted[1]?.personId,
-            season,
-          }) ??
-          sorted[1]?.highestScore ??
-          null,
-        season,
-        thirdPlacePersonId: sorted[2]?.personId ?? null,
-      });
-    }
 
     const recordCount = await insertRecordEvents(
       tx,
       input.leagueId,
       recordEvents({
-        facts: weeklyFacts,
-        headToHead: h2hRows,
-        seasonRows: seasonStats,
+        facts: state.weeklyFacts,
+        headToHead: state.h2hRows,
+        seasonRows: state.seasonStats,
       }),
     );
     const integrity = await runDataIntegrityChecksInContext(tx, input.leagueId);
     const rowsProcessed =
-      weeklyFacts.length +
-      seasonStats.length +
-      h2hRows.length +
-      recordCount +
-      integrity.checks;
+      weeklyRows + seasonRows + h2hRows + recordCount + integrity.checks;
 
-    await tx
-      .update(statsCalculations)
-      .set({
-        completedAt: new Date(),
-        durationMs: Date.now() - startedAt,
-        rowsProcessed,
-        status: "completed",
-      })
-      .where(eq(statsCalculations.id, calculation.id));
+    await completeStatsCalculation(tx, {
+      ...calculation,
+      rowsProcessed,
+    });
 
     return {
-      headToHeadRecords: h2hRows.length,
+      headToHeadRecords: h2hRows,
       integrityChecks: integrity.checks,
       integrityFailures: integrity.failures,
       records: recordCount,
-      seasonStatistics: seasonStats.length,
-      weeklyStatistics: weeklyFacts.length,
+      seasonStatistics: seasonRows,
+      weeklyStatistics: weeklyRows,
+    };
+  });
+}
+
+export async function recomputeChangedMatchupStatistics(
+  db: Db,
+  input: { leagueId: string; matchupIds: readonly string[] },
+): Promise<ChangedMatchupRecomputeSummary> {
+  const matchupIds = sortedUnique(input.matchupIds);
+  if (matchupIds.length === 0) {
+    return {
+      headToHeadRecords: 0,
+      integrityChecks: 0,
+      integrityFailures: 0,
+      seasonStatistics: 0,
+      seasons: [],
+      targetedPairs: [],
+      weeklyStatistics: 0,
+    };
+  }
+
+  const finalizedTargets = await withLeagueContext(
+    db,
+    input.leagueId,
+    async (tx) =>
+      tx
+        .select({
+          awayTeamProviderId: fantasyMatchups.awayTeamProviderId,
+          homeTeamProviderId: fantasyMatchups.homeTeamProviderId,
+          id: fantasyMatchups.id,
+          kind: fantasyMatchups.kind,
+          season: fantasyMatchups.season,
+        })
+        .from(fantasyMatchups)
+        .where(
+          and(
+            eq(fantasyMatchups.leagueId, input.leagueId),
+            eq(fantasyMatchups.status, "final"),
+            inArray(fantasyMatchups.id, matchupIds),
+          ),
+        ),
+  );
+  if (finalizedTargets.length === 0) {
+    return {
+      headToHeadRecords: 0,
+      integrityChecks: 0,
+      integrityFailures: 0,
+      seasonStatistics: 0,
+      seasons: [],
+      targetedPairs: [],
+      weeklyStatistics: 0,
+    };
+  }
+
+  await resolveLeagueIdentities(db, { leagueId: input.leagueId });
+
+  return withLeagueContext(db, input.leagueId, async (tx) => {
+    const state = await buildStatsComputationState(tx, input.leagueId);
+    const mappingByIdentity = new Map(
+      state.mappingRows.map((mapping) => [
+        identityKey(mapping.providerTeamId, mapping.season),
+        mapping,
+      ]),
+    );
+    const targetSeasons = sortedUniqueNumbers(
+      finalizedTargets.map((matchup) => matchup.season),
+    );
+    const targetSeasonSet = new Set(targetSeasons);
+    const targetPairKeys = new Set<string>();
+
+    for (const matchup of finalizedTargets) {
+      if (matchup.kind !== "head_to_head") {
+        continue;
+      }
+      const homeMapping = mappingByIdentity.get(
+        identityKey(matchup.homeTeamProviderId, matchup.season),
+      );
+      const awayMapping = mappingByIdentity.get(
+        identityKey(matchup.awayTeamProviderId, matchup.season),
+      );
+      if (!homeMapping || !awayMapping) {
+        continue;
+      }
+      targetPairKeys.add(
+        personPairKey(homeMapping.personId, awayMapping.personId),
+      );
+    }
+
+    const targetWeeklyFacts = state.weeklyFacts.filter((fact) =>
+      targetSeasonSet.has(fact.season),
+    );
+    const targetSeasonStats = state.seasonStats.filter((row) =>
+      targetSeasonSet.has(row.season),
+    );
+    const targetH2hRows = state.h2hRows.filter((row) =>
+      targetPairKeys.has(personPairKey(row.personAId, row.personBId)),
+    );
+    const calculationMetadata = {
+      matchupIds,
+      seasons: targetSeasons,
+      trigger: "changed_finalized_matchup",
+    };
+
+    const seasonCalculation = await startStatsCalculation(tx, {
+      calculationType: "season",
+      leagueId: input.leagueId,
+      metadata: calculationMetadata,
+    });
+    await tx
+      .delete(championshipRecords)
+      .where(
+        and(
+          eq(championshipRecords.leagueId, input.leagueId),
+          inArray(championshipRecords.season, targetSeasons),
+        ),
+      );
+    await tx
+      .delete(seasonStatistics)
+      .where(
+        and(
+          eq(seasonStatistics.leagueId, input.leagueId),
+          inArray(seasonStatistics.season, targetSeasons),
+        ),
+      );
+    await tx
+      .delete(weeklyStatistics)
+      .where(
+        and(
+          eq(weeklyStatistics.leagueId, input.leagueId),
+          inArray(weeklyStatistics.season, targetSeasons),
+        ),
+      );
+    const weeklyRows = await insertWeeklyFacts(tx, targetWeeklyFacts);
+    const seasonRows = await insertSeasonStats(tx, targetSeasonStats);
+    const championshipRows = await insertChampionshipStats({
+      facts: state.weeklyFacts,
+      leagueId: input.leagueId,
+      seasonRows: targetSeasonStats,
+      seasons: targetSeasonSet,
+      tx,
+    });
+    const integrity = await runDataIntegrityChecksInContext(tx, input.leagueId);
+    await completeStatsCalculation(tx, {
+      ...seasonCalculation,
+      rowsProcessed:
+        weeklyRows + seasonRows + championshipRows + integrity.checks,
+    });
+
+    let h2hRows = 0;
+    if (targetPairKeys.size > 0) {
+      const targetedPairs = [...targetPairKeys]
+        .map(personPairFromKey)
+        .sort((left, right) => {
+          const leftKey = personPairKey(left.personAId, left.personBId);
+          const rightKey = personPairKey(right.personAId, right.personBId);
+          return compareStable(leftKey, rightKey);
+        });
+      const h2hCalculation = await startStatsCalculation(tx, {
+        calculationType: "head_to_head",
+        leagueId: input.leagueId,
+        metadata: {
+          ...calculationMetadata,
+          pairs: targetedPairs,
+        },
+      });
+      for (const pair of targetedPairs) {
+        await tx
+          .delete(headToHeadRecords)
+          .where(
+            and(
+              eq(headToHeadRecords.leagueId, input.leagueId),
+              eq(headToHeadRecords.personAId, pair.personAId),
+              eq(headToHeadRecords.personBId, pair.personBId),
+            ),
+          );
+      }
+      h2hRows = await insertHeadToHeadStats(tx, targetH2hRows);
+      await completeStatsCalculation(tx, {
+        ...h2hCalculation,
+        rowsProcessed: h2hRows,
+      });
+    }
+
+    return {
+      headToHeadRecords: h2hRows,
+      integrityChecks: integrity.checks,
+      integrityFailures: integrity.failures,
+      seasonStatistics: seasonRows,
+      seasons: targetSeasons,
+      targetedPairs: [...targetPairKeys].map(personPairFromKey),
+      weeklyStatistics: weeklyRows,
     };
   });
 }

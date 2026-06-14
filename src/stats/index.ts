@@ -2,6 +2,7 @@ export {
   mergePersons,
   RECORD_TYPE_LABELS,
   type RecordType,
+  recomputeChangedMatchupStatistics,
   recomputeLeagueStatistics,
   resolveLeagueIdentities,
   runDataIntegrityChecks,

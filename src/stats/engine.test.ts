@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -22,6 +22,7 @@ import {
   persons,
   providerFinalStandings,
   seasonStatistics,
+  statsCalculations,
   teamSeasons,
   users,
   weeklyStatistics,
@@ -29,6 +30,7 @@ import {
 import { migrateSerialized } from "@/db/test-support";
 import {
   mergePersons,
+  recomputeChangedMatchupStatistics,
   recomputeLeagueStatistics,
   runDataIntegrityChecks,
   splitPerson,
@@ -554,6 +556,11 @@ async function selectStatsRows(leagueId: string) {
       .select()
       .from(dataIntegrityChecks)
       .where(eq(dataIntegrityChecks.leagueId, leagueId));
+    const calculationRows = await tx
+      .select()
+      .from(statsCalculations)
+      .where(eq(statsCalculations.leagueId, leagueId))
+      .orderBy(asc(statsCalculations.startedAt));
     const dataCorrectionAuditRows = await tx
       .select()
       .from(dataCorrectionAuditLog)
@@ -561,6 +568,7 @@ async function selectStatsRows(leagueId: string) {
 
     return {
       auditRows,
+      calculationRows,
       championshipRows,
       dataCorrectionAuditRows,
       h2hRows,
@@ -679,6 +687,151 @@ describe("recomputeLeagueStatistics", () => {
     expect(previousHighScore).toMatchObject({
       holderPersonId: alex2024.personId,
       value: 110,
+    });
+  });
+
+  it("recomputes only the affected season and H2H pair for changed finalized matchups", async () => {
+    const { leagueId } = await seedStatsLeague("targeted");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const mappingFor = (providerTeamId: string, season: number) => {
+      const mapping = before.mappingRows.find(
+        (row) => row.providerTeamId === providerTeamId && row.season === season,
+      );
+      if (!mapping) {
+        throw new Error(`mapping ${providerTeamId}/${season} was not found`);
+      }
+      return mapping;
+    };
+    const alex2024 = mappingFor("1", 2024);
+    const alex2025 = mappingFor("1", 2025);
+    const casey2025 = mappingFor("2", 2025);
+    const drew2025 = mappingFor("3", 2025);
+    const evan2025 = mappingFor("4", 2025);
+    const sortPersonIds = (ids: string[]) =>
+      ids.sort((left, right) =>
+        left.localeCompare(right, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+    const targetPair = sortPersonIds([alex2025.personId, casey2025.personId]);
+    const unrelatedPair = sortPersonIds([drew2025.personId, evan2025.personId]);
+    const beforeTargetH2h = before.h2hRows.find(
+      (row) =>
+        row.season === 2025 &&
+        row.personAId === targetPair[0] &&
+        row.personBId === targetPair[1],
+    );
+    const beforeUnrelatedH2h = before.h2hRows.find(
+      (row) =>
+        row.season === 2025 &&
+        row.personAId === unrelatedPair[0] &&
+        row.personBId === unrelatedPair[1],
+    );
+    const beforeAlex2024Season = before.seasonRows.find(
+      (row) => row.personId === alex2024.personId && row.season === 2024,
+    );
+    if (!beforeTargetH2h || !beforeUnrelatedH2h || !beforeAlex2024Season) {
+      throw new Error("expected baseline rows for targeted recompute");
+    }
+
+    let changedMatchupId = "";
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [matchup] = await tx
+        .select({ id: fantasyMatchups.id })
+        .from(fantasyMatchups)
+        .where(
+          and(
+            eq(fantasyMatchups.leagueId, leagueId),
+            eq(fantasyMatchups.providerMatchupId, "2025-1-a"),
+          ),
+        )
+        .limit(1);
+      if (!matchup) {
+        throw new Error("target matchup was not found");
+      }
+      changedMatchupId = matchup.id;
+      await tx
+        .update(fantasyMatchups)
+        .set({
+          contentHash: `${marker}-targeted-2025-1-a-updated`,
+          homeScore: 130,
+          updatedAt: new Date(),
+          winner: "home",
+        })
+        .where(eq(fantasyMatchups.id, changedMatchupId));
+    });
+
+    const recomputed = await recomputeChangedMatchupStatistics(handle.db, {
+      leagueId,
+      matchupIds: [changedMatchupId],
+    });
+    expect(recomputed.seasons).toEqual([2025]);
+    expect(recomputed.targetedPairs).toEqual([
+      { personAId: targetPair[0], personBId: targetPair[1] },
+    ]);
+
+    const after = await selectStatsRows(leagueId);
+    const afterAlex2025Season = after.seasonRows.find(
+      (row) => row.personId === alex2025.personId && row.season === 2025,
+    );
+    expect(afterAlex2025Season).toMatchObject({
+      losses: 1,
+      pointsFor: 225,
+      wins: 1,
+    });
+    expect(
+      after.seasonRows.find(
+        (row) => row.personId === alex2024.personId && row.season === 2024,
+      )?.id,
+    ).toBe(beforeAlex2024Season.id);
+    expect(
+      after.h2hRows.find(
+        (row) =>
+          row.season === 2025 &&
+          row.personAId === unrelatedPair[0] &&
+          row.personBId === unrelatedPair[1],
+      )?.id,
+    ).toBe(beforeUnrelatedH2h.id);
+    const afterTargetH2h = after.h2hRows.find(
+      (row) =>
+        row.season === 2025 &&
+        row.personAId === targetPair[0] &&
+        row.personBId === targetPair[1],
+    );
+    if (!afterTargetH2h) {
+      throw new Error("target H2H row was not recomputed");
+    }
+    expect(afterTargetH2h.id).not.toBe(beforeTargetH2h.id);
+    expect(afterTargetH2h).toMatchObject({
+      meetings: 1,
+      personAPoints: afterTargetH2h.personAId === alex2025.personId ? 130 : 90,
+      personBPoints: afterTargetH2h.personBId === casey2025.personId ? 90 : 130,
+    });
+
+    expect(after.calculationRows.map((row) => row.calculationType)).toEqual([
+      "all",
+      "season",
+      "head_to_head",
+    ]);
+    expect(
+      after.calculationRows.filter((row) => row.calculationType === "all"),
+    ).toHaveLength(1);
+    const seasonCalculation = after.calculationRows.find(
+      (row) => row.calculationType === "season",
+    );
+    const h2hCalculation = after.calculationRows.find(
+      (row) => row.calculationType === "head_to_head",
+    );
+    expect(seasonCalculation?.metadata).toMatchObject({
+      matchupIds: [changedMatchupId],
+      seasons: [2025],
+      trigger: "changed_finalized_matchup",
+    });
+    expect(h2hCalculation?.metadata).toMatchObject({
+      pairs: [{ personAId: targetPair[0], personBId: targetPair[1] }],
     });
   });
 
