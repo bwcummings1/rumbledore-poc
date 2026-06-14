@@ -21,10 +21,13 @@ import { withLeagueContext } from "@/db/rls";
 import {
   aiGenerationRuns,
   aiMemory,
+  allTimeRecords,
   contentItems,
+  dataIntegrityChecks,
   fantasyMembers,
   fantasyTeams,
   leagues,
+  persons,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
@@ -373,6 +376,76 @@ describe("generateLeagueBlogPost", () => {
       skipReason: expect.stringMatching(/^near_duplicate:/),
       status: "skipped",
     });
+  });
+
+  it("omits record-book context while integrity failures are unresolved", async () => {
+    const league = await seedLeague("quarantine");
+    const llm = new MockLlmClient();
+
+    await withLeagueContext(handle.db, league.id, async (tx) => {
+      const [person] = await tx
+        .insert(persons)
+        .values({
+          canonicalName: "Quarantined Record Holder",
+          leagueId: league.id,
+        })
+        .returning({ id: persons.id });
+      if (!person) {
+        throw new Error("record person was not inserted");
+      }
+      await tx.insert(allTimeRecords).values({
+        holderPersonId: person.id,
+        isCurrent: true,
+        leagueId: league.id,
+        recordType: "highest_single_week_score",
+        scoringPeriod: 1,
+        season: 2026,
+        value: 222.2,
+      });
+      await tx.insert(dataIntegrityChecks).values({
+        checkKey: "identity_sanity",
+        detail: { reason: "fixture unresolved" },
+        leagueId: league.id,
+        season: 2026,
+        status: "fail",
+      });
+    });
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "weekly:quarantine",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests[0]?.context.records).toEqual([]);
+    const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ body: contentItems.body })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        )
+        .limit(1),
+    );
+    expect(post?.body).toContain(
+      "No current record-book event is being forced into the story.",
+    );
   });
 
   it("continues league-only generation when web grounding fails", async () => {

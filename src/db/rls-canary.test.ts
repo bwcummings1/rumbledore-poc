@@ -10,6 +10,8 @@ import {
   bankrollWeeks,
   type ContentItem,
   contentItems,
+  type DataIntegrityCheck,
+  dataIntegrityChecks,
   type FantasyTeam,
   fantasyTeams,
   leagues,
@@ -52,6 +54,8 @@ let bankrollWeekA: { id: string; leagueId: string };
 let bankrollWeekB: { id: string; leagueId: string };
 let bankrollLedgerA: { id: string; leagueId: string };
 let bankrollLedgerB: { id: string; leagueId: string };
+let integrityCheckA: DataIntegrityCheck;
+let integrityCheckB: DataIntegrityCheck;
 
 /** Drizzle wraps pg errors; the SQLSTATE lives on `cause.code`. */
 async function sqlstateOf(query: Promise<unknown>): Promise<string> {
@@ -91,7 +95,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, content_item, ai_persona_card, ai_generation_run, ai_memory, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, push_subscription, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -233,6 +237,26 @@ beforeAll(async () => {
       leagueId: bankrollLedger.leagueId,
     });
 
+  [integrityCheckA, integrityCheckB] = await admin.db
+    .insert(dataIntegrityChecks)
+    .values([
+      {
+        checkKey: "identity_sanity",
+        detail: { marker, side: "a" },
+        leagueId: leagueA,
+        season: 2026,
+        status: "pass",
+      },
+      {
+        checkKey: "identity_sanity",
+        detail: { marker, side: "b" },
+        leagueId: leagueB,
+        season: 2026,
+        status: "fail",
+      },
+    ])
+    .returning();
+
   const canaryUrl = new URL(adminUrl);
   canaryUrl.username = CANARY_ROLE;
   canaryUrl.password = CANARY_PASSWORD;
@@ -304,6 +328,19 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(ledger).toHaveLength(0);
   });
 
+  it("sees no data integrity rows at all outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(dataIntegrityChecks)
+      .where(
+        inArray(dataIntegrityChecks.id, [
+          integrityCheckA.id,
+          integrityCheckB.id,
+        ]),
+      );
+    expect(rows).toHaveLength(0);
+  });
+
   it("scoped to league A, sees A's fantasy team and nothing of league B", async () => {
     const { mine, theirs } = await withLeagueContext(
       canary.db,
@@ -347,6 +384,16 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(ledger.map((row) => row.id)).toContain(bankrollLedgerA.id);
     expect(ledger.map((row) => row.id)).not.toContain(bankrollLedgerB.id);
     expect(ledger.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered data integrity scans still yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(dataIntegrityChecks),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(integrityCheckA.id);
+    expect(rows.map((row) => row.id)).not.toContain(integrityCheckB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
   it("scoped to league A, content scans include central rows and league A only", async () => {
@@ -399,6 +446,22 @@ describe("two-league isolation under withLeagueContext", () => {
             userId: userB.id,
             weekEnd: new Date("2026-09-15T00:00:00.000Z"),
             weekStart: new Date("2026-09-08T00:00:00.000Z"),
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B data integrity row from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(dataIntegrityChecks).values({
+            checkKey: "schedule_coverage",
+            detail: { marker, bad: true },
+            leagueId: leagueB,
+            season: 2026,
+            status: "fail",
           }),
         ),
       ),

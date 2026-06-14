@@ -5,6 +5,7 @@ import {
   allTimeRecords,
   members as authMembers,
   contentItems,
+  dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
@@ -445,25 +446,39 @@ export async function getLeagueHomeData(
         asc(fantasyMatchups.providerMatchupId),
       );
 
-    const recordRows = await tx
-      .select({
-        holderPersonId: allTimeRecords.holderPersonId,
-        id: allTimeRecords.id,
-        opponentPersonId: allTimeRecords.opponentPersonId,
-        previousRecordId: allTimeRecords.previousRecordId,
-        recordType: allTimeRecords.recordType,
-        scoringPeriod: allTimeRecords.scoringPeriod,
-        season: allTimeRecords.season,
-        value: allTimeRecords.value,
-      })
-      .from(allTimeRecords)
+    const unresolvedIntegrityFailures = await tx
+      .select({ id: dataIntegrityChecks.id })
+      .from(dataIntegrityChecks)
       .where(
         and(
-          eq(allTimeRecords.leagueId, input.leagueId),
-          eq(allTimeRecords.isCurrent, true),
+          eq(dataIntegrityChecks.leagueId, input.leagueId),
+          eq(dataIntegrityChecks.status, "fail"),
         ),
       )
-      .orderBy(asc(allTimeRecords.recordType));
+      .limit(1);
+
+    const recordRows =
+      unresolvedIntegrityFailures.length > 0
+        ? []
+        : await tx
+            .select({
+              holderPersonId: allTimeRecords.holderPersonId,
+              id: allTimeRecords.id,
+              opponentPersonId: allTimeRecords.opponentPersonId,
+              previousRecordId: allTimeRecords.previousRecordId,
+              recordType: allTimeRecords.recordType,
+              scoringPeriod: allTimeRecords.scoringPeriod,
+              season: allTimeRecords.season,
+              value: allTimeRecords.value,
+            })
+            .from(allTimeRecords)
+            .where(
+              and(
+                eq(allTimeRecords.leagueId, input.leagueId),
+                eq(allTimeRecords.isCurrent, true),
+              ),
+            )
+            .orderBy(asc(allTimeRecords.recordType));
 
     const personIds = sortedUnique(
       recordRows.flatMap((record) => [

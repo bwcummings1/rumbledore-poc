@@ -1,11 +1,19 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { contentItems, leagues, members, users } from "@/db/schema";
+import {
+  allTimeRecords,
+  contentItems,
+  dataIntegrityChecks,
+  leagues,
+  members,
+  persons,
+  users,
+} from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { syncCurrentLeague } from "@/ingestion";
 import {
@@ -217,6 +225,89 @@ describe("getLeagueHomeData", () => {
         title: "Commissioner: Home league storyline",
       },
     ]);
+  });
+
+  it("suppresses record-book reads while integrity failures are unresolved", async () => {
+    let recordId = "";
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [person] = await tx
+        .insert(persons)
+        .values({
+          canonicalName: "Record Holder",
+          leagueId,
+        })
+        .returning({ id: persons.id });
+      if (!person) {
+        throw new Error("record holder was not inserted");
+      }
+      const [record] = await tx
+        .insert(allTimeRecords)
+        .values({
+          holderPersonId: person.id,
+          isCurrent: true,
+          leagueId,
+          recordType: "highest_single_week_score",
+          scoringPeriod: 1,
+          season: 2026,
+          value: 199.9,
+        })
+        .returning({ id: allTimeRecords.id });
+      if (!record) {
+        throw new Error("record row was not inserted");
+      }
+      recordId = record.id;
+    });
+
+    const trusted = await getLeagueHomeData(handle.db, { leagueId, userId });
+    expect(trusted.status).toBe("ready");
+    if (trusted.status !== "ready") {
+      throw new Error(`unexpected home result: ${trusted.status}`);
+    }
+    expect(trusted.data.records.map((record) => record.id)).toContain(recordId);
+
+    let checkId = "";
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [check] = await tx
+        .insert(dataIntegrityChecks)
+        .values({
+          checkKey: "identity_sanity",
+          detail: { reason: "fixture unresolved" },
+          leagueId,
+          season: 2026,
+          status: "fail",
+        })
+        .returning({ id: dataIntegrityChecks.id });
+      if (!check) {
+        throw new Error("integrity check was not inserted");
+      }
+      checkId = check.id;
+    });
+
+    const quarantined = await getLeagueHomeData(handle.db, {
+      leagueId,
+      userId,
+    });
+    expect(quarantined.status).toBe("ready");
+    if (quarantined.status !== "ready") {
+      throw new Error(`unexpected home result: ${quarantined.status}`);
+    }
+    expect(quarantined.data.records).toEqual([]);
+
+    await withLeagueContext(handle.db, leagueId, (tx) =>
+      tx
+        .update(dataIntegrityChecks)
+        .set({ status: "reviewed" })
+        .where(eq(dataIntegrityChecks.id, checkId)),
+    );
+
+    const reviewed = await getLeagueHomeData(handle.db, { leagueId, userId });
+    expect(reviewed.status).toBe("ready");
+    if (reviewed.status !== "ready") {
+      throw new Error(`unexpected home result: ${reviewed.status}`);
+    }
+    expect(reviewed.data.records.map((record) => record.id)).toContain(
+      recordId,
+    );
   });
 
   it("rejects a user who is not a member of the league", async () => {

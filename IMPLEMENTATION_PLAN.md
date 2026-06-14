@@ -18,7 +18,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Handle co-owner teams correctly, fixing the identity over-merge with per-slot person scoping. (specs/14)
 - [x] Derive playoff/championship flags from provider settings/finals, fixing the hardcoded-false bug. (specs/14)
 - [x] Handle dynasty/keeper, divisions, and varied/IDP scoring per the edge-case table. (specs/14)
-- [ ] Build the data-integrity checks plus the data-steward correction flow. (specs/14)
+- [x] Build the data-integrity checks plus the data-steward correction flow. (specs/14)
 - [ ] Implement targeted incremental recompute triggered by new data. (specs/14)
 
 ### C. Publication system (see specs/11)
@@ -47,6 +47,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope, or run `./loop.sh harden N`)
 - [ ] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`.
 - [ ] **[correctness/MED] Bet placement reads balance before the week lock** — acquire `lockWeekLedger` before the balance read. `src/betting/placement.ts`.
+- [ ] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads that return scheduled/in-progress. `src/ingestion/current-league.ts`.
 
 ## Discoveries / bugs (loop appends here)
 - [ ] **[observability/LOW] Historical import progress is DB-queryable but not published to realtime** — checkpoints/data coverage expose progress, but onboarding cannot subscribe to a live history-build channel yet.

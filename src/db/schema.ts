@@ -94,6 +94,25 @@ export const dataCoverageStatus = pgEnum(
   DATA_COVERAGE_STATUSES,
 );
 
+export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
+  "reconciliation_totals",
+  "standings_parity",
+  "schedule_coverage",
+  "identity_sanity",
+  "no_silent_empty",
+]);
+
+export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [
+  "pass",
+  "fail",
+  "reviewed",
+]);
+
+export const dataCorrectionAuditAction = pgEnum(
+  "data_correction_audit_action",
+  ["mark_reviewed", "rerun_integrity"],
+);
+
 export const onboardingCredentialStatus = pgEnum(
   "onboarding_credential_status",
   ["connected", "invalid"],
@@ -763,6 +782,85 @@ export const dataCoverage = pgTable(
     ),
     index("data_coverage_league_status_idx").on(table.leagueId, table.status),
     pgPolicy("data_coverage_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const dataIntegrityChecks = pgTable(
+  "data_integrity_check",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    checkKey: dataIntegrityCheckKey("check_key").notNull(),
+    season: integer("season"),
+    status: dataIntegrityCheckStatus("status").notNull(),
+    detail: jsonb("detail")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("data_integrity_check_league_status_idx").on(
+      table.leagueId,
+      table.status,
+      table.createdAt,
+    ),
+    index("data_integrity_check_league_key_idx").on(
+      table.leagueId,
+      table.checkKey,
+      table.season,
+      table.createdAt,
+    ),
+    pgPolicy("data_integrity_check_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const dataCorrectionAuditLog = pgTable(
+  "data_correction_audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    action: dataCorrectionAuditAction("action").notNull(),
+    integrityCheckId: uuid("integrity_check_id").references(
+      () => dataIntegrityChecks.id,
+      { onDelete: "set null" },
+    ),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    beforeState: jsonb("before_state")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    afterState: jsonb("after_state")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("data_correction_audit_log_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    pgPolicy("data_correction_audit_log_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -2329,6 +2427,11 @@ export type NewHistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferInsert;
 export type DataCoverage = typeof dataCoverage.$inferSelect;
 export type NewDataCoverage = typeof dataCoverage.$inferInsert;
+export type DataIntegrityCheck = typeof dataIntegrityChecks.$inferSelect;
+export type NewDataIntegrityCheck = typeof dataIntegrityChecks.$inferInsert;
+export type DataCorrectionAuditLog = typeof dataCorrectionAuditLog.$inferSelect;
+export type NewDataCorrectionAuditLog =
+  typeof dataCorrectionAuditLog.$inferInsert;
 export type BettingEvent = typeof bettingEvents.$inferSelect;
 export type NewBettingEvent = typeof bettingEvents.$inferInsert;
 export type BettingMarket = typeof bettingMarkets.$inferSelect;

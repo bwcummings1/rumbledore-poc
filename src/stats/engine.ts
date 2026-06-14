@@ -4,6 +4,8 @@ import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
   championshipRecords,
+  dataCoverage,
+  dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
@@ -54,6 +56,7 @@ type TeamSeasonRow = typeof teamSeasons.$inferSelect;
 type IdentityMappingRow = typeof identityMappings.$inferSelect;
 type ProviderFinalStandingRow = typeof providerFinalStandings.$inferSelect;
 type LeagueSeasonSettingsRow = typeof leagueSeasonSettings.$inferSelect;
+type DataIntegrityCheckInsert = typeof dataIntegrityChecks.$inferInsert;
 type WeeklyResult = "win" | "loss" | "tie";
 
 interface ResolvedIdentityState {
@@ -147,6 +150,13 @@ interface RecordEvent extends RecordCandidate {
 interface PostseasonFlags {
   isChampionship: boolean;
   isPlayoff: boolean;
+}
+
+interface DataIntegrityCheckDraft {
+  checkKey: DataIntegrityCheckInsert["checkKey"];
+  detail: Record<string, unknown>;
+  season: number | null;
+  status: Extract<DataIntegrityCheckInsert["status"], "pass" | "fail">;
 }
 
 function round(value: number, places = 4): number {
@@ -1704,11 +1714,463 @@ async function insertRecordEvents(
   return rows;
 }
 
+function amountEqual(left: number, right: number, tolerance = 0.01): boolean {
+  return Math.abs(left - right) <= tolerance;
+}
+
+function checkStatus(
+  issues: readonly unknown[],
+): DataIntegrityCheckDraft["status"] {
+  return issues.length > 0 ? "fail" : "pass";
+}
+
+function seasonKeys(values: Iterable<number>): number[] {
+  return [...new Set(values)]
+    .filter((season) => Number.isInteger(season))
+    .sort((left, right) => left - right);
+}
+
+async function buildDataIntegrityCheckDrafts(
+  tx: LeagueScopedTx,
+  leagueId: string,
+): Promise<DataIntegrityCheckDraft[]> {
+  const weeklyRows = await tx
+    .select({
+      personId: weeklyStatistics.personId,
+      pointsAgainst: weeklyStatistics.pointsAgainst,
+      pointsFor: weeklyStatistics.pointsFor,
+      result: weeklyStatistics.result,
+      scoringPeriod: weeklyStatistics.scoringPeriod,
+      season: weeklyStatistics.season,
+    })
+    .from(weeklyStatistics)
+    .where(eq(weeklyStatistics.leagueId, leagueId));
+  const seasonRows = await tx
+    .select({
+      finalRank: seasonStatistics.finalRank,
+      losses: seasonStatistics.losses,
+      personId: seasonStatistics.personId,
+      pointsAgainst: seasonStatistics.pointsAgainst,
+      pointsFor: seasonStatistics.pointsFor,
+      season: seasonStatistics.season,
+      ties: seasonStatistics.ties,
+      wins: seasonStatistics.wins,
+    })
+    .from(seasonStatistics)
+    .where(eq(seasonStatistics.leagueId, leagueId));
+  const finalStandingRows = await tx
+    .select({
+      finalRank: providerFinalStandings.finalRank,
+      providerTeamId: providerFinalStandings.providerTeamId,
+      season: providerFinalStandings.season,
+    })
+    .from(providerFinalStandings)
+    .where(eq(providerFinalStandings.leagueId, leagueId));
+  const mappingRows = await tx
+    .select({
+      personId: identityMappings.personId,
+      providerTeamId: identityMappings.providerTeamId,
+      season: identityMappings.season,
+      teamSeasonId: identityMappings.teamSeasonId,
+    })
+    .from(identityMappings)
+    .where(eq(identityMappings.leagueId, leagueId));
+  const teamSeasonRows = await tx
+    .select({
+      id: teamSeasons.id,
+      providerTeamId: teamSeasons.providerTeamId,
+      season: teamSeasons.season,
+    })
+    .from(teamSeasons)
+    .where(eq(teamSeasons.leagueId, leagueId));
+  const teamRows = await tx
+    .select({
+      providerTeamId: fantasyTeams.providerTeamId,
+      season: fantasyTeams.season,
+    })
+    .from(fantasyTeams)
+    .where(eq(fantasyTeams.leagueId, leagueId));
+  const matchupRows = await tx
+    .select({
+      awayTeamProviderId: fantasyMatchups.awayTeamProviderId,
+      homeTeamProviderId: fantasyMatchups.homeTeamProviderId,
+      id: fantasyMatchups.id,
+      scoringPeriod: fantasyMatchups.scoringPeriod,
+      season: fantasyMatchups.season,
+      status: fantasyMatchups.status,
+    })
+    .from(fantasyMatchups)
+    .where(
+      and(
+        eq(fantasyMatchups.leagueId, leagueId),
+        eq(fantasyMatchups.status, "final"),
+      ),
+    );
+  const coverageRows = await tx
+    .select({
+      capability: dataCoverage.capability,
+      dataClass: dataCoverage.dataClass,
+      itemCount: dataCoverage.itemCount,
+      season: dataCoverage.season,
+      status: dataCoverage.status,
+    })
+    .from(dataCoverage)
+    .where(eq(dataCoverage.leagueId, leagueId));
+
+  const drafts: DataIntegrityCheckDraft[] = [];
+
+  const seasonStatsByPersonSeason = new Map(
+    seasonRows.map((row) => [`${row.personId}:${row.season}`, row]),
+  );
+  const weeklyTotals = new Map<
+    string,
+    {
+      losses: number;
+      pointsAgainst: number;
+      pointsFor: number;
+      season: number;
+      ties: number;
+      wins: number;
+    }
+  >();
+  for (const row of weeklyRows) {
+    const key = `${row.personId}:${row.season}`;
+    const current = weeklyTotals.get(key) ?? {
+      losses: 0,
+      pointsAgainst: 0,
+      pointsFor: 0,
+      season: row.season,
+      ties: 0,
+      wins: 0,
+    };
+    current.wins += row.result === "win" ? 1 : 0;
+    current.losses += row.result === "loss" ? 1 : 0;
+    current.ties += row.result === "tie" ? 1 : 0;
+    current.pointsFor = round(current.pointsFor + row.pointsFor, 2);
+    current.pointsAgainst = round(current.pointsAgainst + row.pointsAgainst, 2);
+    weeklyTotals.set(key, current);
+  }
+  const reconciliationSeasons = seasonKeys([
+    ...weeklyRows.map((row) => row.season),
+    ...seasonRows.map((row) => row.season),
+  ]);
+  for (const season of reconciliationSeasons) {
+    const mismatches: Record<string, unknown>[] = [];
+    for (const row of seasonRows.filter((entry) => entry.season === season)) {
+      const weekly = weeklyTotals.get(`${row.personId}:${row.season}`);
+      if (!weekly) {
+        mismatches.push({
+          personId: row.personId,
+          reason: "missing_weekly_totals",
+        });
+        continue;
+      }
+      if (
+        row.wins !== weekly.wins ||
+        row.losses !== weekly.losses ||
+        row.ties !== weekly.ties ||
+        !amountEqual(row.pointsFor, weekly.pointsFor) ||
+        !amountEqual(row.pointsAgainst, weekly.pointsAgainst)
+      ) {
+        mismatches.push({
+          personId: row.personId,
+          season: row.season,
+          seasonTotals: {
+            losses: row.losses,
+            pointsAgainst: row.pointsAgainst,
+            pointsFor: row.pointsFor,
+            ties: row.ties,
+            wins: row.wins,
+          },
+          weeklyTotals: weekly,
+        });
+      }
+    }
+    for (const [key, weekly] of weeklyTotals) {
+      if (!key.endsWith(`:${season}`)) {
+        continue;
+      }
+      if (!seasonStatsByPersonSeason.has(key)) {
+        mismatches.push({
+          personId: key.split(":")[0],
+          reason: "missing_season_totals",
+          weeklyTotals: weekly,
+        });
+      }
+    }
+    drafts.push({
+      checkKey: "reconciliation_totals",
+      detail: {
+        checkedRows: seasonRows.filter((row) => row.season === season).length,
+        mismatches,
+      },
+      season,
+      status: checkStatus(mismatches),
+    });
+  }
+
+  const mappingsByProviderTeamSeason = new Map(
+    mappingRows.map((row) => [
+      identityKey(row.providerTeamId, row.season),
+      row,
+    ]),
+  );
+  const standingsSeasons = seasonKeys(
+    finalStandingRows.map((row) => row.season),
+  );
+  for (const season of standingsSeasons) {
+    const mismatches: Record<string, unknown>[] = [];
+    for (const standing of finalStandingRows.filter(
+      (row) => row.season === season,
+    )) {
+      const mapping = mappingsByProviderTeamSeason.get(
+        identityKey(standing.providerTeamId, standing.season),
+      );
+      if (!mapping) {
+        mismatches.push({
+          providerTeamId: standing.providerTeamId,
+          reason: "missing_identity_mapping",
+        });
+        continue;
+      }
+      const seasonStat = seasonStatsByPersonSeason.get(
+        `${mapping.personId}:${standing.season}`,
+      );
+      if (!seasonStat) {
+        mismatches.push({
+          personId: mapping.personId,
+          providerTeamId: standing.providerTeamId,
+          reason: "missing_season_statistics",
+        });
+        continue;
+      }
+      if (seasonStat.finalRank !== standing.finalRank) {
+        mismatches.push({
+          computedFinalRank: seasonStat.finalRank,
+          personId: mapping.personId,
+          providerFinalRank: standing.finalRank,
+          providerTeamId: standing.providerTeamId,
+        });
+      }
+    }
+    drafts.push({
+      checkKey: "standings_parity",
+      detail: {
+        checkedRows: finalStandingRows.filter((row) => row.season === season)
+          .length,
+        mismatches,
+      },
+      season,
+      status: checkStatus(mismatches),
+    });
+  }
+
+  const teamIdsBySeason = new Map<number, Set<string>>();
+  for (const row of teamRows) {
+    const teamIds = teamIdsBySeason.get(row.season) ?? new Set<string>();
+    teamIds.add(row.providerTeamId);
+    teamIdsBySeason.set(row.season, teamIds);
+  }
+  const matchupsBySeasonWeek = new Map<string, typeof matchupRows>();
+  for (const row of matchupRows) {
+    const key = `${row.season}:${row.scoringPeriod}`;
+    matchupsBySeasonWeek.set(key, [
+      ...(matchupsBySeasonWeek.get(key) ?? []),
+      row,
+    ]);
+  }
+  const scheduleBySeason = new Map<number, Record<string, unknown>[]>();
+  for (const [key, rows] of matchupsBySeasonWeek) {
+    const [seasonRaw, scoringPeriodRaw] = key.split(":");
+    const season = Number(seasonRaw);
+    const scoringPeriod = Number(scoringPeriodRaw);
+    const expectedTeamIds = teamIdsBySeason.get(season) ?? new Set<string>();
+    const seenTeamIds = new Set<string>();
+    for (const row of rows) {
+      seenTeamIds.add(row.homeTeamProviderId);
+      seenTeamIds.add(row.awayTeamProviderId);
+    }
+    const missingTeamIds = [...expectedTeamIds]
+      .filter((providerTeamId) => !seenTeamIds.has(providerTeamId))
+      .sort(compareStable);
+    if (missingTeamIds.length > 0) {
+      scheduleBySeason.set(season, [
+        ...(scheduleBySeason.get(season) ?? []),
+        {
+          missingTeamIds,
+          scoringPeriod,
+        },
+      ]);
+    }
+  }
+  for (const season of seasonKeys(teamRows.map((row) => row.season))) {
+    const gaps = scheduleBySeason.get(season) ?? [];
+    drafts.push({
+      checkKey: "schedule_coverage",
+      detail: {
+        checkedWeeks: [...matchupsBySeasonWeek.keys()].filter((key) =>
+          key.startsWith(`${season}:`),
+        ).length,
+        gaps,
+        teamCount: teamIdsBySeason.get(season)?.size ?? 0,
+      },
+      season,
+      status: checkStatus(gaps),
+    });
+  }
+
+  const mappingCountsByTeamSeasonId = new Map<string, number>();
+  const teamSeasonIds = new Set(teamSeasonRows.map((row) => row.id));
+  for (const mapping of mappingRows) {
+    mappingCountsByTeamSeasonId.set(
+      mapping.teamSeasonId,
+      (mappingCountsByTeamSeasonId.get(mapping.teamSeasonId) ?? 0) + 1,
+    );
+  }
+  const identityIssuesBySeason = new Map<number, Record<string, unknown>[]>();
+  for (const teamSeason of teamSeasonRows) {
+    const count = mappingCountsByTeamSeasonId.get(teamSeason.id) ?? 0;
+    if (count !== 1) {
+      identityIssuesBySeason.set(teamSeason.season, [
+        ...(identityIssuesBySeason.get(teamSeason.season) ?? []),
+        {
+          mappingCount: count,
+          providerTeamId: teamSeason.providerTeamId,
+          reason: "team_season_mapping_count",
+          teamSeasonId: teamSeason.id,
+        },
+      ]);
+    }
+  }
+  for (const mapping of mappingRows) {
+    if (!teamSeasonIds.has(mapping.teamSeasonId)) {
+      identityIssuesBySeason.set(mapping.season, [
+        ...(identityIssuesBySeason.get(mapping.season) ?? []),
+        {
+          mappingTeamSeasonId: mapping.teamSeasonId,
+          reason: "mapping_without_team_season",
+        },
+      ]);
+    }
+  }
+  const sameSeasonPersonToTeamSeasons = new Map<string, Set<string>>();
+  for (const mapping of mappingRows) {
+    const key = `${mapping.season}:${mapping.personId}`;
+    const mapped = sameSeasonPersonToTeamSeasons.get(key) ?? new Set<string>();
+    mapped.add(mapping.teamSeasonId);
+    sameSeasonPersonToTeamSeasons.set(key, mapped);
+  }
+  for (const [key, mapped] of sameSeasonPersonToTeamSeasons) {
+    if (mapped.size <= 1) {
+      continue;
+    }
+    const [seasonRaw, personId] = key.split(":");
+    const season = Number(seasonRaw);
+    identityIssuesBySeason.set(season, [
+      ...(identityIssuesBySeason.get(season) ?? []),
+      {
+        personId,
+        reason: "same_season_person_overmerge",
+        teamSeasonIds: [...mapped].sort(compareStable),
+      },
+    ]);
+  }
+  for (const season of seasonKeys(teamSeasonRows.map((row) => row.season))) {
+    const issues = identityIssuesBySeason.get(season) ?? [];
+    drafts.push({
+      checkKey: "identity_sanity",
+      detail: {
+        checkedTeamSeasons: teamSeasonRows.filter(
+          (row) => row.season === season,
+        ).length,
+        issues,
+      },
+      season,
+      status: checkStatus(issues),
+    });
+  }
+
+  const emptyCompleteBySeason = new Map<number, Record<string, unknown>[]>();
+  for (const row of coverageRows) {
+    if (
+      row.capability === "none" ||
+      !["complete", "partial"].includes(row.status) ||
+      row.itemCount > 0
+    ) {
+      continue;
+    }
+    emptyCompleteBySeason.set(row.season, [
+      ...(emptyCompleteBySeason.get(row.season) ?? []),
+      {
+        capability: row.capability,
+        dataClass: row.dataClass,
+        itemCount: row.itemCount,
+        status: row.status,
+      },
+    ]);
+  }
+  const coverageSeasons = seasonKeys(coverageRows.map((row) => row.season));
+  for (const season of coverageSeasons.length > 0 ? coverageSeasons : [null]) {
+    const issues =
+      season === null ? [] : (emptyCompleteBySeason.get(season) ?? []);
+    drafts.push({
+      checkKey: "no_silent_empty",
+      detail: {
+        checkedRows:
+          season === null
+            ? 0
+            : coverageRows.filter((row) => row.season === season).length,
+        issues,
+      },
+      season,
+      status: checkStatus(issues),
+    });
+  }
+
+  return drafts;
+}
+
+async function runDataIntegrityChecksInContext(
+  tx: LeagueScopedTx,
+  leagueId: string,
+): Promise<{ checks: number; failures: number }> {
+  const drafts = await buildDataIntegrityCheckDrafts(tx, leagueId);
+  if (drafts.length === 0) {
+    return { checks: 0, failures: 0 };
+  }
+
+  await tx.insert(dataIntegrityChecks).values(
+    drafts.map((draft) => ({
+      checkKey: draft.checkKey,
+      detail: draft.detail,
+      leagueId,
+      season: draft.season,
+      status: draft.status,
+    })),
+  );
+
+  return {
+    checks: drafts.length,
+    failures: drafts.filter((draft) => draft.status === "fail").length,
+  };
+}
+
+export async function runDataIntegrityChecks(
+  db: Db,
+  input: { leagueId: string },
+): Promise<{ checks: number; failures: number }> {
+  return withLeagueContext(db, input.leagueId, (tx) =>
+    runDataIntegrityChecksInContext(tx, input.leagueId),
+  );
+}
+
 export async function recomputeLeagueStatistics(
   db: Db,
   input: { leagueId: string },
 ): Promise<{
   headToHeadRecords: number;
+  integrityChecks: number;
+  integrityFailures: number;
   records: number;
   seasonStatistics: number;
   weeklyStatistics: number;
@@ -1908,8 +2370,13 @@ export async function recomputeLeagueStatistics(
         seasonRows: seasonStats,
       }),
     );
+    const integrity = await runDataIntegrityChecksInContext(tx, input.leagueId);
     const rowsProcessed =
-      weeklyFacts.length + seasonStats.length + h2hRows.length + recordCount;
+      weeklyFacts.length +
+      seasonStats.length +
+      h2hRows.length +
+      recordCount +
+      integrity.checks;
 
     await tx
       .update(statsCalculations)
@@ -1923,6 +2390,8 @@ export async function recomputeLeagueStatistics(
 
     return {
       headToHeadRecords: h2hRows.length,
+      integrityChecks: integrity.checks,
+      integrityFailures: integrity.failures,
       records: recordCount,
       seasonStatistics: seasonStats.length,
       weeklyStatistics: weeklyFacts.length,

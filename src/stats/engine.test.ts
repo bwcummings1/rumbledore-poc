@@ -8,6 +8,9 @@ import { withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
   championshipRecords,
+  dataCorrectionAuditLog,
+  dataCoverage,
+  dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
@@ -20,10 +23,21 @@ import {
   providerFinalStandings,
   seasonStatistics,
   teamSeasons,
+  users,
   weeklyStatistics,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { mergePersons, recomputeLeagueStatistics, splitPerson } from "./engine";
+import {
+  mergePersons,
+  recomputeLeagueStatistics,
+  runDataIntegrityChecks,
+  splitPerson,
+} from "./engine";
+import {
+  markIntegrityCheckReviewed,
+  reassignTeamSeason,
+  renamePerson,
+} from "./steward";
 
 const marker = `statstest-${randomUUID()}`;
 let handle: DbHandle;
@@ -311,6 +325,20 @@ async function seedStatsLeague(tag: string): Promise<SeededStatsLeague> {
   return { leagueId: league.id, providerLeagueId };
 }
 
+async function seedActor(tag: string): Promise<string> {
+  const [user] = await handle.db
+    .insert(users)
+    .values({
+      displayName: `${marker} ${tag}`,
+      email: `${marker}-${tag}@example.com`,
+    })
+    .returning({ id: users.id });
+  if (!user) {
+    throw new Error("steward actor was not created");
+  }
+  return user.id;
+}
+
 async function seedCoOwnerLeague(tag: string): Promise<SeededStatsLeague> {
   const providerLeagueId = `${marker}-${tag}`;
   const [league] = await handle.db
@@ -522,11 +550,21 @@ async function selectStatsRows(leagueId: string) {
       .select()
       .from(identityAuditLog)
       .where(eq(identityAuditLog.leagueId, leagueId));
+    const integrityRows = await tx
+      .select()
+      .from(dataIntegrityChecks)
+      .where(eq(dataIntegrityChecks.leagueId, leagueId));
+    const dataCorrectionAuditRows = await tx
+      .select()
+      .from(dataCorrectionAuditLog)
+      .where(eq(dataCorrectionAuditLog.leagueId, leagueId));
 
     return {
       auditRows,
       championshipRows,
+      dataCorrectionAuditRows,
       h2hRows,
+      integrityRows,
       mappingRows,
       personRows,
       recordRows,
@@ -552,6 +590,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!handle) return;
+  await handle.db
+    .delete(users)
+    .where(sql`${users.email} like ${`${marker}-%`}`);
   await handle.db
     .delete(leagues)
     .where(sql`${leagues.providerLeagueId} like ${`${marker}-%`}`);
@@ -960,6 +1001,102 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("records integrity failures and lets a steward mark a flag reviewed", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague("integrity");
+    const actorUserId = await seedActor("integrity-steward");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    let rows = await selectStatsRows(leagueId);
+    expect(rows.integrityRows.some((row) => row.status === "pass")).toBe(true);
+    expect(rows.integrityRows.some((row) => row.status === "fail")).toBe(false);
+
+    const seasonRow = rows.seasonRows.find((row) => row.season === 2025);
+    if (!seasonRow) {
+      throw new Error("season row was not found for integrity test");
+    }
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .update(seasonStatistics)
+        .set({ wins: seasonRow.wins + 1 })
+        .where(eq(seasonStatistics.id, seasonRow.id));
+      await tx.insert(dataCoverage).values({
+        capability: "full",
+        dataClass: "rosters",
+        itemCount: 0,
+        leagueId,
+        provider: "espn",
+        providerLeagueId,
+        season: 2025,
+        status: "complete",
+      });
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, { leagueId });
+    expect(integrity.failures).toBeGreaterThanOrEqual(2);
+
+    rows = await selectStatsRows(leagueId);
+    const reconciliationFailure = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "reconciliation_totals" &&
+        row.season === 2025 &&
+        row.status === "fail",
+    );
+    const emptyFailure = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "no_silent_empty" &&
+        row.season === 2025 &&
+        row.status === "fail",
+    );
+    expect(reconciliationFailure?.detail).toMatchObject({
+      mismatches: expect.arrayContaining([expect.any(Object)]),
+    });
+    expect(emptyFailure?.detail).toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({ dataClass: "rosters" }),
+      ]),
+    });
+    if (!reconciliationFailure) {
+      throw new Error("reconciliation failure was not recorded");
+    }
+
+    const reviewed = await markIntegrityCheckReviewed(handle.db, {
+      actorUserId,
+      checkId: reconciliationFailure.id,
+      leagueId,
+      reason: "provider record accepted after review",
+    });
+    expect(reviewed.ok).toBe(true);
+    if (!reviewed.ok) throw reviewed.error;
+    expect(reviewed.value).toMatchObject({
+      id: reconciliationFailure.id,
+      reviewedByUserId: actorUserId,
+      status: "reviewed",
+    });
+
+    rows = await selectStatsRows(leagueId);
+    expect(
+      rows.dataCorrectionAuditRows.some(
+        (row) =>
+          row.action === "mark_reviewed" &&
+          row.integrityCheckId === reconciliationFailure.id,
+      ),
+    ).toBe(true);
+    const correctionAudit = rows.dataCorrectionAuditRows[0];
+    if (!correctionAudit) {
+      throw new Error("data correction audit row was not written");
+    }
+    await expect(
+      withLeagueContext(handle.db, leagueId, (tx) =>
+        tx
+          .update(dataCorrectionAuditLog)
+          .set({ reason: "should not mutate" })
+          .where(eq(dataCorrectionAuditLog.id, correctionAudit.id)),
+      ),
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({ code: "55000" }),
+    });
+  });
+
   it("applies steward merge and split corrections as sticky manual mappings", async () => {
     const { leagueId } = await seedStatsLeague("steward");
     await recomputeLeagueStatistics(handle.db, { leagueId });
@@ -1017,6 +1154,59 @@ describe("recomputeLeagueStatistics", () => {
     expect(rows.seasonRows.some((row) => row.personId === split.personId)).toBe(
       true,
     );
+  });
+
+  it("applies steward reassign and rename corrections with manual audit", async () => {
+    const { leagueId } = await seedStatsLeague("steward-reassign");
+    const actorUserId = await seedActor("reassign-steward");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    let rows = await selectStatsRows(leagueId);
+    const caseyTeamSeason = rows.teamSeasonRows.find(
+      (row) => row.providerTeamId === "2" && row.season === 2025,
+    );
+    if (!caseyTeamSeason) {
+      throw new Error("Casey team season was not found for reassign test");
+    }
+
+    const reassigned = await reassignTeamSeason(handle.db, {
+      actorUserId,
+      leagueId,
+      newCanonicalName: "Casey Reassigned",
+      reason: "manual steward reassignment",
+      teamSeasonId: caseyTeamSeason.id,
+    });
+    expect(reassigned.ok).toBe(true);
+    if (!reassigned.ok) throw reassigned.error;
+
+    rows = await selectStatsRows(leagueId);
+    const reassignedMapping = rows.mappingRows.find(
+      (row) => row.teamSeasonId === caseyTeamSeason.id,
+    );
+    expect(reassignedMapping).toMatchObject({
+      method: "manual",
+      personId: reassigned.value.personId,
+      resolvedBy: actorUserId,
+    });
+    expect(rows.auditRows.some((row) => row.action === "remap")).toBe(true);
+
+    const renamed = await renamePerson(handle.db, {
+      actorUserId,
+      canonicalName: "Casey Canon",
+      leagueId,
+      personId: reassigned.value.personId,
+      reason: "manual canonical name cleanup",
+    });
+    expect(renamed.ok).toBe(true);
+    if (!renamed.ok) throw renamed.error;
+
+    rows = await selectStatsRows(leagueId);
+    expect(
+      rows.personRows.find((row) => row.id === reassigned.value.personId),
+    ).toMatchObject({
+      canonicalName: "Casey Canon",
+    });
+    expect(rows.auditRows.some((row) => row.action === "rename")).toBe(true);
   });
 
   it("keeps co-owner overlaps scoped to the team slot during identity resolution", async () => {
