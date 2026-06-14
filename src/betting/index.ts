@@ -1,6 +1,8 @@
 export {
   type ArenaLeaderboardData,
   type ArenaLeaderboardRow,
+  type ArenaMover,
+  type ArenaSeasonSummary,
   computeArenaStandings,
   ensureArenaSeason,
   getArenaLeaderboardData,

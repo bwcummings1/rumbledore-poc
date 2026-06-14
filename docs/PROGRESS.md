@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Arena season movement landed — `/arena` now defaults to the active arena season, links prior seasons, stamps prior-rank deltas on materialized league/individual standings, and surfaces biggest risers/fallers.
 - 2026-06-15: Mock market depth landed — every mocked NFL event now carries moneyline, spread, total, and player-prop markets with matching mock player stats, plus placement/settlement coverage for prop parlays.
 - 2026-06-15: Bankroll loop surface landed — league Bet now shows this-week balance, open exposure, open upside, best-case balance, and auditable reset/carryover opening context from the append-only ledger.
 - 2026-06-14: Bet slip placement landed — league Bet now builds singles/parlays from locked snapshot selections, previews stake/payout against live bankroll, submits through an authenticated idempotent placement route, and surfaces stale-line/balance errors.

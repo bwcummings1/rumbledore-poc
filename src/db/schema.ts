@@ -1662,6 +1662,8 @@ export const arenaStandings = pgTable(
       onDelete: "cascade",
     }),
     rank: integer("rank").notNull(),
+    previousRank: integer("previous_rank"),
+    rankDelta: integer("rank_delta").notNull().default(0),
     netPnlCents: integer("net_pnl_cents").notNull(),
     roiBps: integer("roi_bps").notNull(),
     currentBalanceCents: integer("current_balance_cents").notNull(),

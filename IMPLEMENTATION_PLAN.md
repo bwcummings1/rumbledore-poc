@@ -10,7 +10,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Build the bet slip for singles and parlays with odds locked at placement and stake validation. (specs/15)
 - [x] Surface the weekly rolling-minimum bankroll loop (this-week balance, win/lose, reset/carryover). (specs/15)
 - [x] Add market depth (moneyline/spread/total plus a player-props framework) over mocks. (specs/15)
-- [ ] Build the Arena with league-vs-league and individual leaderboards, seasons, and rank movement. (specs/15)
+- [x] Build the Arena with league-vs-league and individual leaderboards, seasons, and rank movement. (specs/15)
 - [ ] Add league head-to-head and rivalry framing to the Arena. (specs/15)
 - [ ] Wire settlement notifications and standings-swing signals. (specs/15)
 - [ ] Add the arena_recap AI content type so the cast narrates the betting rivalry. (specs/15, specs/12)

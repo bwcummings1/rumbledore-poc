@@ -12,9 +12,11 @@ import {
 } from "@/db/schema";
 
 const DEFAULT_LIMIT = 25;
+const DEFAULT_MOVEMENT_LIMIT = 3;
 const MAX_LIMIT = 100;
 
 type ArenaStandingKind = "league" | "individual";
+type ArenaSeasonStatus = "active" | "complete" | "upcoming";
 
 interface UserLeagueMetricRow {
   current_balance_cents: number | string | null;
@@ -70,8 +72,10 @@ export interface ArenaLeaderboardRow {
   displayName: string;
   id: string;
   netPnlCents: number;
+  previousRank: number | null;
   pushVoidSlipCount: number;
   rank: number;
+  rankDelta: number;
   roiBps: number;
   settledSlipCount: number;
   totalReturnCents: number;
@@ -82,16 +86,42 @@ export interface ArenaLeaderboardRow {
   wonSlipCount: number;
 }
 
+export interface ArenaSeasonSummary {
+  computedAt: string | null;
+  endsAt: string;
+  id: string;
+  isSelected: boolean;
+  name: string;
+  startsAt: string;
+  status: ArenaSeasonStatus;
+}
+
+export interface ArenaMover {
+  displayName: string;
+  id: string;
+  kind: ArenaStandingKind;
+  netPnlCents: number;
+  previousRank: number;
+  rank: number;
+  rankDelta: number;
+}
+
 export interface ArenaLeaderboardData {
   computedAt: string | null;
   individualStandings: ArenaLeaderboardRow[];
   leagueStandings: ArenaLeaderboardRow[];
+  movers: {
+    fallers: ArenaMover[];
+    risers: ArenaMover[];
+  };
   season: {
     endsAt: string;
     id: string;
     name: string;
     startsAt: string;
+    status: ArenaSeasonStatus;
   } | null;
+  seasons: ArenaSeasonSummary[];
 }
 
 export interface RebuildArenaStandingsResult extends ArenaLeaderboardData {
@@ -120,6 +150,13 @@ function requireDate(value: Date, field: string): Date {
   return new Date(value.getTime());
 }
 
+function dateISOString(value: Date | string | null): string | null {
+  if (!value) return null;
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
+}
+
 function validateSeasonWindow(startsAt: Date, endsAt: Date): void {
   if (startsAt.getTime() >= endsAt.getTime()) {
     throw appError(
@@ -133,6 +170,13 @@ function validateSeasonWindow(startsAt: Date, endsAt: Date): void {
 function boundedLimit(limit: number | undefined): number {
   if (limit === undefined) {
     return DEFAULT_LIMIT;
+  }
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
+}
+
+function boundedMovementLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return DEFAULT_MOVEMENT_LIMIT;
   }
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
 }
@@ -151,13 +195,31 @@ function percentageBps(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 10_000);
 }
 
-function seasonDto(season: ArenaSeason): ArenaLeaderboardData["season"] {
+function seasonDto(
+  season: ArenaSeason,
+  now = new Date(),
+): ArenaLeaderboardData["season"] {
   return {
     endsAt: season.endsAt.toISOString(),
     id: season.id,
     name: season.name,
     startsAt: season.startsAt.toISOString(),
+    status: seasonStatus(season, now),
   };
+}
+
+function seasonStatus(
+  season: Pick<ArenaSeason, "endsAt" | "startsAt">,
+  now = new Date(),
+): ArenaSeasonStatus {
+  const nowMs = now.getTime();
+  if (nowMs < season.startsAt.getTime()) {
+    return "upcoming";
+  }
+  if (nowMs >= season.endsAt.getTime()) {
+    return "complete";
+  }
+  return "active";
 }
 
 async function executeRows<T>(executor: Db | LeagueScopedTx, statement: SQL) {
@@ -184,13 +246,58 @@ async function requireArenaSeason(
   return season;
 }
 
-async function loadLatestArenaSeason(db: Db): Promise<ArenaSeason | null> {
-  const [season] = await db
+async function loadArenaSeasons(db: Db): Promise<ArenaSeason[]> {
+  return db
     .select()
     .from(arenaSeasons)
-    .orderBy(desc(arenaSeasons.startsAt), desc(arenaSeasons.createdAt))
-    .limit(1);
-  return season ?? null;
+    .orderBy(desc(arenaSeasons.startsAt), desc(arenaSeasons.createdAt));
+}
+
+function defaultArenaSeason(
+  seasons: readonly ArenaSeason[],
+  now = new Date(),
+): ArenaSeason | null {
+  const active = seasons.find(
+    (season) =>
+      season.startsAt.getTime() <= now.getTime() &&
+      now.getTime() < season.endsAt.getTime(),
+  );
+  return active ?? seasons[0] ?? null;
+}
+
+async function latestComputedAtBySeason(
+  db: Db,
+): Promise<Map<string, string | null>> {
+  const rows = await db
+    .select({
+      computedAt: sql<Date | null>`max(${arenaStandings.computedAt})`,
+      seasonId: arenaStandings.seasonId,
+    })
+    .from(arenaStandings)
+    .groupBy(arenaStandings.seasonId);
+
+  return new Map(
+    rows.map((row) => [row.seasonId, dateISOString(row.computedAt)]),
+  );
+}
+
+function seasonSummary(
+  season: ArenaSeason,
+  input: {
+    computedAt: string | null;
+    now?: Date;
+    selectedSeasonId: string | null;
+  },
+): ArenaSeasonSummary {
+  return {
+    computedAt: input.computedAt,
+    endsAt: season.endsAt.toISOString(),
+    id: season.id,
+    isSelected: season.id === input.selectedSeasonId,
+    name: season.name,
+    startsAt: season.startsAt.toISOString(),
+    status: seasonStatus(season, input.now),
+  };
 }
 
 async function loadUserLeagueMetrics(
@@ -526,6 +633,18 @@ export async function rebuildArenaStandings(
   ];
 
   const materializedRows = await db.transaction(async (tx) => {
+    const previousRows = await tx
+      .select({
+        kind: arenaStandings.kind,
+        rank: arenaStandings.rank,
+        subjectId: arenaStandings.subjectId,
+      })
+      .from(arenaStandings)
+      .where(eq(arenaStandings.seasonId, input.seasonId));
+    const previousRankBySubject = new Map(
+      previousRows.map((row) => [`${row.kind}:${row.subjectId}`, row.rank]),
+    );
+
     await tx
       .delete(arenaStandings)
       .where(eq(arenaStandings.seasonId, input.seasonId));
@@ -536,26 +655,32 @@ export async function rebuildArenaStandings(
     return tx
       .insert(arenaStandings)
       .values(
-        standings.map((row) => ({
-          computedAt,
-          currentBalanceCents: row.currentBalanceCents,
-          kind: row.kind,
-          leagueId: row.leagueId,
-          netPnlCents: row.netPnlCents,
-          pushVoidSlipCount: row.pushVoidSlipCount,
-          rank: row.rank,
-          roiBps: row.roiBps,
-          seasonId: input.seasonId,
-          settledSlipCount: row.settledSlipCount,
-          subjectId: row.subjectId,
-          totalReturnCents: row.totalReturnCents,
-          totalStakeCents: row.totalStakeCents,
-          userId: row.userId,
-          weeksPlayed: row.weeksPlayed,
-          weeksSurvived: row.weeksSurvived,
-          winRateBps: row.winRateBps,
-          wonSlipCount: row.wonSlipCount,
-        })),
+        standings.map((row) => {
+          const previousRank =
+            previousRankBySubject.get(`${row.kind}:${row.subjectId}`) ?? null;
+          return {
+            computedAt,
+            currentBalanceCents: row.currentBalanceCents,
+            kind: row.kind,
+            leagueId: row.leagueId,
+            netPnlCents: row.netPnlCents,
+            previousRank,
+            pushVoidSlipCount: row.pushVoidSlipCount,
+            rank: row.rank,
+            rankDelta: previousRank === null ? 0 : previousRank - row.rank,
+            roiBps: row.roiBps,
+            seasonId: input.seasonId,
+            settledSlipCount: row.settledSlipCount,
+            subjectId: row.subjectId,
+            totalReturnCents: row.totalReturnCents,
+            totalStakeCents: row.totalStakeCents,
+            userId: row.userId,
+            weeksPlayed: row.weeksPlayed,
+            weeksSurvived: row.weeksSurvived,
+            winRateBps: row.winRateBps,
+            wonSlipCount: row.wonSlipCount,
+          };
+        }),
       )
       .returning();
   });
@@ -569,7 +694,14 @@ export async function rebuildArenaStandings(
     ),
     leagueStandings: await standingsForKind(db, input.seasonId, "league"),
     materializedRows,
+    movers: await movementForSeason(db, input.seasonId),
     season: seasonDto(computed.season),
+    seasons: [
+      seasonSummary(computed.season, {
+        computedAt: computedAt.toISOString(),
+        selectedSeasonId: computed.season.id,
+      }),
+    ],
   };
 }
 
@@ -605,10 +737,13 @@ async function standingsForKind(
   const rows = await db
     .select({
       currentBalanceCents: arenaStandings.currentBalanceCents,
+      kind: arenaStandings.kind,
       leagueName: leagues.name,
       netPnlCents: arenaStandings.netPnlCents,
+      previousRank: arenaStandings.previousRank,
       pushVoidSlipCount: arenaStandings.pushVoidSlipCount,
       rank: arenaStandings.rank,
+      rankDelta: arenaStandings.rankDelta,
       roiBps: arenaStandings.roiBps,
       settledSlipCount: arenaStandings.settledSlipCount,
       subjectId: arenaStandings.subjectId,
@@ -638,8 +773,10 @@ async function standingsForKind(
         : (row.userDisplayName ?? row.userEmail ?? "Unknown player"),
     id: row.subjectId,
     netPnlCents: row.netPnlCents,
+    previousRank: row.previousRank,
     pushVoidSlipCount: row.pushVoidSlipCount,
     rank: row.rank,
+    rankDelta: row.rankDelta,
     roiBps: row.roiBps,
     settledSlipCount: row.settledSlipCount,
     totalReturnCents: row.totalReturnCents,
@@ -651,28 +788,98 @@ async function standingsForKind(
   }));
 }
 
+async function movementForSeason(
+  db: Db,
+  seasonId: string,
+  input: { limit?: number } = {},
+): Promise<ArenaLeaderboardData["movers"]> {
+  const limit = boundedMovementLimit(input.limit);
+  const rows = await db
+    .select({
+      kind: arenaStandings.kind,
+      leagueName: leagues.name,
+      netPnlCents: arenaStandings.netPnlCents,
+      previousRank: arenaStandings.previousRank,
+      rank: arenaStandings.rank,
+      rankDelta: arenaStandings.rankDelta,
+      subjectId: arenaStandings.subjectId,
+      userDisplayName: users.displayName,
+      userEmail: users.email,
+    })
+    .from(arenaStandings)
+    .leftJoin(leagues, eq(leagues.id, arenaStandings.leagueId))
+    .leftJoin(users, eq(users.id, arenaStandings.userId))
+    .where(
+      and(
+        eq(arenaStandings.seasonId, seasonId),
+        sql`${arenaStandings.rankDelta} <> 0`,
+        sql`${arenaStandings.previousRank} is not null`,
+      ),
+    )
+    .orderBy(desc(sql<number>`abs(${arenaStandings.rankDelta})`))
+    .limit(MAX_LIMIT);
+
+  const movers = rows
+    .filter((row) => row.previousRank !== null)
+    .map((row) => ({
+      displayName:
+        row.kind === "league"
+          ? (row.leagueName ?? "Unknown league")
+          : (row.userDisplayName ?? row.userEmail ?? "Unknown player"),
+      id: row.subjectId,
+      kind: row.kind,
+      netPnlCents: row.netPnlCents,
+      previousRank: row.previousRank as number,
+      rank: row.rank,
+      rankDelta: row.rankDelta,
+    }));
+
+  return {
+    fallers: movers
+      .filter((row) => row.rankDelta < 0)
+      .sort((a, b) => a.rankDelta - b.rankDelta || a.rank - b.rank)
+      .slice(0, limit),
+    risers: movers
+      .filter((row) => row.rankDelta > 0)
+      .sort((a, b) => b.rankDelta - a.rankDelta || a.rank - b.rank)
+      .slice(0, limit),
+  };
+}
+
 export async function getArenaLeaderboardData(
   db: Db,
-  input: { limit?: number; seasonId?: string } = {},
+  input: {
+    limit?: number;
+    movementLimit?: number;
+    now?: Date;
+    seasonId?: string;
+  } = {},
 ): Promise<ArenaLeaderboardData> {
+  const now = input.now ? requireDate(input.now, "now") : new Date();
+  const allSeasons = await loadArenaSeasons(db);
   const season = input.seasonId
-    ? await requireArenaSeason(db, input.seasonId)
-    : await loadLatestArenaSeason(db);
+    ? (allSeasons.find((candidate) => candidate.id === input.seasonId) ??
+      (await requireArenaSeason(db, input.seasonId)))
+    : defaultArenaSeason(allSeasons, now);
+  const computedAtBySeason = await latestComputedAtBySeason(db);
+  const seasons = allSeasons.map((candidate) =>
+    seasonSummary(candidate, {
+      computedAt: computedAtBySeason.get(candidate.id) ?? null,
+      now,
+      selectedSeasonId: season?.id ?? null,
+    }),
+  );
+
   if (!season) {
     return {
       computedAt: null,
       individualStandings: [],
       leagueStandings: [],
+      movers: { fallers: [], risers: [] },
       season: null,
+      seasons,
     };
   }
-
-  const [latest] = await db
-    .select({ computedAt: arenaStandings.computedAt })
-    .from(arenaStandings)
-    .where(eq(arenaStandings.seasonId, season.id))
-    .orderBy(desc(arenaStandings.computedAt))
-    .limit(1);
 
   const leagueStandings = await standingsForKind(db, season.id, "league", {
     limit: input.limit,
@@ -685,9 +892,13 @@ export async function getArenaLeaderboardData(
   );
 
   return {
-    computedAt: latest?.computedAt.toISOString() ?? null,
+    computedAt: computedAtBySeason.get(season.id) ?? null,
     individualStandings,
     leagueStandings,
-    season: seasonDto(season),
+    movers: await movementForSeason(db, season.id, {
+      limit: input.movementLimit,
+    }),
+    season: seasonDto(season, now),
+    seasons,
   };
 }

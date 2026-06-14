@@ -10,7 +10,20 @@ export const metadata: Metadata = {
   description: "Cross-league paper-betting leaderboards.",
 };
 
-export default async function ArenaPage() {
-  const data = await getArenaLeaderboardData(getDb());
+interface ArenaPageProps {
+  searchParams?: Promise<{
+    seasonId?: string | string[];
+  }>;
+}
+
+function firstSearchValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+export default async function ArenaPage({ searchParams }: ArenaPageProps) {
+  const params = await searchParams;
+  const data = await getArenaLeaderboardData(getDb(), {
+    seasonId: firstSearchValue(params?.seasonId) ?? undefined,
+  });
   return <ArenaLeaderboardView data={data} />;
 }

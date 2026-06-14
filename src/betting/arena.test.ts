@@ -47,15 +47,20 @@ async function seedBettingWeek(
     stakeCents: number;
     status: "lost" | "push" | "void" | "won";
     tag: string;
+    settledDay?: number;
     returnCents?: number;
+    weekEndDay?: number;
+    weekStartDay?: number;
   },
 ) {
+  const weekStartDay = input.weekStartDay ?? 1;
+  const weekEndDay = input.weekEndDay ?? 8;
   const opened = await openBankrollWeek(handle.db, {
     floorCents: input.floorCents,
     leagueId: input.leagueId,
     userId: input.userId,
-    weekEnd: day(8),
-    weekStart: day(1),
+    weekEnd: day(weekEndDay),
+    weekStart: day(weekStartDay),
   });
 
   const [slip] = await withLeagueContext(handle.db, input.leagueId, (tx) =>
@@ -71,7 +76,7 @@ async function seedBettingWeek(
         leagueId: input.leagueId,
         potentialPayoutCents: input.returnCents ?? input.stakeCents * 2,
         requestHash: `${marker}:${input.tag}:request`,
-        settledAt: day(4),
+        settledAt: day(input.settledDay ?? weekStartDay + 3),
         stakeCents: input.stakeCents,
         status: input.status,
         userId: input.userId,
@@ -325,5 +330,115 @@ describe("arena leaderboard materialization", () => {
       .from(arenaStandings)
       .where(eq(arenaStandings.seasonId, season.id));
     expect(persisted).toHaveLength(5);
+  });
+
+  it("stamps rank movement against the prior materialized standings", async () => {
+    const season = await ensureArenaSeason(handle.db, {
+      endsAt: day(20),
+      name: `${marker}-movement`,
+      startsAt: day(10),
+    });
+
+    await seedBettingWeek({
+      floorCents: 100_000,
+      leagueId: leagueA.id,
+      returnCents: 20_000,
+      stakeCents: 10_000,
+      status: "won",
+      tag: "movement-alpha-small",
+      userId: userAlpha.id,
+      weekEndDay: 17,
+      weekStartDay: 10,
+    });
+    await seedBettingWeek({
+      floorCents: 100_000,
+      leagueId: leagueB.id,
+      returnCents: 30_000,
+      stakeCents: 10_000,
+      status: "won",
+      tag: "movement-gamma-lead",
+      userId: userGamma.id,
+      weekEndDay: 17,
+      weekStartDay: 10,
+    });
+
+    const first = await rebuildArenaStandings(handle.db, {
+      computedAt: day(12),
+      seasonId: season.id,
+    });
+    expect(
+      first.leagueStandings.map((row) => ({
+        delta: row.rankDelta,
+        name: row.displayName,
+        previous: row.previousRank,
+        rank: row.rank,
+      })),
+    ).toEqual([
+      { delta: 0, name: "Arena League B", previous: null, rank: 1 },
+      { delta: 0, name: "Arena League A", previous: null, rank: 2 },
+    ]);
+
+    await seedBettingWeek({
+      floorCents: 100_000,
+      leagueId: leagueA.id,
+      returnCents: 100_000,
+      stakeCents: 10_000,
+      status: "won",
+      tag: "movement-beta-swing",
+      userId: userBeta.id,
+      weekEndDay: 17,
+      weekStartDay: 10,
+    });
+
+    await rebuildArenaStandings(handle.db, {
+      computedAt: day(13),
+      seasonId: season.id,
+    });
+    const leaderboard = await getArenaLeaderboardData(handle.db, {
+      now: day(14),
+      seasonId: season.id,
+    });
+
+    expect(leaderboard.season?.status).toBe("active");
+    expect(leaderboard.seasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: season.id,
+          isSelected: true,
+          status: "active",
+        }),
+      ]),
+    );
+    expect(
+      leaderboard.leagueStandings.map((row) => ({
+        delta: row.rankDelta,
+        name: row.displayName,
+        previous: row.previousRank,
+        rank: row.rank,
+      })),
+    ).toEqual([
+      { delta: 1, name: "Arena League A", previous: 2, rank: 1 },
+      { delta: -1, name: "Arena League B", previous: 1, rank: 2 },
+    ]);
+    expect(leaderboard.movers.risers).toEqual([
+      expect.objectContaining({
+        displayName: "Arena League A",
+        kind: "league",
+        previousRank: 2,
+        rank: 1,
+        rankDelta: 1,
+      }),
+    ]);
+    expect(leaderboard.movers.fallers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          displayName: "Arena League B",
+          kind: "league",
+          previousRank: 1,
+          rank: 2,
+          rankDelta: -1,
+        }),
+      ]),
+    );
   });
 });
