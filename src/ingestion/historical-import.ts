@@ -4,6 +4,7 @@ import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   type HistoricalImportCheckpoint,
+  type HistoricalImportCheckpointCursor,
   historicalImportCheckpoints,
   leagues,
 } from "@/db/schema";
@@ -99,6 +100,104 @@ function normalizeRequestedSeasons({
     .slice(0, limit);
 }
 
+function normalizeSeasonList(seasons: readonly number[]): number[] {
+  return [...new Set(seasons)]
+    .filter((season) => Number.isInteger(season) && season > 0)
+    .sort((left, right) => right - left);
+}
+
+function checkpointCursor(
+  checkpoint: HistoricalImportCheckpoint | undefined,
+): HistoricalImportCheckpointCursor {
+  return checkpoint?.cursor ?? {};
+}
+
+function buildCheckpointCursor({
+  completedSeasons,
+  exhaustedBeforeSeason,
+  requestedSeasons,
+}: {
+  completedSeasons: readonly number[];
+  exhaustedBeforeSeason?: number;
+  requestedSeasons: readonly number[];
+}): HistoricalImportCheckpointCursor {
+  return {
+    completedSeasons: normalizeSeasonList(completedSeasons),
+    requestedSeasons: normalizeSeasonList(requestedSeasons),
+    ...(exhaustedBeforeSeason === undefined
+      ? {}
+      : {
+          exhaustedBeforeSeason,
+          exhaustionReason: "provider_empty" as const,
+        }),
+  };
+}
+
+function completedSeasonsFor(
+  checkpoint: HistoricalImportCheckpoint | undefined,
+  seasons: readonly number[],
+): Set<number> {
+  if (!checkpoint) {
+    return new Set();
+  }
+
+  const requested = new Set(seasons);
+  const cursorCompleted = normalizeSeasonList(
+    checkpointCursor(checkpoint).completedSeasons ?? [],
+  ).filter((season) => requested.has(season));
+  if (cursorCompleted.length > 0) {
+    return new Set(cursorCompleted);
+  }
+
+  if (
+    !checkpoint.lastCompletedSeason ||
+    checkpoint.startSeason !== seasons[0]
+  ) {
+    return new Set();
+  }
+
+  const completedThroughIndex = seasons.indexOf(checkpoint.lastCompletedSeason);
+  if (completedThroughIndex !== -1) {
+    return new Set(seasons.slice(0, completedThroughIndex + 1));
+  }
+
+  const oldestRequested = seasons.at(-1);
+  if (
+    checkpoint.status === "completed" &&
+    oldestRequested !== undefined &&
+    checkpoint.lastCompletedSeason <= oldestRequested
+  ) {
+    return new Set(seasons);
+  }
+
+  return new Set();
+}
+
+function firstIncompleteSeason(
+  seasons: readonly number[],
+  completedSeasons: ReadonlySet<number>,
+): number | null {
+  return seasons.find((season) => !completedSeasons.has(season)) ?? null;
+}
+
+function isCompleteForRequest(
+  checkpoint: HistoricalImportCheckpoint | undefined,
+  seasons: readonly number[],
+  completedSeasons: ReadonlySet<number>,
+): checkpoint is HistoricalImportCheckpoint {
+  if (!checkpoint || checkpoint.status !== "completed") {
+    return false;
+  }
+
+  const cursor = checkpointCursor(checkpoint);
+  return seasons.every(
+    (season) =>
+      completedSeasons.has(season) ||
+      (cursor.exhaustedBeforeSeason !== undefined &&
+        season <= cursor.exhaustedBeforeSeason),
+  );
+}
+
 async function ensureLeagueRoot(
   db: Db,
   ref: ProviderLeagueRef,
@@ -186,6 +285,10 @@ async function upsertCheckpoint({
     const [checkpoint] = await tx
       .insert(historicalImportCheckpoints)
       .values({
+        cursor: buildCheckpointCursor({
+          completedSeasons: [],
+          requestedSeasons: seasons,
+        }),
         endSeason: seasons.at(-1) ?? ref.season,
         errorCode: null,
         errorMessage: null,
@@ -209,6 +312,7 @@ async function upsertCheckpoint({
           endSeason: sql`excluded.end_season`,
           errorCode: null,
           errorMessage: null,
+          cursor: sql`excluded.cursor`,
           lastCompletedSeason: null,
           nextSeason: sql`excluded.next_season`,
           seasonsCompleted: 0,
@@ -228,21 +332,36 @@ async function upsertCheckpoint({
   });
 }
 
-async function markCheckpointRunning({
+async function markCheckpointRangeRunning({
+  completedSeasons,
   db,
   leagueId,
+  nextSeason,
   ref,
+  seasons,
 }: {
+  completedSeasons: readonly number[];
   db: Db;
   leagueId: string;
+  nextSeason: number | null;
   ref: ProviderLeagueRef;
-}): Promise<void> {
-  await withLeagueContext(db, leagueId, (tx) =>
-    tx
+  seasons: readonly number[];
+}): Promise<HistoricalImportCheckpoint> {
+  return withLeagueContext(db, leagueId, async (tx) => {
+    const [checkpoint] = await tx
       .update(historicalImportCheckpoints)
       .set({
+        cursor: buildCheckpointCursor({
+          completedSeasons,
+          requestedSeasons: seasons,
+        }),
+        endSeason: seasons.at(-1) ?? ref.season,
         errorCode: null,
         errorMessage: null,
+        nextSeason,
+        seasonsCompleted: completedSeasons.length,
+        seasonsTotal: seasons.length,
+        startSeason: seasons[0] ?? ref.season,
         status: "running",
         updatedAt: new Date(),
       })
@@ -252,37 +371,50 @@ async function markCheckpointRunning({
           eq(historicalImportCheckpoints.provider, ref.provider),
           eq(historicalImportCheckpoints.providerLeagueId, ref.providerId),
         ),
-      ),
-  );
+      )
+      .returning();
+
+    if (!checkpoint) {
+      throw new Error("historical import checkpoint was not updated");
+    }
+
+    return checkpoint;
+  });
 }
 
 async function markCheckpointProgress({
-  completedCount,
+  completedSeasons,
   db,
   lastCompletedSeason,
   leagueId,
   nextSeason,
   ref,
-  seasonsTotal,
+  seasons,
 }: {
-  completedCount: number;
+  completedSeasons: readonly number[];
   db: Db;
   lastCompletedSeason: number;
   leagueId: string;
   nextSeason: number | null;
   ref: ProviderLeagueRef;
-  seasonsTotal: number;
+  seasons: readonly number[];
 }): Promise<HistoricalImportCheckpoint> {
   return withLeagueContext(db, leagueId, async (tx) => {
     const [checkpoint] = await tx
       .update(historicalImportCheckpoints)
       .set({
+        cursor: buildCheckpointCursor({
+          completedSeasons,
+          requestedSeasons: seasons,
+        }),
+        endSeason: seasons.at(-1) ?? ref.season,
         errorCode: null,
         errorMessage: null,
         lastCompletedSeason,
         nextSeason,
-        seasonsCompleted: completedCount,
-        seasonsTotal,
+        seasonsCompleted: completedSeasons.length,
+        seasonsTotal: seasons.length,
+        startSeason: seasons[0] ?? ref.season,
         status: nextSeason === null ? "completed" : "running",
         updatedAt: new Date(),
       })
@@ -336,28 +468,58 @@ async function markCheckpointFailed({
   );
 }
 
-function checkpointMatches(
-  checkpoint: HistoricalImportCheckpoint | undefined,
-  seasons: readonly number[],
-): checkpoint is HistoricalImportCheckpoint {
-  return (
-    checkpoint !== undefined &&
-    checkpoint.startSeason === seasons[0] &&
-    checkpoint.endSeason === seasons.at(-1) &&
-    checkpoint.seasonsTotal === seasons.length
-  );
-}
+async function markCheckpointExhausted({
+  completedSeasons,
+  db,
+  exhaustedBeforeSeason,
+  leagueId,
+  lastCompletedSeason,
+  ref,
+  seasons,
+}: {
+  completedSeasons: readonly number[];
+  db: Db;
+  exhaustedBeforeSeason: number;
+  leagueId: string;
+  lastCompletedSeason: number | null;
+  ref: ProviderLeagueRef;
+  seasons: readonly number[];
+}): Promise<HistoricalImportCheckpoint> {
+  return withLeagueContext(db, leagueId, async (tx) => {
+    const [checkpoint] = await tx
+      .update(historicalImportCheckpoints)
+      .set({
+        cursor: buildCheckpointCursor({
+          completedSeasons,
+          exhaustedBeforeSeason,
+          requestedSeasons: seasons,
+        }),
+        endSeason:
+          completedSeasons.at(-1) ?? seasons[0] ?? exhaustedBeforeSeason,
+        errorCode: null,
+        errorMessage: null,
+        lastCompletedSeason,
+        nextSeason: null,
+        seasonsCompleted: completedSeasons.length,
+        seasonsTotal: completedSeasons.length,
+        status: "completed",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(historicalImportCheckpoints.leagueId, leagueId),
+          eq(historicalImportCheckpoints.provider, ref.provider),
+          eq(historicalImportCheckpoints.providerLeagueId, ref.providerId),
+        ),
+      )
+      .returning();
 
-function resumeIndex(
-  checkpoint: HistoricalImportCheckpoint | undefined,
-  seasons: readonly number[],
-): number {
-  if (!checkpoint?.lastCompletedSeason) {
-    return 0;
-  }
+    if (!checkpoint) {
+      throw new Error("historical import checkpoint was not updated");
+    }
 
-  const index = seasons.indexOf(checkpoint.lastCompletedSeason);
-  return index === -1 ? 0 : Math.min(index + 1, seasons.length);
+    return checkpoint;
+  });
 }
 
 async function persistBundle({
@@ -418,12 +580,15 @@ export async function importLeagueHistory<
   });
   const league = await ensureLeagueRoot(db, ref);
   const checkpoint = await selectCheckpoint({ db, leagueId: league.id, ref });
-  const matchesExistingCheckpoint = checkpointMatches(checkpoint, seasons);
+  const canReuseCheckpoint = checkpoint?.startSeason === seasons[0];
+  const completedSeasons = completedSeasonsFor(
+    canReuseCheckpoint ? checkpoint : undefined,
+    seasons,
+  );
 
   if (
-    matchesExistingCheckpoint &&
-    checkpoint?.status === "completed" &&
-    checkpoint.seasonsCompleted >= seasons.length
+    canReuseCheckpoint &&
+    isCompleteForRequest(checkpoint, seasons, completedSeasons)
   ) {
     const completedCheckpoint = checkpoint;
     return ok({
@@ -454,12 +619,18 @@ export async function importLeagueHistory<
   }
 
   let activeCheckpoint: HistoricalImportCheckpoint;
-  if (matchesExistingCheckpoint) {
+  if (canReuseCheckpoint) {
     if (!checkpoint) {
       throw new Error("historical import checkpoint was not loaded");
     }
-    await markCheckpointRunning({ db, leagueId: league.id, ref });
-    activeCheckpoint = checkpoint;
+    activeCheckpoint = await markCheckpointRangeRunning({
+      completedSeasons: [...completedSeasons],
+      db,
+      leagueId: league.id,
+      nextSeason: firstIncompleteSeason(seasons, completedSeasons),
+      ref,
+      seasons,
+    });
   } else {
     activeCheckpoint = await upsertCheckpoint({
       db,
@@ -470,10 +641,8 @@ export async function importLeagueHistory<
     });
   }
 
-  const startIndex = matchesExistingCheckpoint
-    ? resumeIndex(activeCheckpoint, seasons)
-    : 0;
-  const skipped = seasons.slice(0, startIndex);
+  const completed = completedSeasonsFor(activeCheckpoint, seasons);
+  const skipped = seasons.filter((season) => completed.has(season));
   const imported: number[] = [];
   let teams = emptyStats();
   let members = emptyStats();
@@ -482,8 +651,12 @@ export async function importLeagueHistory<
   let transactions = emptyStats();
   let latestCheckpoint = activeCheckpoint;
 
-  for (let index = startIndex; index < seasons.length; index += 1) {
+  for (let index = 0; index < seasons.length; index += 1) {
     const season = seasons[index];
+    if (completed.has(season)) {
+      continue;
+    }
+
     const history = await provider.getHistory(session, ref, {
       seasons: [season],
     });
@@ -497,6 +670,19 @@ export async function importLeagueHistory<
         ref,
       });
       return err(history.error);
+    }
+
+    if (history.value.length === 0) {
+      latestCheckpoint = await markCheckpointExhausted({
+        completedSeasons: [...completed],
+        db,
+        exhaustedBeforeSeason: season,
+        lastCompletedSeason: completed.size > 0 ? Math.min(...completed) : null,
+        leagueId: league.id,
+        ref,
+        seasons,
+      });
+      break;
     }
 
     for (const bundle of history.value) {
@@ -523,14 +709,15 @@ export async function importLeagueHistory<
     }
 
     imported.push(season);
+    completed.add(season);
     latestCheckpoint = await markCheckpointProgress({
-      completedCount: index + 1,
+      completedSeasons: [...completed],
       db,
       lastCompletedSeason: season,
       leagueId: league.id,
-      nextSeason: seasons[index + 1] ?? null,
+      nextSeason: firstIncompleteSeason(seasons, completed),
       ref,
-      seasonsTotal: seasons.length,
+      seasons,
     });
   }
 

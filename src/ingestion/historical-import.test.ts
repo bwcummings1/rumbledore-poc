@@ -196,7 +196,13 @@ function bundleFor(
   };
 }
 
-function providerFor({ failOnSeason }: { failOnSeason?: number } = {}): {
+function providerFor({
+  emptyOnSeason,
+  failOnSeason,
+}: {
+  emptyOnSeason?: number;
+  failOnSeason?: number;
+} = {}): {
   calls: number[];
   provider: HistoricalImportProvider<FixtureSession>;
 } {
@@ -214,6 +220,9 @@ function providerFor({ failOnSeason }: { failOnSeason?: number } = {}): {
         calls.push(season);
         if (season === failOnSeason) {
           return err(new ProviderBlockedError("espn"));
+        }
+        if (season === emptyOnSeason) {
+          return ok([]);
         }
 
         return ok([bundleFor(ref, season)]);
@@ -432,6 +441,160 @@ describe("importLeagueHistory", () => {
       total: 0,
       changed: 0,
       unchanged: 0,
+    });
+  });
+
+  it("extends a completed short checkpoint toward full depth without reprocessing completed seasons", async () => {
+    const ref = fixtureRef("extend");
+    const shallowProvider = providerFor();
+
+    const shallow = await importLeagueHistory({
+      db: handle.db,
+      provider: shallowProvider.provider,
+      ref,
+      seasons: [2025, 2024],
+      session: fixtureSession,
+    });
+
+    expect(shallow.ok).toBe(true);
+    if (!shallow.ok) throw shallow.error;
+    expect(shallowProvider.calls).toEqual([2025, 2024]);
+
+    const deeperProvider = providerFor();
+    const deeper = await importLeagueHistory({
+      db: handle.db,
+      provider: deeperProvider.provider,
+      ref,
+      seasons: [2025, 2024, 2023, 2022],
+      session: fixtureSession,
+    });
+
+    expect(deeper.ok).toBe(true);
+    if (!deeper.ok) throw deeper.error;
+    expect(deeperProvider.calls).toEqual([2023, 2022]);
+    expect(deeper.value.seasons).toEqual({
+      requested: [2025, 2024, 2023, 2022],
+      imported: [2023, 2022],
+      skipped: [2025, 2024],
+    });
+    expect(deeper.value.teams).toEqual({ total: 4, changed: 4, unchanged: 0 });
+    expect(deeper.value.checkpoint).toMatchObject({
+      status: "completed",
+      lastCompletedSeason: 2022,
+      nextSeason: null,
+      seasonsCompleted: 4,
+      seasonsTotal: 4,
+    });
+
+    const rows = await selectHistoricalRows(deeper.value.league.id);
+    expect(rows.teams).toHaveLength(8);
+    expect(rows.matchups).toHaveLength(4);
+    expect(rows.checkpoint?.cursor).toMatchObject({
+      completedSeasons: [2025, 2024, 2023, 2022],
+      requestedSeasons: [2025, 2024, 2023, 2022],
+    });
+  });
+
+  it("imports the default ten-season history depth when no explicit season list is supplied", async () => {
+    const ref = fixtureRef("default-depth");
+    const provider = providerFor();
+
+    const result = await importLeagueHistory({
+      db: handle.db,
+      provider: provider.provider,
+      ref,
+      session: fixtureSession,
+    });
+
+    const expectedSeasons = [
+      2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016,
+    ];
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(provider.calls).toEqual(expectedSeasons);
+    expect(result.value.seasons).toEqual({
+      requested: expectedSeasons,
+      imported: expectedSeasons,
+      skipped: [],
+    });
+    expect(result.value.teams).toEqual({
+      total: 20,
+      changed: 20,
+      unchanged: 0,
+    });
+    expect(result.value.transactions).toEqual({
+      total: 10,
+      changed: 10,
+      unchanged: 0,
+    });
+    expect(result.value.checkpoint).toMatchObject({
+      status: "completed",
+      lastCompletedSeason: 2016,
+      nextSeason: null,
+      seasonsCompleted: 10,
+      seasonsTotal: 10,
+    });
+  });
+
+  it("stops at provider history exhaustion and remembers not to poll older seasons again", async () => {
+    const ref = fixtureRef("exhausted");
+    const limitedProvider = providerFor({ emptyOnSeason: 2024 });
+
+    const limited = await importLeagueHistory({
+      db: handle.db,
+      provider: limitedProvider.provider,
+      ref,
+      seasons: [2025, 2024, 2023],
+      session: fixtureSession,
+    });
+
+    expect(limited.ok).toBe(true);
+    if (!limited.ok) throw limited.error;
+    expect(limitedProvider.calls).toEqual([2025, 2024]);
+    expect(limited.value.seasons).toEqual({
+      requested: [2025, 2024, 2023],
+      imported: [2025],
+      skipped: [],
+    });
+    expect(limited.value.checkpoint).toMatchObject({
+      status: "completed",
+      lastCompletedSeason: 2025,
+      nextSeason: null,
+      seasonsCompleted: 1,
+      seasonsTotal: 1,
+    });
+
+    const rows = await selectHistoricalRows(limited.value.league.id);
+    expect(rows.teams).toHaveLength(2);
+    expect(rows.coverage.map((coverage) => coverage.season)).toEqual(
+      expect.arrayContaining([2025]),
+    );
+    expect(rows.coverage.some((coverage) => coverage.season === 2024)).toBe(
+      false,
+    );
+    expect(rows.checkpoint?.cursor).toMatchObject({
+      completedSeasons: [2025],
+      exhaustedBeforeSeason: 2024,
+      exhaustionReason: "provider_empty",
+      requestedSeasons: [2025, 2024, 2023],
+    });
+
+    const rerunProvider = providerFor();
+    const rerun = await importLeagueHistory({
+      db: handle.db,
+      provider: rerunProvider.provider,
+      ref,
+      seasons: [2025, 2024, 2023],
+      session: fixtureSession,
+    });
+
+    expect(rerun.ok).toBe(true);
+    if (!rerun.ok) throw rerun.error;
+    expect(rerunProvider.calls).toEqual([]);
+    expect(rerun.value.seasons).toEqual({
+      requested: [2025, 2024, 2023],
+      imported: [],
+      skipped: [2025, 2024, 2023],
     });
   });
 

@@ -14,7 +14,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 
 ### B. Data-foundation depth (bedrock — see specs/14)
 - [x] Achieve ESPN/Sleeper/Yahoo normalized-model parity with honest partial-data handling. (specs/14)
-- [ ] Implement full resumable ~10-year canonical history depth, idempotent. (specs/14)
+- [x] Implement full resumable ~10-year canonical history depth, idempotent. (specs/14)
 - [ ] Handle co-owner teams correctly, fixing the identity over-merge with per-slot person scoping. (specs/14)
 - [ ] Derive playoff/championship flags from provider settings/finals, fixing the hardcoded-false bug. (specs/14)
 - [ ] Handle dynasty/keeper, divisions, and varied/IDP scoring per the edge-case table. (specs/14)
@@ -49,4 +49,4 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [ ] **[correctness/MED] Bet placement reads balance before the week lock** — acquire `lockWeekLedger` before the balance read. `src/betting/placement.ts`.
 
 ## Discoveries / bugs (loop appends here)
-- (none yet this phase)
+- [ ] **[observability/LOW] Historical import progress is DB-queryable but not published to realtime** — checkpoints/data coverage expose progress, but onboarding cannot subscribe to a live history-build channel yet.

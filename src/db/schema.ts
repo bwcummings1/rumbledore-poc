@@ -613,6 +613,13 @@ export const fantasyTransactions = pgTable(
   ],
 );
 
+export interface HistoricalImportCheckpointCursor {
+  completedSeasons?: number[];
+  exhaustedBeforeSeason?: number;
+  exhaustionReason?: "provider_empty";
+  requestedSeasons?: number[];
+}
+
 export const historicalImportCheckpoints = pgTable(
   "historical_import_checkpoints",
   {
@@ -631,6 +638,10 @@ export const historicalImportCheckpoints = pgTable(
     seasonsCompleted: integer("seasons_completed").notNull().default(0),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
+    cursor: jsonb("cursor")
+      .$type<HistoricalImportCheckpointCursor>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ...timestamps,
   },
   (table) => [
