@@ -12,6 +12,7 @@ import {
   members,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import { articleDek, articleHasTag, articleTags } from "./article-metadata";
 import { editorialImportance, publicationRankScore } from "./front";
 import {
   LEAGUE_PUBLICATION_SECTIONS,
@@ -35,6 +36,7 @@ export interface LeagueFeedItem {
   kind: LeagueFeedKind;
   title: string;
   summary: string;
+  dek?: string;
   sourceLabel: string;
   sourceUrl: string;
   authorPersona: AiPersona | null;
@@ -42,6 +44,7 @@ export interface LeagueFeedItem {
   relevanceReason: string;
   relevanceScore: number;
   section: PublicationSection<LeaguePublicationSectionId>;
+  tags?: string[];
   editorialImportance?: number;
   matchedEntities: LeagueFeedMatchedEntity[];
 }
@@ -55,6 +58,7 @@ export interface LeagueFeedData {
     season: number;
   };
   activeSection: PublicationSection<LeaguePublicationSectionId> | null;
+  activeTag?: string | null;
   sections: readonly PublicationSection<LeaguePublicationSectionId>[];
   userRole: Member["role"];
   items: LeagueFeedItem[];
@@ -224,6 +228,7 @@ export async function getLeagueFeedData(
     leagueId: string;
     limit?: number;
     sectionId?: LeaguePublicationSectionId;
+    tag?: string | null;
     userId: string;
     userRole?: Member["role"];
   },
@@ -337,6 +342,7 @@ export async function getLeagueFeedData(
       return {
         authorPersona: row.authorPersona,
         contentItemId: row.id,
+        dek: articleDek(row.metadata, summary),
         id: row.id,
         kind: row.kind,
         editorialImportance: editorialImportance(row.metadata),
@@ -355,6 +361,7 @@ export async function getLeagueFeedData(
         sourceLabel: row.kind === "blog" ? "League blog" : "League activity",
         sourceUrl: "",
         summary,
+        tags: articleTags(row.metadata),
         title,
       };
     });
@@ -366,6 +373,7 @@ export async function getLeagueFeedData(
       return {
         authorPersona: null,
         contentItemId: row.contentItemId,
+        dek: row.framingSummary ?? articleDek(row.metadata, row.summary),
         id: row.id,
         kind: "news",
         editorialImportance: editorialImportance(row.metadata),
@@ -384,18 +392,21 @@ export async function getLeagueFeedData(
         sourceLabel: row.source ?? "Central news",
         sourceUrl: row.sourceUrl ?? "",
         summary,
+        tags: articleTags(row.metadata),
         title,
       };
     });
 
     return sortFeedItems([...leagueItems, ...centralItems])
       .filter((item) => !activeSection || item.section.id === activeSection.id)
+      .filter((item) => articleHasTag(item.tags, input.tag))
       .slice(0, limit);
   });
 
   return {
     data: {
       activeSection,
+      activeTag: input.tag?.trim() || null,
       items: scoped,
       league,
       sections: LEAGUE_PUBLICATION_SECTIONS,

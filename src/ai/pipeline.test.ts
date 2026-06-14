@@ -230,7 +230,7 @@ describe("generateLeagueBlogPost", () => {
         }`,
         title: "New league post",
         type: "league.blog.published",
-        url: `/leagues/${league.id}/posts/${
+        url: `/leagues/${league.id}/press/${
           first.status === "published"
             ? first.contentItemId
             : expect.any(String)
@@ -247,7 +247,7 @@ describe("generateLeagueBlogPost", () => {
         }`,
         title: "New league post",
         type: "league.blog.published",
-        url: `/leagues/${league.id}/posts/${
+        url: `/leagues/${league.id}/press/${
           third.status === "published"
             ? third.contentItemId
             : expect.any(String)

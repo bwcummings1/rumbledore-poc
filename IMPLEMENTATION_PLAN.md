@@ -24,7 +24,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 ### C. Publication system (see specs/11)
 - [x] Build the Front archetype with an edited lead + secondaries + card river (not a flat list). (specs/11)
 - [x] Build section fronts plus the league/central section taxonomies. (specs/11)
-- [ ] Build the article page with persona byline, dek, typographic body, tags, related. (specs/11)
+- [x] Build the article page with persona byline, dek, typographic body, tags, related. (specs/11)
 - [ ] Build the reusable story card and enforce the three-register separation. (specs/11)
 - [ ] Implement the "for your league" central-news tailoring rail. (specs/11)
 - [ ] Make AI generation emit structured articles with headline/dek/byline/section/tags/body. (specs/11)

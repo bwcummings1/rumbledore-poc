@@ -10,7 +10,16 @@ export const metadata: Metadata = {
   description: "League-agnostic NFL and fantasy-football headlines.",
 };
 
-export default async function NewsPage() {
-  const data = await getCentralNewsHubData(getDb());
+interface NewsPageProps {
+  searchParams?: Promise<{ tag?: string | string[] }>;
+}
+
+function firstSearchValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+export default async function NewsPage({ searchParams }: NewsPageProps) {
+  const tag = firstSearchValue((await searchParams)?.tag);
+  const data = await getCentralNewsHubData(getDb(), { tag });
   return <NewsHubView data={data} />;
 }

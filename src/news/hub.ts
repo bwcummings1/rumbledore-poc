@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { contentItems } from "@/db/schema";
+import { articleDek, articleHasTag, articleTags } from "./article-metadata";
 import { editorialImportance, publicationRankScore } from "./front";
 import {
   CENTRAL_PUBLICATION_SECTIONS,
@@ -16,15 +17,18 @@ export interface CentralNewsHubItem {
   id: string;
   title: string;
   summary: string;
+  dek?: string;
   source: string;
   sourceUrl: string;
   publishedAt: string;
   section: PublicationSection<CentralPublicationSectionId>;
+  tags?: string[];
   editorialImportance?: number;
 }
 
 export interface CentralNewsHubData {
   activeSection: PublicationSection<CentralPublicationSectionId> | null;
+  activeTag?: string | null;
   items: CentralNewsHubItem[];
   sections: readonly PublicationSection<CentralPublicationSectionId>[];
 }
@@ -38,7 +42,11 @@ function boundedLimit(limit: number | undefined): number {
 
 export async function getCentralNewsHubData(
   db: Db,
-  input: { limit?: number; sectionId?: CentralPublicationSectionId } = {},
+  input: {
+    limit?: number;
+    sectionId?: CentralPublicationSectionId;
+    tag?: string | null;
+  } = {},
 ): Promise<CentralNewsHubData> {
   const limit = boundedLimit(input.limit);
   const candidateLimit = input.sectionId
@@ -75,6 +83,7 @@ export async function getCentralNewsHubData(
         });
 
         return {
+          dek: articleDek(row.metadata, row.summary),
           section,
           editorialImportance: editorialImportance(row.metadata),
           id: row.id,
@@ -82,10 +91,12 @@ export async function getCentralNewsHubData(
           source: row.source ?? "Unknown source",
           sourceUrl: row.sourceUrl ?? "",
           summary: row.summary,
+          tags: articleTags(row.metadata),
           title: row.title,
         };
       })
       .filter((item) => !activeSection || item.section.id === activeSection.id)
+      .filter((item) => articleHasTag(item.tags, input.tag))
       .sort(
         (left, right) =>
           publicationRankScore(right) - publicationRankScore(left) ||
@@ -93,6 +104,7 @@ export async function getCentralNewsHubData(
           left.title.localeCompare(right.title),
       )
       .slice(0, limit),
+    activeTag: input.tag?.trim() || null,
     sections: CENTRAL_PUBLICATION_SECTIONS,
   };
 }

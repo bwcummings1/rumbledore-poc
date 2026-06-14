@@ -789,7 +789,7 @@ async function publishDraft({
         tag: `league:${input.leagueId}:blog:${result.contentItemId}`,
         title: "New league post",
         type: PUSH_EVENTS.leagueBlogPublished,
-        url: `/leagues/${input.leagueId}/posts/${result.contentItemId}`,
+        url: `/leagues/${input.leagueId}/press/${result.contentItemId}`,
       });
     } catch (error) {
       logger.warn("Push blog publish notification failed", {

@@ -48,13 +48,19 @@ function toStory({
   const href =
     item.scope === "league" && item.kind === "blog"
       ? `/leagues/${leagueId}/press/${item.contentItemId}`
-      : undefined;
+      : item.scope === "central"
+        ? `/news/articles/${item.contentItemId}`
+        : undefined;
 
   return {
     byline: sourceLabel(item),
-    dek: item.summary,
+    dek: item.dek ?? item.summary,
     headline: item.title,
     href,
+    hrefLabel:
+      item.scope === "league" && item.kind === "blog"
+        ? "Read post"
+        : "Read story",
     id: `${item.scope}-${item.id}`,
     publishedAt: item.publishedAt,
     relevanceReason: item.relevanceReason,
@@ -68,9 +74,15 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
   const heading = data.activeSection
     ? `The ${data.league.name} Press: ${data.activeSection.label}`
     : `The ${data.league.name} Press`;
+  const filteredHeading = data.activeTag
+    ? `${heading} tagged ${data.activeTag}`
+    : heading;
   const emptyTitle = data.activeSection
     ? `No ${data.activeSection.label} stories yet`
     : "No Press items yet";
+  const filteredEmptyTitle = data.activeTag
+    ? `No stories tagged ${data.activeTag}`
+    : emptyTitle;
   const emptyBody = data.activeSection
     ? "This beat has no league stories or matched central news yet. The full Press front is still available."
     : "League posts and matched central stories will appear here after the cast publishes.";
@@ -114,7 +126,7 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
                 : "League publication"}
             </p>
             <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
-              {heading}
+              {filteredHeading}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {data.league.season} ESPN fantasy football ·{" "}
@@ -201,7 +213,7 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
         </div>
       ) : (
         <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold">{emptyTitle}</h2>
+          <h2 className="text-base font-semibold">{filteredEmptyTitle}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{emptyBody}</p>
         </section>
       )}

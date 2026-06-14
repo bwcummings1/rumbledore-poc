@@ -17,12 +17,19 @@ export const metadata: Metadata = {
 
 interface LeaguePressPageProps {
   params: Promise<{ leagueId: string }>;
+  searchParams?: Promise<{ tag?: string | string[] }>;
+}
+
+function firstSearchValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 }
 
 export default async function LeaguePressPage({
   params,
+  searchParams,
 }: LeaguePressPageProps) {
   const { leagueId } = await params;
+  const activeTag = firstSearchValue((await searchParams)?.tag);
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -55,6 +62,7 @@ export default async function LeaguePressPage({
 
   const result = await getLeagueFeedData(db, {
     leagueId,
+    tag: activeTag,
     userId: access.value.userId,
     userRole: access.value.role,
   });

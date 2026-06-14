@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: Publication Article archetype landed — league Press and central News stories now open full article pages with bylines, dek, structured body rendering, tag links, and related-story rails.
 - 2026-06-14: Publication section fronts landed — central News and league Press now expose typed section taxonomies with section-filtered Front routes and empty-state-safe beat navigation.
 - 2026-06-14: Publication Front archetype landed — `/news` and league Press now render ranked lead/secondary/river tiers from a shared story-card contract, with editorial importance able to beat pure recency.
 - 2026-06-14: Targeted incremental stats recompute landed — changed finalized matchups now refresh only affected season/championship rows plus affected H2H pairs, with `stats_calculation` logs proving no full all-time rebuild on routine sync.

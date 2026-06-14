@@ -13,8 +13,10 @@ import { CentralNewsRealtimeRefresh } from "@/realtime/client";
 function toStory(item: CentralNewsHubData["items"][number]): PublicationStory {
   return {
     byline: item.source,
-    dek: item.summary,
+    dek: item.dek ?? item.summary,
     headline: item.title,
+    href: `/news/articles/${item.id}`,
+    hrefLabel: "Read story",
     id: item.id,
     publishedAt: item.publishedAt,
     sectionTag: item.section.label,
@@ -27,9 +29,15 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
   const heading = data.activeSection
     ? `${data.activeSection.label} stories`
     : "NFL and fantasy headlines";
+  const filteredHeading = data.activeTag
+    ? `${heading} tagged ${data.activeTag}`
+    : heading;
   const emptyTitle = data.activeSection
     ? `No ${data.activeSection.label} stories yet`
     : "No central stories yet";
+  const filteredEmptyTitle = data.activeTag
+    ? `No stories tagged ${data.activeTag}`
+    : emptyTitle;
   const emptyBody = data.activeSection
     ? "This section has no published stories yet. The rest of Rumbledore News is still available."
     : "The news refresh job has not published any shared headlines.";
@@ -59,7 +67,7 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
                 : "Rumbledore News"}
             </p>
             <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
-              {heading}
+              {filteredHeading}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Shared league-agnostic news from the central feed. League-specific
@@ -143,7 +151,7 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
         </div>
       ) : (
         <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold">{emptyTitle}</h2>
+          <h2 className="text-base font-semibold">{filteredEmptyTitle}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{emptyBody}</p>
         </section>
       )}

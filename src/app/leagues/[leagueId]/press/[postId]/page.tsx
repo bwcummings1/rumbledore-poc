@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
-import { getLeagueBlogPostData, getLeagueFeedData } from "@/news";
+import { getLeagueFeedData, getLeaguePressArticleData } from "@/news";
 import { getLeaguePublicationSectionBySlug } from "@/news/sections";
 import { LeagueFeedView } from "../../feed/league-feed-view";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
@@ -19,12 +19,19 @@ export const metadata: Metadata = {
 
 interface LeaguePressPostPageProps {
   params: Promise<{ leagueId: string; postId: string }>;
+  searchParams?: Promise<{ tag?: string | string[] }>;
+}
+
+function firstSearchValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 }
 
 export default async function LeaguePressPostPage({
   params,
+  searchParams,
 }: LeaguePressPostPageProps) {
   const { leagueId, postId } = await params;
+  const activeTag = firstSearchValue((await searchParams)?.tag);
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -60,6 +67,7 @@ export default async function LeaguePressPostPage({
     const sectionResult = await getLeagueFeedData(db, {
       leagueId,
       sectionId: section.id,
+      tag: activeTag,
       userId: access.value.userId,
       userRole: access.value.role,
     });
@@ -79,7 +87,7 @@ export default async function LeaguePressPostPage({
     }
   }
 
-  const result = await getLeagueBlogPostData(db, {
+  const result = await getLeaguePressArticleData(db, {
     leagueId,
     postId,
     userId: access.value.userId,

@@ -17,6 +17,7 @@ export interface PublicationStory {
   sectionTag: string;
   publishedAt: string;
   href?: string;
+  hrefLabel?: string;
   sourceUrl?: string;
   relevanceReason?: string;
 }
@@ -118,7 +119,7 @@ export function PublicationStoryCard({
               }),
             )}
           >
-            Read post
+            {story.hrefLabel ?? "Read story"}
             <ArrowRight data-icon="inline-end" />
           </Link>
         ) : null}
