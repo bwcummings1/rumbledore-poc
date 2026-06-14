@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { PWA_BACKGROUND_HEX } from "@/lib/pwa";
+import { NavigationShell } from "@/navigation/navigation-shell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -43,7 +44,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
-        {children}
+        <NavigationShell>{children}</NavigationShell>
         <ServiceWorkerRegistration />
       </body>
     </html>
