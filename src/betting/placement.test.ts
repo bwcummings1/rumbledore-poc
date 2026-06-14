@@ -523,9 +523,19 @@ describe("bet placement", () => {
       line: -2.5,
       marketType: "spread",
     });
+    const prop = await seedSnapshot({
+      line: 242.5,
+      marketType: "player_prop",
+      overPrice: -115,
+      underPrice: -105,
+    });
     const expectedCombined =
       Math.round(
-        decimalOdds(-140) * decimalOdds(-108) * decimalOdds(-110) * 1_000_000,
+        decimalOdds(-140) *
+          decimalOdds(-108) *
+          decimalOdds(-110) *
+          decimalOdds(-115) *
+          1_000_000,
       ) / 1_000_000;
 
     const placed = await placeBetSlip(handle.db, {
@@ -537,13 +547,14 @@ describe("bet placement", () => {
         { oddsSnapshotId: moneyline.snapshot.id, selection: "home" },
         { oddsSnapshotId: total.snapshot.id, selection: "over" },
         { oddsSnapshotId: spread.snapshot.id, selection: "away" },
+        { oddsSnapshotId: prop.snapshot.id, selection: "player_over" },
       ],
       now: placedAt,
       stakeCents: 20_000,
       userId: userA.id,
     });
 
-    expect(placed.legs).toHaveLength(3);
+    expect(placed.legs).toHaveLength(4);
     expect(placed.slip.combinedDecimalOdds).toBe(expectedCombined);
     expect(placed.slip.potentialPayoutCents).toBe(
       Math.round(20_000 * expectedCombined),
@@ -559,6 +570,11 @@ describe("bet placement", () => {
           lockedAmericanOdds: -110,
           lockedLine: 2.5,
           selection: "away",
+        }),
+        expect.objectContaining({
+          lockedAmericanOdds: -115,
+          lockedLine: 242.5,
+          selection: "player_over",
         }),
       ]),
     );

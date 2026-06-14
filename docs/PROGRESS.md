@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-14 — **Phase 1 spectacle core started** after round-one build completion.
+Keep it current. Last updated: 2026-06-15 — **Phase 2 competition/onboarding/entitlements underway** after round-one build completion.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Mock market depth landed — every mocked NFL event now carries moneyline, spread, total, and player-prop markets with matching mock player stats, plus placement/settlement coverage for prop parlays.
 - 2026-06-15: Bankroll loop surface landed — league Bet now shows this-week balance, open exposure, open upside, best-case balance, and auditable reset/carryover opening context from the append-only ledger.
 - 2026-06-14: Bet slip placement landed — league Bet now builds singles/parlays from locked snapshot selections, previews stake/payout against live bankroll, submits through an authenticated idempotent placement route, and surfaces stale-line/balance errors.
 - 2026-06-14: Sportsbook board grouping landed — league Bet now groups mocked odds by event, renders market rows with selectable locked-price buttons, and stages picks for the slip flow.

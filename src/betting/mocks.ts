@@ -12,59 +12,152 @@ import type {
 
 const MOCK_PROVIDER = "mock_odds";
 const MOCK_RESULTS_PROVIDER = "mock_results";
-const MOCK_EVENT_ID = "mock-nfl-2026-week-01-ari-sea";
+const MOCK_CAPTURED_AT = new Date("2026-09-10T12:00:00.000Z");
 
-function eventIdFor(index: number): string {
-  return index === 0 ? MOCK_EVENT_ID : `mock-nfl-2026-week-01-nyj-buf-${index}`;
+type MockPropType = "passing_yards" | "receptions" | "rushing_yards";
+
+type MockPlayerPropFixture = {
+  line: number;
+  overPrice: number;
+  playerId: string;
+  playerName: string;
+  propType: MockPropType;
+  stat: number;
+  underPrice: number;
+};
+
+type MockEventFixture = {
+  awayScore: number;
+  awayTeam: string;
+  homeScore: number;
+  homeTeam: string;
+  lastUpdated: Date;
+  moneyline: { awayPrice: number; homePrice: number };
+  playerProps: MockPlayerPropFixture[];
+  providerEventId: string;
+  spread: { awayPrice: number; homePrice: number; line: number };
+  startTime: Date;
+  total: { line: number; overPrice: number; underPrice: number };
+};
+
+const MOCK_EVENT_FIXTURES: MockEventFixture[] = [
+  {
+    awayScore: 21,
+    awayTeam: "Arizona Cardinals",
+    homeScore: 24,
+    homeTeam: "Seattle Seahawks",
+    lastUpdated: MOCK_CAPTURED_AT,
+    moneyline: { awayPrice: 120, homePrice: -140 },
+    playerProps: [
+      {
+        line: 242.5,
+        overPrice: -115,
+        playerId: "mock-sea-qb",
+        playerName: "Mock Quarterback",
+        propType: "passing_yards",
+        stat: 251,
+        underPrice: -105,
+      },
+      {
+        line: 4.5,
+        overPrice: 105,
+        playerId: "mock-ari-wr",
+        playerName: "Fixture Wideout",
+        propType: "receptions",
+        stat: 5,
+        underPrice: -125,
+      },
+    ],
+    providerEventId: "mock-nfl-2026-week-01-ari-sea",
+    spread: { awayPrice: -110, homePrice: -110, line: -2.5 },
+    startTime: new Date("2026-09-10T20:20:00.000Z"),
+    total: { line: 47.5, overPrice: -108, underPrice: -112 },
+  },
+  {
+    awayScore: 17,
+    awayTeam: "New York Jets",
+    homeScore: 28,
+    homeTeam: "Buffalo Bills",
+    lastUpdated: MOCK_CAPTURED_AT,
+    moneyline: { awayPrice: 135, homePrice: -155 },
+    playerProps: [
+      {
+        line: 63.5,
+        overPrice: -102,
+        playerId: "mock-buf-rb",
+        playerName: "Mock Tailback",
+        propType: "rushing_yards",
+        stat: 71,
+        underPrice: -118,
+      },
+    ],
+    providerEventId: "mock-nfl-2026-week-01-nyj-buf",
+    spread: { awayPrice: -112, homePrice: -108, line: -3.5 },
+    startTime: new Date("2026-09-11T17:00:00.000Z"),
+    total: { line: 44.5, overPrice: -110, underPrice: -110 },
+  },
+];
+
+function fixtureFor(providerEventId: string): MockEventFixture {
+  const fixture = MOCK_EVENT_FIXTURES.find(
+    (event) => event.providerEventId === providerEventId,
+  );
+  if (fixture) {
+    return fixture;
+  }
+
+  return {
+    awayScore: 20,
+    awayTeam: "Mock Away",
+    homeScore: 23,
+    homeTeam: "Mock Home",
+    lastUpdated: MOCK_CAPTURED_AT,
+    moneyline: { awayPrice: 130, homePrice: -150 },
+    playerProps: [
+      {
+        line: 225.5,
+        overPrice: -110,
+        playerId: `${providerEventId}:qb`,
+        playerName: "Fallback Quarterback",
+        propType: "passing_yards",
+        stat: 231,
+        underPrice: -110,
+      },
+    ],
+    providerEventId,
+    spread: { awayPrice: -110, homePrice: -110, line: -3 },
+    startTime: new Date("2026-09-12T17:00:00.000Z"),
+    total: { line: 45.5, overPrice: -110, underPrice: -110 },
+  };
+}
+
+function propMarketId(eventId: string, prop: MockPlayerPropFixture): string {
+  return `${eventId}:player-prop:${prop.playerId}:${prop.propType}`;
 }
 
 export class MockOddsProvider implements OddsProvider {
   async listEvents(_input: OddsProviderListInput): Promise<OddsEvent[]> {
-    return [
-      {
-        awayTeam: "Arizona Cardinals",
-        homeTeam: "Seattle Seahawks",
-        lastUpdated: new Date("2026-09-10T12:00:00.000Z"),
-        provider: MOCK_PROVIDER,
-        providerEventId: eventIdFor(0),
-        sport: "nfl",
-        startTime: new Date("2026-09-10T20:20:00.000Z"),
-        status: "scheduled",
-      },
-      {
-        awayTeam: "New York Jets",
-        homeTeam: "Buffalo Bills",
-        lastUpdated: new Date("2026-09-10T12:00:00.000Z"),
-        provider: MOCK_PROVIDER,
-        providerEventId: eventIdFor(1),
-        sport: "nfl",
-        startTime: new Date("2026-09-11T17:00:00.000Z"),
-        status: "scheduled",
-      },
-    ];
+    return MOCK_EVENT_FIXTURES.map((fixture) => ({
+      awayTeam: fixture.awayTeam,
+      homeTeam: fixture.homeTeam,
+      lastUpdated: fixture.lastUpdated,
+      provider: MOCK_PROVIDER,
+      providerEventId: fixture.providerEventId,
+      sport: "nfl",
+      startTime: fixture.startTime,
+      status: "scheduled",
+    }));
   }
 
   async getMarkets(input: OddsProviderEventInput): Promise<OddsMarket[]> {
-    if (input.providerEventId !== MOCK_EVENT_ID) {
-      return [
-        {
-          period: "full_game",
-          provider: MOCK_PROVIDER,
-          providerEventId: input.providerEventId,
-          providerMarketId: `${input.providerEventId}:moneyline`,
-          status: "open",
-          subject: "game",
-          type: "moneyline",
-        },
-      ];
-    }
+    const fixture = fixtureFor(input.providerEventId);
 
     return [
       {
         period: "full_game",
         provider: MOCK_PROVIDER,
         providerEventId: input.providerEventId,
-        providerMarketId: `${input.providerEventId}:moneyline`,
+        providerMarketId: `${fixture.providerEventId}:moneyline`,
         status: "open",
         subject: "game",
         type: "moneyline",
@@ -73,7 +166,7 @@ export class MockOddsProvider implements OddsProvider {
         period: "full_game",
         provider: MOCK_PROVIDER,
         providerEventId: input.providerEventId,
-        providerMarketId: `${input.providerEventId}:spread`,
+        providerMarketId: `${fixture.providerEventId}:spread`,
         status: "open",
         subject: "game",
         type: "spread",
@@ -82,70 +175,60 @@ export class MockOddsProvider implements OddsProvider {
         period: "full_game",
         provider: MOCK_PROVIDER,
         providerEventId: input.providerEventId,
-        providerMarketId: `${input.providerEventId}:total`,
+        providerMarketId: `${fixture.providerEventId}:total`,
         status: "open",
         subject: "game",
         type: "total",
       },
-      {
-        metadata: { playerName: "Mock Quarterback" },
-        period: "full_game",
-        propType: "passing_yards",
+      ...fixture.playerProps.map((prop) => ({
+        metadata: { playerName: prop.playerName },
+        period: "full_game" as const,
+        propType: prop.propType,
         provider: MOCK_PROVIDER,
         providerEventId: input.providerEventId,
-        providerMarketId: `${input.providerEventId}:player-prop:mock-qb-passing-yards`,
-        status: "open",
-        subject: "mock-player-qb",
-        type: "player_prop",
-      },
+        providerMarketId: propMarketId(fixture.providerEventId, prop),
+        status: "open" as const,
+        subject: prop.playerId,
+        type: "player_prop" as const,
+      })),
     ];
   }
 
   async getOdds(input: OddsProviderEventInput): Promise<OddsQuote[]> {
-    if (input.providerEventId !== MOCK_EVENT_ID) {
-      return [
-        {
-          awayPrice: 135,
-          capturedAt: new Date("2026-09-10T12:00:00.000Z"),
-          homePrice: -155,
-          provider: MOCK_PROVIDER,
-          providerMarketId: `${input.providerEventId}:moneyline`,
-        },
-      ];
-    }
+    const fixture = fixtureFor(input.providerEventId);
 
     return [
       {
-        awayPrice: 120,
-        capturedAt: new Date("2026-09-10T12:00:00.000Z"),
-        homePrice: -140,
+        awayPrice: fixture.moneyline.awayPrice,
+        capturedAt: MOCK_CAPTURED_AT,
+        homePrice: fixture.moneyline.homePrice,
         provider: MOCK_PROVIDER,
-        providerMarketId: `${input.providerEventId}:moneyline`,
+        providerMarketId: `${fixture.providerEventId}:moneyline`,
       },
       {
-        awayPrice: -110,
-        capturedAt: new Date("2026-09-10T12:00:00.000Z"),
-        homePrice: -110,
-        line: -2.5,
+        awayPrice: fixture.spread.awayPrice,
+        capturedAt: MOCK_CAPTURED_AT,
+        homePrice: fixture.spread.homePrice,
+        line: fixture.spread.line,
         provider: MOCK_PROVIDER,
-        providerMarketId: `${input.providerEventId}:spread`,
+        providerMarketId: `${fixture.providerEventId}:spread`,
       },
       {
-        capturedAt: new Date("2026-09-10T12:00:00.000Z"),
-        line: 47.5,
-        overPrice: -108,
+        capturedAt: MOCK_CAPTURED_AT,
+        line: fixture.total.line,
+        overPrice: fixture.total.overPrice,
         provider: MOCK_PROVIDER,
-        providerMarketId: `${input.providerEventId}:total`,
-        underPrice: -112,
+        providerMarketId: `${fixture.providerEventId}:total`,
+        underPrice: fixture.total.underPrice,
       },
-      {
-        capturedAt: new Date("2026-09-10T12:00:00.000Z"),
-        line: 242.5,
-        overPrice: -115,
+      ...fixture.playerProps.map((prop) => ({
+        capturedAt: MOCK_CAPTURED_AT,
+        line: prop.line,
+        overPrice: prop.overPrice,
         provider: MOCK_PROVIDER,
-        providerMarketId: `${input.providerEventId}:player-prop:mock-qb-passing-yards`,
-        underPrice: -105,
-      },
+        providerMarketId: propMarketId(fixture.providerEventId, prop),
+        underPrice: prop.underPrice,
+      })),
     ];
   }
 }
@@ -156,20 +239,23 @@ export class MockResultsProvider implements ResultsProvider {
   constructor(private readonly results = new Map<string, EventResult>()) {}
 
   async getEventResult(input: ResultsProviderInput): Promise<EventResult> {
+    const fixture = fixtureFor(input.event.providerEventId);
     return (
       this.results.get(input.event.providerEventId) ?? {
-        awayScore: 21,
+        awayScore: fixture.awayScore,
         finalStatus: "final",
-        homeScore: 24,
-        playerStats: [
-          {
-            playerId: "mock-player-qb",
-            stats: { passing_yards: 251 },
-          },
-        ],
+        homeScore: fixture.homeScore,
+        playerStats: fixture.playerProps.map((prop) => ({
+          playerId: prop.playerId,
+          stats: { [prop.propType]: prop.stat },
+        })),
         provider: this.id,
         sourcePayload: {
           providerEventId: input.event.providerEventId,
+          scores: {
+            away: fixture.awayScore,
+            home: fixture.homeScore,
+          },
           source: this.id,
         },
       }

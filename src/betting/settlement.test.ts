@@ -577,12 +577,136 @@ describe("bet settlement", () => {
     expect(replayBankrollLedger(entries)).toBe(1_000_000);
   });
 
+  it("settles a cross-market parlay including a player prop", async () => {
+    const opened = await openBankrollWeek(handle.db, {
+      leagueId: leagueA.id,
+      userId: userA.id,
+      weekEnd: week(36),
+      weekStart: week(29),
+    });
+    const event = await seedEvent("market-depth");
+    const spread = await seedSnapshot({
+      awayPrice: -110,
+      event,
+      homePrice: -110,
+      line: -3.5,
+      marketType: "spread",
+    });
+    const total = await seedSnapshot({
+      event,
+      line: 48.5,
+      marketType: "total",
+      overPrice: -108,
+      underPrice: -112,
+    });
+    const prop = await seedSnapshot({
+      event,
+      line: 64.5,
+      marketType: "player_prop",
+      overPrice: -115,
+      propType: "rushing_yards",
+      subject: "mock-rb",
+      underPrice: -105,
+    });
+    const expectedCombined =
+      Math.round(
+        decimalOdds(-110) * decimalOdds(-112) * decimalOdds(-115) * 1_000_000,
+      ) / 1_000_000;
+    const expectedPayout = Math.round(10_000 * expectedCombined);
+
+    const placed = await placeBetSlip(handle.db, {
+      bankrollWeekId: opened.week.id,
+      idempotencyKey: `${marker}:market-depth-parlay`,
+      kind: "parlay",
+      leagueId: leagueA.id,
+      legs: [
+        { oddsSnapshotId: spread.snapshot.id, selection: "home" },
+        { oddsSnapshotId: total.snapshot.id, selection: "under" },
+        { oddsSnapshotId: prop.snapshot.id, selection: "player_over" },
+      ],
+      now: placedAt,
+      stakeCents: 10_000,
+      userId: userA.id,
+    });
+
+    const settled = await settleBettingEvent({
+      deps: {
+        db: handle.db,
+        resultsProvider: new FixtureResultsProvider(
+          new Map([
+            [
+              event.providerEventId,
+              result({
+                awayScore: 17,
+                homeScore: 27,
+                playerStats: [
+                  {
+                    playerId: "mock-rb",
+                    stats: { rushing_yards: 72 },
+                  },
+                ],
+              }),
+            ],
+          ]),
+        ),
+      },
+      input: {
+        bettingEventId: event.id,
+        leagueId: leagueA.id,
+        now: settledAt,
+      },
+    });
+
+    const state = await slipWithLegs(placed.slip.id);
+    expect(settled).toMatchObject({
+      finalizedSlips: 1,
+      gradedLegs: 3,
+      skippedReason: null,
+    });
+    expect(state.slip).toMatchObject({
+      combinedDecimalOdds: expectedCombined,
+      potentialPayoutCents: expectedPayout,
+      status: "won",
+    });
+    expect(state.legs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resultDetail: "home adjusted margin 6.5 vs line 0",
+          status: "won",
+        }),
+        expect.objectContaining({
+          resultDetail: "total 44 vs line 48.5",
+          status: "won",
+        }),
+        expect.objectContaining({
+          resultDetail: "rushing_yards 72 vs line 64.5",
+          status: "won",
+        }),
+      ]),
+    );
+    expect(state.settlements[0]).toMatchObject({
+      outcome: "won",
+      payoutCents: expectedPayout,
+    });
+
+    const entries = await ledgerEntriesFor(opened.week.id);
+    expect(entries.map((entry) => entry.entryType)).toEqual([
+      "week_open",
+      "bet_stake",
+      "bet_payout",
+    ]);
+    expect(entries.at(-1)).toMatchObject({
+      amountCents: expectedPayout,
+      refSlipId: placed.slip.id,
+    });
+  });
+
   it("does not expose settlement rows through the wrong league context", async () => {
     const opened = await openBankrollWeek(handle.db, {
       leagueId: leagueA.id,
       userId: userA.id,
-      weekEnd: week(29),
-      weekStart: week(22),
+      weekEnd: week(43),
+      weekStart: week(36),
     });
     const event = await seedEvent("isolation");
     const moneyline = await seedSnapshot({
