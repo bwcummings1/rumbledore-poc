@@ -777,6 +777,78 @@ describe("syncCurrentLeague", () => {
     expect(realtime.scoresUpdated).toHaveLength(1);
   });
 
+  it("preserves finalized matchups when a provider rereads transient non-final data", async () => {
+    const providerLeagueId = `${marker}-95050-finalized-preserve`;
+
+    const first = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(leagueFixtureFor(providerLeagueId)),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+
+    const finalizedFixture = leagueFixtureFor(providerLeagueId);
+    finalizedFixture.schedule[0].winner = "HOME";
+    finalizedFixture.schedule[0].home.totalPoints = 121;
+    finalizedFixture.schedule[0].away.totalPoints = 99;
+
+    const second = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(finalizedFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw second.error;
+    expect(second.value.matchups).toEqual({
+      total: 84,
+      changed: 1,
+      unchanged: 83,
+    });
+
+    const staleFixture = leagueFixtureFor(providerLeagueId);
+    staleFixture.schedule[0].home.totalPoints = 64;
+    staleFixture.schedule[0].away.totalPoints = 59;
+
+    const third = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(staleFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(third.ok).toBe(true);
+    if (!third.ok) throw third.error;
+    expect(third.value.matchups).toEqual({
+      total: 84,
+      changed: 0,
+      unchanged: 84,
+    });
+
+    const rows = await selectIngestedRows(first.value.league.id);
+    const matchup = rows.matchups.find(
+      (row) => row.providerMatchupId === "1" && row.scoringPeriod === 1,
+    );
+    expect(matchup).toMatchObject({
+      awayScore: 99,
+      homeScore: 121,
+      status: "final",
+      winner: "home",
+    });
+
+    const calculations = await withLeagueContext(
+      handle.db,
+      first.value.league.id,
+      (tx) =>
+        tx
+          .select()
+          .from(statsCalculations)
+          .where(eq(statsCalculations.leagueId, first.value.league.id)),
+    );
+    expect(calculations).toHaveLength(2);
+  });
+
   it("runs targeted stats recompute only when changed matchup rows are finalized", async () => {
     const providerLeagueId = `${marker}-95050-finalized-stats`;
     const firstProvider = providerFor(leagueFixtureFor(providerLeagueId));

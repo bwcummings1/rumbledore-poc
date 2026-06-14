@@ -523,7 +523,10 @@ async function upsertMatchups(
         updatedAt: sql`now()`,
         winner: sql`excluded.winner`,
       },
-      where: sql`${fantasyMatchups.contentHash} is distinct from excluded.content_hash`,
+      where: sql`
+        ${fantasyMatchups.contentHash} is distinct from excluded.content_hash
+        and not (${fantasyMatchups.status} = 'final' and excluded.status <> 'final')
+      `,
     })
     .returning({
       id: fantasyMatchups.id,
