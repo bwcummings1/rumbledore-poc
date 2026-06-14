@@ -18,9 +18,15 @@ import {
   instigations,
   type LoreClaim,
   type LoreEvent,
+  type LoreSubject,
+  type LoreVerification,
+  type LoreVote,
   leagues,
   loreClaims,
   loreEvents,
+  loreSubjects,
+  loreVerifications,
+  loreVotes,
   type Member,
   members,
   type Poll,
@@ -80,6 +86,12 @@ let loreClaimA: LoreClaim;
 let loreClaimB: LoreClaim;
 let loreEventA: LoreEvent;
 let loreEventB: LoreEvent;
+let loreSubjectA: LoreSubject;
+let loreSubjectB: LoreSubject;
+let loreVerificationA: LoreVerification;
+let loreVerificationB: LoreVerification;
+let loreVoteA: LoreVote;
+let loreVoteB: LoreVote;
 
 /** Drizzle wraps pg errors; the SQLSTATE lives on `cause.code`. */
 async function sqlstateOf(query: Promise<unknown>): Promise<string> {
@@ -119,7 +131,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_events, push_subscription, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -367,6 +379,7 @@ beforeAll(async () => {
     .values([
       {
         authorPersona: "trash_talker",
+        body: "The league voted Team A owns the plot.",
         evidenceRefs: [{ id: pollA.id, type: "poll" }],
         kind: "opinion",
         leagueId: leagueA,
@@ -381,6 +394,7 @@ beforeAll(async () => {
       },
       {
         authorPersona: "trash_talker",
+        body: "The league voted Team B owns the plot.",
         evidenceRefs: [{ id: pollB.id, type: "poll" }],
         kind: "opinion",
         leagueId: leagueB,
@@ -392,6 +406,60 @@ beforeAll(async () => {
         statement: "The league voted Team B owns the plot.",
         status: "canon",
         title: "Team B plot vote",
+      },
+    ])
+    .returning();
+
+  [loreSubjectA, loreSubjectB] = await admin.db
+    .insert(loreSubjects)
+    .values([
+      {
+        claimId: loreClaimA.id,
+        leagueId: leagueA,
+        season: 2026,
+        subjectType: "season",
+      },
+      {
+        claimId: loreClaimB.id,
+        leagueId: leagueB,
+        season: 2026,
+        subjectType: "season",
+      },
+    ])
+    .returning();
+
+  [loreVerificationA, loreVerificationB] = await admin.db
+    .insert(loreVerifications)
+    .values([
+      {
+        assertedValue: "Team A owns the plot",
+        claimId: loreClaimA.id,
+        leagueId: leagueA,
+        result: "uncheckable",
+      },
+      {
+        assertedValue: "Team B owns the plot",
+        claimId: loreClaimB.id,
+        leagueId: leagueB,
+        result: "uncheckable",
+      },
+    ])
+    .returning();
+
+  [loreVoteA, loreVoteB] = await admin.db
+    .insert(loreVotes)
+    .values([
+      {
+        choice: "affirm",
+        claimId: loreClaimA.id,
+        leagueId: leagueA,
+        voterMemberId: memberA.id,
+      },
+      {
+        choice: "affirm",
+        claimId: loreClaimB.id,
+        leagueId: leagueB,
+        voterMemberId: memberB.id,
       },
     ])
     .returning();
@@ -589,7 +657,10 @@ describe("two-league isolation under withLeagueContext", () => {
       claims: await tx.select().from(loreClaims),
       events: await tx.select().from(loreEvents),
       instigations: await tx.select().from(instigations),
+      loreVotes: await tx.select().from(loreVotes),
       polls: await tx.select().from(polls),
+      subjects: await tx.select().from(loreSubjects),
+      verifications: await tx.select().from(loreVerifications),
       votes: await tx.select().from(pollVotes),
     }));
 
@@ -609,6 +680,21 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows.claims.map((row) => row.id)).toContain(loreClaimA.id);
     expect(rows.claims.map((row) => row.id)).not.toContain(loreClaimB.id);
     expect(rows.claims.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(rows.subjects.map((row) => row.id)).toContain(loreSubjectA.id);
+    expect(rows.subjects.map((row) => row.id)).not.toContain(loreSubjectB.id);
+    expect(rows.subjects.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(rows.verifications.map((row) => row.id)).toContain(
+      loreVerificationA.id,
+    );
+    expect(rows.verifications.map((row) => row.id)).not.toContain(
+      loreVerificationB.id,
+    );
+    expect(rows.verifications.every((row) => row.leagueId === leagueA)).toBe(
+      true,
+    );
+    expect(rows.loreVotes.map((row) => row.id)).toContain(loreVoteA.id);
+    expect(rows.loreVotes.map((row) => row.id)).not.toContain(loreVoteB.id);
+    expect(rows.loreVotes.every((row) => row.leagueId === leagueA)).toBe(true);
     expect(rows.events.map((row) => row.id)).toContain(loreEventA.id);
     expect(rows.events.map((row) => row.id)).not.toContain(loreEventB.id);
     expect(rows.events.every((row) => row.leagueId === leagueA)).toBe(true);
@@ -703,6 +789,62 @@ describe("two-league isolation under withLeagueContext", () => {
         ),
       ),
     ).toBe("42501");
+  });
+
+  it("rejects writing league B lore rows from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(loreSubjects).values({
+            claimId: loreClaimB.id,
+            leagueId: leagueB,
+            season: 2026,
+            subjectType: "season",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(loreVerifications).values({
+            assertedValue: "cross-league",
+            claimId: loreClaimB.id,
+            leagueId: leagueB,
+            result: "uncheckable",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(loreVotes).values({
+            choice: "affirm",
+            claimId: loreClaimB.id,
+            leagueId: leagueB,
+            voterMemberId: memberB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("enforces one claim vote per member", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(loreVotes).values({
+            choice: "reject",
+            claimId: loreClaimA.id,
+            leagueId: leagueA,
+            voterMemberId: memberA.id,
+          }),
+        ),
+      ),
+    ).toBe("23505");
   });
 
   it("rejects writing league B blog content from league A context", async () => {

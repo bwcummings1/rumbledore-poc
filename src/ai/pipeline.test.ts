@@ -585,6 +585,7 @@ describe("generateLeagueBlogPost", () => {
       await tx.insert(loreClaims).values([
         {
           authorPersona: "trash_talker",
+          body: "Canon Alpha owns the Snow Bowl collapse",
           kind: "opinion",
           leagueId: league.id,
           origin: "ai",
@@ -596,11 +597,12 @@ describe("generateLeagueBlogPost", () => {
         },
         {
           authorPersona: "trash_talker",
+          body: "Unratified Beta dynasty rumor",
           kind: "opinion",
           leagueId: league.id,
           origin: "ai",
           statement: "Unratified Beta dynasty rumor",
-          status: "voting",
+          status: "vote",
           title: "Pending Dynasty Rumor",
         },
       ]);

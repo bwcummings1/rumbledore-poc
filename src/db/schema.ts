@@ -228,11 +228,20 @@ export const loreClaimKind = pgEnum("lore_claim_kind", [
 ]);
 
 export const loreClaimStatus = pgEnum("lore_claim_status", [
-  "draft",
-  "voting",
+  "pending",
+  "vote",
   "canon",
-  "rejected",
   "disputed",
+  "rejected",
+  "superseded",
+  "withdrawn",
+]);
+
+export const loreClaimVerification = pgEnum("lore_claim_verification", [
+  "verified",
+  "refuted",
+  "unverifiable",
+  "n_a",
 ]);
 
 export const loreClaimOrigin = pgEnum("lore_claim_origin", ["member", "ai"]);
@@ -243,13 +252,45 @@ export const loreClaimRatifiedBy = pgEnum("lore_claim_ratified_by", [
   "steward",
 ]);
 
+export const loreClaimRelation = pgEnum("lore_claim_relation", [
+  "root",
+  "response",
+  "addendum",
+  "dispute",
+  "relitigation",
+]);
+
+export const loreSubjectType = pgEnum("lore_subject_type", [
+  "person",
+  "rivalry",
+  "season",
+  "week",
+  "record",
+]);
+
+export const loreVerificationResult = pgEnum("lore_verification_result", [
+  "match",
+  "contradiction",
+  "uncheckable",
+]);
+
+export const loreVoteChoice = pgEnum("lore_vote_choice", [
+  "affirm",
+  "reject",
+  "abstain",
+]);
+
 export const loreEventKind = pgEnum("lore_event_kind", [
   "created",
   "vote_opened",
+  "voted",
   "ratified",
   "rejected",
   "disputed",
+  "superseded",
   "steward_action",
+  "edited",
+  "withdrawn",
 ]);
 
 export const bettingSport = pgEnum("betting_sport", ["nfl"]);
@@ -2374,6 +2415,9 @@ export const loreClaims = pgTable(
       .references(() => leagues.id, { onDelete: "cascade" }),
     kind: loreClaimKind("kind").notNull(),
     status: loreClaimStatus("status").notNull(),
+    verification: loreClaimVerification("verification")
+      .notNull()
+      .default("n_a"),
     origin: loreClaimOrigin("origin").notNull(),
     authorMemberId: uuid("author_member_id").references(() => members.id, {
       onDelete: "set null",
@@ -2381,6 +2425,15 @@ export const loreClaims = pgTable(
     authorPersona: aiPersona("author_persona"),
     title: text("title").notNull(),
     statement: text("statement").notNull(),
+    body: text("body").notNull(),
+    branchOf: uuid("branch_of").references((): AnyPgColumn => loreClaims.id, {
+      onDelete: "set null",
+    }),
+    relation: loreClaimRelation("relation").notNull().default("root"),
+    threadRootId: uuid("thread_root_id").references(
+      (): AnyPgColumn => loreClaims.id,
+      { onDelete: "set null" },
+    ),
     evidenceRefs: jsonb("evidence_refs")
       .$type<Record<string, unknown>[]>()
       .notNull()
@@ -2392,6 +2445,8 @@ export const loreClaims = pgTable(
     sourcePollId: uuid("source_poll_id").references(() => polls.id, {
       onDelete: "set null",
     }),
+    voteOpensAt: timestamp("vote_opens_at", { withTimezone: true }),
+    voteClosesAt: timestamp("vote_closes_at", { withTimezone: true }),
     ratifiedAt: timestamp("ratified_at", { withTimezone: true }),
     ratifiedBy: loreClaimRatifiedBy("ratified_by"),
     ...timestamps,
@@ -2406,11 +2461,149 @@ export const loreClaims = pgTable(
       table.status,
       table.createdAt,
     ),
+    index("lore_claims_branch_idx").on(table.leagueId, table.branchOf),
+    index("lore_claims_thread_idx").on(table.leagueId, table.threadRootId),
+    index("lore_claims_vote_close_idx").on(
+      table.leagueId,
+      table.status,
+      table.voteClosesAt,
+    ),
     index("lore_claims_source_instigation_idx").on(
       table.leagueId,
       table.sourceInstigationId,
     ),
     pgPolicy("lore_claims_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const loreSubjects = pgTable(
+  "lore_subjects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    claimId: uuid("claim_id")
+      .notNull()
+      .references(() => loreClaims.id, { onDelete: "cascade" }),
+    subjectType: loreSubjectType("subject_type").notNull(),
+    personId: uuid("person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    personAId: uuid("person_a_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    personBId: uuid("person_b_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    headToHeadRecordId: uuid("head_to_head_record_id").references(
+      () => headToHeadRecords.id,
+      { onDelete: "set null" },
+    ),
+    allTimeRecordId: uuid("all_time_record_id").references(
+      () => allTimeRecords.id,
+      { onDelete: "set null" },
+    ),
+    season: integer("season"),
+    week: integer("week"),
+    recordType: text("record_type"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    index("lore_subjects_claim_idx").on(table.leagueId, table.claimId),
+    index("lore_subjects_person_idx").on(table.leagueId, table.personId),
+    index("lore_subjects_rivalry_idx").on(
+      table.leagueId,
+      table.personAId,
+      table.personBId,
+    ),
+    pgPolicy("lore_subjects_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const loreVerifications = pgTable(
+  "lore_verifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    claimId: uuid("claim_id")
+      .notNull()
+      .references(() => loreClaims.id, { onDelete: "cascade" }),
+    result: loreVerificationResult("result").notNull(),
+    assertedValue: text("asserted_value").notNull(),
+    actualValue: text("actual_value"),
+    weeklyStatisticId: uuid("weekly_statistic_id").references(
+      () => weeklyStatistics.id,
+      { onDelete: "set null" },
+    ),
+    seasonStatisticId: uuid("season_statistic_id").references(
+      () => seasonStatistics.id,
+      { onDelete: "set null" },
+    ),
+    allTimeRecordId: uuid("all_time_record_id").references(
+      () => allTimeRecords.id,
+      { onDelete: "set null" },
+    ),
+    matchedRefs: jsonb("matched_refs")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("lore_verifications_claim_unique").on(
+      table.leagueId,
+      table.claimId,
+    ),
+    index("lore_verifications_result_idx").on(table.leagueId, table.result),
+    pgPolicy("lore_verifications_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const loreVotes = pgTable(
+  "lore_votes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    claimId: uuid("claim_id")
+      .notNull()
+      .references(() => loreClaims.id, { onDelete: "cascade" }),
+    voterMemberId: uuid("voter_member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    choice: loreVoteChoice("choice").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("lore_votes_member_unique").on(
+      table.leagueId,
+      table.claimId,
+      table.voterMemberId,
+    ),
+    index("lore_votes_claim_idx").on(table.leagueId, table.claimId),
+    pgPolicy("lore_votes_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -2736,6 +2929,12 @@ export type PollVote = typeof pollVotes.$inferSelect;
 export type NewPollVote = typeof pollVotes.$inferInsert;
 export type LoreClaim = typeof loreClaims.$inferSelect;
 export type NewLoreClaim = typeof loreClaims.$inferInsert;
+export type LoreSubject = typeof loreSubjects.$inferSelect;
+export type NewLoreSubject = typeof loreSubjects.$inferInsert;
+export type LoreVerification = typeof loreVerifications.$inferSelect;
+export type NewLoreVerification = typeof loreVerifications.$inferInsert;
+export type LoreVote = typeof loreVotes.$inferSelect;
+export type NewLoreVote = typeof loreVotes.$inferInsert;
 export type LoreEvent = typeof loreEvents.$inferSelect;
 export type NewLoreEvent = typeof loreEvents.$inferInsert;
 export type ProviderCredential = typeof providerCredentials.$inferSelect;

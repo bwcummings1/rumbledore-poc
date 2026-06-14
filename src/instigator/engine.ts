@@ -669,6 +669,7 @@ export async function closePoll({
         .insert(loreClaims)
         .values({
           authorPersona: instigation.persona,
+          body: statement,
           evidenceRefs: [
             ...instigation.groundingRefs,
             {
