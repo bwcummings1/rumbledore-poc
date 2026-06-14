@@ -13,6 +13,12 @@ import {
   type Member,
   persons,
 } from "@/db/schema";
+import { articleDek, articleHeroImageUrl } from "@/news/article-metadata";
+import {
+  type LeaguePublicationSectionId,
+  type PublicationSection,
+  resolveLeaguePublicationSection,
+} from "@/news/sections";
 import type { FantasyProviderId } from "@/providers";
 import { RECORD_TYPE_LABELS, type RecordType } from "@/stats";
 
@@ -68,6 +74,7 @@ export interface LeagueHomeStoryline {
   id: string;
   title: string;
   summary: string;
+  dek: string;
   authorPersona:
     | "commissioner"
     | "analyst"
@@ -76,6 +83,8 @@ export interface LeagueHomeStoryline {
     | "betting_advisor"
     | null;
   publishedAt: string;
+  section: PublicationSection<LeaguePublicationSectionId>;
+  thumbnailUrl: string;
 }
 
 export interface LeagueHomeData {
@@ -160,7 +169,7 @@ type RecordRow = Pick<
 
 type StorylineRow = Pick<
   typeof contentItems.$inferSelect,
-  "authorPersona" | "id" | "publishedAt" | "summary" | "title"
+  "authorPersona" | "id" | "metadata" | "publishedAt" | "summary" | "title"
 >;
 
 function compareTeamsByProviderId(left: string, right: string): number {
@@ -330,9 +339,18 @@ function buildRecords(
 function buildStorylines(rows: readonly StorylineRow[]): LeagueHomeStoryline[] {
   return rows.map((row) => ({
     authorPersona: row.authorPersona,
+    dek: articleDek(row.metadata, row.summary),
     id: row.id,
     publishedAt: row.publishedAt.toISOString(),
+    section: resolveLeaguePublicationSection({
+      authorPersona: row.authorPersona,
+      kind: "blog",
+      metadata: row.metadata,
+      summary: row.summary,
+      title: row.title,
+    }),
     summary: row.summary,
+    thumbnailUrl: articleHeroImageUrl(row.metadata),
     title: row.title,
   }));
 }
@@ -506,6 +524,7 @@ export async function getLeagueHomeData(
       .select({
         authorPersona: contentItems.authorPersona,
         id: contentItems.id,
+        metadata: contentItems.metadata,
         publishedAt: contentItems.publishedAt,
         summary: contentItems.summary,
         title: contentItems.title,

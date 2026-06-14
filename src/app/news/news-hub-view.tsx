@@ -21,6 +21,8 @@ function toStory(item: CentralNewsHubData["items"][number]): PublicationStory {
     publishedAt: item.publishedAt,
     sectionTag: item.section.label,
     sourceUrl: item.sourceUrl,
+    thumbnailAlt: item.title,
+    thumbnailUrl: item.thumbnailUrl,
   };
 }
 

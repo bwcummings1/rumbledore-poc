@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { LeagueHomeData } from "@/home/league-home";
+import { LEAGUE_PUBLICATION_SECTIONS } from "@/news/sections";
 import { LeagueHomeView } from "./league-home-view";
 
 const router = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -60,9 +61,12 @@ const data: LeagueHomeData = {
   storylines: [
     {
       authorPersona: "commissioner",
+      dek: "A commissioner standfirst for the dashboard teaser.",
       id: "storyline-1",
       publishedAt: "2026-06-11T00:00:00.000Z",
+      section: LEAGUE_PUBLICATION_SECTIONS[4],
       summary: "Fixture Team 01 is the first team to watch this week.",
+      thumbnailUrl: "",
       title: "Commissioner: NHS Alumni Annual snapshot",
     },
   ],
@@ -143,14 +147,25 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(screen.getByRole("heading", { name: "Record book" })).toBeDefined();
   expect(screen.getByText("Highest weekly score")).toBeDefined();
   expect(screen.getByText("142.50")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Storylines" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "From the Press" })).toBeDefined();
+  const pressTeaser = screen.getByLabelText("From the Press");
+  expect(
+    pressTeaser
+      .querySelector('[data-story-card-variant="rail"]')
+      ?.textContent?.includes("Commissioner: NHS Alumni Annual snapshot"),
+  ).toBe(true);
+  expect(pressTeaser.querySelector("[data-front-tier]")).toBeNull();
   expect(
     screen.getByText("Commissioner: NHS Alumni Annual snapshot"),
   ).toBeDefined();
+  expect(screen.getByText("Previews")).toBeDefined();
   expect(screen.getByText("Commissioner")).toBeDefined();
   expect(
     screen.getByRole("link", { name: /read post/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press/storyline-1");
+  expect(
+    screen.getByRole("link", { name: "Read The Press" }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press");
   expect(
     screen.getByRole("link", { name: /invite/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/members");

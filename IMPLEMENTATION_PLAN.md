@@ -25,7 +25,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Build the Front archetype with an edited lead + secondaries + card river (not a flat list). (specs/11)
 - [x] Build section fronts plus the league/central section taxonomies. (specs/11)
 - [x] Build the article page with persona byline, dek, typographic body, tags, related. (specs/11)
-- [ ] Build the reusable story card and enforce the three-register separation. (specs/11)
+- [x] Build the reusable story card and enforce the three-register separation. (specs/11)
 - [ ] Implement the "for your league" central-news tailoring rail. (specs/11)
 - [ ] Make AI generation emit structured articles with headline/dek/byline/section/tags/body. (specs/11)
 
@@ -51,3 +51,5 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 
 ## Discoveries / bugs (loop appends here)
 - [ ] **[observability/LOW] Historical import progress is DB-queryable but not published to realtime** — checkpoints/data coverage expose progress, but onboarding cannot subscribe to a live history-build channel yet.
+- [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` and `src/news/league-feed.ts` fetch a bounded candidate set before applying section/tag filters, so sparse older beats can disappear once archives grow.
+- [ ] **[maintainability/LOW] Press dynamic route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]` handles both section fronts and articles; rename to a neutral slug or split routes when the publication routes are hardened.

@@ -10,6 +10,10 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  type PublicationStory,
+  PublicationStoryCard,
+} from "@/components/publication/story-card";
 import { LeagueNotificationToggle } from "@/components/pwa/league-notification-toggle";
 import { buttonVariants } from "@/components/ui/button";
 import type {
@@ -89,12 +93,25 @@ function personaLabel(persona: LeagueHomeStoryline["authorPersona"]): string {
   }
 }
 
-function formatPublishedAt(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(value));
+function toPressTeaserStory({
+  leagueId,
+  storyline,
+}: {
+  leagueId: string;
+  storyline: LeagueHomeStoryline;
+}): PublicationStory {
+  return {
+    byline: personaLabel(storyline.authorPersona),
+    dek: storyline.dek,
+    headline: storyline.title,
+    href: `/leagues/${leagueId}/press/${storyline.id}`,
+    hrefLabel: "Read post",
+    id: storyline.id,
+    publishedAt: storyline.publishedAt,
+    sectionTag: storyline.section.label,
+    thumbnailAlt: storyline.title,
+    thumbnailUrl: storyline.thumbnailUrl || undefined,
+  };
 }
 
 function SectionTitle({
@@ -337,46 +354,44 @@ function RecordsSection({ data }: { data: LeagueHomeData }) {
   );
 }
 
-function StorylinesSection({ data }: { data: LeagueHomeData }) {
+function PressTeaserSection({ data }: { data: LeagueHomeData }) {
   return (
-    <section className="grid gap-3">
-      <SectionTitle icon={Newspaper} title="Storylines" />
+    <section
+      className="grid gap-3"
+      aria-label="From the Press"
+      data-register="dashboard-press-teaser"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle
+          icon={Newspaper}
+          eyebrow="League publication teaser"
+          title="From the Press"
+        />
+        <Link
+          href={`/leagues/${data.league.id}/press`}
+          className={cn(
+            buttonVariants({
+              className: "shrink-0",
+              size: "sm",
+              variant: "outline",
+            }),
+          )}
+        >
+          Read The Press
+          <ArrowRight data-icon="inline-end" />
+        </Link>
+      </div>
       {data.storylines.length > 0 ? (
         <div className="grid gap-3">
           {data.storylines.map((storyline) => (
-            <article
+            <PublicationStoryCard
               key={storyline.id}
-              className="rounded-card border border-border bg-card p-3"
-            >
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-primary">
-                  {personaLabel(storyline.authorPersona)}
-                </p>
-                <time
-                  className="shrink-0 text-xs text-muted-foreground"
-                  dateTime={storyline.publishedAt}
-                >
-                  {formatPublishedAt(storyline.publishedAt)}
-                </time>
-              </div>
-              <h3 className="text-sm font-semibold">{storyline.title}</h3>
-              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-                {storyline.summary}
-              </p>
-              <Link
-                href={`/leagues/${data.league.id}/press/${storyline.id}`}
-                className={cn(
-                  buttonVariants({
-                    className: "mt-3 w-fit",
-                    size: "sm",
-                    variant: "outline",
-                  }),
-                )}
-              >
-                Read post
-                <ArrowRight data-icon="inline-end" />
-              </Link>
-            </article>
+              story={toPressTeaserStory({
+                leagueId: data.league.id,
+                storyline,
+              })}
+              variant="rail"
+            />
           ))}
         </div>
       ) : (
@@ -460,7 +475,7 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
               <EmptyState>No upcoming matchups are available.</EmptyState>
             )}
           </section>
-          <StorylinesSection data={data} />
+          <PressTeaserSection data={data} />
         </aside>
       </div>
     </main>

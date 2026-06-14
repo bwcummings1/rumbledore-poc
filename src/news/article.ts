@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { type AiPersona, DEFAULT_PERSONA_CARDS } from "@/ai/personas";
+import type { PublicationStory } from "@/components/publication/story";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -28,18 +29,7 @@ const UUID_RE =
 const RELATED_CANDIDATE_LIMIT = 50;
 const RELATED_LIMIT = 4;
 
-export interface PublicationArticleStory {
-  id: string;
-  headline: string;
-  dek: string;
-  byline: string;
-  sectionTag: string;
-  publishedAt: string;
-  href?: string;
-  hrefLabel?: string;
-  sourceUrl?: string;
-  relevanceReason?: string;
-}
+export type PublicationArticleStory = PublicationStory;
 
 export interface PublicationArticleViewData {
   scope: "central" | "league";
@@ -198,6 +188,8 @@ function selectRelatedStories(
       relevanceReason: candidate.relevanceReason,
       sectionTag: candidate.sectionTag,
       sourceUrl: candidate.sourceUrl,
+      thumbnailAlt: candidate.thumbnailAlt,
+      thumbnailUrl: candidate.thumbnailUrl,
     }));
 }
 
@@ -278,6 +270,8 @@ export async function getCentralNewsArticleData(
         sectionTag: candidateSection.label,
         sourceUrl: sourceUrlFor(candidate.metadata, candidate.sourceUrl),
         tags: articleTags(candidate.metadata),
+        thumbnailAlt: candidate.title,
+        thumbnailUrl: articleHeroImageUrl(candidate.metadata),
       };
     });
 
@@ -474,6 +468,8 @@ export async function getLeaguePressArticleData(
           sectionId: candidateSection.id,
           sectionTag: candidateSection.label,
           tags: articleTags(candidate.metadata),
+          thumbnailAlt: candidate.title,
+          thumbnailUrl: articleHeroImageUrl(candidate.metadata),
         };
       });
 
@@ -509,6 +505,8 @@ export async function getLeaguePressArticleData(
             ...articleTags(candidate.metadata),
             ...matchedEntityTags(candidate.matchedEntities),
           ],
+          thumbnailAlt: title,
+          thumbnailUrl: articleHeroImageUrl(candidate.metadata),
         };
       },
     );

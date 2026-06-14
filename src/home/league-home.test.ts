@@ -219,9 +219,16 @@ describe("getLeagueHomeData", () => {
     expect(result.data.storylines).toEqual([
       {
         authorPersona: "commissioner",
+        dek: "Only the requested league should see this summary.",
         id: expect.any(String),
         publishedAt: "2026-06-11T00:00:00.000Z",
+        section: {
+          id: "previews",
+          label: "Previews",
+          slug: "previews",
+        },
         summary: "Only the requested league should see this summary.",
+        thumbnailUrl: "",
         title: "Commissioner: Home league storyline",
       },
     ]);

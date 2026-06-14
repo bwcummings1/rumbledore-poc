@@ -1,35 +1,41 @@
 import { ArrowRight, ExternalLink } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { PublicationStory, PublicationStoryCardVariant } from "./story";
 
-export type PublicationStoryCardVariant =
-  | "hero"
-  | "secondary"
-  | "river"
-  | "rail";
-
-export interface PublicationStory {
-  id: string;
-  headline: string;
-  dek: string;
-  byline: string;
-  sectionTag: string;
-  publishedAt: string;
-  href?: string;
-  hrefLabel?: string;
-  sourceUrl?: string;
-  relevanceReason?: string;
-}
+export type { PublicationStory, PublicationStoryCardVariant } from "./story";
 
 function formatPublishedAt(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(value));
+  const publishedAt = new Date(value).getTime();
+  if (!Number.isFinite(publishedAt)) {
+    return "recently";
+  }
+
+  const diffMs = publishedAt - Date.now();
+  const absMs = Math.abs(diffMs);
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  const weekMs = 7 * dayMs;
+  const formatter = new Intl.RelativeTimeFormat("en-US", {
+    numeric: "auto",
+  });
+
+  if (absMs < minuteMs) {
+    return "now";
+  }
+  if (absMs < hourMs) {
+    return formatter.format(Math.round(diffMs / minuteMs), "minute");
+  }
+  if (absMs < dayMs) {
+    return formatter.format(Math.round(diffMs / hourMs), "hour");
+  }
+  if (absMs < weekMs) {
+    return formatter.format(Math.round(diffMs / dayMs), "day");
+  }
+  return formatter.format(Math.round(diffMs / weekMs), "week");
 }
 
 function cardClassName(variant: PublicationStoryCardVariant): string {
@@ -71,6 +77,18 @@ function dekClassName(variant: PublicationStoryCardVariant): string {
   }
 }
 
+function thumbnailClassName(variant: PublicationStoryCardVariant): string {
+  switch (variant) {
+    case "hero":
+      return "mb-4 aspect-[16/9] w-full rounded-control border border-border object-cover";
+    case "secondary":
+    case "river":
+      return "mb-3 aspect-[16/9] w-full rounded-control border border-border object-cover";
+    case "rail":
+      return "mb-3 aspect-[5/3] w-full rounded-control border border-border object-cover";
+  }
+}
+
 export function PublicationStoryCard({
   story,
   variant,
@@ -86,6 +104,16 @@ export function PublicationStoryCard({
       className={cardClassName(variant)}
       data-story-card-variant={variant}
     >
+      {story.thumbnailUrl ? (
+        <Image
+          src={story.thumbnailUrl}
+          alt={story.thumbnailAlt ?? ""}
+          width={960}
+          height={540}
+          unoptimized
+          className={thumbnailClassName(variant)}
+        />
+      ) : null}
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="min-w-0 truncate text-xs font-medium text-primary">
           {story.sectionTag}

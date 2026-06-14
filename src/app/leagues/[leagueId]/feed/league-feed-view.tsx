@@ -66,6 +66,8 @@ function toStory({
     relevanceReason: item.relevanceReason,
     sectionTag: sectionTag(item),
     sourceUrl: item.scope === "central" ? item.sourceUrl : undefined,
+    thumbnailAlt: item.title,
+    thumbnailUrl: item.thumbnailUrl,
   };
 }
 

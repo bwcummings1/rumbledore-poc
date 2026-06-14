@@ -1,7 +1,12 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { contentItems } from "@/db/schema";
-import { articleDek, articleHasTag, articleTags } from "./article-metadata";
+import {
+  articleDek,
+  articleHasTag,
+  articleHeroImageUrl,
+  articleTags,
+} from "./article-metadata";
 import { editorialImportance, publicationRankScore } from "./front";
 import {
   CENTRAL_PUBLICATION_SECTIONS,
@@ -23,6 +28,7 @@ export interface CentralNewsHubItem {
   publishedAt: string;
   section: PublicationSection<CentralPublicationSectionId>;
   tags?: string[];
+  thumbnailUrl?: string;
   editorialImportance?: number;
 }
 
@@ -92,6 +98,7 @@ export async function getCentralNewsHubData(
           sourceUrl: row.sourceUrl ?? "",
           summary: row.summary,
           tags: articleTags(row.metadata),
+          thumbnailUrl: articleHeroImageUrl(row.metadata),
           title: row.title,
         };
       })

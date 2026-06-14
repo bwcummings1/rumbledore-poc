@@ -12,7 +12,12 @@ import {
   members,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
-import { articleDek, articleHasTag, articleTags } from "./article-metadata";
+import {
+  articleDek,
+  articleHasTag,
+  articleHeroImageUrl,
+  articleTags,
+} from "./article-metadata";
 import { editorialImportance, publicationRankScore } from "./front";
 import {
   LEAGUE_PUBLICATION_SECTIONS,
@@ -45,6 +50,7 @@ export interface LeagueFeedItem {
   relevanceScore: number;
   section: PublicationSection<LeaguePublicationSectionId>;
   tags?: string[];
+  thumbnailUrl?: string;
   editorialImportance?: number;
   matchedEntities: LeagueFeedMatchedEntity[];
 }
@@ -362,6 +368,7 @@ export async function getLeagueFeedData(
         sourceUrl: "",
         summary,
         tags: articleTags(row.metadata),
+        thumbnailUrl: articleHeroImageUrl(row.metadata),
         title,
       };
     });
@@ -393,6 +400,7 @@ export async function getLeagueFeedData(
         sourceUrl: row.sourceUrl ?? "",
         summary,
         tags: articleTags(row.metadata),
+        thumbnailUrl: articleHeroImageUrl(row.metadata),
         title,
       };
     });
