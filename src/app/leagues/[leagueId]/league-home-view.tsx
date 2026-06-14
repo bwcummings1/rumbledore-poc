@@ -86,6 +86,8 @@ function personaLabel(persona: LeagueHomeStoryline["authorPersona"]): string {
       return "Narrator";
     case "trash_talker":
       return "Trash-Talker";
+    case "beat_reporter":
+      return "Beat Reporter";
     case "betting_advisor":
       return "Betting-Advisor";
     case null:

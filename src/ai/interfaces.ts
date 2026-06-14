@@ -46,6 +46,9 @@ export interface LeaguePersonaCard {
   id: string;
   persona: AiPersona;
   name: string;
+  beat: string;
+  pointOfView: string;
+  performsWhen: string[];
   purpose: string;
   tone: string;
   promptTemplate: string;

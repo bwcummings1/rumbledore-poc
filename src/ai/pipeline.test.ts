@@ -21,6 +21,7 @@ import { withLeagueContext } from "@/db/rls";
 import {
   aiGenerationRuns,
   aiMemory,
+  aiPersonaCards,
   allTimeRecords,
   contentItems,
   dataIntegrityChecks,
@@ -558,5 +559,79 @@ describe("generateLeagueBlogPost", () => {
         ),
     );
     expect(posts).toHaveLength(0);
+  });
+
+  it("seeds the Beat Reporter card and includes the cast contract in the prompt prefix", async () => {
+    const league = await seedLeague("beat-reporter");
+    const llm = new MockLlmClient();
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        leagueId: league.id,
+        persona: "beat_reporter",
+        triggerKey: "transaction:fixture",
+      },
+    });
+
+    expect(result).toMatchObject({
+      reused: false,
+      status: "published",
+      title: `Beat Reporter: ${marker} beat-reporter snapshot`,
+    });
+    expect(llm.requests).toHaveLength(1);
+    expect(llm.requests[0]?.context.persona).toMatchObject({
+      beat: expect.stringContaining("Transactions"),
+      name: "Beat Reporter",
+      performsWhen: expect.arrayContaining(["transaction events"]),
+      pointOfView: expect.stringContaining("Scoopy"),
+    });
+
+    const stablePrefix = JSON.parse(
+      llm.requests[0]?.prompt.systemPrefix ?? "{}",
+    ) as {
+      persona?: {
+        beat?: string;
+        performsWhen?: string[];
+        pointOfView?: string;
+      };
+    };
+    expect(stablePrefix.persona).toMatchObject({
+      beat: expect.stringContaining("Transactions"),
+      performsWhen: expect.arrayContaining(["transaction events"]),
+      pointOfView: expect.stringContaining("Scoopy"),
+    });
+
+    const [card] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({
+          beat: aiPersonaCards.beat,
+          performsWhen: aiPersonaCards.performsWhen,
+          pointOfView: aiPersonaCards.pointOfView,
+        })
+        .from(aiPersonaCards)
+        .where(
+          and(
+            eq(aiPersonaCards.leagueId, league.id),
+            eq(aiPersonaCards.persona, "beat_reporter"),
+          ),
+        )
+        .limit(1),
+    );
+
+    expect(card).toMatchObject({
+      beat: expect.stringContaining("Transactions"),
+      performsWhen: expect.arrayContaining(["transaction events"]),
+      pointOfView: expect.stringContaining("Scoopy"),
+    });
   });
 });

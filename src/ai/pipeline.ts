@@ -216,9 +216,12 @@ export function buildPromptParts({
       season: context.league.season,
     },
     persona: {
+      beat: context.persona.beat,
       maxWords: context.persona.maxWords,
       minWords: context.persona.minWords,
       name: context.persona.name,
+      performsWhen: context.persona.performsWhen,
+      pointOfView: context.persona.pointOfView,
       promptTemplate: context.persona.promptTemplate,
       purpose: context.persona.purpose,
       tone: context.persona.tone,
@@ -260,10 +263,13 @@ async function ensurePersonaCard({
     .insert(aiPersonaCards)
     .values({
       enabled: defaults.enabled,
+      beat: defaults.beat,
       leagueId,
       maxWords: defaults.maxWords,
       minWords: defaults.minWords,
       name: defaults.name,
+      performsWhen: defaults.performsWhen,
+      pointOfView: defaults.pointOfView,
       persona,
       promptTemplate: defaults.promptTemplate,
       purpose: defaults.purpose,
@@ -275,11 +281,14 @@ async function ensurePersonaCard({
     })
     .returning({
       enabled: aiPersonaCards.enabled,
+      beat: aiPersonaCards.beat,
       id: aiPersonaCards.id,
       maxWords: aiPersonaCards.maxWords,
       minWords: aiPersonaCards.minWords,
       name: aiPersonaCards.name,
+      performsWhen: aiPersonaCards.performsWhen,
       persona: aiPersonaCards.persona,
+      pointOfView: aiPersonaCards.pointOfView,
       promptTemplate: aiPersonaCards.promptTemplate,
       purpose: aiPersonaCards.purpose,
       tone: aiPersonaCards.tone,
@@ -292,11 +301,14 @@ async function ensurePersonaCard({
   const [row] = await tx
     .select({
       enabled: aiPersonaCards.enabled,
+      beat: aiPersonaCards.beat,
       id: aiPersonaCards.id,
       maxWords: aiPersonaCards.maxWords,
       minWords: aiPersonaCards.minWords,
       name: aiPersonaCards.name,
+      performsWhen: aiPersonaCards.performsWhen,
       persona: aiPersonaCards.persona,
+      pointOfView: aiPersonaCards.pointOfView,
       promptTemplate: aiPersonaCards.promptTemplate,
       purpose: aiPersonaCards.purpose,
       tone: aiPersonaCards.tone,

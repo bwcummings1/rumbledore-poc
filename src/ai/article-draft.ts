@@ -73,6 +73,7 @@ export function defaultLeagueArticleSectionForPersona(
   switch (persona) {
     case "analyst":
       return "power-rankings";
+    case "beat_reporter":
     case "betting_advisor":
     case "commissioner":
       return "previews";

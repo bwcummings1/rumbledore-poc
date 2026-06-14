@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import type { AiPersona } from "@/ai";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -75,13 +76,7 @@ export interface LeagueHomeStoryline {
   title: string;
   summary: string;
   dek: string;
-  authorPersona:
-    | "commissioner"
-    | "analyst"
-    | "narrator"
-    | "trash_talker"
-    | "betting_advisor"
-    | null;
+  authorPersona: AiPersona | null;
   publishedAt: string;
   section: PublicationSection<LeaguePublicationSectionId>;
   thumbnailUrl: string;

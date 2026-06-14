@@ -55,10 +55,13 @@ export class MockLlmClient implements LlmClient {
     const teamLine = team
       ? `${team.name}, managed by ${manager}, is the first team to watch at ${team.wins}-${team.losses}-${team.ties}.`
       : `${manager} has the quietest board because no teams have been ingested yet.`;
+    const personaLine = `${personaName}'s beat: ${request.context.persona.beat} Point of view: ${request.context.persona.pointOfView}`;
+    const performsLine = `Performs when: ${request.context.persona.performsWhen.join("; ")}.`;
     const section = defaultLeagueArticleSectionForPersona(request.persona);
     const tags = [
       team?.name,
       manager,
+      request.context.persona.beat,
       record?.label,
       request.context.league.name,
     ].filter((tag): tag is string => Boolean(tag));
@@ -68,7 +71,11 @@ export class MockLlmClient implements LlmClient {
         type: "heading",
       },
       {
-        text: `${angle} ${teamLine}`,
+        text: `${angle} ${teamLine} ${personaLine}`,
+        type: "paragraph",
+      },
+      {
+        text: performsLine,
         type: "paragraph",
       },
       {

@@ -189,6 +189,7 @@ export const aiPersona = pgEnum("ai_persona", [
   "analyst",
   "narrator",
   "trash_talker",
+  "beat_reporter",
   "betting_advisor",
 ]);
 
@@ -1980,6 +1981,12 @@ export const aiPersonaCards = pgTable(
       .references(() => leagues.id, { onDelete: "cascade" }),
     persona: aiPersona("persona").notNull(),
     name: text("name").notNull(),
+    beat: text("beat").notNull(),
+    pointOfView: text("point_of_view").notNull(),
+    performsWhen: jsonb("performs_when")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     purpose: text("purpose").notNull(),
     tone: text("tone").notNull(),
     promptTemplate: text("prompt_template").notNull(),

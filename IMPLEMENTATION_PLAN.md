@@ -30,7 +30,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Make AI generation emit structured articles with headline/dek/byline/section/tags/body. (specs/11)
 
 ### D. AI cast / spectacle engine (see specs/12)
-- [ ] Implement the persona cast with distinct beats, POV, and when-they-perform. (specs/12)
+- [x] Implement the persona cast with distinct beats, POV, and when-they-perform. (specs/12)
 - [ ] Implement the structured content-type templates (recap/power-rankings/previews/awards/reactions/arcs). (specs/12)
 - [ ] Implement the cadence and trigger framework (scheduled plus event-driven). (specs/12)
 - [ ] Implement the instigator engine: seed a debate, run a poll, open a lore claim, write the verdict column. (specs/12)

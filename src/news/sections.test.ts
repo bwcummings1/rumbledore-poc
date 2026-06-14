@@ -68,6 +68,13 @@ describe("publication section taxonomies", () => {
     ).toBe("Power Rankings");
     expect(
       resolveLeaguePublicationSection({
+        authorPersona: "beat_reporter",
+        kind: "blog",
+        metadata: {},
+      }).label,
+    ).toBe("Previews");
+    expect(
+      resolveLeaguePublicationSection({
         kind: "ingest_event",
         metadata: {},
       }).label,

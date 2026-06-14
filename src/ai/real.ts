@@ -71,6 +71,7 @@ const flagshipPersonas = new Set<AiPersona>([
   "commissioner",
   "narrator",
   "trash_talker",
+  "beat_reporter",
 ]);
 
 function defaultModelForPersona(persona: AiPersona): string {
@@ -93,7 +94,11 @@ function anthropicSystemInstructions(request: LlmGenerateRequest): string {
     "Do not use DraftKings, FanDuel, sportsbook, or real-money betting language.",
     "Choose exactly one league publication section: recaps, power-rankings, trash-talk, records, or previews.",
     "Include a sharp dek, 2-8 tags from league teams/managers/topics, and bodyBlocks for typographic rendering.",
-    `Write as the ${request.context.persona.name} persona: ${request.context.persona.tone}`,
+    `Write as the ${request.context.persona.name} persona.`,
+    `Beat: ${request.context.persona.beat}`,
+    `Point of view: ${request.context.persona.pointOfView}`,
+    `Performs when: ${request.context.persona.performsWhen.join("; ")}`,
+    `Tone: ${request.context.persona.tone}`,
   ].join("\n");
 }
 
@@ -186,6 +191,7 @@ export interface TavilyWebGroundingOptions {
 
 const personaSearchTerms: Record<AiPersona, string> = {
   analyst: "start sit projections trends",
+  beat_reporter: "waiver wire fantasy football transactions injuries",
   betting_advisor: "injury line movement fantasy outlook play money",
   commissioner: "league week preview injuries fantasy football",
   narrator: "NFL fantasy football storylines injuries performances",

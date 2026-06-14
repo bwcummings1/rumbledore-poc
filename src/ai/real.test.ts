@@ -32,12 +32,15 @@ function requestFor(
       },
       memory: [],
       persona: {
+        beat: "League-official framing",
         enabled: true,
         id: "00000000-0000-0000-0000-000000000002",
         maxWords: 180,
         minWords: 80,
         name: "Commissioner",
+        performsWhen: ["weekly-preview"],
         persona,
+        pointOfView: "Warm and authoritative",
         promptTemplate: "Frame the week.",
         purpose: "League framing",
         tone: "warm and direct",
@@ -99,17 +102,23 @@ describe("AnthropicLlmClient", () => {
       title: "Title from Claude",
     });
     await llm.generate(requestFor("analyst"));
+    await llm.generate(requestFor("beat_reporter"));
 
     const first = calls[0] as Record<string, unknown>;
     const second = calls[1] as Record<string, unknown>;
+    const third = calls[2] as Record<string, unknown>;
     expect(first.model).toBe(ANTHROPIC_FLAGSHIP_MODEL);
     expect(second.model).toBe(ANTHROPIC_BULK_MODEL);
+    expect(third.model).toBe(ANTHROPIC_FLAGSHIP_MODEL);
     expect(first).toMatchObject({
       cache_control: { type: "ephemeral" },
       metadata: { user_id: "00000000-0000-0000-0000-000000000001" },
       tool_choice: { type: "none" },
     });
     const system = first.system as Array<Record<string, unknown>>;
+    expect(system[0]?.text).toEqual(expect.stringContaining("Beat: "));
+    expect(system[0]?.text).toEqual(expect.stringContaining("Point of view: "));
+    expect(system[0]?.text).toEqual(expect.stringContaining("Performs when: "));
     expect(system[1]).toMatchObject({
       cache_control: { type: "ephemeral" },
       text: expect.stringContaining("Stable league context JSON"),
@@ -169,9 +178,17 @@ describe("TavilyWebGrounding", () => {
       persona: "analyst",
       triggerKey: "weekly:fixture",
     });
+    await web.fetch({
+      leagueId: "00000000-0000-0000-0000-000000000001",
+      leagueName: "Do Not Send This League",
+      persona: "beat_reporter",
+      triggerKey: "transaction:fixture",
+    });
 
     expect(calls[0]?.query).toContain("latest NFL fantasy football news");
     expect(calls[0]?.query).not.toContain("Do Not Send This League");
+    expect(calls[1]?.query).toContain("waiver wire fantasy football");
+    expect(calls[1]?.query).not.toContain("Do Not Send This League");
     expect(calls[0]?.options).toMatchObject({
       includeRawContent: "text",
       maxResults: 3,
