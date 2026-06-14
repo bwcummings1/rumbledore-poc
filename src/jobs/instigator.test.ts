@@ -7,6 +7,7 @@ import {
   instigationSeed,
   runInstigationSeed,
 } from "./functions/instigation-seed";
+import { loreVoteClose, runLoreVoteClose } from "./functions/lore-vote-close";
 import { pollClose, runPollClose } from "./functions/poll-close";
 import { functions } from "./index";
 
@@ -39,11 +40,25 @@ describe("instigator job functions", () => {
     ).rejects.toBeInstanceOf(NonRetriableError);
   });
 
+  it("rejects invalid lore vote close payloads without retrying", async () => {
+    await expect(
+      runLoreVoteClose({
+        data: {
+          claimId: "not-a-uuid",
+          leagueId: randomUUID(),
+        },
+        deps: {} as never,
+      }),
+    ).rejects.toBeInstanceOf(NonRetriableError);
+  });
+
   it("exports the producer events and functions", () => {
     expect(JOB_EVENTS.instigationSeed).toBe("instigation.seed");
     expect(JOB_EVENTS.instigationSeeded).toBe("instigation.seeded");
     expect(JOB_EVENTS.pollClose).toBe("poll.close");
+    expect(JOB_EVENTS.loreVoteClose).toBe("lore.vote.close");
     expect(functions).toContain(instigationSeed);
     expect(functions).toContain(pollClose);
+    expect(functions).toContain(loreVoteClose);
   });
 });

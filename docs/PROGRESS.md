@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: Lore vote lifecycle landed — opinion claims now open first-class votes, one-vote-per-member tallies enforce quorum/majority canonization, and commissioners/data stewards can ratify/reject/extend/veto with append-only audit plus `lore.vote.close` fan-out.
 - 2026-06-14: League lore data model landed — claims now carry verification/body/branch/thread/vote metadata, claim-native subjects/verifications/votes are RLS-scoped, and the canary covers cross-league isolation plus one-vote-per-member.
 - 2026-06-14: Offline LLM-judge eval gate landed — deterministic mock judge scores generated cast output for authenticity, persona match, and cross-league leakage across all content types in CI.
 - 2026-06-14: Authenticity engine landed — AI prompts now carry league-scoped canonical people, rivalries, record facts, and ratified canon; generic drafts retry/skip, and near-dup checks query nearest same-content vectors before publishing.

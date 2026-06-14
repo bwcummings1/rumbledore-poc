@@ -15,6 +15,7 @@ export const JOB_EVENTS = {
   waiver: "waiver",
   recordBroken: "record.broken",
   pollClose: "poll.close",
+  loreVoteClose: "lore.vote.close",
   loreCanonized: "lore.canonized",
   pollClosed: "poll.closed",
   loreDispute: "lore.dispute",
@@ -78,6 +79,11 @@ export interface InstigationSeededData {
 export interface PollCloseData {
   leagueId: string;
   pollId: string;
+}
+
+export interface LoreVoteCloseData {
+  claimId: string;
+  leagueId: string;
 }
 
 export interface TransactionData {

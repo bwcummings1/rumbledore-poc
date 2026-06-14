@@ -39,7 +39,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 
 ### E. League lore (see specs/13)
 - [x] Build the lore data model and RLS for claims/votes/canon/branches/disputes. (specs/13)
-- [ ] Implement claim → vote → canon transitions with threshold and steward tiebreak. (specs/13)
+- [x] Implement claim → vote → canon transitions with threshold and steward tiebreak. (specs/13)
 - [ ] Implement the two lore types: data-verifiable auto-confirm versus opinion-vote. (specs/13)
 - [ ] Implement challengeable canon plus dispute and branch threads. (specs/13)
 - [ ] Implement the bidirectional AI↔lore contract: consume canon as fact and instigate claims. (specs/13)
