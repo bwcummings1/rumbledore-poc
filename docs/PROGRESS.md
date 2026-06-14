@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: IA route migration landed — `/you`, league Press/Bet/Records/Members routes now exist with auth guards, legacy feed/posts/invite URLs redirect into the new IA, and the full gate suite plus e2e is green.
 - 2026-06-14: Your Leagues landing landed — `/` now renders the authenticated cross-league lobby with MRU-ordered league cards, matchup score context, latest league Press headlines, and logged-out/zero-league connect states.
 - 2026-06-14: Responsive nav shell landed — root chrome now derives scope from URL, exposes mobile top/scope sheet plus bottom tabs, desktop/tablet collapsible sidebar, and client-loaded unified league switcher data.
 - 2026-06-14: Unified league switcher landed — membership MRU persistence, all-provider provider-badged list data, searchable/groupable switcher UI, and active-league recency bumps are covered.

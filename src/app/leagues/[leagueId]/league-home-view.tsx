@@ -364,7 +364,7 @@ function StorylinesSection({ data }: { data: LeagueHomeData }) {
                 {storyline.summary}
               </p>
               <Link
-                href={`/leagues/${data.league.id}/posts/${storyline.id}`}
+                href={`/leagues/${data.league.id}/press/${storyline.id}`}
                 className={cn(
                   buttonVariants({
                     className: "mt-3 w-fit",
@@ -407,7 +407,7 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
           <div className="flex flex-wrap gap-2">
             <LeagueNotificationToggle leagueId={data.league.id} />
             <Link
-              href={`/leagues/${data.league.id}/invite`}
+              href={`/leagues/${data.league.id}/members`}
               className={cn(
                 buttonVariants({ className: "w-fit", variant: "secondary" }),
               )}
@@ -416,11 +416,11 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
               Invite
             </Link>
             <Link
-              href={`/leagues/${data.league.id}/feed`}
+              href={`/leagues/${data.league.id}/press`}
               className={cn(buttonVariants({ className: "w-fit" }))}
             >
               <Rss data-icon="inline-start" />
-              League feed
+              The Press
             </Link>
             <Link
               href="/news"

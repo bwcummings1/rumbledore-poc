@@ -156,7 +156,9 @@ export function LeagueInviteView({
       <header className="grid gap-3">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-primary">League invites</p>
+            <p className="text-sm font-medium text-primary">
+              Members / Settings
+            </p>
             <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
               {initialSummary.league.name}
             </h1>

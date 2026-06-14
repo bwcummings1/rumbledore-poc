@@ -49,8 +49,8 @@ test("league blog post view renders persona metadata and full body", () => {
     screen.getByText("Fixture Team 02 still has a counterpunch waiting."),
   ).toBeDefined();
   expect(
-    screen.getByRole("link", { name: /league feed/i }).getAttribute("href"),
-  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/feed");
+    screen.getByRole("link", { name: /the press/i }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press");
   expect(
     screen.getByRole("link", { name: /league home/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001");

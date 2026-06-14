@@ -1,0 +1,76 @@
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+import { requireLeagueRole } from "@/auth/guards";
+import { getDb } from "@/db";
+import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import { getLeagueBlogPostData } from "@/news";
+import { LeagueSectionAccessState } from "../../league-section-access-state";
+import { LeagueBlogPostView } from "../../posts/[postId]/league-blog-post-view";
+
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Press Article | Rumbledore",
+  description: "A league-scoped column from the Rumbledore cast.",
+};
+
+interface LeaguePressPostPageProps {
+  params: Promise<{ leagueId: string; postId: string }>;
+}
+
+export default async function LeaguePressPostPage({
+  params,
+}: LeaguePressPostPageProps) {
+  const { leagueId, postId } = await params;
+  const db = getDb();
+  const access = await requireLeagueRole({
+    db,
+    headers: await headers(),
+    leagueId,
+    minRole: "member",
+  });
+
+  if (!access.ok) {
+    if (access.error.code === "INVALID_LEAGUE_ID") {
+      notFound();
+    }
+    if (access.error.status === 401) {
+      return (
+        <LeagueSectionAccessState
+          title="Sign in required"
+          body="Connect a provider or sign in before opening a Press article."
+        />
+      );
+    }
+    return (
+      <LeagueSectionAccessState
+        title="No league access"
+        body="This account is not a member of that league."
+      />
+    );
+  }
+
+  await markLeagueOpened(db, { leagueId, userId: access.value.userId });
+
+  const result = await getLeagueBlogPostData(db, {
+    leagueId,
+    postId,
+    userId: access.value.userId,
+    userRole: access.value.role,
+  });
+
+  switch (result.status) {
+    case "ready":
+      return <LeagueBlogPostView data={result.data} />;
+    case "forbidden":
+      return (
+        <LeagueSectionAccessState
+          title="No league access"
+          body="This account is not a member of that league."
+        />
+      );
+    case "not_found":
+      notFound();
+  }
+}

@@ -52,6 +52,15 @@ export type {
   ResultsProvider,
   ResultsProviderInput,
 } from "./interfaces";
+export {
+  getLeagueBetData,
+  type LeagueBetBalance,
+  type LeagueBetData,
+  type LeagueBetLoadResult,
+  type LeagueBetMarket,
+  type LeagueBetSelection,
+  type LeagueBetSlip,
+} from "./league-bet";
 export { MockOddsProvider, MockResultsProvider } from "./mocks";
 export {
   BET_LEG_SELECTIONS,

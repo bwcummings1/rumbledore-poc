@@ -83,7 +83,7 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Shared league-agnostic news from the central feed. League-specific
-              framing stays in each league feed.
+              framing stays in each league's Press.
             </p>
           </div>
         </div>

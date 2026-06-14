@@ -63,7 +63,7 @@ afterEach(() => {
   cleanup();
 });
 
-test("league feed view renders league posts and relevant central stories", () => {
+test("league press view renders league posts and relevant central stories", () => {
   render(<LeagueFeedView data={data} />);
 
   expect(
@@ -85,14 +85,14 @@ test("league feed view renders league posts and relevant central stories", () =>
   ).toBe("https://news.example.com/relevant");
   expect(
     screen.getByRole("link", { name: /read post/i }).getAttribute("href"),
-  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/posts/blog-content-1");
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press/blog-content-1");
   expect(
     screen.getByRole("link", { name: /league home/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001");
 });
 
-test("league feed view renders an empty state", () => {
+test("league press view renders an empty state", () => {
   render(<LeagueFeedView data={{ ...data, items: [] }} />);
 
-  expect(screen.getByText("No league feed items yet")).toBeDefined();
+  expect(screen.getByText("No Press items yet")).toBeDefined();
 });

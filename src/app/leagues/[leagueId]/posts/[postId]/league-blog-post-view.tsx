@@ -48,13 +48,13 @@ export function LeagueBlogPostView({ data }: { data: LeagueBlogPostData }) {
       <header className="grid gap-5">
         <div className="flex flex-wrap gap-2">
           <Link
-            href={`/leagues/${data.league.id}/feed`}
+            href={`/leagues/${data.league.id}/press`}
             className={cn(
               buttonVariants({ className: "w-fit", variant: "ghost" }),
             )}
           >
             <ArrowLeft data-icon="inline-start" />
-            League feed
+            The Press
           </Link>
           <Link
             href={`/leagues/${data.league.id}`}

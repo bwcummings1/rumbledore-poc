@@ -55,7 +55,7 @@ function FeedCard({
   const hasSource = item.scope === "central" && item.sourceUrl.length > 0;
   const postHref =
     item.scope === "league" && item.kind === "blog"
-      ? `/leagues/${leagueId}/posts/${item.contentItemId}`
+      ? `/leagues/${leagueId}/press/${item.contentItemId}`
       : null;
   const Icon = item.scope === "central" ? Newspaper : Rss;
 
@@ -153,7 +153,7 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
         <div className="grid gap-3">
           <div className="flex items-center gap-2 text-primary">
             <Rss className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">League feed</p>
+            <p className="text-sm font-medium">The Press</p>
           </div>
           <div>
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
@@ -168,10 +168,7 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
       </header>
 
       {data.items.length > 0 ? (
-        <section
-          className="grid gap-3 sm:grid-cols-2"
-          aria-label="League feed items"
-        >
+        <section className="grid gap-3 sm:grid-cols-2" aria-label="Press items">
           {data.items.map((item) => (
             <FeedCard
               key={`${item.scope}-${item.id}`}
@@ -183,11 +180,11 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
       ) : (
         <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
           <h2 className="text-base font-semibold tracking-tight">
-            No league feed items yet
+            No Press items yet
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            League posts and matched central stories will appear here after
-            publishing.
+            League posts and matched central stories will appear here after the
+            cast publishes.
           </p>
         </section>
       )}
