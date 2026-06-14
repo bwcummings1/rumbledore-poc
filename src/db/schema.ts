@@ -1818,6 +1818,7 @@ export const members = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: leagueRole("role").notNull().default("member"),
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [

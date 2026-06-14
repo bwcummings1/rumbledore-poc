@@ -7,6 +7,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { getDb } from "@/db";
 import { getLeagueHomeData } from "@/home/league-home";
 import { cn } from "@/lib/utils";
+import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { LeagueHomeView } from "./league-home-view";
 
 interface LeagueHomePageProps {
@@ -60,6 +61,8 @@ export default async function LeagueHomePage({ params }: LeagueHomePageProps) {
       />
     );
   }
+
+  await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
   const result = await getLeagueHomeData(db, {
     leagueId,

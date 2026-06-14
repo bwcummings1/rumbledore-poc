@@ -7,6 +7,7 @@ import { requireLeagueRole } from "@/auth/guards";
 import { buttonVariants } from "@/components/ui/button";
 import { getDb } from "@/db";
 import { cn } from "@/lib/utils";
+import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { getLeagueBlogPostData } from "@/news";
 import { LeagueBlogPostView } from "./league-blog-post-view";
 
@@ -70,6 +71,8 @@ export default async function LeagueBlogPostPage({
       />
     );
   }
+
+  await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
   const result = await getLeagueBlogPostData(db, {
     leagueId,

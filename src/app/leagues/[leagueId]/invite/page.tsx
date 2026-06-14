@@ -6,6 +6,7 @@ import { requireLeagueRole } from "@/auth/guards";
 import { buttonVariants } from "@/components/ui/button";
 import { getDb } from "@/db";
 import { cn } from "@/lib/utils";
+import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { getLeagueInviteDependencies } from "@/onboarding/deps";
 import { listLeaguemateInviteTargets } from "@/onboarding/invites";
 import { LeagueInviteView } from "./league-invite-view";
@@ -65,6 +66,8 @@ export default async function LeagueInvitePage({
       />
     );
   }
+
+  await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
   const result = await listLeaguemateInviteTargets(
     getLeagueInviteDependencies(),
