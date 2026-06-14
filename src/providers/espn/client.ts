@@ -75,10 +75,23 @@ const UNBRACED_SWID = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
 
 export const ESPN_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
   authKind: "cookie",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "none",
+    matchups: "full",
+    final_standings: "partial",
+    transactions: "none",
+    history: "partial",
+    divisions: "none",
+    keeper_dynasty: "none",
+    scoring_detail: "partial",
+  },
   requiresOAuth: false,
   supportsHistory: true,
-  supportsRosters: true,
-  supportsTransactions: true,
+  supportsRosters: false,
+  supportsTransactions: false,
 };
 
 const numericValue = z.union([z.number(), z.string()]);

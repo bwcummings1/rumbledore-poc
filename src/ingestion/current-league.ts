@@ -4,31 +4,42 @@ import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
+  dataCoverage,
   fantasyMatchups,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
+  fantasyTransactions,
   leagues,
   providerFinalStandings,
 } from "@/db/schema";
 import type {
+  DataCoverageStatus,
   FantasyProvider,
+  FantasyProviderCapabilities,
   FantasyProviderSession,
   NormalizedFinalStanding,
   NormalizedLeague,
   NormalizedMatchup,
   NormalizedMember,
+  NormalizedRoster,
   NormalizedTeam,
+  NormalizedTransaction,
+  ProviderDataClass,
+  ProviderDataSupport,
   ProviderError,
   ProviderLeagueRef,
 } from "@/providers";
+import { PROVIDER_DATA_CLASSES } from "@/providers";
 import { REALTIME_EVENTS, type RealtimePublisher } from "@/realtime";
 import { stableContentHash } from "./hash";
 
 export type CurrentLeagueProvider<Session extends FantasyProviderSession> =
   Pick<
     FantasyProvider<unknown, Session>,
-    "getLeague" | "getMatchups" | "getMembers" | "getTeams"
-  >;
+    "capabilities" | "getLeague" | "getMatchups" | "getMembers" | "getTeams"
+  > &
+    Partial<Pick<FantasyProvider<unknown, Session>, "getRosters">>;
 
 export interface EntitySyncStats {
   total: number;
@@ -48,15 +59,19 @@ export interface CurrentLeagueSyncResult {
   teams: EntitySyncStats;
   members: EntitySyncStats;
   matchups: EntitySyncStats;
+  rosters: EntitySyncStats;
 }
 
 export interface PersistNormalizedLeagueRowsInput {
   db: Db;
   finalStandings?: readonly NormalizedFinalStanding[];
   leagueId: string;
+  leagueProviderId?: string;
   matchups: readonly NormalizedMatchup[];
   members: readonly NormalizedMember[];
+  rosters?: readonly NormalizedRoster[];
   teams: readonly NormalizedTeam[];
+  transactions?: readonly NormalizedTransaction[];
 }
 
 export interface PersistNormalizedLeagueRowsResult {
@@ -65,6 +80,8 @@ export interface PersistNormalizedLeagueRowsResult {
   teamStats: EntitySyncStats;
   memberStats: EntitySyncStats;
   matchupStats: EntitySyncStats;
+  rosterStats: EntitySyncStats;
+  transactionStats: EntitySyncStats;
   finalStandingStats: EntitySyncStats;
 }
 
@@ -98,6 +115,10 @@ function stats(total: number, changed: number): EntitySyncStats {
     changed,
     unchanged: total - changed,
   };
+}
+
+function emptyStats(): EntitySyncStats {
+  return stats(0, 0);
 }
 
 function currentTime(
@@ -209,6 +230,43 @@ function finalStandingHashPayload(standing: NormalizedFinalStanding) {
     season: standing.teamRef.season,
     ties: standing.ties,
     wins: standing.wins,
+  };
+}
+
+function rosterEntryHashPayload({
+  entry,
+  roster,
+}: {
+  entry: NormalizedRoster["entries"][number];
+  roster: NormalizedRoster;
+}) {
+  return {
+    playerProviderId: entry.playerRef.providerId,
+    points: entry.points ?? null,
+    provider: roster.teamRef.provider,
+    providerTeamId: roster.teamRef.providerId,
+    scoringPeriod: roster.scoringPeriod,
+    season: roster.season,
+    slot: entry.slot,
+    status: entry.status,
+  };
+}
+
+function transactionHashPayload(transaction: NormalizedTransaction) {
+  return {
+    details: transaction.details,
+    leagueProviderId: transaction.leagueProviderId,
+    playerProviderIds: sortedUnique(
+      transaction.playerRefs.map((player) => player.providerId),
+    ),
+    provider: transaction.provider,
+    providerId: transaction.providerId,
+    season: transaction.season,
+    teamProviderIds: sortedUnique(
+      transaction.teamRefs.map((team) => team.providerId),
+    ),
+    timestamp: transaction.timestamp.toISOString(),
+    type: transaction.type,
   };
 }
 
@@ -497,15 +555,163 @@ async function upsertFinalStandings(
   return stats(rows.length, changed.length);
 }
 
+async function upsertRosterEntries(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  leagueProviderId: string,
+  rosters: readonly NormalizedRoster[],
+): Promise<EntitySyncStats> {
+  const rows = rosters.flatMap((roster) =>
+    roster.entries.map((entry) => ({
+      contentHash: stableContentHash(rosterEntryHashPayload({ entry, roster })),
+      leagueId,
+      leagueProviderId,
+      points: entry.points ?? null,
+      provider: roster.teamRef.provider,
+      providerPlayerId: entry.playerRef.providerId,
+      providerTeamId: roster.teamRef.providerId,
+      scoringPeriod: roster.scoringPeriod,
+      season: roster.season,
+      slot: entry.slot,
+      status: entry.status,
+    })),
+  );
+
+  if (rows.length === 0) {
+    return emptyStats();
+  }
+
+  const changed = await tx
+    .insert(fantasyRosterEntries)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        fantasyRosterEntries.leagueId,
+        fantasyRosterEntries.provider,
+        fantasyRosterEntries.leagueProviderId,
+        fantasyRosterEntries.providerTeamId,
+        fantasyRosterEntries.season,
+        fantasyRosterEntries.scoringPeriod,
+        fantasyRosterEntries.providerPlayerId,
+      ],
+      set: {
+        contentHash: sql`excluded.content_hash`,
+        points: sql`excluded.points`,
+        slot: sql`excluded.slot`,
+        status: sql`excluded.status`,
+        updatedAt: sql`now()`,
+      },
+      where: sql`${fantasyRosterEntries.contentHash} is distinct from excluded.content_hash`,
+    })
+    .returning({ id: fantasyRosterEntries.id });
+
+  return stats(rows.length, changed.length);
+}
+
+async function upsertTransactions(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  transactions: readonly NormalizedTransaction[],
+): Promise<EntitySyncStats> {
+  if (transactions.length === 0) {
+    return emptyStats();
+  }
+
+  const rows = transactions.map((transaction) => ({
+    contentHash: stableContentHash(transactionHashPayload(transaction)),
+    details: transaction.details,
+    leagueId,
+    leagueProviderId: transaction.leagueProviderId,
+    occurredAt: transaction.timestamp,
+    playerProviderIds: sortedUnique(
+      transaction.playerRefs.map((player) => player.providerId),
+    ),
+    provider: transaction.provider,
+    providerTransactionId: transaction.providerId,
+    season: transaction.season,
+    teamProviderIds: sortedUnique(
+      transaction.teamRefs.map((team) => team.providerId),
+    ),
+    type: transaction.type,
+  }));
+
+  const changed = await tx
+    .insert(fantasyTransactions)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        fantasyTransactions.leagueId,
+        fantasyTransactions.provider,
+        fantasyTransactions.leagueProviderId,
+        fantasyTransactions.providerTransactionId,
+        fantasyTransactions.season,
+      ],
+      set: {
+        contentHash: sql`excluded.content_hash`,
+        details: sql`excluded.details`,
+        occurredAt: sql`excluded.occurred_at`,
+        playerProviderIds: sql`excluded.player_provider_ids`,
+        teamProviderIds: sql`excluded.team_provider_ids`,
+        type: sql`excluded.type`,
+        updatedAt: sql`now()`,
+      },
+      where: sql`${fantasyTransactions.contentHash} is distinct from excluded.content_hash`,
+    })
+    .returning({ id: fantasyTransactions.id });
+
+  return stats(rows.length, changed.length);
+}
+
+function resolveLeagueProviderId({
+  explicit,
+  finalStandings,
+  matchups,
+  members,
+  teams,
+  transactions,
+}: {
+  explicit?: string;
+  finalStandings: readonly NormalizedFinalStanding[];
+  matchups: readonly NormalizedMatchup[];
+  members: readonly NormalizedMember[];
+  teams: readonly NormalizedTeam[];
+  transactions: readonly NormalizedTransaction[];
+}): string {
+  const resolved =
+    explicit ??
+    teams[0]?.leagueProviderId ??
+    members[0]?.leagueProviderId ??
+    matchups[0]?.leagueProviderId ??
+    finalStandings[0]?.leagueProviderId ??
+    transactions[0]?.leagueProviderId;
+
+  if (!resolved) {
+    throw new Error("normalized rows require a provider league id");
+  }
+
+  return resolved;
+}
+
 export async function persistNormalizedLeagueRows({
   db,
   finalStandings = [],
   leagueId,
+  leagueProviderId,
   matchups,
   members,
+  rosters = [],
   teams,
+  transactions = [],
 }: PersistNormalizedLeagueRowsInput): Promise<PersistNormalizedLeagueRowsResult> {
   return withLeagueContext(db, leagueId, async (tx) => {
+    const resolvedLeagueProviderId = resolveLeagueProviderId({
+      explicit: leagueProviderId,
+      finalStandings,
+      matchups,
+      members,
+      teams,
+      transactions,
+    });
     const teamStats = await upsertTeams(tx, leagueId, teams);
     const memberStats = await upsertMembers(tx, leagueId, members);
     const matchupUpsert = await upsertMatchups(tx, leagueId, matchups);
@@ -514,6 +720,17 @@ export async function persistNormalizedLeagueRows({
       leagueId,
       finalStandings,
     );
+    const rosterStats = await upsertRosterEntries(
+      tx,
+      leagueId,
+      resolvedLeagueProviderId,
+      rosters,
+    );
+    const transactionStats = await upsertTransactions(
+      tx,
+      leagueId,
+      transactions,
+    );
 
     return {
       changedMatchupIds: matchupUpsert.changedIds,
@@ -521,9 +738,125 @@ export async function persistNormalizedLeagueRows({
       finalStandingStats,
       matchupStats: matchupUpsert.stats,
       memberStats,
+      rosterStats,
       teamStats,
+      transactionStats,
     };
   });
+}
+
+export interface DataCoverageObservation {
+  details?: Record<string, unknown>;
+  error?: ProviderError;
+  itemCount: number;
+  status?: DataCoverageStatus;
+}
+
+export type DataCoverageObservationMap = Partial<
+  Record<ProviderDataClass, DataCoverageObservation | undefined>
+>;
+
+export interface RecordDataCoverageInput {
+  capabilities: FantasyProviderCapabilities;
+  db: Db;
+  defaultDetails?: Record<string, unknown>;
+  leagueId: string;
+  observedAt?: Date;
+  observations: DataCoverageObservationMap;
+  provider: ProviderLeagueRef["provider"];
+  providerLeagueId: string;
+  season: number;
+}
+
+function dataCoverageStatus({
+  capability,
+  observation,
+}: {
+  capability: ProviderDataSupport;
+  observation?: DataCoverageObservation;
+}): DataCoverageStatus {
+  if (observation?.error) {
+    return "error";
+  }
+  if (capability === "none") {
+    return "unavailable";
+  }
+  if (!observation) {
+    return "stale";
+  }
+  if (observation.status) {
+    return observation.status;
+  }
+  return capability === "partial" ? "partial" : "complete";
+}
+
+function coverageDetails({
+  defaultDetails,
+  observation,
+}: {
+  defaultDetails?: Record<string, unknown>;
+  observation?: DataCoverageObservation;
+}): Record<string, unknown> {
+  return {
+    ...(defaultDetails ?? {}),
+    ...(observation?.details ?? {}),
+  };
+}
+
+export async function recordDataCoverage({
+  capabilities,
+  db,
+  defaultDetails,
+  leagueId,
+  observedAt = new Date(),
+  observations,
+  provider,
+  providerLeagueId,
+  season,
+}: RecordDataCoverageInput): Promise<void> {
+  const rows = PROVIDER_DATA_CLASSES.map((dataClass) => {
+    const observation = observations[dataClass];
+    const capability = capabilities.dataClasses[dataClass];
+    return {
+      capability,
+      dataClass,
+      details: coverageDetails({ defaultDetails, observation }),
+      errorCode: observation?.error?.code ?? null,
+      errorMessage: observation?.error?.message ?? null,
+      itemCount: observation?.itemCount ?? 0,
+      leagueId,
+      observedAt,
+      provider,
+      providerLeagueId,
+      season,
+      status: dataCoverageStatus({ capability, observation }),
+    };
+  });
+
+  await withLeagueContext(db, leagueId, (tx) =>
+    tx
+      .insert(dataCoverage)
+      .values(rows)
+      .onConflictDoUpdate({
+        target: [
+          dataCoverage.leagueId,
+          dataCoverage.provider,
+          dataCoverage.providerLeagueId,
+          dataCoverage.season,
+          dataCoverage.dataClass,
+        ],
+        set: {
+          capability: sql`excluded.capability`,
+          details: sql`excluded.details`,
+          errorCode: sql`excluded.error_code`,
+          errorMessage: sql`excluded.error_message`,
+          itemCount: sql`excluded.item_count`,
+          observedAt: sql`excluded.observed_at`,
+          status: sql`excluded.status`,
+          updatedAt: sql`now()`,
+        },
+      }),
+  );
 }
 
 export async function syncCurrentLeague<Session extends FantasyProviderSession>(
@@ -551,13 +884,69 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     return err(matchups.error);
   }
 
+  let rosters: readonly NormalizedRoster[] = [];
+  let rosterObservation: DataCoverageObservation | undefined;
+  if (provider.capabilities.dataClasses.rosters !== "none") {
+    if (provider.getRosters) {
+      const rosterResult = await provider.getRosters(
+        session,
+        ref,
+        league.value.currentScoringPeriod || undefined,
+      );
+      if (rosterResult.ok) {
+        rosters = rosterResult.value;
+        rosterObservation = {
+          details: { rosterCount: rosterResult.value.length },
+          itemCount: rosterResult.value.reduce(
+            (total, roster) => total + roster.entries.length,
+            0,
+          ),
+        };
+      } else {
+        rosterObservation = {
+          error: rosterResult.error,
+          itemCount: 0,
+        };
+      }
+    } else {
+      rosterObservation = {
+        details: { reason: "adapter_method_missing" },
+        itemCount: 0,
+        status: "unavailable",
+      };
+    }
+  }
+
   const leagueWrite = await upsertLeague(db, league.value);
   const scoped = await persistNormalizedLeagueRows({
     db,
     leagueId: leagueWrite.id,
+    leagueProviderId: league.value.providerId,
     matchups: matchups.value,
     members: members.value,
+    rosters,
     teams: teams.value,
+  });
+
+  await recordDataCoverage({
+    capabilities: provider.capabilities,
+    db,
+    defaultDetails: { sync: "current" },
+    leagueId: leagueWrite.id,
+    observations: {
+      league: { itemCount: 1 },
+      teams: { itemCount: teams.value.length },
+      members: { itemCount: members.value.length },
+      rosters: rosterObservation,
+      matchups: { itemCount: matchups.value.length },
+      scoring_detail: {
+        details: { source: "league.scoringType" },
+        itemCount: 1,
+      },
+    },
+    provider: league.value.provider,
+    providerLeagueId: league.value.providerId,
+    season: league.value.season,
   });
 
   await publishScoresUpdated({
@@ -579,5 +968,6 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     teams: scoped.teamStats,
     members: scoped.memberStats,
     matchups: scoped.matchupStats,
+    rosters: scoped.rosterStats,
   });
 }

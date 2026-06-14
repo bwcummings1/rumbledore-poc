@@ -30,7 +30,7 @@ import { type ImportRequestedData, JOB_EVENTS } from "../events";
 
 type ImportRequestedProvider = Pick<
   FantasyProvider<unknown, FantasyProviderSession>,
-  "authenticate" | "getHistory"
+  "authenticate" | "capabilities" | "getHistory"
 >;
 type ImportableProviderId = Extract<
   FantasyProviderId,

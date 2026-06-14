@@ -17,6 +17,11 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { FANTASY_PROVIDER_IDS } from "../providers/ids";
+import {
+  DATA_COVERAGE_STATUSES,
+  PROVIDER_DATA_CLASSES,
+  PROVIDER_DATA_SUPPORT_LEVELS,
+} from "../providers/model";
 
 /**
  * Baseline tables (spec 02 §6): users, leagues, auth members.
@@ -67,6 +72,21 @@ export const historicalImportStatus = pgEnum("historical_import_status", [
   "completed",
   "failed",
 ]);
+
+export const dataCoverageClass = pgEnum(
+  "data_coverage_class",
+  PROVIDER_DATA_CLASSES,
+);
+
+export const dataCoverageCapability = pgEnum(
+  "data_coverage_capability",
+  PROVIDER_DATA_SUPPORT_LEVELS,
+);
+
+export const dataCoverageStatus = pgEnum(
+  "data_coverage_status",
+  DATA_COVERAGE_STATUSES,
+);
 
 export const onboardingCredentialStatus = pgEnum(
   "onboarding_credential_status",
@@ -502,6 +522,97 @@ export const providerFinalStandings = pgTable(
   ],
 );
 
+export const fantasyRosterEntries = pgTable(
+  "fantasy_roster_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    providerTeamId: text("provider_team_id").notNull(),
+    providerPlayerId: text("provider_player_id").notNull(),
+    season: integer("season").notNull(),
+    scoringPeriod: integer("scoring_period").notNull(),
+    slot: text("slot").notNull().default("unknown"),
+    status: text("status").notNull().default("unknown"),
+    points: doublePrecision("points"),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_roster_entries_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.providerTeamId,
+      table.season,
+      table.scoringPeriod,
+      table.providerPlayerId,
+    ),
+    index("fantasy_roster_entries_team_period_idx").on(
+      table.leagueId,
+      table.season,
+      table.scoringPeriod,
+      table.providerTeamId,
+    ),
+    pgPolicy("fantasy_roster_entries_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const fantasyTransactions = pgTable(
+  "fantasy_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    providerTransactionId: text("provider_transaction_id").notNull(),
+    season: integer("season").notNull(),
+    type: text("type").notNull().default("unknown"),
+    teamProviderIds: jsonb("team_provider_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    playerProviderIds: jsonb("player_provider_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    details: jsonb("details")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_transactions_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.providerTransactionId,
+      table.season,
+    ),
+    index("fantasy_transactions_league_occurred_idx").on(
+      table.leagueId,
+      table.occurredAt,
+    ),
+    pgPolicy("fantasy_transactions_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const historicalImportCheckpoints = pgTable(
   "historical_import_checkpoints",
   {
@@ -533,6 +644,48 @@ export const historicalImportCheckpoints = pgTable(
       table.status,
     ),
     pgPolicy("historical_import_checkpoints_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const dataCoverage = pgTable(
+  "data_coverage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerLeagueId: text("provider_league_id").notNull(),
+    season: integer("season").notNull(),
+    dataClass: dataCoverageClass("data_class").notNull(),
+    capability: dataCoverageCapability("capability").notNull(),
+    status: dataCoverageStatus("status").notNull(),
+    itemCount: integer("item_count").notNull().default(0),
+    observedAt: timestamp("observed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    details: jsonb("details")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("data_coverage_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.providerLeagueId,
+      table.season,
+      table.dataClass,
+    ),
+    index("data_coverage_league_status_idx").on(table.leagueId, table.status),
+    pgPolicy("data_coverage_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -2079,10 +2232,16 @@ export type NewFantasyMatchup = typeof fantasyMatchups.$inferInsert;
 export type ProviderFinalStanding = typeof providerFinalStandings.$inferSelect;
 export type NewProviderFinalStanding =
   typeof providerFinalStandings.$inferInsert;
+export type FantasyRosterEntry = typeof fantasyRosterEntries.$inferSelect;
+export type NewFantasyRosterEntry = typeof fantasyRosterEntries.$inferInsert;
+export type FantasyTransaction = typeof fantasyTransactions.$inferSelect;
+export type NewFantasyTransaction = typeof fantasyTransactions.$inferInsert;
 export type HistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferSelect;
 export type NewHistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferInsert;
+export type DataCoverage = typeof dataCoverage.$inferSelect;
+export type NewDataCoverage = typeof dataCoverage.$inferInsert;
 export type BettingEvent = typeof bettingEvents.$inferSelect;
 export type NewBettingEvent = typeof bettingEvents.$inferInsert;
 export type BettingMarket = typeof bettingMarkets.$inferSelect;

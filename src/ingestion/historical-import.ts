@@ -15,12 +15,14 @@ import type {
   ProviderLeagueRef,
 } from "@/providers";
 import {
+  type DataCoverageObservationMap,
   type EntitySyncStats,
   persistNormalizedLeagueRows,
+  recordDataCoverage,
 } from "./current-league";
 
 export type HistoricalImportProvider<Session extends FantasyProviderSession> =
-  Pick<FantasyProvider<unknown, Session>, "getHistory">;
+  Pick<FantasyProvider<unknown, Session>, "capabilities" | "getHistory">;
 
 export interface HistoricalImportInput<Session extends FantasyProviderSession> {
   db: Db;
@@ -47,6 +49,7 @@ export interface HistoricalImportResult {
   members: EntitySyncStats;
   matchups: EntitySyncStats;
   finalStandings: EntitySyncStats;
+  transactions: EntitySyncStats;
   checkpoint: {
     status: "running" | "completed" | "failed";
     lastCompletedSeason: number | null;
@@ -370,10 +373,30 @@ async function persistBundle({
     db,
     finalStandings: bundle.finalStandings,
     leagueId,
+    leagueProviderId: bundle.league.providerId,
     matchups: bundle.matchups,
     members: bundle.members,
     teams: bundle.teams,
+    transactions: bundle.transactions,
   });
+}
+
+function coverageForBundle(
+  bundle: NormalizedSeasonBundle,
+): DataCoverageObservationMap {
+  return {
+    league: { itemCount: 1 },
+    teams: { itemCount: bundle.teams.length },
+    members: { itemCount: bundle.members.length },
+    matchups: { itemCount: bundle.matchups.length },
+    final_standings: { itemCount: bundle.finalStandings.length },
+    transactions: { itemCount: bundle.transactions.length },
+    history: { itemCount: 1 },
+    scoring_detail: {
+      details: { source: "history.league.scoringType" },
+      itemCount: 1,
+    },
+  };
 }
 
 export async function importLeagueHistory<
@@ -419,6 +442,7 @@ export async function importLeagueHistory<
       members: emptyStats(),
       matchups: emptyStats(),
       finalStandings: emptyStats(),
+      transactions: emptyStats(),
       checkpoint: {
         status: completedCheckpoint.status,
         lastCompletedSeason: completedCheckpoint.lastCompletedSeason,
@@ -455,6 +479,7 @@ export async function importLeagueHistory<
   let members = emptyStats();
   let matchups = emptyStats();
   let finalStandings = emptyStats();
+  let transactions = emptyStats();
   let latestCheckpoint = activeCheckpoint;
 
   for (let index = startIndex; index < seasons.length; index += 1) {
@@ -484,6 +509,17 @@ export async function importLeagueHistory<
       members = addStats(members, persisted.memberStats);
       matchups = addStats(matchups, persisted.matchupStats);
       finalStandings = addStats(finalStandings, persisted.finalStandingStats);
+      transactions = addStats(transactions, persisted.transactionStats);
+      await recordDataCoverage({
+        capabilities: provider.capabilities,
+        db,
+        defaultDetails: { sync: "history" },
+        leagueId: league.id,
+        observations: coverageForBundle(bundle),
+        provider: bundle.league.provider,
+        providerLeagueId: bundle.league.providerId,
+        season: bundle.league.season,
+      });
     }
 
     imported.push(season);
@@ -514,6 +550,7 @@ export async function importLeagueHistory<
     members,
     matchups,
     finalStandings,
+    transactions,
     checkpoint: {
       status: latestCheckpoint.status,
       lastCompletedSeason: latestCheckpoint.lastCompletedSeason,

@@ -7,15 +7,18 @@ import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  dataCoverage,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
+  fantasyTransactions,
   historicalImportCheckpoints,
   leagues,
   providerFinalStandings,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
+  type FantasyProviderCapabilities,
   type FantasyProviderSession,
   type NormalizedSeasonBundle,
   ProviderBlockedError,
@@ -39,6 +42,27 @@ const fixtureSession: FixtureSession = {
   provider: "espn",
   authKind: "cookie",
   subjectProviderId: "history-fixture-user",
+};
+
+const fixtureCapabilities: FantasyProviderCapabilities = {
+  authKind: "cookie",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "none",
+    matchups: "full",
+    final_standings: "full",
+    transactions: "full",
+    history: "full",
+    divisions: "none",
+    keeper_dynasty: "none",
+    scoring_detail: "partial",
+  },
+  requiresOAuth: false,
+  supportsHistory: true,
+  supportsRosters: false,
+  supportsTransactions: true,
 };
 
 function fixtureRef(tag: string): ProviderLeagueRef {
@@ -156,7 +180,19 @@ function bundleFor(
         pointsAgainst: 95,
       },
     ],
-    transactions: [],
+    transactions: [
+      {
+        provider: "espn",
+        providerId: `transaction-${season}`,
+        leagueProviderId: ref.providerId,
+        season,
+        type: "waiver",
+        teamRefs: [{ provider: "espn", providerId: "1", season }],
+        playerRefs: [{ provider: "espn", providerId: `player-${season}` }],
+        timestamp: new Date(`${season}-09-10T12:00:00.000Z`),
+        details: { budgetCents: 1200 },
+      },
+    ],
   };
 }
 
@@ -168,6 +204,7 @@ function providerFor({ failOnSeason }: { failOnSeason?: number } = {}): {
   return {
     calls,
     provider: {
+      capabilities: fixtureCapabilities,
       async getHistory(_session, ref, options) {
         const season = options.seasons[0];
         if (season === undefined) {
@@ -187,6 +224,11 @@ function providerFor({ failOnSeason }: { failOnSeason?: number } = {}): {
 
 async function selectHistoricalRows(leagueId: string) {
   return withLeagueContext(handle.db, leagueId, async (tx) => {
+    const coverage = await tx
+      .select()
+      .from(dataCoverage)
+      .where(eq(dataCoverage.leagueId, leagueId))
+      .orderBy(asc(dataCoverage.season), asc(dataCoverage.dataClass));
     const teams = await tx
       .select()
       .from(fantasyTeams)
@@ -213,13 +255,26 @@ async function selectHistoricalRows(leagueId: string) {
         asc(providerFinalStandings.season),
         asc(providerFinalStandings.finalRank),
       );
+    const transactions = await tx
+      .select()
+      .from(fantasyTransactions)
+      .where(eq(fantasyTransactions.leagueId, leagueId))
+      .orderBy(asc(fantasyTransactions.season));
     const [checkpoint] = await tx
       .select()
       .from(historicalImportCheckpoints)
       .where(eq(historicalImportCheckpoints.leagueId, leagueId))
       .limit(1);
 
-    return { checkpoint, finalStandings, matchups, members, teams };
+    return {
+      checkpoint,
+      coverage,
+      finalStandings,
+      matchups,
+      members,
+      teams,
+      transactions,
+    };
   });
 }
 
@@ -281,6 +336,11 @@ describe("importLeagueHistory", () => {
       changed: 4,
       unchanged: 0,
     });
+    expect(first.value.transactions).toEqual({
+      total: 2,
+      changed: 2,
+      unchanged: 0,
+    });
     expect(first.value.checkpoint).toMatchObject({
       status: "completed",
       lastCompletedSeason: 2024,
@@ -294,6 +354,35 @@ describe("importLeagueHistory", () => {
     expect(rows.members).toHaveLength(4);
     expect(rows.matchups).toHaveLength(2);
     expect(rows.finalStandings).toHaveLength(4);
+    expect(rows.transactions).toHaveLength(2);
+    expect(rows.transactions[0]).toMatchObject({
+      season: 2024,
+      providerTransactionId: "transaction-2024",
+      type: "waiver",
+      teamProviderIds: ["1"],
+      playerProviderIds: ["player-2024"],
+      details: { budgetCents: 1200 },
+    });
+    expect(
+      rows.coverage.find(
+        (coverage) =>
+          coverage.season === 2024 && coverage.dataClass === "transactions",
+      ),
+    ).toMatchObject({
+      capability: "full",
+      itemCount: 1,
+      status: "complete",
+    });
+    expect(
+      rows.coverage.find(
+        (coverage) =>
+          coverage.season === 2024 && coverage.dataClass === "rosters",
+      ),
+    ).toMatchObject({
+      capability: "none",
+      itemCount: 0,
+      status: "unavailable",
+    });
     expect(rows.finalStandings[0]).toMatchObject({
       season: 2024,
       providerTeamId: "2",
@@ -339,6 +428,11 @@ describe("importLeagueHistory", () => {
       changed: 0,
       unchanged: 0,
     });
+    expect(second.value.transactions).toEqual({
+      total: 0,
+      changed: 0,
+      unchanged: 0,
+    });
   });
 
   it("keeps a failed checkpoint and resumes at the next unfinished season", async () => {
@@ -369,6 +463,7 @@ describe("importLeagueHistory", () => {
     expect(afterFailure.teams).toHaveLength(2);
     expect(afterFailure.matchups).toHaveLength(1);
     expect(afterFailure.finalStandings).toHaveLength(2);
+    expect(afterFailure.transactions).toHaveLength(1);
     expect(afterFailure.checkpoint).toMatchObject({
       status: "failed",
       lastCompletedSeason: 2025,
@@ -406,6 +501,11 @@ describe("importLeagueHistory", () => {
       changed: 2,
       unchanged: 0,
     });
+    expect(resumed.value.transactions).toEqual({
+      total: 1,
+      changed: 1,
+      unchanged: 0,
+    });
     expect(resumed.value.checkpoint).toMatchObject({
       status: "completed",
       lastCompletedSeason: 2024,
@@ -418,5 +518,6 @@ describe("importLeagueHistory", () => {
     expect(afterResume.teams).toHaveLength(4);
     expect(afterResume.matchups).toHaveLength(2);
     expect(afterResume.finalStandings).toHaveLength(4);
+    expect(afterResume.transactions).toHaveLength(2);
   });
 });

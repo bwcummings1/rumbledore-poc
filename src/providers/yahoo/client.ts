@@ -84,6 +84,19 @@ const DEFAULT_FANTASY_WEEKS = 17;
 
 export const YAHOO_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
   authKind: "oauth2",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "full",
+    matchups: "full",
+    final_standings: "partial",
+    transactions: "partial",
+    history: "partial",
+    divisions: "none",
+    keeper_dynasty: "none",
+    scoring_detail: "partial",
+  },
   requiresOAuth: true,
   supportsHistory: true,
   supportsRosters: true,

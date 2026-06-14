@@ -72,12 +72,14 @@ export type RequestHistoricalImport = (
 type OnboardingProvider = Pick<
   FantasyProvider<unknown, FantasyProviderSession>,
   | "authenticate"
+  | "capabilities"
   | "discoverLeagues"
   | "getLeague"
   | "getMatchups"
   | "getMembers"
   | "getTeams"
->;
+> &
+  Partial<Pick<FantasyProvider<unknown, FantasyProviderSession>, "getRosters">>;
 
 export type OnboardingProviderRegistry = Partial<
   Record<FantasyProviderId, unknown>

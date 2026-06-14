@@ -71,6 +71,19 @@ const SLEEPER_USER_AGENT = "Rumbledore/2.0 (+https://rumbledore.app)";
 
 export const SLEEPER_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
   authKind: "none",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "full",
+    matchups: "full",
+    final_standings: "partial",
+    transactions: "full",
+    history: "partial",
+    divisions: "none",
+    keeper_dynasty: "partial",
+    scoring_detail: "partial",
+  },
   requiresOAuth: false,
   supportsHistory: true,
   supportsRosters: true,

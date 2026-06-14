@@ -103,10 +103,23 @@ describe("ESPN Fan API discovery client", () => {
       name: "ESPN Fantasy Football",
       capabilities: {
         authKind: "cookie",
+        dataClasses: {
+          league: "full",
+          teams: "full",
+          members: "full",
+          rosters: "none",
+          matchups: "full",
+          final_standings: "partial",
+          transactions: "none",
+          history: "partial",
+          divisions: "none",
+          keeper_dynasty: "none",
+          scoring_detail: "partial",
+        },
         requiresOAuth: false,
         supportsHistory: true,
-        supportsRosters: true,
-        supportsTransactions: true,
+        supportsRosters: false,
+        supportsTransactions: false,
       },
     });
     await expect(

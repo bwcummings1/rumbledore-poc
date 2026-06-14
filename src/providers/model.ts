@@ -8,8 +8,48 @@ export { FANTASY_PROVIDER_IDS } from "./ids";
 export type FantasySport = "ffl" | "unknown";
 export type FantasyProviderAuthKind = "cookie" | "none" | "oauth2";
 
+export const PROVIDER_DATA_CLASSES = [
+  "league",
+  "teams",
+  "members",
+  "rosters",
+  "matchups",
+  "final_standings",
+  "transactions",
+  "history",
+  "divisions",
+  "keeper_dynasty",
+  "scoring_detail",
+] as const;
+
+export type ProviderDataClass = (typeof PROVIDER_DATA_CLASSES)[number];
+
+export const PROVIDER_DATA_SUPPORT_LEVELS = [
+  "full",
+  "partial",
+  "none",
+] as const;
+
+export type ProviderDataSupport = (typeof PROVIDER_DATA_SUPPORT_LEVELS)[number];
+
+export const DATA_COVERAGE_STATUSES = [
+  "complete",
+  "partial",
+  "stale",
+  "unavailable",
+  "error",
+] as const;
+
+export type DataCoverageStatus = (typeof DATA_COVERAGE_STATUSES)[number];
+
+export type ProviderCapabilityMatrix = Record<
+  ProviderDataClass,
+  ProviderDataSupport
+>;
+
 export interface FantasyProviderCapabilities {
   authKind: FantasyProviderAuthKind;
+  dataClasses: ProviderCapabilityMatrix;
   supportsHistory: boolean;
   supportsRosters: boolean;
   supportsTransactions: boolean;

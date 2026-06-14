@@ -13,7 +13,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Migrate the current flat routes onto the new IA with auth guards and redirects. (specs/10)
 
 ### B. Data-foundation depth (bedrock — see specs/14)
-- [ ] Achieve ESPN/Sleeper/Yahoo normalized-model parity with honest partial-data handling. (specs/14)
+- [x] Achieve ESPN/Sleeper/Yahoo normalized-model parity with honest partial-data handling. (specs/14)
 - [ ] Implement full resumable ~10-year canonical history depth, idempotent. (specs/14)
 - [ ] Handle co-owner teams correctly, fixing the identity over-merge with per-slot person scoping. (specs/14)
 - [ ] Derive playoff/championship flags from provider settings/finals, fixing the hardcoded-false bug. (specs/14)

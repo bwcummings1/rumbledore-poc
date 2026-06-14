@@ -9,6 +9,7 @@ import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  dataCoverage,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
@@ -25,6 +26,7 @@ import {
 } from "@/onboarding/credential-crypto";
 import {
   AuthExpiredError,
+  type FantasyProviderCapabilities,
   type NormalizedSeasonBundle,
   ProviderBlockedError,
 } from "@/providers";
@@ -77,6 +79,7 @@ interface ImportProvider {
   calls: number[];
   credentials: EspnCookieCredentials[];
   provider: {
+    capabilities: FantasyProviderCapabilities;
     authenticate(
       credentials: EspnCookieCredentials,
     ): Promise<
@@ -102,6 +105,7 @@ interface SleeperImportProvider {
   calls: number[];
   credentials: SleeperCredentials[];
   provider: {
+    capabilities: FantasyProviderCapabilities;
     authenticate(
       credentials: SleeperCredentials,
     ): Promise<{ ok: true; value: SleeperSession }>;
@@ -124,6 +128,7 @@ interface YahooImportProvider {
   calls: number[];
   credentials: YahooCredentials[];
   provider: {
+    capabilities: FantasyProviderCapabilities;
     authenticate(
       credentials: YahooCredentials,
     ): Promise<{ ok: true; value: YahooSession }>;
@@ -141,6 +146,69 @@ interface YahooImportProvider {
     ): Promise<{ ok: true; value: NormalizedSeasonBundle[] }>;
   };
 }
+
+const espnImportCapabilities: FantasyProviderCapabilities = {
+  authKind: "cookie",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "none",
+    matchups: "full",
+    final_standings: "partial",
+    transactions: "none",
+    history: "partial",
+    divisions: "none",
+    keeper_dynasty: "none",
+    scoring_detail: "partial",
+  },
+  requiresOAuth: false,
+  supportsHistory: true,
+  supportsRosters: false,
+  supportsTransactions: false,
+};
+
+const sleeperImportCapabilities: FantasyProviderCapabilities = {
+  authKind: "none",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "full",
+    matchups: "full",
+    final_standings: "partial",
+    transactions: "full",
+    history: "partial",
+    divisions: "none",
+    keeper_dynasty: "partial",
+    scoring_detail: "partial",
+  },
+  requiresOAuth: false,
+  supportsHistory: true,
+  supportsRosters: true,
+  supportsTransactions: true,
+};
+
+const yahooImportCapabilities: FantasyProviderCapabilities = {
+  authKind: "oauth2",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "full",
+    matchups: "full",
+    final_standings: "partial",
+    transactions: "partial",
+    history: "partial",
+    divisions: "none",
+    keeper_dynasty: "none",
+    scoring_detail: "partial",
+  },
+  requiresOAuth: true,
+  supportsHistory: true,
+  supportsRosters: true,
+  supportsTransactions: true,
+};
 
 function bundleFor({
   providerLeagueId,
@@ -428,6 +496,7 @@ function historyProvider({
     calls,
     credentials,
     provider: {
+      capabilities: espnImportCapabilities,
       async authenticate(input) {
         credentials.push(input);
         if (authExpired) {
@@ -465,6 +534,7 @@ function sleeperHistoryProvider(): SleeperImportProvider {
     calls,
     credentials,
     provider: {
+      capabilities: sleeperImportCapabilities,
       async authenticate(input) {
         credentials.push(input);
         return ok({
@@ -498,6 +568,7 @@ function yahooHistoryProvider(): YahooImportProvider {
     calls,
     credentials,
     provider: {
+      capabilities: yahooImportCapabilities,
       async authenticate(input) {
         credentials.push(input);
         return ok({
@@ -601,6 +672,11 @@ async function seedImport(
 
 async function selectHistoricalRows(leagueId: string) {
   return withLeagueContext(handle.db, leagueId, async (tx) => {
+    const coverage = await tx
+      .select()
+      .from(dataCoverage)
+      .where(eq(dataCoverage.leagueId, leagueId))
+      .orderBy(asc(dataCoverage.season), asc(dataCoverage.dataClass));
     const teams = await tx
       .select()
       .from(fantasyTeams)
@@ -625,7 +701,7 @@ async function selectHistoricalRows(leagueId: string) {
       .where(eq(historicalImportCheckpoints.leagueId, leagueId))
       .limit(1);
 
-    return { checkpoint, matchups, members: membersRows, teams };
+    return { checkpoint, coverage, matchups, members: membersRows, teams };
   });
 }
 
@@ -707,6 +783,16 @@ describe("import.requested Inngest function", () => {
     expect(rows.teams).toHaveLength(4);
     expect(rows.members).toHaveLength(4);
     expect(rows.matchups).toHaveLength(2);
+    expect(
+      rows.coverage.find(
+        (coverage) =>
+          coverage.season === 2024 && coverage.dataClass === "transactions",
+      ),
+    ).toMatchObject({
+      capability: "none",
+      itemCount: 0,
+      status: "unavailable",
+    });
     expect(rows.checkpoint).toMatchObject({
       status: "completed",
       seasonsCompleted: 2,

@@ -3,11 +3,14 @@ import { randomUUID } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
+import { ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  dataCoverage,
   fantasyMatchups,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
   leagues,
 } from "@/db/schema";
@@ -17,7 +20,11 @@ import {
   type EspnFetch,
   type EspnSession,
 } from "@/providers/espn/client";
-import type { ProviderLeagueRef } from "@/providers/model";
+import {
+  type FantasyProviderCapabilities,
+  ProviderBlockedError,
+  type ProviderLeagueRef,
+} from "@/providers/model";
 import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import leagueFixture from "../../test/fixtures/espn/league-95050-2026.json";
 import { syncCurrentLeague } from "./current-league";
@@ -69,8 +76,157 @@ function providerFor(body: unknown) {
   return createEspnDiscoveryProvider({ fetch, retryDelayMs: 0 });
 }
 
+const rosterProviderCapabilities: FantasyProviderCapabilities = {
+  authKind: "cookie",
+  dataClasses: {
+    league: "full",
+    teams: "full",
+    members: "full",
+    rosters: "full",
+    matchups: "full",
+    final_standings: "none",
+    transactions: "none",
+    history: "none",
+    divisions: "none",
+    keeper_dynasty: "none",
+    scoring_detail: "partial",
+  },
+  requiresOAuth: false,
+  supportsHistory: false,
+  supportsRosters: true,
+  supportsTransactions: false,
+};
+
+function rosterCapableProviderFor(
+  providerLeagueId: string,
+  options: { failRosters?: boolean } = {},
+) {
+  const ref = fixtureRef(providerLeagueId);
+  return {
+    capabilities: rosterProviderCapabilities,
+    async getLeague() {
+      return ok({
+        ...ref,
+        currentScoringPeriod: 1,
+        scoringType: "H2H_POINTS",
+        size: 2,
+        status: "in_season" as const,
+      });
+    },
+    async getTeams() {
+      return ok([
+        {
+          provider: "espn" as const,
+          providerId: "1",
+          leagueProviderId: providerLeagueId,
+          season: 2026,
+          name: "Roster One",
+          abbrev: "ONE",
+          ownerMemberIds: ["member-1"],
+          record: {
+            wins: 1,
+            losses: 0,
+            ties: 0,
+            pointsFor: 101,
+            pointsAgainst: 99,
+          },
+        },
+        {
+          provider: "espn" as const,
+          providerId: "2",
+          leagueProviderId: providerLeagueId,
+          season: 2026,
+          name: "Roster Two",
+          abbrev: "TWO",
+          ownerMemberIds: ["member-2"],
+          record: {
+            wins: 0,
+            losses: 1,
+            ties: 0,
+            pointsFor: 99,
+            pointsAgainst: 101,
+          },
+        },
+      ]);
+    },
+    async getMembers() {
+      return ok([
+        {
+          provider: "espn" as const,
+          providerId: "member-1",
+          leagueProviderId: providerLeagueId,
+          season: 2026,
+          displayName: "Roster Manager One",
+          role: "member" as const,
+        },
+        {
+          provider: "espn" as const,
+          providerId: "member-2",
+          leagueProviderId: providerLeagueId,
+          season: 2026,
+          displayName: "Roster Manager Two",
+          role: "member" as const,
+        },
+      ]);
+    },
+    async getMatchups() {
+      return ok([
+        {
+          provider: "espn" as const,
+          providerId: "week-1",
+          leagueProviderId: providerLeagueId,
+          season: 2026,
+          scoringPeriod: 1,
+          homeTeamRef: {
+            provider: "espn" as const,
+            providerId: "1",
+            season: 2026,
+          },
+          awayTeamRef: {
+            provider: "espn" as const,
+            providerId: "2",
+            season: 2026,
+          },
+          homeScore: 101,
+          awayScore: 99,
+          winner: "home" as const,
+          status: "final" as const,
+        },
+      ]);
+    },
+    async getRosters() {
+      if (options.failRosters) {
+        return {
+          ok: false as const,
+          error: new ProviderBlockedError("espn"),
+        };
+      }
+      return ok([
+        {
+          teamRef: { provider: "espn" as const, providerId: "1", season: 2026 },
+          season: 2026,
+          scoringPeriod: 1,
+          entries: [
+            {
+              playerRef: { provider: "espn" as const, providerId: "player-1" },
+              slot: "QB",
+              status: "active",
+              points: 24.2,
+            },
+          ],
+        },
+      ]);
+    },
+  };
+}
+
 async function selectIngestedRows(leagueId: string) {
   return withLeagueContext(handle.db, leagueId, async (tx) => {
+    const coverage = await tx
+      .select()
+      .from(dataCoverage)
+      .where(eq(dataCoverage.leagueId, leagueId))
+      .orderBy(asc(dataCoverage.dataClass));
     const teams = await tx
       .select()
       .from(fantasyTeams)
@@ -89,7 +245,12 @@ async function selectIngestedRows(leagueId: string) {
         asc(fantasyMatchups.scoringPeriod),
         asc(fantasyMatchups.providerMatchupId),
       );
-    return { matchups, members, teams };
+    const rosterEntries = await tx
+      .select()
+      .from(fantasyRosterEntries)
+      .where(eq(fantasyRosterEntries.leagueId, leagueId))
+      .orderBy(asc(fantasyRosterEntries.providerPlayerId));
+    return { coverage, matchups, members, rosterEntries, teams };
   });
 }
 
@@ -168,6 +329,32 @@ describe("syncCurrentLeague", () => {
     expect(firstRows.teams).toHaveLength(12);
     expect(firstRows.members).toHaveLength(16);
     expect(firstRows.matchups).toHaveLength(84);
+    expect(firstRows.rosterEntries).toHaveLength(0);
+    expect(
+      Object.fromEntries(
+        firstRows.coverage.map((row) => [
+          row.dataClass,
+          {
+            capability: row.capability,
+            itemCount: row.itemCount,
+            status: row.status,
+          },
+        ]),
+      ),
+    ).toMatchObject({
+      league: { capability: "full", itemCount: 1, status: "complete" },
+      teams: { capability: "full", itemCount: 12, status: "complete" },
+      members: { capability: "full", itemCount: 16, status: "complete" },
+      matchups: { capability: "full", itemCount: 84, status: "complete" },
+      rosters: { capability: "none", itemCount: 0, status: "unavailable" },
+      transactions: { capability: "none", itemCount: 0, status: "unavailable" },
+      history: { capability: "partial", itemCount: 0, status: "stale" },
+      scoring_detail: {
+        capability: "partial",
+        itemCount: 1,
+        status: "partial",
+      },
+    });
     expect(firstRows.teams[0]).toMatchObject({
       provider: "espn",
       providerTeamId: "1",
@@ -282,6 +469,78 @@ describe("syncCurrentLeague", () => {
     expect(rows.teams[0]).toMatchObject({
       providerTeamId: "1",
       name: "Fixture Team 01 Renamed",
+    });
+  });
+
+  it("persists supported roster entries and records complete coverage", async () => {
+    const providerLeagueId = `${marker}-rosters`;
+    const synced = await syncCurrentLeague({
+      db: handle.db,
+      provider: rosterCapableProviderFor(providerLeagueId),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(synced.ok).toBe(true);
+    if (!synced.ok) throw synced.error;
+    expect(synced.value.rosters).toEqual({
+      total: 1,
+      changed: 1,
+      unchanged: 0,
+    });
+
+    const rows = await selectIngestedRows(synced.value.league.id);
+    expect(rows.rosterEntries).toHaveLength(1);
+    expect(rows.rosterEntries[0]).toMatchObject({
+      leagueProviderId: providerLeagueId,
+      providerTeamId: "1",
+      providerPlayerId: "player-1",
+      scoringPeriod: 1,
+      slot: "QB",
+      status: "active",
+      points: 24.2,
+    });
+    const rosterCoverage = rows.coverage.find(
+      (coverage) => coverage.dataClass === "rosters",
+    );
+    expect(rosterCoverage).toMatchObject({
+      capability: "full",
+      itemCount: 1,
+      status: "complete",
+    });
+  });
+
+  it("keeps core sync data when an optional roster class fails", async () => {
+    const providerLeagueId = `${marker}-rosters-error`;
+    const synced = await syncCurrentLeague({
+      db: handle.db,
+      provider: rosterCapableProviderFor(providerLeagueId, {
+        failRosters: true,
+      }),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(synced.ok).toBe(true);
+    if (!synced.ok) throw synced.error;
+    expect(synced.value.teams).toEqual({ total: 2, changed: 2, unchanged: 0 });
+    expect(synced.value.rosters).toEqual({
+      total: 0,
+      changed: 0,
+      unchanged: 0,
+    });
+
+    const rows = await selectIngestedRows(synced.value.league.id);
+    expect(rows.teams).toHaveLength(2);
+    expect(rows.rosterEntries).toHaveLength(0);
+    const rosterCoverage = rows.coverage.find(
+      (coverage) => coverage.dataClass === "rosters",
+    );
+    expect(rosterCoverage).toMatchObject({
+      capability: "full",
+      errorCode: "PROVIDER_BLOCKED",
+      itemCount: 0,
+      status: "error",
     });
   });
 
