@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
-import { getLeagueBlogPostData } from "@/news";
+import { getLeagueBlogPostData, getLeagueFeedData } from "@/news";
+import { getLeaguePublicationSectionBySlug } from "@/news/sections";
+import { LeagueFeedView } from "../../feed/league-feed-view";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
 import { LeagueBlogPostView } from "../../posts/[postId]/league-blog-post-view";
 
@@ -52,6 +54,30 @@ export default async function LeaguePressPostPage({
   }
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
+
+  const section = getLeaguePublicationSectionBySlug(postId);
+  if (section) {
+    const sectionResult = await getLeagueFeedData(db, {
+      leagueId,
+      sectionId: section.id,
+      userId: access.value.userId,
+      userRole: access.value.role,
+    });
+
+    switch (sectionResult.status) {
+      case "ready":
+        return <LeagueFeedView data={sectionResult.data} />;
+      case "forbidden":
+        return (
+          <LeagueSectionAccessState
+            title="No league access"
+            body="This account is not a member of that league."
+          />
+        );
+      case "not_found":
+        notFound();
+    }
+  }
 
   const result = await getLeagueBlogPostData(db, {
     leagueId,

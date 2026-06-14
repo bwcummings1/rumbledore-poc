@@ -254,6 +254,66 @@ describe("league-tailored feed", () => {
     expect(result.data.items.map((item) => item.title)).not.toContain(
       "Narrator note for league B",
     );
+    expect(result.data.items[0]?.section.label).toBe("Previews");
+    expect(result.data.sections.map((section) => section.label)).toEqual([
+      "Recaps",
+      "Power Rankings",
+      "Trash Talk",
+      "Records",
+      "Previews",
+    ]);
+  });
+
+  it("filters league section fronts by the declared taxonomy", async () => {
+    await withLeagueContext(handle.db, leagueAId, async (tx) => {
+      await tx.insert(contentItems).values([
+        {
+          authorPersona: "trash_talker",
+          body: "League A trash body.",
+          contentHash: `${marker}-section-trash-hash`,
+          dedupKey: `${marker}-section-trash`,
+          kind: "blog",
+          leagueId: leagueAId,
+          metadata: { section: "trash-talk" },
+          publishedAt: new Date("2026-06-11T17:00:00.000Z"),
+          summary: "A league A roast belongs in Trash Talk.",
+          title: "Trash-Talker opens the section front",
+        },
+        {
+          authorPersona: "narrator",
+          body: "League A recap body.",
+          contentHash: `${marker}-section-recap-hash`,
+          dedupKey: `${marker}-section-recap`,
+          kind: "blog",
+          leagueId: leagueAId,
+          metadata: { section: "recaps" },
+          publishedAt: new Date("2026-06-11T18:00:00.000Z"),
+          summary: "A recap should stay out of Trash Talk.",
+          title: "Narrator recap belongs elsewhere",
+        },
+      ]);
+    });
+
+    const result = await getLeagueFeedData(handle.db, {
+      leagueId: leagueAId,
+      limit: 100,
+      sectionId: "trash-talk",
+      userId,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected feed result: ${result.status}`);
+    }
+
+    const markedItems = result.data.items.filter((item) =>
+      item.title.includes("section"),
+    );
+    expect(result.data.activeSection?.label).toBe("Trash Talk");
+    expect(markedItems.map((item) => item.title)).toEqual([
+      "Trash-Talker opens the section front",
+    ]);
+    expect(markedItems[0]?.section.label).toBe("Trash Talk");
   });
 
   it("rejects a feed reference that does not point to central news", async () => {

@@ -2,6 +2,12 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { contentItems } from "@/db/schema";
 import { editorialImportance, publicationRankScore } from "./front";
+import {
+  CENTRAL_PUBLICATION_SECTIONS,
+  type CentralPublicationSectionId,
+  type PublicationSection,
+  resolveCentralPublicationSection,
+} from "./sections";
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
@@ -13,11 +19,14 @@ export interface CentralNewsHubItem {
   source: string;
   sourceUrl: string;
   publishedAt: string;
+  section: PublicationSection<CentralPublicationSectionId>;
   editorialImportance?: number;
 }
 
 export interface CentralNewsHubData {
+  activeSection: PublicationSection<CentralPublicationSectionId> | null;
   items: CentralNewsHubItem[];
+  sections: readonly PublicationSection<CentralPublicationSectionId>[];
 }
 
 function boundedLimit(limit: number | undefined): number {
@@ -29,10 +38,12 @@ function boundedLimit(limit: number | undefined): number {
 
 export async function getCentralNewsHubData(
   db: Db,
-  input: { limit?: number } = {},
+  input: { limit?: number; sectionId?: CentralPublicationSectionId } = {},
 ): Promise<CentralNewsHubData> {
   const limit = boundedLimit(input.limit);
-  const candidateLimit = Math.min(limit * 3, MAX_LIMIT);
+  const candidateLimit = input.sectionId
+    ? MAX_LIMIT
+    : Math.min(limit * 3, MAX_LIMIT);
   const rows = await db
     .select({
       id: contentItems.id,
@@ -48,17 +59,33 @@ export async function getCentralNewsHubData(
     .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
     .limit(candidateLimit);
 
+  const activeSection =
+    CENTRAL_PUBLICATION_SECTIONS.find(
+      (section) => section.id === input.sectionId,
+    ) ?? null;
+
   return {
+    activeSection,
     items: rows
-      .map((row) => ({
-        editorialImportance: editorialImportance(row.metadata),
-        id: row.id,
-        publishedAt: row.publishedAt.toISOString(),
-        source: row.source ?? "Unknown source",
-        sourceUrl: row.sourceUrl ?? "",
-        summary: row.summary,
-        title: row.title,
-      }))
+      .map((row) => {
+        const section = resolveCentralPublicationSection({
+          metadata: row.metadata,
+          summary: row.summary,
+          title: row.title,
+        });
+
+        return {
+          section,
+          editorialImportance: editorialImportance(row.metadata),
+          id: row.id,
+          publishedAt: row.publishedAt.toISOString(),
+          source: row.source ?? "Unknown source",
+          sourceUrl: row.sourceUrl ?? "",
+          summary: row.summary,
+          title: row.title,
+        };
+      })
+      .filter((item) => !activeSection || item.section.id === activeSection.id)
       .sort(
         (left, right) =>
           publicationRankScore(right) - publicationRankScore(left) ||
@@ -66,5 +93,6 @@ export async function getCentralNewsHubData(
           left.title.localeCompare(right.title),
       )
       .slice(0, limit),
+    sections: CENTRAL_PUBLICATION_SECTIONS,
   };
 }

@@ -13,6 +13,12 @@ import {
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
 import { editorialImportance, publicationRankScore } from "./front";
+import {
+  LEAGUE_PUBLICATION_SECTIONS,
+  type LeaguePublicationSectionId,
+  type PublicationSection,
+  resolveLeaguePublicationSection,
+} from "./sections";
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
@@ -35,6 +41,7 @@ export interface LeagueFeedItem {
   publishedAt: string;
   relevanceReason: string;
   relevanceScore: number;
+  section: PublicationSection<LeaguePublicationSectionId>;
   editorialImportance?: number;
   matchedEntities: LeagueFeedMatchedEntity[];
 }
@@ -47,6 +54,8 @@ export interface LeagueFeedData {
     name: string;
     season: number;
   };
+  activeSection: PublicationSection<LeaguePublicationSectionId> | null;
+  sections: readonly PublicationSection<LeaguePublicationSectionId>[];
   userRole: Member["role"];
   items: LeagueFeedItem[];
 }
@@ -214,6 +223,7 @@ export async function getLeagueFeedData(
   input: {
     leagueId: string;
     limit?: number;
+    sectionId?: LeaguePublicationSectionId;
     userId: string;
     userRole?: Member["role"];
   },
@@ -258,7 +268,13 @@ export async function getLeagueFeedData(
   }
 
   const limit = boundedLimit(input.limit);
-  const candidateLimit = Math.min(limit * 3, MAX_LIMIT);
+  const candidateLimit = input.sectionId
+    ? MAX_LIMIT
+    : Math.min(limit * 3, MAX_LIMIT);
+  const activeSection =
+    LEAGUE_PUBLICATION_SECTIONS.find(
+      (section) => section.id === input.sectionId,
+    ) ?? null;
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
     const leagueRows = await tx
       .select({
@@ -314,47 +330,75 @@ export async function getLeagueFeedData(
       )
       .limit(candidateLimit);
 
-    const leagueItems: LeagueFeedItem[] = leagueRows.map((row) => ({
-      authorPersona: row.authorPersona,
-      contentItemId: row.id,
-      id: row.id,
-      kind: row.kind,
-      editorialImportance: editorialImportance(row.metadata),
-      matchedEntities: [],
-      publishedAt: row.publishedAt.toISOString(),
-      relevanceReason: "",
-      relevanceScore: 0,
-      scope: "league",
-      sourceLabel: row.kind === "blog" ? "League blog" : "League activity",
-      sourceUrl: "",
-      summary: row.summary,
-      title: row.title,
-    }));
+    const leagueItems: LeagueFeedItem[] = leagueRows.map((row) => {
+      const title = row.title;
+      const summary = row.summary;
 
-    const centralItems: LeagueFeedItem[] = centralRows.map((row) => ({
-      authorPersona: null,
-      contentItemId: row.contentItemId,
-      id: row.id,
-      kind: "news",
-      editorialImportance: editorialImportance(row.metadata),
-      matchedEntities: row.matchedEntities,
-      publishedAt: row.publishedAt.toISOString(),
-      relevanceReason: row.reason,
-      relevanceScore: row.relevanceScore,
-      scope: "central",
-      sourceLabel: row.source ?? "Central news",
-      sourceUrl: row.sourceUrl ?? "",
-      summary: row.framingSummary ?? row.summary,
-      title: row.framingTitle ?? row.title,
-    }));
+      return {
+        authorPersona: row.authorPersona,
+        contentItemId: row.id,
+        id: row.id,
+        kind: row.kind,
+        editorialImportance: editorialImportance(row.metadata),
+        matchedEntities: [],
+        publishedAt: row.publishedAt.toISOString(),
+        relevanceReason: "",
+        relevanceScore: 0,
+        scope: "league",
+        section: resolveLeaguePublicationSection({
+          authorPersona: row.authorPersona,
+          kind: row.kind,
+          metadata: row.metadata,
+          summary,
+          title,
+        }),
+        sourceLabel: row.kind === "blog" ? "League blog" : "League activity",
+        sourceUrl: "",
+        summary,
+        title,
+      };
+    });
 
-    return sortFeedItems([...leagueItems, ...centralItems]).slice(0, limit);
+    const centralItems: LeagueFeedItem[] = centralRows.map((row) => {
+      const title = row.framingTitle ?? row.title;
+      const summary = row.framingSummary ?? row.summary;
+
+      return {
+        authorPersona: null,
+        contentItemId: row.contentItemId,
+        id: row.id,
+        kind: "news",
+        editorialImportance: editorialImportance(row.metadata),
+        matchedEntities: row.matchedEntities,
+        publishedAt: row.publishedAt.toISOString(),
+        relevanceReason: row.reason,
+        relevanceScore: row.relevanceScore,
+        scope: "central",
+        section: resolveLeaguePublicationSection({
+          authorPersona: null,
+          kind: "news",
+          metadata: row.metadata,
+          summary,
+          title,
+        }),
+        sourceLabel: row.source ?? "Central news",
+        sourceUrl: row.sourceUrl ?? "",
+        summary,
+        title,
+      };
+    });
+
+    return sortFeedItems([...leagueItems, ...centralItems])
+      .filter((item) => !activeSection || item.section.id === activeSection.id)
+      .slice(0, limit);
   });
 
   return {
     data: {
+      activeSection,
       items: scoped,
       league,
+      sections: LEAGUE_PUBLICATION_SECTIONS,
       userRole,
     },
     status: "ready",

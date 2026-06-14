@@ -30,3 +30,12 @@ export {
   upsertLeagueFeedReference,
 } from "./league-feed";
 export { MockCentralNewsSource } from "./mocks";
+export {
+  CENTRAL_PUBLICATION_SECTIONS,
+  type CentralPublicationSectionId,
+  getCentralPublicationSectionBySlug,
+  getLeaguePublicationSectionBySlug,
+  LEAGUE_PUBLICATION_SECTIONS,
+  type LeaguePublicationSectionId,
+  type PublicationSection,
+} from "./sections";

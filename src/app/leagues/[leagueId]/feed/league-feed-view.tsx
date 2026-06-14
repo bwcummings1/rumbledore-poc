@@ -35,13 +35,7 @@ function sourceLabel(item: LeagueFeedItem): string {
 }
 
 function sectionTag(item: LeagueFeedItem): string {
-  if (item.scope === "central") {
-    return "Matched News";
-  }
-  if (item.kind === "ingest_event") {
-    return "League Activity";
-  }
-  return "The Press";
+  return item.section.label;
 }
 
 function toStory({
@@ -71,6 +65,15 @@ function toStory({
 
 export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
   const front = buildPublicationFront(data.items);
+  const heading = data.activeSection
+    ? `The ${data.league.name} Press: ${data.activeSection.label}`
+    : `The ${data.league.name} Press`;
+  const emptyTitle = data.activeSection
+    ? `No ${data.activeSection.label} stories yet`
+    : "No Press items yet";
+  const emptyBody = data.activeSection
+    ? "This beat has no league stories or matched central news yet. The full Press front is still available."
+    : "League posts and matched central stories will appear here after the cast publishes.";
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -106,16 +109,54 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
           </div>
           <div>
             <p className="text-sm font-medium text-muted-foreground">
-              League publication
+              {data.activeSection
+                ? "League publication section"
+                : "League publication"}
             </p>
             <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
-              The {data.league.name} Press
+              {heading}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {data.league.season} ESPN fantasy football ·{" "}
               {data.userRole.replace("_", " ")}
             </p>
           </div>
+          <nav aria-label="Press sections" className="flex flex-wrap gap-2">
+            <Link
+              href={`/leagues/${data.league.id}/press`}
+              aria-current={data.activeSection ? undefined : "page"}
+              className={cn(
+                buttonVariants({
+                  className: "w-fit",
+                  size: "sm",
+                  variant: data.activeSection ? "outline" : "default",
+                }),
+              )}
+            >
+              Front
+            </Link>
+            {data.sections.map((section) => (
+              <Link
+                key={section.id}
+                href={`/leagues/${data.league.id}/press/${section.slug}`}
+                aria-current={
+                  data.activeSection?.id === section.id ? "page" : undefined
+                }
+                className={cn(
+                  buttonVariants({
+                    className: "w-fit",
+                    size: "sm",
+                    variant:
+                      data.activeSection?.id === section.id
+                        ? "default"
+                        : "outline",
+                  }),
+                )}
+              >
+                {section.label}
+              </Link>
+            ))}
+          </nav>
         </div>
       </header>
 
@@ -160,11 +201,8 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
         </div>
       ) : (
         <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold">No Press items yet</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            League posts and matched central stories will appear here after the
-            cast publishes.
-          </p>
+          <h2 className="text-base font-semibold">{emptyTitle}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{emptyBody}</p>
         </section>
       )}
     </main>

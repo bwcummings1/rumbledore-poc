@@ -1,6 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { CentralNewsHubData } from "@/news/hub";
+import { CENTRAL_PUBLICATION_SECTIONS } from "@/news/sections";
 import { NewsHubView } from "./news-hub-view";
 
 const router = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -10,10 +11,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 const data: CentralNewsHubData = {
+  activeSection: null,
   items: [
     {
       id: "news-1",
       publishedAt: "2026-06-11T14:00:00.000Z",
+      section: CENTRAL_PUBLICATION_SECTIONS[2],
       source: "NFL Wire",
       sourceUrl: "https://news.example.com/injury-update",
       summary: "A central fantasy injury update with source attribution.",
@@ -22,6 +25,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-2",
       publishedAt: "2026-06-11T13:00:00.000Z",
+      section: CENTRAL_PUBLICATION_SECTIONS[3],
       source: "Fantasy Desk",
       sourceUrl: "https://news.example.com/rankings",
       summary: "A rankings move with league-wide implications.",
@@ -30,6 +34,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-3",
       publishedAt: "2026-06-11T12:00:00.000Z",
+      section: CENTRAL_PUBLICATION_SECTIONS[2],
       source: "Injury Wire",
       sourceUrl: "https://news.example.com/injuries",
       summary: "A late injury report changes flex decisions.",
@@ -38,6 +43,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-4",
       publishedAt: "2026-06-11T11:00:00.000Z",
+      section: CENTRAL_PUBLICATION_SECTIONS[1],
       source: "Waiver Desk",
       sourceUrl: "https://news.example.com/waivers",
       summary: "Waiver names worth watching after Sunday.",
@@ -46,6 +52,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-5",
       publishedAt: "2026-06-11T10:00:00.000Z",
+      section: CENTRAL_PUBLICATION_SECTIONS[0],
       source: "NFL Wire",
       sourceUrl: "https://news.example.com/weather",
       summary: "Weather may change passing volume.",
@@ -54,12 +61,14 @@ const data: CentralNewsHubData = {
     {
       id: "news-6",
       publishedAt: "2026-06-11T09:00:00.000Z",
+      section: CENTRAL_PUBLICATION_SECTIONS[1],
       source: "Depth Chart",
       sourceUrl: "https://news.example.com/depth",
       summary: "Depth chart notes for fantasy managers.",
       title: "Depth chart movement opens a sleeper path",
     },
   ],
+  sections: CENTRAL_PUBLICATION_SECTIONS,
 };
 
 afterEach(() => {
@@ -75,6 +84,10 @@ test("news hub view renders central stories with attribution and source links", 
       name: "NFL and fantasy headlines",
     }),
   ).toBeDefined();
+  const sections = within(screen.getByLabelText("News sections"));
+  expect(sections.getAllByRole("link").map((link) => link.textContent)).toEqual(
+    ["Front", "NFL", "Fantasy", "Injuries", "Rankings"],
+  );
   const lead = within(screen.getByLabelText("Lead story"));
   expect(
     lead.getByRole("heading", {
@@ -86,6 +99,7 @@ test("news hub view renders central stories with attribution and source links", 
   expect(
     lead.getByRole("link", { name: /read source/i }).getAttribute("href"),
   ).toBe("https://news.example.com/injury-update");
+  expect(lead.getByText("Injuries")).toBeDefined();
 
   expect(
     within(screen.getByLabelText("Secondary stories")).getAllByRole("article"),
@@ -96,7 +110,24 @@ test("news hub view renders central stories with attribution and source links", 
 });
 
 test("news hub view renders an empty state", () => {
-  render(<NewsHubView data={{ items: [] }} />);
+  render(<NewsHubView data={{ ...data, activeSection: null, items: [] }} />);
 
   expect(screen.getByText("No central stories yet")).toBeDefined();
+});
+
+test("news hub view renders a section front empty state", () => {
+  render(
+    <NewsHubView
+      data={{
+        ...data,
+        activeSection: CENTRAL_PUBLICATION_SECTIONS[0],
+        items: [],
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByRole("heading", { level: 1, name: "NFL stories" }),
+  ).toBeDefined();
+  expect(screen.getByText("No NFL stories yet")).toBeDefined();
 });

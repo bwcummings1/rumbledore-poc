@@ -1,6 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { LeagueFeedData } from "@/news";
+import { LEAGUE_PUBLICATION_SECTIONS } from "@/news/sections";
 import { LeagueFeedView } from "./league-feed-view";
 
 const router = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -10,6 +11,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const data: LeagueFeedData = {
+  activeSection: null,
   items: [
     {
       authorPersona: "commissioner",
@@ -21,6 +23,7 @@ const data: LeagueFeedData = {
       relevanceReason: "",
       relevanceScore: 0,
       scope: "league",
+      section: LEAGUE_PUBLICATION_SECTIONS[4],
       sourceLabel: "League blog",
       sourceUrl: "",
       summary: "League-specific weekly framing for Fixture Team 01.",
@@ -43,6 +46,7 @@ const data: LeagueFeedData = {
       relevanceReason: "Fixture Team 01 rosters the affected starter.",
       relevanceScore: 5,
       scope: "central",
+      section: LEAGUE_PUBLICATION_SECTIONS[4],
       sourceLabel: "Central Wire",
       sourceUrl: "https://news.example.com/relevant",
       summary: "Fixture Team 01 has a lineup decision now.",
@@ -58,6 +62,7 @@ const data: LeagueFeedData = {
       relevanceReason: "",
       relevanceScore: 0,
       scope: "league",
+      section: LEAGUE_PUBLICATION_SECTIONS[0],
       sourceLabel: "League blog",
       sourceUrl: "",
       summary: "The Narrator frames a rivalry week collapse.",
@@ -73,6 +78,7 @@ const data: LeagueFeedData = {
       relevanceReason: "",
       relevanceScore: 0,
       scope: "league",
+      section: LEAGUE_PUBLICATION_SECTIONS[3],
       sourceLabel: "League activity",
       sourceUrl: "",
       summary: "A notable lineup move hit the transaction wire.",
@@ -88,6 +94,7 @@ const data: LeagueFeedData = {
       relevanceReason: "",
       relevanceScore: 0,
       scope: "league",
+      section: LEAGUE_PUBLICATION_SECTIONS[1],
       sourceLabel: "League blog",
       sourceUrl: "",
       summary: "The Analyst notes a points-for mirage.",
@@ -103,6 +110,7 @@ const data: LeagueFeedData = {
       relevanceReason: "",
       relevanceScore: 0,
       scope: "league",
+      section: LEAGUE_PUBLICATION_SECTIONS[2],
       sourceLabel: "League blog",
       sourceUrl: "",
       summary: "The Trash-Talker circles the waiver-wire panic.",
@@ -116,6 +124,7 @@ const data: LeagueFeedData = {
     providerLeagueId: "95050",
     season: 2026,
   },
+  sections: LEAGUE_PUBLICATION_SECTIONS,
   userRole: "commissioner",
 };
 
@@ -129,6 +138,10 @@ test("league press view renders league posts and relevant central stories", () =
   expect(
     screen.getByRole("heading", { level: 1, name: "The Feed League A Press" }),
   ).toBeDefined();
+  const sections = within(screen.getByLabelText("Press sections"));
+  expect(sections.getAllByRole("link").map((link) => link.textContent)).toEqual(
+    ["Front", "Recaps", "Power Rankings", "Trash Talk", "Records", "Previews"],
+  );
   const lead = within(screen.getByLabelText("Lead story"));
   expect(
     lead.getByRole("heading", { name: "Commissioner note for league A" }),
@@ -147,6 +160,7 @@ test("league press view renders league posts and relevant central stories", () =
   expect(
     lead.getByRole("link", { name: /read post/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press/blog-content-1");
+  expect(lead.getByText("Previews")).toBeDefined();
   expect(
     within(screen.getByLabelText("Secondary stories")).getAllByRole("article"),
   ).toHaveLength(3);
@@ -162,4 +176,24 @@ test("league press view renders an empty state", () => {
   render(<LeagueFeedView data={{ ...data, items: [] }} />);
 
   expect(screen.getByText("No Press items yet")).toBeDefined();
+});
+
+test("league press view renders a section front empty state", () => {
+  render(
+    <LeagueFeedView
+      data={{
+        ...data,
+        activeSection: LEAGUE_PUBLICATION_SECTIONS[2],
+        items: [],
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByRole("heading", {
+      level: 1,
+      name: "The Feed League A Press: Trash Talk",
+    }),
+  ).toBeDefined();
+  expect(screen.getByText("No Trash Talk stories yet")).toBeDefined();
 });

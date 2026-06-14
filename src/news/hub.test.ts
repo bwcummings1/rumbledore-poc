@@ -151,4 +151,55 @@ describe("central news hub", () => {
       "Fresh minor central story",
     ]);
   });
+
+  it("filters central section fronts by the declared taxonomy", async () => {
+    await handle.db.insert(contentItems).values([
+      {
+        body: "Section injury body.",
+        contentHash: `${marker}-section-injuries-hash`,
+        dedupKey: `${marker}-section-injuries`,
+        kind: "news",
+        leagueId: null,
+        metadata: { section: "injuries" },
+        publishedAt: new Date("2026-06-11T18:00:00.000Z"),
+        source: "Injury Desk",
+        sourceUrl: `https://news.example.com/${marker}/section-injuries`,
+        summary: "A section-specific injury summary.",
+        title: "Starter injury anchors the section front",
+      },
+      {
+        body: "Section ranking body.",
+        contentHash: `${marker}-section-rankings-hash`,
+        dedupKey: `${marker}-section-rankings`,
+        kind: "news",
+        leagueId: null,
+        metadata: { section: "rankings" },
+        publishedAt: new Date("2026-06-11T19:00:00.000Z"),
+        source: "Rankings Desk",
+        sourceUrl: `https://news.example.com/${marker}/section-rankings`,
+        summary: "A section-specific rankings summary.",
+        title: "Rankings story stays out of injuries",
+      },
+    ]);
+
+    const data = await getCentralNewsHubData(handle.db, {
+      limit: 100,
+      sectionId: "injuries",
+    });
+    const markedItems = data.items.filter((item) =>
+      item.sourceUrl.includes(`${marker}/section-`),
+    );
+
+    expect(data.activeSection?.label).toBe("Injuries");
+    expect(data.sections.map((section) => section.label)).toEqual([
+      "NFL",
+      "Fantasy",
+      "Injuries",
+      "Rankings",
+    ]);
+    expect(markedItems.map((item) => item.title)).toEqual([
+      "Starter injury anchors the section front",
+    ]);
+    expect(markedItems[0]?.section.label).toBe("Injuries");
+  });
 });

@@ -17,13 +17,22 @@ function toStory(item: CentralNewsHubData["items"][number]): PublicationStory {
     headline: item.title,
     id: item.id,
     publishedAt: item.publishedAt,
-    sectionTag: "Central News",
+    sectionTag: item.section.label,
     sourceUrl: item.sourceUrl,
   };
 }
 
 export function NewsHubView({ data }: { data: CentralNewsHubData }) {
   const front = buildPublicationFront(data.items);
+  const heading = data.activeSection
+    ? `${data.activeSection.label} stories`
+    : "NFL and fantasy headlines";
+  const emptyTitle = data.activeSection
+    ? `No ${data.activeSection.label} stories yet`
+    : "No central stories yet";
+  const emptyBody = data.activeSection
+    ? "This section has no published stories yet. The rest of Rumbledore News is still available."
+    : "The news refresh job has not published any shared headlines.";
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -45,16 +54,54 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
           </div>
           <div className="max-w-2xl">
             <p className="text-sm font-medium text-muted-foreground">
-              Rumbledore News
+              {data.activeSection
+                ? "Rumbledore News section"
+                : "Rumbledore News"}
             </p>
             <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
-              NFL and fantasy headlines
+              {heading}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Shared league-agnostic news from the central feed. League-specific
               framing stays in each league's Press.
             </p>
           </div>
+          <nav aria-label="News sections" className="flex flex-wrap gap-2">
+            <Link
+              href="/news"
+              aria-current={data.activeSection ? undefined : "page"}
+              className={cn(
+                buttonVariants({
+                  className: "w-fit",
+                  size: "sm",
+                  variant: data.activeSection ? "outline" : "default",
+                }),
+              )}
+            >
+              Front
+            </Link>
+            {data.sections.map((section) => (
+              <Link
+                key={section.id}
+                href={`/news/${section.slug}`}
+                aria-current={
+                  data.activeSection?.id === section.id ? "page" : undefined
+                }
+                className={cn(
+                  buttonVariants({
+                    className: "w-fit",
+                    size: "sm",
+                    variant:
+                      data.activeSection?.id === section.id
+                        ? "default"
+                        : "outline",
+                  }),
+                )}
+              >
+                {section.label}
+              </Link>
+            ))}
+          </nav>
         </div>
       </header>
 
@@ -96,10 +143,8 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
         </div>
       ) : (
         <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold">No central stories yet</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The news refresh job has not published any shared headlines.
-          </p>
+          <h2 className="text-base font-semibold">{emptyTitle}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{emptyBody}</p>
         </section>
       )}
     </main>
