@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: Bet slip placement landed — league Bet now builds singles/parlays from locked snapshot selections, previews stake/payout against live bankroll, submits through an authenticated idempotent placement route, and surfaces stale-line/balance errors.
 - 2026-06-14: Sportsbook board grouping landed — league Bet now groups mocked odds by event, renders market rows with selectable locked-price buttons, and stages picks for the slip flow.
 - 2026-06-14: Bidirectional AI-lore contract landed — AI context now carries canon/pending/disputed/refuted lore buckets with canon-only assertion rules, and planned instigations now seed poll-backed AI-origin lore claims before verdict canonization.
 - 2026-06-14: Challengeable canon landed — dispute/relitigation branches now mark canon as contested, supersede it on successful challenges, restore it as upheld on failed challenges, and preserve thread lineage with append-only events.
