@@ -56,6 +56,7 @@ type WeeklyResult = "win" | "loss" | "tie";
 interface ResolvedIdentityState {
   ownerMemberIds: Set<string>;
   ownerNames: Set<string>;
+  ownerSignatures: Set<string>;
   personId: string;
   providerTeamIds: Set<string>;
   seasons: Set<number>;
@@ -66,6 +67,7 @@ interface IdentityCandidate {
   confidence: number;
   method: "auto" | "fuzzy";
   personId: string;
+  sameProviderSlot: boolean;
 }
 
 interface WeeklyFact {
@@ -158,6 +160,10 @@ function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort(compareStable);
 }
 
+function ownerSignature(values: readonly string[]): string {
+  return sortedUnique(values).join("\u001f");
+}
+
 function overlap(left: ReadonlySet<string>, right: readonly string[]): boolean {
   return right.some((value) => left.has(value));
 }
@@ -182,6 +188,9 @@ function addTeamSeasonToState(
   state.providerTeamIds.add(teamSeason.providerTeamId);
   state.seasons.add(teamSeason.season);
   state.teamNames.add(teamSeason.teamName);
+  if (teamSeason.ownerMemberIds.length > 0) {
+    state.ownerSignatures.add(ownerSignature(teamSeason.ownerMemberIds));
+  }
   for (const ownerId of teamSeason.ownerMemberIds) {
     state.ownerMemberIds.add(ownerId);
   }
@@ -195,6 +204,7 @@ function chooseCandidate(
   states: Iterable<ResolvedIdentityState>,
 ): IdentityCandidate | null {
   let best: IdentityCandidate | null = null;
+  const teamSeasonOwnerMemberIds = sortedUnique(teamSeason.ownerMemberIds);
 
   for (const state of states) {
     const sameProviderSlot = state.providerTeamIds.has(
@@ -206,8 +216,14 @@ function chooseCandidate(
 
     const hasOwnerOverlap = overlap(
       state.ownerMemberIds,
-      teamSeason.ownerMemberIds,
+      teamSeasonOwnerMemberIds,
     );
+    const hasExactOwnerSet =
+      teamSeasonOwnerMemberIds.length > 0 &&
+      state.ownerSignatures.has(ownerSignature(teamSeasonOwnerMemberIds));
+    const hasSlotScopedOwnerOverlap = sameProviderSlot && hasOwnerOverlap;
+    const hasStrongOwnerMatch = hasExactOwnerSet || hasSlotScopedOwnerOverlap;
+    const hasAmbiguousSharedCoOwner = hasOwnerOverlap && !hasStrongOwnerMatch;
     const ownerSimilarity = maxNameSimilarity(
       state.ownerNames,
       teamSeason.ownerNames,
@@ -221,7 +237,7 @@ function chooseCandidate(
     let confidence = 0;
     let method: IdentityCandidate["method"] = "fuzzy";
 
-    if (hasOwnerOverlap) {
+    if (hasStrongOwnerMatch) {
       confidence = 1;
       method = "auto";
     } else if (
@@ -230,6 +246,10 @@ function chooseCandidate(
     ) {
       confidence = Math.max(0.86, ownerSimilarity * 0.7 + teamSimilarity * 0.3);
       method = "auto";
+    } else if (hasAmbiguousSharedCoOwner) {
+      // Shared co-owners are common in Sleeper; a partial overlap across
+      // different team slots is not enough evidence to merge franchises.
+      confidence = Math.min(0.59, teamSimilarity * 0.5);
     } else {
       confidence =
         ownerSimilarity > 0
@@ -242,12 +262,17 @@ function chooseCandidate(
       confidence: round(Math.min(1, Math.max(0, confidence)), 4),
       method,
       personId: state.personId,
+      sameProviderSlot,
     };
 
     if (
       !best ||
       candidate.confidence > best.confidence ||
       (candidate.confidence === best.confidence &&
+        candidate.sameProviderSlot &&
+        !best.sameProviderSlot) ||
+      (candidate.confidence === best.confidence &&
+        candidate.sameProviderSlot === best.sameProviderSlot &&
         compareStable(candidate.personId, best.personId) < 0)
     ) {
       best = candidate;
@@ -444,6 +469,7 @@ export async function resolveLeagueIdentities(
       states.set(person.id, {
         ownerMemberIds: new Set(),
         ownerNames: new Set(),
+        ownerSignatures: new Set(),
         personId: person.id,
         providerTeamIds: new Set(),
         seasons: new Set(),
@@ -491,6 +517,7 @@ export async function resolveLeagueIdentities(
         states.set(personId, {
           ownerMemberIds: new Set(),
           ownerNames: new Set(),
+          ownerSignatures: new Set(),
           personId,
           providerTeamIds: new Set(),
           seasons: new Set(),

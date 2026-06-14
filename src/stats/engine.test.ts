@@ -40,6 +40,13 @@ interface TeamFixture {
   season: number;
 }
 
+interface MultiOwnerTeamFixture {
+  name: string;
+  owners: { id: string; name: string }[];
+  providerTeamId: string;
+  season: number;
+}
+
 interface MatchupFixture {
   awayScore: number;
   awayTeamProviderId: string;
@@ -166,6 +173,63 @@ const matchups: MatchupFixture[] = [
   },
 ];
 
+const coOwnerTeams: MultiOwnerTeamFixture[] = [
+  {
+    name: "Alpha Aces",
+    owners: [
+      { id: "owner-alpha", name: "Alpha Manager" },
+      { id: "owner-shared", name: "Shared Manager" },
+    ],
+    providerTeamId: "1",
+    season: 2024,
+  },
+  {
+    name: "Beta Blasters",
+    owners: [
+      { id: "owner-beta", name: "Beta Manager" },
+      { id: "owner-shared", name: "Shared Manager" },
+    ],
+    providerTeamId: "2",
+    season: 2024,
+  },
+  {
+    name: "Beta Blasters",
+    owners: [
+      { id: "owner-beta", name: "Beta Manager" },
+      { id: "owner-shared", name: "Shared Manager" },
+    ],
+    providerTeamId: "2",
+    season: 2025,
+  },
+  {
+    name: "Gamma Guards",
+    owners: [{ id: "owner-gamma", name: "Gamma Manager" }],
+    providerTeamId: "3",
+    season: 2025,
+  },
+];
+
+const coOwnerMatchups: MatchupFixture[] = [
+  {
+    awayScore: 100,
+    awayTeamProviderId: "2",
+    homeScore: 110,
+    homeTeamProviderId: "1",
+    providerMatchupId: "2024-1-coowner",
+    scoringPeriod: 1,
+    season: 2024,
+  },
+  {
+    awayScore: 95,
+    awayTeamProviderId: "3",
+    homeScore: 105,
+    homeTeamProviderId: "2",
+    providerMatchupId: "2025-1-coowner",
+    scoringPeriod: 1,
+    season: 2025,
+  },
+];
+
 async function seedStatsLeague(tag: string): Promise<SeededStatsLeague> {
   const providerLeagueId = `${marker}-${tag}`;
   const [league] = await handle.db
@@ -239,6 +303,167 @@ async function seedStatsLeague(tag: string): Promise<SeededStatsLeague> {
             : matchup.awayScore > matchup.homeScore
               ? "away"
               : "tie",
+      });
+    }
+  });
+
+  return { leagueId: league.id, providerLeagueId };
+}
+
+async function seedCoOwnerLeague(tag: string): Promise<SeededStatsLeague> {
+  const providerLeagueId = `${marker}-${tag}`;
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      currentScoringPeriod: 1,
+      name: `${marker} ${tag}`,
+      provider: "sleeper",
+      providerLeagueId,
+      scoringType: "PPR",
+      season: 2025,
+      size: 3,
+      sport: "ffl",
+      status: "complete",
+    })
+    .returning();
+  if (!league) {
+    throw new Error("co-owner stats test league was not created");
+  }
+
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    const teamRows = new Map<string, { fantasyTeamId: string }>();
+    const [alphaPersonId, betaPersonId] = [randomUUID(), randomUUID()].sort(
+      (left, right) => left.localeCompare(right),
+    );
+    for (const team of coOwnerTeams) {
+      for (const owner of team.owners) {
+        await tx
+          .insert(fantasyMembers)
+          .values({
+            contentHash: `${marker}-${tag}-${team.season}-${owner.id}`,
+            displayName: owner.name,
+            leagueId: league.id,
+            leagueProviderId: providerLeagueId,
+            provider: "sleeper",
+            providerMemberId: owner.id,
+            role: "member",
+            season: team.season,
+          })
+          .onConflictDoNothing();
+      }
+
+      const ownerMemberIds = team.owners
+        .map((owner) => owner.id)
+        .sort((left, right) => left.localeCompare(right));
+      const [insertedTeam] = await tx
+        .insert(fantasyTeams)
+        .values({
+          abbrev: team.name.slice(0, 3).toUpperCase(),
+          contentHash: `${marker}-${tag}-${team.season}-${team.providerTeamId}`,
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          name: team.name,
+          ownerMemberIds,
+          pointsAgainst: 0,
+          pointsFor: 0,
+          provider: "sleeper",
+          providerTeamId: team.providerTeamId,
+          season: team.season,
+          ties: 0,
+          wins: 0,
+        })
+        .returning({ fantasyTeamId: fantasyTeams.id });
+      if (!insertedTeam) {
+        throw new Error("co-owner fantasy team was not created");
+      }
+      teamRows.set(`${team.season}:${team.providerTeamId}`, insertedTeam);
+    }
+
+    for (const matchup of coOwnerMatchups) {
+      await tx.insert(fantasyMatchups).values({
+        awayScore: matchup.awayScore,
+        awayTeamProviderId: matchup.awayTeamProviderId,
+        contentHash: `${marker}-${tag}-${matchup.providerMatchupId}`,
+        homeScore: matchup.homeScore,
+        homeTeamProviderId: matchup.homeTeamProviderId,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "sleeper",
+        providerMatchupId: matchup.providerMatchupId,
+        scoringPeriod: matchup.scoringPeriod,
+        season: matchup.season,
+        status: "final",
+        winner:
+          matchup.homeScore > matchup.awayScore
+            ? "home"
+            : matchup.awayScore > matchup.homeScore
+              ? "away"
+              : "tie",
+      });
+    }
+
+    const seededIdentities = [
+      {
+        personId: alphaPersonId,
+        team: coOwnerTeams[0],
+      },
+      {
+        personId: betaPersonId,
+        team: coOwnerTeams[1],
+      },
+    ];
+
+    for (const seeded of seededIdentities) {
+      const team = seeded.team;
+      if (!team) {
+        throw new Error("seeded co-owner team fixture was not found");
+      }
+      const fantasyTeam = teamRows.get(`${team.season}:${team.providerTeamId}`);
+      if (!fantasyTeam) {
+        throw new Error("seeded co-owner fantasy team row was not found");
+      }
+      const ownerMemberIds = team.owners
+        .map((owner) => owner.id)
+        .sort((left, right) => left.localeCompare(right));
+      const ownerNames = team.owners
+        .map((owner) => owner.name)
+        .sort((left, right) => left.localeCompare(right));
+      const [person] = await tx
+        .insert(persons)
+        .values({
+          canonicalName: ownerNames[0] ?? team.name,
+          id: seeded.personId,
+          leagueId: league.id,
+        })
+        .returning({ id: persons.id });
+      const [teamSeason] = await tx
+        .insert(teamSeasons)
+        .values({
+          fantasyTeamId: fantasyTeam.fantasyTeamId,
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          ownerMemberIds,
+          ownerNames,
+          provider: "sleeper",
+          providerTeamId: team.providerTeamId,
+          season: team.season,
+          teamName: team.name,
+        })
+        .returning({ id: teamSeasons.id });
+      if (!person || !teamSeason) {
+        throw new Error("seeded co-owner identity rows were not created");
+      }
+      await tx.insert(identityMappings).values({
+        confidence: 1,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        method: "auto",
+        personId: person.id,
+        provider: "sleeper",
+        providerTeamId: team.providerTeamId,
+        season: team.season,
+        teamSeasonId: teamSeason.id,
       });
     }
   });
@@ -584,5 +809,53 @@ describe("recomputeLeagueStatistics", () => {
     expect(rows.seasonRows.some((row) => row.personId === split.personId)).toBe(
       true,
     );
+  });
+
+  it("keeps co-owner overlaps scoped to the team slot during identity resolution", async () => {
+    const { leagueId } = await seedCoOwnerLeague("coowners");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    const rows = await selectStatsRows(leagueId);
+    const mappingFor = (providerTeamId: string, season: number) => {
+      const mapping = rows.mappingRows.find(
+        (row) => row.providerTeamId === providerTeamId && row.season === season,
+      );
+      if (!mapping) {
+        throw new Error(`mapping ${providerTeamId}/${season} was not found`);
+      }
+      return mapping;
+    };
+
+    const alpha2024 = mappingFor("1", 2024);
+    const beta2024 = mappingFor("2", 2024);
+    const beta2025 = mappingFor("2", 2025);
+    const betaTeamSeason2025 = rows.teamSeasonRows.find(
+      (row) => row.providerTeamId === "2" && row.season === 2025,
+    );
+    if (!betaTeamSeason2025) {
+      throw new Error("Beta 2025 team-season was not found");
+    }
+
+    expect(alpha2024.personId).not.toBe(beta2024.personId);
+    expect(beta2025.personId).toBe(beta2024.personId);
+    expect(beta2025.personId).not.toBe(alpha2024.personId);
+    expect(
+      rows.weeklyRows.filter(
+        (row) => row.teamSeasonId === betaTeamSeason2025.id,
+      ),
+    ).toHaveLength(1);
+
+    const betaPerson = rows.personRows.find(
+      (row) => row.id === beta2024.personId,
+    );
+    expect(betaPerson?.ownerHistory).toEqual([
+      {
+        endSeason: 2025,
+        ownerNames: ["Beta Manager", "Shared Manager"],
+        providerMemberIds: ["owner-beta", "owner-shared"],
+        startSeason: 2024,
+      },
+    ]);
   });
 });
