@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: Bidirectional AI-lore contract landed — AI context now carries canon/pending/disputed/refuted lore buckets with canon-only assertion rules, and planned instigations now seed poll-backed AI-origin lore claims before verdict canonization.
 - 2026-06-14: Challengeable canon landed — dispute/relitigation branches now mark canon as contested, supersede it on successful challenges, restore it as upheld on failed challenges, and preserve thread lineage with append-only events.
 - 2026-06-14: Lore two-type submission landed — data-verifiable claims now resolve synchronously against league stats into verified canon/refuted rejection/unverifiable vote fallback, while pure opinion claims stay vote-ratified.
 - 2026-06-14: Lore vote lifecycle landed — opinion claims now open first-class votes, one-vote-per-member tallies enforce quorum/majority canonization, and commissioners/data stewards can ratify/reject/extend/veto with append-only audit plus `lore.vote.close` fan-out.

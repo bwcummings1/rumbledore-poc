@@ -10,6 +10,7 @@ import {
 import { createAiDependencies } from "@/ai/dependencies";
 import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
+import { seedInstigationForContentCandidate } from "@/instigator";
 import { inngest } from "../client";
 import { type ContentGenerateData, JOB_EVENTS } from "../events";
 
@@ -63,7 +64,11 @@ export async function runContentGenerate({
   deps: ContentGenerateDependencies;
 }): Promise<ContentGenerateResponse> {
   const data = parseContentGenerateData(rawData);
-  const result = await generateLeagueBlogPost({ deps, input: data });
+  const result =
+    data.contentType === "instigation_column" &&
+    !data.triggerKey.startsWith("instigation:")
+      ? await seedInstigationForContentCandidate({ deps, input: data })
+      : await generateLeagueBlogPost({ deps, input: data });
 
   return {
     ok: true,

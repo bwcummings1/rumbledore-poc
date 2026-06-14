@@ -65,15 +65,91 @@ export interface LeagueContextRivalry {
 
 export interface LeagueContextCanonLore {
   id: string;
+  authorPersona: AiPersona | null;
+  branchOf: string | null;
+  kind: string;
+  origin: string;
+  provenance: "verified" | "vote" | "steward";
   title: string;
+  relation: string;
   statement: string;
+  sourceInstigationId: string | null;
+  sourcePollId: string | null;
+  status: "canon";
+  verification: string;
   ratifiedBy: string | null;
   ratifiedAt: Date | null;
+  voteClosesAt: Date | null;
+}
+
+export interface LeagueContextPendingLore {
+  id: string;
+  authorPersona: AiPersona | null;
+  branchOf: string | null;
+  kind: string;
+  origin: string;
+  title: string;
+  relation: string;
+  statement: string;
+  sourceInstigationId: string | null;
+  sourcePollId: string | null;
+  status: "pending" | "vote";
+  verification: string;
+  ratifiedBy: string | null;
+  ratifiedAt: Date | null;
+  voteClosesAt: Date | null;
+}
+
+export interface LeagueContextDisputedLore {
+  id: string;
+  authorPersona: AiPersona | null;
+  branchOf: string | null;
+  kind: string;
+  origin: string;
+  title: string;
+  relation: string;
+  statement: string;
+  sourceInstigationId: string | null;
+  sourcePollId: string | null;
+  status: "disputed";
+  verification: string;
+  ratifiedBy: string | null;
+  ratifiedAt: Date | null;
+  voteClosesAt: Date | null;
+}
+
+export interface LeagueContextRefutedLore {
+  id: string;
+  actualValue: string | null;
+  assertedValue: string | null;
+  authorPersona: AiPersona | null;
+  branchOf: string | null;
+  kind: string;
+  matchedRefs: Record<string, unknown>[];
+  origin: string;
+  title: string;
+  relation: string;
+  statement: string;
+  sourceInstigationId: string | null;
+  sourcePollId: string | null;
+  status: "rejected";
+  verification: "refuted";
+  ratifiedBy: string | null;
+  ratifiedAt: Date | null;
+  voteClosesAt: Date | null;
+}
+
+export interface LeagueContextLore {
+  canon: LeagueContextCanonLore[];
+  pending: LeagueContextPendingLore[];
+  disputed: LeagueContextDisputedLore[];
+  refuted: LeagueContextRefutedLore[];
 }
 
 export interface LeagueAuthenticityContext {
   people: LeagueContextPerson[];
   rivalries: LeagueContextRivalry[];
+  lore: LeagueContextLore;
   canonLore: LeagueContextCanonLore[];
   entityTokens: string[];
 }

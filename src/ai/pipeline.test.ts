@@ -605,6 +605,29 @@ describe("generateLeagueBlogPost", () => {
           status: "vote",
           title: "Pending Dynasty Rumor",
         },
+        {
+          authorPersona: "narrator",
+          body: "Canon Beta's Canal Bowl title is under challenge",
+          kind: "opinion",
+          leagueId: league.id,
+          origin: "ai",
+          ratifiedAt: new Date("2026-06-09T12:00:00.000Z"),
+          ratifiedBy: "vote",
+          statement: "Canon Beta's Canal Bowl title is under challenge",
+          status: "disputed",
+          title: "Canal Bowl Challenge",
+        },
+        {
+          authorPersona: "analyst",
+          body: "Canon Alpha scored 200 in Week 1",
+          kind: "data_verifiable",
+          leagueId: league.id,
+          origin: "ai",
+          statement: "Canon Alpha scored 200 in Week 1",
+          status: "rejected",
+          title: "Wrong Week 1 Score",
+          verification: "refuted",
+        },
       ]);
     });
 
@@ -634,6 +657,34 @@ describe("generateLeagueBlogPost", () => {
           statement: "Canon Alpha owns the Snow Bowl collapse",
         }),
       ],
+      lore: {
+        canon: [
+          expect.objectContaining({
+            provenance: "vote",
+            statement: "Canon Alpha owns the Snow Bowl collapse",
+            status: "canon",
+          }),
+        ],
+        disputed: [
+          expect.objectContaining({
+            statement: "Canon Beta's Canal Bowl title is under challenge",
+            status: "disputed",
+          }),
+        ],
+        pending: [
+          expect.objectContaining({
+            statement: "Unratified Beta dynasty rumor",
+            status: "vote",
+          }),
+        ],
+        refuted: [
+          expect.objectContaining({
+            statement: "Canon Alpha scored 200 in Week 1",
+            status: "rejected",
+            verification: "refuted",
+          }),
+        ],
+      },
       people: expect.arrayContaining([
         expect.objectContaining({
           canonicalName: "Canon Alpha",
@@ -661,12 +712,38 @@ describe("generateLeagueBlogPost", () => {
     ) as {
       authenticity?: {
         canonLore?: { statement?: string }[];
+        lore?: {
+          canon?: { statement?: string }[];
+          disputed?: { statement?: string }[];
+          pending?: { statement?: string }[];
+          refuted?: { statement?: string }[];
+        };
         rivalries?: { personAName?: string; personBName?: string }[];
       };
     };
     expect(stablePrefix.authenticity?.canonLore).toEqual([
       expect.objectContaining({
         statement: "Canon Alpha owns the Snow Bowl collapse",
+      }),
+    ]);
+    expect(stablePrefix.authenticity?.lore?.canon).toEqual([
+      expect.objectContaining({
+        statement: "Canon Alpha owns the Snow Bowl collapse",
+      }),
+    ]);
+    expect(stablePrefix.authenticity?.lore?.pending).toEqual([
+      expect.objectContaining({
+        statement: "Unratified Beta dynasty rumor",
+      }),
+    ]);
+    expect(stablePrefix.authenticity?.lore?.disputed).toEqual([
+      expect.objectContaining({
+        statement: "Canon Beta's Canal Bowl title is under challenge",
+      }),
+    ]);
+    expect(stablePrefix.authenticity?.lore?.refuted).toEqual([
+      expect.objectContaining({
+        statement: "Canon Alpha scored 200 in Week 1",
       }),
     ]);
     expect(stablePrefix.authenticity?.rivalries).toEqual([
@@ -692,9 +769,17 @@ describe("generateLeagueBlogPost", () => {
     expect(post?.body).toContain(
       "Canon Alpha and Canon Beta have met 11 times",
     );
-    expect(post?.body).not.toContain("Unratified Beta dynasty rumor");
-    expect(llm.requests[0]?.prompt.systemPrefix).not.toContain(
-      "Unratified Beta dynasty rumor",
+    expect(post?.body).toContain(
+      "Live debate, not canon: Unratified Beta dynasty rumor",
+    );
+    expect(post?.body).toContain(
+      "Contested canon under challenge: Canon Beta's Canal Bowl title is under challenge",
+    );
+    expect(post?.body).toContain(
+      "Correction file: Canon Alpha scored 200 in Week 1 was refuted",
+    );
+    expect(post?.body).not.toContain(
+      "Canon says: Unratified Beta dynasty rumor",
     );
   });
 

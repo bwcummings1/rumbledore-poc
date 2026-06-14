@@ -2,6 +2,8 @@ import { and, desc, eq } from "drizzle-orm";
 import {
   type AiGenerationDependencies,
   type AiPersona,
+  type GenerateLeagueBlogPostInput,
+  type GenerateLeagueBlogPostResult,
   generateLeagueBlogPost,
   parseAiPersona,
 } from "@/ai";
@@ -9,7 +11,10 @@ import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  contentItems,
+  fantasyTeams,
   instigations,
+  leagues,
   loreClaims,
   loreEvents,
   members,
@@ -187,6 +192,102 @@ function validateSeedInput(input: SeedInstigationInput) {
   };
 }
 
+async function ensurePollLoreClaim({
+  closesAt,
+  deps,
+  groundingRefs,
+  input,
+  instigationId,
+  pollId,
+  promptText,
+}: {
+  closesAt: Date;
+  deps: Pick<AiGenerationDependencies, "db" | "now">;
+  groundingRefs: readonly InstigationGroundingRef[];
+  input: Pick<SeedInstigationInput, "leagueId" | "persona">;
+  instigationId: string;
+  pollId: string;
+  promptText: string;
+}): Promise<string> {
+  const timestamp = now(deps);
+  const statement = `Settle it: ${promptText}`;
+  return withLeagueContext(deps.db, input.leagueId, async (tx) => {
+    const [inserted] = await tx
+      .insert(loreClaims)
+      .values({
+        authorPersona: input.persona,
+        body: statement,
+        evidenceRefs: [...groundingRefs],
+        kind: "opinion",
+        leagueId: input.leagueId,
+        origin: "ai",
+        sourceInstigationId: instigationId,
+        sourcePollId: pollId,
+        statement,
+        status: "vote",
+        title: promptText,
+        verification: "n_a",
+        voteClosesAt: closesAt,
+        voteOpensAt: timestamp,
+      })
+      .onConflictDoNothing({
+        target: [loreClaims.leagueId, loreClaims.sourcePollId],
+      })
+      .returning({ id: loreClaims.id });
+
+    if (inserted) {
+      await tx.insert(loreEvents).values([
+        {
+          afterState: {
+            origin: "ai",
+            sourceInstigationId: instigationId,
+            sourcePollId: pollId,
+            status: "vote",
+          },
+          claimId: inserted.id,
+          kind: "created",
+          leagueId: input.leagueId,
+          reason: "instigation_seeded",
+        },
+        {
+          afterState: {
+            claimId: inserted.id,
+            status: "vote",
+            voteClosesAt: closesAt.toISOString(),
+            voteOpensAt: timestamp.toISOString(),
+          },
+          claimId: inserted.id,
+          kind: "vote_opened",
+          leagueId: input.leagueId,
+          reason: "instigation_seeded",
+        },
+      ]);
+      return inserted.id;
+    }
+
+    const [existing] = await tx
+      .select({ id: loreClaims.id })
+      .from(loreClaims)
+      .where(
+        and(
+          eq(loreClaims.leagueId, input.leagueId),
+          eq(loreClaims.sourcePollId, pollId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      throw new AppError({
+        code: "LORE_CLAIM_FAILED",
+        message: "Lore claim could not be opened for the instigation poll",
+        status: 500,
+      });
+    }
+
+    return existing.id;
+  });
+}
+
 async function loadSeededPoll({
   db,
   instigationId,
@@ -210,6 +311,135 @@ async function loadSeededPoll({
   );
 
   return poll?.id ?? null;
+}
+
+async function defaultSettleItSeedInput({
+  deps,
+  input,
+}: {
+  deps: Pick<AiGenerationDependencies, "db">;
+  input: GenerateLeagueBlogPostInput;
+}): Promise<SeedInstigationInput | null> {
+  return withLeagueContext(deps.db, input.leagueId, async (tx) => {
+    const [league] = await tx
+      .select({
+        currentScoringPeriod: leagues.currentScoringPeriod,
+        season: leagues.season,
+      })
+      .from(leagues)
+      .where(eq(leagues.id, input.leagueId))
+      .limit(1);
+
+    if (!league) {
+      throw new AppError({
+        code: "INSTIGATION_LEAGUE_NOT_FOUND",
+        message: "League could not be found for AI instigation",
+        status: 404,
+      });
+    }
+
+    const teams = await tx
+      .select({
+        losses: fantasyTeams.losses,
+        name: fantasyTeams.name,
+        pointsFor: fantasyTeams.pointsFor,
+        providerTeamId: fantasyTeams.providerTeamId,
+        wins: fantasyTeams.wins,
+      })
+      .from(fantasyTeams)
+      .where(
+        and(
+          eq(fantasyTeams.leagueId, input.leagueId),
+          eq(fantasyTeams.season, league.season),
+        ),
+      )
+      .orderBy(desc(fantasyTeams.pointsFor), desc(fantasyTeams.wins))
+      .limit(4);
+
+    if (teams.length < 2) {
+      return null;
+    }
+
+    const options = teams.slice(0, 2).map((team) => team.name);
+    const groundingRefs = teams.slice(0, 2).map((team) => ({
+      id: `${input.leagueId}:team:${team.providerTeamId}`,
+      label: `${team.name} (${team.wins}-${team.losses}, ${team.pointsFor} PF)`,
+      type: "team" as const,
+    }));
+    return {
+      dedupKey: `content:${input.persona}:${input.triggerKey}`,
+      groundingRefs,
+      kind: "settle_it_poll",
+      leagueId: input.leagueId,
+      options,
+      persona: input.persona,
+      promptText: `Settle it: which team owns the Week ${league.currentScoringPeriod} main-character edit?`,
+    };
+  });
+}
+
+export async function seedInstigationForContentCandidate({
+  deps,
+  input,
+}: {
+  deps: AiGenerationDependencies;
+  input: GenerateLeagueBlogPostInput;
+}): Promise<GenerateLeagueBlogPostResult> {
+  const seedInput = await defaultSettleItSeedInput({ deps, input });
+  if (!seedInput) {
+    return {
+      promptPrefixHash: null,
+      reused: false,
+      skipReason: "instigation_seed:insufficient_league_grounding",
+      status: "skipped",
+    };
+  }
+
+  const seeded = await seedInstigation({ deps, input: seedInput });
+  if (!seeded.contentItemId) {
+    return {
+      promptPrefixHash: null,
+      reused: seeded.reused,
+      skipReason: "instigation_seed:column_not_published",
+      status: "skipped",
+    };
+  }
+  const contentItemId = seeded.contentItemId;
+
+  const [item] = await withLeagueContext(deps.db, input.leagueId, (tx) =>
+    tx
+      .select({
+        id: contentItems.id,
+        publishedAt: contentItems.publishedAt,
+        title: contentItems.title,
+      })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.leagueId, input.leagueId),
+          eq(contentItems.id, contentItemId),
+        ),
+      )
+      .limit(1),
+  );
+
+  if (!item) {
+    return {
+      promptPrefixHash: null,
+      reused: seeded.reused,
+      skipReason: "instigation_seed:column_not_found",
+      status: "skipped",
+    };
+  }
+
+  return {
+    contentItemId: item.id,
+    promptPrefixHash: `instigation-seed:${seeded.instigationId}`,
+    publishedAt: item.publishedAt.toISOString(),
+    reused: seeded.reused,
+    status: "published",
+    title: item.title,
+  };
 }
 
 export async function seedInstigation({
@@ -314,6 +544,21 @@ export async function seedInstigation({
           leagueId: input.leagueId,
         })
       : null);
+
+  if (validated.kind === "settle_it_poll" && pollId) {
+    await ensurePollLoreClaim({
+      closesAt,
+      deps,
+      groundingRefs: validated.groundingRefs,
+      input: {
+        leagueId: input.leagueId,
+        persona: validated.persona,
+      },
+      instigationId: seeded.instigationId,
+      pollId,
+      promptText: validated.promptText,
+    });
+  }
 
   const column = await generateLeagueBlogPost({
     deps,
@@ -608,6 +853,33 @@ export async function closePoll({
               eq(instigations.id, poll.instigationId),
             ),
           );
+        const [rejectedClaim] = await tx
+          .update(loreClaims)
+          .set({
+            status: "rejected",
+            updatedAt: timestamp,
+          })
+          .where(
+            and(
+              eq(loreClaims.leagueId, input.leagueId),
+              eq(loreClaims.sourcePollId, poll.id),
+              eq(loreClaims.status, "vote"),
+            ),
+          )
+          .returning({ id: loreClaims.id });
+        if (rejectedClaim) {
+          await tx.insert(loreEvents).values({
+            afterState: {
+              reason: "no_votes",
+              result,
+              status: "rejected",
+            },
+            claimId: rejectedClaim.id,
+            kind: "rejected",
+            leagueId: input.leagueId,
+            reason: "poll_closed:no_votes",
+          });
+        }
         return {
           kind: "skipped" as const,
           reason: "no_votes" as const,
@@ -647,6 +919,33 @@ export async function closePoll({
               eq(instigations.id, poll.instigationId),
             ),
           );
+        const [rejectedClaim] = await tx
+          .update(loreClaims)
+          .set({
+            status: "rejected",
+            updatedAt: timestamp,
+          })
+          .where(
+            and(
+              eq(loreClaims.leagueId, input.leagueId),
+              eq(loreClaims.sourcePollId, poll.id),
+              eq(loreClaims.status, "vote"),
+            ),
+          )
+          .returning({ id: loreClaims.id });
+        if (rejectedClaim) {
+          await tx.insert(loreEvents).values({
+            afterState: {
+              reason: "tie",
+              result,
+              status: "rejected",
+            },
+            claimId: rejectedClaim.id,
+            kind: "rejected",
+            leagueId: input.leagueId,
+            reason: "poll_closed:tie",
+          });
+        }
         return {
           kind: "skipped" as const,
           reason: "tie" as const,
@@ -664,41 +963,89 @@ export async function closePoll({
         winningOptionIdx,
       };
       const statement = `The league voted "${winningOption}" on "${poll.question}".`;
+      const evidenceRefs = [
+        ...instigation.groundingRefs,
+        {
+          id: poll.id,
+          label: poll.question,
+          type: "poll",
+        },
+      ];
 
-      const [claim] = await tx
-        .insert(loreClaims)
-        .values({
-          authorPersona: instigation.persona,
-          body: statement,
-          evidenceRefs: [
-            ...instigation.groundingRefs,
-            {
-              id: poll.id,
-              label: poll.question,
-              type: "poll",
-            },
-          ],
-          kind: "opinion",
-          leagueId: input.leagueId,
-          origin: "ai",
-          ratifiedAt: timestamp,
-          ratifiedBy: "vote",
-          sourceInstigationId: poll.instigationId,
-          sourcePollId: poll.id,
-          statement,
-          status: "canon",
-          title: poll.question,
-        })
-        .onConflictDoNothing({
-          target: [loreClaims.leagueId, loreClaims.sourcePollId],
-        })
-        .returning({
+      const [existingClaim] = await tx
+        .select({
           id: loreClaims.id,
-          statement: loreClaims.statement,
-        });
+          status: loreClaims.status,
+        })
+        .from(loreClaims)
+        .where(
+          and(
+            eq(loreClaims.leagueId, input.leagueId),
+            eq(loreClaims.sourcePollId, poll.id),
+          ),
+        )
+        .limit(1);
 
-      const loreClaim =
-        claim ??
+      let loreClaim: { id: string; statement: string } | null = null;
+      let claimWasCreated = false;
+      let claimWasRatified = false;
+
+      if (existingClaim) {
+        const [updatedClaim] = await tx
+          .update(loreClaims)
+          .set({
+            body: statement,
+            evidenceRefs,
+            ratifiedAt: timestamp,
+            ratifiedBy: "vote",
+            statement,
+            status: "canon",
+            updatedAt: timestamp,
+          })
+          .where(
+            and(
+              eq(loreClaims.leagueId, input.leagueId),
+              eq(loreClaims.id, existingClaim.id),
+            ),
+          )
+          .returning({
+            id: loreClaims.id,
+            statement: loreClaims.statement,
+          });
+        loreClaim = updatedClaim ?? null;
+        claimWasRatified = existingClaim.status !== "canon";
+      } else {
+        const [insertedClaim] = await tx
+          .insert(loreClaims)
+          .values({
+            authorPersona: instigation.persona,
+            body: statement,
+            evidenceRefs,
+            kind: "opinion",
+            leagueId: input.leagueId,
+            origin: "ai",
+            ratifiedAt: timestamp,
+            ratifiedBy: "vote",
+            sourceInstigationId: poll.instigationId,
+            sourcePollId: poll.id,
+            statement,
+            status: "canon",
+            title: poll.question,
+            verification: "n_a",
+          })
+          .onConflictDoNothing({
+            target: [loreClaims.leagueId, loreClaims.sourcePollId],
+          })
+          .returning({
+            id: loreClaims.id,
+            statement: loreClaims.statement,
+          });
+        loreClaim = insertedClaim ?? null;
+        claimWasCreated = Boolean(insertedClaim);
+        claimWasRatified = Boolean(insertedClaim);
+      }
+
+      loreClaim ??=
         (
           await tx
             .select({
@@ -713,7 +1060,7 @@ export async function closePoll({
               ),
             )
             .limit(1)
-        )[0];
+        )[0] ?? null;
 
       if (!loreClaim) {
         throw new AppError({
@@ -723,32 +1070,36 @@ export async function closePoll({
         });
       }
 
-      if (claim) {
-        await tx.insert(loreEvents).values([
-          {
-            afterState: {
-              origin: "ai",
-              sourcePollId: poll.id,
-              status: "canon",
-            },
-            claimId: loreClaim.id,
-            kind: "created",
-            leagueId: input.leagueId,
-            reason: "poll_closed",
+      const loreEventsToWrite = [];
+      if (claimWasCreated) {
+        loreEventsToWrite.push({
+          afterState: {
+            origin: "ai",
+            sourcePollId: poll.id,
+            status: "canon",
           },
-          {
-            afterState: {
-              ratifiedBy: "vote",
-              result,
-              statement,
-              status: "canon",
-            },
-            claimId: loreClaim.id,
-            kind: "ratified",
-            leagueId: input.leagueId,
-            reason: "poll_closed",
+          claimId: loreClaim.id,
+          kind: "created" as const,
+          leagueId: input.leagueId,
+          reason: "poll_closed",
+        });
+      }
+      if (claimWasRatified) {
+        loreEventsToWrite.push({
+          afterState: {
+            ratifiedBy: "vote",
+            result,
+            statement,
+            status: "canon",
           },
-        ]);
+          claimId: loreClaim.id,
+          kind: "ratified" as const,
+          leagueId: input.leagueId,
+          reason: "poll_closed",
+        });
+      }
+      if (loreEventsToWrite.length > 0) {
+        await tx.insert(loreEvents).values(loreEventsToWrite);
       }
 
       await tx
@@ -781,7 +1132,7 @@ export async function closePoll({
       return {
         kind: "canonized" as const,
         loreClaimId: loreClaim.id,
-        reused: !claim,
+        reused: !claimWasRatified,
         totalVotes: votes.length,
         winningOption,
         winningOptionIdx,

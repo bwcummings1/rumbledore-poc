@@ -607,6 +607,18 @@ export class MockLlmClient implements LlmClient {
     const canonLine = canon
       ? `Canon says: ${canon.statement}`
       : "No ratified canon is being asserted as history.";
+    const pending = request.context.authenticity.lore.pending[0];
+    const pendingLine = pending
+      ? `Live debate, not canon: ${pending.statement}`
+      : "No open lore vote is being treated as settled history.";
+    const disputed = request.context.authenticity.lore.disputed[0];
+    const disputedLine = disputed
+      ? `Contested canon under challenge: ${disputed.statement}`
+      : "No canon dispute is active in this angle.";
+    const refuted = request.context.authenticity.lore.refuted[0];
+    const refutedLine = refuted
+      ? `Correction file: ${refuted.statement} was refuted; actual value was ${refuted.actualValue ?? "not recorded"}.`
+      : "No refuted claim is being used as a correction.";
     const rivalry = request.context.authenticity.rivalries[0];
     const rivalryLine = rivalry
       ? `Rivalry file: ${rivalry.personAName} and ${rivalry.personBName} have met ${rivalry.meetings} times.`
@@ -630,7 +642,7 @@ export class MockLlmClient implements LlmClient {
     const bodyBlocks: BlogDraftBodyBlock[] = [
       ...blocksForStructure(request, structure),
       {
-        text: `${teamLine} ${recordLine} ${rivalryLine} ${canonLine} Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
+        text: `${teamLine} ${recordLine} ${rivalryLine} ${canonLine} ${pendingLine} ${disputedLine} ${refutedLine} Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
         type: "paragraph",
       },
     ];

@@ -18,6 +18,7 @@ import {
   instigations,
   leagues,
   loreClaims,
+  loreVerifications,
   persons,
   polls,
 } from "@/db/schema";
@@ -44,11 +45,15 @@ import type {
   LeagueAuthenticityContext,
   LeagueBlogContext,
   LeagueContextCanonLore,
+  LeagueContextDisputedLore,
   LeagueContextInstigation,
+  LeagueContextLore,
   LeagueContextLoreClaim,
   LeagueContextMemory,
+  LeagueContextPendingLore,
   LeagueContextPerson,
   LeagueContextPoll,
+  LeagueContextRefutedLore,
   LeagueContextRivalry,
   LeagueContextTeam,
   LeagueContextTrigger,
@@ -266,6 +271,28 @@ function stableRecordFacts(context: LeagueBlogContext) {
 }
 
 function stableAuthenticityFacts(context: LeagueBlogContext) {
+  const serializeLoreItem = (
+    claim:
+      | LeagueContextCanonLore
+      | LeagueContextDisputedLore
+      | LeagueContextPendingLore
+      | LeagueContextRefutedLore,
+  ) => ({
+    authorPersona: claim.authorPersona,
+    branchOf: claim.branchOf,
+    kind: claim.kind,
+    origin: claim.origin,
+    ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
+    ratifiedBy: claim.ratifiedBy,
+    relation: claim.relation,
+    sourceInstigationId: claim.sourceInstigationId,
+    sourcePollId: claim.sourcePollId,
+    statement: claim.statement,
+    status: claim.status,
+    title: claim.title,
+    verification: claim.verification,
+    voteClosesAt: claim.voteClosesAt?.toISOString() ?? null,
+  });
   return {
     canonLore: context.authenticity.canonLore.map((claim) => ({
       ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
@@ -273,6 +300,20 @@ function stableAuthenticityFacts(context: LeagueBlogContext) {
       statement: claim.statement,
       title: claim.title,
     })),
+    lore: {
+      canon: context.authenticity.lore.canon.map((claim) => ({
+        ...serializeLoreItem(claim),
+        provenance: claim.provenance,
+      })),
+      disputed: context.authenticity.lore.disputed.map(serializeLoreItem),
+      pending: context.authenticity.lore.pending.map(serializeLoreItem),
+      refuted: context.authenticity.lore.refuted.map((claim) => ({
+        ...serializeLoreItem(claim),
+        actualValue: claim.actualValue,
+        assertedValue: claim.assertedValue,
+        matchedRefs: claim.matchedRefs,
+      })),
+    },
     people: context.authenticity.people.map((person) => ({
       canonicalName: person.canonicalName,
       ownerNames: person.ownerNames,
@@ -654,6 +695,82 @@ async function loadLoreClaimForPoll({
   return row ?? null;
 }
 
+interface LoreClaimReadRow {
+  authorPersona: AiPersona | null;
+  branchOf: string | null;
+  id: string;
+  kind: string;
+  origin: string;
+  ratifiedAt: Date | null;
+  ratifiedBy: "verified" | "vote" | "steward" | null;
+  relation: string;
+  sourceInstigationId: string | null;
+  sourcePollId: string | null;
+  statement: string;
+  status: string;
+  title: string;
+  verification: string;
+  voteClosesAt: Date | null;
+}
+
+function commonLoreFields(row: LoreClaimReadRow) {
+  return {
+    authorPersona: row.authorPersona,
+    branchOf: row.branchOf,
+    id: row.id,
+    kind: row.kind,
+    origin: row.origin,
+    ratifiedAt: row.ratifiedAt,
+    ratifiedBy: row.ratifiedBy,
+    relation: row.relation,
+    sourceInstigationId: row.sourceInstigationId,
+    sourcePollId: row.sourcePollId,
+    statement: row.statement,
+    title: row.title,
+    verification: row.verification,
+    voteClosesAt: row.voteClosesAt,
+  };
+}
+
+function canonLoreFromRow(row: LoreClaimReadRow): LeagueContextCanonLore {
+  return {
+    ...commonLoreFields(row),
+    provenance: row.ratifiedBy ?? "vote",
+    status: "canon",
+  };
+}
+
+function pendingLoreFromRow(row: LoreClaimReadRow): LeagueContextPendingLore {
+  return {
+    ...commonLoreFields(row),
+    status: row.status === "pending" ? "pending" : "vote",
+  };
+}
+
+function disputedLoreFromRow(row: LoreClaimReadRow): LeagueContextDisputedLore {
+  return {
+    ...commonLoreFields(row),
+    status: "disputed",
+  };
+}
+
+function refutedLoreFromRow(
+  row: LoreClaimReadRow & {
+    actualValue: string | null;
+    assertedValue: string | null;
+    matchedRefs: Record<string, unknown>[] | null;
+  },
+): LeagueContextRefutedLore {
+  return {
+    ...commonLoreFields(row),
+    actualValue: row.actualValue,
+    assertedValue: row.assertedValue,
+    matchedRefs: row.matchedRefs ?? [],
+    status: "rejected",
+    verification: "refuted",
+  };
+}
+
 async function loadTriggerContext({
   input,
   tx,
@@ -1002,11 +1119,21 @@ async function prepareGeneration({
 
   const canonRows = await tx
     .select({
+      authorPersona: loreClaims.authorPersona,
+      branchOf: loreClaims.branchOf,
       id: loreClaims.id,
+      kind: loreClaims.kind,
+      origin: loreClaims.origin,
       ratifiedAt: loreClaims.ratifiedAt,
       ratifiedBy: loreClaims.ratifiedBy,
+      relation: loreClaims.relation,
+      sourceInstigationId: loreClaims.sourceInstigationId,
+      sourcePollId: loreClaims.sourcePollId,
       statement: loreClaims.statement,
+      status: loreClaims.status,
       title: loreClaims.title,
+      verification: loreClaims.verification,
+      voteClosesAt: loreClaims.voteClosesAt,
     })
     .from(loreClaims)
     .where(
@@ -1016,6 +1143,101 @@ async function prepareGeneration({
       ),
     )
     .orderBy(desc(loreClaims.ratifiedAt), desc(loreClaims.createdAt))
+    .limit(8);
+
+  const pendingLoreRows = await tx
+    .select({
+      authorPersona: loreClaims.authorPersona,
+      branchOf: loreClaims.branchOf,
+      id: loreClaims.id,
+      kind: loreClaims.kind,
+      origin: loreClaims.origin,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      relation: loreClaims.relation,
+      sourceInstigationId: loreClaims.sourceInstigationId,
+      sourcePollId: loreClaims.sourcePollId,
+      statement: loreClaims.statement,
+      status: loreClaims.status,
+      title: loreClaims.title,
+      verification: loreClaims.verification,
+      voteClosesAt: loreClaims.voteClosesAt,
+    })
+    .from(loreClaims)
+    .where(
+      and(
+        eq(loreClaims.leagueId, input.leagueId),
+        inArray(loreClaims.status, ["pending", "vote"]),
+      ),
+    )
+    .orderBy(asc(loreClaims.voteClosesAt), desc(loreClaims.createdAt))
+    .limit(8);
+
+  const disputedLoreRows = await tx
+    .select({
+      authorPersona: loreClaims.authorPersona,
+      branchOf: loreClaims.branchOf,
+      id: loreClaims.id,
+      kind: loreClaims.kind,
+      origin: loreClaims.origin,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      relation: loreClaims.relation,
+      sourceInstigationId: loreClaims.sourceInstigationId,
+      sourcePollId: loreClaims.sourcePollId,
+      statement: loreClaims.statement,
+      status: loreClaims.status,
+      title: loreClaims.title,
+      verification: loreClaims.verification,
+      voteClosesAt: loreClaims.voteClosesAt,
+    })
+    .from(loreClaims)
+    .where(
+      and(
+        eq(loreClaims.leagueId, input.leagueId),
+        eq(loreClaims.status, "disputed"),
+      ),
+    )
+    .orderBy(desc(loreClaims.updatedAt), desc(loreClaims.createdAt))
+    .limit(8);
+
+  const refutedLoreRows = await tx
+    .select({
+      actualValue: loreVerifications.actualValue,
+      assertedValue: loreVerifications.assertedValue,
+      authorPersona: loreClaims.authorPersona,
+      branchOf: loreClaims.branchOf,
+      id: loreClaims.id,
+      kind: loreClaims.kind,
+      matchedRefs: loreVerifications.matchedRefs,
+      origin: loreClaims.origin,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      relation: loreClaims.relation,
+      sourceInstigationId: loreClaims.sourceInstigationId,
+      sourcePollId: loreClaims.sourcePollId,
+      statement: loreClaims.statement,
+      status: loreClaims.status,
+      title: loreClaims.title,
+      verification: loreClaims.verification,
+      voteClosesAt: loreClaims.voteClosesAt,
+    })
+    .from(loreClaims)
+    .leftJoin(
+      loreVerifications,
+      and(
+        eq(loreVerifications.leagueId, input.leagueId),
+        eq(loreVerifications.claimId, loreClaims.id),
+      ),
+    )
+    .where(
+      and(
+        eq(loreClaims.leagueId, input.leagueId),
+        eq(loreClaims.status, "rejected"),
+        eq(loreClaims.verification, "refuted"),
+      ),
+    )
+    .orderBy(desc(loreClaims.createdAt))
     .limit(8);
 
   const records = recordRows.map((record) => ({
@@ -1049,13 +1271,13 @@ async function prepareGeneration({
     personBWins: rivalry.personBWins,
     ties: rivalry.ties,
   }));
-  const canonLore = canonRows.map((claim) => ({
-    id: claim.id,
-    ratifiedAt: claim.ratifiedAt,
-    ratifiedBy: claim.ratifiedBy,
-    statement: claim.statement,
-    title: claim.title,
-  }));
+  const lore: LeagueContextLore = {
+    canon: canonRows.map(canonLoreFromRow),
+    disputed: disputedLoreRows.map(disputedLoreFromRow),
+    pending: pendingLoreRows.map(pendingLoreFromRow),
+    refuted: refutedLoreRows.map(refutedLoreFromRow),
+  };
+  const canonLore = lore.canon;
   const authenticity: LeagueAuthenticityContext = {
     canonLore,
     entityTokens: buildEntityTokens({
@@ -1065,6 +1287,7 @@ async function prepareGeneration({
       rivalries,
       teams,
     }),
+    lore,
     people,
     rivalries,
   };

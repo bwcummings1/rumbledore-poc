@@ -34,6 +34,12 @@ function requestFor(
       authenticity: {
         canonLore: [],
         entityTokens: [],
+        lore: {
+          canon: [],
+          disputed: [],
+          pending: [],
+          refuted: [],
+        },
         people: [],
         rivalries: [],
       },

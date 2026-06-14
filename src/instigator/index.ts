@@ -14,4 +14,5 @@ export {
   INSTIGATION_KINDS,
   parseInstigationKind,
   seedInstigation,
+  seedInstigationForContentCandidate,
 } from "./engine";

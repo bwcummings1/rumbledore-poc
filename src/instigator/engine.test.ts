@@ -223,6 +223,14 @@ describe("instigator engine", () => {
         .select()
         .from(instigations)
         .where(eq(instigations.leagueId, league.id)),
+      claims: await tx
+        .select()
+        .from(loreClaims)
+        .where(eq(loreClaims.leagueId, league.id)),
+      events: await tx
+        .select()
+        .from(loreEvents)
+        .where(eq(loreEvents.leagueId, league.id)),
       polls: await tx.select().from(polls).where(eq(polls.leagueId, league.id)),
       posts: await tx
         .select({
@@ -239,6 +247,20 @@ describe("instigator engine", () => {
 
     expect(rows.instigations).toHaveLength(1);
     expect(rows.polls).toHaveLength(1);
+    expect(rows.claims).toHaveLength(1);
+    expect(rows.claims[0]).toMatchObject({
+      authorPersona: "trash_talker",
+      kind: "opinion",
+      origin: "ai",
+      sourceInstigationId: first.instigationId,
+      sourcePollId: first.pollId,
+      status: "vote",
+      title: input.promptText,
+    });
+    expect(rows.events.map((event) => event.kind).sort()).toEqual([
+      "created",
+      "vote_opened",
+    ]);
     expect(rows.posts).toHaveLength(1);
     expect(rows.posts[0]?.metadata).toMatchObject({
       contentType: "instigation_column",
@@ -380,12 +402,14 @@ describe("instigator engine", () => {
       kind: "opinion",
       origin: "ai",
       ratifiedBy: "vote",
+      sourcePollId: pollId,
       status: "canon",
     });
     expect(rows.claims[0]?.statement).toContain(league.homeTeamName);
     expect(rows.events.map((event) => event.kind).sort()).toEqual([
       "created",
       "ratified",
+      "vote_opened",
     ]);
 
     const verdicts = rows.posts.filter(

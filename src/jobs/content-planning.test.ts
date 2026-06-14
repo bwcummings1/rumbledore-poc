@@ -14,8 +14,11 @@ import {
   fantasyMembers,
   fantasyTeams,
   headToHeadRecords,
+  instigations,
   leagues,
+  loreClaims,
   persons,
+  polls,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
@@ -312,6 +315,93 @@ describe("content planning", () => {
     expect(
       rivalryForActive.map((event) => event.data.contentType).sort(),
     ).toEqual(["matchup_preview", "matchup_preview", "rivalry_piece"]);
+  });
+
+  it("runs mid-week instigation candidates as poll-backed lore claims", async () => {
+    const league = await seedLeague("midweek-instigation");
+    const midWeek = await planCronContent({
+      cadence: "mid-week",
+      db: handle.db,
+    });
+    const event = midWeek.planned.find(
+      (candidate) =>
+        candidate.data.leagueId === league.id &&
+        candidate.data.contentType === "instigation_column",
+    );
+    if (!event) {
+      throw new Error("mid-week instigation candidate was not planned");
+    }
+
+    const first = await runContentGenerate({
+      data: event.data,
+      deps: {
+        ...createMockAiDependencies(handle.db),
+        duplicateThreshold: 1.1,
+        now: () => new Date("2026-06-14T12:00:00.000Z"),
+      },
+    });
+    const second = await runContentGenerate({
+      data: event.data,
+      deps: {
+        ...createMockAiDependencies(handle.db),
+        duplicateThreshold: 1.1,
+        now: () => new Date("2026-06-14T12:00:00.000Z"),
+      },
+    });
+
+    expect(first).toMatchObject({ reused: false, status: "published" });
+    expect(second).toMatchObject({
+      contentItemId:
+        first.status === "published" ? first.contentItemId : undefined,
+      reused: true,
+      status: "published",
+    });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      claims: await tx
+        .select()
+        .from(loreClaims)
+        .where(eq(loreClaims.leagueId, league.id)),
+      instigations: await tx
+        .select()
+        .from(instigations)
+        .where(eq(instigations.leagueId, league.id)),
+      polls: await tx.select().from(polls).where(eq(polls.leagueId, league.id)),
+      posts: await tx
+        .select({ metadata: contentItems.metadata })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        ),
+    }));
+
+    expect(rows.instigations).toHaveLength(1);
+    expect(rows.instigations[0]).toMatchObject({
+      kind: "settle_it_poll",
+      persona: "trash_talker",
+      status: "polling",
+    });
+    expect(rows.polls).toHaveLength(1);
+    expect(rows.polls[0]).toMatchObject({
+      instigationId: rows.instigations[0]?.id,
+      status: "open",
+    });
+    expect(rows.claims).toHaveLength(1);
+    expect(rows.claims[0]).toMatchObject({
+      authorPersona: "trash_talker",
+      origin: "ai",
+      sourceInstigationId: rows.instigations[0]?.id,
+      sourcePollId: rows.polls[0]?.id,
+      status: "vote",
+    });
+    expect(rows.posts).toHaveLength(1);
+    expect(rows.posts[0]?.metadata).toMatchObject({
+      contentType: "instigation_column",
+      triggerKey: `instigation:${rows.instigations[0]?.id}`,
+    });
   });
 
   it("plans game.final recaps and publishes them idempotently through content.generate", async () => {

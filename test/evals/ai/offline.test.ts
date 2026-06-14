@@ -160,11 +160,22 @@ function contextFor({
   ];
   const canonLore = [
     {
+      authorPersona: "narrator" as const,
+      branchOf: null,
+      kind: "opinion",
       id: `${fixture.leagueId}-canon`,
+      origin: "member",
+      provenance: "vote" as const,
       ratifiedAt: new Date("2026-06-01T00:00:00.000Z"),
       ratifiedBy: fixture.secondaryManager,
+      relation: "root",
+      sourceInstigationId: null,
+      sourcePollId: null,
       statement: fixture.canonStatement,
+      status: "canon" as const,
       title: fixture.canonTitle,
+      verification: "n_a",
+      voteClosesAt: null,
     },
   ];
   return {
@@ -186,6 +197,12 @@ function contextFor({
         ]),
         ...canonLore.flatMap((claim) => [claim.title, claim.statement]),
       ]),
+      lore: {
+        canon: canonLore,
+        disputed: [],
+        pending: [],
+        refuted: [],
+      },
       people,
       rivalries,
     },

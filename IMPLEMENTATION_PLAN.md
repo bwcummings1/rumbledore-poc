@@ -42,7 +42,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Implement claim → vote → canon transitions with threshold and steward tiebreak. (specs/13)
 - [x] Implement the two lore types: data-verifiable auto-confirm versus opinion-vote. (specs/13)
 - [x] Implement challengeable canon plus dispute and branch threads. (specs/13)
-- [ ] Implement the bidirectional AI↔lore contract: consume canon as fact and instigate claims. (specs/13)
+- [x] Implement the bidirectional AI↔lore contract: consume canon as fact and instigate claims. (specs/13)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope, or run `./loop.sh harden N`)
 - [ ] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`.
