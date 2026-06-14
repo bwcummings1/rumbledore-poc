@@ -31,6 +31,12 @@ function requestFor(
         season: 2026,
         status: "in_season",
       },
+      authenticity: {
+        canonLore: [],
+        entityTokens: [],
+        people: [],
+        rivalries: [],
+      },
       memory: [],
       persona: {
         beat: "League-official framing",

@@ -43,6 +43,41 @@ export interface LeagueContextMemory {
   textContent: string;
 }
 
+export interface LeagueContextPerson {
+  id: string;
+  canonicalName: string;
+  ownerNames: string[];
+}
+
+export interface LeagueContextRivalry {
+  id: string;
+  personAName: string;
+  personBName: string;
+  meetings: number;
+  personAWins: number;
+  personBWins: number;
+  ties: number;
+  currentStreakName: string | null;
+  currentStreakLength: number;
+  longestStreakName: string | null;
+  longestStreakLength: number;
+}
+
+export interface LeagueContextCanonLore {
+  id: string;
+  title: string;
+  statement: string;
+  ratifiedBy: string | null;
+  ratifiedAt: Date | null;
+}
+
+export interface LeagueAuthenticityContext {
+  people: LeagueContextPerson[];
+  rivalries: LeagueContextRivalry[];
+  canonLore: LeagueContextCanonLore[];
+  entityTokens: string[];
+}
+
 export interface LeagueContextInstigation {
   id: string;
   kind: string;
@@ -106,6 +141,7 @@ export interface LeagueBlogContext {
   persona: LeaguePersonaCard;
   teams: LeagueContextTeam[];
   records: LeagueContextRecord[];
+  authenticity: LeagueAuthenticityContext;
   priorPosts: LeagueContextPriorPost[];
   memory: LeagueContextMemory[];
   trigger: LeagueContextTrigger;

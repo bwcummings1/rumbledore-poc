@@ -538,6 +538,14 @@ export class MockLlmClient implements LlmClient {
     const recordLine = record
       ? `${record.holderName ?? "The record book"} still owns ${record.label} at ${record.value}.`
       : "No current record-book event is being forced into the story.";
+    const canon = request.context.authenticity.canonLore[0];
+    const canonLine = canon
+      ? `Canon says: ${canon.statement}`
+      : "No ratified canon is being asserted as history.";
+    const rivalry = request.context.authenticity.rivalries[0];
+    const rivalryLine = rivalry
+      ? `Rivalry file: ${rivalry.personAName} and ${rivalry.personBName} have met ${rivalry.meetings} times.`
+      : "No head-to-head rivalry is being forced into the story.";
     const teamLine = team
       ? `${team.name}, managed by ${manager}, is the first team to watch at ${team.wins}-${team.losses}-${team.ties}.`
       : `${manager} has the quietest board because no teams have been ingested yet.`;
@@ -549,13 +557,15 @@ export class MockLlmClient implements LlmClient {
       manager,
       request.context.persona.beat,
       record?.label,
+      canon?.title,
+      rivalry ? `${rivalry.personAName} vs ${rivalry.personBName}` : null,
       request.context.league.name,
     ].filter((tag): tag is string => Boolean(tag));
     const structure = structureForRequest(request);
     const bodyBlocks: BlogDraftBodyBlock[] = [
       ...blocksForStructure(request, structure),
       {
-        text: `${teamLine} ${recordLine} Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
+        text: `${teamLine} ${recordLine} ${rivalryLine} ${canonLine} Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
         type: "paragraph",
       },
     ];

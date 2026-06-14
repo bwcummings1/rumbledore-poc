@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type {
   BlogDraft,
+  EmbeddingProvider,
   LlmClient,
   LlmGenerateRequest,
   WebGrounding,
@@ -27,7 +28,9 @@ import {
   dataIntegrityChecks,
   fantasyMembers,
   fantasyTeams,
+  headToHeadRecords,
   leagues,
+  loreClaims,
   persons,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
@@ -68,6 +71,83 @@ class DuplicateLlmClient implements LlmClient {
       tags: ["Duplicate"],
       title: "Duplicate league note",
     };
+  }
+}
+
+class GenericLlmClient implements LlmClient {
+  readonly requests: LlmGenerateRequest[] = [];
+
+  async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
+    this.requests.push(request);
+    const bodyBlocks: BlogDraft["bodyBlocks"] = [
+      { text: "Weekly recap", type: "heading" },
+      {
+        text: "The board had wins, losses, a standings shuffle, and a familiar fantasy-football storyline.",
+        type: "paragraph",
+      },
+    ];
+    return {
+      body: bodyBlocksToMarkdown(bodyBlocks),
+      bodyBlocks,
+      contentType: "weekly_recap",
+      dek: "A generic recap with no league-owned names.",
+      section: "recaps",
+      structure: {
+        kicker: "A generic kicker lands nowhere specific.",
+        lead: "A generic lead avoids every concrete league entity.",
+        standingsShift: "A generic standings shift happened.",
+        topResult: "A generic team won a generic matchup.",
+        type: "weekly_recap",
+        upsetOrBlowout: "A generic margin decided the week.",
+      },
+      summary: "A generic summary.",
+      tags: ["Generic"],
+      title: "Generic weekly note",
+    };
+  }
+}
+
+class VectorDuplicateLlmClient implements LlmClient {
+  readonly requests: LlmGenerateRequest[] = [];
+
+  async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
+    this.requests.push(request);
+    const team = request.context.teams[0];
+    const teamName = team?.name ?? "Vector Team";
+    const managerName = team?.managerNames[0] ?? "Vector Manager";
+    const bodyBlocks: BlogDraft["bodyBlocks"] = [
+      { text: "Vector duplicate recap", type: "heading" },
+      {
+        text: `${teamName} and ${managerName} are sitting on vector-near-duplicate-token again.`,
+        type: "paragraph",
+      },
+    ];
+    return {
+      body: bodyBlocksToMarkdown(bodyBlocks),
+      bodyBlocks,
+      contentType: "weekly_recap",
+      dek: `${teamName} repeats the vector lane.`,
+      section: "recaps",
+      structure: {
+        kicker: `${teamName} keeps vector-near-duplicate-token in circulation.`,
+        lead: `${teamName} gives the league a vector-near-duplicate-token lead.`,
+        standingsShift: `${managerName} sees the same vector shape.`,
+        topResult: `${teamName} is the top result.`,
+        type: "weekly_recap",
+        upsetOrBlowout: `${teamName} made the margin obvious.`,
+      },
+      summary: `${teamName} repeats the vector-near-duplicate-token angle.`,
+      tags: [teamName, managerName],
+      title: `${teamName} vector duplicate`,
+    };
+  }
+}
+
+class DirectionalEmbeddingProvider implements EmbeddingProvider {
+  readonly model = "mock-directional-embedding-v1";
+
+  async embed(text: string): Promise<number[]> {
+    return text.includes("vector-near-duplicate-token") ? [1, 0] : [0, 1];
   }
 }
 
@@ -451,6 +531,230 @@ describe("generateLeagueBlogPost", () => {
     });
   });
 
+  it("grounds the prompt in canon lore, rivalries, and canonical people only for the active league", async () => {
+    const league = await seedLeague("authentic");
+    const llm = new MockLlmClient();
+
+    await withLeagueContext(handle.db, league.id, async (tx) => {
+      const [alpha, beta] = await tx
+        .insert(persons)
+        .values([
+          {
+            canonicalName: "Canon Alpha",
+            leagueId: league.id,
+            ownerHistory: [
+              {
+                endSeason: null,
+                ownerNames: ["Canon Alpha Manager"],
+                providerMemberIds: ["alpha-manager"],
+                startSeason: 2016,
+              },
+            ],
+          },
+          {
+            canonicalName: "Canon Beta",
+            leagueId: league.id,
+            ownerHistory: [
+              {
+                endSeason: null,
+                ownerNames: ["Canon Beta Manager"],
+                providerMemberIds: ["beta-manager"],
+                startSeason: 2016,
+              },
+            ],
+          },
+        ])
+        .returning({ id: persons.id });
+      if (!alpha || !beta) {
+        throw new Error("canon people were not inserted");
+      }
+      await tx.insert(headToHeadRecords).values({
+        currentStreakLength: 3,
+        currentStreakPersonId: alpha.id,
+        leagueId: league.id,
+        longestStreakLength: 5,
+        longestStreakPersonId: beta.id,
+        meetings: 11,
+        personAId: alpha.id,
+        personAWins: 7,
+        personBId: beta.id,
+        personBWins: 4,
+        season: 0,
+        ties: 0,
+      });
+      await tx.insert(loreClaims).values([
+        {
+          authorPersona: "trash_talker",
+          kind: "opinion",
+          leagueId: league.id,
+          origin: "ai",
+          ratifiedAt: new Date("2026-06-10T12:00:00.000Z"),
+          ratifiedBy: "vote",
+          statement: "Canon Alpha owns the Snow Bowl collapse",
+          status: "canon",
+          title: "Snow Bowl Collapse",
+        },
+        {
+          authorPersona: "trash_talker",
+          kind: "opinion",
+          leagueId: league.id,
+          origin: "ai",
+          statement: "Unratified Beta dynasty rumor",
+          status: "voting",
+          title: "Pending Dynasty Rumor",
+        },
+      ]);
+    });
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "rivalry_piece",
+        leagueId: league.id,
+        persona: "trash_talker",
+        triggerKey: "weekly:rivalry-authentic",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests[0]?.context.authenticity).toMatchObject({
+      canonLore: [
+        expect.objectContaining({
+          statement: "Canon Alpha owns the Snow Bowl collapse",
+        }),
+      ],
+      people: expect.arrayContaining([
+        expect.objectContaining({
+          canonicalName: "Canon Alpha",
+          ownerNames: ["Canon Alpha Manager"],
+        }),
+      ]),
+      rivalries: [
+        expect.objectContaining({
+          meetings: 11,
+          personAName: "Canon Alpha",
+          personBName: "Canon Beta",
+        }),
+      ],
+    });
+    expect(llm.requests[0]?.context.authenticity.entityTokens).toEqual(
+      expect.arrayContaining([
+        "Canon Alpha",
+        "Canon Beta",
+        "Canon Alpha owns the Snow Bowl collapse",
+      ]),
+    );
+
+    const stablePrefix = JSON.parse(
+      llm.requests[0]?.prompt.systemPrefix ?? "{}",
+    ) as {
+      authenticity?: {
+        canonLore?: { statement?: string }[];
+        rivalries?: { personAName?: string; personBName?: string }[];
+      };
+    };
+    expect(stablePrefix.authenticity?.canonLore).toEqual([
+      expect.objectContaining({
+        statement: "Canon Alpha owns the Snow Bowl collapse",
+      }),
+    ]);
+    expect(stablePrefix.authenticity?.rivalries).toEqual([
+      expect.objectContaining({
+        personAName: "Canon Alpha",
+        personBName: "Canon Beta",
+      }),
+    ]);
+
+    const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ body: contentItems.body })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        )
+        .limit(1),
+    );
+    expect(post?.body).toContain("Canon Alpha owns the Snow Bowl collapse");
+    expect(post?.body).toContain(
+      "Canon Alpha and Canon Beta have met 11 times",
+    );
+    expect(post?.body).not.toContain("Unratified Beta dynasty rumor");
+    expect(llm.requests[0]?.prompt.systemPrefix).not.toContain(
+      "Unratified Beta dynasty rumor",
+    );
+  });
+
+  it("regenerates once and skips drafts that name no concrete league entity", async () => {
+    const league = await seedLeague("slop");
+    const llm = new GenericLlmClient();
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "weekly:generic",
+      },
+    });
+
+    expect(result).toMatchObject({
+      reused: false,
+      skipReason: "generic_slop:missing_league_entity",
+      status: "skipped",
+    });
+    expect(llm.requests.map((request) => request.attempt)).toEqual([1, 2]);
+    expect(llm.requests[1]?.duplicateNudge).toContain("too generic");
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
+      const posts = await tx
+        .select()
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        );
+      const [run] = await tx
+        .select()
+        .from(aiGenerationRuns)
+        .where(
+          and(
+            eq(aiGenerationRuns.leagueId, league.id),
+            eq(aiGenerationRuns.triggerKey, "weekly_recap:weekly:generic"),
+          ),
+        );
+      return { posts, run };
+    });
+    expect(rows.posts).toHaveLength(0);
+    expect(rows.run).toMatchObject({
+      skipReason: "generic_slop:missing_league_entity",
+      status: "skipped",
+    });
+  });
+
   it("regenerates once and skips near-duplicate drafts", async () => {
     const league = await seedLeague("duplicate");
     const llm = new DuplicateLlmClient();
@@ -540,6 +844,63 @@ describe("generateLeagueBlogPost", () => {
       skipReason: expect.stringMatching(/^near_duplicate:/),
       status: "skipped",
     });
+  });
+
+  it("orders near-duplicate memory by vector distance before applying the limit", async () => {
+    const league = await seedLeague("vector");
+    const llm = new VectorDuplicateLlmClient();
+    const embeddings = new DirectionalEmbeddingProvider();
+
+    await withLeagueContext(handle.db, league.id, async (tx) => {
+      await tx.insert(aiMemory).values([
+        {
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+          embedding: [1, 0],
+          embeddingDimensions: 2,
+          embeddingModel: embeddings.model,
+          leagueId: league.id,
+          metadata: { contentType: "weekly_recap" },
+          source: "blog_post",
+          textContent: "vector-near-duplicate-token from the old archive",
+        },
+        ...Array.from({ length: 20 }, (_, index) => ({
+          createdAt: new Date(
+            `2026-02-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+          ),
+          embedding: [0, 1],
+          embeddingDimensions: 2,
+          embeddingModel: embeddings.model,
+          leagueId: league.id,
+          metadata: { contentType: "weekly_recap" },
+          source: "blog_post" as const,
+          textContent: `orthogonal recent memory ${index}`,
+        })),
+      ]);
+    });
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        embeddings,
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        triggerKey: "weekly:vector",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "skipped" });
+    expect(result.status === "skipped" ? result.skipReason : "").toMatch(
+      /^near_duplicate:/,
+    );
+    expect(llm.requests.map((request) => request.attempt)).toEqual([1, 2]);
   });
 
   it("omits record-book context while integrity failures are unresolved", async () => {

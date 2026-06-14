@@ -126,6 +126,7 @@ function draftReferencesLeagueEntity(
 ): boolean {
   const text = blogDraftText(draft).toLowerCase();
   const entityTokens = [
+    ...context.authenticity.entityTokens,
     ...context.teams.flatMap((team) => [team.name, ...team.managerNames]),
     ...context.records.flatMap((record) => [
       record.holderName ?? "",

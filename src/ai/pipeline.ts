@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -14,6 +14,7 @@ import {
   dataIntegrityChecks,
   fantasyMembers,
   fantasyTeams,
+  headToHeadRecords,
   instigations,
   leagues,
   loreClaims,
@@ -40,11 +41,15 @@ import {
 import type {
   BlogDraft,
   EmbeddingProvider,
+  LeagueAuthenticityContext,
   LeagueBlogContext,
+  LeagueContextCanonLore,
   LeagueContextInstigation,
   LeagueContextLoreClaim,
   LeagueContextMemory,
+  LeagueContextPerson,
   LeagueContextPoll,
+  LeagueContextRivalry,
   LeagueContextTeam,
   LeagueContextTrigger,
   LeaguePersonaCard,
@@ -198,6 +203,44 @@ function maxPriorSimilarity(
   );
 }
 
+async function loadNearestBlogMemories({
+  deps,
+  embedding,
+  input,
+}: {
+  deps: Pick<AiGenerationDependencies, "db" | "embeddings">;
+  embedding: readonly number[];
+  input: GenerateLeagueBlogPostInput;
+}): Promise<LeagueContextMemory[]> {
+  if (embedding.length === 0) {
+    return [];
+  }
+
+  const queryVector = JSON.stringify(embedding);
+  const distance = sql`${aiMemory.embedding} <=> ${queryVector}::vector`;
+  return withLeagueContext(deps.db, input.leagueId, (tx) =>
+    tx
+      .select({
+        embedding: aiMemory.embedding,
+        embeddingDimensions: aiMemory.embeddingDimensions,
+        id: aiMemory.id,
+        textContent: aiMemory.textContent,
+      })
+      .from(aiMemory)
+      .where(
+        and(
+          eq(aiMemory.leagueId, input.leagueId),
+          eq(aiMemory.source, "blog_post"),
+          eq(aiMemory.embeddingDimensions, embedding.length),
+          eq(aiMemory.embeddingModel, deps.embeddings.model),
+          sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
+        ),
+      )
+      .orderBy(distance)
+      .limit(20),
+  );
+}
+
 function stableTeamFacts(teams: readonly LeagueContextTeam[]) {
   return [...teams]
     .sort((left, right) => left.name.localeCompare(right.name))
@@ -220,6 +263,128 @@ function stableRecordFacts(context: LeagueBlogContext) {
     season: record.season,
     value: record.value,
   }));
+}
+
+function stableAuthenticityFacts(context: LeagueBlogContext) {
+  return {
+    canonLore: context.authenticity.canonLore.map((claim) => ({
+      ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
+      ratifiedBy: claim.ratifiedBy,
+      statement: claim.statement,
+      title: claim.title,
+    })),
+    people: context.authenticity.people.map((person) => ({
+      canonicalName: person.canonicalName,
+      ownerNames: person.ownerNames,
+    })),
+    rivalries: context.authenticity.rivalries.map((rivalry) => ({
+      currentStreakLength: rivalry.currentStreakLength,
+      currentStreakName: rivalry.currentStreakName,
+      longestStreakLength: rivalry.longestStreakLength,
+      longestStreakName: rivalry.longestStreakName,
+      meetings: rivalry.meetings,
+      personAName: rivalry.personAName,
+      personAWins: rivalry.personAWins,
+      personBName: rivalry.personBName,
+      personBWins: rivalry.personBWins,
+      ties: rivalry.ties,
+    })),
+  };
+}
+
+function uniqueStrings(
+  values: readonly (string | null | undefined)[],
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const key = trimmed.toLocaleLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function ownerNamesFromHistory(
+  history: readonly { ownerNames?: readonly string[] }[],
+): string[] {
+  return uniqueStrings(history.flatMap((entry) => entry.ownerNames ?? []));
+}
+
+function buildEntityTokens({
+  canonLore,
+  people,
+  records,
+  rivalries,
+  teams,
+}: {
+  canonLore: readonly LeagueContextCanonLore[];
+  people: readonly LeagueContextPerson[];
+  records: Readonly<LeagueBlogContext["records"]>;
+  rivalries: readonly LeagueContextRivalry[];
+  teams: readonly LeagueContextTeam[];
+}): string[] {
+  return uniqueStrings([
+    ...teams.flatMap((team) => [team.name, ...team.managerNames]),
+    ...records.flatMap((record) => [record.holderName, record.label]),
+    ...people.flatMap((person) => [person.canonicalName, ...person.ownerNames]),
+    ...rivalries.flatMap((rivalry) => [
+      rivalry.personAName,
+      rivalry.personBName,
+      `${rivalry.personAName} vs ${rivalry.personBName}`,
+      rivalry.currentStreakName,
+      rivalry.longestStreakName,
+    ]),
+    ...canonLore.flatMap((claim) => [claim.title, claim.statement]),
+  ]).filter((token) => token.length >= 3);
+}
+
+function tokenAppearsInText(text: string, token: string): boolean {
+  return text.toLocaleLowerCase().includes(token.toLocaleLowerCase());
+}
+
+function referencedLeagueEntity({
+  context,
+  draft,
+}: {
+  context: LeagueBlogContext;
+  draft: BlogDraft;
+}): string | null {
+  const text = blogDraftText(draft);
+  return (
+    context.authenticity.entityTokens.find((token) =>
+      tokenAppearsInText(text, token),
+    ) ?? null
+  );
+}
+
+function validateDraftOrGeneric({
+  contentType,
+  context,
+  draft,
+}: {
+  contentType: AiContentType;
+  context: LeagueBlogContext;
+  draft: BlogDraft;
+}): BlogDraft | null {
+  try {
+    return validateBlogDraft(draft, { contentType, context });
+  } catch (error) {
+    if (error instanceof AppError && error.code === "AI_DRAFT_GENERIC") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function untrustedNewsBlock(newsItems: readonly NewsItem[]): string {
@@ -252,6 +417,7 @@ export function buildPromptParts({
   triggerKey: string;
 }): PromptParts {
   const stablePrefix = {
+    authenticity: stableAuthenticityFacts(context),
     league: {
       name: context.league.name,
       providerLeagueId: context.league.providerLeagueId,
@@ -752,32 +918,156 @@ async function prepareGeneration({
               eq(allTimeRecords.isCurrent, true),
             ),
           )
+          .orderBy(asc(allTimeRecords.recordType))
           .limit(8);
-  const personIds = [
+
+  const rivalryRows =
+    unresolvedIntegrityFailures.length > 0
+      ? []
+      : await tx
+          .select({
+            currentStreakLength: headToHeadRecords.currentStreakLength,
+            currentStreakPersonId: headToHeadRecords.currentStreakPersonId,
+            id: headToHeadRecords.id,
+            longestStreakLength: headToHeadRecords.longestStreakLength,
+            longestStreakPersonId: headToHeadRecords.longestStreakPersonId,
+            meetings: headToHeadRecords.meetings,
+            personAId: headToHeadRecords.personAId,
+            personAWins: headToHeadRecords.personAWins,
+            personBId: headToHeadRecords.personBId,
+            personBWins: headToHeadRecords.personBWins,
+            ties: headToHeadRecords.ties,
+          })
+          .from(headToHeadRecords)
+          .where(eq(headToHeadRecords.leagueId, input.leagueId))
+          .orderBy(
+            desc(headToHeadRecords.meetings),
+            desc(headToHeadRecords.updatedAt),
+          )
+          .limit(6);
+
+  const visiblePersonRows = await tx
+    .select({
+      canonicalName: persons.canonicalName,
+      id: persons.id,
+      ownerHistory: persons.ownerHistory,
+    })
+    .from(persons)
+    .where(eq(persons.leagueId, input.leagueId))
+    .orderBy(asc(persons.canonicalName))
+    .limit(24);
+
+  const neededPersonIds = [
     ...new Set(
-      recordRows
-        .map((record) => record.holderPersonId)
-        .filter((id): id is string => Boolean(id)),
+      [
+        ...recordRows.map((record) => record.holderPersonId),
+        ...rivalryRows.flatMap((rivalry) => [
+          rivalry.currentStreakPersonId,
+          rivalry.longestStreakPersonId,
+          rivalry.personAId,
+          rivalry.personBId,
+        ]),
+      ].filter((id): id is string => Boolean(id)),
     ),
   ];
-  const personRows =
-    personIds.length > 0
+  const visiblePersonIds = new Set(
+    visiblePersonRows.map((person) => person.id),
+  );
+  const missingPersonIds = neededPersonIds.filter(
+    (id) => !visiblePersonIds.has(id),
+  );
+  const missingPersonRows =
+    missingPersonIds.length > 0
       ? await tx
           .select({
             canonicalName: persons.canonicalName,
             id: persons.id,
+            ownerHistory: persons.ownerHistory,
           })
           .from(persons)
           .where(
             and(
               eq(persons.leagueId, input.leagueId),
-              inArray(persons.id, personIds),
+              inArray(persons.id, missingPersonIds),
             ),
           )
       : [];
-  const personNamesById = new Map(
-    personRows.map((person) => [person.id, person.canonicalName]),
+
+  const allPersonRows = [...visiblePersonRows, ...missingPersonRows].sort(
+    (left, right) => left.canonicalName.localeCompare(right.canonicalName),
   );
+  const personNamesById = new Map(
+    allPersonRows.map((person) => [person.id, person.canonicalName]),
+  );
+
+  const canonRows = await tx
+    .select({
+      id: loreClaims.id,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      statement: loreClaims.statement,
+      title: loreClaims.title,
+    })
+    .from(loreClaims)
+    .where(
+      and(
+        eq(loreClaims.leagueId, input.leagueId),
+        eq(loreClaims.status, "canon"),
+      ),
+    )
+    .orderBy(desc(loreClaims.ratifiedAt), desc(loreClaims.createdAt))
+    .limit(8);
+
+  const records = recordRows.map((record) => ({
+    holderName: record.holderPersonId
+      ? (personNamesById.get(record.holderPersonId) ?? null)
+      : null,
+    label: recordLabel(record.recordType),
+    scoringPeriod: record.scoringPeriod,
+    season: record.season,
+    value: record.value,
+  }));
+  const people = allPersonRows.map((person) => ({
+    canonicalName: person.canonicalName,
+    id: person.id,
+    ownerNames: ownerNamesFromHistory(person.ownerHistory),
+  }));
+  const rivalries = rivalryRows.map((rivalry) => ({
+    currentStreakLength: rivalry.currentStreakLength,
+    currentStreakName: rivalry.currentStreakPersonId
+      ? (personNamesById.get(rivalry.currentStreakPersonId) ?? null)
+      : null,
+    id: rivalry.id,
+    longestStreakLength: rivalry.longestStreakLength,
+    longestStreakName: rivalry.longestStreakPersonId
+      ? (personNamesById.get(rivalry.longestStreakPersonId) ?? null)
+      : null,
+    meetings: rivalry.meetings,
+    personAName: personNamesById.get(rivalry.personAId) ?? "Unknown manager",
+    personAWins: rivalry.personAWins,
+    personBName: personNamesById.get(rivalry.personBId) ?? "Unknown manager",
+    personBWins: rivalry.personBWins,
+    ties: rivalry.ties,
+  }));
+  const canonLore = canonRows.map((claim) => ({
+    id: claim.id,
+    ratifiedAt: claim.ratifiedAt,
+    ratifiedBy: claim.ratifiedBy,
+    statement: claim.statement,
+    title: claim.title,
+  }));
+  const authenticity: LeagueAuthenticityContext = {
+    canonLore,
+    entityTokens: buildEntityTokens({
+      canonLore,
+      people,
+      records,
+      rivalries,
+      teams,
+    }),
+    people,
+    rivalries,
+  };
 
   const priorPosts = await tx
     .select({
@@ -811,6 +1101,7 @@ async function prepareGeneration({
         sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
       ),
     )
+    .orderBy(desc(aiMemory.createdAt))
     .limit(20);
 
   const trigger = await loadTriggerContext({ input, tx });
@@ -818,18 +1109,11 @@ async function prepareGeneration({
   return {
     context: {
       league,
+      authenticity,
       memory,
       persona,
       priorPosts,
-      records: recordRows.map((record) => ({
-        holderName: record.holderPersonId
-          ? (personNamesById.get(record.holderPersonId) ?? null)
-          : null,
-        label: recordLabel(record.recordType),
-        scoringPeriod: record.scoringPeriod,
-        season: record.season,
-        value: record.value,
-      })),
+      records,
       teams,
       trigger,
     },
@@ -1096,8 +1380,10 @@ export async function generateLeagueBlogPost({
     triggerKey: input.triggerKey,
   });
   const promptPrefixHash = hashText(prompt.systemPrefix);
-  const initialDraft = validateBlogDraft(
-    await deps.llm.generate({
+  const initialDraft = validateDraftOrGeneric({
+    contentType: input.contentType,
+    context: prepared.context,
+    draft: await deps.llm.generate({
       attempt: 1,
       context: prepared.context,
       contentType: input.contentType,
@@ -1105,13 +1391,53 @@ export async function generateLeagueBlogPost({
       persona: input.persona,
       prompt,
     }),
-    { contentType: input.contentType, context: prepared.context },
-  );
-  let embedding = await deps.embeddings.embed(blogDraftText(initialDraft));
-  let maxSimilarity = maxPriorSimilarity(embedding, prepared.context.memory);
+  });
   let draft = initialDraft;
+  let alreadyRetried = false;
+  if (!draft || !referencedLeagueEntity({ context: prepared.context, draft })) {
+    const authenticityNudge =
+      "The first draft was too generic. Name a concrete league-owned team, manager, record, rivalry, or canon fact from the supplied context.";
+    const retryPrompt = buildPromptParts({
+      contentType: input.contentType,
+      context: prepared.context,
+      duplicateNudge: authenticityNudge,
+      newsItems,
+      triggerKey: input.triggerKey,
+    });
+    draft = validateDraftOrGeneric({
+      contentType: input.contentType,
+      context: prepared.context,
+      draft: await deps.llm.generate({
+        attempt: 2,
+        context: prepared.context,
+        contentType: input.contentType,
+        duplicateNudge: authenticityNudge,
+        newsItems,
+        persona: input.persona,
+        prompt: retryPrompt,
+      }),
+    });
+    alreadyRetried = true;
+  }
 
-  if (maxSimilarity > duplicateThreshold) {
+  if (!draft || !referencedLeagueEntity({ context: prepared.context, draft })) {
+    return markSkipped({
+      deps,
+      input,
+      promptPrefixHash,
+      reason: "generic_slop:missing_league_entity",
+    });
+  }
+
+  let embedding = await deps.embeddings.embed(blogDraftText(draft));
+  let nearestMemories = await loadNearestBlogMemories({
+    deps,
+    embedding,
+    input,
+  });
+  let maxSimilarity = maxPriorSimilarity(embedding, nearestMemories);
+
+  if (maxSimilarity > duplicateThreshold && !alreadyRetried) {
     const duplicateNudge =
       "The first draft was too similar to a prior league post. Use a different angle and avoid repeating phrasing.";
     const retryPrompt = buildPromptParts({
@@ -1121,8 +1447,10 @@ export async function generateLeagueBlogPost({
       newsItems,
       triggerKey: input.triggerKey,
     });
-    draft = validateBlogDraft(
-      await deps.llm.generate({
+    const duplicateDraft = validateDraftOrGeneric({
+      contentType: input.contentType,
+      context: prepared.context,
+      draft: await deps.llm.generate({
         attempt: 2,
         context: prepared.context,
         contentType: input.contentType,
@@ -1131,10 +1459,31 @@ export async function generateLeagueBlogPost({
         persona: input.persona,
         prompt: retryPrompt,
       }),
-      { contentType: input.contentType, context: prepared.context },
-    );
+    });
+    if (!duplicateDraft) {
+      return markSkipped({
+        deps,
+        input,
+        promptPrefixHash,
+        reason: "generic_slop:missing_league_entity",
+      });
+    }
+    draft = duplicateDraft;
     embedding = await deps.embeddings.embed(blogDraftText(draft));
-    maxSimilarity = maxPriorSimilarity(embedding, prepared.context.memory);
+    if (!referencedLeagueEntity({ context: prepared.context, draft })) {
+      return markSkipped({
+        deps,
+        input,
+        promptPrefixHash,
+        reason: "generic_slop:missing_league_entity",
+      });
+    }
+    nearestMemories = await loadNearestBlogMemories({
+      deps,
+      embedding,
+      input,
+    });
+    maxSimilarity = maxPriorSimilarity(embedding, nearestMemories);
   }
 
   if (maxSimilarity > duplicateThreshold) {
