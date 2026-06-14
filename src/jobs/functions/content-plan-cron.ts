@@ -99,6 +99,13 @@ export const contentPlanWeeklyWrap = createContentPlanCronFunction({
   schedule: "0 14 * * 2",
 });
 
+export const contentPlanMidWeek = createContentPlanCronFunction({
+  cadence: "mid-week",
+  functionId: "content-plan-mid-week",
+  name: "AI content mid-week planner",
+  schedule: "0 18 * * 4",
+});
+
 export const contentPlanPostOddsRefresh = createContentPlanCronFunction({
   cadence: "post-odds-refresh",
   functionId: "content-plan-post-odds-refresh",

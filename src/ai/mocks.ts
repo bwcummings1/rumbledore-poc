@@ -5,10 +5,14 @@ import {
 import type {
   AwardsSuperlativesStructure,
   BlogContentStructure,
+  InstigationColumnStructure,
   MatchupPreviewStructure,
+  MilestoneRecordStructure,
   PowerRankingsStructure,
+  RivalryPieceStructure,
   SeasonArcStructure,
   TransactionReactionStructure,
+  VerdictColumnStructure,
   WeeklyRecapStructure,
 } from "./content-types";
 import type {
@@ -235,6 +239,82 @@ function seasonArcStructure({
   };
 }
 
+function rivalryPieceStructure({
+  team,
+  teams,
+}: {
+  team: LeagueContextTeam | null;
+  teams: LeagueContextTeam[];
+}): RivalryPieceStructure {
+  const opponent = secondaryTeam(teams);
+  const lead = team?.name ?? "the league room";
+  const foil = opponent?.name ?? firstManager(team);
+  return {
+    history: `${lead} and ${foil} have enough shared scoreboard smoke for the room to call it a rivalry watch.`,
+    needle: `${lead} gets the first needle because the current facts put them in front.`,
+    score: `${lead} enters with ${team ? teamRecord(team) : "no imported record"} while ${foil} is the named counterweight.`,
+    stakes: `If ${lead} answers again, ${foil} has to hear about it all week.`,
+    type: "rivalry_piece",
+  };
+}
+
+function milestoneRecordStructure({
+  record,
+  team,
+}: {
+  record: LeagueContextRecord | null;
+  team: LeagueContextTeam | null;
+}): MilestoneRecordStructure {
+  const holder = team?.name ?? firstManager(team);
+  const recordName = record?.label ?? "current weekly points pace";
+  return {
+    legend: `${holder} gets the record-book paragraph, not a generic applause line.`,
+    math: record
+      ? `${recordName} sits at ${record.value}, which is the number the room can audit.`
+      : `${holder}'s ${team?.pointsFor ?? 0} points for is the only imported number in play.`,
+    newHolder: holder,
+    previousHolder: record?.holderName ?? holder,
+    record: recordName,
+    type: "milestone_record",
+  };
+}
+
+function instigationColumnStructure({
+  team,
+  teams,
+}: {
+  team: LeagueContextTeam | null;
+  teams: LeagueContextTeam[];
+}): InstigationColumnStructure {
+  const first = team?.name ?? firstManager(team);
+  const second = secondaryTeam(teams)?.name ?? first;
+  return {
+    provocation: `Settle it: is ${first} actually driving the league plot, or is ${second} the better antagonist?`,
+    settleItCta: `Put ${first} and ${second} to a league vote before the column gets comfortable.`,
+    stakes: `The winner gets narrative possession of the week inside ${team ? teamRecord(team) : "the imported standings"}.`,
+    twoSides: [first, second],
+    type: "instigation_column",
+  };
+}
+
+function verdictColumnStructure({
+  team,
+  teams,
+}: {
+  team: LeagueContextTeam | null;
+  teams: LeagueContextTeam[];
+}): VerdictColumnStructure {
+  const first = team?.name ?? firstManager(team);
+  const second = secondaryTeam(teams)?.name ?? first;
+  return {
+    newCanon: `${first} owns the current league-room ruling until ${second} proves otherwise.`,
+    question: `Did ${first} earn the room's verdict over ${second}?`,
+    ruling: `The Commissioner recognizes ${first} because the supplied league facts point there.`,
+    type: "verdict_column",
+    vote: `${first} over ${second}, by fixture decree.`,
+  };
+}
+
 function structureForRequest(
   request: LlmGenerateRequest,
 ): BlogContentStructure {
@@ -260,6 +340,14 @@ function structureForRequest(
       return transactionReactionStructure({ team, teams });
     case "season_arc":
       return seasonArcStructure({ context: request.context, team });
+    case "rivalry_piece":
+      return rivalryPieceStructure({ team, teams });
+    case "milestone_record":
+      return milestoneRecordStructure({ record, team });
+    case "instigation_column":
+      return instigationColumnStructure({ team, teams });
+    case "verdict_column":
+      return verdictColumnStructure({ team, teams });
   }
 }
 
@@ -346,6 +434,44 @@ function blocksForStructure(
             `Team to beat: ${structure.teamToBeat}`,
             `Stakes: ${structure.stakes}`,
           ],
+          type: "list",
+        },
+      ];
+    case "rivalry_piece":
+      return [
+        { text: `${personaName}'s rivalry file`, type: "heading" },
+        { text: `${structure.history} ${personaLine}`, type: "paragraph" },
+        {
+          items: [structure.score, structure.stakes, structure.needle],
+          type: "list",
+        },
+      ];
+    case "milestone_record":
+      return [
+        { text: `${personaName}'s record watch`, type: "heading" },
+        {
+          text: `${structure.record}: ${structure.newHolder} follows ${structure.previousHolder}. ${personaLine}`,
+          type: "paragraph",
+        },
+        { text: structure.math, type: "paragraph" },
+        { text: structure.legend, type: "quote" },
+      ];
+    case "instigation_column":
+      return [
+        { text: `${personaName}'s settle-it column`, type: "heading" },
+        { text: `${structure.provocation} ${personaLine}`, type: "paragraph" },
+        {
+          items: structure.twoSides.map((side) => `Side: ${side}`),
+          type: "list",
+        },
+        { text: `${structure.settleItCta} ${structure.stakes}`, type: "quote" },
+      ];
+    case "verdict_column":
+      return [
+        { text: `${personaName}'s verdict`, type: "heading" },
+        { text: `${structure.question} ${personaLine}`, type: "paragraph" },
+        {
+          items: [structure.vote, structure.ruling, structure.newCanon],
           type: "list",
         },
       ];

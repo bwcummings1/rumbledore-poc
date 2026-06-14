@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: AI cadence and trigger framework landed — mid-week cadence, event-driven planners for transactions/waivers/records/lore/polls/bet settlements, rivalry/milestone/instigation/verdict templates, and bet-settled fan-out now emit idempotent content generation candidates.
 - 2026-06-14: Structured AI content templates landed — generation jobs now carry content types, persist typed template structures, and mock/real LLM contracts cover recaps, rankings, previews, awards, reactions, and arcs.
 - 2026-06-14: Persona cast contract landed — six AI cast cards now include Beat Reporter plus explicit beat, POV, and performance triggers in persisted persona cards and cached generation prompts.
 - 2026-06-14: AI article-shape generation landed — league blog generation now emits/persists headline, dek, persona byline metadata, league section, tags, and structured body blocks for Press articles.

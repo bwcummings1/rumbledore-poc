@@ -9,19 +9,38 @@ import {
   leagues,
 } from "@/db/schema";
 import {
+  type BetSettledData,
   type ContentGenerateData,
   type GameFinalData,
   JOB_EVENTS,
+  type LoreCanonizedData,
+  type PollClosedData,
+  type RecordBrokenData,
+  type TransactionData,
+  type WaiverData,
 } from "./events";
 
 export const CONTENT_PLAN_CRON_CADENCES = [
   "weekly-preview",
   "weekly-wrap",
+  "mid-week",
   "post-odds-refresh",
 ] as const;
 
 export type ContentPlanCronCadence =
   (typeof CONTENT_PLAN_CRON_CADENCES)[number];
+
+export const CONTENT_PLAN_TRIGGER_EVENTS = [
+  JOB_EVENTS.transaction,
+  JOB_EVENTS.waiver,
+  JOB_EVENTS.recordBroken,
+  JOB_EVENTS.loreCanonized,
+  JOB_EVENTS.pollClosed,
+  JOB_EVENTS.betSettled,
+] as const;
+
+export type ContentPlanTriggerEventName =
+  (typeof CONTENT_PLAN_TRIGGER_EVENTS)[number];
 
 export interface PlannedContentGenerateEvent {
   id: string;
@@ -46,6 +65,12 @@ export interface ContentPlanGameFinalResult {
   skippedReason: string | null;
 }
 
+export interface ContentPlanTriggerResult {
+  eventName: ContentPlanTriggerEventName;
+  planned: PlannedContentGenerateEvent[];
+  skippedReason: string | null;
+}
+
 const ACTIVE_LEAGUE_STATUSES = ["preseason", "in_season"] as const;
 const BLOWOUT_MARGIN = 25;
 const RIVALRY_MEETINGS_THRESHOLD = 5;
@@ -58,6 +83,10 @@ const CRON_CANDIDATES: Record<
   ContentPlanCronCadence,
   readonly ContentCandidate[]
 > = {
+  "mid-week": [
+    { contentType: "transaction_reaction", persona: "beat_reporter" },
+    { contentType: "instigation_column", persona: "trash_talker" },
+  ],
   "post-odds-refresh": [
     { contentType: "matchup_preview", persona: "betting_advisor" },
   ],
@@ -70,6 +99,33 @@ const CRON_CANDIDATES: Record<
     { contentType: "power_rankings", persona: "analyst" },
     { contentType: "awards_superlatives", persona: "beat_reporter" },
     { contentType: "season_arc", persona: "narrator" },
+  ],
+};
+
+const TRIGGER_CANDIDATES: Record<
+  ContentPlanTriggerEventName,
+  readonly ContentCandidate[]
+> = {
+  [JOB_EVENTS.betSettled]: [
+    { contentType: "awards_superlatives", persona: "trash_talker" },
+    { contentType: "matchup_preview", persona: "betting_advisor" },
+  ],
+  [JOB_EVENTS.loreCanonized]: [
+    { contentType: "verdict_column", persona: "commissioner" },
+    { contentType: "milestone_record", persona: "narrator" },
+  ],
+  [JOB_EVENTS.pollClosed]: [
+    { contentType: "verdict_column", persona: "commissioner" },
+  ],
+  [JOB_EVENTS.recordBroken]: [
+    { contentType: "milestone_record", persona: "analyst" },
+    { contentType: "milestone_record", persona: "narrator" },
+  ],
+  [JOB_EVENTS.transaction]: [
+    { contentType: "transaction_reaction", persona: "beat_reporter" },
+  ],
+  [JOB_EVENTS.waiver]: [
+    { contentType: "transaction_reaction", persona: "beat_reporter" },
   ],
 };
 
@@ -123,6 +179,38 @@ function gameFinalTriggerKey(matchup: GameFinalMatchup): string {
   return `game-final:${matchup.season}:${matchup.scoringPeriod}:${matchup.gameId}`;
 }
 
+function recordBrokenTriggerKey(recordKey: string): string {
+  return `record-broken:${recordKey}`;
+}
+
+function contentTriggerKey(
+  eventName: ContentPlanTriggerEventName,
+  data:
+    | BetSettledData
+    | LoreCanonizedData
+    | PollClosedData
+    | RecordBrokenData
+    | TransactionData
+    | WaiverData,
+): string {
+  switch (eventName) {
+    case JOB_EVENTS.transaction:
+      return `transaction:${(data as TransactionData).transactionId}`;
+    case JOB_EVENTS.waiver:
+      return `waiver:${(data as WaiverData).waiverId}`;
+    case JOB_EVENTS.recordBroken:
+      return recordBrokenTriggerKey((data as RecordBrokenData).recordKey);
+    case JOB_EVENTS.loreCanonized:
+      return `lore-canonized:${(data as LoreCanonizedData).claimId}`;
+    case JOB_EVENTS.pollClosed:
+      return `poll-closed:${(data as PollClosedData).pollId}`;
+    case JOB_EVENTS.betSettled: {
+      const betData = data as BetSettledData;
+      return `bet-settled:${betData.settlementId}`;
+    }
+  }
+}
+
 function scheduledCandidatesFor({
   cadence,
   hasRivalryWeek,
@@ -133,7 +221,7 @@ function scheduledCandidatesFor({
   const candidates = [...CRON_CANDIDATES[cadence]];
   if (cadence === "weekly-preview" && hasRivalryWeek) {
     candidates.push({
-      contentType: "awards_superlatives",
+      contentType: "rivalry_piece",
       persona: "trash_talker",
     });
   }
@@ -265,6 +353,25 @@ function gameFinalCandidates(
       ];
 }
 
+function milestoneContentEvents({
+  leagueId,
+  milestoneKeys,
+}: {
+  leagueId: string;
+  milestoneKeys: readonly string[];
+}): PlannedContentGenerateEvent[] {
+  return milestoneKeys.flatMap((recordKey) =>
+    TRIGGER_CANDIDATES[JOB_EVENTS.recordBroken].map((candidate) =>
+      toPlannedEvent({
+        contentType: candidate.contentType,
+        leagueId,
+        persona: candidate.persona,
+        triggerKey: recordBrokenTriggerKey(recordKey),
+      }),
+    ),
+  );
+}
+
 export async function planGameFinalContent({
   data,
   db,
@@ -344,14 +451,20 @@ export async function planGameFinalContent({
       teams,
     });
     const triggerKey = gameFinalTriggerKey(matchup);
-    const planned = gameFinalCandidates(triggerReasons).map((candidate) =>
-      toPlannedEvent({
-        contentType: candidate.contentType,
+    const planned = [
+      ...gameFinalCandidates(triggerReasons).map((candidate) =>
+        toPlannedEvent({
+          contentType: candidate.contentType,
+          leagueId: data.leagueId,
+          persona: candidate.persona,
+          triggerKey,
+        }),
+      ),
+      ...milestoneContentEvents({
         leagueId: data.leagueId,
-        persona: candidate.persona,
-        triggerKey,
+        milestoneKeys: data.milestoneKeys ?? [],
       }),
-    );
+    ];
 
     return {
       game: {
@@ -365,4 +478,34 @@ export async function planGameFinalContent({
       skippedReason: null,
     };
   });
+}
+
+export function planTriggeredContent({
+  data,
+  eventName,
+}: {
+  data:
+    | BetSettledData
+    | LoreCanonizedData
+    | PollClosedData
+    | RecordBrokenData
+    | TransactionData
+    | WaiverData;
+  eventName: ContentPlanTriggerEventName;
+}): ContentPlanTriggerResult {
+  const triggerKey = contentTriggerKey(eventName, data);
+  const planned = TRIGGER_CANDIDATES[eventName].map((candidate) =>
+    toPlannedEvent({
+      contentType: candidate.contentType,
+      leagueId: data.leagueId,
+      persona: candidate.persona,
+      triggerKey,
+    }),
+  );
+
+  return {
+    eventName,
+    planned,
+    skippedReason: null,
+  };
 }

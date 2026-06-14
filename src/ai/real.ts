@@ -122,6 +122,35 @@ const blogDraftSchema = z.object({
       turningPoint: z.string().trim().min(1),
       type: z.literal("season_arc"),
     }),
+    z.object({
+      history: z.string().trim().min(1),
+      needle: z.string().trim().min(1),
+      score: z.string().trim().min(1),
+      stakes: z.string().trim().min(1),
+      type: z.literal("rivalry_piece"),
+    }),
+    z.object({
+      legend: z.string().trim().min(1),
+      math: z.string().trim().min(1),
+      newHolder: z.string().trim().min(1),
+      previousHolder: z.string().trim().min(1),
+      record: z.string().trim().min(1),
+      type: z.literal("milestone_record"),
+    }),
+    z.object({
+      provocation: z.string().trim().min(1),
+      settleItCta: z.string().trim().min(1),
+      stakes: z.string().trim().min(1),
+      twoSides: z.array(z.string().trim().min(1)).min(2),
+      type: z.literal("instigation_column"),
+    }),
+    z.object({
+      newCanon: z.string().trim().min(1),
+      question: z.string().trim().min(1),
+      ruling: z.string().trim().min(1),
+      type: z.literal("verdict_column"),
+      vote: z.string().trim().min(1),
+    }),
   ]),
 }) satisfies z.ZodType<BlogDraft>;
 

@@ -191,6 +191,18 @@ describe("betting game.final settlement job", () => {
     });
 
     expect(stepRun.result).toMatchObject({
+      betSettledEvents: [
+        {
+          data: {
+            bettingEventId: seeded.event.id,
+            leagueId: league.id,
+            settlementId: expect.any(String),
+            slipId: seeded.placed.slip.id,
+          },
+          id: expect.stringContaining(`${JOB_EVENTS.betSettled}:${league.id}:`),
+          name: JOB_EVENTS.betSettled,
+        },
+      ],
       eventName: JOB_EVENTS.gameFinal,
       finalizedSlips: 1,
       gradedLegs: 1,

@@ -9,6 +9,10 @@ export const AI_CONTENT_TYPES = [
   "awards_superlatives",
   "transaction_reaction",
   "season_arc",
+  "rivalry_piece",
+  "milestone_record",
+  "instigation_column",
+  "verdict_column",
 ] as const;
 
 export type AiContentType = (typeof AI_CONTENT_TYPES)[number];
@@ -77,13 +81,50 @@ export interface SeasonArcStructure {
   stakes: string;
 }
 
+export interface RivalryPieceStructure {
+  type: "rivalry_piece";
+  history: string;
+  score: string;
+  stakes: string;
+  needle: string;
+}
+
+export interface MilestoneRecordStructure {
+  type: "milestone_record";
+  record: string;
+  previousHolder: string;
+  newHolder: string;
+  math: string;
+  legend: string;
+}
+
+export interface InstigationColumnStructure {
+  type: "instigation_column";
+  provocation: string;
+  twoSides: string[];
+  settleItCta: string;
+  stakes: string;
+}
+
+export interface VerdictColumnStructure {
+  type: "verdict_column";
+  question: string;
+  vote: string;
+  ruling: string;
+  newCanon: string;
+}
+
 export type BlogContentStructure =
   | WeeklyRecapStructure
   | PowerRankingsStructure
   | MatchupPreviewStructure
   | AwardsSuperlativesStructure
   | TransactionReactionStructure
-  | SeasonArcStructure;
+  | SeasonArcStructure
+  | RivalryPieceStructure
+  | MilestoneRecordStructure
+  | InstigationColumnStructure
+  | VerdictColumnStructure;
 
 export interface ContentStructureValidationContext {
   league: {
@@ -143,6 +184,30 @@ export const CONTENT_TYPE_TEMPLATES: Record<
       "Return act so far, turning point, team to beat, and what's at stake for the league story.",
     section: "recaps",
   },
+  instigation_column: {
+    contentType: "instigation_column",
+    defaultPersonas: ["trash_talker", "beat_reporter", "commissioner"],
+    label: "Instigation Column",
+    promptContract:
+      "Return the provocation, two named sides, a settle-it call to action, and the league stakes; the provocation must be tied to supplied league facts.",
+    section: "trash-talk",
+  },
+  milestone_record: {
+    contentType: "milestone_record",
+    defaultPersonas: ["analyst", "narrator"],
+    label: "Milestone Record",
+    promptContract:
+      "Return the record, previous holder, new holder, the math, and the legend without inventing unsupplied history.",
+    section: "records",
+  },
+  rivalry_piece: {
+    contentType: "rivalry_piece",
+    defaultPersonas: ["trash_talker", "narrator"],
+    label: "Rivalry Piece",
+    promptContract:
+      "Return the rivalry history, current score, stakes this week, and an affectionate needle grounded in supplied head-to-head or team facts.",
+    section: "trash-talk",
+  },
   transaction_reaction: {
     contentType: "transaction_reaction",
     defaultPersonas: ["beat_reporter"],
@@ -150,6 +215,14 @@ export const CONTENT_TYPE_TEMPLATES: Record<
     promptContract:
       "Return the move, grade, winner, loser, and a sources-say kicker tied to league-owned facts.",
     section: "previews",
+  },
+  verdict_column: {
+    contentType: "verdict_column",
+    defaultPersonas: ["commissioner"],
+    label: "Verdict Column",
+    promptContract:
+      "Return the question, vote result, ruling, and new canon phrased as a league verdict; never assert unratified claims outside the supplied trigger.",
+    section: "records",
   },
   weekly_recap: {
     contentType: "weekly_recap",
@@ -404,6 +477,139 @@ function normalizeSeasonArc(
   return normalized;
 }
 
+function normalizeRivalryPiece(
+  structure: unknown,
+  context: ContentStructureValidationContext,
+): RivalryPieceStructure {
+  const record = asRecord(structure);
+  const normalized = {
+    history: cleanText(record.history),
+    needle: cleanText(record.needle),
+    score: cleanText(record.score),
+    stakes: cleanText(record.stakes),
+    type: "rivalry_piece" as const,
+  };
+  if (
+    !normalized.history ||
+    !normalized.score ||
+    !normalized.stakes ||
+    !normalized.needle
+  ) {
+    throwStructureError(
+      "rivalry_piece structure is missing a required section",
+    );
+  }
+  if (
+    context.teams.length > 0 &&
+    ![...knownEntityNames(context)].some((name) =>
+      `${normalized.history} ${normalized.score} ${normalized.stakes} ${normalized.needle}`.includes(
+        name,
+      ),
+    )
+  ) {
+    throwStructureError("rivalry_piece must reference a real league entity");
+  }
+  return normalized;
+}
+
+function normalizeMilestoneRecord(
+  structure: unknown,
+  context: ContentStructureValidationContext,
+): MilestoneRecordStructure {
+  const record = asRecord(structure);
+  const normalized = {
+    legend: cleanText(record.legend),
+    math: cleanText(record.math),
+    newHolder: cleanText(record.newHolder),
+    previousHolder: cleanText(record.previousHolder),
+    record: cleanText(record.record),
+    type: "milestone_record" as const,
+  };
+  if (
+    !normalized.record ||
+    !normalized.previousHolder ||
+    !normalized.newHolder ||
+    !normalized.math ||
+    !normalized.legend
+  ) {
+    throwStructureError(
+      "milestone_record structure is missing a required section",
+    );
+  }
+  ensureKnownEntity(
+    normalized.newHolder,
+    context,
+    "milestone_record.newHolder",
+  );
+  return normalized;
+}
+
+function normalizeInstigationColumn(
+  structure: unknown,
+  context: ContentStructureValidationContext,
+): InstigationColumnStructure {
+  const record = asRecord(structure);
+  const twoSides = arrayValue(record.twoSides)
+    .map((value) => cleanText(value))
+    .filter(Boolean);
+  const normalized = {
+    provocation: cleanText(record.provocation),
+    settleItCta: cleanText(record.settleItCta),
+    stakes: cleanText(record.stakes),
+    twoSides,
+    type: "instigation_column" as const,
+  };
+  if (
+    !normalized.provocation ||
+    normalized.twoSides.length < 2 ||
+    !normalized.settleItCta ||
+    !normalized.stakes
+  ) {
+    throwStructureError(
+      "instigation_column structure is missing a required section",
+    );
+  }
+  for (const side of normalized.twoSides.slice(0, 2)) {
+    ensureKnownEntity(side, context, "instigation_column.twoSides");
+  }
+  return normalized;
+}
+
+function normalizeVerdictColumn(
+  structure: unknown,
+  context: ContentStructureValidationContext,
+): VerdictColumnStructure {
+  const record = asRecord(structure);
+  const normalized = {
+    newCanon: cleanText(record.newCanon),
+    question: cleanText(record.question),
+    ruling: cleanText(record.ruling),
+    type: "verdict_column" as const,
+    vote: cleanText(record.vote),
+  };
+  if (
+    !normalized.question ||
+    !normalized.vote ||
+    !normalized.ruling ||
+    !normalized.newCanon
+  ) {
+    throwStructureError(
+      "verdict_column structure is missing a required section",
+    );
+  }
+  if (
+    context.teams.length > 0 &&
+    ![...knownEntityNames(context)].some((name) =>
+      `${normalized.question} ${normalized.vote} ${normalized.ruling} ${normalized.newCanon}`.includes(
+        name,
+      ),
+    )
+  ) {
+    throwStructureError("verdict_column must reference a real league entity");
+  }
+  return normalized;
+}
+
 export function isAiContentType(value: string): value is AiContentType {
   return (AI_CONTENT_TYPES as readonly string[]).includes(value);
 }
@@ -458,5 +664,13 @@ export function validateContentStructure({
       return normalizeTransactionReaction(record, context);
     case "season_arc":
       return normalizeSeasonArc(record, context);
+    case "rivalry_piece":
+      return normalizeRivalryPiece(record, context);
+    case "milestone_record":
+      return normalizeMilestoneRecord(record, context);
+    case "instigation_column":
+      return normalizeInstigationColumn(record, context);
+    case "verdict_column":
+      return normalizeVerdictColumn(record, context);
   }
 }

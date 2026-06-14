@@ -13,13 +13,20 @@ import {
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
+  headToHeadRecords,
   leagues,
+  persons,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { planCronContent, planGameFinalContent } from "./content-planning";
+import {
+  planCronContent,
+  planGameFinalContent,
+  planTriggeredContent,
+} from "./content-planning";
 import { JOB_EVENTS } from "./events";
 import { runContentGenerate } from "./functions/content-generate";
 import {
+  contentPlanMidWeek,
   contentPlanPostOddsRefresh,
   contentPlanWeeklyPreview,
   contentPlanWeeklyWrap,
@@ -31,6 +38,16 @@ import {
   createContentPlanGameFinalFunction,
   runContentPlanGameFinal,
 } from "./functions/content-plan-game-final";
+import {
+  contentPlanBetSettled,
+  contentPlanLoreCanonized,
+  contentPlanPollClosed,
+  contentPlanRecordBroken,
+  contentPlanTransaction,
+  contentPlanWaiver,
+  createContentPlanTriggerFunction,
+  runContentPlanTrigger,
+} from "./functions/content-plan-trigger";
 import { functions } from "./index";
 
 const marker = `contentplan-${randomUUID()}`;
@@ -248,6 +265,53 @@ describe("content planning", () => {
       "narrator",
       "narrator",
     ]);
+
+    const midWeek = await planCronContent({
+      cadence: "mid-week",
+      db: handle.db,
+    });
+    const midWeekForActive = midWeek.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(
+      midWeekForActive.map((event) => event.data.contentType).sort(),
+    ).toEqual(["instigation_column", "transaction_reaction"]);
+    expect(midWeekForActive.map((event) => event.data.persona).sort()).toEqual([
+      "beat_reporter",
+      "trash_talker",
+    ]);
+
+    await withLeagueContext(handle.db, active.id, async (tx) => {
+      const [personA] = await tx
+        .insert(persons)
+        .values({ canonicalName: "Rival A", leagueId: active.id })
+        .returning({ id: persons.id });
+      const [personB] = await tx
+        .insert(persons)
+        .values({ canonicalName: "Rival B", leagueId: active.id })
+        .returning({ id: persons.id });
+      if (!personA || !personB) {
+        throw new Error("rivalry people were not inserted");
+      }
+      await tx.insert(headToHeadRecords).values({
+        leagueId: active.id,
+        meetings: 5,
+        personAId: personA.id,
+        personBId: personB.id,
+        season: 2026,
+      });
+    });
+
+    const rivalryPreview = await planCronContent({
+      cadence: "weekly-preview",
+      db: handle.db,
+    });
+    const rivalryForActive = rivalryPreview.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(
+      rivalryForActive.map((event) => event.data.contentType).sort(),
+    ).toEqual(["matchup_preview", "matchup_preview", "rivalry_piece"]);
   });
 
   it("plans game.final recaps and publishes them idempotently through content.generate", async () => {
@@ -284,6 +348,33 @@ describe("content planning", () => {
       `game-final:2026:3:${gameId}`,
       `game-final:2026:3:${gameId}`,
       `game-final:2026:3:${gameId}`,
+    ]);
+
+    const milestone = await planGameFinalContent({
+      data: {
+        gameId,
+        leagueId: league.id,
+        milestoneKeys: ["highest_single_week_score"],
+      },
+      db: handle.db,
+    });
+    expect(
+      milestone.planned
+        .filter((event) => event.data.contentType === "milestone_record")
+        .map((event) => ({
+          persona: event.data.persona,
+          triggerKey: event.data.triggerKey,
+        }))
+        .sort((left, right) => left.persona.localeCompare(right.persona)),
+    ).toEqual([
+      {
+        persona: "analyst",
+        triggerKey: "record-broken:highest_single_week_score",
+      },
+      {
+        persona: "narrator",
+        triggerKey: "record-broken:highest_single_week_score",
+      },
     ]);
 
     const deps = {
@@ -345,6 +436,150 @@ describe("content planning", () => {
     });
   });
 
+  it("plans every event-driven content trigger with stable natural keys", async () => {
+    const leagueId = randomUUID();
+    expect(
+      planTriggeredContent({
+        data: { leagueId, transactionId: "tx-1" },
+        eventName: JOB_EVENTS.transaction,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "transaction_reaction",
+        leagueId,
+        persona: "beat_reporter",
+        triggerKey: "transaction:tx-1",
+      },
+    ]);
+
+    expect(
+      planTriggeredContent({
+        data: { leagueId, waiverId: "waiver-1" },
+        eventName: JOB_EVENTS.waiver,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "transaction_reaction",
+        leagueId,
+        persona: "beat_reporter",
+        triggerKey: "waiver:waiver-1",
+      },
+    ]);
+
+    expect(
+      planTriggeredContent({
+        data: { leagueId, recordKey: "all_time_score" },
+        eventName: JOB_EVENTS.recordBroken,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "milestone_record",
+        leagueId,
+        persona: "analyst",
+        triggerKey: "record-broken:all_time_score",
+      },
+      {
+        contentType: "milestone_record",
+        leagueId,
+        persona: "narrator",
+        triggerKey: "record-broken:all_time_score",
+      },
+    ]);
+
+    expect(
+      planTriggeredContent({
+        data: { claimId: "claim-1", leagueId },
+        eventName: JOB_EVENTS.loreCanonized,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "verdict_column",
+        leagueId,
+        persona: "commissioner",
+        triggerKey: "lore-canonized:claim-1",
+      },
+      {
+        contentType: "milestone_record",
+        leagueId,
+        persona: "narrator",
+        triggerKey: "lore-canonized:claim-1",
+      },
+    ]);
+
+    expect(
+      planTriggeredContent({
+        data: { leagueId, pollId: "poll-1" },
+        eventName: JOB_EVENTS.pollClosed,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "verdict_column",
+        leagueId,
+        persona: "commissioner",
+        triggerKey: "poll-closed:poll-1",
+      },
+    ]);
+
+    expect(
+      planTriggeredContent({
+        data: { bettingEventId: "event-1", leagueId, settlementId: "settle-1" },
+        eventName: JOB_EVENTS.betSettled,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "awards_superlatives",
+        leagueId,
+        persona: "trash_talker",
+        triggerKey: "bet-settled:settle-1",
+      },
+      {
+        contentType: "matchup_preview",
+        leagueId,
+        persona: "betting_advisor",
+        triggerKey: "bet-settled:settle-1",
+      },
+    ]);
+  });
+
+  it("plans event-driven content through the Inngest step API", async () => {
+    const leagueId = randomUUID();
+    const fn = createContentPlanTriggerFunction({
+      eventName: JOB_EVENTS.betSettled,
+      functionId: `${marker}-bet-settled-trigger`,
+      name: "Bet settled trigger smoke",
+    });
+    const testEngine = new InngestTestEngine({ function: fn });
+    const stepRun = await testEngine.executeStep("plan-content-generation", {
+      events: [
+        {
+          data: {
+            bettingEventId: randomUUID(),
+            leagueId,
+            settlementId: randomUUID(),
+          },
+          name: JOB_EVENTS.betSettled,
+        },
+      ],
+    });
+
+    expect(stepRun.result).toMatchObject({
+      eventName: JOB_EVENTS.betSettled,
+      ok: true,
+      planned: expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contentType: "awards_superlatives",
+            leagueId,
+            persona: "trash_talker",
+          }),
+          name: JOB_EVENTS.contentGenerate,
+        }),
+      ]),
+      sentCount: 0,
+      skippedReason: null,
+    });
+  });
+
   it("rejects invalid game.final payloads without retrying", async () => {
     await expect(
       runContentPlanGameFinal({
@@ -353,6 +588,18 @@ describe("content planning", () => {
           leagueId: randomUUID(),
         },
         deps: { db: handle.db },
+      }),
+    ).rejects.toBeInstanceOf(NonRetriableError);
+  });
+
+  it("rejects invalid event-trigger payloads without retrying", async () => {
+    await expect(
+      runContentPlanTrigger({
+        data: {
+          leagueId: "not-a-uuid",
+          transactionId: "tx-1",
+        },
+        eventName: JOB_EVENTS.transaction,
       }),
     ).rejects.toBeInstanceOf(NonRetriableError);
   });
@@ -368,7 +615,14 @@ describe("content planning", () => {
     expect(cronFn).toBeDefined();
     expect(functions).toContain(contentPlanWeeklyPreview);
     expect(functions).toContain(contentPlanWeeklyWrap);
+    expect(functions).toContain(contentPlanMidWeek);
     expect(functions).toContain(contentPlanPostOddsRefresh);
     expect(functions).toContain(contentPlanGameFinal);
+    expect(functions).toContain(contentPlanTransaction);
+    expect(functions).toContain(contentPlanWaiver);
+    expect(functions).toContain(contentPlanRecordBroken);
+    expect(functions).toContain(contentPlanLoreCanonized);
+    expect(functions).toContain(contentPlanPollClosed);
+    expect(functions).toContain(contentPlanBetSettled);
   });
 });

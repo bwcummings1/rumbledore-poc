@@ -9,6 +9,12 @@ export const JOB_EVENTS = {
   oddsPoll: "odds.poll",
   newsRefresh: "news.refresh",
   contentGenerate: "content.generate",
+  transaction: "transaction",
+  waiver: "waiver",
+  recordBroken: "record.broken",
+  loreCanonized: "lore.canonized",
+  pollClosed: "poll.closed",
+  betSettled: "bet.settled",
 } as const;
 
 export type JobEventName = (typeof JOB_EVENTS)[keyof typeof JOB_EVENTS];
@@ -37,6 +43,38 @@ export interface ContentGenerateData {
   persona: AiPersona;
   contentType: AiContentType;
   triggerKey: string;
+}
+
+export interface TransactionData {
+  leagueId: string;
+  transactionId: string;
+}
+
+export interface WaiverData {
+  leagueId: string;
+  waiverId: string;
+}
+
+export interface RecordBrokenData {
+  leagueId: string;
+  recordKey: string;
+}
+
+export interface LoreCanonizedData {
+  claimId: string;
+  leagueId: string;
+}
+
+export interface PollClosedData {
+  leagueId: string;
+  pollId: string;
+}
+
+export interface BetSettledData {
+  bettingEventId?: string;
+  leagueId: string;
+  settlementId: string;
+  slipId?: string;
 }
 
 export interface GameFinalData {

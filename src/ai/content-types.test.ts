@@ -92,4 +92,63 @@ describe("content type templates", () => {
       }),
     ).toThrow(/3 to 5/);
   });
+
+  it("accepts spectacle-era structures tied to league entities", () => {
+    expect(
+      validateContentStructure({
+        contentType: "rivalry_piece",
+        context,
+        structure: {
+          history: "Alpha Team and Beta Team keep dragging the room back in.",
+          needle: "Alpha Team gets the first needle.",
+          score: "Alpha Team leads the fixture scoreboard.",
+          stakes: "Beta Team has to answer this week.",
+          type: "rivalry_piece",
+        },
+      }),
+    ).toMatchObject({ type: "rivalry_piece" });
+
+    expect(
+      validateContentStructure({
+        contentType: "milestone_record",
+        context,
+        structure: {
+          legend: "Alpha Team gets the record-book paragraph.",
+          math: "Alpha Team cleared 120 points for.",
+          newHolder: "Alpha Team",
+          previousHolder: "Beta Team",
+          record: "Highest weekly score",
+          type: "milestone_record",
+        },
+      }),
+    ).toMatchObject({ newHolder: "Alpha Team", type: "milestone_record" });
+
+    expect(
+      validateContentStructure({
+        contentType: "instigation_column",
+        context,
+        structure: {
+          provocation: "Settle it: Alpha Team or Beta Team?",
+          settleItCta: "Vote before kickoff.",
+          stakes: "The winner owns the week's argument.",
+          twoSides: ["Alpha Team", "Beta Team"],
+          type: "instigation_column",
+        },
+      }),
+    ).toMatchObject({ twoSides: ["Alpha Team", "Beta Team"] });
+
+    expect(
+      validateContentStructure({
+        contentType: "verdict_column",
+        context,
+        structure: {
+          newCanon: "Alpha Team owns the room's ruling.",
+          question: "Did Alpha Team settle it?",
+          ruling: "The Commissioner rules for Alpha Team.",
+          type: "verdict_column",
+          vote: "Alpha Team over Beta Team.",
+        },
+      }),
+    ).toMatchObject({ type: "verdict_column" });
+  });
 });

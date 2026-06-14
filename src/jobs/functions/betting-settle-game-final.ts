@@ -12,12 +12,19 @@ import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { createPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import { inngest } from "../client";
-import { type GameFinalData, JOB_EVENTS } from "../events";
+import { type BetSettledData, type GameFinalData, JOB_EVENTS } from "../events";
+
+interface PlannedBetSettledEvent {
+  id: string;
+  name: typeof JOB_EVENTS.betSettled;
+  data: BetSettledData;
+}
 
 export type BettingSettleGameFinalResponse = Omit<
   SettleBettingEventResult,
   "ledgerEntries" | "settlements"
 > & {
+  betSettledEvents: PlannedBetSettledEvent[];
   eventName: typeof JOB_EVENTS.gameFinal;
   ledgerEntryIds: string[];
   ok: true;
@@ -106,7 +113,19 @@ export async function runBettingSettleGameFinal({
     }
   }
 
+  const betSettledEvents = result.settlements.map((settlement) => ({
+    data: {
+      bettingEventId: result.bettingEventId,
+      leagueId: result.leagueId,
+      settlementId: settlement.id,
+      slipId: settlement.slipId,
+    },
+    id: `${JOB_EVENTS.betSettled}:${result.leagueId}:${settlement.id}`,
+    name: JOB_EVENTS.betSettled,
+  }));
+
   return {
+    betSettledEvents,
     bettingEventId: result.bettingEventId,
     eventName: JOB_EVENTS.gameFinal,
     finalizedSlips: result.finalizedSlips,
@@ -138,9 +157,16 @@ export function createBettingSettleGameFinalFunction(
     async ({ event, step }): Promise<BettingSettleGameFinalResponse> =>
       recordJobRun("betting-settle-game-final", async () => {
         const deps = await resolveDeps();
-        return step.run("settle-betting-event", () =>
+        const result = await step.run("settle-betting-event", () =>
           runBettingSettleGameFinal({ data: event.data, deps }),
         );
+        if (result.betSettledEvents.length > 0) {
+          await step.sendEvent(
+            "send-bet-settled-events",
+            result.betSettledEvents,
+          );
+        }
+        return result;
       }),
   );
 }
