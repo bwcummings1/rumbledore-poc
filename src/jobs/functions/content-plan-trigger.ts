@@ -28,6 +28,7 @@ const triggerDataSchemas = {
   }),
   [JOB_EVENTS.loreCanonized]: leagueScopedDataSchema.extend({
     claimId: idValue,
+    sourcePollId: idValue.optional(),
   }),
   [JOB_EVENTS.pollClosed]: leagueScopedDataSchema.extend({
     pollId: idValue,

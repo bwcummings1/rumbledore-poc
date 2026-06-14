@@ -43,6 +43,41 @@ export interface LeagueContextMemory {
   textContent: string;
 }
 
+export interface LeagueContextInstigation {
+  id: string;
+  kind: string;
+  persona: AiPersona;
+  promptText: string;
+  options: string[];
+  groundingRefs: Record<string, unknown>[];
+  status: string;
+}
+
+export interface LeagueContextPoll {
+  id: string;
+  question: string;
+  options: string[];
+  status: string;
+  winningOptionIdx: number | null;
+  result: Record<string, unknown> | null;
+}
+
+export interface LeagueContextLoreClaim {
+  id: string;
+  kind: string;
+  status: string;
+  title: string;
+  statement: string;
+  ratifiedBy: string | null;
+  ratifiedAt: Date | null;
+}
+
+export interface LeagueContextTrigger {
+  instigation: LeagueContextInstigation | null;
+  poll: LeagueContextPoll | null;
+  loreClaim: LeagueContextLoreClaim | null;
+}
+
 export interface LeaguePersonaCard {
   id: string;
   persona: AiPersona;
@@ -73,6 +108,7 @@ export interface LeagueBlogContext {
   records: LeagueContextRecord[];
   priorPosts: LeagueContextPriorPost[];
   memory: LeagueContextMemory[];
+  trigger: LeagueContextTrigger;
 }
 
 export interface PromptParts {

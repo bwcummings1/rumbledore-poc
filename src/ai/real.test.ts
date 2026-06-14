@@ -49,6 +49,11 @@ function requestFor(
       priorPosts: [],
       records: [],
       teams: [],
+      trigger: {
+        instigation: null,
+        loreClaim: null,
+        poll: null,
+      },
     },
     newsItems: [],
     persona,

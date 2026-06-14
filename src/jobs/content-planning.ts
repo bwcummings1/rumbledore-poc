@@ -200,8 +200,12 @@ function contentTriggerKey(
       return `waiver:${(data as WaiverData).waiverId}`;
     case JOB_EVENTS.recordBroken:
       return recordBrokenTriggerKey((data as RecordBrokenData).recordKey);
-    case JOB_EVENTS.loreCanonized:
-      return `lore-canonized:${(data as LoreCanonizedData).claimId}`;
+    case JOB_EVENTS.loreCanonized: {
+      const loreData = data as LoreCanonizedData;
+      return loreData.sourcePollId
+        ? `poll-closed:${loreData.sourcePollId}`
+        : `lore-canonized:${loreData.claimId}`;
+    }
     case JOB_EVENTS.pollClosed:
       return `poll-closed:${(data as PollClosedData).pollId}`;
     case JOB_EVENTS.betSettled: {
@@ -494,7 +498,12 @@ export function planTriggeredContent({
   eventName: ContentPlanTriggerEventName;
 }): ContentPlanTriggerResult {
   const triggerKey = contentTriggerKey(eventName, data);
-  const planned = TRIGGER_CANDIDATES[eventName].map((candidate) =>
+  const candidates =
+    eventName === JOB_EVENTS.loreCanonized &&
+    (data as LoreCanonizedData).sourcePollId
+      ? ([{ contentType: "verdict_column", persona: "commissioner" }] as const)
+      : TRIGGER_CANDIDATES[eventName];
+  const planned = candidates.map((candidate) =>
     toPlannedEvent({
       contentType: candidate.contentType,
       leagueId: data.leagueId,

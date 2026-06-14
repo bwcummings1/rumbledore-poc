@@ -508,6 +508,20 @@ describe("content planning", () => {
 
     expect(
       planTriggeredContent({
+        data: { claimId: "claim-1", leagueId, sourcePollId: "poll-1" },
+        eventName: JOB_EVENTS.loreCanonized,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "verdict_column",
+        leagueId,
+        persona: "commissioner",
+        triggerKey: "poll-closed:poll-1",
+      },
+    ]);
+
+    expect(
+      planTriggeredContent({
         data: { leagueId, pollId: "poll-1" },
         eventName: JOB_EVENTS.pollClosed,
       }).planned.map((event) => event.data),

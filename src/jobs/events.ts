@@ -9,11 +9,15 @@ export const JOB_EVENTS = {
   oddsPoll: "odds.poll",
   newsRefresh: "news.refresh",
   contentGenerate: "content.generate",
+  instigationSeed: "instigation.seed",
+  instigationSeeded: "instigation.seeded",
   transaction: "transaction",
   waiver: "waiver",
   recordBroken: "record.broken",
+  pollClose: "poll.close",
   loreCanonized: "lore.canonized",
   pollClosed: "poll.closed",
+  loreDispute: "lore.dispute",
   betSettled: "bet.settled",
 } as const;
 
@@ -45,6 +49,37 @@ export interface ContentGenerateData {
   triggerKey: string;
 }
 
+export interface InstigationSeedData {
+  closesAt?: string;
+  dedupKey: string;
+  groundingRefs: {
+    id: string;
+    label?: string;
+    type: "record" | "head_to_head" | "transaction" | "team" | "member";
+  }[];
+  kind:
+    | "settle_it_poll"
+    | "villain_crown"
+    | "manufactured_rivalry"
+    | "user_move_reaction";
+  leagueId: string;
+  options: string[];
+  persona: AiPersona;
+  promptText: string;
+}
+
+export interface InstigationSeededData {
+  contentItemId?: string;
+  instigationId: string;
+  leagueId: string;
+  pollId?: string;
+}
+
+export interface PollCloseData {
+  leagueId: string;
+  pollId: string;
+}
+
 export interface TransactionData {
   leagueId: string;
   transactionId: string;
@@ -63,6 +98,7 @@ export interface RecordBrokenData {
 export interface LoreCanonizedData {
   claimId: string;
   leagueId: string;
+  sourcePollId?: string;
 }
 
 export interface PollClosedData {

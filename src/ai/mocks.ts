@@ -280,12 +280,31 @@ function milestoneRecordStructure({
 }
 
 function instigationColumnStructure({
+  context,
   team,
   teams,
 }: {
+  context: LlmGenerateRequest["context"];
   team: LeagueContextTeam | null;
   teams: LeagueContextTeam[];
 }): InstigationColumnStructure {
+  const trigger = context.trigger.instigation;
+  if (trigger) {
+    const sides =
+      trigger.options.length >= 2
+        ? trigger.options.slice(0, 2)
+        : [team?.name ?? firstManager(team), secondaryTeam(teams)?.name].filter(
+            (side): side is string => Boolean(side),
+          );
+    return {
+      provocation: trigger.promptText,
+      settleItCta: `Settle it in the poll tied to ${trigger.groundingRefs[0]?.type ?? "league"} evidence.`,
+      stakes: `The winning side becomes the room's canon unless the league rejects the bit.`,
+      twoSides: sides,
+      type: "instigation_column",
+    };
+  }
+
   const first = team?.name ?? firstManager(team);
   const second = secondaryTeam(teams)?.name ?? first;
   return {
@@ -298,12 +317,33 @@ function instigationColumnStructure({
 }
 
 function verdictColumnStructure({
+  context,
   team,
   teams,
 }: {
+  context: LlmGenerateRequest["context"];
   team: LeagueContextTeam | null;
   teams: LeagueContextTeam[];
 }): VerdictColumnStructure {
+  const claim = context.trigger.loreClaim;
+  if (claim?.status === "canon") {
+    const poll = context.trigger.poll;
+    const result = poll?.result ?? {};
+    const winningOption =
+      typeof result.winningOption === "string" ? result.winningOption : null;
+    const totalVotes =
+      typeof result.totalVotes === "number" ? result.totalVotes : null;
+    return {
+      newCanon: claim.statement,
+      question: poll?.question ?? claim.title,
+      ruling: `The Commissioner recognizes this as canon: ${claim.statement}`,
+      type: "verdict_column",
+      vote: winningOption
+        ? `${winningOption} carried the room${totalVotes === null ? "" : ` with ${totalVotes} vote${totalVotes === 1 ? "" : "s"}`}.`
+        : claim.statement,
+    };
+  }
+
   const first = team?.name ?? firstManager(team);
   const second = secondaryTeam(teams)?.name ?? first;
   return {
@@ -345,9 +385,17 @@ function structureForRequest(
     case "milestone_record":
       return milestoneRecordStructure({ record, team });
     case "instigation_column":
-      return instigationColumnStructure({ team, teams });
+      return instigationColumnStructure({
+        context: request.context,
+        team,
+        teams,
+      });
     case "verdict_column":
-      return verdictColumnStructure({ team, teams });
+      return verdictColumnStructure({
+        context: request.context,
+        team,
+        teams,
+      });
   }
 }
 

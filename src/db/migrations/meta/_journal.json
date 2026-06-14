@@ -218,6 +218,13 @@
       "when": 1781455890544,
       "tag": "0030_free_nightmare",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781460167388,
+      "tag": "0031_parched_stark_industries",
+      "breakpoints": true
     }
   ]
 }

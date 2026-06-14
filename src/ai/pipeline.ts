@@ -14,8 +14,11 @@ import {
   dataIntegrityChecks,
   fantasyMembers,
   fantasyTeams,
+  instigations,
   leagues,
+  loreClaims,
   persons,
+  polls,
 } from "@/db/schema";
 import { NoopPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
@@ -38,8 +41,12 @@ import type {
   BlogDraft,
   EmbeddingProvider,
   LeagueBlogContext,
+  LeagueContextInstigation,
+  LeagueContextLoreClaim,
   LeagueContextMemory,
+  LeagueContextPoll,
   LeagueContextTeam,
+  LeagueContextTrigger,
   LeaguePersonaCard,
   LlmClient,
   NewsItem,
@@ -121,8 +128,28 @@ function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
   return `blog:${input.persona}:${input.contentType}:${input.triggerKey}`;
 }
 
+type TriggerContextTarget =
+  | { kind: "instigation"; id: string }
+  | { kind: "poll"; id: string }
+  | { kind: "claim"; id: string };
+
 function now(deps: Pick<AiGenerationDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
+}
+
+function parseTriggerContextTarget(
+  triggerKey: string,
+): TriggerContextTarget | null {
+  if (triggerKey.startsWith("instigation:")) {
+    return { id: triggerKey.slice("instigation:".length), kind: "instigation" };
+  }
+  if (triggerKey.startsWith("poll-closed:")) {
+    return { id: triggerKey.slice("poll-closed:".length), kind: "poll" };
+  }
+  if (triggerKey.startsWith("lore-canonized:")) {
+    return { id: triggerKey.slice("lore-canonized:".length), kind: "claim" };
+  }
+  return null;
 }
 
 function managerNamesFor(
@@ -255,6 +282,7 @@ export function buildPromptParts({
       summary: post.summary,
       title: post.title,
     })),
+    trigger: context.trigger,
     triggerKey,
     untrustedNews: untrustedNewsBlock(newsItems),
   });
@@ -348,6 +376,198 @@ async function ensurePersonaCard({
   }
 
   return row;
+}
+
+async function loadInstigationContext({
+  id,
+  leagueId,
+  tx,
+}: {
+  id: string;
+  leagueId: string;
+  tx: LeagueScopedTx;
+}): Promise<LeagueContextInstigation | null> {
+  const [row] = await tx
+    .select({
+      groundingRefs: instigations.groundingRefs,
+      id: instigations.id,
+      kind: instigations.kind,
+      options: instigations.options,
+      persona: instigations.persona,
+      promptText: instigations.promptText,
+      status: instigations.status,
+    })
+    .from(instigations)
+    .where(and(eq(instigations.leagueId, leagueId), eq(instigations.id, id)))
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function loadPollContext({
+  id,
+  leagueId,
+  tx,
+}: {
+  id: string;
+  leagueId: string;
+  tx: LeagueScopedTx;
+}): Promise<(LeagueContextPoll & { instigationId: string }) | null> {
+  const [row] = await tx
+    .select({
+      id: polls.id,
+      instigationId: polls.instigationId,
+      options: polls.options,
+      question: polls.question,
+      result: polls.result,
+      status: polls.status,
+      winningOptionIdx: polls.winningOptionIdx,
+    })
+    .from(polls)
+    .where(and(eq(polls.leagueId, leagueId), eq(polls.id, id)))
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function loadLoreClaimContext({
+  id,
+  leagueId,
+  tx,
+}: {
+  id: string;
+  leagueId: string;
+  tx: LeagueScopedTx;
+}): Promise<(LeagueContextLoreClaim & { sourcePollId: string | null }) | null> {
+  const [row] = await tx
+    .select({
+      id: loreClaims.id,
+      kind: loreClaims.kind,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      sourcePollId: loreClaims.sourcePollId,
+      statement: loreClaims.statement,
+      status: loreClaims.status,
+      title: loreClaims.title,
+    })
+    .from(loreClaims)
+    .where(and(eq(loreClaims.leagueId, leagueId), eq(loreClaims.id, id)))
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function loadLoreClaimForPoll({
+  leagueId,
+  pollId,
+  tx,
+}: {
+  leagueId: string;
+  pollId: string;
+  tx: LeagueScopedTx;
+}): Promise<LeagueContextLoreClaim | null> {
+  const [row] = await tx
+    .select({
+      id: loreClaims.id,
+      kind: loreClaims.kind,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      statement: loreClaims.statement,
+      status: loreClaims.status,
+      title: loreClaims.title,
+    })
+    .from(loreClaims)
+    .where(
+      and(
+        eq(loreClaims.leagueId, leagueId),
+        eq(loreClaims.sourcePollId, pollId),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function loadTriggerContext({
+  input,
+  tx,
+}: {
+  input: GenerateLeagueBlogPostInput;
+  tx: LeagueScopedTx;
+}): Promise<LeagueContextTrigger> {
+  const empty = {
+    instigation: null,
+    loreClaim: null,
+    poll: null,
+  } satisfies LeagueContextTrigger;
+  const target = parseTriggerContextTarget(input.triggerKey);
+  if (!target) {
+    return empty;
+  }
+
+  if (target.kind === "instigation") {
+    const instigation = await loadInstigationContext({
+      id: target.id,
+      leagueId: input.leagueId,
+      tx,
+    });
+    return { ...empty, instigation };
+  }
+
+  if (target.kind === "poll") {
+    const poll = await loadPollContext({
+      id: target.id,
+      leagueId: input.leagueId,
+      tx,
+    });
+    const instigation = poll
+      ? await loadInstigationContext({
+          id: poll.instigationId,
+          leagueId: input.leagueId,
+          tx,
+        })
+      : null;
+    const loreClaim = poll
+      ? await loadLoreClaimForPoll({
+          leagueId: input.leagueId,
+          pollId: poll.id,
+          tx,
+        })
+      : null;
+    return { instigation, loreClaim, poll };
+  }
+
+  const claim = await loadLoreClaimContext({
+    id: target.id,
+    leagueId: input.leagueId,
+    tx,
+  });
+  const poll = claim?.sourcePollId
+    ? await loadPollContext({
+        id: claim.sourcePollId,
+        leagueId: input.leagueId,
+        tx,
+      })
+    : null;
+  const instigation = poll
+    ? await loadInstigationContext({
+        id: poll.instigationId,
+        leagueId: input.leagueId,
+        tx,
+      })
+    : null;
+  const loreClaim = claim
+    ? {
+        id: claim.id,
+        kind: claim.kind,
+        ratifiedAt: claim.ratifiedAt,
+        ratifiedBy: claim.ratifiedBy,
+        statement: claim.statement,
+        status: claim.status,
+        title: claim.title,
+      }
+    : null;
+  return { instigation, loreClaim, poll };
 }
 
 async function prepareGeneration({
@@ -593,6 +813,8 @@ async function prepareGeneration({
     )
     .limit(20);
 
+  const trigger = await loadTriggerContext({ input, tx });
+
   return {
     context: {
       league,
@@ -609,6 +831,7 @@ async function prepareGeneration({
         value: record.value,
       })),
       teams,
+      trigger,
     },
     runId: run.id,
   };

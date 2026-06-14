@@ -17,8 +17,10 @@ import {
   contentPlanWaiver,
 } from "./functions/content-plan-trigger";
 import { importRequested } from "./functions/import-requested";
+import { instigationSeed } from "./functions/instigation-seed";
 import { newsRefresh } from "./functions/news-refresh";
 import { oddsPoll } from "./functions/odds-poll";
+import { pollClose } from "./functions/poll-close";
 
 export { inngest } from "./client";
 export { JOB_EVENTS } from "./events";
@@ -41,8 +43,10 @@ export {
   contentPlanWaiver,
 } from "./functions/content-plan-trigger";
 export { importRequested } from "./functions/import-requested";
+export { instigationSeed } from "./functions/instigation-seed";
 export { newsRefresh } from "./functions/news-refresh";
 export { oddsPoll } from "./functions/odds-poll";
+export { pollClose } from "./functions/poll-close";
 
 export const functions = [
   appPing,
@@ -59,6 +63,8 @@ export const functions = [
   contentPlanLoreCanonized,
   contentPlanPollClosed,
   contentPlanBetSettled,
+  instigationSeed,
+  pollClose,
   bettingSettleGameFinal,
   newsRefresh,
   oddsPoll,
