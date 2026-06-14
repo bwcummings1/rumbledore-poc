@@ -1,6 +1,11 @@
 import {
+  type ArenaLeaderboardUpdatedPayload,
+  type ArenaStandingsSwingPayload,
+  arenaLeaderboardChannel,
   type BlogPublishedPayload,
+  type LeagueLeaderboardUpdatedPayload,
   leagueBlogChannel,
+  leagueLeaderboardChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
   type RealtimeChannel,
@@ -11,8 +16,26 @@ import {
 } from "./interfaces";
 
 export class NoopRealtimePublisher implements RealtimePublisher {
+  async publishArenaLeaderboardUpdated(
+    _payload: ArenaLeaderboardUpdatedPayload,
+  ): Promise<void> {
+    return;
+  }
+
+  async publishArenaStandingsSwing(
+    _payload: ArenaStandingsSwingPayload,
+  ): Promise<void> {
+    return;
+  }
+
   async publishLeagueBlogPublished(
     _payload: BlogPublishedPayload,
+  ): Promise<void> {
+    return;
+  }
+
+  async publishLeagueLeaderboardUpdated(
+    _payload: LeagueLeaderboardUpdatedPayload,
   ): Promise<void> {
     return;
   }
@@ -25,13 +48,34 @@ export class NoopRealtimePublisher implements RealtimePublisher {
 }
 
 export class RecordingRealtimePublisher implements RealtimePublisher {
+  readonly arenaLeaderboardUpdated: ArenaLeaderboardUpdatedPayload[] = [];
+  readonly arenaStandingsSwing: ArenaStandingsSwingPayload[] = [];
   readonly blogPublished: BlogPublishedPayload[] = [];
+  readonly leagueLeaderboardUpdated: LeagueLeaderboardUpdatedPayload[] = [];
   readonly scoresUpdated: ScoresUpdatedPayload[] = [];
+
+  async publishArenaLeaderboardUpdated(
+    payload: ArenaLeaderboardUpdatedPayload,
+  ): Promise<void> {
+    this.arenaLeaderboardUpdated.push(payload);
+  }
+
+  async publishArenaStandingsSwing(
+    payload: ArenaStandingsSwingPayload,
+  ): Promise<void> {
+    this.arenaStandingsSwing.push(payload);
+  }
 
   async publishLeagueBlogPublished(
     payload: BlogPublishedPayload,
   ): Promise<void> {
     this.blogPublished.push(payload);
+  }
+
+  async publishLeagueLeaderboardUpdated(
+    payload: LeagueLeaderboardUpdatedPayload,
+  ): Promise<void> {
+    this.leagueLeaderboardUpdated.push(payload);
   }
 
   async publishLeagueScoresUpdated(
@@ -73,12 +117,42 @@ export class InProcessRealtimePublisher implements RealtimePublisher {
     };
   }
 
+  async publishArenaLeaderboardUpdated(
+    payload: ArenaLeaderboardUpdatedPayload,
+  ): Promise<void> {
+    await this.publish(
+      arenaLeaderboardChannel(),
+      REALTIME_EVENTS.arenaLeaderboardUpdated,
+      payload,
+    );
+  }
+
+  async publishArenaStandingsSwing(
+    payload: ArenaStandingsSwingPayload,
+  ): Promise<void> {
+    await this.publish(
+      arenaLeaderboardChannel(),
+      REALTIME_EVENTS.arenaStandingsSwing,
+      payload,
+    );
+  }
+
   async publishLeagueBlogPublished(
     payload: BlogPublishedPayload,
   ): Promise<void> {
     await this.publish(
       leagueBlogChannel(payload.leagueId),
       REALTIME_EVENTS.blogPublished,
+      payload,
+    );
+  }
+
+  async publishLeagueLeaderboardUpdated(
+    payload: LeagueLeaderboardUpdatedPayload,
+  ): Promise<void> {
+    await this.publish(
+      leagueLeaderboardChannel(payload.leagueId),
+      REALTIME_EVENTS.leagueLeaderboardUpdated,
       payload,
     );
   }

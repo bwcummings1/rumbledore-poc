@@ -1,7 +1,12 @@
 import { AppError } from "@/core/result";
 import {
+  type ArenaLeaderboardUpdatedPayload,
+  type ArenaStandingsSwingPayload,
+  arenaLeaderboardChannel,
   type BlogPublishedPayload,
+  type LeagueLeaderboardUpdatedPayload,
   leagueBlogChannel,
+  leagueLeaderboardChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
   type RealtimePublisher,
@@ -29,6 +34,28 @@ export class SupabaseRealtimePublisher implements RealtimePublisher {
     this.url = trimTrailingSlashes(url);
   }
 
+  async publishArenaLeaderboardUpdated(
+    payload: ArenaLeaderboardUpdatedPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.arenaLeaderboardUpdated,
+      payload,
+      private: true,
+      topic: arenaLeaderboardChannel(),
+    });
+  }
+
+  async publishArenaStandingsSwing(
+    payload: ArenaStandingsSwingPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.arenaStandingsSwing,
+      payload,
+      private: true,
+      topic: arenaLeaderboardChannel(),
+    });
+  }
+
   async publishLeagueBlogPublished(
     payload: BlogPublishedPayload,
   ): Promise<void> {
@@ -37,6 +64,17 @@ export class SupabaseRealtimePublisher implements RealtimePublisher {
       payload,
       private: true,
       topic: leagueBlogChannel(payload.leagueId),
+    });
+  }
+
+  async publishLeagueLeaderboardUpdated(
+    payload: LeagueLeaderboardUpdatedPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.leagueLeaderboardUpdated,
+      payload,
+      private: true,
+      topic: leagueLeaderboardChannel(payload.leagueId),
     });
   }
 

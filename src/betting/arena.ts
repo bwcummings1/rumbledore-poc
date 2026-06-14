@@ -155,6 +155,17 @@ export interface RebuildArenaStandingsResult extends ArenaLeaderboardData {
   materializedRows: ArenaStanding[];
 }
 
+export interface ArenaStandingSwingSignal {
+  kind: ArenaStandingKind;
+  leagueId: string | null;
+  netPnlCents: number;
+  newRank: number;
+  oldRank: number;
+  rankDelta: number;
+  subjectId: string;
+  userId: string | null;
+}
+
 function appError(
   code: string,
   message: string,
@@ -755,6 +766,30 @@ export async function rebuildAllArenaStandings(
   }
 
   return results;
+}
+
+export function extractArenaStandingSwingSignals(
+  result: Pick<RebuildArenaStandingsResult, "materializedRows">,
+): ArenaStandingSwingSignal[] {
+  return result.materializedRows
+    .filter((row) => row.previousRank !== null && row.rankDelta !== 0)
+    .map((row) => ({
+      kind: row.kind,
+      leagueId: row.leagueId,
+      netPnlCents: row.netPnlCents,
+      newRank: row.rank,
+      oldRank: row.previousRank as number,
+      rankDelta: row.rankDelta,
+      subjectId: row.subjectId,
+      userId: row.userId,
+    }))
+    .sort(
+      (a, b) =>
+        Math.abs(b.rankDelta) - Math.abs(a.rankDelta) ||
+        a.kind.localeCompare(b.kind) ||
+        a.newRank - b.newRank ||
+        a.subjectId.localeCompare(b.subjectId),
+    );
 }
 
 async function standingsForKind(

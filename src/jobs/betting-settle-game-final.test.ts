@@ -5,12 +5,14 @@ import { eq, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  appendBankrollLedgerEntry,
   type EventResult,
   ensureArenaSeason,
   openBankrollWeek,
   placeBetSlip,
   type ResultsProvider,
   type ResultsProviderInput,
+  rebuildArenaStandings,
 } from "@/betting";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -29,6 +31,7 @@ import {
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { RecordingPushNotifier } from "@/push";
+import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import { JOB_EVENTS } from "./events";
 import {
   bettingSettleGameFinal,
@@ -40,6 +43,8 @@ import { functions } from "./index";
 const marker = `settlejob-${randomUUID()}`;
 let handle: DbHandle;
 let league: League;
+let rivalLeague: League;
+let rivalUser: User;
 let user: User;
 
 class StaticResultsProvider implements ResultsProvider {
@@ -115,6 +120,51 @@ async function seedPlacedSingle() {
   return { event, placed };
 }
 
+async function seedRivalSettledSingle() {
+  const opened = await openBankrollWeek(handle.db, {
+    leagueId: rivalLeague.id,
+    userId: rivalUser.id,
+    weekEnd: new Date("2037-09-08T00:00:00.000Z"),
+    weekStart: new Date("2037-09-01T00:00:00.000Z"),
+  });
+  const [slip] = await withLeagueContext(handle.db, rivalLeague.id, (tx) =>
+    tx
+      .insert(betSlips)
+      .values({
+        bankrollWeekId: opened.week.id,
+        combinedDecimalOdds: 1.5,
+        idempotencyKey: `${marker}:rival-job`,
+        kind: "single",
+        leagueId: rivalLeague.id,
+        placedAt: new Date("2037-09-07T12:01:00.000Z"),
+        potentialPayoutCents: 15_000,
+        requestHash: `${marker}:rival-request`,
+        settledAt: new Date("2037-09-07T22:00:00.000Z"),
+        stakeCents: 10_000,
+        status: "won",
+        userId: rivalUser.id,
+      })
+      .returning(),
+  );
+
+  await appendBankrollLedgerEntry(handle.db, {
+    amountCents: -10_000,
+    bankrollWeekId: opened.week.id,
+    entryType: "bet_stake",
+    leagueId: rivalLeague.id,
+    refSlipId: slip.id,
+    userId: rivalUser.id,
+  });
+  await appendBankrollLedgerEntry(handle.db, {
+    amountCents: 15_000,
+    bankrollWeekId: opened.week.id,
+    entryType: "bet_payout",
+    leagueId: rivalLeague.id,
+    refSlipId: slip.id,
+    userId: rivalUser.id,
+  });
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -127,20 +177,33 @@ beforeAll(async () => {
   }
   await migrateSerialized(handle);
 
-  [user] = await handle.db
+  [user, rivalUser] = await handle.db
     .insert(users)
-    .values({
-      displayName: "Settlement Job User",
-      email: `${marker}@example.test`,
-    })
+    .values([
+      {
+        displayName: "Settlement Job User",
+        email: `${marker}@example.test`,
+      },
+      {
+        displayName: "Settlement Job Rival",
+        email: `${marker}-rival@example.test`,
+      },
+    ])
     .returning();
-  [league] = await handle.db
+  [league, rivalLeague] = await handle.db
     .insert(leagues)
-    .values({
-      name: "Settlement Job League",
-      provider: "espn",
-      providerLeagueId: marker,
-    })
+    .values([
+      {
+        name: "Settlement Job League",
+        provider: "espn",
+        providerLeagueId: marker,
+      },
+      {
+        name: "Settlement Job Rival League",
+        provider: "espn",
+        providerLeagueId: `${marker}-rival`,
+      },
+    ])
     .returning();
 });
 
@@ -151,10 +214,10 @@ afterAll(async () => {
     .where(sql`${arenaSeasons.name} = ${`${marker}-arena`}`);
   await handle.db
     .delete(leagues)
-    .where(sql`${leagues.providerLeagueId} = ${marker}`);
+    .where(sql`${leagues.providerLeagueId} like ${`${marker}%`}`);
   await handle.db
     .delete(users)
-    .where(sql`${users.email} = ${`${marker}@example.test`}`);
+    .where(sql`${users.email} like ${`${marker}%@example.test`}`);
   await handle.db
     .delete(bettingEvents)
     .where(eq(bettingEvents.provider, marker));
@@ -169,10 +232,17 @@ describe("betting game.final settlement job", () => {
       name: `${marker}-arena`,
       startsAt: new Date("2037-09-01T00:00:00.000Z"),
     });
+    await seedRivalSettledSingle();
+    await rebuildArenaStandings(handle.db, {
+      computedAt: new Date("2037-09-07T21:00:00.000Z"),
+      seasonId: arenaSeason.id,
+    });
     const push = new RecordingPushNotifier();
+    const realtime = new RecordingRealtimePublisher();
     const fn = createBettingSettleGameFinalFunction(() => ({
       db: handle.db,
       push,
+      realtime,
       resultsProvider: new StaticResultsProvider(),
     }));
     const testEngine = new InngestTestEngine({ function: fn });
@@ -191,6 +261,38 @@ describe("betting game.final settlement job", () => {
     });
 
     expect(stepRun.result).toMatchObject({
+      arenaLeaderboardUpdates: [
+        {
+          seasonId: arenaSeason.id,
+          type: REALTIME_EVENTS.arenaLeaderboardUpdated,
+          v: 1,
+        },
+      ],
+      arenaSwingSignals: [
+        {
+          seasonId: arenaSeason.id,
+          swings: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "individual",
+              newRank: 1,
+              oldRank: 2,
+              rankDelta: 1,
+              subjectId: user.id,
+              userId: user.id,
+            }),
+            expect.objectContaining({
+              kind: "league",
+              leagueId: league.id,
+              newRank: 1,
+              oldRank: 2,
+              rankDelta: 1,
+              subjectId: league.id,
+            }),
+          ]),
+          type: REALTIME_EVENTS.arenaStandingsSwing,
+          v: 1,
+        },
+      ],
       betSettledEvents: [
         {
           data: {
@@ -206,6 +308,14 @@ describe("betting game.final settlement job", () => {
       eventName: JOB_EVENTS.gameFinal,
       finalizedSlips: 1,
       gradedLegs: 1,
+      leagueLeaderboardUpdates: [
+        {
+          bankrollWeekId: seeded.placed.slip.bankrollWeekId,
+          leagueId: league.id,
+          type: REALTIME_EVENTS.leagueLeaderboardUpdated,
+          v: 1,
+        },
+      ],
       ok: true,
       skippedReason: null,
     });
@@ -218,21 +328,78 @@ describe("betting game.final settlement job", () => {
       .select()
       .from(arenaStandings)
       .where(eq(arenaStandings.seasonId, arenaSeason.id));
-    expect(arenaRows).toHaveLength(2);
+    expect(arenaRows).toHaveLength(4);
     expect(arenaRows.map((row) => row.kind).sort()).toEqual([
       "individual",
+      "individual",
       "league",
+      "league",
+    ]);
+    expect(realtime.leagueLeaderboardUpdated).toEqual([
+      expect.objectContaining({
+        bankrollWeekId: seeded.placed.slip.bankrollWeekId,
+        leagueId: league.id,
+        type: REALTIME_EVENTS.leagueLeaderboardUpdated,
+      }),
+    ]);
+    expect(realtime.arenaLeaderboardUpdated).toEqual([
+      expect.objectContaining({
+        seasonId: arenaSeason.id,
+        type: REALTIME_EVENTS.arenaLeaderboardUpdated,
+      }),
+    ]);
+    expect(realtime.arenaStandingsSwing).toEqual([
+      expect.objectContaining({
+        seasonId: arenaSeason.id,
+        swings: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "league",
+            newRank: 1,
+            oldRank: 2,
+            rankDelta: 1,
+            subjectId: league.id,
+          }),
+        ]),
+        type: REALTIME_EVENTS.arenaStandingsSwing,
+      }),
     ]);
     expect(push.notifications).toEqual([
       {
-        body: "1 betting slip settled for this league.",
+        body: "Won $171 on a single. Bankroll now $10,071.",
         leagueId: league.id,
-        tag: `league:${league.id}:betting:${seeded.event.id}`,
-        title: "Betting results are in",
+        tag: `league:${league.id}:betting:${seeded.placed.slip.id}`,
+        title: "Bet won",
         type: "league.bet.settled",
-        url: `/leagues/${league.id}`,
+        url: expect.stringMatching(
+          new RegExp(
+            `^/leagues/${league.id}/bet\\?slip=${seeded.placed.slip.id}&settlement=`,
+          ),
+        ),
+        userIds: [user.id],
       },
     ]);
+
+    const retry = await runBettingSettleGameFinal({
+      data: {
+        bettingEventId: seeded.event.id,
+        gameId: randomUUID(),
+        leagueId: league.id,
+      },
+      deps: {
+        db: handle.db,
+        push,
+        realtime,
+        resultsProvider: new StaticResultsProvider(),
+      },
+    });
+    expect(retry).toMatchObject({
+      arenaSwingSignals: [],
+      finalizedSlips: 0,
+      leagueLeaderboardUpdates: [],
+      settlementIds: [],
+    });
+    expect(push.notifications).toHaveLength(1);
+    expect(realtime.arenaStandingsSwing).toHaveLength(1);
   });
 
   it("rejects invalid game.final payloads without retrying", async () => {
@@ -245,6 +412,7 @@ describe("betting game.final settlement job", () => {
         deps: {
           db: handle.db,
           push: new RecordingPushNotifier(),
+          realtime: new RecordingRealtimePublisher(),
           resultsProvider: new StaticResultsProvider(),
         },
       }),

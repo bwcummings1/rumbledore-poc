@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  arenaLeaderboardChannel,
   leagueBlogChannel,
+  leagueLeaderboardChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
 } from "./interfaces";
@@ -26,6 +28,13 @@ describe("realtime publisher", () => {
 
   it("uses the stable per-league scores channel name", () => {
     expect(leagueScoresChannel("league-123")).toBe("league:league-123:scores");
+  });
+
+  it("uses the stable leaderboard channel names", () => {
+    expect(leagueLeaderboardChannel("league-123")).toBe(
+      "league:league-123:leaderboard",
+    );
+    expect(arenaLeaderboardChannel()).toBe("arena:leaderboard");
   });
 
   it("posts blog.published payloads to Supabase private broadcast", async () => {
@@ -143,6 +152,103 @@ describe("realtime publisher", () => {
     });
   });
 
+  it("posts league.leaderboard.updated payloads to Supabase private broadcast", async () => {
+    const calls: Array<{
+      input: RequestInfo | URL;
+      init: RequestInit | undefined;
+    }> = [];
+    const publisher = new SupabaseRealtimePublisher({
+      apiKey: "supabase-service-key", // ubs:ignore — fake fixture value
+      fetchFn: async (input, init) => {
+        calls.push({ input, init });
+        return okResponse();
+      },
+      url: "https://project.supabase.co/",
+    });
+
+    await publisher.publishLeagueLeaderboardUpdated({
+      at: "2026-06-15T12:00:01.000Z",
+      bankrollWeekId: "week-1",
+      leagueId: "league-123",
+      type: REALTIME_EVENTS.leagueLeaderboardUpdated,
+      v: 1,
+    });
+
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call) throw new Error("expected fetch call");
+
+    expect(call.input.toString()).toBe(
+      "https://project.supabase.co/realtime/v1/api/broadcast/league%3Aleague-123%3Aleaderboard/events/league.leaderboard.updated?private=true",
+    );
+    expect(parseJsonBody(call.init?.body)).toMatchObject({
+      bankrollWeekId: "week-1",
+      leagueId: "league-123",
+      type: "league.leaderboard.updated",
+      v: 1,
+    });
+  });
+
+  it("posts arena leaderboard and swing payloads to Supabase private broadcast", async () => {
+    const calls: Array<{
+      input: RequestInfo | URL;
+      init: RequestInit | undefined;
+    }> = [];
+    const publisher = new SupabaseRealtimePublisher({
+      apiKey: "supabase-service-key", // ubs:ignore — fake fixture value
+      fetchFn: async (input, init) => {
+        calls.push({ input, init });
+        return okResponse();
+      },
+      url: "https://project.supabase.co/",
+    });
+
+    await publisher.publishArenaLeaderboardUpdated({
+      at: "2026-06-15T12:00:01.000Z",
+      seasonId: "season-1",
+      type: REALTIME_EVENTS.arenaLeaderboardUpdated,
+      v: 1,
+    });
+    await publisher.publishArenaStandingsSwing({
+      at: "2026-06-15T12:00:02.000Z",
+      computedAt: "2026-06-15T12:00:00.000Z",
+      seasonId: "season-1",
+      swings: [
+        {
+          kind: "league",
+          leagueId: "league-123",
+          netPnlCents: 2500,
+          newRank: 1,
+          oldRank: 2,
+          rankDelta: 1,
+          subjectId: "league-123",
+          userId: null,
+        },
+      ],
+      type: REALTIME_EVENTS.arenaStandingsSwing,
+      v: 1,
+    });
+
+    expect(calls.map((call) => call.input.toString())).toEqual([
+      "https://project.supabase.co/realtime/v1/api/broadcast/arena%3Aleaderboard/events/arena.leaderboard.updated?private=true",
+      "https://project.supabase.co/realtime/v1/api/broadcast/arena%3Aleaderboard/events/arena.standings.swing?private=true",
+    ]);
+    expect(parseJsonBody(calls[1]?.init?.body)).toMatchObject({
+      seasonId: "season-1",
+      swings: [
+        {
+          kind: "league",
+          newRank: 1,
+          oldRank: 2,
+          rankDelta: 1,
+          subjectId: "league-123",
+        },
+      ],
+      type: "arena.standings.swing",
+      v: 1,
+    });
+  });
+
   it("delivers scores.updated payloads through the in-process publisher", async () => {
     const publisher = new InProcessRealtimePublisher();
     const received: unknown[] = [];
@@ -189,5 +295,58 @@ describe("realtime publisher", () => {
     });
 
     expect(received).toHaveLength(1);
+  });
+
+  it("delivers arena swing payloads through the in-process publisher", async () => {
+    const publisher = new InProcessRealtimePublisher();
+    const received: unknown[] = [];
+    const unsubscribe = publisher.subscribe(
+      arenaLeaderboardChannel(),
+      REALTIME_EVENTS.arenaStandingsSwing,
+      (message) => {
+        received.push(message);
+      },
+    );
+
+    await publisher.publishArenaStandingsSwing({
+      at: "2026-06-15T12:00:02.000Z",
+      computedAt: "2026-06-15T12:00:00.000Z",
+      seasonId: "season-1",
+      swings: [
+        {
+          kind: "individual",
+          leagueId: null,
+          netPnlCents: 1200,
+          newRank: 3,
+          oldRank: 8,
+          rankDelta: 5,
+          subjectId: "user-1",
+          userId: "user-1",
+        },
+      ],
+      type: REALTIME_EVENTS.arenaStandingsSwing,
+      v: 1,
+    });
+
+    expect(received).toEqual([
+      {
+        event: REALTIME_EVENTS.arenaStandingsSwing,
+        payload: expect.objectContaining({
+          seasonId: "season-1",
+          swings: [
+            expect.objectContaining({
+              newRank: 3,
+              oldRank: 8,
+              rankDelta: 5,
+              subjectId: "user-1",
+            }),
+          ],
+          type: "arena.standings.swing",
+        }),
+        topic: "arena:leaderboard",
+      },
+    ]);
+
+    unsubscribe();
   });
 });

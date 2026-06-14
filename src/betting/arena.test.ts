@@ -18,6 +18,7 @@ import { migrateSerialized } from "@/db/test-support";
 import {
   computeArenaStandings,
   ensureArenaSeason,
+  extractArenaStandingSwingSignals,
   getArenaLeaderboardData,
   rebuildArenaStandings,
 } from "./arena";
@@ -403,6 +404,7 @@ describe("arena leaderboard materialization", () => {
       computedAt: day(12),
       seasonId: season.id,
     });
+    expect(extractArenaStandingSwingSignals(first)).toEqual([]);
     expect(
       first.leagueStandings.map((row) => ({
         delta: row.rankDelta,
@@ -427,10 +429,32 @@ describe("arena leaderboard materialization", () => {
       weekStartDay: 10,
     });
 
-    await rebuildArenaStandings(handle.db, {
+    const second = await rebuildArenaStandings(handle.db, {
       computedAt: day(13),
       seasonId: season.id,
     });
+    expect(extractArenaStandingSwingSignals(second)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "league",
+          leagueId: leagueA.id,
+          newRank: 1,
+          oldRank: 2,
+          rankDelta: 1,
+          subjectId: leagueA.id,
+          userId: null,
+        }),
+        expect.objectContaining({
+          kind: "league",
+          leagueId: leagueB.id,
+          newRank: 2,
+          oldRank: 1,
+          rankDelta: -1,
+          subjectId: leagueB.id,
+          userId: null,
+        }),
+      ]),
+    );
     const leaderboard = await getArenaLeaderboardData(handle.db, {
       now: day(14),
       seasonId: season.id,

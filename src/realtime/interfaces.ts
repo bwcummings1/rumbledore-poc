@@ -2,6 +2,7 @@ import type { AiPersona } from "@/ai/personas";
 
 export const REALTIME_EVENTS = {
   arenaLeaderboardUpdated: "arena.leaderboard.updated",
+  arenaStandingsSwing: "arena.standings.swing",
   blogPublished: "blog.published",
   centralNewsUpdated: "central.news.updated",
   leagueLeaderboardUpdated: "league.leaderboard.updated",
@@ -57,6 +58,26 @@ export interface ArenaLeaderboardUpdatedPayload {
   seasonId: string | null;
 }
 
+export interface ArenaStandingSwing {
+  kind: "individual" | "league";
+  leagueId: string | null;
+  netPnlCents: number;
+  newRank: number;
+  oldRank: number;
+  rankDelta: number;
+  subjectId: string;
+  userId: string | null;
+}
+
+export interface ArenaStandingsSwingPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.arenaStandingsSwing;
+  at: string;
+  computedAt: string;
+  seasonId: string;
+  swings: ArenaStandingSwing[];
+}
+
 export interface CentralNewsUpdatedPayload {
   v: 1;
   type: typeof REALTIME_EVENTS.centralNewsUpdated;
@@ -66,6 +87,7 @@ export interface CentralNewsUpdatedPayload {
 
 export type RealtimePayload =
   | ArenaLeaderboardUpdatedPayload
+  | ArenaStandingsSwingPayload
   | BlogPublishedPayload
   | CentralNewsUpdatedPayload
   | LeagueLeaderboardUpdatedPayload
@@ -73,7 +95,16 @@ export type RealtimePayload =
   | ScoresUpdatedPayload;
 
 export interface RealtimePublisher {
+  publishArenaLeaderboardUpdated(
+    payload: ArenaLeaderboardUpdatedPayload,
+  ): Promise<void>;
+  publishArenaStandingsSwing(
+    payload: ArenaStandingsSwingPayload,
+  ): Promise<void>;
   publishLeagueBlogPublished(payload: BlogPublishedPayload): Promise<void>;
+  publishLeagueLeaderboardUpdated(
+    payload: LeagueLeaderboardUpdatedPayload,
+  ): Promise<void>;
   publishLeagueScoresUpdated(payload: ScoresUpdatedPayload): Promise<void>;
 }
 
@@ -109,6 +140,16 @@ export function leagueRealtimeChannel(
 
 export function leagueBlogChannel(leagueId: string): `league:${string}:blog` {
   return `league:${leagueId}:blog`;
+}
+
+export function arenaLeaderboardChannel(): "arena:leaderboard" {
+  return "arena:leaderboard";
+}
+
+export function leagueLeaderboardChannel(
+  leagueId: string,
+): `league:${string}:leaderboard` {
+  return `league:${leagueId}:leaderboard`;
 }
 
 export function leagueScoresChannel(
