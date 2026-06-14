@@ -1,64 +1,30 @@
-import { ArrowLeft, ExternalLink, Newspaper } from "lucide-react";
+import { ArrowLeft, Newspaper } from "lucide-react";
 import Link from "next/link";
+import {
+  type PublicationStory,
+  PublicationStoryCard,
+} from "@/components/publication/story-card";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { buildPublicationFront } from "@/news/front";
 import type { CentralNewsHubData } from "@/news/hub";
 import { CentralNewsRealtimeRefresh } from "@/realtime/client";
 
-function formatPublishedAt(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(value));
-}
-
-function NewsCard({ item }: { item: CentralNewsHubData["items"][number] }) {
-  const hasLink = item.sourceUrl.length > 0;
-
-  return (
-    <article className="rounded-card border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="min-w-0 truncate text-xs font-medium text-primary">
-          {item.source}
-        </p>
-        <time
-          className="shrink-0 text-xs text-muted-foreground"
-          dateTime={item.publishedAt}
-        >
-          {formatPublishedAt(item.publishedAt)}
-        </time>
-      </div>
-      <h2 className="text-base font-semibold tracking-tight">{item.title}</h2>
-      {item.summary ? (
-        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-          {item.summary}
-        </p>
-      ) : null}
-      {hasLink ? (
-        <a
-          href={item.sourceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className={cn(
-            buttonVariants({
-              className: "mt-4 w-fit",
-              size: "sm",
-              variant: "outline",
-            }),
-          )}
-        >
-          Read source
-          <ExternalLink data-icon="inline-end" />
-        </a>
-      ) : null}
-    </article>
-  );
+function toStory(item: CentralNewsHubData["items"][number]): PublicationStory {
+  return {
+    byline: item.source,
+    dek: item.summary,
+    headline: item.title,
+    id: item.id,
+    publishedAt: item.publishedAt,
+    sectionTag: "Central News",
+    sourceUrl: item.sourceUrl,
+  };
 }
 
 export function NewsHubView({ data }: { data: CentralNewsHubData }) {
+  const front = buildPublicationFront(data.items);
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <CentralNewsRealtimeRefresh />
@@ -78,7 +44,10 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
             <p className="text-sm font-medium">Central news</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            <p className="text-sm font-medium text-muted-foreground">
+              Rumbledore News
+            </p>
+            <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
               NFL and fantasy headlines
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -89,20 +58,45 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
         </div>
       </header>
 
-      {data.items.length > 0 ? (
-        <section
-          className="grid gap-3 sm:grid-cols-2"
-          aria-label="News stories"
-        >
-          {data.items.map((item) => (
-            <NewsCard key={item.id} item={item} />
-          ))}
-        </section>
+      {front.lead ? (
+        <div className="grid gap-5">
+          <section aria-label="Lead story" data-front-tier="lead">
+            <PublicationStoryCard story={toStory(front.lead)} variant="hero" />
+          </section>
+          {front.secondaries.length > 0 ? (
+            <section
+              className="grid gap-3 md:grid-cols-3"
+              aria-label="Secondary stories"
+              data-front-tier="secondary"
+            >
+              {front.secondaries.map((item) => (
+                <PublicationStoryCard
+                  key={item.id}
+                  story={toStory(item)}
+                  variant="secondary"
+                />
+              ))}
+            </section>
+          ) : null}
+          {front.river.length > 0 ? (
+            <section
+              className="grid gap-3 sm:grid-cols-2"
+              aria-label="Story river"
+              data-front-tier="river"
+            >
+              {front.river.map((item) => (
+                <PublicationStoryCard
+                  key={item.id}
+                  story={toStory(item)}
+                  variant="river"
+                />
+              ))}
+            </section>
+          ) : null}
+        </div>
       ) : (
         <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold tracking-tight">
-            No central stories yet
-          </h2>
+          <h2 className="text-base font-semibold">No central stories yet</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             The news refresh job has not published any shared headlines.
           </p>

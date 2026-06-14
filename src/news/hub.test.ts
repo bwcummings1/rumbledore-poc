@@ -111,4 +111,44 @@ describe("central news hub", () => {
     expect(titles).not.toContain("League-scoped news story");
     expect(titles).not.toContain("Central blog story");
   });
+
+  it("lets an older editorially important story lead over fresher minor news", async () => {
+    await handle.db.insert(contentItems).values([
+      {
+        body: "Fresh minor central body.",
+        contentHash: `${marker}-rank-fresh-hash`,
+        dedupKey: `${marker}-rank-fresh`,
+        kind: "news",
+        leagueId: null,
+        publishedAt: new Date("2026-06-11T16:00:00.000Z"),
+        source: "Fresh Wire",
+        sourceUrl: `https://news.example.com/${marker}/rank-fresh`,
+        summary: "A fresher but minor central summary.",
+        title: "Fresh minor central story",
+      },
+      {
+        body: "Older lead central body.",
+        contentHash: `${marker}-rank-older-lead-hash`,
+        dedupKey: `${marker}-rank-older-lead`,
+        kind: "news",
+        leagueId: null,
+        metadata: { editorialImportance: 3 },
+        publishedAt: new Date("2026-06-11T10:00:00.000Z"),
+        source: "Lead Wire",
+        sourceUrl: `https://news.example.com/${marker}/rank-older-lead`,
+        summary: "An older but more important central summary.",
+        title: "Older important central story",
+      },
+    ]);
+
+    const data = await getCentralNewsHubData(handle.db, { limit: 100 });
+    const markedItems = data.items.filter((item) =>
+      item.sourceUrl.includes(`${marker}/rank-`),
+    );
+
+    expect(markedItems.map((item) => item.title)).toEqual([
+      "Older important central story",
+      "Fresh minor central story",
+    ]);
+  });
 });

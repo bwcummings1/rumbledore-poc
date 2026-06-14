@@ -560,7 +560,15 @@ async function selectStatsRows(leagueId: string) {
       .select()
       .from(statsCalculations)
       .where(eq(statsCalculations.leagueId, leagueId))
-      .orderBy(asc(statsCalculations.startedAt));
+      .orderBy(
+        asc(statsCalculations.startedAt),
+        sql`case ${statsCalculations.calculationType}
+          when 'all' then 0
+          when 'season' then 1
+          when 'head_to_head' then 2
+          else 4
+        end`,
+      );
     const dataCorrectionAuditRows = await tx
       .select()
       .from(dataCorrectionAuditLog)

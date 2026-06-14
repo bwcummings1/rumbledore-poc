@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: Publication Front archetype landed — `/news` and league Press now render ranked lead/secondary/river tiers from a shared story-card contract, with editorial importance able to beat pure recency.
 - 2026-06-14: Targeted incremental stats recompute landed — changed finalized matchups now refresh only affected season/championship rows plus affected H2H pairs, with `stats_calculation` logs proving no full all-time rebuild on routine sync.
 - 2026-06-14: Data integrity and stewardship landed — recomputes now record reconciliation/standings/schedule/identity/coverage checks, unresolved failures quarantine trusted record reads, and steward actions can review/rerun/rename/reassign with audit.
 - 2026-06-14: League edge-case substrate landed — normalized scoring settings, keeper markers, divisions, matchup kind, and roster keeper metadata now persist across providers, with stats keeping median/all-play rows out of H2H records.

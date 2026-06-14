@@ -1,25 +1,14 @@
-import {
-  ArrowLeft,
-  ArrowRight,
-  ExternalLink,
-  Newspaper,
-  Rss,
-} from "lucide-react";
+import { ArrowLeft, Newspaper, Rss } from "lucide-react";
 import Link from "next/link";
+import {
+  type PublicationStory,
+  PublicationStoryCard,
+} from "@/components/publication/story-card";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LeagueFeedData, LeagueFeedItem } from "@/news";
+import { buildPublicationFront } from "@/news/front";
 import { LeagueRealtimeRefresh } from "@/realtime/client";
-
-function formatPublishedAt(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(value));
-}
 
 function personaLabel(persona: LeagueFeedItem["authorPersona"]): string {
   switch (persona) {
@@ -45,84 +34,44 @@ function sourceLabel(item: LeagueFeedItem): string {
   return item.sourceLabel;
 }
 
-function FeedCard({
+function sectionTag(item: LeagueFeedItem): string {
+  if (item.scope === "central") {
+    return "Matched News";
+  }
+  if (item.kind === "ingest_event") {
+    return "League Activity";
+  }
+  return "The Press";
+}
+
+function toStory({
   item,
   leagueId,
 }: {
   item: LeagueFeedItem;
   leagueId: string;
-}) {
-  const hasSource = item.scope === "central" && item.sourceUrl.length > 0;
-  const postHref =
+}): PublicationStory {
+  const href =
     item.scope === "league" && item.kind === "blog"
       ? `/leagues/${leagueId}/press/${item.contentItemId}`
-      : null;
-  const Icon = item.scope === "central" ? Newspaper : Rss;
+      : undefined;
 
-  return (
-    <article className="rounded-card border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-primary">
-          <Icon className="size-4 shrink-0" aria-hidden="true" />
-          <p className="min-w-0 truncate text-xs font-medium">
-            {sourceLabel(item)}
-          </p>
-        </div>
-        <time
-          className="shrink-0 text-xs text-muted-foreground"
-          dateTime={item.publishedAt}
-        >
-          {formatPublishedAt(item.publishedAt)}
-        </time>
-      </div>
-      <h2 className="text-base font-semibold tracking-tight">{item.title}</h2>
-      {item.summary ? (
-        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-          {item.summary}
-        </p>
-      ) : null}
-      {item.relevanceReason ? (
-        <p className="mt-3 rounded-control border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          {item.relevanceReason}
-        </p>
-      ) : null}
-      {hasSource ? (
-        <a
-          href={item.sourceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className={cn(
-            buttonVariants({
-              className: "mt-4 w-fit",
-              size: "sm",
-              variant: "outline",
-            }),
-          )}
-        >
-          Read source
-          <ExternalLink data-icon="inline-end" />
-        </a>
-      ) : null}
-      {postHref ? (
-        <Link
-          href={postHref}
-          className={cn(
-            buttonVariants({
-              className: "mt-4 w-fit",
-              size: "sm",
-              variant: "outline",
-            }),
-          )}
-        >
-          Read post
-          <ArrowRight data-icon="inline-end" />
-        </Link>
-      ) : null}
-    </article>
-  );
+  return {
+    byline: sourceLabel(item),
+    dek: item.summary,
+    headline: item.title,
+    href,
+    id: `${item.scope}-${item.id}`,
+    publishedAt: item.publishedAt,
+    relevanceReason: item.relevanceReason,
+    sectionTag: sectionTag(item),
+    sourceUrl: item.scope === "central" ? item.sourceUrl : undefined,
+  };
 }
 
 export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
+  const front = buildPublicationFront(data.items);
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <LeagueRealtimeRefresh
@@ -156,8 +105,11 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
             <p className="text-sm font-medium">The Press</p>
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              {data.league.name}
+            <p className="text-sm font-medium text-muted-foreground">
+              League publication
+            </p>
+            <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
+              The {data.league.name} Press
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {data.league.season} ESPN fantasy football ·{" "}
@@ -167,21 +119,48 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
         </div>
       </header>
 
-      {data.items.length > 0 ? (
-        <section className="grid gap-3 sm:grid-cols-2" aria-label="Press items">
-          {data.items.map((item) => (
-            <FeedCard
-              key={`${item.scope}-${item.id}`}
-              item={item}
-              leagueId={data.league.id}
+      {front.lead ? (
+        <div className="grid gap-5">
+          <section aria-label="Lead story" data-front-tier="lead">
+            <PublicationStoryCard
+              story={toStory({ item: front.lead, leagueId: data.league.id })}
+              variant="hero"
             />
-          ))}
-        </section>
+          </section>
+          {front.secondaries.length > 0 ? (
+            <section
+              className="grid gap-3 md:grid-cols-3"
+              aria-label="Secondary stories"
+              data-front-tier="secondary"
+            >
+              {front.secondaries.map((item) => (
+                <PublicationStoryCard
+                  key={`${item.scope}-${item.id}`}
+                  story={toStory({ item, leagueId: data.league.id })}
+                  variant="secondary"
+                />
+              ))}
+            </section>
+          ) : null}
+          {front.river.length > 0 ? (
+            <section
+              className="grid gap-3 sm:grid-cols-2"
+              aria-label="Story river"
+              data-front-tier="river"
+            >
+              {front.river.map((item) => (
+                <PublicationStoryCard
+                  key={`${item.scope}-${item.id}`}
+                  story={toStory({ item, leagueId: data.league.id })}
+                  variant="river"
+                />
+              ))}
+            </section>
+          ) : null}
+        </div>
       ) : (
         <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold tracking-tight">
-            No Press items yet
-          </h2>
+          <h2 className="text-base font-semibold">No Press items yet</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             League posts and matched central stories will appear here after the
             cast publishes.

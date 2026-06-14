@@ -12,10 +12,10 @@ import {
   members,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import { editorialImportance, publicationRankScore } from "./front";
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
-const HOUR_MS = 60 * 60 * 1000;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,6 +35,7 @@ export interface LeagueFeedItem {
   publishedAt: string;
   relevanceReason: string;
   relevanceScore: number;
+  editorialImportance?: number;
   matchedEntities: LeagueFeedMatchedEntity[];
 }
 
@@ -100,15 +101,20 @@ function kindBoostHours(kind: LeagueFeedKind): number {
 }
 
 function rankScore({
+  editorialImportance: importance,
   kind,
   publishedAt,
   relevanceScore,
-}: Pick<LeagueFeedItem, "kind" | "publishedAt" | "relevanceScore">): number {
-  return (
-    new Date(publishedAt).getTime() / HOUR_MS +
-    kindBoostHours(kind) +
-    relevanceScore
-  );
+}: Pick<
+  LeagueFeedItem,
+  "editorialImportance" | "kind" | "publishedAt" | "relevanceScore"
+>): number {
+  return publicationRankScore({
+    editorialImportance: importance,
+    kindBoostHours: kindBoostHours(kind),
+    publishedAt,
+    relevanceScore,
+  });
 }
 
 function sortFeedItems(items: readonly LeagueFeedItem[]): LeagueFeedItem[] {
@@ -252,12 +258,14 @@ export async function getLeagueFeedData(
   }
 
   const limit = boundedLimit(input.limit);
+  const candidateLimit = Math.min(limit * 3, MAX_LIMIT);
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
     const leagueRows = await tx
       .select({
         authorPersona: contentItems.authorPersona,
         id: contentItems.id,
         kind: contentItems.kind,
+        metadata: contentItems.metadata,
         publishedAt: contentItems.publishedAt,
         summary: contentItems.summary,
         title: contentItems.title,
@@ -270,7 +278,7 @@ export async function getLeagueFeedData(
         ),
       )
       .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
-      .limit(limit);
+      .limit(candidateLimit);
 
     const centralRows = await tx
       .select({
@@ -279,6 +287,7 @@ export async function getLeagueFeedData(
         framingTitle: leagueFeedReferences.framingTitle,
         id: leagueFeedReferences.id,
         matchedEntities: leagueFeedReferences.matchedEntities,
+        metadata: contentItems.metadata,
         publishedAt: contentItems.publishedAt,
         reason: leagueFeedReferences.reason,
         relevanceScore: leagueFeedReferences.relevanceScore,
@@ -303,13 +312,14 @@ export async function getLeagueFeedData(
         desc(leagueFeedReferences.relevanceScore),
         desc(contentItems.publishedAt),
       )
-      .limit(limit);
+      .limit(candidateLimit);
 
     const leagueItems: LeagueFeedItem[] = leagueRows.map((row) => ({
       authorPersona: row.authorPersona,
       contentItemId: row.id,
       id: row.id,
       kind: row.kind,
+      editorialImportance: editorialImportance(row.metadata),
       matchedEntities: [],
       publishedAt: row.publishedAt.toISOString(),
       relevanceReason: "",
@@ -326,6 +336,7 @@ export async function getLeagueFeedData(
       contentItemId: row.contentItemId,
       id: row.id,
       kind: "news",
+      editorialImportance: editorialImportance(row.metadata),
       matchedEntities: row.matchedEntities,
       publishedAt: row.publishedAt.toISOString(),
       relevanceReason: row.reason,

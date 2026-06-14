@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { LeagueFeedData } from "@/news";
 import { LeagueFeedView } from "./league-feed-view";
@@ -48,6 +48,66 @@ const data: LeagueFeedData = {
       summary: "Fixture Team 01 has a lineup decision now.",
       title: "A-specific quarterback fallout",
     },
+    {
+      authorPersona: "narrator",
+      contentItemId: "blog-content-2",
+      id: "blog-content-2",
+      kind: "blog",
+      matchedEntities: [],
+      publishedAt: "2026-06-11T10:00:00.000Z",
+      relevanceReason: "",
+      relevanceScore: 0,
+      scope: "league",
+      sourceLabel: "League blog",
+      sourceUrl: "",
+      summary: "The Narrator frames a rivalry week collapse.",
+      title: "Narrator files the rivalry week autopsy",
+    },
+    {
+      authorPersona: null,
+      contentItemId: "activity-content-1",
+      id: "activity-content-1",
+      kind: "ingest_event",
+      matchedEntities: [],
+      publishedAt: "2026-06-11T09:00:00.000Z",
+      relevanceReason: "",
+      relevanceScore: 0,
+      scope: "league",
+      sourceLabel: "League activity",
+      sourceUrl: "",
+      summary: "A notable lineup move hit the transaction wire.",
+      title: "Fixture Team 01 shakes up the bench",
+    },
+    {
+      authorPersona: "analyst",
+      contentItemId: "blog-content-3",
+      id: "blog-content-3",
+      kind: "blog",
+      matchedEntities: [],
+      publishedAt: "2026-06-11T08:00:00.000Z",
+      relevanceReason: "",
+      relevanceScore: 0,
+      scope: "league",
+      sourceLabel: "League blog",
+      sourceUrl: "",
+      summary: "The Analyst notes a points-for mirage.",
+      title: "Analyst warns the standings are lying",
+    },
+    {
+      authorPersona: "trash_talker",
+      contentItemId: "blog-content-4",
+      id: "blog-content-4",
+      kind: "blog",
+      matchedEntities: [],
+      publishedAt: "2026-06-11T07:00:00.000Z",
+      relevanceReason: "",
+      relevanceScore: 0,
+      scope: "league",
+      sourceLabel: "League blog",
+      sourceUrl: "",
+      summary: "The Trash-Talker circles the waiver-wire panic.",
+      title: "Trash-Talker opens the panic ledger",
+    },
   ],
   league: {
     id: "00000000-0000-4000-8000-000000000001",
@@ -67,12 +127,13 @@ test("league press view renders league posts and relevant central stories", () =
   render(<LeagueFeedView data={data} />);
 
   expect(
-    screen.getByRole("heading", { level: 1, name: "Feed League A" }),
+    screen.getByRole("heading", { level: 1, name: "The Feed League A Press" }),
   ).toBeDefined();
+  const lead = within(screen.getByLabelText("Lead story"));
   expect(
-    screen.getByRole("heading", { name: "Commissioner note for league A" }),
+    lead.getByRole("heading", { name: "Commissioner note for league A" }),
   ).toBeDefined();
-  expect(screen.getByText("Commissioner")).toBeDefined();
+  expect(lead.getByText("Commissioner")).toBeDefined();
   expect(
     screen.getByRole("heading", { name: "A-specific quarterback fallout" }),
   ).toBeDefined();
@@ -84,8 +145,14 @@ test("league press view renders league posts and relevant central stories", () =
     screen.getByRole("link", { name: /read source/i }).getAttribute("href"),
   ).toBe("https://news.example.com/relevant");
   expect(
-    screen.getByRole("link", { name: /read post/i }).getAttribute("href"),
+    lead.getByRole("link", { name: /read post/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press/blog-content-1");
+  expect(
+    within(screen.getByLabelText("Secondary stories")).getAllByRole("article"),
+  ).toHaveLength(3);
+  expect(
+    within(screen.getByLabelText("Story river")).getAllByRole("article"),
+  ).toHaveLength(2);
   expect(
     screen.getByRole("link", { name: /league home/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001");
