@@ -9,7 +9,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Implement the Global-vs-League scope model with section taxonomy and active-scope-from-URL state. (specs/10)
 - [x] Build the unified league switcher: all leagues MRU-first, provider as a badge (not a nav level), search + group toggle. (specs/10)
 - [x] Build the responsive nav shell: mobile bottom tabs + scope-switcher sheet; desktop/tablet collapsible sidebar. (specs/10)
-- [ ] Build the cross-league "Your Leagues" landing with per-league cards (this-week + latest Press headline). (specs/10)
+- [x] Build the cross-league "Your Leagues" landing with per-league cards (this-week + latest Press headline). (specs/10)
 - [ ] Migrate the current flat routes onto the new IA with auth guards and redirects. (specs/10)
 
 ### B. Data-foundation depth (bedrock — see specs/14)
