@@ -67,7 +67,14 @@ describe("AnthropicLlmClient", () => {
           return {
             parsed_output: {
               body: "Body from Claude.",
+              bodyBlocks: [
+                { text: "Filed from the desk", type: "heading" },
+                { text: "Body from Claude.", type: "paragraph" },
+              ],
+              dek: "Dek from Claude.",
+              section: "previews",
               summary: "Summary from Claude.",
+              tags: ["Fixture Team", "Preview"],
               title: "Title from Claude",
             },
           };
@@ -81,7 +88,14 @@ describe("AnthropicLlmClient", () => {
 
     await expect(llm.generate(requestFor("commissioner"))).resolves.toEqual({
       body: "Body from Claude.",
+      bodyBlocks: [
+        { text: "Filed from the desk", type: "heading" },
+        { text: "Body from Claude.", type: "paragraph" },
+      ],
+      dek: "Dek from Claude.",
+      section: "previews",
       summary: "Summary from Claude.",
+      tags: ["Fixture Team", "Preview"],
       title: "Title from Claude",
     });
     await llm.generate(requestFor("analyst"));

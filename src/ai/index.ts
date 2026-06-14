@@ -1,5 +1,6 @@
 export type {
   BlogDraft,
+  BlogDraftBodyBlock,
   EmbeddingProvider,
   LeagueBlogContext,
   LlmClient,

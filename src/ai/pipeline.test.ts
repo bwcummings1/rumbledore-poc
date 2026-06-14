@@ -32,6 +32,7 @@ import {
 import { migrateSerialized } from "@/db/test-support";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
+import { bodyBlocksToMarkdown } from "./article-draft";
 
 const marker = `aipipeline-${randomUUID()}`;
 let handle: DbHandle;
@@ -41,11 +42,32 @@ class DuplicateLlmClient implements LlmClient {
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
     this.requests.push(request);
+    const bodyBlocks: BlogDraft["bodyBlocks"] = [
+      { text: "Duplicate heading", type: "heading" },
+      {
+        text: "This duplicate body is intentionally unchanged.",
+        type: "paragraph",
+      },
+    ];
     return {
-      body: "This duplicate body is intentionally unchanged.",
+      body: bodyBlocksToMarkdown(bodyBlocks),
+      bodyBlocks,
+      dek: "This duplicate dek is intentionally unchanged.",
+      section: "recaps",
       summary: "This duplicate summary is intentionally unchanged.",
+      tags: ["Duplicate"],
       title: "Duplicate league note",
     };
+  }
+}
+
+class BlobLlmClient implements LlmClient {
+  async generate(): Promise<BlogDraft> {
+    return {
+      body: "This old blob body has no article shape.",
+      summary: "This old blob summary has no article shape.",
+      title: "Old blob draft",
+    } as BlogDraft;
   }
 }
 
@@ -282,11 +304,35 @@ describe("generateLeagueBlogPost", () => {
       "published",
       "published",
     ]);
-    expect(rows.posts[0]?.body).toContain("alpha Team");
-    expect(rows.posts[0]?.body).toContain("alpha Manager");
-    expect(rows.posts[0]?.body).not.toContain("beta Team");
-    expect(rows.posts[0]?.body).not.toContain("Ignore previous instructions");
-    expect(rows.posts[0]?.body).not.toContain("example.invalid");
+    const firstPost = rows.posts.find(
+      (post) => post.dedupKey === "blog:commissioner:weekly:2026:1",
+    );
+    expect(firstPost?.body).toContain("alpha Team");
+    expect(firstPost?.body).toContain("alpha Manager");
+    expect(firstPost?.body).toContain("## Commissioner's league note");
+    expect(firstPost?.body).toContain("> No current record-book event");
+    expect(firstPost?.body).not.toContain("beta Team");
+    expect(firstPost?.body).not.toContain("Ignore previous instructions");
+    expect(firstPost?.body).not.toContain("example.invalid");
+    expect(firstPost?.metadata).toMatchObject({
+      article: {
+        bylinePersona: "commissioner",
+        format: "rumbledore.article.v1",
+        headline: `Commissioner: ${marker} alpha snapshot`,
+      },
+      byline: "commissioner",
+      dek: expect.stringContaining("previews piece"),
+      leagueSection: "previews",
+      section: "previews",
+      tags: expect.arrayContaining(["alpha Team", "alpha Manager"]),
+      triggerKey: "weekly:2026:1",
+    });
+    expect(
+      (
+        (firstPost?.metadata as Record<string, unknown> | undefined)
+          ?.bodyBlocks as unknown[] | undefined
+      )?.length,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it("regenerates once and skips near-duplicate drafts", async () => {
@@ -473,5 +519,44 @@ describe("generateLeagueBlogPost", () => {
       status: "published",
       title: `Commissioner: ${marker} webfail snapshot`,
     });
+  });
+
+  it("rejects old blob-style drafts before publishing", async () => {
+    const league = await seedLeague("blob");
+
+    await expect(
+      generateLeagueBlogPost({
+        deps: {
+          db: handle.db,
+          duplicateThreshold: 1.1,
+          embeddings: new DeterministicEmbeddingProvider(),
+          llm: new BlobLlmClient(),
+          now: () => new Date("2026-06-11T12:00:00.000Z"),
+          push: new NoopPushNotifier(),
+          realtime: new RecordingRealtimePublisher(),
+          web: new MockWebGrounding(),
+        },
+        input: {
+          leagueId: league.id,
+          persona: "narrator",
+          triggerKey: "weekly:blob",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "AI_DRAFT_EMPTY",
+    });
+
+    const posts = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select()
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        ),
+    );
+    expect(posts).toHaveLength(0);
   });
 });

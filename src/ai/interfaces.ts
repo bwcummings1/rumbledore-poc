@@ -1,3 +1,4 @@
+import type { LeaguePublicationSectionId } from "@/news/sections";
 import type { AiPersona } from "./personas";
 
 export interface NewsItem {
@@ -76,10 +77,20 @@ export interface PromptParts {
   prompt: string;
 }
 
+export type BlogDraftBodyBlock =
+  | { type: "heading"; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "quote"; text: string }
+  | { type: "list"; ordered?: boolean; items: string[] };
+
 export interface BlogDraft {
   title: string;
   summary: string;
+  dek: string;
+  section: LeaguePublicationSectionId;
+  tags: string[];
   body: string;
+  bodyBlocks: BlogDraftBodyBlock[];
 }
 
 export interface LlmGenerateRequest {

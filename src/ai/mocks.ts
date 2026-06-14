@@ -1,5 +1,10 @@
+import {
+  bodyBlocksToMarkdown,
+  defaultLeagueArticleSectionForPersona,
+} from "./article-draft";
 import type {
   BlogDraft,
+  BlogDraftBodyBlock,
   EmbeddingProvider,
   LeagueContextRecord,
   LeagueContextTeam,
@@ -50,14 +55,43 @@ export class MockLlmClient implements LlmClient {
     const teamLine = team
       ? `${team.name}, managed by ${manager}, is the first team to watch at ${team.wins}-${team.losses}-${team.ties}.`
       : `${manager} has the quietest board because no teams have been ingested yet.`;
+    const section = defaultLeagueArticleSectionForPersona(request.persona);
+    const tags = [
+      team?.name,
+      manager,
+      record?.label,
+      request.context.league.name,
+    ].filter((tag): tag is string => Boolean(tag));
+    const bodyBlocks: BlogDraftBodyBlock[] = [
+      {
+        text: `${personaName}'s league note`,
+        type: "heading",
+      },
+      {
+        text: `${angle} ${teamLine}`,
+        type: "paragraph",
+      },
+      {
+        text: recordLine,
+        type: "quote",
+      },
+      {
+        text: "Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.",
+        type: "paragraph",
+      },
+    ];
 
     return {
-      body: cleanSummary(
-        `${angle} ${teamLine} ${recordLine} Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
+      body: bodyBlocksToMarkdown(bodyBlocks),
+      bodyBlocks,
+      dek: cleanSummary(
+        `${personaName} files a ${section.replaceAll("-", " ")} piece on ${team?.name ?? request.context.league.name}.`,
       ),
+      section,
       summary: cleanSummary(
         `${personaName} notes ${team?.name ?? request.context.league.name} as the league-specific storyline.`,
       ),
+      tags,
       title: `${personaName}: ${request.context.league.name} snapshot`,
     };
   }

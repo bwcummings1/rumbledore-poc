@@ -1,0 +1,200 @@
+import { AppError } from "@/core/result";
+import {
+  getLeaguePublicationSectionBySlug,
+  type LeaguePublicationSectionId,
+} from "@/news/sections";
+import type { BlogDraft, BlogDraftBodyBlock } from "./interfaces";
+import type { AiPersona } from "./personas";
+
+const MAX_TAGS = 8;
+
+function cleanText(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function normalizeTags(values: readonly unknown[]): string[] {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+
+  for (const value of values) {
+    const tag = cleanText(value);
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    tags.push(tag);
+    if (tags.length >= MAX_TAGS) {
+      break;
+    }
+  }
+
+  return tags;
+}
+
+function normalizeBodyBlock(
+  block: BlogDraftBodyBlock,
+): BlogDraftBodyBlock | null {
+  switch (block.type) {
+    case "heading": {
+      const text = cleanText(block.text);
+      return text ? { text, type: "heading" } : null;
+    }
+    case "paragraph": {
+      const text = cleanText(block.text);
+      return text ? { text, type: "paragraph" } : null;
+    }
+    case "quote": {
+      const text = cleanText(block.text);
+      return text ? { text, type: "quote" } : null;
+    }
+    case "list": {
+      const rawItems = Array.isArray(block.items) ? block.items : [];
+      const items = normalizeTags(rawItems);
+      return items.length > 0
+        ? { items, ordered: block.ordered === true, type: "list" }
+        : null;
+    }
+  }
+}
+
+export function normalizeLeagueArticleSection(
+  value: unknown,
+): LeaguePublicationSectionId | null {
+  const section = cleanText(value);
+  return section
+    ? (getLeaguePublicationSectionBySlug(section)?.id ?? null)
+    : null;
+}
+
+export function defaultLeagueArticleSectionForPersona(
+  persona: AiPersona,
+): LeaguePublicationSectionId {
+  switch (persona) {
+    case "analyst":
+      return "power-rankings";
+    case "betting_advisor":
+    case "commissioner":
+      return "previews";
+    case "narrator":
+      return "recaps";
+    case "trash_talker":
+      return "trash-talk";
+  }
+}
+
+export function bodyBlocksToMarkdown(
+  blocks: readonly BlogDraftBodyBlock[],
+): string {
+  return blocks
+    .map((block) => {
+      switch (block.type) {
+        case "heading":
+          return `## ${block.text}`;
+        case "paragraph":
+          return block.text;
+        case "quote":
+          return `> ${block.text}`;
+        case "list":
+          return block.items
+            .map((item, index) =>
+              block.ordered ? `${index + 1}. ${item}` : `- ${item}`,
+            )
+            .join("\n");
+      }
+      return "";
+    })
+    .join("\n\n");
+}
+
+export function validateBlogDraft(draft: BlogDraft): BlogDraft {
+  const title = cleanText(draft.title);
+  const summary = cleanText(draft.summary);
+  const dek = cleanText(draft.dek);
+  const body = cleanText(draft.body);
+  const section = normalizeLeagueArticleSection(draft.section);
+  const rawTags = Array.isArray(draft.tags) ? draft.tags : [];
+  const tags = normalizeTags(rawTags);
+  const rawBodyBlocks = Array.isArray(draft.bodyBlocks) ? draft.bodyBlocks : [];
+  const bodyBlocks = rawBodyBlocks
+    .map(normalizeBodyBlock)
+    .filter((block): block is BlogDraftBodyBlock => block !== null);
+
+  if (!title || !summary || !dek || !body) {
+    throw new AppError({
+      code: "AI_DRAFT_EMPTY",
+      message: "AI draft must include a headline, summary, dek, and body",
+      status: 422,
+    });
+  }
+
+  if (!section || tags.length === 0 || bodyBlocks.length < 2) {
+    throw new AppError({
+      code: "AI_DRAFT_ARTICLE_INVALID",
+      message:
+        "AI draft must include a league section, tags, and a structured body",
+      status: 422,
+    });
+  }
+
+  const canonicalBody = bodyBlocksToMarkdown(bodyBlocks);
+  const banned = /\b(DraftKings|FanDuel|sportsbook|real money)\b/i;
+  if (
+    banned.test(
+      [title, summary, dek, canonicalBody, section, ...tags].join("\n"),
+    )
+  ) {
+    throw new AppError({
+      code: "AI_DRAFT_CONSTRAINT_FAILED",
+      message: "AI draft used restricted betting language",
+      status: 422,
+    });
+  }
+
+  return {
+    body: canonicalBody,
+    bodyBlocks,
+    dek,
+    section,
+    summary,
+    tags,
+    title,
+  };
+}
+
+export function blogDraftText(draft: BlogDraft): string {
+  return [
+    draft.title,
+    draft.dek,
+    draft.summary,
+    draft.section,
+    draft.tags.join(", "),
+    draft.body,
+  ].join("\n\n");
+}
+
+export function blogDraftMetadata({
+  draft,
+  persona,
+  triggerKey,
+}: {
+  draft: BlogDraft;
+  persona: AiPersona;
+  triggerKey: string;
+}): Record<string, unknown> {
+  return {
+    article: {
+      bodyBlocks: draft.bodyBlocks,
+      bylinePersona: persona,
+      format: "rumbledore.article.v1",
+      headline: draft.title,
+    },
+    bodyBlocks: draft.bodyBlocks,
+    byline: persona,
+    dek: draft.dek,
+    leagueSection: draft.section,
+    section: draft.section,
+    tags: draft.tags,
+    triggerKey,
+  };
+}

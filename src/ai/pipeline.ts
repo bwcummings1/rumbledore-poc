@@ -24,6 +24,11 @@ import {
   type RealtimePublisher,
 } from "@/realtime";
 import { RECORD_TYPE_LABELS, type RecordType } from "@/stats";
+import {
+  blogDraftMetadata,
+  blogDraftText,
+  validateBlogDraft,
+} from "./article-draft";
 import type {
   BlogDraft,
   EmbeddingProvider,
@@ -150,34 +155,6 @@ function maxPriorSimilarity(
       Math.max(max, cosineSimilarity(embedding, memory.embedding)),
     0,
   );
-}
-
-function draftText(draft: BlogDraft): string {
-  return [draft.title, draft.summary, draft.body].join("\n\n");
-}
-
-function validateDraft(draft: BlogDraft): BlogDraft {
-  const title = draft.title.trim();
-  const summary = draft.summary.trim();
-  const body = draft.body.trim();
-  if (!title || !summary || !body) {
-    throw new AppError({
-      code: "AI_DRAFT_EMPTY",
-      message: "AI draft must include a title, summary, and body",
-      status: 422,
-    });
-  }
-
-  const banned = /\b(DraftKings|FanDuel|sportsbook|real money)\b/i;
-  if (banned.test(`${title}\n${summary}\n${body}`)) {
-    throw new AppError({
-      code: "AI_DRAFT_CONSTRAINT_FAILED",
-      message: "AI draft used restricted betting language",
-      status: 422,
-    });
-  }
-
-  return { body, summary, title };
 }
 
 function stableTeamFacts(teams: readonly LeagueContextTeam[]) {
@@ -659,7 +636,7 @@ async function publishDraft({
 }): Promise<GenerateLeagueBlogPostResult> {
   const timestamp = now(deps);
   const dedupKey = `blog:${input.persona}:${input.triggerKey}`;
-  const contentHash = hashText(draftText(draft));
+  const contentHash = hashText(blogDraftText(draft));
 
   const result = await withLeagueContext(
     deps.db,
@@ -674,7 +651,11 @@ async function publishDraft({
           dedupKey,
           kind: "blog",
           leagueId: input.leagueId,
-          metadata: { triggerKey: input.triggerKey },
+          metadata: blogDraftMetadata({
+            draft,
+            persona: input.persona,
+            triggerKey: input.triggerKey,
+          }),
           publishedAt: timestamp,
           summary: draft.summary,
           title: draft.title,
@@ -729,7 +710,7 @@ async function publishDraft({
           leagueId: input.leagueId,
           metadata: { contentHash },
           source: "blog_post",
-          textContent: draftText(draft),
+          textContent: blogDraftText(draft),
         });
       }
 
@@ -857,7 +838,7 @@ export async function generateLeagueBlogPost({
     triggerKey: input.triggerKey,
   });
   const promptPrefixHash = hashText(prompt.systemPrefix);
-  const initialDraft = validateDraft(
+  const initialDraft = validateBlogDraft(
     await deps.llm.generate({
       attempt: 1,
       context: prepared.context,
@@ -866,7 +847,7 @@ export async function generateLeagueBlogPost({
       prompt,
     }),
   );
-  let embedding = await deps.embeddings.embed(draftText(initialDraft));
+  let embedding = await deps.embeddings.embed(blogDraftText(initialDraft));
   let maxSimilarity = maxPriorSimilarity(embedding, prepared.context.memory);
   let draft = initialDraft;
 
@@ -879,7 +860,7 @@ export async function generateLeagueBlogPost({
       newsItems,
       triggerKey: input.triggerKey,
     });
-    draft = validateDraft(
+    draft = validateBlogDraft(
       await deps.llm.generate({
         attempt: 2,
         context: prepared.context,
@@ -889,7 +870,7 @@ export async function generateLeagueBlogPost({
         prompt: retryPrompt,
       }),
     );
-    embedding = await deps.embeddings.embed(draftText(draft));
+    embedding = await deps.embeddings.embed(blogDraftText(draft));
     maxSimilarity = maxPriorSimilarity(embedding, prepared.context.memory);
   }
 
