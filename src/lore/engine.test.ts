@@ -6,12 +6,19 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  fantasyMatchups,
+  fantasyTeams,
   leagues,
   loreClaims,
   loreEvents,
+  loreSubjects,
+  loreVerifications,
   loreVotes,
   members,
+  persons,
+  teamSeasons,
   users,
+  weeklyStatistics,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
@@ -19,6 +26,7 @@ import {
   closeLoreVote,
   openOpinionClaim,
   stewardLoreClaim,
+  submitLoreClaim,
 } from ".";
 
 const marker = `lore-${randomUUID()}`;
@@ -123,6 +131,111 @@ async function openClaim(league: SeededLeague, tag: string) {
       leagueId: league.id,
       title: `${tag} lore claim`,
     },
+  });
+}
+
+async function seedWeeklyScore({
+  league,
+  pointsFor = 200.4,
+  scoringPeriod = 5,
+  season = 2017,
+  tag,
+}: {
+  league: SeededLeague;
+  pointsFor?: number;
+  scoringPeriod?: number;
+  season?: number;
+  tag: string;
+}) {
+  return withLeagueContext(handle.db, league.id, async (tx) => {
+    const [person] = await tx
+      .insert(persons)
+      .values({
+        canonicalName: `${tag} Manager`,
+        leagueId: league.id,
+      })
+      .returning({ id: persons.id });
+    if (!person) throw new Error("person was not inserted");
+
+    const providerTeamId = `${tag}-team`;
+    const [team] = await tx
+      .insert(fantasyTeams)
+      .values({
+        abbrev: tag.slice(0, 4).toUpperCase(),
+        contentHash: `${marker}-${tag}-team`,
+        leagueId: league.id,
+        leagueProviderId: league.providerLeagueId,
+        name: `${tag} Team`,
+        ownerMemberIds: [league.members[0]?.id ?? ""],
+        provider: "espn",
+        providerTeamId,
+        season,
+      })
+      .returning({ id: fantasyTeams.id });
+    if (!team) throw new Error("fantasy team was not inserted");
+
+    const [teamSeason] = await tx
+      .insert(teamSeasons)
+      .values({
+        fantasyTeamId: team.id,
+        leagueId: league.id,
+        leagueProviderId: league.providerLeagueId,
+        ownerMemberIds: [league.members[0]?.id ?? ""],
+        ownerNames: [`${tag} Owner`],
+        provider: "espn",
+        providerTeamId,
+        season,
+        teamName: `${tag} Team`,
+      })
+      .returning({ id: teamSeasons.id });
+    if (!teamSeason) throw new Error("team season was not inserted");
+
+    const pointsAgainst = 123.45;
+    const [matchup] = await tx
+      .insert(fantasyMatchups)
+      .values({
+        awayScore: pointsAgainst,
+        awayTeamProviderId: `${tag}-opponent`,
+        contentHash: `${marker}-${tag}-matchup`,
+        homeScore: pointsFor,
+        homeTeamProviderId: providerTeamId,
+        leagueId: league.id,
+        leagueProviderId: league.providerLeagueId,
+        provider: "espn",
+        providerMatchupId: `${tag}-${season}-${scoringPeriod}`,
+        scoringPeriod,
+        season,
+        status: "final",
+        winner: "home",
+      })
+      .returning({ id: fantasyMatchups.id });
+    if (!matchup) throw new Error("matchup was not inserted");
+
+    const [weekly] = await tx
+      .insert(weeklyStatistics)
+      .values({
+        leagueId: league.id,
+        margin: pointsFor - pointsAgainst,
+        matchupId: matchup.id,
+        personId: person.id,
+        pointsAgainst,
+        pointsFor,
+        result: "win",
+        scoringPeriod,
+        season,
+        teamSeasonId: teamSeason.id,
+        weeklyRank: 1,
+      })
+      .returning({ id: weeklyStatistics.id });
+    if (!weekly) throw new Error("weekly statistic was not inserted");
+
+    return {
+      personId: person.id,
+      pointsFor,
+      scoringPeriod,
+      season,
+      weeklyStatisticId: weekly.id,
+    };
   });
 }
 
@@ -276,6 +389,303 @@ describe("lore claim voting lifecycle", () => {
       "voted",
       "ratified",
     ]);
+  });
+
+  it("auto-confirms a data-verifiable weekly score claim without opening a vote", async () => {
+    const league = await seedLeague("verified", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+    const weekly = await seedWeeklyScore({ league, tag: "verified-score" });
+
+    const submitted = await submitLoreClaim({
+      deps: deps(),
+      input: {
+        assertions: [
+          {
+            assertedValue: 200.4,
+            metric: "points_for",
+            personId: weekly.personId,
+            scoringPeriod: weekly.scoringPeriod,
+            season: weekly.season,
+            source: "weekly_statistics",
+          },
+        ],
+        authorMemberId: league.members[0]?.id,
+        body: "I scored 200.4 in Week 5, 2017.",
+        leagueId: league.id,
+        title: "The 200-point game",
+      },
+    });
+
+    expect(submitted).toMatchObject({
+      kind: "data_verifiable",
+      ratifiedBy: "verified",
+      status: "canonized",
+      verification: "verified",
+    });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      claim: (
+        await tx
+          .select()
+          .from(loreClaims)
+          .where(eq(loreClaims.id, submitted.claimId))
+      )[0],
+      events: await tx
+        .select()
+        .from(loreEvents)
+        .where(eq(loreEvents.claimId, submitted.claimId)),
+      subjects: await tx
+        .select()
+        .from(loreSubjects)
+        .where(eq(loreSubjects.claimId, submitted.claimId)),
+      verifications: await tx
+        .select()
+        .from(loreVerifications)
+        .where(eq(loreVerifications.claimId, submitted.claimId)),
+      votes: await tx
+        .select()
+        .from(loreVotes)
+        .where(eq(loreVotes.claimId, submitted.claimId)),
+    }));
+
+    expect(rows.claim).toMatchObject({
+      kind: "data_verifiable",
+      ratifiedBy: "verified",
+      status: "canon",
+      verification: "verified",
+      voteClosesAt: null,
+      voteOpensAt: null,
+    });
+    expect(rows.claim?.ratifiedAt?.toISOString()).toBe(baseNow.toISOString());
+    expect(rows.votes).toHaveLength(0);
+    expect(rows.verifications).toHaveLength(1);
+    expect(rows.verifications[0]).toMatchObject({
+      actualValue: "200.4",
+      assertedValue: "200.4",
+      result: "match",
+      weeklyStatisticId: weekly.weeklyStatisticId,
+    });
+    expect(rows.subjects).toEqual([
+      expect.objectContaining({
+        personId: weekly.personId,
+        season: 2017,
+        subjectType: "week",
+        week: 5,
+      }),
+    ]);
+    expect(rows.events.map((event) => event.kind)).toEqual([
+      "created",
+      "ratified",
+    ]);
+  });
+
+  it("auto-refutes a contradicted data-verifiable claim with the true value attached", async () => {
+    const league = await seedLeague("refuted", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+    const weekly = await seedWeeklyScore({ league, tag: "refuted-score" });
+
+    const submitted = await submitLoreClaim({
+      deps: deps(),
+      input: {
+        assertions: [
+          {
+            assertedValue: 188.2,
+            metric: "points_for",
+            personId: weekly.personId,
+            scoringPeriod: weekly.scoringPeriod,
+            season: weekly.season,
+            source: "weekly_statistics",
+          },
+        ],
+        authorMemberId: league.members[0]?.id,
+        body: "I scored 188.2 in Week 5, 2017.",
+        leagueId: league.id,
+        title: "The wrong score",
+      },
+    });
+
+    expect(submitted).toMatchObject({
+      kind: "data_verifiable",
+      status: "rejected",
+      verification: "refuted",
+    });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      claim: (
+        await tx
+          .select()
+          .from(loreClaims)
+          .where(eq(loreClaims.id, submitted.claimId))
+      )[0],
+      events: await tx
+        .select()
+        .from(loreEvents)
+        .where(eq(loreEvents.claimId, submitted.claimId)),
+      verifications: await tx
+        .select()
+        .from(loreVerifications)
+        .where(eq(loreVerifications.claimId, submitted.claimId)),
+      votes: await tx
+        .select()
+        .from(loreVotes)
+        .where(eq(loreVotes.claimId, submitted.claimId)),
+    }));
+
+    expect(rows.claim).toMatchObject({
+      kind: "data_verifiable",
+      ratifiedAt: null,
+      ratifiedBy: null,
+      status: "rejected",
+      verification: "refuted",
+      voteClosesAt: null,
+      voteOpensAt: null,
+    });
+    expect(rows.votes).toHaveLength(0);
+    expect(rows.verifications).toHaveLength(1);
+    expect(rows.verifications[0]).toMatchObject({
+      actualValue: "200.4",
+      assertedValue: "188.2",
+      result: "contradiction",
+      weeklyStatisticId: weekly.weeklyStatisticId,
+    });
+    expect(rows.events.map((event) => event.kind)).toEqual([
+      "created",
+      "rejected",
+    ]);
+  });
+
+  it("falls uncheckable data-verifiable claims through to the vote path", async () => {
+    const league = await seedLeague("uncheckable", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+    const weekly = await seedWeeklyScore({
+      league,
+      scoringPeriod: 4,
+      tag: "uncheckable-score",
+    });
+
+    const submitted = await submitLoreClaim({
+      deps: deps(),
+      input: {
+        assertions: [
+          {
+            assertedValue: 200.4,
+            metric: "points_for",
+            personId: weekly.personId,
+            scoringPeriod: 5,
+            season: weekly.season,
+            source: "weekly_statistics",
+          },
+        ],
+        authorMemberId: league.members[0]?.id,
+        body: "I scored 200.4 in the week we never imported.",
+        leagueId: league.id,
+        title: "The missing box score",
+      },
+    });
+
+    expect(submitted).toMatchObject({
+      kind: "data_verifiable",
+      status: "vote",
+      verification: "unverifiable",
+    });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      claim: (
+        await tx
+          .select()
+          .from(loreClaims)
+          .where(eq(loreClaims.id, submitted.claimId))
+      )[0],
+      events: await tx
+        .select()
+        .from(loreEvents)
+        .where(eq(loreEvents.claimId, submitted.claimId)),
+      verifications: await tx
+        .select()
+        .from(loreVerifications)
+        .where(eq(loreVerifications.claimId, submitted.claimId)),
+      votes: await tx
+        .select()
+        .from(loreVotes)
+        .where(eq(loreVotes.claimId, submitted.claimId)),
+    }));
+
+    expect(rows.claim).toMatchObject({
+      kind: "data_verifiable",
+      ratifiedAt: null,
+      ratifiedBy: null,
+      status: "vote",
+      verification: "unverifiable",
+    });
+    expect(rows.claim?.voteOpensAt?.toISOString()).toBe(baseNow.toISOString());
+    expect(rows.claim?.voteClosesAt?.toISOString()).toBe(
+      new Date(baseNow.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    expect(rows.votes).toHaveLength(0);
+    expect(rows.verifications).toHaveLength(1);
+    expect(rows.verifications[0]).toMatchObject({
+      actualValue: null,
+      assertedValue: "200.4",
+      result: "uncheckable",
+      weeklyStatisticId: null,
+    });
+    expect(rows.events.map((event) => event.kind)).toEqual([
+      "created",
+      "vote_opened",
+    ]);
+  });
+
+  it("routes pure opinion claims to a vote without auto-verification", async () => {
+    const league = await seedLeague("submitted-opinion", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+
+    const submitted = await submitLoreClaim({
+      deps: deps(),
+      input: {
+        authorMemberId: league.members[0]?.id,
+        body: "The 2021 title was cursed by hubris.",
+        leagueId: league.id,
+        title: "The cursed title",
+      },
+    });
+
+    expect(submitted).toMatchObject({
+      kind: "opinion",
+      status: "vote",
+      verification: "n_a",
+    });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      claim: (
+        await tx
+          .select()
+          .from(loreClaims)
+          .where(eq(loreClaims.id, submitted.claimId))
+      )[0],
+      verifications: await tx
+        .select()
+        .from(loreVerifications)
+        .where(eq(loreVerifications.claimId, submitted.claimId)),
+    }));
+
+    expect(rows.claim).toMatchObject({
+      kind: "opinion",
+      status: "vote",
+      verification: "n_a",
+    });
+    expect(rows.verifications).toHaveLength(0);
   });
 
   it("rejects a quorum-short claim without counting abstains or non-voters as reject", async () => {

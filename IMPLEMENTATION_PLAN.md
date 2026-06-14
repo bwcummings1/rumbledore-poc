@@ -40,7 +40,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 ### E. League lore (see specs/13)
 - [x] Build the lore data model and RLS for claims/votes/canon/branches/disputes. (specs/13)
 - [x] Implement claim → vote → canon transitions with threshold and steward tiebreak. (specs/13)
-- [ ] Implement the two lore types: data-verifiable auto-confirm versus opinion-vote. (specs/13)
+- [x] Implement the two lore types: data-verifiable auto-confirm versus opinion-vote. (specs/13)
 - [ ] Implement challengeable canon plus dispute and branch threads. (specs/13)
 - [ ] Implement the bidirectional AI↔lore contract: consume canon as fact and instigate claims. (specs/13)
 
@@ -53,3 +53,4 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [ ] **[observability/LOW] Historical import progress is DB-queryable but not published to realtime** — checkpoints/data coverage expose progress, but onboarding cannot subscribe to a live history-build channel yet.
 - [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` and `src/news/league-feed.ts` fetch a bounded candidate set before applying section/tag filters, so sparse older beats can disappear once archives grow.
 - [ ] **[maintainability/LOW] Press dynamic route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]` handles both section fronts and articles; rename to a neutral slug or split routes when the publication routes are hardened.
+- [ ] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — `closeLoreVote()` assumes the scheduler timing is correct and will tally an open vote early if called directly.
