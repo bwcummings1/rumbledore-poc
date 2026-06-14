@@ -863,6 +863,103 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("persists division winners and keeps median rows out of H2H records", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague("edge");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(providerFinalStandings).values([
+        {
+          contentHash: `${marker}-edge-2025-east`,
+          division: "East",
+          divisionRank: 1,
+          divisionWinner: true,
+          finalRank: 2,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 1,
+          playoffSeed: 2,
+          pointsAgainst: 186,
+          pointsFor: 195,
+          provider: "espn",
+          providerTeamId: "1",
+          season: 2025,
+          ties: 0,
+          wins: 1,
+        },
+        {
+          contentHash: `${marker}-edge-2025-west`,
+          division: "West",
+          divisionRank: 1,
+          divisionWinner: true,
+          finalRank: 1,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          playoffSeed: 1,
+          pointsAgainst: 180,
+          pointsFor: 216,
+          provider: "espn",
+          providerTeamId: "2",
+          season: 2025,
+          ties: 0,
+          wins: 2,
+        },
+      ]);
+      await tx.insert(fantasyMatchups).values({
+        awayScore: 95,
+        awayTeamProviderId: "2",
+        contentHash: `${marker}-edge-2025-median`,
+        homeScore: 100,
+        homeTeamProviderId: "1",
+        kind: "median",
+        leagueId,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "2025-1-median",
+        scoringPeriod: 1,
+        season: 2025,
+        status: "final",
+        winner: "home",
+      });
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    const rows = await selectStatsRows(leagueId);
+    const alex2025 = rows.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    const casey2025 = rows.mappingRows.find(
+      (row) => row.providerTeamId === "2" && row.season === 2025,
+    );
+    if (!alex2025 || !casey2025) {
+      throw new Error("expected 2025 mappings for median fixture");
+    }
+
+    expect(
+      rows.weeklyRows.filter((row) => row.matchupKind === "median"),
+    ).toHaveLength(2);
+    expect(
+      rows.seasonRows.find(
+        (row) => row.personId === alex2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      divisionWinner: true,
+      playoffSeed: 2,
+      wins: 2,
+    });
+    expect(
+      rows.h2hRows.find(
+        (row) =>
+          row.season === 2025 &&
+          [row.personAId, row.personBId].includes(alex2025.personId) &&
+          [row.personAId, row.personBId].includes(casey2025.personId),
+      ),
+    ).toMatchObject({
+      meetings: 1,
+    });
+  });
+
   it("applies steward merge and split corrections as sticky manual mappings", async () => {
     const { leagueId } = await seedStatsLeague("steward");
     await recomputeLeagueStatistics(handle.db, { leagueId });

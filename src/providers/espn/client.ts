@@ -85,7 +85,7 @@ export const ESPN_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
     final_standings: "partial",
     transactions: "none",
     history: "partial",
-    divisions: "none",
+    divisions: "partial",
     keeper_dynasty: "none",
     scoring_detail: "partial",
   },
@@ -102,6 +102,16 @@ const leagueSettingsSchema = z
     name: z.string().optional(),
     scheduleSettings: z
       .object({
+        divisions: z
+          .array(
+            z
+              .object({
+                id: numericValue.optional(),
+                name: z.string().optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
         matchupPeriodCount: numericValue.optional(),
         playoffTeamCount: numericValue.optional(),
       })
@@ -132,6 +142,7 @@ const espnTeamSchema = z
   .object({
     abbrev: z.string().optional(),
     id: numericValue,
+    divisionId: numericValue.optional(),
     location: z.string().optional(),
     logo: z.string().nullable().optional(),
     name: z.string().optional(),
@@ -513,6 +524,7 @@ function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
     sport: "ffl",
     name: league.settings?.name?.trim() || `ESPN Fantasy League ${providerId}`,
     scoringType: league.settings?.scoringSettings?.scoringType ?? "unknown",
+    scoringSettings: league.settings?.scoringSettings ?? {},
     size:
       toInteger(league.settings?.size) ??
       toInteger(league.status?.teamsJoined) ??
@@ -521,6 +533,18 @@ function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
     status: normalizeLeagueStatus(league),
     ...(postseason ? { postseason } : {}),
   };
+}
+
+function divisionNameById(league: EspnLeagueApiResponse): Map<string, string> {
+  return new Map(
+    (league.settings?.scheduleSettings?.divisions ?? [])
+      .map((division) => {
+        const id = division.id === undefined ? undefined : String(division.id);
+        const name = division.name?.trim();
+        return id && name ? ([id, name] as const) : undefined;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry)),
+  );
 }
 
 function compactUnique(values: (string | null | undefined)[]): string[] {
@@ -557,8 +581,11 @@ function normalizeTeamName(team: EspnTeam): string {
 function normalizeTeam(
   team: EspnTeam,
   league: ProviderLeagueRef,
+  divisions = new Map<string, string>(),
 ): NormalizedTeam {
   const providerId = String(toInteger(team.id) ?? team.id);
+  const divisionId =
+    team.divisionId === undefined ? undefined : String(team.divisionId);
   const ownerMemberIds = compactUnique([
     ...(team.owners ?? []),
     team.primaryOwner ?? undefined,
@@ -572,6 +599,9 @@ function normalizeTeam(
     season: league.season,
     name: normalizeTeamName(team),
     abbrev: team.abbrev?.trim() || providerId,
+    ...(divisionId
+      ? { division: divisions.get(divisionId) ?? divisionId }
+      : {}),
     ...(logo ? { logo } : {}),
     ownerMemberIds,
     record: {
@@ -756,6 +786,7 @@ function finalStandingsFromTeams(
         providerId: team.providerId,
         season: team.season,
       },
+      ...(team.division ? { division: team.division } : {}),
       rank:
         explicitRankFor(team) ??
         fallbackRankByTeam.get(team.providerId) ??
@@ -780,8 +811,9 @@ function normalizeHistoryBundle(
     season: normalizedLeague.season,
     size: normalizedLeague.size,
   };
+  const divisions = divisionNameById(league);
   const teams = (league.teams ?? []).map((team) =>
-    normalizeTeam(team, seasonRef),
+    normalizeTeam(team, seasonRef, divisions),
   );
   const members = (league.members ?? []).map((member) =>
     normalizeMember(member, seasonRef),
@@ -888,7 +920,9 @@ export class EspnDiscoveryClient {
     }
 
     return ok(
-      (league.value.teams ?? []).map((team) => normalizeTeam(team, ref)),
+      (league.value.teams ?? []).map((team) =>
+        normalizeTeam(team, ref, divisionNameById(league.value)),
+      ),
     );
   }
 

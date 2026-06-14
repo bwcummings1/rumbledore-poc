@@ -18,6 +18,7 @@ import type {
 import {
   type DataCoverageObservationMap,
   type EntitySyncStats,
+  edgeCaseCoverageObservations,
   persistNormalizedLeagueRows,
   recordDataCoverage,
 } from "./current-league";
@@ -555,10 +556,12 @@ function coverageForBundle(
     final_standings: { itemCount: bundle.finalStandings.length },
     transactions: { itemCount: bundle.transactions.length },
     history: { itemCount: 1 },
-    scoring_detail: {
-      details: { source: "history.league.scoringType" },
-      itemCount: 1,
-    },
+    ...edgeCaseCoverageObservations({
+      finalStandings: bundle.finalStandings,
+      league: bundle.league,
+      scoringDetailSource: "history.league.scoringSettings",
+      teams: bundle.teams,
+    }),
   };
 }
 

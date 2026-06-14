@@ -276,6 +276,11 @@ describe("Yahoo provider", () => {
       sport: "ffl",
       name: "Yahoo Fixture League",
       scoringType: "H2H",
+      scoringSettings: {
+        endWeek: 2,
+        rawScoringType: "head",
+        startWeek: 1,
+      },
       size: 4,
       currentScoringPeriod: 2,
       status: "in_season",

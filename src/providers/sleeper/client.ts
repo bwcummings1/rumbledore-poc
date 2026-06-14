@@ -6,6 +6,7 @@ import {
   type FantasyProviderCapabilities,
   type FantasyProviderSession,
   type NormalizedFinalStanding,
+  type NormalizedKeeperSettings,
   type NormalizedLeague,
   type NormalizedMatchup,
   type NormalizedMatchupStatus,
@@ -69,6 +70,17 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_DISCOVERY_SEASONS = 10;
 const MAX_FANTASY_WEEKS = 18;
 const SLEEPER_USER_AGENT = "Rumbledore/2.0 (+https://rumbledore.app)";
+const IDP_ROSTER_POSITIONS = new Set([
+  "CB",
+  "DB",
+  "DE",
+  "DL",
+  "DT",
+  "EDR",
+  "IDP",
+  "LB",
+  "S",
+]);
 
 export const SLEEPER_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
   authKind: "none",
@@ -435,6 +447,89 @@ function normalizeScoringType(league: SleeperLeague): string {
   return "CUSTOM";
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function numberSetting(
+  settings: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = settings[key];
+  return typeof value === "number" || typeof value === "string"
+    ? toNumber(value)
+    : undefined;
+}
+
+function booleanSetting(
+  settings: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
+  const value = settings[key];
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value > 0;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes"].includes(normalized)) {
+      return true;
+    }
+    if (["0", "false", "no"].includes(normalized)) {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function normalizeScoringSettings(
+  league: SleeperLeague,
+): Record<string, unknown> {
+  const scoringSettings = isPlainObject(league.scoring_settings)
+    ? league.scoring_settings
+    : {};
+  const rosterPositions = league.roster_positions ?? [];
+  return {
+    ...scoringSettings,
+    idp: rosterPositions.some((position) =>
+      IDP_ROSTER_POSITIONS.has(position.toUpperCase()),
+    ),
+    rosterPositions,
+  };
+}
+
+function normalizeKeeperSettings(
+  league: SleeperLeague,
+): NormalizedKeeperSettings | undefined {
+  const settings = isPlainObject(league.settings) ? league.settings : {};
+  const leagueType = numberSetting(settings, "type");
+  const keeperCount =
+    numberSetting(settings, "keeper_count") ??
+    numberSetting(settings, "keepers") ??
+    numberSetting(settings, "num_keepers");
+  const isDynasty =
+    leagueType === 2 ||
+    booleanSetting(settings, "dynasty") === true ||
+    String(settings.type ?? "").toLowerCase() === "dynasty";
+  const isKeeper =
+    isDynasty ||
+    (keeperCount ?? 0) > 0 ||
+    booleanSetting(settings, "keeper") === true;
+
+  if (!isKeeper && !isDynasty && keeperCount === undefined) {
+    return undefined;
+  }
+
+  return {
+    isDynasty,
+    isKeeper,
+    ...(keeperCount === undefined ? {} : { keeperCount }),
+    source: "sleeper.settings",
+  };
+}
+
 function currentScoringPeriod(
   league: SleeperLeague,
   state?: SleeperState,
@@ -502,6 +597,7 @@ function normalizeLeague(
   const season = toInteger(league.season) ?? 0;
   const size = toInteger(league.total_rosters) ?? 0;
   const postseason = normalizePostseasonSettings(league);
+  const keeperSettings = normalizeKeeperSettings(league);
 
   return {
     provider: SLEEPER_PROVIDER_ID,
@@ -510,9 +606,11 @@ function normalizeLeague(
     sport: normalizeSport(league.sport),
     name: league.name?.trim() || `Sleeper League ${providerId}`,
     scoringType: normalizeScoringType(league),
+    scoringSettings: normalizeScoringSettings(league),
     size,
     currentScoringPeriod: currentScoringPeriod(league, state),
     status: normalizeLeagueStatus(league.status),
+    ...(keeperSettings ? { keeperSettings } : {}),
     ...(postseason ? { postseason } : {}),
   };
 }

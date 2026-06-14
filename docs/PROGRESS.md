@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: League edge-case substrate landed — normalized scoring settings, keeper markers, divisions, matchup kind, and roster keeper metadata now persist across providers, with stats keeping median/all-play rows out of H2H records.
 - 2026-06-14: Postseason stats hardening landed — provider postseason settings now persist per league-season, weekly playoff/championship flags derive from settings plus finals, and championship records use title-game scores when identified.
 - 2026-06-14: Co-owner identity hardening landed — identity resolution now scopes shared owner-member overlap to provider team slots, preserves co-owner owner history, and guards weekly stats against cross-slot over-merge.
 - 2026-06-14: Historical depth hardening landed — imports now default through 10 prior seasons, extend shorter completed checkpoints without reprocessing, and remember provider history exhaustion in checkpoint cursors.

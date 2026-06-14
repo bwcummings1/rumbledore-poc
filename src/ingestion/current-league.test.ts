@@ -12,6 +12,7 @@ import {
   fantasyMembers,
   fantasyRosterEntries,
   fantasyTeams,
+  leagueSeasonSettings,
   leagues,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
@@ -220,6 +221,84 @@ function rosterCapableProviderFor(
   };
 }
 
+function edgeCaseProviderFor(providerLeagueId: string) {
+  const provider = rosterCapableProviderFor(providerLeagueId);
+  return {
+    ...provider,
+    capabilities: {
+      ...provider.capabilities,
+      dataClasses: {
+        ...provider.capabilities.dataClasses,
+        divisions: "full" as const,
+        keeper_dynasty: "partial" as const,
+      },
+    },
+    async getLeague() {
+      return ok({
+        ...fixtureRef(providerLeagueId),
+        currentScoringPeriod: 1,
+        keeperSettings: {
+          isDynasty: false,
+          isKeeper: true,
+          keeperCount: 2,
+          source: "fixture",
+        },
+        scoringSettings: {
+          idp: true,
+          rec: 0.5,
+          rosterPositions: ["QB", "RB", "LB", "DB", "BN", "TAXI"],
+        },
+        scoringType: "CUSTOM",
+        size: 2,
+        status: "in_season" as const,
+      });
+    },
+    async getTeams() {
+      const teams = await provider.getTeams();
+      if (!teams.ok) {
+        return teams;
+      }
+      return ok(
+        teams.value.map((team, index) => ({
+          ...team,
+          division: index === 0 ? "East" : "West",
+        })),
+      );
+    },
+    async getMatchups() {
+      const matchups = await provider.getMatchups();
+      if (!matchups.ok) {
+        return matchups;
+      }
+      return ok([
+        {
+          ...matchups.value[0],
+          kind: "median" as const,
+          providerId: "week-1-median",
+        },
+      ]);
+    },
+    async getRosters() {
+      const rosters = await provider.getRosters();
+      if (!rosters.ok) {
+        return rosters;
+      }
+      return ok([
+        {
+          ...rosters.value[0],
+          entries: rosters.value[0].entries.map((entry) => ({
+            ...entry,
+            isKeeper: true,
+            metadata: { keptSinceSeason: 2025 },
+            slot: "LB",
+            status: "taxi",
+          })),
+        },
+      ]);
+    },
+  };
+}
+
 async function selectIngestedRows(leagueId: string) {
   return withLeagueContext(handle.db, leagueId, async (tx) => {
     const coverage = await tx
@@ -250,7 +329,24 @@ async function selectIngestedRows(leagueId: string) {
       .from(fantasyRosterEntries)
       .where(eq(fantasyRosterEntries.leagueId, leagueId))
       .orderBy(asc(fantasyRosterEntries.providerPlayerId));
-    return { coverage, matchups, members, rosterEntries, teams };
+    const [league] = await tx
+      .select()
+      .from(leagues)
+      .where(eq(leagues.id, leagueId))
+      .limit(1);
+    const settings = await tx
+      .select()
+      .from(leagueSeasonSettings)
+      .where(eq(leagueSeasonSettings.leagueId, leagueId));
+    return {
+      coverage,
+      league,
+      matchups,
+      members,
+      rosterEntries,
+      settings,
+      teams,
+    };
   });
 }
 
@@ -507,6 +603,69 @@ describe("syncCurrentLeague", () => {
       capability: "full",
       itemCount: 1,
       status: "complete",
+    });
+  });
+
+  it("persists edge-case scoring, keeper, division, roster, and matchup metadata", async () => {
+    const providerLeagueId = `${marker}-edge-cases`;
+    const synced = await syncCurrentLeague({
+      db: handle.db,
+      provider: edgeCaseProviderFor(providerLeagueId),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(synced.ok).toBe(true);
+    if (!synced.ok) throw synced.error;
+
+    const rows = await selectIngestedRows(synced.value.league.id);
+    expect(rows.league).toMatchObject({
+      providerLeagueId,
+      scoringSettings: {
+        idp: true,
+        rec: 0.5,
+        rosterPositions: ["QB", "RB", "LB", "DB", "BN", "TAXI"],
+      },
+      scoringType: "CUSTOM",
+    });
+    expect(rows.settings[0]).toMatchObject({
+      isDynastyLeague: false,
+      isKeeperLeague: true,
+      keeperSettings: {
+        isKeeper: true,
+        keeperCount: 2,
+        source: "fixture",
+      },
+      scoringSettings: {
+        idp: true,
+        rec: 0.5,
+      },
+    });
+    expect(rows.teams.map((team) => team.division)).toEqual(["East", "West"]);
+    expect(rows.matchups[0]).toMatchObject({
+      kind: "median",
+      providerMatchupId: "week-1-median",
+    });
+    expect(rows.rosterEntries[0]).toMatchObject({
+      isKeeper: true,
+      metadata: { keptSinceSeason: 2025 },
+      slot: "LB",
+      status: "taxi",
+    });
+    expect(
+      Object.fromEntries(
+        rows.coverage.map((row) => [
+          row.dataClass,
+          {
+            itemCount: row.itemCount,
+            status: row.status,
+          },
+        ]),
+      ),
+    ).toMatchObject({
+      divisions: { itemCount: 2, status: "complete" },
+      keeper_dynasty: { itemCount: 2, status: "complete" },
+      scoring_detail: { itemCount: 1, status: "partial" },
     });
   });
 

@@ -176,6 +176,7 @@ function sortedUnique(values: readonly string[]): string[] {
 function teamHashPayload(team: NormalizedTeam) {
   return {
     abbrev: team.abbrev,
+    division: team.division ?? null,
     leagueProviderId: team.leagueProviderId,
     logo: team.logo ?? null,
     name: team.name,
@@ -210,6 +211,7 @@ function matchupHashPayload(matchup: NormalizedMatchup) {
     awayTeamProviderId: matchup.awayTeamRef.providerId,
     homeScore: matchup.homeScore,
     homeTeamProviderId: matchup.homeTeamRef.providerId,
+    kind: matchup.kind ?? "head_to_head",
     leagueProviderId: matchup.leagueProviderId,
     provider: matchup.provider,
     providerId: matchup.providerId,
@@ -222,6 +224,9 @@ function matchupHashPayload(matchup: NormalizedMatchup) {
 
 function finalStandingHashPayload(standing: NormalizedFinalStanding) {
   return {
+    division: standing.division ?? null,
+    divisionRank: standing.divisionRank ?? null,
+    divisionWinner: standing.divisionWinner ?? false,
     finalRank: standing.rank,
     leagueProviderId: standing.leagueProviderId,
     losses: standing.losses,
@@ -240,6 +245,9 @@ function leagueSeasonSettingsHashPayload(league: NormalizedLeague) {
   return {
     championshipScoringPeriod:
       league.postseason?.championshipScoringPeriod ?? null,
+    isDynastyLeague: league.keeperSettings?.isDynasty ?? false,
+    isKeeperLeague: league.keeperSettings?.isKeeper ?? false,
+    keeperSettings: league.keeperSettings ?? {},
     leagueProviderId: league.providerId,
     playoffStartScoringPeriod:
       league.postseason?.playoffStartScoringPeriod ?? null,
@@ -247,6 +255,7 @@ function leagueSeasonSettingsHashPayload(league: NormalizedLeague) {
     provider: league.provider,
     regularSeasonEndScoringPeriod:
       league.postseason?.regularSeasonEndScoringPeriod ?? null,
+    scoringSettings: league.scoringSettings ?? {},
     season: league.season,
   };
 }
@@ -259,6 +268,8 @@ function rosterEntryHashPayload({
   roster: NormalizedRoster;
 }) {
   return {
+    isKeeper: entry.isKeeper ?? false,
+    metadata: entry.metadata ?? {},
     playerProviderId: entry.playerRef.providerId,
     points: entry.points ?? null,
     provider: roster.teamRef.provider,
@@ -301,6 +312,7 @@ async function upsertLeague(
       season: league.season,
       sport: league.sport,
       scoringType: league.scoringType,
+      scoringSettings: league.scoringSettings ?? {},
       size: league.size,
       currentScoringPeriod: league.currentScoringPeriod,
       status: league.status,
@@ -310,6 +322,7 @@ async function upsertLeague(
       set: {
         currentScoringPeriod: sql`excluded.current_scoring_period`,
         name: sql`excluded.name`,
+        scoringSettings: sql`excluded.scoring_settings`,
         scoringType: sql`excluded.scoring_type`,
         season: sql`excluded.season`,
         size: sql`excluded.size`,
@@ -322,6 +335,7 @@ async function upsertLeague(
         or ${leagues.season} is distinct from excluded.season
         or ${leagues.sport} is distinct from excluded.sport
         or ${leagues.scoringType} is distinct from excluded.scoring_type
+        or ${leagues.scoringSettings} is distinct from excluded.scoring_settings
         or ${leagues.size} is distinct from excluded.size
         or ${leagues.currentScoringPeriod} is distinct from excluded.current_scoring_period
         or ${leagues.status} is distinct from excluded.status
@@ -368,6 +382,7 @@ async function upsertTeams(
         ...teamHashPayload(team),
         ownerMemberIds,
       }),
+      division: team.division ?? null,
       leagueId,
       leagueProviderId: team.leagueProviderId,
       logo: team.logo ?? null,
@@ -397,6 +412,7 @@ async function upsertTeams(
       set: {
         abbrev: sql`excluded.abbrev`,
         contentHash: sql`excluded.content_hash`,
+        division: sql`excluded.division`,
         losses: sql`excluded.losses`,
         logo: sql`excluded.logo`,
         name: sql`excluded.name`,
@@ -472,6 +488,7 @@ async function upsertMatchups(
     contentHash: stableContentHash(matchupHashPayload(matchup)),
     homeScore: matchup.homeScore,
     homeTeamProviderId: matchup.homeTeamRef.providerId,
+    kind: matchup.kind ?? "head_to_head",
     leagueId,
     leagueProviderId: matchup.leagueProviderId,
     provider: matchup.provider,
@@ -499,6 +516,7 @@ async function upsertMatchups(
         contentHash: sql`excluded.content_hash`,
         homeScore: sql`excluded.home_score`,
         homeTeamProviderId: sql`excluded.home_team_provider_id`,
+        kind: sql`excluded.kind`,
         status: sql`excluded.status`,
         updatedAt: sql`now()`,
         winner: sql`excluded.winner`,
@@ -530,6 +548,9 @@ async function upsertFinalStandings(
 
   const rows = finalStandings.map((standing) => ({
     contentHash: stableContentHash(finalStandingHashPayload(standing)),
+    division: standing.division ?? null,
+    divisionRank: standing.divisionRank ?? null,
+    divisionWinner: standing.divisionWinner ?? false,
     finalRank: standing.rank,
     leagueId,
     leagueProviderId: standing.leagueProviderId,
@@ -557,6 +578,9 @@ async function upsertFinalStandings(
       ],
       set: {
         contentHash: sql`excluded.content_hash`,
+        division: sql`excluded.division`,
+        divisionRank: sql`excluded.division_rank`,
+        divisionWinner: sql`excluded.division_winner`,
         finalRank: sql`excluded.final_rank`,
         losses: sql`excluded.losses`,
         playoffSeed: sql`excluded.playoff_seed`,
@@ -578,22 +602,26 @@ async function upsertLeagueSeasonSettings(
   leagueId: string,
   league?: NormalizedLeague,
 ): Promise<EntitySyncStats> {
-  if (!league?.postseason) {
+  if (!league) {
     return emptyStats();
   }
 
   const row = {
     championshipScoringPeriod:
-      league.postseason.championshipScoringPeriod ?? null,
+      league.postseason?.championshipScoringPeriod ?? null,
     contentHash: stableContentHash(leagueSeasonSettingsHashPayload(league)),
+    isDynastyLeague: league.keeperSettings?.isDynasty ?? false,
+    isKeeperLeague: league.keeperSettings?.isKeeper ?? false,
+    keeperSettings: league.keeperSettings ?? {},
     leagueId,
     leagueProviderId: league.providerId,
     playoffStartScoringPeriod:
-      league.postseason.playoffStartScoringPeriod ?? null,
-    playoffTeamCount: league.postseason.playoffTeamCount ?? null,
+      league.postseason?.playoffStartScoringPeriod ?? null,
+    playoffTeamCount: league.postseason?.playoffTeamCount ?? null,
     provider: league.provider,
     regularSeasonEndScoringPeriod:
-      league.postseason.regularSeasonEndScoringPeriod ?? null,
+      league.postseason?.regularSeasonEndScoringPeriod ?? null,
+    scoringSettings: league.scoringSettings ?? {},
     season: league.season,
   };
 
@@ -610,9 +638,13 @@ async function upsertLeagueSeasonSettings(
       set: {
         championshipScoringPeriod: sql`excluded.championship_scoring_period`,
         contentHash: sql`excluded.content_hash`,
+        isDynastyLeague: sql`excluded.is_dynasty_league`,
+        isKeeperLeague: sql`excluded.is_keeper_league`,
+        keeperSettings: sql`excluded.keeper_settings`,
         playoffStartScoringPeriod: sql`excluded.playoff_start_scoring_period`,
         playoffTeamCount: sql`excluded.playoff_team_count`,
         regularSeasonEndScoringPeriod: sql`excluded.regular_season_end_scoring_period`,
+        scoringSettings: sql`excluded.scoring_settings`,
         updatedAt: sql`now()`,
       },
       where: sql`${leagueSeasonSettings.contentHash} is distinct from excluded.content_hash`,
@@ -631,8 +663,10 @@ async function upsertRosterEntries(
   const rows = rosters.flatMap((roster) =>
     roster.entries.map((entry) => ({
       contentHash: stableContentHash(rosterEntryHashPayload({ entry, roster })),
+      isKeeper: entry.isKeeper ?? false,
       leagueId,
       leagueProviderId,
+      metadata: entry.metadata ?? {},
       points: entry.points ?? null,
       provider: roster.teamRef.provider,
       providerPlayerId: entry.playerRef.providerId,
@@ -663,6 +697,8 @@ async function upsertRosterEntries(
       ],
       set: {
         contentHash: sql`excluded.content_hash`,
+        isKeeper: sql`excluded.is_keeper`,
+        metadata: sql`excluded.metadata`,
         points: sql`excluded.points`,
         slot: sql`excluded.slot`,
         status: sql`excluded.status`,
@@ -933,6 +969,70 @@ export async function recordDataCoverage({
   );
 }
 
+function hasOwnKeys(value: Record<string, unknown> | undefined): boolean {
+  return Object.keys(value ?? {}).length > 0;
+}
+
+function countKeeperRosterEntries(
+  rosters: readonly NormalizedRoster[],
+): number {
+  return rosters.reduce(
+    (total, roster) =>
+      total + roster.entries.filter((entry) => entry.isKeeper).length,
+    0,
+  );
+}
+
+export function edgeCaseCoverageObservations({
+  finalStandings = [],
+  league,
+  rosters = [],
+  scoringDetailSource,
+  teams,
+}: {
+  finalStandings?: readonly NormalizedFinalStanding[];
+  league: NormalizedLeague;
+  rosters?: readonly NormalizedRoster[];
+  scoringDetailSource: string;
+  teams: readonly NormalizedTeam[];
+}): DataCoverageObservationMap {
+  const teamsWithDivision = teams.filter((team) => team.division).length;
+  const standingsWithDivision = finalStandings.filter(
+    (standing) =>
+      Boolean(standing.division) ||
+      Boolean(standing.divisionRank) ||
+      Boolean(standing.divisionWinner),
+  ).length;
+  const divisionItemCount = teamsWithDivision + standingsWithDivision;
+  const keeperRosterEntries = countKeeperRosterEntries(rosters);
+  const hasKeeperSettings = hasOwnKeys(league.keeperSettings);
+  const keeperItemCount = (hasKeeperSettings ? 1 : 0) + keeperRosterEntries;
+
+  return {
+    divisions: {
+      details: { standingsWithDivision, teamsWithDivision },
+      itemCount: divisionItemCount,
+      status: divisionItemCount > 0 ? "complete" : "unavailable",
+    },
+    keeper_dynasty: {
+      details: {
+        hasKeeperSettings,
+        keeperRosterEntries,
+      },
+      itemCount: keeperItemCount,
+      status: keeperItemCount > 0 ? "complete" : "unavailable",
+    },
+    scoring_detail: {
+      details: {
+        scoringSettingsKeys: Object.keys(league.scoringSettings ?? {}).sort(),
+        scoringType: league.scoringType,
+        source: scoringDetailSource,
+      },
+      itemCount: hasOwnKeys(league.scoringSettings) ? 1 : 0,
+    },
+  };
+}
+
 export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   input: CurrentLeagueSyncInput<Session>,
 ): Promise<Result<CurrentLeagueSyncResult, CurrentLeagueSyncError>> {
@@ -1014,10 +1114,12 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
       members: { itemCount: members.value.length },
       rosters: rosterObservation,
       matchups: { itemCount: matchups.value.length },
-      scoring_detail: {
-        details: { source: "league.scoringType" },
-        itemCount: 1,
-      },
+      ...edgeCaseCoverageObservations({
+        league: league.value,
+        rosters,
+        scoringDetailSource: "current.league.scoringSettings",
+        teams: teams.value,
+      }),
     },
     provider: league.value.provider,
     providerLeagueId: league.value.providerId,

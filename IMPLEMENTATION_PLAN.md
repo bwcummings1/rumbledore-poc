@@ -17,7 +17,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Implement full resumable ~10-year canonical history depth, idempotent. (specs/14)
 - [x] Handle co-owner teams correctly, fixing the identity over-merge with per-slot person scoping. (specs/14)
 - [x] Derive playoff/championship flags from provider settings/finals, fixing the hardcoded-false bug. (specs/14)
-- [ ] Handle dynasty/keeper, divisions, and varied/IDP scoring per the edge-case table. (specs/14)
+- [x] Handle dynasty/keeper, divisions, and varied/IDP scoring per the edge-case table. (specs/14)
 - [ ] Build the data-integrity checks plus the data-steward correction flow. (specs/14)
 - [ ] Implement targeted incremental recompute triggered by new data. (specs/14)
 

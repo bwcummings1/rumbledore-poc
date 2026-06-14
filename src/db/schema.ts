@@ -67,6 +67,12 @@ export const fantasyMatchupStatus = pgEnum("fantasy_matchup_status", [
   "unknown",
 ]);
 
+export const fantasyMatchupKind = pgEnum("fantasy_matchup_kind", [
+  "head_to_head",
+  "median",
+  "all_play",
+]);
+
 export const historicalImportStatus = pgEnum("historical_import_status", [
   "running",
   "completed",
@@ -333,6 +339,10 @@ export const leagues = pgTable(
     season: integer("season").notNull().default(0),
     sport: fantasySport("sport").notNull().default("unknown"),
     scoringType: text("scoring_type").notNull().default("unknown"),
+    scoringSettings: jsonb("scoring_settings")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     size: integer("size").notNull().default(0),
     currentScoringPeriod: integer("current_scoring_period")
       .notNull()
@@ -373,6 +383,7 @@ export const fantasyTeams = pgTable(
     season: integer("season").notNull(),
     name: text("name").notNull(),
     abbrev: text("abbrev").notNull().default(""),
+    division: text("division"),
     logo: text("logo"),
     wins: integer("wins").notNull().default(0),
     losses: integer("losses").notNull().default(0),
@@ -450,6 +461,7 @@ export const fantasyMatchups = pgTable(
     leagueProviderId: text("league_provider_id").notNull(),
     season: integer("season").notNull(),
     scoringPeriod: integer("scoring_period").notNull(),
+    kind: fantasyMatchupKind("kind").notNull().default("head_to_head"),
     homeTeamProviderId: text("home_team_provider_id").notNull(),
     awayTeamProviderId: text("away_team_provider_id").notNull(),
     homeScore: doublePrecision("home_score").notNull().default(0),
@@ -492,6 +504,9 @@ export const providerFinalStandings = pgTable(
     leagueProviderId: text("league_provider_id").notNull(),
     season: integer("season").notNull(),
     finalRank: integer("final_rank").notNull(),
+    division: text("division"),
+    divisionRank: integer("division_rank"),
+    divisionWinner: boolean("division_winner").notNull().default(false),
     playoffSeed: integer("playoff_seed"),
     wins: integer("wins").notNull().default(0),
     losses: integer("losses").notNull().default(0),
@@ -536,6 +551,16 @@ export const leagueSeasonSettings = pgTable(
     playoffStartScoringPeriod: integer("playoff_start_scoring_period"),
     championshipScoringPeriod: integer("championship_scoring_period"),
     playoffTeamCount: integer("playoff_team_count"),
+    scoringSettings: jsonb("scoring_settings")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    keeperSettings: jsonb("keeper_settings")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    isKeeperLeague: boolean("is_keeper_league").notNull().default(false),
+    isDynastyLeague: boolean("is_dynasty_league").notNull().default(false),
     contentHash: text("content_hash").notNull(),
     ...timestamps,
   },
@@ -574,6 +599,11 @@ export const fantasyRosterEntries = pgTable(
     slot: text("slot").notNull().default("unknown"),
     status: text("status").notNull().default("unknown"),
     points: doublePrecision("points"),
+    isKeeper: boolean("is_keeper").notNull().default(false),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     contentHash: text("content_hash").notNull(),
     ...timestamps,
   },
@@ -788,6 +818,7 @@ export const teamSeasons = pgTable(
     leagueProviderId: text("league_provider_id").notNull(),
     season: integer("season").notNull(),
     teamName: text("team_name").notNull(),
+    division: text("division"),
     ownerMemberIds: jsonb("owner_member_ids")
       .$type<string[]>()
       .notNull()
@@ -938,6 +969,9 @@ export const weeklyStatistics = pgTable(
       .default(0),
     isPlayoff: boolean("is_playoff").notNull().default(false),
     isChampionship: boolean("is_championship").notNull().default(false),
+    matchupKind: fantasyMatchupKind("matchup_kind")
+      .notNull()
+      .default("head_to_head"),
     weeklyRank: integer("weekly_rank").notNull(),
     isTopScorer: boolean("is_top_scorer").notNull().default(false),
     isBottomScorer: boolean("is_bottom_scorer").notNull().default(false),
@@ -945,6 +979,11 @@ export const weeklyStatistics = pgTable(
   },
   (table) => [
     uniqueIndex("weekly_statistics_identity_unique").on(
+      table.leagueId,
+      table.matchupId,
+      table.personId,
+    ),
+    index("weekly_statistics_person_period_idx").on(
       table.leagueId,
       table.season,
       table.scoringPeriod,
@@ -1068,6 +1107,7 @@ export const seasonStatistics = pgTable(
     allPlayLosses: integer("all_play_losses").notNull().default(0),
     allPlayTies: integer("all_play_ties").notNull().default(0),
     finalRank: integer("final_rank").notNull().default(0),
+    playoffSeed: integer("playoff_seed"),
     finalPlacement: text("final_placement").notNull().default("out"),
     divisionWinner: boolean("division_winner").notNull().default(false),
     madePlayoffs: boolean("made_playoffs").notNull().default(false),

@@ -78,11 +78,22 @@ export type NormalizedLeagueStatus =
   | "complete"
   | "unknown";
 
+export type NormalizedMatchupKind = "head_to_head" | "median" | "all_play";
+
+export type NormalizedJsonObject = Record<string, unknown>;
+
+export interface NormalizedKeeperSettings extends NormalizedJsonObject {
+  isDynasty?: boolean;
+  isKeeper?: boolean;
+}
+
 export interface NormalizedLeague extends ProviderLeagueRef {
   scoringType: string;
+  scoringSettings?: NormalizedJsonObject;
   size: number;
   currentScoringPeriod: number;
   status: NormalizedLeagueStatus;
+  keeperSettings?: NormalizedKeeperSettings;
   postseason?: NormalizedPostseasonSettings;
 }
 
@@ -97,6 +108,7 @@ export interface NormalizedTeam extends SeasonScopedProviderEntityRef {
   leagueProviderId: string;
   name: string;
   abbrev: string;
+  division?: string;
   logo?: string;
   ownerMemberIds: string[];
   record: {
@@ -132,6 +144,7 @@ export type NormalizedMatchupStatus =
 export interface NormalizedMatchup extends SeasonScopedProviderEntityRef {
   leagueProviderId: string;
   scoringPeriod: number;
+  kind?: NormalizedMatchupKind;
   homeTeamRef: SeasonScopedProviderEntityRef;
   awayTeamRef: SeasonScopedProviderEntityRef;
   homeScore: number;
@@ -152,6 +165,8 @@ export interface NormalizedRosterEntry {
   slot: string;
   status: string;
   points?: number;
+  isKeeper?: boolean;
+  metadata?: NormalizedJsonObject;
 }
 
 export interface NormalizedRoster {
@@ -181,6 +196,9 @@ export interface NormalizedFinalStanding {
   leagueProviderId: string;
   teamRef: SeasonScopedProviderEntityRef;
   rank: number;
+  division?: string;
+  divisionRank?: number;
+  divisionWinner?: boolean;
   playoffSeed?: number;
   wins: number;
   losses: number;

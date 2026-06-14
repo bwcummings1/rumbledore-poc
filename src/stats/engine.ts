@@ -19,6 +19,7 @@ import {
   teamSeasons,
   weeklyStatistics,
 } from "@/db/schema";
+import type { NormalizedMatchupKind } from "@/providers";
 import { identityNameSimilarity } from "./fuzzy";
 
 export const RECORD_TYPE_LABELS = {
@@ -79,6 +80,7 @@ interface WeeklyFact {
   isTopScorer: boolean;
   leagueId: string;
   margin: number;
+  matchupKind: NormalizedMatchupKind;
   matchupId: string;
   opponentPersonId: string;
   personId: string;
@@ -296,6 +298,7 @@ function canonicalNameFor(teamSeason: TeamSeasonRow): string {
 async function loadTeamSeasonFacts(tx: LeagueScopedTx, leagueId: string) {
   const teams = await tx
     .select({
+      division: fantasyTeams.division,
       fantasyTeamId: fantasyTeams.id,
       leagueProviderId: fantasyTeams.leagueProviderId,
       name: fantasyTeams.name,
@@ -337,6 +340,7 @@ async function loadTeamSeasonFacts(tx: LeagueScopedTx, leagueId: string) {
       fantasyTeamId: team.fantasyTeamId,
       leagueId,
       leagueProviderId: team.leagueProviderId,
+      division: team.division,
       ownerMemberIds,
       ownerNames,
       provider: team.provider,
@@ -365,6 +369,7 @@ async function upsertTeamSeasonFacts(
         ],
         set: {
           fantasyTeamId: sql`excluded.fantasy_team_id`,
+          division: sql`excluded.division`,
           leagueProviderId: sql`excluded.league_provider_id`,
           ownerMemberIds: sql`excluded.owner_member_ids`,
           ownerNames: sql`excluded.owner_names`,
@@ -608,6 +613,7 @@ async function loadFinalMatchups(tx: LeagueScopedTx, leagueId: string) {
       homeScore: fantasyMatchups.homeScore,
       homeTeamProviderId: fantasyMatchups.homeTeamProviderId,
       id: fantasyMatchups.id,
+      kind: fantasyMatchups.kind,
       scoringPeriod: fantasyMatchups.scoringPeriod,
       season: fantasyMatchups.season,
       status: fantasyMatchups.status,
@@ -653,17 +659,26 @@ function rankWeeklyFacts(facts: WeeklyFact[]): WeeklyFact[] {
   }
 
   for (const weekly of byWeek.values()) {
-    const sorted = [...weekly].sort(
-      (left, right) =>
-        right.pointsFor - left.pointsFor ||
-        compareStable(left.personId, right.personId),
+    const scoreByPerson = new Map<string, number>();
+    for (const fact of weekly) {
+      scoreByPerson.set(
+        fact.personId,
+        Math.max(scoreByPerson.get(fact.personId) ?? -Infinity, fact.pointsFor),
+      );
+    }
+    const sorted = [...scoreByPerson.entries()].sort(
+      (left, right) => right[1] - left[1] || compareStable(left[0], right[0]),
     );
-    const maxScore = sorted[0]?.pointsFor;
-    const minScore = sorted.at(-1)?.pointsFor;
-    for (const [index, fact] of sorted.entries()) {
-      fact.weeklyRank = index + 1;
-      fact.isTopScorer = fact.pointsFor === maxScore;
-      fact.isBottomScorer = fact.pointsFor === minScore;
+    const maxScore = sorted[0]?.[1];
+    const minScore = sorted.at(-1)?.[1];
+    const rankByPerson = new Map(
+      sorted.map(([personId], index) => [personId, index + 1] as const),
+    );
+    for (const fact of weekly) {
+      const score = scoreByPerson.get(fact.personId);
+      fact.weeklyRank = rankByPerson.get(fact.personId) ?? 0;
+      fact.isTopScorer = score === maxScore;
+      fact.isBottomScorer = score === minScore;
     }
   }
 
@@ -770,6 +785,9 @@ function championshipMatchupIdForSeason({
   }
 
   const candidates = matchups.filter((matchup) => {
+    if (matchup.kind !== "head_to_head") {
+      return false;
+    }
     const teams = [matchup.homeTeamProviderId, matchup.awayTeamProviderId];
     const inKnownPostseason =
       !settings?.playoffStartScoringPeriod ||
@@ -905,6 +923,7 @@ function buildWeeklyFacts({
       isTopScorer: false,
       leagueId,
       margin: round(homeScore - awayScore, 2),
+      matchupKind: matchup.kind,
       matchupId: matchup.id,
       opponentPersonId: awayMapping.personId,
       personId: homeMapping.personId,
@@ -923,6 +942,7 @@ function buildWeeklyFacts({
       isTopScorer: false,
       leagueId,
       margin: round(awayScore - homeScore, 2),
+      matchupKind: matchup.kind,
       matchupId: matchup.id,
       opponentPersonId: homeMapping.personId,
       personId: awayMapping.personId,
@@ -940,6 +960,7 @@ function buildWeeklyFacts({
 }
 
 interface OfficialSeasonPlacement {
+  divisionWinner: boolean;
   finalRank: number;
   playoffSeed: number | null;
 }
@@ -958,6 +979,39 @@ function officialPlacementsByPersonSeason({
     ]),
   );
   const placements = new Map<string, OfficialSeasonPlacement>();
+  const divisionWinners = new Set<string>();
+  const standingsByDivision = new Map<string, ProviderFinalStandingRow[]>();
+
+  for (const standing of standings) {
+    if (!standing.division) {
+      continue;
+    }
+    const key = `${standing.season}:${standing.division}`;
+    standingsByDivision.set(key, [
+      ...(standingsByDivision.get(key) ?? []),
+      standing,
+    ]);
+  }
+
+  for (const rows of standingsByDivision.values()) {
+    const explicitWinners = rows.filter(
+      (standing) => standing.divisionWinner || standing.divisionRank === 1,
+    );
+    const winners =
+      explicitWinners.length > 0
+        ? explicitWinners
+        : [...rows]
+            .filter((standing) => standing.finalRank > 0)
+            .sort(
+              (left, right) =>
+                left.finalRank - right.finalRank ||
+                compareStable(left.providerTeamId, right.providerTeamId),
+            )
+            .slice(0, 1);
+    for (const winner of winners) {
+      divisionWinners.add(identityKey(winner.providerTeamId, winner.season));
+    }
+  }
 
   for (const standing of standings) {
     const mapping = mappingByIdentity.get(
@@ -971,6 +1025,9 @@ function officialPlacementsByPersonSeason({
     const existing = placements.get(key);
     if (!existing || standing.finalRank < existing.finalRank) {
       placements.set(key, {
+        divisionWinner: divisionWinners.has(
+          identityKey(standing.providerTeamId, standing.season),
+        ),
         finalRank: standing.finalRank,
         playoffSeed: standing.playoffSeed,
       });
@@ -1022,7 +1079,22 @@ function buildSeasonStats(
     { expectedWins: number; losses: number; ties: number; wins: number }
   >();
   for (const weeklyFacts of byWeek.values()) {
+    const scoringFactsByPerson = new Map<string, WeeklyFact>();
     for (const fact of weeklyFacts) {
+      const existing = scoringFactsByPerson.get(fact.personId);
+      if (
+        !existing ||
+        (existing.matchupKind !== "head_to_head" &&
+          fact.matchupKind === "head_to_head") ||
+        (existing.matchupKind === fact.matchupKind &&
+          compareStable(fact.matchupId, existing.matchupId) < 0)
+      ) {
+        scoringFactsByPerson.set(fact.personId, fact);
+      }
+    }
+    const scoringFacts = [...scoringFactsByPerson.values()];
+
+    for (const fact of scoringFacts) {
       const key = `${fact.personId}:${fact.season}`;
       const entry = allPlay.get(key) ?? {
         expectedWins: 0,
@@ -1030,7 +1102,7 @@ function buildSeasonStats(
         ties: 0,
         wins: 0,
       };
-      const opponents = weeklyFacts.filter(
+      const opponents = scoringFacts.filter(
         (other) => other.personId !== fact.personId,
       );
       let weekWins = 0;
@@ -1163,6 +1235,7 @@ function buildSeasonStats(
       const official = officialPlacements.get(`${row.personId}:${row.season}`);
       const finalRank = official?.finalRank ?? row.computedRank;
       row.finalRank = finalRank;
+      row.divisionWinner = official?.divisionWinner ?? false;
       row.playoffSeed = official?.playoffSeed ?? null;
       row.madePlayoffs =
         row.playoffSeed !== null
@@ -1213,6 +1286,9 @@ function headToHeadRows(
   const groups = new Map<string, WeeklyFact[]>();
 
   for (const fact of facts) {
+    if (fact.matchupKind !== "head_to_head") {
+      continue;
+    }
     if (compareStable(fact.personId, fact.opponentPersonId) > 0) {
       continue;
     }
@@ -1708,6 +1784,7 @@ export async function recomputeLeagueStatistics(
           isPlayoff: fact.isPlayoff,
           leagueId: fact.leagueId,
           margin: fact.margin,
+          matchupKind: fact.matchupKind,
           matchupId: fact.matchupId,
           opponentPersonId: fact.opponentPersonId,
           personId: fact.personId,
@@ -1758,6 +1835,7 @@ export async function recomputeLeagueStatistics(
           medianPointsFor: row.medianPointsFor,
           personId: row.personId,
           pointDifferential: row.pointDifferential,
+          playoffSeed: row.playoffSeed,
           pointsAgainst: row.pointsAgainst,
           pointsFor: row.pointsFor,
           scoringStdDev: row.scoringStdDev,

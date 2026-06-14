@@ -113,6 +113,7 @@ type YahooLeagueResource = {
   leagueKey: string;
   name: string;
   numTeams: number;
+  scoringSettings: Record<string, unknown>;
   scoringType: string;
   season?: number;
   startWeek: number;
@@ -495,6 +496,11 @@ function parseLeagueResource(value: unknown, fallback: ProviderLeagueRef) {
       fallback.name ||
       `Yahoo League ${leagueKey}`,
     numTeams,
+    scoringSettings: {
+      endWeek,
+      rawScoringType: toStringValue(field(league, "scoring_type")) || "unknown",
+      startWeek,
+    },
     scoringType: toStringValue(field(league, "scoring_type")) || "unknown",
     season: toInteger(field(league, "season")) ?? fallback.season,
     startWeek,
@@ -509,6 +515,7 @@ function normalizeLeague(resource: YahooLeagueResource): NormalizedLeague {
     sport: "ffl",
     name: resource.name,
     scoringType: normalizeScoringType(resource.scoringType),
+    scoringSettings: resource.scoringSettings,
     size: resource.numTeams,
     currentScoringPeriod: resource.currentWeek,
     status: normalizeLeagueStatus(resource),

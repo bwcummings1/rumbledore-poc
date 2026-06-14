@@ -245,6 +245,11 @@ describe("Sleeper provider", () => {
       sport: "ffl",
       name: "Sleeper Fixture League",
       scoringType: "PPR",
+      scoringSettings: {
+        idp: false,
+        rec: 1,
+        rosterPositions: ["QB", "RB", "WR", "TE", "FLEX", "BN", "BN", "IR"],
+      },
       size: 4,
       currentScoringPeriod: 2,
       status: "in_season",
