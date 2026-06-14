@@ -522,6 +522,42 @@ export const providerFinalStandings = pgTable(
   ],
 );
 
+export const leagueSeasonSettings = pgTable(
+  "league_season_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    season: integer("season").notNull(),
+    regularSeasonEndScoringPeriod: integer("regular_season_end_scoring_period"),
+    playoffStartScoringPeriod: integer("playoff_start_scoring_period"),
+    championshipScoringPeriod: integer("championship_scoring_period"),
+    playoffTeamCount: integer("playoff_team_count"),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("league_season_settings_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.season,
+    ),
+    index("league_season_settings_league_season_idx").on(
+      table.leagueId,
+      table.season,
+    ),
+    pgPolicy("league_season_settings_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const fantasyRosterEntries = pgTable(
   "fantasy_roster_entries",
   {

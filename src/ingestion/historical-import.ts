@@ -534,6 +534,7 @@ async function persistBundle({
   return persistNormalizedLeagueRows({
     db,
     finalStandings: bundle.finalStandings,
+    league: bundle.league,
     leagueId,
     leagueProviderId: bundle.league.providerId,
     matchups: bundle.matchups,

@@ -10,6 +10,7 @@ import {
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
+  leagueSeasonSettings,
   leagues,
   providerFinalStandings,
 } from "@/db/schema";
@@ -65,6 +66,7 @@ export interface CurrentLeagueSyncResult {
 export interface PersistNormalizedLeagueRowsInput {
   db: Db;
   finalStandings?: readonly NormalizedFinalStanding[];
+  league?: NormalizedLeague;
   leagueId: string;
   leagueProviderId?: string;
   matchups: readonly NormalizedMatchup[];
@@ -83,6 +85,7 @@ export interface PersistNormalizedLeagueRowsResult {
   rosterStats: EntitySyncStats;
   transactionStats: EntitySyncStats;
   finalStandingStats: EntitySyncStats;
+  leagueSeasonSettingsStats: EntitySyncStats;
 }
 
 export type CurrentLeagueSyncError = ProviderError;
@@ -230,6 +233,21 @@ function finalStandingHashPayload(standing: NormalizedFinalStanding) {
     season: standing.teamRef.season,
     ties: standing.ties,
     wins: standing.wins,
+  };
+}
+
+function leagueSeasonSettingsHashPayload(league: NormalizedLeague) {
+  return {
+    championshipScoringPeriod:
+      league.postseason?.championshipScoringPeriod ?? null,
+    leagueProviderId: league.providerId,
+    playoffStartScoringPeriod:
+      league.postseason?.playoffStartScoringPeriod ?? null,
+    playoffTeamCount: league.postseason?.playoffTeamCount ?? null,
+    provider: league.provider,
+    regularSeasonEndScoringPeriod:
+      league.postseason?.regularSeasonEndScoringPeriod ?? null,
+    season: league.season,
   };
 }
 
@@ -555,6 +573,55 @@ async function upsertFinalStandings(
   return stats(rows.length, changed.length);
 }
 
+async function upsertLeagueSeasonSettings(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  league?: NormalizedLeague,
+): Promise<EntitySyncStats> {
+  if (!league?.postseason) {
+    return emptyStats();
+  }
+
+  const row = {
+    championshipScoringPeriod:
+      league.postseason.championshipScoringPeriod ?? null,
+    contentHash: stableContentHash(leagueSeasonSettingsHashPayload(league)),
+    leagueId,
+    leagueProviderId: league.providerId,
+    playoffStartScoringPeriod:
+      league.postseason.playoffStartScoringPeriod ?? null,
+    playoffTeamCount: league.postseason.playoffTeamCount ?? null,
+    provider: league.provider,
+    regularSeasonEndScoringPeriod:
+      league.postseason.regularSeasonEndScoringPeriod ?? null,
+    season: league.season,
+  };
+
+  const changed = await tx
+    .insert(leagueSeasonSettings)
+    .values(row)
+    .onConflictDoUpdate({
+      target: [
+        leagueSeasonSettings.leagueId,
+        leagueSeasonSettings.provider,
+        leagueSeasonSettings.leagueProviderId,
+        leagueSeasonSettings.season,
+      ],
+      set: {
+        championshipScoringPeriod: sql`excluded.championship_scoring_period`,
+        contentHash: sql`excluded.content_hash`,
+        playoffStartScoringPeriod: sql`excluded.playoff_start_scoring_period`,
+        playoffTeamCount: sql`excluded.playoff_team_count`,
+        regularSeasonEndScoringPeriod: sql`excluded.regular_season_end_scoring_period`,
+        updatedAt: sql`now()`,
+      },
+      where: sql`${leagueSeasonSettings.contentHash} is distinct from excluded.content_hash`,
+    })
+    .returning({ id: leagueSeasonSettings.id });
+
+  return stats(1, changed.length);
+}
+
 async function upsertRosterEntries(
   tx: LeagueScopedTx,
   leagueId: string,
@@ -695,6 +762,7 @@ function resolveLeagueProviderId({
 export async function persistNormalizedLeagueRows({
   db,
   finalStandings = [],
+  league,
   leagueId,
   leagueProviderId,
   matchups,
@@ -720,6 +788,11 @@ export async function persistNormalizedLeagueRows({
       leagueId,
       finalStandings,
     );
+    const leagueSeasonSettingsStats = await upsertLeagueSeasonSettings(
+      tx,
+      leagueId,
+      league,
+    );
     const rosterStats = await upsertRosterEntries(
       tx,
       leagueId,
@@ -736,6 +809,7 @@ export async function persistNormalizedLeagueRows({
       changedMatchupIds: matchupUpsert.changedIds,
       changedMatchupScoringPeriods: matchupUpsert.scoringPeriods,
       finalStandingStats,
+      leagueSeasonSettingsStats,
       matchupStats: matchupUpsert.stats,
       memberStats,
       rosterStats,
@@ -920,6 +994,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   const leagueWrite = await upsertLeague(db, league.value);
   const scoped = await persistNormalizedLeagueRows({
     db,
+    league: league.value,
     leagueId: leagueWrite.id,
     leagueProviderId: league.value.providerId,
     matchups: matchups.value,

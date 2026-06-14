@@ -14,6 +14,7 @@ import {
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
+  leagueSeasonSettings,
   leagues,
   persons,
   providerFinalStandings,
@@ -706,6 +707,79 @@ describe("recomputeLeagueStatistics", () => {
           wins: 0,
         },
       ]);
+      await tx.insert(leagueSeasonSettings).values({
+        championshipScoringPeriod: 3,
+        contentHash: `${marker}-official-settings`,
+        leagueId,
+        leagueProviderId: providerLeagueId,
+        playoffStartScoringPeriod: 2,
+        playoffTeamCount: 4,
+        provider: "espn",
+        regularSeasonEndScoringPeriod: 1,
+        season: 2024,
+      });
+      await tx.insert(fantasyMatchups).values([
+        {
+          awayScore: 120,
+          awayTeamProviderId: "2",
+          contentHash: `${marker}-official-2024-semi-a`,
+          homeScore: 130,
+          homeTeamProviderId: "3",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: "2024-2-semi-a",
+          scoringPeriod: 2,
+          season: 2024,
+          status: "final",
+          winner: "home",
+        },
+        {
+          awayScore: 101,
+          awayTeamProviderId: "4",
+          contentHash: `${marker}-official-2024-semi-b`,
+          homeScore: 118,
+          homeTeamProviderId: "1",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: "2024-2-semi-b",
+          scoringPeriod: 2,
+          season: 2024,
+          status: "final",
+          winner: "home",
+        },
+        {
+          awayScore: 125,
+          awayTeamProviderId: "1",
+          contentHash: `${marker}-official-2024-title`,
+          homeScore: 130,
+          homeTeamProviderId: "3",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: "2024-3-title",
+          scoringPeriod: 3,
+          season: 2024,
+          status: "final",
+          winner: "home",
+        },
+        {
+          awayScore: 91,
+          awayTeamProviderId: "4",
+          contentHash: `${marker}-official-2024-third`,
+          homeScore: 99,
+          homeTeamProviderId: "2",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: "2024-3-third",
+          scoringPeriod: 3,
+          season: 2024,
+          status: "final",
+          winner: "home",
+        },
+      ]);
     });
 
     await recomputeLeagueStatistics(handle.db, { leagueId });
@@ -740,15 +814,52 @@ describe("recomputeLeagueStatistics", () => {
     expect(alexSeason).toMatchObject({
       finalPlacement: "runner_up",
       finalRank: 2,
-      wins: 1,
     });
     expect(
       rows.championshipRows.find((row) => row.season === 2024),
     ).toMatchObject({
       championPersonId: drew2024.personId,
+      championshipScore: 130,
       regularSeasonWinnerPersonId: alex2024.personId,
       runnerUpPersonId: alex2024.personId,
+      runnerUpScore: 125,
       thirdPlacePersonId: blair2024.personId,
+    });
+
+    const drewTitleWeek = rows.weeklyRows.find(
+      (row) =>
+        row.personId === drew2024.personId &&
+        row.season === 2024 &&
+        row.scoringPeriod === 3,
+    );
+    expect(drewTitleWeek).toMatchObject({
+      isChampionship: true,
+      isPlayoff: true,
+      pointsFor: 130,
+    });
+    expect(
+      rows.weeklyRows.filter(
+        (row) =>
+          row.season === 2024 && row.scoringPeriod === 1 && row.isPlayoff,
+      ),
+    ).toHaveLength(0);
+    expect(
+      rows.weeklyRows.filter(
+        (row) =>
+          row.season === 2024 && row.scoringPeriod === 2 && row.isPlayoff,
+      ),
+    ).toHaveLength(4);
+
+    const alexDrewH2h = rows.h2hRows.find(
+      (row) =>
+        row.season === 2024 &&
+        [row.personAId, row.personBId].includes(alex2024.personId) &&
+        [row.personAId, row.personBId].includes(drew2024.personId),
+    );
+    expect(alexDrewH2h).toMatchObject({
+      championshipMeetings: 1,
+      meetings: 2,
+      playoffMeetings: 1,
     });
   });
 

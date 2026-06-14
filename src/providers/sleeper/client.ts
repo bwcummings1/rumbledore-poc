@@ -11,6 +11,7 @@ import {
   type NormalizedMatchupStatus,
   type NormalizedMatchupWinner,
   type NormalizedMember,
+  type NormalizedPostseasonSettings,
   type NormalizedRoster,
   type NormalizedRosterEntry,
   type NormalizedSeasonBundle,
@@ -459,6 +460,40 @@ function currentScoringPeriod(
   return lastScoredLeg ?? 0;
 }
 
+function positiveInteger(
+  value: string | number | null | undefined,
+): number | undefined {
+  const parsed = toInteger(value);
+  return parsed && parsed > 0 ? parsed : undefined;
+}
+
+function normalizePostseasonSettings(
+  league: SleeperLeague,
+): NormalizedPostseasonSettings | undefined {
+  const playoffStart = positiveInteger(league.settings?.playoff_week_start);
+  const lastScoredLeg = positiveInteger(league.settings?.last_scored_leg);
+  const isComplete = normalizeLeagueStatus(league.status) === "complete";
+  const championshipScoringPeriod =
+    isComplete &&
+    lastScoredLeg &&
+    (!playoffStart || lastScoredLeg >= playoffStart)
+      ? lastScoredLeg
+      : undefined;
+  const settings: NormalizedPostseasonSettings = {
+    ...(playoffStart
+      ? {
+          playoffStartScoringPeriod: playoffStart,
+          ...(playoffStart > 1
+            ? { regularSeasonEndScoringPeriod: playoffStart - 1 }
+            : {}),
+        }
+      : {}),
+    ...(championshipScoringPeriod ? { championshipScoringPeriod } : {}),
+  };
+
+  return Object.keys(settings).length > 0 ? settings : undefined;
+}
+
 function normalizeLeague(
   league: SleeperLeague,
   state?: SleeperState,
@@ -466,6 +501,7 @@ function normalizeLeague(
   const providerId = toId(league.league_id) ?? "unknown";
   const season = toInteger(league.season) ?? 0;
   const size = toInteger(league.total_rosters) ?? 0;
+  const postseason = normalizePostseasonSettings(league);
 
   return {
     provider: SLEEPER_PROVIDER_ID,
@@ -477,6 +513,7 @@ function normalizeLeague(
     size,
     currentScoringPeriod: currentScoringPeriod(league, state),
     status: normalizeLeagueStatus(league.status),
+    ...(postseason ? { postseason } : {}),
   };
 }
 

@@ -83,6 +83,14 @@ export interface NormalizedLeague extends ProviderLeagueRef {
   size: number;
   currentScoringPeriod: number;
   status: NormalizedLeagueStatus;
+  postseason?: NormalizedPostseasonSettings;
+}
+
+export interface NormalizedPostseasonSettings {
+  championshipScoringPeriod?: number;
+  playoffStartScoringPeriod?: number;
+  playoffTeamCount?: number;
+  regularSeasonEndScoringPeriod?: number;
 }
 
 export interface NormalizedTeam extends SeasonScopedProviderEntityRef {

@@ -12,6 +12,7 @@ import {
   type NormalizedMatchupWinner,
   type NormalizedMember,
   type NormalizedMemberRole,
+  type NormalizedPostseasonSettings,
   type NormalizedSeasonBundle,
   type NormalizedTeam,
   ProviderBlockedError,
@@ -99,6 +100,13 @@ const numericValue = z.union([z.number(), z.string()]);
 const leagueSettingsSchema = z
   .object({
     name: z.string().optional(),
+    scheduleSettings: z
+      .object({
+        matchupPeriodCount: numericValue.optional(),
+        playoffTeamCount: numericValue.optional(),
+      })
+      .passthrough()
+      .optional(),
     scoringSettings: z
       .object({
         scoringType: z.string().optional(),
@@ -112,6 +120,7 @@ const leagueSettingsSchema = z
 const leagueStatusSchema = z
   .object({
     firstScoringPeriod: numericValue.optional(),
+    finalScoringPeriod: numericValue.optional(),
     isActive: z.boolean().optional(),
     isExpired: z.boolean().optional(),
     latestScoringPeriod: numericValue.optional(),
@@ -455,6 +464,39 @@ function normalizeLeagueStatus(
   return "unknown";
 }
 
+function positiveInteger(
+  value: string | number | undefined,
+): number | undefined {
+  const parsed = toInteger(value);
+  return parsed && parsed > 0 ? parsed : undefined;
+}
+
+function normalizePostseasonSettings(
+  league: EspnLeagueApiResponse,
+): NormalizedPostseasonSettings | undefined {
+  const regularSeasonEnd = positiveInteger(
+    league.settings?.scheduleSettings?.matchupPeriodCount,
+  );
+  const championshipScoringPeriod = positiveInteger(
+    league.status?.finalScoringPeriod,
+  );
+  const playoffTeamCount = positiveInteger(
+    league.settings?.scheduleSettings?.playoffTeamCount,
+  );
+  const settings: NormalizedPostseasonSettings = {
+    ...(regularSeasonEnd
+      ? {
+          regularSeasonEndScoringPeriod: regularSeasonEnd,
+          playoffStartScoringPeriod: regularSeasonEnd + 1,
+        }
+      : {}),
+    ...(championshipScoringPeriod ? { championshipScoringPeriod } : {}),
+    ...(playoffTeamCount ? { playoffTeamCount } : {}),
+  };
+
+  return Object.keys(settings).length > 0 ? settings : undefined;
+}
+
 function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
   const providerId = String(toInteger(league.id) ?? league.id);
   const season = toInteger(league.seasonId) ?? 0;
@@ -462,6 +504,7 @@ function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
     toInteger(league.scoringPeriodId) ??
     toInteger(league.status?.latestScoringPeriod) ??
     0;
+  const postseason = normalizePostseasonSettings(league);
 
   return {
     provider: ESPN_PROVIDER_ID,
@@ -476,6 +519,7 @@ function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
       0,
     currentScoringPeriod,
     status: normalizeLeagueStatus(league),
+    ...(postseason ? { postseason } : {}),
   };
 }
 

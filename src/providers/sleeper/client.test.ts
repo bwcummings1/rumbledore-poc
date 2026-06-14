@@ -248,6 +248,10 @@ describe("Sleeper provider", () => {
       size: 4,
       currentScoringPeriod: 2,
       status: "in_season",
+      postseason: {
+        playoffStartScoringPeriod: 15,
+        regularSeasonEndScoringPeriod: 14,
+      },
     });
   });
 
@@ -438,6 +442,10 @@ describe("Sleeper provider", () => {
       season: 2025,
       scoringType: "HALF_PPR",
       status: "complete",
+      postseason: {
+        playoffStartScoringPeriod: 15,
+        regularSeasonEndScoringPeriod: 14,
+      },
     });
     expect(result.value[0].teams).toHaveLength(4);
     expect(result.value[0].members).toHaveLength(4);

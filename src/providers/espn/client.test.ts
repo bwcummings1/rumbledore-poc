@@ -259,6 +259,12 @@ describe("ESPN current league client", () => {
       size: 12,
       currentScoringPeriod: 0,
       status: "preseason",
+      postseason: {
+        championshipScoringPeriod: 17,
+        playoffStartScoringPeriod: 15,
+        playoffTeamCount: 6,
+        regularSeasonEndScoringPeriod: 14,
+      },
     });
     expect(calls[0].url).toBe(
       "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leagues/95050?view=mSettings",
@@ -401,6 +407,12 @@ describe("ESPN current league client", () => {
       providerId: "95050",
       season: 2025,
       status: "complete",
+      postseason: {
+        championshipScoringPeriod: 17,
+        playoffStartScoringPeriod: 15,
+        playoffTeamCount: 6,
+        regularSeasonEndScoringPeriod: 14,
+      },
     });
     expect(result.value[0].teams).toHaveLength(12);
     expect(result.value[0].members).toHaveLength(16);

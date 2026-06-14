@@ -10,6 +10,7 @@ import {
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
+  leagueSeasonSettings,
   type PersonOwnerHistoryEntry,
   persons,
   providerFinalStandings,
@@ -51,6 +52,7 @@ export type RecordType = keyof typeof RECORD_TYPE_LABELS;
 type TeamSeasonRow = typeof teamSeasons.$inferSelect;
 type IdentityMappingRow = typeof identityMappings.$inferSelect;
 type ProviderFinalStandingRow = typeof providerFinalStandings.$inferSelect;
+type LeagueSeasonSettingsRow = typeof leagueSeasonSettings.$inferSelect;
 type WeeklyResult = "win" | "loss" | "tie";
 
 interface ResolvedIdentityState {
@@ -138,6 +140,11 @@ interface RecordCandidate {
 
 interface RecordEvent extends RecordCandidate {
   recordType: RecordType;
+}
+
+interface PostseasonFlags {
+  isChampionship: boolean;
+  isPlayoff: boolean;
 }
 
 function round(value: number, places = 4): number {
@@ -629,6 +636,13 @@ async function loadProviderFinalStandings(
     .where(eq(providerFinalStandings.leagueId, leagueId));
 }
 
+async function loadLeagueSeasonSettings(tx: LeagueScopedTx, leagueId: string) {
+  return tx
+    .select()
+    .from(leagueSeasonSettings)
+    .where(eq(leagueSeasonSettings.leagueId, leagueId));
+}
+
 function rankWeeklyFacts(facts: WeeklyFact[]): WeeklyFact[] {
   const byWeek = new Map<string, WeeklyFact[]>();
   for (const fact of facts) {
@@ -656,15 +670,198 @@ function rankWeeklyFacts(facts: WeeklyFact[]): WeeklyFact[] {
   return facts;
 }
 
+function standingsBySeason(
+  standings: readonly ProviderFinalStandingRow[],
+): Map<number, ProviderFinalStandingRow[]> {
+  const bySeason = new Map<number, ProviderFinalStandingRow[]>();
+  for (const standing of standings) {
+    bySeason.set(standing.season, [
+      ...(bySeason.get(standing.season) ?? []),
+      standing,
+    ]);
+  }
+  return bySeason;
+}
+
+function settingsBySeason(
+  settings: readonly LeagueSeasonSettingsRow[],
+): Map<number, LeagueSeasonSettingsRow> {
+  return new Map(settings.map((row) => [row.season, row]));
+}
+
+function rankedTeams(
+  standings: readonly ProviderFinalStandingRow[],
+): ProviderFinalStandingRow[] {
+  return [...standings]
+    .filter((standing) => standing.finalRank > 0)
+    .sort(
+      (left, right) =>
+        left.finalRank - right.finalRank ||
+        compareStable(left.providerTeamId, right.providerTeamId),
+    );
+}
+
+function playoffTeamIdsForSeason({
+  settings,
+  standings,
+}: {
+  settings?: LeagueSeasonSettingsRow;
+  standings: readonly ProviderFinalStandingRow[];
+}): Set<string> {
+  const ranked = rankedTeams(standings);
+  const seeded = standings.filter(
+    (standing) => (standing.playoffSeed ?? 0) > 0,
+  );
+  const playoffTeamCount = settings?.playoffTeamCount;
+  if (seeded.length > 0) {
+    const ids = new Set(seeded.map((standing) => standing.providerTeamId));
+    for (const standing of ranked.slice(0, playoffTeamCount ?? seeded.length)) {
+      ids.add(standing.providerTeamId);
+    }
+    return ids;
+  }
+
+  const fallbackPlayoffTeamCount =
+    playoffTeamCount ??
+    (ranked.length > 1 ? Math.ceil(ranked.length / 2) : ranked.length);
+  return new Set(
+    ranked
+      .slice(0, Math.max(0, fallbackPlayoffTeamCount))
+      .map((standing) => standing.providerTeamId),
+  );
+}
+
+function hasPlayoffField({
+  awayTeamProviderId,
+  homeTeamProviderId,
+  playoffTeamIds,
+}: {
+  awayTeamProviderId: string;
+  homeTeamProviderId: string;
+  playoffTeamIds: ReadonlySet<string>;
+}): boolean {
+  return (
+    playoffTeamIds.size === 0 ||
+    (playoffTeamIds.has(homeTeamProviderId) &&
+      playoffTeamIds.has(awayTeamProviderId))
+  );
+}
+
+function championshipMatchupIdForSeason({
+  matchups,
+  settings,
+  standings,
+}: {
+  matchups: Awaited<ReturnType<typeof loadFinalMatchups>>;
+  settings?: LeagueSeasonSettingsRow;
+  standings: readonly ProviderFinalStandingRow[];
+}): string | null {
+  const ranked = rankedTeams(standings);
+  const champion = ranked[0]?.providerTeamId;
+  const runnerUp = ranked[1]?.providerTeamId;
+  if (!champion || !runnerUp) {
+    return null;
+  }
+  if (
+    !settings?.championshipScoringPeriod &&
+    !settings?.playoffStartScoringPeriod
+  ) {
+    return null;
+  }
+
+  const candidates = matchups.filter((matchup) => {
+    const teams = [matchup.homeTeamProviderId, matchup.awayTeamProviderId];
+    const inKnownPostseason =
+      !settings?.playoffStartScoringPeriod ||
+      matchup.scoringPeriod >= settings.playoffStartScoringPeriod;
+    return (
+      teams.includes(champion) && teams.includes(runnerUp) && inKnownPostseason
+    );
+  });
+  const preferredPeriod = settings?.championshipScoringPeriod;
+  const preferred = preferredPeriod
+    ? candidates.filter((matchup) => matchup.scoringPeriod === preferredPeriod)
+    : candidates;
+  const sorted = [...(preferred.length > 0 ? preferred : candidates)].sort(
+    (left, right) =>
+      right.scoringPeriod - left.scoringPeriod ||
+      compareStable(left.id, right.id),
+  );
+
+  return sorted[0]?.id ?? null;
+}
+
+function postseasonFlagsByMatchupId({
+  matchups,
+  seasonSettings,
+  standings,
+}: {
+  matchups: Awaited<ReturnType<typeof loadFinalMatchups>>;
+  seasonSettings: readonly LeagueSeasonSettingsRow[];
+  standings: readonly ProviderFinalStandingRow[];
+}): Map<string, PostseasonFlags> {
+  const standingsMap = standingsBySeason(standings);
+  const settingsMap = settingsBySeason(seasonSettings);
+  const seasons = new Set(matchups.map((matchup) => matchup.season));
+  const flags = new Map<string, PostseasonFlags>();
+
+  for (const season of seasons) {
+    const seasonMatchups = matchups.filter(
+      (matchup) => matchup.season === season,
+    );
+    const settings = settingsMap.get(season);
+    const seasonStandings = standingsMap.get(season) ?? [];
+    const playoffTeamIds = playoffTeamIdsForSeason({
+      settings,
+      standings: seasonStandings,
+    });
+    const championshipMatchupId = championshipMatchupIdForSeason({
+      matchups: seasonMatchups,
+      settings,
+      standings: seasonStandings,
+    });
+    const playoffStart = settings?.playoffStartScoringPeriod ?? null;
+    const championshipPeriod =
+      settings?.championshipScoringPeriod ??
+      seasonMatchups.find((matchup) => matchup.id === championshipMatchupId)
+        ?.scoringPeriod ??
+      null;
+
+    for (const matchup of seasonMatchups) {
+      const isChampionship = matchup.id === championshipMatchupId;
+      const inPostseasonWindow =
+        playoffStart !== null
+          ? matchup.scoringPeriod >= playoffStart &&
+            (championshipPeriod === null ||
+              matchup.scoringPeriod <= championshipPeriod)
+          : isChampionship;
+      const isPlayoff =
+        isChampionship ||
+        (inPostseasonWindow &&
+          hasPlayoffField({
+            awayTeamProviderId: matchup.awayTeamProviderId,
+            homeTeamProviderId: matchup.homeTeamProviderId,
+            playoffTeamIds,
+          }));
+
+      flags.set(matchup.id, { isChampionship, isPlayoff });
+    }
+  }
+
+  return flags;
+}
+
 function buildWeeklyFacts({
   leagueId,
   mappings,
   matchups,
+  postseasonFlags,
   teamSeasonByIdentity,
 }: {
   leagueId: string;
   mappings: readonly IdentityMappingRow[];
   matchups: Awaited<ReturnType<typeof loadFinalMatchups>>;
+  postseasonFlags: ReadonlyMap<string, PostseasonFlags>;
   teamSeasonByIdentity: ReadonlyMap<string, TeamSeasonRow>;
 }): WeeklyFact[] {
   const mappingByIdentity = new Map(
@@ -697,10 +894,14 @@ function buildWeeklyFacts({
 
     const homeScore = round(matchup.homeScore, 2);
     const awayScore = round(matchup.awayScore, 2);
-    facts.push({
-      isBottomScorer: false,
+    const flags = postseasonFlags.get(matchup.id) ?? {
       isChampionship: false,
       isPlayoff: false,
+    };
+    facts.push({
+      isBottomScorer: false,
+      isChampionship: flags.isChampionship,
+      isPlayoff: flags.isPlayoff,
       isTopScorer: false,
       leagueId,
       margin: round(homeScore - awayScore, 2),
@@ -717,8 +918,8 @@ function buildWeeklyFacts({
     });
     facts.push({
       isBottomScorer: false,
-      isChampionship: false,
-      isPlayoff: false,
+      isChampionship: flags.isChampionship,
+      isPlayoff: flags.isPlayoff,
       isTopScorer: false,
       leagueId,
       margin: round(awayScore - homeScore, 2),
@@ -1107,6 +1308,28 @@ function headToHeadRows(
   return rows;
 }
 
+function titleGameScore({
+  facts,
+  personId,
+  season,
+}: {
+  facts: readonly WeeklyFact[];
+  personId?: string;
+  season: number;
+}): number | null {
+  if (!personId) {
+    return null;
+  }
+  return (
+    facts.find(
+      (fact) =>
+        fact.season === season &&
+        fact.personId === personId &&
+        fact.isChampionship,
+    )?.pointsFor ?? null
+  );
+}
+
 function currentRecordEvents(
   recordType: RecordType,
   candidates: readonly RecordCandidate[],
@@ -1458,6 +1681,7 @@ export async function recomputeLeagueStatistics(
       tx,
       input.leagueId,
     );
+    const seasonSettings = await loadLeagueSeasonSettings(tx, input.leagueId);
     const teamSeasonByIdentity = new Map(
       seasonRows.map((row) => [
         identityKey(row.providerTeamId, row.season),
@@ -1468,6 +1692,11 @@ export async function recomputeLeagueStatistics(
       leagueId: input.leagueId,
       mappings: mappingRows,
       matchups,
+      postseasonFlags: postseasonFlagsByMatchupId({
+        matchups,
+        seasonSettings,
+        standings: providerStandings,
+      }),
       teamSeasonByIdentity,
     });
 
@@ -1568,11 +1797,25 @@ export async function recomputeLeagueStatistics(
         )[0];
       await tx.insert(championshipRecords).values({
         championPersonId: sorted[0]?.personId ?? null,
-        championshipScore: sorted[0]?.highestScore ?? null,
+        championshipScore:
+          titleGameScore({
+            facts: weeklyFacts,
+            personId: sorted[0]?.personId,
+            season,
+          }) ??
+          sorted[0]?.highestScore ??
+          null,
         leagueId: input.leagueId,
         regularSeasonWinnerPersonId: regularSeasonWinner?.personId ?? null,
         runnerUpPersonId: sorted[1]?.personId ?? null,
-        runnerUpScore: sorted[1]?.highestScore ?? null,
+        runnerUpScore:
+          titleGameScore({
+            facts: weeklyFacts,
+            personId: sorted[1]?.personId,
+            season,
+          }) ??
+          sorted[1]?.highestScore ??
+          null,
         season,
         thirdPlacePersonId: sorted[2]?.personId ?? null,
       });

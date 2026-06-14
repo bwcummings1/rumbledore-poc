@@ -13,6 +13,7 @@ import {
   fantasyTeams,
   fantasyTransactions,
   historicalImportCheckpoints,
+  leagueSeasonSettings,
   leagues,
   providerFinalStandings,
 } from "@/db/schema";
@@ -88,6 +89,12 @@ function bundleFor(
       season,
       size: ref.size ?? 2,
       status: "complete",
+      postseason: {
+        championshipScoringPeriod: 3,
+        playoffStartScoringPeriod: 2,
+        playoffTeamCount: 2,
+        regularSeasonEndScoringPeriod: 1,
+      },
     },
     teams: [
       {
@@ -269,6 +276,11 @@ async function selectHistoricalRows(leagueId: string) {
       .from(fantasyTransactions)
       .where(eq(fantasyTransactions.leagueId, leagueId))
       .orderBy(asc(fantasyTransactions.season));
+    const seasonSettings = await tx
+      .select()
+      .from(leagueSeasonSettings)
+      .where(eq(leagueSeasonSettings.leagueId, leagueId))
+      .orderBy(asc(leagueSeasonSettings.season));
     const [checkpoint] = await tx
       .select()
       .from(historicalImportCheckpoints)
@@ -281,6 +293,7 @@ async function selectHistoricalRows(leagueId: string) {
       finalStandings,
       matchups,
       members,
+      seasonSettings,
       teams,
       transactions,
     };
@@ -363,6 +376,14 @@ describe("importLeagueHistory", () => {
     expect(rows.members).toHaveLength(4);
     expect(rows.matchups).toHaveLength(2);
     expect(rows.finalStandings).toHaveLength(4);
+    expect(rows.seasonSettings).toHaveLength(2);
+    expect(rows.seasonSettings[0]).toMatchObject({
+      championshipScoringPeriod: 3,
+      playoffStartScoringPeriod: 2,
+      playoffTeamCount: 2,
+      regularSeasonEndScoringPeriod: 1,
+      season: 2024,
+    });
     expect(rows.transactions).toHaveLength(2);
     expect(rows.transactions[0]).toMatchObject({
       season: 2024,
