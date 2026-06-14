@@ -134,6 +134,30 @@ async function openClaim(league: SeededLeague, tag: string) {
   });
 }
 
+async function affirmClaim(league: SeededLeague, claimId: string, count = 3) {
+  for (const member of league.members.slice(0, count)) {
+    await castLoreVote({
+      deps: deps(),
+      input: {
+        choice: "affirm",
+        claimId,
+        leagueId: league.id,
+        voterMemberId: member.id,
+      },
+    });
+  }
+}
+
+async function canonizeClaim(league: SeededLeague, tag: string) {
+  const claim = await openClaim(league, tag);
+  await affirmClaim(league, claim.claimId);
+  await closeLoreVote({
+    deps: deps(),
+    input: { claimId: claim.claimId, leagueId: league.id },
+  });
+  return claim;
+}
+
 async function seedWeeklyScore({
   league,
   pointsFor = 200.4,
@@ -389,6 +413,217 @@ describe("lore claim voting lifecycle", () => {
       "voted",
       "ratified",
     ]);
+  });
+
+  it("opens a dispute branch and supersedes original canon when the challenge succeeds", async () => {
+    const league = await seedLeague("dispute-succeeds", [
+      "commissioner",
+      "member",
+      "member",
+      "member",
+    ]);
+    const original = await canonizeClaim(league, "The cursed trade");
+
+    const dispute = await openOpinionClaim({
+      deps: deps(),
+      input: {
+        authorMemberId: league.members[1]?.id,
+        body: "New evidence says the cursed trade was actually worse.",
+        branchOf: original.claimId,
+        leagueId: league.id,
+        relation: "dispute",
+        title: "The cursed trade deserves a retrial",
+      },
+    });
+
+    expect(dispute.threadRootId).toBe(original.claimId);
+
+    const opened = await withLeagueContext(
+      handle.db,
+      league.id,
+      async (tx) => ({
+        dispute: (
+          await tx
+            .select()
+            .from(loreClaims)
+            .where(eq(loreClaims.id, dispute.claimId))
+        )[0],
+        original: (
+          await tx
+            .select()
+            .from(loreClaims)
+            .where(eq(loreClaims.id, original.claimId))
+        )[0],
+        originalEvents: await tx
+          .select()
+          .from(loreEvents)
+          .where(eq(loreEvents.claimId, original.claimId)),
+      }),
+    );
+
+    expect(opened.dispute).toMatchObject({
+      branchOf: original.claimId,
+      relation: "dispute",
+      status: "vote",
+      threadRootId: original.claimId,
+    });
+    expect(opened.original).toMatchObject({ status: "disputed" });
+    expect(opened.originalEvents.map((event) => event.reason)).toContain(
+      "dispute_opened",
+    );
+
+    await affirmClaim(league, dispute.claimId);
+    const closed = await closeLoreVote({
+      deps: deps(),
+      input: { claimId: dispute.claimId, leagueId: league.id },
+    });
+
+    expect(closed).toMatchObject({
+      claimId: dispute.claimId,
+      ratifiedBy: "vote",
+      status: "canonized",
+    });
+
+    const resolved = await withLeagueContext(
+      handle.db,
+      league.id,
+      async (tx) => ({
+        dispute: (
+          await tx
+            .select()
+            .from(loreClaims)
+            .where(eq(loreClaims.id, dispute.claimId))
+        )[0],
+        original: (
+          await tx
+            .select()
+            .from(loreClaims)
+            .where(eq(loreClaims.id, original.claimId))
+        )[0],
+        originalEvents: await tx
+          .select()
+          .from(loreEvents)
+          .where(eq(loreEvents.claimId, original.claimId)),
+      }),
+    );
+
+    expect(resolved.dispute).toMatchObject({
+      branchOf: original.claimId,
+      ratifiedBy: "vote",
+      relation: "dispute",
+      status: "canon",
+      threadRootId: original.claimId,
+    });
+    expect(resolved.original).toMatchObject({ status: "superseded" });
+    expect(resolved.originalEvents.map((event) => event.kind)).toEqual(
+      expect.arrayContaining(["disputed", "superseded"]),
+    );
+    expect(resolved.originalEvents.map((event) => event.reason)).toContain(
+      "vote_threshold_met:superseded",
+    );
+  });
+
+  it("keeps original canon when a relitigation branch fails", async () => {
+    const league = await seedLeague("dispute-fails", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+    const original = await canonizeClaim(league, "The title asterisk");
+
+    const dispute = await openOpinionClaim({
+      deps: deps(),
+      input: {
+        authorMemberId: league.members[1]?.id,
+        body: "The title asterisk should be struck from the record.",
+        branchOf: original.claimId,
+        leagueId: league.id,
+        relation: "relitigation",
+        title: "Strike the asterisk",
+      },
+    });
+
+    for (const member of league.members) {
+      await castLoreVote({
+        deps: deps(),
+        input: {
+          choice: "reject",
+          claimId: dispute.claimId,
+          leagueId: league.id,
+          voterMemberId: member.id,
+        },
+      });
+    }
+
+    const closed = await closeLoreVote({
+      deps: deps(),
+      input: { claimId: dispute.claimId, leagueId: league.id },
+    });
+
+    expect(closed).toMatchObject({
+      claimId: dispute.claimId,
+      status: "rejected",
+    });
+
+    const resolved = await withLeagueContext(
+      handle.db,
+      league.id,
+      async (tx) => ({
+        dispute: (
+          await tx
+            .select()
+            .from(loreClaims)
+            .where(eq(loreClaims.id, dispute.claimId))
+        )[0],
+        original: (
+          await tx
+            .select()
+            .from(loreClaims)
+            .where(eq(loreClaims.id, original.claimId))
+        )[0],
+        originalEvents: await tx
+          .select()
+          .from(loreEvents)
+          .where(eq(loreEvents.claimId, original.claimId)),
+      }),
+    );
+
+    expect(resolved.dispute).toMatchObject({
+      branchOf: original.claimId,
+      relation: "relitigation",
+      status: "rejected",
+      threadRootId: original.claimId,
+    });
+    expect(resolved.original).toMatchObject({ status: "canon" });
+    expect(resolved.originalEvents.map((event) => event.reason)).toEqual(
+      expect.arrayContaining([
+        "dispute_opened",
+        "vote_threshold_failed:upheld",
+      ]),
+    );
+  });
+
+  it("rejects dispute branches against claims that are not canon", async () => {
+    const league = await seedLeague("dispute-non-canon", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+    const pending = await openClaim(league, "The unsettled rumor");
+
+    await expect(
+      openOpinionClaim({
+        deps: deps(),
+        input: {
+          authorMemberId: league.members[1]?.id,
+          body: "This rumor cannot be challenged before it is canon.",
+          branchOf: pending.claimId,
+          leagueId: league.id,
+          relation: "dispute",
+          title: "Premature challenge",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "LORE_PARENT_NOT_CANON" });
   });
 
   it("auto-confirms a data-verifiable weekly score claim without opening a vote", async () => {

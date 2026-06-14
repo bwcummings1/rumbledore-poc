@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
@@ -259,6 +259,30 @@ function claimSnapshot(
   };
 }
 
+type LoreClaimSnapshot = Parameters<typeof claimSnapshot>[0];
+
+type BranchParent = Pick<
+  LoreClaim,
+  | "id"
+  | "ratifiedAt"
+  | "ratifiedBy"
+  | "status"
+  | "threadRootId"
+  | "voteClosesAt"
+>;
+
+type BranchClaim = Pick<
+  LoreClaim,
+  | "branchOf"
+  | "id"
+  | "ratifiedAt"
+  | "ratifiedBy"
+  | "relation"
+  | "status"
+  | "threadRootId"
+  | "voteClosesAt"
+>;
+
 function assertVoteChoice(choice: LoreVoteChoice): LoreVoteChoice {
   if (choice === "affirm" || choice === "reject" || choice === "abstain") {
     return choice;
@@ -291,9 +315,50 @@ function assertOpenClaimAuthor(input: OpenOpinionClaimInput): LoreClaimOrigin {
 
 function relationFor(input: OpenOpinionClaimInput): LoreClaimRelation {
   if (!input.branchOf) {
-    return "root";
+    return input.relation ?? "root";
   }
   return input.relation ?? "response";
+}
+
+function isChallengeRelation(relation: LoreClaimRelation): boolean {
+  return relation === "dispute" || relation === "relitigation";
+}
+
+function assertBranchRelation({
+  branchOf,
+  parent,
+  relation,
+}: {
+  branchOf?: string;
+  parent: BranchParent | null;
+  relation: LoreClaimRelation;
+}) {
+  if (!branchOf) {
+    if (relation === "root") {
+      return;
+    }
+    throw new AppError({
+      code: "LORE_BRANCH_PARENT_REQUIRED",
+      message: "Branch lore claims require a parent claim",
+      status: 400,
+    });
+  }
+
+  if (relation === "root") {
+    throw new AppError({
+      code: "LORE_BRANCH_RELATION_INVALID",
+      message: "Branched lore claims require a branch relation",
+      status: 400,
+    });
+  }
+
+  if (isChallengeRelation(relation) && parent?.status !== "canon") {
+    throw new AppError({
+      code: "LORE_PARENT_NOT_CANON",
+      message: "Only canon lore claims can be disputed",
+      status: 409,
+    });
+  }
 }
 
 function valueToText(
@@ -866,13 +931,13 @@ async function assertStewardMember({
   return member;
 }
 
-async function resolveThreadRoot({
+async function loadBranchParent({
   input,
   tx,
 }: {
   input: OpenOpinionClaimInput;
   tx: LeagueScopedTx;
-}): Promise<string | null> {
+}): Promise<BranchParent | null> {
   if (!input.branchOf) {
     return null;
   }
@@ -880,7 +945,11 @@ async function resolveThreadRoot({
   const [parent] = await tx
     .select({
       id: loreClaims.id,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      status: loreClaims.status,
       threadRootId: loreClaims.threadRootId,
+      voteClosesAt: loreClaims.voteClosesAt,
     })
     .from(loreClaims)
     .where(
@@ -899,6 +968,13 @@ async function resolveThreadRoot({
     });
   }
 
+  return parent;
+}
+
+function threadRootFor(parent: BranchParent | null): string | null {
+  if (!parent) {
+    return null;
+  }
   return parent.threadRootId ?? parent.id;
 }
 
@@ -923,6 +999,193 @@ async function ensureThreadRoot({
       );
   }
   return threadRootId;
+}
+
+async function updateLoreClaimStatus({
+  claimId,
+  fromStatuses,
+  leagueId,
+  nextStatus,
+  timestamp,
+  tx,
+}: {
+  claimId: string;
+  fromStatuses: LoreClaim["status"][];
+  leagueId: string;
+  nextStatus: LoreClaim["status"];
+  timestamp: Date;
+  tx: LeagueScopedTx;
+}): Promise<LoreClaimSnapshot | null> {
+  const [updated] = await tx
+    .update(loreClaims)
+    .set({ status: nextStatus, updatedAt: timestamp })
+    .where(
+      and(
+        eq(loreClaims.leagueId, leagueId),
+        eq(loreClaims.id, claimId),
+        inArray(loreClaims.status, fromStatuses),
+      ),
+    )
+    .returning({
+      id: loreClaims.id,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      status: loreClaims.status,
+      threadRootId: loreClaims.threadRootId,
+      voteClosesAt: loreClaims.voteClosesAt,
+    });
+
+  return updated ?? null;
+}
+
+async function markChallengeOpenedInTx({
+  challenge,
+  leagueId,
+  parent,
+  timestamp,
+  tx,
+}: {
+  challenge: BranchClaim;
+  leagueId: string;
+  parent: BranchParent | null;
+  timestamp: Date;
+  tx: LeagueScopedTx;
+}) {
+  if (
+    !parent ||
+    !challenge.branchOf ||
+    !isChallengeRelation(challenge.relation)
+  ) {
+    return;
+  }
+
+  const updated = await updateLoreClaimStatus({
+    claimId: parent.id,
+    fromStatuses: ["canon"],
+    leagueId,
+    nextStatus: "disputed",
+    timestamp,
+    tx,
+  });
+  if (!updated) {
+    throw new AppError({
+      code: "LORE_DISPUTE_OPEN_FAILED",
+      message: "Canon lore claim could not be marked disputed",
+      status: 409,
+    });
+  }
+
+  await tx.insert(loreEvents).values({
+    afterState: {
+      ...claimSnapshot(updated),
+      challengedByClaimId: challenge.id,
+      relation: challenge.relation,
+    },
+    beforeState: claimSnapshot(parent),
+    claimId: parent.id,
+    kind: "disputed",
+    leagueId,
+    reason: "dispute_opened",
+  });
+}
+
+async function resolveChallengeInTx({
+  challenge,
+  leagueId,
+  nextStatus,
+  reason,
+  timestamp,
+  tx,
+}: {
+  challenge: BranchClaim;
+  leagueId: string;
+  nextStatus: "canon" | "rejected";
+  reason: string;
+  timestamp: Date;
+  tx: LeagueScopedTx;
+}) {
+  if (!challenge.branchOf || !isChallengeRelation(challenge.relation)) {
+    return;
+  }
+
+  const [parent] = await tx
+    .select({
+      id: loreClaims.id,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      status: loreClaims.status,
+      threadRootId: loreClaims.threadRootId,
+      voteClosesAt: loreClaims.voteClosesAt,
+    })
+    .from(loreClaims)
+    .where(
+      and(
+        eq(loreClaims.leagueId, leagueId),
+        eq(loreClaims.id, challenge.branchOf),
+      ),
+    )
+    .limit(1);
+
+  if (!parent) {
+    throw new AppError({
+      code: "LORE_PARENT_NOT_FOUND",
+      message: "Parent lore claim could not be found",
+      status: 404,
+    });
+  }
+
+  if (nextStatus === "canon") {
+    const updated = await updateLoreClaimStatus({
+      claimId: parent.id,
+      fromStatuses: ["canon", "disputed"],
+      leagueId,
+      nextStatus: "superseded",
+      timestamp,
+      tx,
+    });
+    if (!updated) {
+      return;
+    }
+
+    await tx.insert(loreEvents).values({
+      afterState: {
+        ...claimSnapshot(updated),
+        relation: challenge.relation,
+        supersededByClaimId: challenge.id,
+      },
+      beforeState: claimSnapshot(parent),
+      claimId: parent.id,
+      kind: "superseded",
+      leagueId,
+      reason: `${reason}:superseded`,
+    });
+    return;
+  }
+
+  const updated = await updateLoreClaimStatus({
+    claimId: parent.id,
+    fromStatuses: ["disputed"],
+    leagueId,
+    nextStatus: "canon",
+    timestamp,
+    tx,
+  });
+  if (!updated) {
+    return;
+  }
+
+  await tx.insert(loreEvents).values({
+    afterState: {
+      ...claimSnapshot(updated),
+      relation: challenge.relation,
+      upheldAgainstClaimId: challenge.id,
+    },
+    beforeState: claimSnapshot(parent),
+    claimId: parent.id,
+    kind: "disputed",
+    leagueId,
+    reason: `${reason}:upheld`,
+  });
 }
 
 async function insertLoreSubjects({
@@ -974,6 +1237,8 @@ async function createVotingClaimInTx({
   const origin = assertOpenClaimAuthor(input);
   const relation = relationFor(input);
   const voteClosesAt = input.voteClosesAt ?? defaultVoteClosesAt(timestamp);
+  const parent = await loadBranchParent({ input, tx });
+  assertBranchRelation({ branchOf: input.branchOf, parent, relation });
 
   if (input.authorMemberId) {
     await assertLeagueMember({
@@ -983,7 +1248,7 @@ async function createVotingClaimInTx({
     });
   }
 
-  const threadRootId = await resolveThreadRoot({ input, tx });
+  const threadRootId = threadRootFor(parent);
   const [claim] = await tx
     .insert(loreClaims)
     .values({
@@ -1004,9 +1269,11 @@ async function createVotingClaimInTx({
       voteOpensAt: timestamp,
     })
     .returning({
+      branchOf: loreClaims.branchOf,
       id: loreClaims.id,
       ratifiedAt: loreClaims.ratifiedAt,
       ratifiedBy: loreClaims.ratifiedBy,
+      relation: loreClaims.relation,
       status: loreClaims.status,
       threadRootId: loreClaims.threadRootId,
       voteClosesAt: loreClaims.voteClosesAt,
@@ -1023,6 +1290,13 @@ async function createVotingClaimInTx({
   const finalThreadRootId = await ensureThreadRoot({
     claim,
     leagueId: input.leagueId,
+    timestamp,
+    tx,
+  });
+  await markChallengeOpenedInTx({
+    challenge: { ...claim, threadRootId: finalThreadRootId },
+    leagueId: input.leagueId,
+    parent,
     timestamp,
     tx,
   });
@@ -1129,7 +1403,9 @@ async function createResolvedDataClaimInTx({
     });
   }
 
-  const threadRootId = await resolveThreadRoot({ input, tx });
+  const parent = await loadBranchParent({ input, tx });
+  assertBranchRelation({ branchOf: input.branchOf, parent, relation });
+  const threadRootId = threadRootFor(parent);
   const [claim] = await tx
     .insert(loreClaims)
     .values({
@@ -1150,9 +1426,11 @@ async function createResolvedDataClaimInTx({
       verification,
     })
     .returning({
+      branchOf: loreClaims.branchOf,
       id: loreClaims.id,
       ratifiedAt: loreClaims.ratifiedAt,
       ratifiedBy: loreClaims.ratifiedBy,
+      relation: loreClaims.relation,
       status: loreClaims.status,
       threadRootId: loreClaims.threadRootId,
       voteClosesAt: loreClaims.voteClosesAt,
@@ -1169,6 +1447,14 @@ async function createResolvedDataClaimInTx({
   const finalThreadRootId = await ensureThreadRoot({
     claim,
     leagueId: input.leagueId,
+    timestamp,
+    tx,
+  });
+  await resolveChallengeInTx({
+    challenge: { ...claim, threadRootId: finalThreadRootId },
+    leagueId: input.leagueId,
+    nextStatus: status,
+    reason: `verification:${result}`,
     timestamp,
     tx,
   });
@@ -1455,9 +1741,11 @@ export async function closeLoreVote({
   return withLeagueContext(deps.db, input.leagueId, async (tx) => {
     const [claim] = await tx
       .select({
+        branchOf: loreClaims.branchOf,
         id: loreClaims.id,
         ratifiedAt: loreClaims.ratifiedAt,
         ratifiedBy: loreClaims.ratifiedBy,
+        relation: loreClaims.relation,
         status: loreClaims.status,
         threadRootId: loreClaims.threadRootId,
         voteClosesAt: loreClaims.voteClosesAt,
@@ -1542,9 +1830,11 @@ export async function closeLoreVote({
         ),
       )
       .returning({
+        branchOf: loreClaims.branchOf,
         id: loreClaims.id,
         ratifiedAt: loreClaims.ratifiedAt,
         ratifiedBy: loreClaims.ratifiedBy,
+        relation: loreClaims.relation,
         status: loreClaims.status,
         threadRootId: loreClaims.threadRootId,
         voteClosesAt: loreClaims.voteClosesAt,
@@ -1569,6 +1859,15 @@ export async function closeLoreVote({
       leagueId: input.leagueId,
       reason:
         nextStatus === "canon" ? "vote_threshold_met" : "vote_threshold_failed",
+    });
+    await resolveChallengeInTx({
+      challenge: updated,
+      leagueId: input.leagueId,
+      nextStatus,
+      reason:
+        nextStatus === "canon" ? "vote_threshold_met" : "vote_threshold_failed",
+      timestamp,
+      tx,
     });
 
     if (nextStatus === "canon") {
@@ -1609,9 +1908,11 @@ export async function stewardLoreClaim({
 
     const [claim] = await tx
       .select({
+        branchOf: loreClaims.branchOf,
         id: loreClaims.id,
         ratifiedAt: loreClaims.ratifiedAt,
         ratifiedBy: loreClaims.ratifiedBy,
+        relation: loreClaims.relation,
         status: loreClaims.status,
         threadRootId: loreClaims.threadRootId,
         voteClosesAt: loreClaims.voteClosesAt,
@@ -1864,9 +2165,11 @@ export async function stewardLoreClaim({
         ),
       )
       .returning({
+        branchOf: loreClaims.branchOf,
         id: loreClaims.id,
         ratifiedAt: loreClaims.ratifiedAt,
         ratifiedBy: loreClaims.ratifiedBy,
+        relation: loreClaims.relation,
         status: loreClaims.status,
         threadRootId: loreClaims.threadRootId,
         voteClosesAt: loreClaims.voteClosesAt,
@@ -1907,6 +2210,14 @@ export async function stewardLoreClaim({
         reason: `steward:${input.action}`,
       },
     ]);
+    await resolveChallengeInTx({
+      challenge: updated,
+      leagueId: input.leagueId,
+      nextStatus,
+      reason: `steward:${input.action}`,
+      timestamp,
+      tx,
+    });
 
     switch (input.action) {
       case "ratify":
