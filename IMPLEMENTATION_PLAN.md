@@ -46,8 +46,13 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope, or run `./loop.sh harden N`)
 - [ ] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`.
-- [ ] **[correctness/MED] Bet placement reads balance before the week lock** — acquire `lockWeekLedger` before the balance read. `src/betting/placement.ts`.
+- [x] **[correctness/MED] Bet placement reads balance before the week lock** — acquire `lockWeekLedger` before the balance read. `src/betting/placement.ts`.
 - [ ] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads that return scheduled/in-progress. `src/ingestion/current-league.ts`.
+
+## Harden shortlist
+1. [x] **Bet placement reads balance before the week lock** — highest correctness/data-integrity risk because concurrent requests can validate against stale bankroll state and admit invalid wagers.
+2. [ ] **Current sync can downgrade finalized matchups** — finalized matchup state feeds records, content triggers, and settlements, so transient provider regressions can make product data wrong.
+3. [ ] **Invite tokens stored plaintext at rest** — real token-at-rest exposure, but ranked after active correctness bugs by the hardening rubric.
 
 ## Discoveries / bugs (loop appends here)
 - [ ] **[observability/LOW] Historical import progress is DB-queryable but not published to realtime** — checkpoints/data coverage expose progress, but onboarding cannot subscribe to a live history-build channel yet.

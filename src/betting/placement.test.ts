@@ -47,6 +47,10 @@ function decimalOdds(americanOdds: number): number {
   return Math.round(decimal * 1_000_000) / 1_000_000;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function ledgerEntriesFor(bankrollWeekId: string) {
   return withLeagueContext(handle.db, leagueA.id, (tx) =>
     tx
@@ -368,6 +372,75 @@ describe("bet placement", () => {
     ).rejects.toMatchObject({ code: "BET_INSUFFICIENT_FUNDS" });
 
     expect(await slipsFor(`${marker}:too-rich`)).toHaveLength(0);
+    expect(await ledgerEntriesFor(opened.week.id)).toHaveLength(1);
+  });
+
+  it("takes the bankroll week lock before checking available balance", async () => {
+    const opened = await openBankrollWeek(handle.db, {
+      floorCents: 5_000,
+      leagueId: leagueA.id,
+      userId: userA.id,
+      weekEnd: week(23),
+      weekStart: week(16),
+    });
+    const seeded = await seedSnapshot({
+      awayPrice: 120,
+      homePrice: -140,
+      marketType: "moneyline",
+    });
+    const lockClient = await handle.pool.connect();
+    let lockOpen = false;
+    let settled = false;
+    let placement:
+      | Promise<{ error: unknown; status: "rejected" } | { status: "resolved" }>
+      | undefined;
+
+    try {
+      await lockClient.query("begin");
+      lockOpen = true;
+      await lockClient.query(
+        "select pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [opened.week.id],
+      );
+
+      placement = placeBetSlip(handle.db, {
+        bankrollWeekId: opened.week.id,
+        idempotencyKey: `${marker}:locked-balance`,
+        kind: "single",
+        leagueId: leagueA.id,
+        legs: [{ oddsSnapshotId: seeded.snapshot.id, selection: "home" }],
+        now: placedAt,
+        stakeCents: 5_001,
+        userId: userA.id,
+      })
+        .then(() => ({ status: "resolved" as const }))
+        .catch((error: unknown) => ({
+          error,
+          status: "rejected" as const,
+        }))
+        .finally(() => {
+          settled = true;
+        });
+
+      await delay(100);
+      expect(settled).toBe(false);
+
+      await lockClient.query("commit");
+      lockOpen = false;
+
+      await expect(placement).resolves.toMatchObject({
+        error: { code: "BET_INSUFFICIENT_FUNDS" },
+        status: "rejected",
+      });
+    } finally {
+      if (lockOpen) {
+        await lockClient.query("rollback");
+      }
+      lockClient.release();
+      await placement?.catch(() => undefined);
+    }
+
+    expect(await slipsFor(`${marker}:locked-balance`)).toHaveLength(0);
     expect(await ledgerEntriesFor(opened.week.id)).toHaveLength(1);
   });
 

@@ -15,7 +15,7 @@ import {
 import { stableContentHash } from "@/ingestion/hash";
 import {
   appendBankrollLedgerEntryInContext,
-  requireBankrollBalanceInContext,
+  requireLockedBankrollBalanceInContext,
 } from "./bankroll";
 
 export const DEFAULT_ODDS_FRESHNESS_MS = 5 * 60 * 1000;
@@ -585,7 +585,7 @@ export async function placeBetSlip(
       return assertIdempotentPayloadMatches(existing, existingRequestHash);
     }
 
-    const balance = await requireBankrollBalanceInContext(tx, {
+    const balance = await requireLockedBankrollBalanceInContext(tx, {
       bankrollWeekId: input.bankrollWeekId,
       leagueId: input.leagueId,
       userId: input.userId,

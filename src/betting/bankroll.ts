@@ -420,6 +420,28 @@ export async function requireBankrollBalanceInContext(
   };
 }
 
+export async function requireLockedBankrollBalanceInContext(
+  tx: LeagueScopedTx,
+  input: GetBankrollBalanceInput,
+): Promise<BankrollBalance> {
+  const week = await findWeekForBalance(tx, input);
+  if (!week) {
+    throw appError(
+      "BANKROLL_WEEK_NOT_FOUND",
+      "Bankroll week was not found",
+      404,
+    );
+  }
+
+  await lockWeekLedger(tx, week.id);
+
+  return requireBankrollBalanceInContext(tx, {
+    bankrollWeekId: week.id,
+    leagueId: input.leagueId,
+    userId: input.userId,
+  });
+}
+
 async function openBankrollWeekInContext(
   tx: LeagueScopedTx,
   input: OpenBankrollWeekInput & {
