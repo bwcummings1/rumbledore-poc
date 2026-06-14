@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { type Page, test, type TestInfo } from "@playwright/test";
+import { type Page, type TestInfo, test } from "@playwright/test";
 
 const runMarker = `shots-${randomUUID()}`;
 const OUT = "docs/screenshots";
@@ -20,7 +20,12 @@ async function signUpAndIn(page: Page, testInfo: TestInfo) {
   const email = `${runMarker}@example.com`;
   const headers = { origin: baseUrl };
   await page.request.post("/api/auth/sign-up/email", {
-    data: { email, name: "Screenshot Commissioner", password, rememberMe: true },
+    data: {
+      email,
+      name: "Screenshot Commissioner",
+      password,
+      rememberMe: true,
+    },
     headers,
   });
   await page.request.post("/api/auth/sign-in/email", {
@@ -39,15 +44,23 @@ async function shoot(page: Page, vp: string, name: string, route: string) {
   const dir = path.join(OUT, vp);
   fs.mkdirSync(dir, { recursive: true });
   try {
-    await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: true });
+    await page.screenshot({
+      path: path.join(dir, `${name}.png`),
+      fullPage: true,
+    });
     console.log(`  ok ${vp}/${name}.png`);
   } catch (e) {
     console.log(`  FAIL ${vp}/${name}: ${(e as Error).message}`);
   }
 }
 
-test("capture UI screenshots at mobile/tablet/desktop", async ({ page }, testInfo) => {
-  test.skip(!process.env.SCREENSHOTS, "set SCREENSHOTS=1 to capture screenshots");
+test("capture UI screenshots at mobile/tablet/desktop", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    !process.env.SCREENSHOTS,
+    "set SCREENSHOTS=1 to capture screenshots",
+  );
   test.setTimeout(600_000);
 
   await signUpAndIn(page, testInfo);
@@ -63,7 +76,8 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({ page }, testInf
   ];
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    for (const [name, route] of preRoutes) await shoot(page, vp.name, name, route);
+    for (const [name, route] of preRoutes)
+      await shoot(page, vp.name, name, route);
   }
 
   // Seed — mock ESPN connect + import fixture league 95050 (mirrors espn-onboarding.spec.ts).
@@ -75,7 +89,9 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({ page }, testInf
     .getByText("NHS Alumni Annual · 2026 · ready")
     .waitFor({ timeout: 30_000 });
   await page.getByRole("button", { name: "Capture" }).click();
-  await page.getByRole("checkbox", { name: /NHS Alumni Annual/ }).waitFor({ timeout: 30_000 });
+  await page
+    .getByRole("checkbox", { name: /NHS Alumni Annual/ })
+    .waitFor({ timeout: 30_000 });
   await page.getByRole("button", { name: "Import selected" }).click();
   const homeLink = page.getByRole("link", { name: "Open home" });
   await homeLink.waitFor({ timeout: 60_000 });
@@ -91,6 +107,7 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({ page }, testInf
   ];
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    for (const [name, route] of leagueRoutes) await shoot(page, vp.name, name, route);
+    for (const [name, route] of leagueRoutes)
+      await shoot(page, vp.name, name, route);
   }
 });

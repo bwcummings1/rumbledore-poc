@@ -38,7 +38,8 @@ test("invite accept panel posts acceptance and surfaces claim errors", async () 
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /accept invite/i }));
+  const button = screen.getByRole("button", { name: /accept invite/i });
+  fireEvent.click(button);
 
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledWith(
@@ -46,7 +47,10 @@ test("invite accept panel posts acceptance and surfaces claim errors", async () 
       expect.objectContaining({ method: "POST" }),
     );
   });
-  expect(screen.getByRole("alert").textContent).toContain(
+  expect((await screen.findByRole("alert")).textContent).toContain(
     "already been claimed",
   );
+  await waitFor(() => {
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
 });
