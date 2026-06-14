@@ -1,10 +1,12 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   type BetSlip,
   type BettingEvent,
   type BettingMarket,
+  bankrollLedger,
+  bankrollWeeks,
   betSlips,
   bettingEvents,
   bettingMarkets,
@@ -34,10 +36,25 @@ export interface LeagueBetData {
 
 export interface LeagueBetBalance {
   readonly balanceCents: number;
+  readonly closingBalanceCents: number | null;
   readonly floorCents: number;
+  readonly openExposureCents: number;
+  readonly openPotentialReturnCents: number;
+  readonly openingBalanceCents: number;
+  readonly openingKind: LeagueBetBankrollOpeningKind;
+  readonly pendingSlipCount: number;
+  readonly previousWeekClosingBalanceCents: number | null;
+  readonly resetCreditCents: number;
+  readonly weekOpenEntryCents: number;
   readonly weekEnd: string;
   readonly weekStart: string;
 }
+
+export type LeagueBetBankrollOpeningKind =
+  | "carryover"
+  | "floor_open"
+  | "fresh_floor"
+  | "reset_to_floor";
 
 export interface LeagueBetSlip {
   readonly id: string;
@@ -105,6 +122,18 @@ type SnapshotRow = {
   underPrice: number | null;
 };
 
+type BankrollLoopSummary = Pick<
+  LeagueBetBalance,
+  | "closingBalanceCents"
+  | "openExposureCents"
+  | "openPotentialReturnCents"
+  | "openingKind"
+  | "pendingSlipCount"
+  | "previousWeekClosingBalanceCents"
+  | "resetCreditCents"
+  | "weekOpenEntryCents"
+>;
+
 export async function getLeagueBetData(
   db: Db,
   input: { leagueId: string; userId: string },
@@ -128,6 +157,14 @@ export async function getLeagueBetData(
     leagueId: input.leagueId,
     userId: input.userId,
   });
+  const bankrollLoop = balance
+    ? await getBankrollLoopSummary(db, {
+        bankrollWeekId: balance.week.id,
+        leagueId: input.leagueId,
+        userId: input.userId,
+        weekStart: balance.week.weekStart,
+      })
+    : null;
   const recentSlips = await listRecentSlips(db, input);
   const markets = await listCurrentMarkets(db);
 
@@ -136,7 +173,20 @@ export async function getLeagueBetData(
       balance: balance
         ? {
             balanceCents: balance.balanceCents,
+            closingBalanceCents: balance.week.closingBalanceCents,
             floorCents: balance.week.floorCents,
+            openExposureCents: bankrollLoop?.openExposureCents ?? 0,
+            openPotentialReturnCents:
+              bankrollLoop?.openPotentialReturnCents ?? 0,
+            openingBalanceCents: balance.week.openingBalanceCents,
+            openingKind: bankrollLoop?.openingKind ?? "fresh_floor",
+            pendingSlipCount: bankrollLoop?.pendingSlipCount ?? 0,
+            previousWeekClosingBalanceCents:
+              bankrollLoop?.previousWeekClosingBalanceCents ?? null,
+            resetCreditCents: bankrollLoop?.resetCreditCents ?? 0,
+            weekOpenEntryCents:
+              bankrollLoop?.weekOpenEntryCents ??
+              balance.week.openingBalanceCents,
             weekEnd: balance.week.weekEnd.toISOString(),
             weekStart: balance.week.weekStart.toISOString(),
           }
@@ -150,6 +200,139 @@ export async function getLeagueBetData(
     },
     status: "ready",
   };
+}
+
+async function getBankrollLoopSummary(
+  db: Db,
+  input: {
+    bankrollWeekId: string;
+    leagueId: string;
+    userId: string;
+    weekStart: Date;
+  },
+): Promise<BankrollLoopSummary> {
+  return withLeagueContext(db, input.leagueId, async (tx) => {
+    const pendingSlips = await tx
+      .select({
+        potentialPayoutCents: betSlips.potentialPayoutCents,
+        stakeCents: betSlips.stakeCents,
+      })
+      .from(betSlips)
+      .where(
+        and(
+          eq(betSlips.leagueId, input.leagueId),
+          eq(betSlips.userId, input.userId),
+          eq(betSlips.bankrollWeekId, input.bankrollWeekId),
+          eq(betSlips.status, "pending"),
+        ),
+      );
+
+    const ledgerEntries = await tx
+      .select({
+        amountCents: bankrollLedger.amountCents,
+        entryType: bankrollLedger.entryType,
+      })
+      .from(bankrollLedger)
+      .where(
+        and(
+          eq(bankrollLedger.leagueId, input.leagueId),
+          eq(bankrollLedger.userId, input.userId),
+          eq(bankrollLedger.bankrollWeekId, input.bankrollWeekId),
+        ),
+      )
+      .orderBy(asc(bankrollLedger.seq));
+
+    const [currentWeek] = await tx
+      .select({
+        closingBalanceCents: bankrollWeeks.closingBalanceCents,
+        floorCents: bankrollWeeks.floorCents,
+        openingBalanceCents: bankrollWeeks.openingBalanceCents,
+      })
+      .from(bankrollWeeks)
+      .where(
+        and(
+          eq(bankrollWeeks.id, input.bankrollWeekId),
+          eq(bankrollWeeks.leagueId, input.leagueId),
+          eq(bankrollWeeks.userId, input.userId),
+        ),
+      )
+      .limit(1);
+
+    const [previousWeek] = await tx
+      .select({
+        closingBalanceCents: bankrollWeeks.closingBalanceCents,
+      })
+      .from(bankrollWeeks)
+      .where(
+        and(
+          eq(bankrollWeeks.leagueId, input.leagueId),
+          eq(bankrollWeeks.userId, input.userId),
+          eq(bankrollWeeks.closed, true),
+          lt(bankrollWeeks.weekStart, input.weekStart),
+        ),
+      )
+      .orderBy(desc(bankrollWeeks.weekStart))
+      .limit(1);
+
+    const openExposureCents = pendingSlips.reduce(
+      (total, slip) => total + slip.stakeCents,
+      0,
+    );
+    const openPotentialReturnCents = pendingSlips.reduce(
+      (total, slip) => total + slip.potentialPayoutCents,
+      0,
+    );
+    const ledgerAmountsByType = new Map<string, number>();
+    for (const entry of ledgerEntries) {
+      ledgerAmountsByType.set(
+        entry.entryType,
+        (ledgerAmountsByType.get(entry.entryType) ?? 0) + entry.amountCents,
+      );
+    }
+    const resetCreditCents = ledgerAmountsByType.get("reset_to_floor") ?? 0;
+    const weekOpenEntryCents =
+      ledgerAmountsByType.get("week_open") ??
+      currentWeek?.openingBalanceCents ??
+      0;
+    const previousWeekClosingBalanceCents =
+      previousWeek?.closingBalanceCents ?? null;
+    const floorCents = currentWeek?.floorCents ?? 0;
+    const openingBalanceCents = currentWeek?.openingBalanceCents ?? 0;
+
+    return {
+      closingBalanceCents: currentWeek?.closingBalanceCents ?? null,
+      openExposureCents,
+      openPotentialReturnCents,
+      openingKind: bankrollOpeningKind({
+        floorCents,
+        openingBalanceCents,
+        previousWeekClosingBalanceCents,
+        resetCreditCents,
+      }),
+      pendingSlipCount: pendingSlips.length,
+      previousWeekClosingBalanceCents,
+      resetCreditCents,
+      weekOpenEntryCents,
+    };
+  });
+}
+
+function bankrollOpeningKind(input: {
+  floorCents: number;
+  openingBalanceCents: number;
+  previousWeekClosingBalanceCents: number | null;
+  resetCreditCents: number;
+}): LeagueBetBankrollOpeningKind {
+  if (input.resetCreditCents > 0) {
+    return "reset_to_floor";
+  }
+  if (input.openingBalanceCents > input.floorCents) {
+    return "carryover";
+  }
+  if (input.previousWeekClosingBalanceCents !== null) {
+    return "floor_open";
+  }
+  return "fresh_floor";
 }
 
 async function listRecentSlips(

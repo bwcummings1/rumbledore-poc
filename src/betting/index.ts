@@ -55,6 +55,7 @@ export type {
 export {
   getLeagueBetData,
   type LeagueBetBalance,
+  type LeagueBetBankrollOpeningKind,
   type LeagueBetData,
   type LeagueBetLoadResult,
   type LeagueBetMarket,

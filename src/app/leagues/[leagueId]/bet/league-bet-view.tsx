@@ -466,7 +466,7 @@ function StagedSlipPanel({
     stakeCents > 0 &&
     balanceCents !== null &&
     stakeCents <= balanceCents &&
-    placementState.status !== "submitting";
+    !isSubmittingPlacement(placementState);
 
   function submitSlip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -624,7 +624,7 @@ function StagedSlipPanel({
           disabled={!canSubmit}
           type="submit"
         >
-          {placementState.status === "submitting" ? (
+          {isSubmittingPlacement(placementState) ? (
             <Loader2 className="animate-spin" data-icon="inline-start" />
           ) : (
             <Ticket data-icon="inline-start" />
@@ -633,6 +633,108 @@ function StagedSlipPanel({
         </button>
       </div>
     </form>
+  );
+}
+
+function isSubmittingPlacement(state: PlaceSlipState): boolean {
+  return state.status.startsWith("submitting");
+}
+
+function bankrollOpeningCopy(
+  balance: NonNullable<LeagueBetData["balance"]>,
+): string {
+  switch (balance.openingKind) {
+    case "carryover":
+      return `This week carried ${formatCents(balance.weekOpenEntryCents)} forward from last week's close.`;
+    case "floor_open":
+      return balance.previousWeekClosingBalanceCents === null
+        ? `This week opened at the ${formatCents(balance.floorCents)} floor.`
+        : `This week opened at the floor after last week closed at ${formatCents(balance.previousWeekClosingBalanceCents)}.`;
+    case "fresh_floor":
+      return `This week opened at the ${formatCents(balance.floorCents)} floor.`;
+    case "reset_to_floor": {
+      const close = balance.previousWeekClosingBalanceCents;
+      const carry = balance.weekOpenEntryCents;
+      if (Number.isSafeInteger(close)) {
+        return `Last week closed at ${formatCents(close as number)}. The ledger carried ${formatCents(carry)} and credited ${formatCents(balance.resetCreditCents)} back to the floor.`;
+      }
+      return `The ledger credited ${formatCents(balance.resetCreditCents)} to restore the weekly floor.`;
+    }
+  }
+}
+
+function BankrollLoopCard({
+  balance,
+  balanceCents,
+}: {
+  balance: LeagueBetData["balance"];
+  balanceCents: number | null;
+}) {
+  return (
+    <div className="rounded-card border border-border bg-card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-primary">
+            This week's bankroll
+          </p>
+          <h2 className="mt-1 text-lg font-semibold">
+            {balanceCents === null ? "No open week" : formatCents(balanceCents)}
+          </h2>
+        </div>
+        <WalletCards className="size-5 text-primary" aria-hidden="true" />
+      </div>
+      {balance ? (
+        <div className="mt-3 grid gap-3">
+          <p className="text-sm text-muted-foreground">
+            Floor {formatCents(balance.floorCents)} · week{" "}
+            {formatDateTime(balance.weekStart)} to{" "}
+            {formatDateTime(balance.weekEnd)}
+          </p>
+          <div className="grid gap-2 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Already at risk</span>
+              <span className="font-mono font-semibold tabular-nums">
+                {formatCents(balance.openExposureCents)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Open upside</span>
+              <span className="font-mono font-semibold tabular-nums">
+                {formatCents(balance.openPotentialReturnCents)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Best-case balance</span>
+              <span className="font-mono font-semibold tabular-nums">
+                {formatCents(
+                  (balanceCents ?? balance.balanceCents) +
+                    balance.openPotentialReturnCents,
+                )}
+              </span>
+            </div>
+          </div>
+          <div className="grid gap-2 text-sm">
+            <p className="text-muted-foreground">
+              {bankrollOpeningCopy(balance)}
+            </p>
+            <p className="text-muted-foreground">
+              Finish above the floor and that balance carries forward; finish at
+              or below the floor and next week opens at the floor.
+            </p>
+            {balance.resetCreditCents > 0 ? (
+              <p className="font-medium text-primary">
+                Reset credit: {formatCents(balance.resetCreditCents)}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No bankroll week is open yet, so placement is locked until the weekly
+          ledger opens.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -846,31 +948,7 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
       </header>
 
       <section className="grid gap-3 lg:grid-cols-3">
-        <div className="rounded-card border border-border bg-card p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-primary">Bankroll</p>
-              <h2 className="mt-1 text-lg font-semibold">
-                {balanceCents === null
-                  ? "No open week"
-                  : formatCents(balanceCents)}
-              </h2>
-            </div>
-            <WalletCards className="size-5 text-primary" aria-hidden="true" />
-          </div>
-          {data.balance ? (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Floor {formatCents(data.balance.floorCents)} · week{" "}
-              {formatDateTime(data.balance.weekStart)} to{" "}
-              {formatDateTime(data.balance.weekEnd)}
-            </p>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">
-              No bankroll week is open yet, so placement is locked until the
-              weekly ledger opens.
-            </p>
-          )}
-        </div>
+        <BankrollLoopCard balance={data.balance} balanceCents={balanceCents} />
 
         <StagedSlipPanel
           balanceCents={balanceCents}

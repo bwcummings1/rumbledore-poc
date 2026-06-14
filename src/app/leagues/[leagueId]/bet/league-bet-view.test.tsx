@@ -22,7 +22,16 @@ vi.mock("next/navigation", () => ({
 const data: LeagueBetData = {
   balance: {
     balanceCents: 1_125_000,
+    closingBalanceCents: null,
     floorCents: 1_000_000,
+    openExposureCents: 50_000,
+    openPotentialReturnCents: 125_000,
+    openingBalanceCents: 1_250_000,
+    openingKind: "carryover",
+    pendingSlipCount: 1,
+    previousWeekClosingBalanceCents: 1_250_000,
+    resetCreditCents: 0,
+    weekOpenEntryCents: 1_250_000,
     weekEnd: "2026-09-14T00:00:00.000Z",
     weekStart: "2026-09-07T00:00:00.000Z",
   },
@@ -131,6 +140,22 @@ test("league bet view renders bankroll, open markets, and recent slips", () => {
     }),
   ).toBeDefined();
   expect(screen.getAllByText("$11,250").length).toBeGreaterThan(0);
+  expect(screen.getByText("Already at risk")).toBeDefined();
+  expect(screen.getByText("$500")).toBeDefined();
+  expect(screen.getByText("Open upside")).toBeDefined();
+  expect(screen.getByText("$1,250")).toBeDefined();
+  expect(screen.getByText("Best-case balance")).toBeDefined();
+  expect(screen.getByText("$12,500")).toBeDefined();
+  expect(
+    screen.getByText(
+      "This week carried $12,500 forward from last week's close.",
+    ),
+  ).toBeDefined();
+  expect(
+    screen.getByText(
+      /Finish above the floor and that balance carries forward/i,
+    ),
+  ).toBeDefined();
   expect(
     screen.getAllByRole("heading", { name: "New York at Chicago" }),
   ).toHaveLength(1);
@@ -191,6 +216,40 @@ test("league bet view renders empty bankroll and market states", () => {
 
   expect(screen.getAllByText("No open week").length).toBeGreaterThan(0);
   expect(screen.getByText("No open markets")).toBeDefined();
+});
+
+test("league bet view surfaces reset-to-floor audit copy", () => {
+  const balance = data.balance;
+  if (!balance) {
+    throw new Error("test fixture must include a bankroll balance");
+  }
+
+  render(
+    <LeagueBetView
+      data={{
+        ...data,
+        balance: {
+          ...balance,
+          balanceCents: 1_000_000,
+          openExposureCents: 0,
+          openPotentialReturnCents: 0,
+          openingBalanceCents: 1_000_000,
+          openingKind: "reset_to_floor",
+          pendingSlipCount: 0,
+          previousWeekClosingBalanceCents: 0,
+          resetCreditCents: 1_000_000,
+          weekOpenEntryCents: 0,
+        },
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Last week closed at $0. The ledger carried $0 and credited $10,000 back to the floor.",
+    ),
+  ).toBeDefined();
+  expect(screen.getByText("Reset credit: $10,000")).toBeDefined();
 });
 
 test("league bet view previews and submits a single with locked snapshot data", async () => {
