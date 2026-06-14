@@ -6,7 +6,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 ## Scope — Phase 2
 
 ### F. Competition & arena (see specs/15)
-- [ ] Build the browse-and-bet sportsbook board over the mocked odds (markets list). (specs/15)
+- [x] Build the browse-and-bet sportsbook board over the mocked odds (markets list). (specs/15)
 - [ ] Build the bet slip for singles and parlays with odds locked at placement and stake validation. (specs/15)
 - [ ] Surface the weekly rolling-minimum bankroll loop (this-week balance, win/lose, reset/carryover). (specs/15)
 - [ ] Add market depth (moneyline/spread/total plus a player-props framework) over mocks. (specs/15)

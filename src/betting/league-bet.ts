@@ -14,6 +14,7 @@ import {
 import { getProviderBadgeLabel } from "@/navigation";
 import type { FantasyProviderId } from "@/providers";
 import { getCurrentBankrollBalance } from "./bankroll";
+import type { BetLegSelection } from "./placement";
 
 const MARKET_LIMIT = 24;
 const RECENT_SLIP_LIMIT = 5;
@@ -58,15 +59,19 @@ export interface LeagueBetMarket {
   readonly marketStatus: BettingMarket["status"];
   readonly marketType: BettingMarket["type"];
   readonly period: BettingMarket["period"];
+  readonly propType: string | null;
   readonly selections: LeagueBetSelection[];
   readonly snapshotId: string;
   readonly startTime: string;
   readonly subject: string;
+  readonly subjectLabel: string;
 }
 
 export interface LeagueBetSelection {
   readonly label: string;
+  readonly line: number | null;
   readonly price: number;
+  readonly selection: BetLegSelection;
 }
 
 export type LeagueBetLoadResult =
@@ -81,7 +86,9 @@ type MarketRow = {
   marketId: string;
   marketStatus: LeagueBetMarket["marketStatus"];
   marketType: LeagueBetMarket["marketType"];
+  metadata: Record<string, unknown>;
   period: LeagueBetMarket["period"];
+  propType: string | null;
   startTime: Date;
   subject: string;
 };
@@ -186,7 +193,9 @@ async function listCurrentMarkets(db: Db): Promise<LeagueBetMarket[]> {
       marketId: bettingMarkets.id,
       marketStatus: bettingMarkets.status,
       marketType: bettingMarkets.type,
+      metadata: bettingMarkets.metadata,
       period: bettingMarkets.period,
+      propType: bettingMarkets.propType,
       startTime: bettingEvents.startTime,
       subject: bettingMarkets.subject,
     })
@@ -269,10 +278,12 @@ function toLeagueBetMarket(
     marketStatus: row.marketStatus,
     marketType: row.marketType,
     period: row.period,
+    propType: row.propType,
     selections,
     snapshotId: snapshot.oddsSnapshotId,
     startTime: row.startTime.toISOString(),
     subject: row.subject,
+    subjectLabel: subjectLabel(row),
   };
 }
 
@@ -283,24 +294,38 @@ function marketSelections(
   switch (row.marketType) {
     case "moneyline":
       return compactSelections([
-        priceSelection(row.homeTeam, snapshot.homePrice),
-        priceSelection(row.awayTeam, snapshot.awayPrice),
+        priceSelection(row.homeTeam, snapshot.homePrice, "home", null),
+        priceSelection(row.awayTeam, snapshot.awayPrice, "away", null),
       ]);
     case "spread":
       return compactSelections([
-        priceSelection(`${row.homeTeam} spread`, snapshot.homePrice),
-        priceSelection(`${row.awayTeam} spread`, snapshot.awayPrice),
+        priceSelection(row.homeTeam, snapshot.homePrice, "home", snapshot.line),
+        priceSelection(
+          row.awayTeam,
+          snapshot.awayPrice,
+          "away",
+          inverseLine(snapshot.line),
+        ),
       ]);
     case "total":
       return compactSelections([
-        priceSelection("Over", snapshot.overPrice),
-        priceSelection("Under", snapshot.underPrice),
+        priceSelection("Over", snapshot.overPrice, "over", snapshot.line),
+        priceSelection("Under", snapshot.underPrice, "under", snapshot.line),
       ]);
     case "player_prop":
       return compactSelections([
-        priceSelection(`${row.subject} over`, snapshot.overPrice),
-        priceSelection(`${row.subject} under`, snapshot.underPrice),
-        priceSelection(row.subject, snapshot.outcomePrice),
+        priceSelection(
+          "Over",
+          snapshot.overPrice,
+          "player_over",
+          snapshot.line,
+        ),
+        priceSelection(
+          "Under",
+          snapshot.underPrice,
+          "player_under",
+          snapshot.line,
+        ),
       ]);
   }
 }
@@ -308,11 +333,29 @@ function marketSelections(
 function priceSelection(
   label: string,
   price: number | null,
+  selection: BetLegSelection,
+  line: number | null,
 ): LeagueBetSelection | null {
   if (price === null) {
     return null;
   }
-  return { label, price };
+  return { label, line, price, selection };
+}
+
+function inverseLine(line: number | null): number | null {
+  return typeof line === "number" ? -line : null;
+}
+
+function subjectLabel(
+  row: Pick<MarketRow, "marketType" | "metadata" | "subject">,
+): string {
+  if (row.marketType !== "player_prop") {
+    return "Game";
+  }
+  const playerName = row.metadata.playerName;
+  return typeof playerName === "string" && playerName.trim()
+    ? playerName.trim()
+    : row.subject;
 }
 
 function compactSelections(
