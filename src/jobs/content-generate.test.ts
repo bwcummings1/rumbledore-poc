@@ -95,6 +95,7 @@ describe("content.generate Inngest function", () => {
     const testEngine = new InngestTestEngine({ function: fn });
     const event = {
       data: {
+        contentType: "matchup_preview",
         leagueId,
         persona: "commissioner",
         triggerKey: "job:weekly:1",
@@ -117,6 +118,7 @@ describe("content.generate Inngest function", () => {
     await expect(
       runContentGenerate({
         data: {
+          contentType: "weekly_recap",
           leagueId,
           persona: "bogus",
           triggerKey: "bad",

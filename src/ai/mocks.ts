@@ -1,7 +1,16 @@
 import {
   bodyBlocksToMarkdown,
-  defaultLeagueArticleSectionForPersona,
+  defaultLeagueArticleSectionForContentType,
 } from "./article-draft";
+import type {
+  AwardsSuperlativesStructure,
+  BlogContentStructure,
+  MatchupPreviewStructure,
+  PowerRankingsStructure,
+  SeasonArcStructure,
+  TransactionReactionStructure,
+  WeeklyRecapStructure,
+} from "./content-types";
 import type {
   BlogDraft,
   BlogDraftBodyBlock,
@@ -26,6 +35,16 @@ function primaryTeam(teams: LeagueContextTeam[]): LeagueContextTeam | null {
   );
 }
 
+function rankedTeams(teams: LeagueContextTeam[]): LeagueContextTeam[] {
+  return [...teams].sort((left, right) => {
+    return (
+      right.wins - left.wins ||
+      right.pointsFor - left.pointsFor ||
+      left.name.localeCompare(right.name)
+    );
+  });
+}
+
 function primaryRecord(
   records: LeagueContextRecord[],
 ): LeagueContextRecord | null {
@@ -34,6 +53,303 @@ function primaryRecord(
 
 function cleanSummary(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function teamRecord(team: LeagueContextTeam): string {
+  return `${team.wins}-${team.losses}-${team.ties}`;
+}
+
+function firstManager(team: LeagueContextTeam | null): string {
+  return team?.managerNames[0] ?? "the league room";
+}
+
+function secondaryTeam(teams: LeagueContextTeam[]): LeagueContextTeam | null {
+  const ranked = rankedTeams(teams);
+  if (ranked[1]) {
+    return ranked[1];
+  }
+  return ranked[0] ?? null;
+}
+
+function weeklyRecapStructure({
+  attempt,
+  context,
+  record,
+  team,
+}: {
+  attempt: 1 | 2;
+  context: LlmGenerateRequest["context"];
+  record: LeagueContextRecord | null;
+  team: LeagueContextTeam | null;
+}): WeeklyRecapStructure {
+  const manager = firstManager(team);
+  return {
+    kicker:
+      attempt === 2
+        ? `${context.league.name} gets the same evidence from a sharper angle.`
+        : `${context.league.name} already has its own plot without borrowing anyone else's.`,
+    lead: team
+      ? `${team.name} and ${manager} headline the week at ${teamRecord(team)}.`
+      : `${context.league.name} has no team rows yet, so the recap stays cautious.`,
+    standingsShift: team
+      ? `${team.name} is the table's first pressure point with ${team.pointsFor} points for.`
+      : "The standings are still waiting on imported teams.",
+    topResult: record
+      ? `${record.holderName ?? "The record book"} remains tied to ${record.label}.`
+      : team
+        ? `${team.name} is the cleanest result in the current context.`
+        : "No top result can be named from missing teams.",
+    type: "weekly_recap",
+    upsetOrBlowout: team
+      ? `${team.name}'s ${team.pointsFor} points for gives the room a real number to argue about.`
+      : "No upset or blowout is invented without league data.",
+  };
+}
+
+function powerRankingsStructure({
+  attempt,
+  teams,
+}: {
+  attempt: 1 | 2;
+  teams: LeagueContextTeam[];
+}): PowerRankingsStructure {
+  return {
+    rankings: rankedTeams(teams).map((team, index) => ({
+      delta: attempt === 2 && index === 0 ? 1 : 0,
+      rank: index + 1,
+      rationale: `${team.name} is ${teamRecord(team)} with ${team.pointsFor} points for under ${firstManager(team)}.`,
+      record: teamRecord(team),
+      team: team.name,
+    })),
+    type: "power_rankings",
+  };
+}
+
+function matchupPreviewStructure({
+  teams,
+}: {
+  teams: LeagueContextTeam[];
+}): MatchupPreviewStructure {
+  const ordered = rankedTeams(teams);
+  const fallback = ordered[0] ?? null;
+  const matchups =
+    ordered.length === 0
+      ? []
+      : ordered.map((team, index) => {
+          const nextOpponent = ordered[(index + 1) % ordered.length];
+          let opponent = nextOpponent;
+          if (!opponent) {
+            opponent = fallback ?? team;
+          }
+          return {
+            edge: `${team.name} has the points-for edge at ${team.pointsFor}.`,
+            keyNumber: `${team.pointsFor} points for`,
+            opponent: opponent.name,
+            prediction: `${team.name} is the lean, not a lock, because this is still fantasy football.`,
+            team: team.name,
+            xFactor: firstManager(team),
+          };
+        });
+  return { matchups, type: "matchup_preview" };
+}
+
+function awardsSuperlativesStructure({
+  record,
+  team,
+  teams,
+}: {
+  record: LeagueContextRecord | null;
+  team: LeagueContextTeam | null;
+  teams: LeagueContextTeam[];
+}): AwardsSuperlativesStructure {
+  const runnerUp = secondaryTeam(teams);
+  const recipient = firstManager(team);
+  const recordBookRecipient = runnerUp?.name || team?.name || recipient;
+  return {
+    awards: [
+      {
+        award: "MVP of the Room",
+        fact: team
+          ? `${team.name} is sitting at ${teamRecord(team)}.`
+          : "The league has not imported a team table yet.",
+        recipient,
+      },
+      {
+        award: "Box Score Magnet",
+        fact: team
+          ? `${team.name} has ${team.pointsFor} points for.`
+          : "No team points are available yet.",
+        recipient: team?.name ?? recipient,
+      },
+      {
+        award: "Record Book Shadow",
+        fact: record
+          ? `${record.label} still sits at ${record.value}.`
+          : "No current record-book event is being forced.",
+        recipient: recordBookRecipient,
+      },
+    ],
+    type: "awards_superlatives",
+  };
+}
+
+function transactionReactionStructure({
+  team,
+  teams,
+}: {
+  team: LeagueContextTeam | null;
+  teams: LeagueContextTeam[];
+}): TransactionReactionStructure {
+  const other = secondaryTeam(teams);
+  const manager = firstManager(team);
+  const loser = other?.name || team?.name || manager;
+  return {
+    grade: "B+",
+    loser,
+    move: `${manager} sparks the wire around ${team?.name ?? "the league board"}.`,
+    sourcesSay: `${team?.name ?? manager} is the name league sources keep circling.`,
+    type: "transaction_reaction",
+    winner: team?.name ?? manager,
+  };
+}
+
+function seasonArcStructure({
+  context,
+  team,
+}: {
+  context: LlmGenerateRequest["context"];
+  team: LeagueContextTeam | null;
+}): SeasonArcStructure {
+  return {
+    actSoFar: team
+      ? `${team.name} has turned ${teamRecord(team)} into the first act.`
+      : `${context.league.name} is still waiting for enough data to name an act.`,
+    stakes: team
+      ? `${context.league.name} now has to decide whether ${team.name} is a phase or the plot.`
+      : "The stakes are clean data before mythology.",
+    teamToBeat: team?.name ?? firstManager(team),
+    turningPoint: team
+      ? `${team.pointsFor} points for is the number everyone has to answer.`
+      : "The turning point has not arrived in the imported data.",
+    type: "season_arc",
+  };
+}
+
+function structureForRequest(
+  request: LlmGenerateRequest,
+): BlogContentStructure {
+  const teams = request.context.teams;
+  const team = primaryTeam(teams);
+  const record = primaryRecord(request.context.records);
+
+  switch (request.contentType) {
+    case "weekly_recap":
+      return weeklyRecapStructure({
+        attempt: request.attempt,
+        context: request.context,
+        record,
+        team,
+      });
+    case "power_rankings":
+      return powerRankingsStructure({ attempt: request.attempt, teams });
+    case "matchup_preview":
+      return matchupPreviewStructure({ teams });
+    case "awards_superlatives":
+      return awardsSuperlativesStructure({ record, team, teams });
+    case "transaction_reaction":
+      return transactionReactionStructure({ team, teams });
+    case "season_arc":
+      return seasonArcStructure({ context: request.context, team });
+  }
+}
+
+function blocksForStructure(
+  request: LlmGenerateRequest,
+  structure: BlogContentStructure,
+): BlogDraftBodyBlock[] {
+  const personaName = request.context.persona.name;
+  const personaLine = `${personaName}'s beat: ${request.context.persona.beat} Point of view: ${request.context.persona.pointOfView}`;
+  const performsLine = `Performs when: ${request.context.persona.performsWhen.join("; ")}.`;
+
+  switch (structure.type) {
+    case "weekly_recap":
+      return [
+        { text: `${personaName}'s weekly recap`, type: "heading" },
+        { text: `${structure.lead} ${personaLine}`, type: "paragraph" },
+        {
+          items: [
+            structure.topResult,
+            structure.upsetOrBlowout,
+            structure.standingsShift,
+          ],
+          type: "list",
+        },
+        { text: structure.kicker, type: "quote" },
+      ];
+    case "power_rankings":
+      return [
+        { text: `${personaName}'s power rankings`, type: "heading" },
+        { text: personaLine, type: "paragraph" },
+        {
+          items: structure.rankings.map(
+            (entry) =>
+              `${entry.rank}. ${entry.team} (${entry.record}): ${entry.rationale}`,
+          ),
+          ordered: true,
+          type: "list",
+        },
+        { text: performsLine, type: "paragraph" },
+      ];
+    case "matchup_preview":
+      return [
+        { text: `${personaName}'s matchup preview`, type: "heading" },
+        { text: personaLine, type: "paragraph" },
+        {
+          items: structure.matchups.map(
+            (entry) =>
+              `${entry.team} vs ${entry.opponent}: ${entry.edge} X-factor: ${entry.xFactor}.`,
+          ),
+          type: "list",
+        },
+        {
+          text: "Predictions stay hedged because the fixture only trusts league-owned facts.",
+          type: "paragraph",
+        },
+      ];
+    case "awards_superlatives":
+      return [
+        { text: `${personaName}'s weekly awards`, type: "heading" },
+        { text: personaLine, type: "paragraph" },
+        {
+          items: structure.awards.map(
+            (award) => `${award.award}: ${award.recipient}. ${award.fact}`,
+          ),
+          type: "list",
+        },
+      ];
+    case "transaction_reaction":
+      return [
+        { text: `${personaName}'s transaction reaction`, type: "heading" },
+        {
+          text: `${structure.move} Grade: ${structure.grade}. Winner: ${structure.winner}. Loser: ${structure.loser}.`,
+          type: "paragraph",
+        },
+        { text: structure.sourcesSay, type: "quote" },
+      ];
+    case "season_arc":
+      return [
+        { text: `${personaName}'s season arc`, type: "heading" },
+        { text: `${structure.actSoFar} ${personaLine}`, type: "paragraph" },
+        { text: structure.turningPoint, type: "paragraph" },
+        {
+          items: [
+            `Team to beat: ${structure.teamToBeat}`,
+            `Stakes: ${structure.stakes}`,
+          ],
+          type: "list",
+        },
+      ];
+  }
 }
 
 export class MockLlmClient implements LlmClient {
@@ -45,19 +361,15 @@ export class MockLlmClient implements LlmClient {
     const record = primaryRecord(request.context.records);
     const manager = team?.managerNames[0] ?? "the league room";
     const personaName = request.context.persona.name;
-    const angle =
-      request.attempt === 2
-        ? "A different angle: the league table is starting to show where patience is paying off."
-        : "The clean read: this league already has enough signal in its own standings.";
     const recordLine = record
       ? `${record.holderName ?? "The record book"} still owns ${record.label} at ${record.value}.`
       : "No current record-book event is being forced into the story.";
     const teamLine = team
       ? `${team.name}, managed by ${manager}, is the first team to watch at ${team.wins}-${team.losses}-${team.ties}.`
       : `${manager} has the quietest board because no teams have been ingested yet.`;
-    const personaLine = `${personaName}'s beat: ${request.context.persona.beat} Point of view: ${request.context.persona.pointOfView}`;
-    const performsLine = `Performs when: ${request.context.persona.performsWhen.join("; ")}.`;
-    const section = defaultLeagueArticleSectionForPersona(request.persona);
+    const section = defaultLeagueArticleSectionForContentType(
+      request.contentType,
+    );
     const tags = [
       team?.name,
       manager,
@@ -65,25 +377,11 @@ export class MockLlmClient implements LlmClient {
       record?.label,
       request.context.league.name,
     ].filter((tag): tag is string => Boolean(tag));
+    const structure = structureForRequest(request);
     const bodyBlocks: BlogDraftBodyBlock[] = [
+      ...blocksForStructure(request, structure),
       {
-        text: `${personaName}'s league note`,
-        type: "heading",
-      },
-      {
-        text: `${angle} ${teamLine} ${personaLine}`,
-        type: "paragraph",
-      },
-      {
-        text: performsLine,
-        type: "paragraph",
-      },
-      {
-        text: recordLine,
-        type: "quote",
-      },
-      {
-        text: "Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.",
+        text: `${teamLine} ${recordLine} Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
         type: "paragraph",
       },
     ];
@@ -91,10 +389,12 @@ export class MockLlmClient implements LlmClient {
     return {
       body: bodyBlocksToMarkdown(bodyBlocks),
       bodyBlocks,
+      contentType: request.contentType,
       dek: cleanSummary(
         `${personaName} files a ${section.replaceAll("-", " ")} piece on ${team?.name ?? request.context.league.name}.`,
       ),
       section,
+      structure,
       summary: cleanSummary(
         `${personaName} notes ${team?.name ?? request.context.league.name} as the league-specific storyline.`,
       ),

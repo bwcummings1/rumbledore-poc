@@ -1,4 +1,5 @@
 import type { LeaguePublicationSectionId } from "@/news/sections";
+import type { AiContentType, BlogContentStructure } from "./content-types";
 import type { AiPersona } from "./personas";
 
 export interface NewsItem {
@@ -87,6 +88,7 @@ export type BlogDraftBodyBlock =
   | { type: "list"; ordered?: boolean; items: string[] };
 
 export interface BlogDraft {
+  contentType: AiContentType;
   title: string;
   summary: string;
   dek: string;
@@ -94,9 +96,11 @@ export interface BlogDraft {
   tags: string[];
   body: string;
   bodyBlocks: BlogDraftBodyBlock[];
+  structure: BlogContentStructure;
 }
 
 export interface LlmGenerateRequest {
+  contentType: AiContentType;
   persona: AiPersona;
   context: LeagueBlogContext;
   newsItems: NewsItem[];

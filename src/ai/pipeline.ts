@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -29,6 +29,11 @@ import {
   blogDraftText,
   validateBlogDraft,
 } from "./article-draft";
+import {
+  type AiContentType,
+  contentTypePromptContract,
+  parseAiContentType,
+} from "./content-types";
 import type {
   BlogDraft,
   EmbeddingProvider,
@@ -53,6 +58,7 @@ export const DEFAULT_DUPLICATE_THRESHOLD = 0.92;
 export interface GenerateLeagueBlogPostInput {
   leagueId: string;
   persona: AiPersona;
+  contentType: AiContentType;
   triggerKey: string;
 }
 
@@ -105,6 +111,14 @@ export function parseAiPersona(value: string): AiPersona {
 
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function generationRunTriggerKey(input: GenerateLeagueBlogPostInput): string {
+  return `${input.contentType}:${input.triggerKey}`;
+}
+
+function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
+  return `blog:${input.persona}:${input.contentType}:${input.triggerKey}`;
 }
 
 function now(deps: Pick<AiGenerationDependencies, "now">): Date {
@@ -198,11 +212,13 @@ function untrustedNewsBlock(newsItems: readonly NewsItem[]): string {
 }
 
 export function buildPromptParts({
+  contentType,
   context,
   duplicateNudge,
   newsItems,
   triggerKey,
 }: {
+  contentType: AiContentType;
   context: LeagueBlogContext;
   duplicateNudge?: string;
   newsItems: readonly NewsItem[];
@@ -232,6 +248,7 @@ export function buildPromptParts({
   const systemPrefix = JSON.stringify(stablePrefix);
   const volatileContext = JSON.stringify({
     currentScoringPeriod: context.league.currentScoringPeriod,
+    contentType: contentTypePromptContract(contentType),
     duplicateNudge: duplicateNudge ?? null,
     priorPosts: context.priorPosts.map((post) => ({
       publishedAt: post.publishedAt.toISOString(),
@@ -340,6 +357,7 @@ async function prepareGeneration({
   input: GenerateLeagueBlogPostInput;
   tx: LeagueScopedTx;
 }): Promise<PreparedGeneration | GenerateLeagueBlogPostResult> {
+  const runTriggerKey = generationRunTriggerKey(input);
   const [existingRun] = await tx
     .select({
       contentItemId: aiGenerationRuns.contentItemId,
@@ -353,7 +371,7 @@ async function prepareGeneration({
       and(
         eq(aiGenerationRuns.leagueId, input.leagueId),
         eq(aiGenerationRuns.persona, input.persona),
-        eq(aiGenerationRuns.triggerKey, input.triggerKey),
+        eq(aiGenerationRuns.triggerKey, runTriggerKey),
       ),
     )
     .limit(1);
@@ -401,7 +419,7 @@ async function prepareGeneration({
         .values({
           leagueId: input.leagueId,
           persona: input.persona,
-          triggerKey: input.triggerKey,
+          triggerKey: runTriggerKey,
         })
         .returning({ id: aiGenerationRuns.id });
 
@@ -570,6 +588,7 @@ async function prepareGeneration({
       and(
         eq(aiMemory.leagueId, input.leagueId),
         eq(aiMemory.source, "blog_post"),
+        sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
       ),
     )
     .limit(20);
@@ -607,6 +626,7 @@ async function markSkipped({
   reason: string;
 }): Promise<GenerateLeagueBlogPostResult> {
   const timestamp = now(deps);
+  const runTriggerKey = generationRunTriggerKey(input);
   await withLeagueContext(deps.db, input.leagueId, async (tx) => {
     await tx
       .update(aiGenerationRuns)
@@ -620,7 +640,7 @@ async function markSkipped({
         and(
           eq(aiGenerationRuns.leagueId, input.leagueId),
           eq(aiGenerationRuns.persona, input.persona),
-          eq(aiGenerationRuns.triggerKey, input.triggerKey),
+          eq(aiGenerationRuns.triggerKey, runTriggerKey),
         ),
       );
   });
@@ -647,8 +667,9 @@ async function publishDraft({
   promptPrefixHash: string;
 }): Promise<GenerateLeagueBlogPostResult> {
   const timestamp = now(deps);
-  const dedupKey = `blog:${input.persona}:${input.triggerKey}`;
+  const dedupKey = contentDedupKey(input);
   const contentHash = hashText(blogDraftText(draft));
+  const runTriggerKey = generationRunTriggerKey(input);
 
   const result = await withLeagueContext(
     deps.db,
@@ -720,7 +741,7 @@ async function publishDraft({
           embeddingDimensions: embedding.length,
           embeddingModel: deps.embeddings.model,
           leagueId: input.leagueId,
-          metadata: { contentHash },
+          metadata: { contentHash, contentType: input.contentType },
           source: "blog_post",
           textContent: blogDraftText(draft),
         });
@@ -738,7 +759,7 @@ async function publishDraft({
           and(
             eq(aiGenerationRuns.leagueId, input.leagueId),
             eq(aiGenerationRuns.persona, input.persona),
-            eq(aiGenerationRuns.triggerKey, input.triggerKey),
+            eq(aiGenerationRuns.triggerKey, runTriggerKey),
           ),
         );
 
@@ -815,6 +836,7 @@ export async function generateLeagueBlogPost({
   input: GenerateLeagueBlogPostInput;
 }): Promise<GenerateLeagueBlogPostResult> {
   parseAiPersona(input.persona);
+  parseAiContentType(input.contentType);
   const duplicateThreshold =
     deps.duplicateThreshold ?? DEFAULT_DUPLICATE_THRESHOLD;
 
@@ -845,6 +867,7 @@ export async function generateLeagueBlogPost({
     newsItems = [];
   }
   const prompt = buildPromptParts({
+    contentType: input.contentType,
     context: prepared.context,
     newsItems,
     triggerKey: input.triggerKey,
@@ -854,10 +877,12 @@ export async function generateLeagueBlogPost({
     await deps.llm.generate({
       attempt: 1,
       context: prepared.context,
+      contentType: input.contentType,
       newsItems,
       persona: input.persona,
       prompt,
     }),
+    { contentType: input.contentType, context: prepared.context },
   );
   let embedding = await deps.embeddings.embed(blogDraftText(initialDraft));
   let maxSimilarity = maxPriorSimilarity(embedding, prepared.context.memory);
@@ -867,6 +892,7 @@ export async function generateLeagueBlogPost({
     const duplicateNudge =
       "The first draft was too similar to a prior league post. Use a different angle and avoid repeating phrasing.";
     const retryPrompt = buildPromptParts({
+      contentType: input.contentType,
       context: prepared.context,
       duplicateNudge,
       newsItems,
@@ -876,11 +902,13 @@ export async function generateLeagueBlogPost({
       await deps.llm.generate({
         attempt: 2,
         context: prepared.context,
+        contentType: input.contentType,
         duplicateNudge,
         newsItems,
         persona: input.persona,
         prompt: retryPrompt,
       }),
+      { contentType: input.contentType, context: prepared.context },
     );
     embedding = await deps.embeddings.embed(blogDraftText(draft));
     maxSimilarity = maxPriorSimilarity(embedding, prepared.context.memory);

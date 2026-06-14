@@ -214,6 +214,9 @@ describe("content planning", () => {
       "analyst",
       "commissioner",
     ]);
+    expect(
+      firstForActive.map((event) => event.data.contentType).sort(),
+    ).toEqual(["matchup_preview", "matchup_preview"]);
     expect(firstForActive.map((event) => event.data.triggerKey)).toStrictEqual([
       "cron:weekly-preview:2026:3",
       "cron:weekly-preview:2026:3",
@@ -228,6 +231,23 @@ describe("content planning", () => {
       first.planned.some((event) => event.data.leagueId === complete.id),
     ).toBe(false);
     expect(second.sentCount).toBe(0);
+
+    const wrap = await planCronContent({
+      cadence: "weekly-wrap",
+      db: handle.db,
+    });
+    const wrapForActive = wrap.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(wrapForActive.map((event) => event.data.contentType).sort()).toEqual(
+      ["awards_superlatives", "power_rankings", "season_arc", "weekly_recap"],
+    );
+    expect(wrapForActive.map((event) => event.data.persona).sort()).toEqual([
+      "analyst",
+      "beat_reporter",
+      "narrator",
+      "narrator",
+    ]);
   });
 
   it("plans game.final recaps and publishes them idempotently through content.generate", async () => {
@@ -254,6 +274,9 @@ describe("content planning", () => {
       "narrator",
       "trash_talker",
     ]);
+    expect(first.planned.map((event) => event.data.contentType).sort()).toEqual(
+      ["awards_superlatives", "power_rankings", "weekly_recap"],
+    );
     expect(first.planned.map((event) => event.id)).toEqual(
       second.planned.map((event) => event.id),
     );
@@ -311,6 +334,7 @@ describe("content planning", () => {
       planned: expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
+            contentType: "weekly_recap",
             leagueId: league.id,
             persona: "narrator",
             triggerKey: `game-final:2026:3:${gameId}`,

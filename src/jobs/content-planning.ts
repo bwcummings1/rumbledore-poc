@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import type { AiPersona } from "@/ai";
+import type { AiContentType, AiPersona } from "@/ai";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -49,10 +49,28 @@ export interface ContentPlanGameFinalResult {
 const ACTIVE_LEAGUE_STATUSES = ["preseason", "in_season"] as const;
 const BLOWOUT_MARGIN = 25;
 const RIVALRY_MEETINGS_THRESHOLD = 5;
-const CRON_PERSONAS: Record<ContentPlanCronCadence, readonly AiPersona[]> = {
-  "post-odds-refresh": ["betting_advisor"],
-  "weekly-preview": ["commissioner", "analyst"],
-  "weekly-wrap": ["commissioner"],
+interface ContentCandidate {
+  persona: AiPersona;
+  contentType: AiContentType;
+}
+
+const CRON_CANDIDATES: Record<
+  ContentPlanCronCadence,
+  readonly ContentCandidate[]
+> = {
+  "post-odds-refresh": [
+    { contentType: "matchup_preview", persona: "betting_advisor" },
+  ],
+  "weekly-preview": [
+    { contentType: "matchup_preview", persona: "commissioner" },
+    { contentType: "matchup_preview", persona: "analyst" },
+  ],
+  "weekly-wrap": [
+    { contentType: "weekly_recap", persona: "narrator" },
+    { contentType: "power_rankings", persona: "analyst" },
+    { contentType: "awards_superlatives", persona: "beat_reporter" },
+    { contentType: "season_arc", persona: "narrator" },
+  ],
 };
 
 interface LeaguePlanRow {
@@ -81,7 +99,7 @@ interface GameFinalTeam {
 }
 
 function contentGenerateEventId(data: ContentGenerateData): string {
-  return `content.generate:${data.leagueId}:${data.persona}:${data.triggerKey}`;
+  return `content.generate:${data.leagueId}:${data.persona}:${data.contentType}:${data.triggerKey}`;
 }
 
 function toPlannedEvent(
@@ -105,18 +123,21 @@ function gameFinalTriggerKey(matchup: GameFinalMatchup): string {
   return `game-final:${matchup.season}:${matchup.scoringPeriod}:${matchup.gameId}`;
 }
 
-function scheduledPersonasFor({
+function scheduledCandidatesFor({
   cadence,
   hasRivalryWeek,
 }: {
   cadence: ContentPlanCronCadence;
   hasRivalryWeek: boolean;
-}): AiPersona[] {
-  const personas = [...CRON_PERSONAS[cadence]];
+}): ContentCandidate[] {
+  const candidates = [...CRON_CANDIDATES[cadence]];
   if (cadence === "weekly-preview" && hasRivalryWeek) {
-    personas.push("trash_talker");
+    candidates.push({
+      contentType: "awards_superlatives",
+      persona: "trash_talker",
+    });
   }
-  return personas;
+  return candidates;
 }
 
 async function hasRivalrySignal({
@@ -166,11 +187,15 @@ export async function planCronContent({
         ? await hasRivalrySignal({ db, leagueId: league.id })
         : false;
     const triggerKey = cronTriggerKey(cadence, league);
-    for (const persona of scheduledPersonasFor({ cadence, hasRivalryWeek })) {
+    for (const candidate of scheduledCandidatesFor({
+      cadence,
+      hasRivalryWeek,
+    })) {
       planned.push(
         toPlannedEvent({
+          contentType: candidate.contentType,
           leagueId: league.id,
-          persona,
+          persona: candidate.persona,
           triggerKey,
         }),
       );
@@ -225,10 +250,19 @@ function gameFinalTriggerReasons({
   return reasons;
 }
 
-function gameFinalPersonas(triggerReasons: readonly string[]): AiPersona[] {
+function gameFinalCandidates(
+  triggerReasons: readonly string[],
+): ContentCandidate[] {
   return triggerReasons.length > 0
-    ? ["narrator", "analyst", "trash_talker"]
-    : ["narrator", "analyst"];
+    ? [
+        { contentType: "weekly_recap", persona: "narrator" },
+        { contentType: "power_rankings", persona: "analyst" },
+        { contentType: "awards_superlatives", persona: "trash_talker" },
+      ]
+    : [
+        { contentType: "weekly_recap", persona: "narrator" },
+        { contentType: "power_rankings", persona: "analyst" },
+      ];
 }
 
 export async function planGameFinalContent({
@@ -310,10 +344,11 @@ export async function planGameFinalContent({
       teams,
     });
     const triggerKey = gameFinalTriggerKey(matchup);
-    const planned = gameFinalPersonas(triggerReasons).map((persona) =>
+    const planned = gameFinalCandidates(triggerReasons).map((candidate) =>
       toPlannedEvent({
+        contentType: candidate.contentType,
         leagueId: data.leagueId,
-        persona,
+        persona: candidate.persona,
         triggerKey,
       }),
     );

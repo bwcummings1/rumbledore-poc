@@ -3,7 +3,17 @@ import {
   getLeaguePublicationSectionBySlug,
   type LeaguePublicationSectionId,
 } from "@/news/sections";
-import type { BlogDraft, BlogDraftBodyBlock } from "./interfaces";
+import {
+  type AiContentType,
+  defaultLeagueArticleSectionForContentType,
+  parseAiContentType,
+  validateContentStructure,
+} from "./content-types";
+import type {
+  BlogDraft,
+  BlogDraftBodyBlock,
+  LeagueBlogContext,
+} from "./interfaces";
 import type { AiPersona } from "./personas";
 
 const MAX_TAGS = 8;
@@ -84,6 +94,8 @@ export function defaultLeagueArticleSectionForPersona(
   }
 }
 
+export { defaultLeagueArticleSectionForContentType };
+
 export function bodyBlocksToMarkdown(
   blocks: readonly BlogDraftBodyBlock[],
 ): string {
@@ -108,7 +120,31 @@ export function bodyBlocksToMarkdown(
     .join("\n\n");
 }
 
-export function validateBlogDraft(draft: BlogDraft): BlogDraft {
+function draftReferencesLeagueEntity(
+  draft: BlogDraft,
+  context: LeagueBlogContext,
+): boolean {
+  const text = blogDraftText(draft).toLowerCase();
+  const entityTokens = [
+    ...context.teams.flatMap((team) => [team.name, ...team.managerNames]),
+    ...context.records.flatMap((record) => [
+      record.holderName ?? "",
+      record.label,
+    ]),
+  ]
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return entityTokens.some((token) => text.includes(token.toLowerCase()));
+}
+
+export function validateBlogDraft(
+  draft: BlogDraft,
+  options: {
+    contentType: AiContentType;
+    context: LeagueBlogContext;
+  },
+): BlogDraft {
   const title = cleanText(draft.title);
   const summary = cleanText(draft.summary);
   const dek = cleanText(draft.dek);
@@ -129,11 +165,36 @@ export function validateBlogDraft(draft: BlogDraft): BlogDraft {
     });
   }
 
+  const contentType = parseAiContentType(draft.contentType);
+  if (contentType !== options.contentType) {
+    throw new AppError({
+      code: "AI_DRAFT_CONTENT_TYPE_MISMATCH",
+      message: "AI draft content type did not match the generation job",
+      status: 422,
+    });
+  }
+
+  const structure = validateContentStructure({
+    contentType,
+    context: options.context,
+    structure: draft.structure,
+  });
+
   if (!section || tags.length === 0 || bodyBlocks.length < 2) {
     throw new AppError({
       code: "AI_DRAFT_ARTICLE_INVALID",
       message:
         "AI draft must include a league section, tags, and a structured body",
+      status: 422,
+    });
+  }
+
+  const expectedSection =
+    defaultLeagueArticleSectionForContentType(contentType);
+  if (section !== expectedSection) {
+    throw new AppError({
+      code: "AI_DRAFT_SECTION_MISMATCH",
+      message: "AI draft section did not match the content type template",
       status: 422,
     });
   }
@@ -152,24 +213,38 @@ export function validateBlogDraft(draft: BlogDraft): BlogDraft {
     });
   }
 
-  return {
+  const normalizedDraft: BlogDraft = {
     body: canonicalBody,
     bodyBlocks,
+    contentType,
     dek,
     section,
+    structure,
     summary,
     tags,
     title,
   };
+
+  if (!draftReferencesLeagueEntity(normalizedDraft, options.context)) {
+    throw new AppError({
+      code: "AI_DRAFT_GENERIC",
+      message: "AI draft must reference a concrete league-owned entity",
+      status: 422,
+    });
+  }
+
+  return normalizedDraft;
 }
 
 export function blogDraftText(draft: BlogDraft): string {
   return [
+    draft.contentType,
     draft.title,
     draft.dek,
     draft.summary,
     draft.section,
     draft.tags.join(", "),
+    JSON.stringify(draft.structure),
     draft.body,
   ].join("\n\n");
 }
@@ -187,14 +262,19 @@ export function blogDraftMetadata({
     article: {
       bodyBlocks: draft.bodyBlocks,
       bylinePersona: persona,
+      contentType: draft.contentType,
       format: "rumbledore.article.v1",
       headline: draft.title,
+      structure: draft.structure,
     },
     bodyBlocks: draft.bodyBlocks,
     byline: persona,
+    content_type: draft.contentType,
+    contentType: draft.contentType,
     dek: draft.dek,
     leagueSection: draft.section,
     section: draft.section,
+    structure: draft.structure,
     tags: draft.tags,
     triggerKey,
   };

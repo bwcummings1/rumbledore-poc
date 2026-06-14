@@ -20,6 +20,7 @@ function requestFor(
 ): LlmGenerateRequest {
   return {
     attempt: 1,
+    contentType: "matchup_preview",
     context: {
       league: {
         currentScoringPeriod: 1,
@@ -74,8 +75,22 @@ describe("AnthropicLlmClient", () => {
                 { text: "Filed from the desk", type: "heading" },
                 { text: "Body from Claude.", type: "paragraph" },
               ],
+              contentType: "matchup_preview",
               dek: "Dek from Claude.",
               section: "previews",
+              structure: {
+                matchups: [
+                  {
+                    edge: "Fixture Team has the edge.",
+                    keyNumber: "120 points for",
+                    opponent: "Fixture Opponent",
+                    prediction: "Fixture Team is a lean, not a lock.",
+                    team: "Fixture Team",
+                    xFactor: "Fixture Manager",
+                  },
+                ],
+                type: "matchup_preview",
+              },
               summary: "Summary from Claude.",
               tags: ["Fixture Team", "Preview"],
               title: "Title from Claude",
@@ -95,8 +110,22 @@ describe("AnthropicLlmClient", () => {
         { text: "Filed from the desk", type: "heading" },
         { text: "Body from Claude.", type: "paragraph" },
       ],
+      contentType: "matchup_preview",
       dek: "Dek from Claude.",
       section: "previews",
+      structure: {
+        matchups: [
+          {
+            edge: "Fixture Team has the edge.",
+            keyNumber: "120 points for",
+            opponent: "Fixture Opponent",
+            prediction: "Fixture Team is a lean, not a lock.",
+            team: "Fixture Team",
+            xFactor: "Fixture Manager",
+          },
+        ],
+        type: "matchup_preview",
+      },
       summary: "Summary from Claude.",
       tags: ["Fixture Team", "Preview"],
       title: "Title from Claude",
@@ -117,6 +146,9 @@ describe("AnthropicLlmClient", () => {
     });
     const system = first.system as Array<Record<string, unknown>>;
     expect(system[0]?.text).toEqual(expect.stringContaining("Beat: "));
+    expect(system[0]?.text).toEqual(
+      expect.stringContaining("required content_type is matchup_preview"),
+    );
     expect(system[0]?.text).toEqual(expect.stringContaining("Point of view: "));
     expect(system[0]?.text).toEqual(expect.stringContaining("Performs when: "));
     expect(system[1]).toMatchObject({

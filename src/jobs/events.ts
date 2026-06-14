@@ -1,4 +1,4 @@
-import type { AiPersona } from "@/ai";
+import type { AiContentType, AiPersona } from "@/ai";
 import type { FantasyProviderId } from "@/providers";
 
 export const JOB_EVENTS = {
@@ -35,6 +35,7 @@ export interface ImportRequestedData {
 export interface ContentGenerateData {
   leagueId: string;
   persona: AiPersona;
+  contentType: AiContentType;
   triggerKey: string;
 }
 

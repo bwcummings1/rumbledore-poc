@@ -1,6 +1,7 @@
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
 import {
+  AI_CONTENT_TYPES,
   AI_PERSONAS,
   type AiGenerationDependencies,
   type GenerateLeagueBlogPostResult,
@@ -22,6 +23,7 @@ export type ContentGenerateResponse = GenerateLeagueBlogPostResult & {
 const contentGenerateDataSchema = z.object({
   leagueId: z.uuid(),
   persona: z.enum(AI_PERSONAS),
+  contentType: z.enum(AI_CONTENT_TYPES),
   triggerKey: z.string().trim().min(1).max(200),
 });
 
@@ -81,7 +83,7 @@ export function createContentGenerateFunction(
         "Runs one idempotent per-league AI blogger generation candidate.",
       id: "content-generate",
       idempotency:
-        "event.data.leagueId + ':' + event.data.persona + ':' + event.data.triggerKey",
+        "event.data.leagueId + ':' + event.data.persona + ':' + event.data.contentType + ':' + event.data.triggerKey",
       name: "AI content generate",
       triggers: [{ event: JOB_EVENTS.contentGenerate }],
     },

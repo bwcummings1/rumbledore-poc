@@ -1,4 +1,18 @@
 export type {
+  AiContentType,
+  BlogContentStructure,
+  ContentTypeTemplate,
+} from "./content-types";
+export {
+  AI_CONTENT_TYPES,
+  CONTENT_TYPE_TEMPLATES,
+  contentTypePromptContract,
+  defaultLeagueArticleSectionForContentType,
+  isAiContentType,
+  parseAiContentType,
+  validateContentStructure,
+} from "./content-types";
+export type {
   BlogDraft,
   BlogDraftBodyBlock,
   EmbeddingProvider,

@@ -53,8 +53,17 @@ class DuplicateLlmClient implements LlmClient {
     return {
       body: bodyBlocksToMarkdown(bodyBlocks),
       bodyBlocks,
+      contentType: "weekly_recap",
       dek: "This duplicate dek is intentionally unchanged.",
       section: "recaps",
+      structure: {
+        kicker: "duplicate Team stays in the same place.",
+        lead: "duplicate Team and duplicate Manager repeat the same lead.",
+        standingsShift: "duplicate Team repeats the same standings note.",
+        topResult: "duplicate Team repeats the same top result.",
+        type: "weekly_recap",
+        upsetOrBlowout: "duplicate Team repeats the same margin note.",
+      },
       summary: "This duplicate summary is intentionally unchanged.",
       tags: ["Duplicate"],
       title: "Duplicate league note",
@@ -170,6 +179,7 @@ describe("generateLeagueBlogPost", () => {
     const first = await generateLeagueBlogPost({
       deps,
       input: {
+        contentType: "matchup_preview",
         leagueId: league.id,
         persona: "commissioner",
         triggerKey: "weekly:2026:1",
@@ -178,6 +188,7 @@ describe("generateLeagueBlogPost", () => {
     const second = await generateLeagueBlogPost({
       deps,
       input: {
+        contentType: "matchup_preview",
         leagueId: league.id,
         persona: "commissioner",
         triggerKey: "weekly:2026:1",
@@ -186,6 +197,7 @@ describe("generateLeagueBlogPost", () => {
     const third = await generateLeagueBlogPost({
       deps,
       input: {
+        contentType: "matchup_preview",
         leagueId: league.id,
         persona: "commissioner",
         triggerKey: "weekly:2026:2",
@@ -306,25 +318,31 @@ describe("generateLeagueBlogPost", () => {
       "published",
     ]);
     const firstPost = rows.posts.find(
-      (post) => post.dedupKey === "blog:commissioner:weekly:2026:1",
+      (post) =>
+        post.dedupKey === "blog:commissioner:matchup_preview:weekly:2026:1",
     );
     expect(firstPost?.body).toContain("alpha Team");
     expect(firstPost?.body).toContain("alpha Manager");
-    expect(firstPost?.body).toContain("## Commissioner's league note");
-    expect(firstPost?.body).toContain("> No current record-book event");
+    expect(firstPost?.body).toContain("## Commissioner's matchup preview");
+    expect(firstPost?.body).toContain("No current record-book event");
     expect(firstPost?.body).not.toContain("beta Team");
     expect(firstPost?.body).not.toContain("Ignore previous instructions");
     expect(firstPost?.body).not.toContain("example.invalid");
     expect(firstPost?.metadata).toMatchObject({
       article: {
         bylinePersona: "commissioner",
+        contentType: "matchup_preview",
         format: "rumbledore.article.v1",
         headline: `Commissioner: ${marker} alpha snapshot`,
+        structure: { type: "matchup_preview" },
       },
       byline: "commissioner",
+      content_type: "matchup_preview",
+      contentType: "matchup_preview",
       dek: expect.stringContaining("previews piece"),
       leagueSection: "previews",
       section: "previews",
+      structure: { type: "matchup_preview" },
       tags: expect.arrayContaining(["alpha Team", "alpha Manager"]),
       triggerKey: "weekly:2026:1",
     });
@@ -334,6 +352,103 @@ describe("generateLeagueBlogPost", () => {
           ?.bodyBlocks as unknown[] | undefined
       )?.length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("publishes separate structured artifacts for different content types on the same trigger", async () => {
+    const league = await seedLeague("templates");
+    const llm = new MockLlmClient();
+    const deps = {
+      db: handle.db,
+      duplicateThreshold: 1.1,
+      embeddings: new DeterministicEmbeddingProvider(),
+      llm,
+      now: () => new Date("2026-06-11T12:00:00.000Z"),
+      push: new NoopPushNotifier(),
+      realtime: new RecordingRealtimePublisher(),
+      web: new MockWebGrounding(),
+    };
+
+    const recap = await generateLeagueBlogPost({
+      deps,
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        triggerKey: "weekly:shared",
+      },
+    });
+    const ranking = await generateLeagueBlogPost({
+      deps,
+      input: {
+        contentType: "power_rankings",
+        leagueId: league.id,
+        persona: "analyst",
+        triggerKey: "weekly:shared",
+      },
+    });
+    const reusedRecap = await generateLeagueBlogPost({
+      deps,
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        triggerKey: "weekly:shared",
+      },
+    });
+
+    expect(recap).toMatchObject({ reused: false, status: "published" });
+    expect(ranking).toMatchObject({ reused: false, status: "published" });
+    expect(reusedRecap).toMatchObject({ reused: true, status: "published" });
+    expect(llm.requests.map((request) => request.contentType)).toEqual([
+      "weekly_recap",
+      "power_rankings",
+    ]);
+
+    const posts = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({
+          dedupKey: contentItems.dedupKey,
+          metadata: contentItems.metadata,
+        })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        ),
+    );
+
+    expect(posts.map((post) => post.dedupKey).sort()).toEqual([
+      "blog:analyst:power_rankings:weekly:shared",
+      "blog:analyst:weekly_recap:weekly:shared",
+    ]);
+    const recapMetadata = posts.find((post) =>
+      post.dedupKey.includes("weekly_recap"),
+    )?.metadata;
+    const rankingMetadata = posts.find((post) =>
+      post.dedupKey.includes("power_rankings"),
+    )?.metadata;
+
+    expect(recapMetadata).toMatchObject({
+      content_type: "weekly_recap",
+      structure: {
+        lead: expect.stringContaining("templates Team"),
+        type: "weekly_recap",
+      },
+    });
+    expect(rankingMetadata).toMatchObject({
+      content_type: "power_rankings",
+      structure: {
+        rankings: [
+          expect.objectContaining({
+            record: "0-1-0",
+            team: "templates Team",
+          }),
+        ],
+        type: "power_rankings",
+      },
+    });
   });
 
   it("regenerates once and skips near-duplicate drafts", async () => {
@@ -364,6 +479,7 @@ describe("generateLeagueBlogPost", () => {
         embeddingDimensions: 8,
         embeddingModel: embeddings.model,
         leagueId: league.id,
+        metadata: { contentType: "weekly_recap" },
         source: "blog_post",
         textContent: "duplicate",
       });
@@ -380,6 +496,7 @@ describe("generateLeagueBlogPost", () => {
         web: new MockWebGrounding(),
       },
       input: {
+        contentType: "weekly_recap",
         leagueId: league.id,
         persona: "analyst",
         triggerKey: "weekly:duplicate",
@@ -412,7 +529,7 @@ describe("generateLeagueBlogPost", () => {
         .where(
           and(
             eq(aiGenerationRuns.leagueId, league.id),
-            eq(aiGenerationRuns.triggerKey, "weekly:duplicate"),
+            eq(aiGenerationRuns.triggerKey, "weekly_recap:weekly:duplicate"),
           ),
         );
       return { posts, run };
@@ -470,6 +587,7 @@ describe("generateLeagueBlogPost", () => {
         web: new MockWebGrounding(),
       },
       input: {
+        contentType: "weekly_recap",
         leagueId: league.id,
         persona: "narrator",
         triggerKey: "weekly:quarantine",
@@ -509,6 +627,7 @@ describe("generateLeagueBlogPost", () => {
         web: new FailingWebGrounding(),
       },
       input: {
+        contentType: "matchup_preview",
         leagueId: league.id,
         persona: "commissioner",
         triggerKey: "weekly:webfail",
@@ -538,6 +657,7 @@ describe("generateLeagueBlogPost", () => {
           web: new MockWebGrounding(),
         },
         input: {
+          contentType: "weekly_recap",
           leagueId: league.id,
           persona: "narrator",
           triggerKey: "weekly:blob",
@@ -577,6 +697,7 @@ describe("generateLeagueBlogPost", () => {
         web: new MockWebGrounding(),
       },
       input: {
+        contentType: "transaction_reaction",
         leagueId: league.id,
         persona: "beat_reporter",
         triggerKey: "transaction:fixture",
