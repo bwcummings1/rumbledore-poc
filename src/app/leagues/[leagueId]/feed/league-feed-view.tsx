@@ -107,7 +107,7 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
             League home
           </Link>
           <Link
-            href="/news"
+            href={`/news?leagueId=${data.league.id}`}
             className={cn(
               buttonVariants({ className: "w-fit", variant: "outline" }),
             )}

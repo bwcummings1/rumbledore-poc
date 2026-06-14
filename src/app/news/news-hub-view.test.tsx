@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 
 const data: CentralNewsHubData = {
   activeSection: null,
+  forYourLeague: null,
   items: [
     {
       id: "news-1",
@@ -107,6 +108,68 @@ test("news hub view renders central stories with attribution and source links", 
   expect(
     within(screen.getByLabelText("Story river")).getAllByRole("article"),
   ).toHaveLength(2);
+  expect(screen.queryByLabelText("For your league")).toBeNull();
+});
+
+test("news hub view renders a for your league rail when tailored stories exist", () => {
+  render(
+    <NewsHubView
+      data={{
+        ...data,
+        forYourLeague: {
+          items: [
+            {
+              contentItemId: "news-2",
+              id: "reference-1",
+              matchedEntities: [
+                {
+                  label: "Fixture Team 01",
+                  provider: "espn",
+                  providerId: "1",
+                  type: "team",
+                },
+              ],
+              publishedAt: "2026-06-11T13:00:00.000Z",
+              relevanceReason: "Fixture Team 01 rosters the affected starter.",
+              relevanceScore: 8,
+              section: CENTRAL_PUBLICATION_SECTIONS[3],
+              source: "Fantasy Desk",
+              sourceUrl: "https://news.example.com/rankings",
+              summary: "Fixture Team 01 has a lineup decision now.",
+              title: "A-specific running back fallout",
+            },
+          ],
+          league: {
+            id: "league-a",
+            name: "NHS Alumni Annual",
+          },
+        },
+      }}
+    />,
+  );
+
+  const rail = screen.getByLabelText("For your league");
+  expect(
+    within(rail).getByRole("heading", {
+      name: "Central stories touching NHS Alumni Annual",
+    }),
+  ).toBeDefined();
+  expect(
+    within(rail).getByRole("heading", {
+      name: "A-specific running back fallout",
+    }),
+  ).toBeDefined();
+  expect(
+    within(rail).getByText("Fixture Team 01 rosters the affected starter."),
+  ).toBeDefined();
+  expect(
+    within(rail)
+      .getByRole("link", { name: /read story/i })
+      .getAttribute("href"),
+  ).toBe("/news/articles/news-2");
+  expect(
+    rail.querySelectorAll('[data-story-card-variant="rail"]'),
+  ).toHaveLength(1);
 });
 
 test("news hub view renders an empty state", () => {

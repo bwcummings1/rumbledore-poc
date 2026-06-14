@@ -4,9 +4,11 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
-import { contentItems, leagues } from "@/db/schema";
+import { withLeagueContext } from "@/db/rls";
+import { contentItems, leagues, members, users } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { getCentralNewsHubData } from "./hub";
+import { upsertLeagueFeedReference } from "./league-feed";
 
 const marker = `newshub-${randomUUID()}`;
 let handle: DbHandle;
@@ -29,6 +31,9 @@ afterAll(async () => {
   await handle.db
     .delete(contentItems)
     .where(sql`${contentItems.dedupKey} like ${`%${marker}%`}`);
+  await handle.db
+    .delete(users)
+    .where(sql`${users.email} like ${`${marker}-%`}`);
   await handle.db
     .delete(leagues)
     .where(sql`${leagues.providerLeagueId} like ${`${marker}-%`}`);
@@ -201,5 +206,210 @@ describe("central news hub", () => {
       "Starter injury anchors the section front",
     ]);
     expect(markedItems[0]?.section.label).toBe("Injuries");
+  });
+
+  it("returns a for your league rail from matched central references only", async () => {
+    const [memberUser] = await handle.db
+      .insert(users)
+      .values({
+        displayName: "News Hub Member",
+        email: `${marker}-rail-member@example.com`,
+      })
+      .returning({ id: users.id });
+    const [outsiderUser] = await handle.db
+      .insert(users)
+      .values({
+        displayName: "News Hub Outsider",
+        email: `${marker}-rail-outsider@example.com`,
+      })
+      .returning({ id: users.id });
+    if (!memberUser || !outsiderUser) {
+      throw new Error("rail test users were not inserted");
+    }
+
+    const insertedLeagues = await handle.db
+      .insert(leagues)
+      .values([
+        {
+          name: "Rail League A",
+          provider: "espn",
+          providerLeagueId: `${marker}-rail-a`,
+          season: 2026,
+          sport: "ffl",
+        },
+        {
+          name: "Rail League B",
+          provider: "espn",
+          providerLeagueId: `${marker}-rail-b`,
+          season: 2026,
+          sport: "ffl",
+        },
+      ])
+      .returning({ id: leagues.id });
+    const [leagueA, leagueB] = insertedLeagues;
+    if (!leagueA || !leagueB) {
+      throw new Error("rail test leagues were not inserted");
+    }
+
+    await handle.db.insert(members).values({
+      organizationId: leagueA.id,
+      role: "member",
+      userId: memberUser.id,
+    });
+
+    const centralRows = await handle.db
+      .insert(contentItems)
+      .values([
+        {
+          body: "Rail A central body.",
+          contentHash: `${marker}-rail-a-central-hash`,
+          dedupKey: `${marker}-rail-a-central`,
+          kind: "news",
+          leagueId: null,
+          metadata: { section: "injuries" },
+          publishedAt: new Date("2026-06-11T21:00:00.000Z"),
+          source: "Central Rail Wire",
+          sourceUrl: `https://news.example.com/${marker}/rail-a`,
+          summary: "Central story with league A relevance.",
+          title: "Original central A headline",
+        },
+        {
+          body: "Rail unrelated central body.",
+          contentHash: `${marker}-rail-unrelated-hash`,
+          dedupKey: `${marker}-rail-unrelated`,
+          kind: "news",
+          leagueId: null,
+          publishedAt: new Date("2026-06-11T20:00:00.000Z"),
+          source: "Central Rail Wire",
+          sourceUrl: `https://news.example.com/${marker}/rail-unrelated`,
+          summary: "Central story with no league intersection.",
+          title: "Unreferenced central headline",
+        },
+        {
+          body: "Rail B central body.",
+          contentHash: `${marker}-rail-b-central-hash`,
+          dedupKey: `${marker}-rail-b-central`,
+          kind: "news",
+          leagueId: null,
+          publishedAt: new Date("2026-06-11T22:00:00.000Z"),
+          source: "Central Rail Wire",
+          sourceUrl: `https://news.example.com/${marker}/rail-b`,
+          summary: "Central story with league B relevance.",
+          title: "Original central B headline",
+        },
+      ])
+      .returning({
+        dedupKey: contentItems.dedupKey,
+        id: contentItems.id,
+      });
+    const centralAId =
+      centralRows.find((row) => row.dedupKey === `${marker}-rail-a-central`)
+        ?.id ?? "";
+    const centralBId =
+      centralRows.find((row) => row.dedupKey === `${marker}-rail-b-central`)
+        ?.id ?? "";
+    if (!centralAId || !centralBId) {
+      throw new Error("rail test central rows were not inserted");
+    }
+
+    await withLeagueContext(handle.db, leagueA.id, async (tx) => {
+      await tx.insert(contentItems).values({
+        body: "League-scoped rail body.",
+        contentHash: `${marker}-rail-league-scoped-hash`,
+        dedupKey: `${marker}-rail-league-scoped`,
+        kind: "news",
+        leagueId: leagueA.id,
+        publishedAt: new Date("2026-06-11T23:00:00.000Z"),
+        source: "Scoped Wire",
+        sourceUrl: `https://news.example.com/${marker}/rail-scoped`,
+        summary: "League-scoped news must stay out of central News.",
+        title: "League-scoped rail headline",
+      });
+    });
+
+    await upsertLeagueFeedReference(handle.db, {
+      contentItemId: centralAId,
+      framingSummary: "Fixture Team 01 has a lineup decision now.",
+      framingTitle: "A-specific quarterback fallout",
+      leagueId: leagueA.id,
+      matchedEntities: [
+        {
+          label: "Fixture Team 01",
+          provider: "espn",
+          providerId: "1",
+          type: "team",
+        },
+      ],
+      reason: "Fixture Team 01 rosters the affected starter.",
+      relevanceScore: 8,
+    });
+    await upsertLeagueFeedReference(handle.db, {
+      contentItemId: centralBId,
+      framingTitle: "B-specific quarterback fallout",
+      leagueId: leagueB.id,
+      matchedEntities: [
+        {
+          label: "Fixture Team 99",
+          provider: "espn",
+          providerId: "99",
+          type: "team",
+        },
+      ],
+      reason: "League B-only relevance.",
+      relevanceScore: 10,
+    });
+
+    const data = await getCentralNewsHubData(handle.db, {
+      forLeagueId: leagueA.id,
+      limit: 100,
+      userId: memberUser.id,
+    });
+    const markedCentralItems = data.items.filter((item) =>
+      item.sourceUrl.includes(`${marker}/rail-`),
+    );
+
+    expect(markedCentralItems.map((item) => item.title)).toEqual([
+      "Original central B headline",
+      "Original central A headline",
+      "Unreferenced central headline",
+    ]);
+    expect(markedCentralItems.map((item) => item.title)).not.toContain(
+      "League-scoped rail headline",
+    );
+    expect(data.forYourLeague?.league).toEqual({
+      id: leagueA.id,
+      name: "Rail League A",
+    });
+    expect(data.forYourLeague?.items.map((item) => item.title)).toEqual([
+      "A-specific quarterback fallout",
+    ]);
+    expect(data.forYourLeague?.items[0]).toMatchObject({
+      contentItemId: centralAId,
+      matchedEntities: [
+        {
+          label: "Fixture Team 01",
+          provider: "espn",
+          providerId: "1",
+          type: "team",
+        },
+      ],
+      relevanceReason: "Fixture Team 01 rosters the affected starter.",
+      source: "Central Rail Wire",
+      sourceUrl: `https://news.example.com/${marker}/rail-a`,
+      summary: "Fixture Team 01 has a lineup decision now.",
+    });
+
+    const noContextData = await getCentralNewsHubData(handle.db, {
+      forLeagueId: leagueA.id,
+      limit: 100,
+    });
+    expect(noContextData.forYourLeague).toBeNull();
+
+    const outsiderData = await getCentralNewsHubData(handle.db, {
+      forLeagueId: leagueA.id,
+      limit: 100,
+      userId: outsiderUser.id,
+    });
+    expect(outsiderData.forYourLeague).toBeNull();
   });
 });

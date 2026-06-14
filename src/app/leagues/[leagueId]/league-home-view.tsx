@@ -438,7 +438,7 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
               The Press
             </Link>
             <Link
-              href="/news"
+              href={`/news?leagueId=${data.league.id}`}
               className={cn(
                 buttonVariants({ className: "w-fit", variant: "outline" }),
               )}

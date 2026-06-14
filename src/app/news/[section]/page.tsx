@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getCentralNewsHubData } from "@/news/hub";
 import { getCentralPublicationSectionBySlug } from "@/news/sections";
@@ -14,7 +16,10 @@ export const metadata: Metadata = {
 
 interface NewsSectionPageProps {
   params: Promise<{ section: string }>;
-  searchParams?: Promise<{ tag?: string | string[] }>;
+  searchParams?: Promise<{
+    leagueId?: string | string[];
+    tag?: string | string[];
+  }>;
 }
 
 function firstSearchValue(value: string | string[] | undefined): string | null {
@@ -26,15 +31,20 @@ export default async function NewsSectionPage({
   searchParams,
 }: NewsSectionPageProps) {
   const { section: sectionSlug } = await params;
-  const tag = firstSearchValue((await searchParams)?.tag);
+  const query = await searchParams;
+  const tag = firstSearchValue(query?.tag);
+  const forLeagueId = firstSearchValue(query?.leagueId);
   const section = getCentralPublicationSectionBySlug(sectionSlug);
   if (!section) {
     notFound();
   }
 
+  const session = await requireSession({ headers: await headers() });
   const data = await getCentralNewsHubData(getDb(), {
+    forLeagueId,
     sectionId: section.id,
     tag,
+    userId: session.ok ? session.value.userId : null,
   });
   return <NewsHubView data={data} />;
 }

@@ -22,6 +22,8 @@ export {
   type LeagueBlogPostLoadResult,
 } from "./blog-post";
 export {
+  type CentralNewsForYourLeagueItem,
+  type CentralNewsForYourLeagueRail,
   type CentralNewsHubData,
   type CentralNewsHubItem,
   getCentralNewsHubData,

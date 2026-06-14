@@ -26,8 +26,36 @@ function toStory(item: CentralNewsHubData["items"][number]): PublicationStory {
   };
 }
 
+function toRailStory(
+  item: NonNullable<CentralNewsHubData["forYourLeague"]>["items"][number],
+): PublicationStory {
+  return {
+    byline: item.source,
+    dek: item.dek ?? item.summary,
+    headline: item.title,
+    href: `/news/articles/${item.contentItemId}`,
+    hrefLabel: "Read story",
+    id: item.id,
+    publishedAt: item.publishedAt,
+    relevanceReason: item.relevanceReason,
+    sectionTag: item.section.label,
+    sourceUrl: item.sourceUrl,
+    thumbnailAlt: item.title,
+    thumbnailUrl: item.thumbnailUrl,
+  };
+}
+
+function newsHref(path: string, leagueId: string | null | undefined): string {
+  if (!leagueId) {
+    return path;
+  }
+
+  return `${path}?leagueId=${encodeURIComponent(leagueId)}`;
+}
+
 export function NewsHubView({ data }: { data: CentralNewsHubData }) {
   const front = buildPublicationFront(data.items);
+  const rail = data.forYourLeague;
   const heading = data.activeSection
     ? `${data.activeSection.label} stories`
     : "NFL and fantasy headlines";
@@ -72,13 +100,13 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
               {filteredHeading}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Shared league-agnostic news from the central feed. League-specific
-              framing stays in each league's Press.
+              Shared central news from the sport's feed. League-specific context
+              appears only as a narrow rail when a league is active.
             </p>
           </div>
           <nav aria-label="News sections" className="flex flex-wrap gap-2">
             <Link
-              href="/news"
+              href={newsHref("/news", rail?.league.id)}
               aria-current={data.activeSection ? undefined : "page"}
               className={cn(
                 buttonVariants({
@@ -93,7 +121,7 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
             {data.sections.map((section) => (
               <Link
                 key={section.id}
-                href={`/news/${section.slug}`}
+                href={newsHref(`/news/${section.slug}`, rail?.league.id)}
                 aria-current={
                   data.activeSection?.id === section.id ? "page" : undefined
                 }
@@ -114,6 +142,42 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
           </nav>
         </div>
       </header>
+
+      {rail ? (
+        <section aria-label="For your league" className="grid gap-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-xs font-medium text-primary uppercase">
+                For your league
+              </p>
+              <h2 className="text-base font-semibold">
+                Central stories touching {rail.league.name}
+              </h2>
+            </div>
+            <Link
+              href={`/leagues/${rail.league.id}/press`}
+              className={cn(
+                buttonVariants({
+                  className: "w-fit",
+                  size: "sm",
+                  variant: "outline",
+                }),
+              )}
+            >
+              Read The Press
+            </Link>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {rail.items.map((item) => (
+              <PublicationStoryCard
+                key={item.id}
+                story={toRailStory(item)}
+                variant="rail"
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {front.lead ? (
         <div className="grid gap-5">

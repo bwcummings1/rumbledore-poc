@@ -492,6 +492,12 @@ function NavigationItem({
   const isActive =
     activeState.scope === item.scope && activeState.sectionId === item.id;
   const Icon = NAVIGATION_ICON_COMPONENTS[item.icon];
+  const href =
+    activeState.scope === "league" &&
+    item.scope === "global" &&
+    item.id === "news"
+      ? `/news?leagueId=${encodeURIComponent(activeState.leagueId)}`
+      : item.href;
 
   return (
     <Link
@@ -501,7 +507,7 @@ function NavigationItem({
         isActive && "bg-primary/10 text-foreground",
         compact ? "md:size-11 md:px-0" : "md:justify-start",
       )}
-      href={item.href}
+      href={href}
       title={compact ? item.label : undefined}
     >
       <Icon className="size-4 shrink-0" aria-hidden="true" />

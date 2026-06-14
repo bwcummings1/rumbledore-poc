@@ -153,6 +153,13 @@ describe("NavigationShellView", () => {
     const sidebar = container.querySelector('[data-slot="desktop-sidebar"]');
     expect(sidebar?.getAttribute("data-collapsed")).toBe("false");
     expect(
+      within(screen.getByLabelText("Global sections"))
+        .getByRole("link", {
+          name: "News",
+        })
+        .getAttribute("href"),
+    ).toBe("/news?leagueId=league-a");
+    expect(
       within(screen.getByLabelText("Global sections")).getByRole("link", {
         name: "Arena",
       }),
