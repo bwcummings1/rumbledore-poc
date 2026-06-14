@@ -1014,7 +1014,7 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Open markets</h2>
             <Link
-              href="/arena"
+              href={`/arena?leagueId=${encodeURIComponent(data.league.id)}`}
               className={cn(
                 buttonVariants({ className: "w-fit", variant: "outline" }),
               )}

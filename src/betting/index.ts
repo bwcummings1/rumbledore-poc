@@ -1,6 +1,9 @@
 export {
+  type ArenaHeadToHead,
+  type ArenaHeadToHeadLeague,
   type ArenaLeaderboardData,
   type ArenaLeaderboardRow,
+  type ArenaLeagueRivalOption,
   type ArenaMover,
   type ArenaSeasonSummary,
   computeArenaStandings,

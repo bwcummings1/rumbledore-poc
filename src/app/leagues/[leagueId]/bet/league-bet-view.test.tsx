@@ -171,7 +171,7 @@ test("league bet view renders bankroll, open markets, and recent slips", () => {
   expect(screen.getByText(/single · pending/i)).toBeDefined();
   expect(
     screen.getByRole("link", { name: /arena/i }).getAttribute("href"),
-  ).toBe("/arena");
+  ).toBe("/arena?leagueId=00000000-0000-4000-8000-000000000001");
 });
 
 test("league bet view stages selected prices and replaces selections on the same market", () => {

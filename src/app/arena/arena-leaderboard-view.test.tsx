@@ -11,6 +11,47 @@ vi.mock("next/navigation", () => ({
 
 const data: ArenaLeaderboardData = {
   computedAt: "2026-09-09T00:00:00.000Z",
+  headToHead: {
+    anchor: {
+      currentBalanceCents: 130_000,
+      displayName: "Arena League B",
+      id: "league-b",
+      netPnlCents: 30_000,
+      rank: 1,
+      rankDelta: 1,
+      roiBps: 30_000,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 10_000,
+    },
+    comparison: "leading",
+    leader: {
+      currentBalanceCents: 130_000,
+      displayName: "Arena League B",
+      id: "league-b",
+      netPnlCents: 30_000,
+      rank: 1,
+      rankDelta: 1,
+      roiBps: 30_000,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 10_000,
+    },
+    marginCents: 10_000,
+    rankGap: 1,
+    rival: {
+      currentBalanceCents: 120_000,
+      displayName: "Arena League A",
+      id: "league-a",
+      netPnlCents: 20_000,
+      rank: 2,
+      rankDelta: -1,
+      roiBps: 20_000,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 10_000,
+    },
+  },
   individualStandings: [
     {
       currentBalanceCents: 130_000,
@@ -49,6 +90,38 @@ const data: ArenaLeaderboardData = {
       weeksSurvived: 1,
       winRateBps: 10_000,
       wonSlipCount: 1,
+    },
+    {
+      currentBalanceCents: 120_000,
+      displayName: "Arena League A",
+      id: "league-a",
+      netPnlCents: 20_000,
+      previousRank: 1,
+      pushVoidSlipCount: 0,
+      rank: 2,
+      rankDelta: -1,
+      roiBps: 20_000,
+      settledSlipCount: 1,
+      totalReturnCents: 30_000,
+      totalStakeCents: 10_000,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 10_000,
+      wonSlipCount: 1,
+    },
+  ],
+  leagueOptions: [
+    {
+      displayName: "Arena League B",
+      id: "league-b",
+      netPnlCents: 30_000,
+      rank: 1,
+    },
+    {
+      displayName: "Arena League A",
+      id: "league-a",
+      netPnlCents: 20_000,
+      rank: 2,
     },
   ],
   movers: {
@@ -113,13 +186,25 @@ test("arena leaderboard view renders league and individual standings", () => {
   expect(
     screen.getByRole("heading", { name: "Individual leaderboard" }),
   ).toBeDefined();
-  expect(screen.getByText("Arena League B")).toBeDefined();
+  expect(screen.getAllByText("Arena League B").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Arena League A").length).toBeGreaterThan(0);
+  expect(
+    screen.getByRole("heading", { name: /Arena League B vs/ }),
+  ).toBeDefined();
+  expect(screen.getByText("Arena League B leads by $100")).toBeDefined();
   expect(screen.getAllByText("Arena Gamma")).toHaveLength(2);
-  expect(screen.getAllByText("+$300")).toHaveLength(2);
-  expect(screen.getAllByText("+300%")).toHaveLength(2);
-  expect(screen.getAllByText("1/1 wins · 1/1 weeks")).toHaveLength(2);
-  expect(screen.getByRole("link", { name: /2026 Arena/ })).toBeDefined();
+  expect(screen.getAllByText("+$300").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByText("+300%").length).toBeGreaterThanOrEqual(2);
+  expect(
+    screen.getAllByText("1/1 wins · 1/1 weeks").length,
+  ).toBeGreaterThanOrEqual(2);
+  expect(
+    screen.getByRole("link", { name: /2026 Arena/ }).getAttribute("href"),
+  ).toBe("/arena?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a");
   expect(screen.getByRole("link", { name: /2025 Arena/ })).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: /Arena League A/ }).getAttribute("href"),
+  ).toBe("/arena?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a");
   expect(screen.getByText("Biggest risers")).toBeDefined();
   expect(screen.getByText("Player · #3 to #1")).toBeDefined();
   expect(screen.getAllByText("Up 2")).toHaveLength(1);
@@ -130,7 +215,9 @@ test("arena leaderboard view renders empty states", () => {
     <ArenaLeaderboardView
       data={{
         computedAt: null,
+        headToHead: null,
         individualStandings: [],
+        leagueOptions: [],
         leagueStandings: [],
         movers: { fallers: [], risers: [] },
         season: null,
@@ -149,4 +236,5 @@ test("arena leaderboard view renders empty states", () => {
     screen.getByText("No individual standings have been materialized yet."),
   ).toBeDefined();
   expect(screen.getByText("No rank movement yet")).toBeDefined();
+  expect(screen.getByText("League rivalry waiting")).toBeDefined();
 });

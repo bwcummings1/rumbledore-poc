@@ -253,6 +253,8 @@ describe("arena leaderboard materialization", () => {
       seasonId: season.id,
     });
     const leaderboard = await getArenaLeaderboardData(handle.db, {
+      leagueId: leagueA.id,
+      rivalLeagueId: leagueB.id,
       seasonId: season.id,
     });
 
@@ -265,6 +267,41 @@ describe("arena leaderboard materialization", () => {
     expect(leaderboard.leagueStandings.map((row) => row.netPnlCents)).toEqual([
       30_000, -2_500,
     ]);
+    expect(leaderboard.leagueOptions).toEqual([
+      {
+        displayName: "Arena League B",
+        id: leagueB.id,
+        netPnlCents: 30_000,
+        rank: 1,
+      },
+      {
+        displayName: "Arena League A",
+        id: leagueA.id,
+        netPnlCents: -2_500,
+        rank: 2,
+      },
+    ]);
+    expect(leaderboard.headToHead).toEqual({
+      anchor: expect.objectContaining({
+        displayName: "Arena League A",
+        id: leagueA.id,
+        netPnlCents: -2_500,
+        rank: 2,
+      }),
+      comparison: "trailing",
+      leader: expect.objectContaining({
+        displayName: "Arena League B",
+        id: leagueB.id,
+      }),
+      marginCents: 32_500,
+      rankGap: 1,
+      rival: expect.objectContaining({
+        displayName: "Arena League B",
+        id: leagueB.id,
+        netPnlCents: 30_000,
+        rank: 1,
+      }),
+    });
     expect(
       leaderboard.individualStandings.map((row) => [
         row.displayName,

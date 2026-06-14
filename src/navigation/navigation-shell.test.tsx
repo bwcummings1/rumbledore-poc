@@ -160,10 +160,12 @@ describe("NavigationShellView", () => {
         .getAttribute("href"),
     ).toBe("/news?leagueId=league-a");
     expect(
-      within(screen.getByLabelText("Global sections")).getByRole("link", {
-        name: "Arena",
-      }),
-    ).toBeDefined();
+      within(screen.getByLabelText("Global sections"))
+        .getByRole("link", {
+          name: "Arena",
+        })
+        .getAttribute("href"),
+    ).toBe("/arena?leagueId=league-a");
     expect(
       within(screen.getByLabelText("League sections")).getByRole("link", {
         name: "Records",

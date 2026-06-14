@@ -33,6 +33,7 @@ import { LeagueSwitcherView } from "./league-switcher-view";
 import {
   type ActiveNavigationState,
   GLOBAL_NAVIGATION_SECTIONS,
+  type GlobalSectionId,
   getLeagueNavigationSections,
   type NavigationIconName,
 } from "./scope";
@@ -493,10 +494,8 @@ function NavigationItem({
     activeState.scope === item.scope && activeState.sectionId === item.id;
   const Icon = NAVIGATION_ICON_COMPONENTS[item.icon];
   const href =
-    activeState.scope === "league" &&
-    item.scope === "global" &&
-    item.id === "news"
-      ? `/news?leagueId=${encodeURIComponent(activeState.leagueId)}`
+    activeState.scope === "league" && item.scope === "global"
+      ? globalHrefForLeagueScope(item.id, activeState.leagueId, item.href)
       : item.href;
 
   return (
@@ -516,6 +515,18 @@ function NavigationItem({
       </span>
     </Link>
   );
+}
+
+function globalHrefForLeagueScope(
+  sectionId: GlobalSectionId,
+  leagueId: string,
+  fallbackHref: string,
+): string {
+  if (sectionId === "news" || sectionId === "arena") {
+    return `${fallbackHref}?leagueId=${encodeURIComponent(leagueId)}`;
+  }
+
+  return fallbackHref;
 }
 
 function ScopeAvatar({

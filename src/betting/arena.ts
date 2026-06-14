@@ -106,9 +106,36 @@ export interface ArenaMover {
   rankDelta: number;
 }
 
+export interface ArenaLeagueRivalOption {
+  displayName: string;
+  id: string;
+  netPnlCents: number;
+  rank: number;
+}
+
+export interface ArenaHeadToHeadLeague extends ArenaLeagueRivalOption {
+  currentBalanceCents: number;
+  rankDelta: number;
+  roiBps: number;
+  weeksPlayed: number;
+  weeksSurvived: number;
+  winRateBps: number;
+}
+
+export interface ArenaHeadToHead {
+  anchor: ArenaHeadToHeadLeague;
+  comparison: "leading" | "tied" | "trailing";
+  leader: ArenaHeadToHeadLeague | null;
+  marginCents: number;
+  rankGap: number;
+  rival: ArenaHeadToHeadLeague;
+}
+
 export interface ArenaLeaderboardData {
   computedAt: string | null;
+  headToHead: ArenaHeadToHead | null;
   individualStandings: ArenaLeaderboardRow[];
+  leagueOptions: ArenaLeagueRivalOption[];
   leagueStandings: ArenaLeaderboardRow[];
   movers: {
     fallers: ArenaMover[];
@@ -685,6 +712,7 @@ export async function rebuildArenaStandings(
       .returning();
   });
 
+  const leagueStandings = await standingsForKind(db, input.seasonId, "league");
   return {
     computedAt: computedAt.toISOString(),
     individualStandings: await standingsForKind(
@@ -692,7 +720,9 @@ export async function rebuildArenaStandings(
       input.seasonId,
       "individual",
     ),
-    leagueStandings: await standingsForKind(db, input.seasonId, "league"),
+    headToHead: buildHeadToHead(leagueStandings),
+    leagueOptions: leagueRivalOptions(leagueStandings),
+    leagueStandings,
     materializedRows,
     movers: await movementForSeason(db, input.seasonId),
     season: seasonDto(computed.season),
@@ -846,12 +876,82 @@ async function movementForSeason(
   };
 }
 
+function leagueRivalOptions(
+  rows: readonly ArenaLeaderboardRow[],
+): ArenaLeagueRivalOption[] {
+  return rows.map((row) => ({
+    displayName: row.displayName,
+    id: row.id,
+    netPnlCents: row.netPnlCents,
+    rank: row.rank,
+  }));
+}
+
+function headToHeadLeague(row: ArenaLeaderboardRow): ArenaHeadToHeadLeague {
+  return {
+    currentBalanceCents: row.currentBalanceCents,
+    displayName: row.displayName,
+    id: row.id,
+    netPnlCents: row.netPnlCents,
+    rank: row.rank,
+    rankDelta: row.rankDelta,
+    roiBps: row.roiBps,
+    weeksPlayed: row.weeksPlayed,
+    weeksSurvived: row.weeksSurvived,
+    winRateBps: row.winRateBps,
+  };
+}
+
+function naturalRivalFor(
+  anchor: ArenaLeaderboardRow,
+  rows: readonly ArenaLeaderboardRow[],
+): ArenaLeaderboardRow | null {
+  const index = rows.findIndex((row) => row.id === anchor.id);
+  if (index < 0) return null;
+  return rows[index - 1] ?? rows[index + 1] ?? null;
+}
+
+function buildHeadToHead(
+  rows: readonly ArenaLeaderboardRow[],
+  input: { leagueId?: string; rivalLeagueId?: string } = {},
+): ArenaHeadToHead | null {
+  if (rows.length < 2) return null;
+
+  const anchor = input.leagueId
+    ? rows.find((row) => row.id === input.leagueId)
+    : rows[0];
+  if (!anchor) return null;
+
+  const explicitRival =
+    input.rivalLeagueId && input.rivalLeagueId !== anchor.id
+      ? rows.find((row) => row.id === input.rivalLeagueId)
+      : null;
+  const rival = explicitRival ?? naturalRivalFor(anchor, rows);
+  if (!rival) return null;
+
+  const anchorLeague = headToHeadLeague(anchor);
+  const rivalLeague = headToHeadLeague(rival);
+  const gap = anchor.netPnlCents - rival.netPnlCents;
+  const leader = gap > 0 ? anchorLeague : gap < 0 ? rivalLeague : null;
+
+  return {
+    anchor: anchorLeague,
+    comparison: gap > 0 ? "leading" : gap < 0 ? "trailing" : "tied",
+    leader,
+    marginCents: Math.abs(gap),
+    rankGap: Math.abs(anchor.rank - rival.rank),
+    rival: rivalLeague,
+  };
+}
+
 export async function getArenaLeaderboardData(
   db: Db,
   input: {
+    leagueId?: string;
     limit?: number;
     movementLimit?: number;
     now?: Date;
+    rivalLeagueId?: string;
     seasonId?: string;
   } = {},
 ): Promise<ArenaLeaderboardData> {
@@ -873,7 +973,9 @@ export async function getArenaLeaderboardData(
   if (!season) {
     return {
       computedAt: null,
+      headToHead: null,
       individualStandings: [],
+      leagueOptions: [],
       leagueStandings: [],
       movers: { fallers: [], risers: [] },
       season: null,
@@ -884,6 +986,9 @@ export async function getArenaLeaderboardData(
   const leagueStandings = await standingsForKind(db, season.id, "league", {
     limit: input.limit,
   });
+  const allLeagueStandings = await standingsForKind(db, season.id, "league", {
+    limit: MAX_LIMIT,
+  });
   const individualStandings = await standingsForKind(
     db,
     season.id,
@@ -893,7 +998,12 @@ export async function getArenaLeaderboardData(
 
   return {
     computedAt: computedAtBySeason.get(season.id) ?? null,
+    headToHead: buildHeadToHead(allLeagueStandings, {
+      leagueId: input.leagueId,
+      rivalLeagueId: input.rivalLeagueId,
+    }),
     individualStandings,
+    leagueOptions: leagueRivalOptions(allLeagueStandings),
     leagueStandings,
     movers: await movementForSeason(db, season.id, {
       limit: input.movementLimit,
