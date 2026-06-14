@@ -2774,7 +2774,7 @@ export const leagueInvites = pgTable(
     channel: leagueInviteChannel("channel").notNull(),
     targetHash: text("target_hash").notNull(),
     targetHint: text("target_hint"),
-    token: text("token").notNull(),
+    tokenHash: text("token_hash").notNull(),
     status: leagueInviteStatus("status").notNull().default("pending"),
     acceptedUserId: uuid("accepted_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -2785,7 +2785,7 @@ export const leagueInvites = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("league_invites_token_unique").on(table.token),
+    uniqueIndex("league_invites_token_hash_unique").on(table.tokenHash),
     uniqueIndex("league_invites_target_unique").on(
       table.leagueId,
       table.provider,

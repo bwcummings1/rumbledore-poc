@@ -223,6 +223,10 @@ function stableHash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function inviteTokenHash(token: string): string {
+  return stableHash(`league-invite:${token}`);
+}
+
 function inviteToken(): string {
   return randomBytes(18).toString("base64url");
 }
@@ -277,7 +281,7 @@ function appBaseUrl(input: string): string {
 
 function inviteUrl(
   baseUrl: string,
-  invite: Pick<LeagueInvite, "leagueId" | "token">,
+  invite: { leagueId: string; token: string },
 ): string {
   return new URL(
     `/invite/${invite.leagueId}/${invite.token}`,
@@ -616,6 +620,7 @@ export async function createLeaguemateInvite(
 
   const now = currentTime(deps);
   const expiresAt = inviteExpiresAt(now);
+  const token = inviteToken();
   const [invite] = await withLeagueContext(deps.db, league.id, (tx) =>
     tx
       .insert(leagueInvites)
@@ -633,7 +638,7 @@ export async function createLeaguemateInvite(
         targetHash: destination.value.hash,
         targetHint: destination.value.hint,
         teamNames: target.teamNames,
-        token: inviteToken(),
+        tokenHash: inviteTokenHash(token),
       })
       .onConflictDoUpdate({
         set: {
@@ -645,6 +650,7 @@ export async function createLeaguemateInvite(
           status: "pending",
           targetHint: destination.value.hint,
           teamNames: target.teamNames,
+          tokenHash: inviteTokenHash(token),
           updatedAt: now,
         },
         target: [
@@ -661,7 +667,7 @@ export async function createLeaguemateInvite(
     return err(notFoundError());
   }
 
-  const url = inviteUrl(input.appBaseUrl, invite);
+  const url = inviteUrl(input.appBaseUrl, { leagueId: invite.leagueId, token });
   const delivered = await deliverInvite(deps, {
     channel: input.channel,
     destination: destination.value.value,
@@ -697,7 +703,7 @@ export async function createLeaguemateInvite(
     inviteUrl: url,
     target,
     targetHint: destination.value.hint,
-    token: invite.token,
+    token,
   });
 }
 
@@ -710,6 +716,7 @@ export async function getLeagueInviteLanding(
   }
 
   const now = currentTime(deps);
+  const tokenHash = inviteTokenHash(input.token);
   const [invite] = await withLeagueContext(deps.db, input.leagueId, (tx) =>
     tx
       .select({
@@ -722,7 +729,7 @@ export async function getLeagueInviteLanding(
       .where(
         and(
           eq(leagueInvites.leagueId, input.leagueId),
-          eq(leagueInvites.token, input.token),
+          eq(leagueInvites.tokenHash, tokenHash),
         ),
       )
       .limit(1),
@@ -769,6 +776,7 @@ export async function acceptLeagueInvite(
   }
 
   const now = currentTime(deps);
+  const tokenHash = inviteTokenHash(input.token);
   const outcome = await withLeagueContext(
     deps.db,
     input.leagueId,
@@ -779,7 +787,7 @@ export async function acceptLeagueInvite(
         .where(
           and(
             eq(leagueInvites.leagueId, input.leagueId),
-            eq(leagueInvites.token, input.token),
+            eq(leagueInvites.tokenHash, tokenHash),
           ),
         )
         .limit(1);

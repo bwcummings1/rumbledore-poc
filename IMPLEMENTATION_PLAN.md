@@ -1,62 +1,44 @@
-# IMPLEMENTATION_PLAN.md — Phase 1: Spectacle Core
+# IMPLEMENTATION_PLAN.md — Phase 2: Competition, Onboarding & Entitlements
 
-Disposable, loop-maintained backlog. The loop works `## Scope` until none unblocked + gates green (writes `.loop/SCOPE_DONE`), then auto-runs the value-ranked `## Icebox` ×10 (`PROMPT_harden.md`), then stops. One task = one sentence, no "and". Mark done when gates pass + committed.
-**Build toward `docs/NORTH-STAR.md` (the soul) — embed the ethos in every task** (e.g. "the Narrator mythologizes the collapse citing canon lore," not "generate a post"). The round-1 build (P0–P5) is complete; its record lives in git history + `docs/PROGRESS.md §8`. This is the next phase.
+Disposable, loop-maintained backlog. The loop works `## Scope` until none unblocked + gates green (writes `.loop/SCOPE_DONE`), then auto-runs the value-ranked `## Icebox` ×10 (`PROMPT_harden.md`), then stops at the review checkpoint.
+One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed the ethos in every task** (the league-vs-league reframe; the cast narrates the rivalry; onboarding is viral). Phase 1 (spectacle core) is complete; its record is in git history + `docs/PROGRESS.md §8`. Specs of record: `specs/15` (competition/arena), `specs/16` (onboarding), `specs/17` (entitlements).
 
-## Scope — Phase 1 (spectacle core; build in order)
+## Scope — Phase 2
 
-### A. Information architecture & navigation (see specs/10)
-- [x] Implement the Global-vs-League scope model with section taxonomy and active-scope-from-URL state. (specs/10)
-- [x] Build the unified league switcher: all leagues MRU-first, provider as a badge (not a nav level), search + group toggle. (specs/10)
-- [x] Build the responsive nav shell: mobile bottom tabs + scope-switcher sheet; desktop/tablet collapsible sidebar. (specs/10)
-- [x] Build the cross-league "Your Leagues" landing with per-league cards (this-week + latest Press headline). (specs/10)
-- [x] Migrate the current flat routes onto the new IA with auth guards and redirects. (specs/10)
+### F. Competition & arena (see specs/15)
+- [ ] Build the browse-and-bet sportsbook board over the mocked odds (markets list). (specs/15)
+- [ ] Build the bet slip for singles and parlays with odds locked at placement and stake validation. (specs/15)
+- [ ] Surface the weekly rolling-minimum bankroll loop (this-week balance, win/lose, reset/carryover). (specs/15)
+- [ ] Add market depth (moneyline/spread/total plus a player-props framework) over mocks. (specs/15)
+- [ ] Build the Arena with league-vs-league and individual leaderboards, seasons, and rank movement. (specs/15)
+- [ ] Add league head-to-head and rivalry framing to the Arena. (specs/15)
+- [ ] Wire settlement notifications and standings-swing signals. (specs/15)
+- [ ] Add the arena_recap AI content type so the cast narrates the betting rivalry. (specs/15, specs/12)
 
-### B. Data-foundation depth (bedrock — see specs/14)
-- [x] Achieve ESPN/Sleeper/Yahoo normalized-model parity with honest partial-data handling. (specs/14)
-- [x] Implement full resumable ~10-year canonical history depth, idempotent. (specs/14)
-- [x] Handle co-owner teams correctly, fixing the identity over-merge with per-slot person scoping. (specs/14)
-- [x] Derive playoff/championship flags from provider settings/finals, fixing the hardcoded-false bug. (specs/14)
-- [x] Handle dynasty/keeper, divisions, and varied/IDP scoring per the edge-case table. (specs/14)
-- [x] Build the data-integrity checks plus the data-steward correction flow. (specs/14)
-- [x] Implement targeted incremental recompute triggered by new data. (specs/14)
+### G. Onboarding completeness (see specs/16)
+- [ ] Implement multi-league discovery: connect once, discover all the user's leagues across ESPN/Sleeper/Yahoo. (specs/16)
+- [ ] Implement leaguemate detection from imported members and the "we found your N leaguemates" surface. (specs/16)
+- [ ] Implement SMS and copy-link invites as the primary path, with email only where an address exists (mock delivery). (specs/16)
+- [ ] Implement the claim-your-team invitee flow mapping the user to an imported provider-member. (specs/16)
+- [ ] Implement the activation hook (their team and records waiting; the cast already wrote about them). (specs/16)
+- [ ] Complete the data-steward cleaning doorway per specs/14 §E. (specs/16)
 
-### C. Publication system (see specs/11)
-- [x] Build the Front archetype with an edited lead + secondaries + card river (not a flat list). (specs/11)
-- [x] Build section fronts plus the league/central section taxonomies. (specs/11)
-- [x] Build the article page with persona byline, dek, typographic body, tags, related. (specs/11)
-- [x] Build the reusable story card and enforce the three-register separation. (specs/11)
-- [x] Implement the "for your league" central-news tailoring rail. (specs/11)
-- [x] Make AI generation emit structured articles with headline/dek/byline/section/tags/body. (specs/11)
+### H. Entitlements (see specs/17)
+- [ ] Build the entitlement model: FREE and PREMIUM league tiers plus an INDIVIDUAL tier, per-league and per-user. (specs/17)
+- [ ] Implement the injectable `resolveEntitlement` resolver with a dev override. (specs/17)
+- [ ] Gate AI content generation and cadence behind premium, failing gracefully into an upgrade state. (specs/17)
+- [ ] Gate the individual personal-agent feature behind the individual tier. (specs/17)
+- [ ] Implement configurable caps (posts/week, leagues) plus an admin grant path. (specs/17)
 
-### D. AI cast / spectacle engine (see specs/12)
-- [x] Implement the persona cast with distinct beats, POV, and when-they-perform. (specs/12)
-- [x] Implement the structured content-type templates (recap/power-rankings/previews/awards/reactions/arcs). (specs/12)
-- [x] Implement the cadence and trigger framework (scheduled plus event-driven). (specs/12)
-- [x] Implement the instigator engine: seed a debate, run a poll, open a lore claim, write the verdict column. (specs/12)
-- [x] Implement the authenticity engine grounded in canon/history/rivalries, fixing the AI near-dup vector ordering. (specs/12)
-- [x] Implement the LLM-judge eval gate scoring authenticity-to-this-league. (specs/12)
-
-### E. League lore (see specs/13)
-- [x] Build the lore data model and RLS for claims/votes/canon/branches/disputes. (specs/13)
-- [x] Implement claim → vote → canon transitions with threshold and steward tiebreak. (specs/13)
-- [x] Implement the two lore types: data-verifiable auto-confirm versus opinion-vote. (specs/13)
-- [x] Implement challengeable canon plus dispute and branch threads. (specs/13)
-- [x] Implement the bidirectional AI↔lore contract: consume canon as fact and instigate claims. (specs/13)
-
-## Icebox (value-ranked; the build auto-hardens ×10 after Scope, or run `./loop.sh harden N`)
-- [ ] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`.
-- [x] **[correctness/MED] Bet placement reads balance before the week lock** — acquire `lockWeekLedger` before the balance read. `src/betting/placement.ts`.
-- [ ] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads that return scheduled/in-progress. `src/ingestion/current-league.ts`.
-
-## Harden shortlist
-1. [x] **Bet placement reads balance before the week lock** — highest correctness/data-integrity risk because concurrent requests can validate against stale bankroll state and admit invalid wagers.
-2. [x] **Current sync can downgrade finalized matchups** — finalized matchup state feeds records, content triggers, and settlements, so transient provider regressions can make product data wrong.
-3. [ ] **Invite tokens stored plaintext at rest** — real token-at-rest exposure, but ranked after active correctness bugs by the hardening rubric.
+## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
+Carried forward from Phase 1 — **re-verify each before acting** ("don't assume not implemented"); some may already be fixed by the Phase 1 harden pass.
+- [ ] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`. (Phase 2 onboarding area.)
+- [ ] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads returning scheduled/in-progress. `src/ingestion/current-league.ts`.
+- [ ] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — `closeLoreVote()` will tally an open vote early if called directly; guard on the close time.
+- [ ] **[product/LOW] Lore mechanics are service-only** — no public API/UI for members to submit claims, branch disputes, vote, or browse branch trees.
+- [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` / `src/news/league-feed.ts` fetch a bounded candidate set before filtering, so sparse old beats can vanish as archives grow.
+- [ ] **[observability/LOW] Historical import progress is not published to realtime** — onboarding can't subscribe to a live history-build channel yet (relevant to the Phase 2 onboarding activation hook).
+- [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]`; split routes or use a neutral slug.
 
 ## Discoveries / bugs (loop appends here)
-- [ ] **[observability/LOW] Historical import progress is DB-queryable but not published to realtime** — checkpoints/data coverage expose progress, but onboarding cannot subscribe to a live history-build channel yet.
-- [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` and `src/news/league-feed.ts` fetch a bounded candidate set before applying section/tag filters, so sparse older beats can disappear once archives grow.
-- [ ] **[maintainability/LOW] Press dynamic route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]` handles both section fronts and articles; rename to a neutral slug or split routes when the publication routes are hardened.
-- [ ] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — `closeLoreVote()` assumes the scheduler timing is correct and will tally an open vote early if called directly.
-- [ ] **[product/LOW] Lore mechanics are service-only** — no public API/UI yet for members to submit claims, branch disputes, vote, or browse branch trees.
+- (none yet this phase)

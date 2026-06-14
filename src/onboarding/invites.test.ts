@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
@@ -19,6 +19,7 @@ import { migrateSerialized } from "@/db/test-support";
 import {
   acceptLeagueInvite,
   createLeaguemateInvite,
+  getLeagueInviteLanding,
   listLeaguemateInviteTargets,
 } from "./invites";
 import { RecordingInviteNotifier } from "./notifier";
@@ -26,6 +27,10 @@ import { RecordingInviteNotifier } from "./notifier";
 const marker = `invitetest-${randomUUID()}`;
 
 let handle: DbHandle;
+
+function inviteTokenHash(token: string): string {
+  return createHash("sha256").update(`league-invite:${token}`).digest("hex");
+}
 
 async function seedUser(tag: string) {
   const [user] = await handle.db
@@ -213,7 +218,7 @@ describe("leaguemate invites", () => {
     ).toBe(false);
   });
 
-  it("creates a stable share link and records mock SMS/email sends", async () => {
+  it("creates hashed share links and records mock SMS/email sends", async () => {
     const league = await seedLeague();
     const user = await seedUser("create");
     const imported = await seedImportedMembers({
@@ -267,8 +272,8 @@ describe("leaguemate invites", () => {
     });
     expect(sharedAgain.ok).toBe(true);
     if (!sharedAgain.ok) throw sharedAgain.error;
-    expect(sharedAgain.value.token).toBe(shared.value.token);
-    expect(sharedAgain.value.inviteUrl).toBe(shared.value.inviteUrl);
+    expect(sharedAgain.value.token).not.toBe(shared.value.token);
+    expect(sharedAgain.value.inviteUrl).not.toBe(shared.value.inviteUrl);
 
     const emailed = await createLeaguemateInvite(deps, {
       appBaseUrl: "https://rumbledore.example",
@@ -311,6 +316,7 @@ describe("leaguemate invites", () => {
           sentAt: leagueInvites.sentAt,
           status: leagueInvites.status,
           targetHint: leagueInvites.targetHint,
+          tokenHash: leagueInvites.tokenHash,
         })
         .from(leagueInvites)
         .where(
@@ -329,14 +335,20 @@ describe("leaguemate invites", () => {
           channel: "share",
           status: "pending",
           targetHint: null,
+          tokenHash: inviteTokenHash(sharedAgain.value.token),
         }),
         expect.objectContaining({
           channel: "email",
           status: "sent",
           targetHint: "m***@example.com",
+          tokenHash: inviteTokenHash(emailed.value.token),
         }),
       ]),
     );
+    const persistedTokenHashes = rows.map((row) => row.tokenHash);
+    expect(persistedTokenHashes).not.toContain(shared.value.token);
+    expect(persistedTokenHashes).not.toContain(sharedAgain.value.token);
+    expect(persistedTokenHashes).not.toContain(emailed.value.token);
     expect(rows.find((row) => row.channel === "email")?.sentAt).toBeInstanceOf(
       Date,
     );
@@ -378,6 +390,20 @@ describe("leaguemate invites", () => {
     });
     expect(shared.ok).toBe(true);
     if (!shared.ok) throw shared.error;
+
+    const landing = await getLeagueInviteLanding(
+      { db: handle.db, now: () => new Date("2026-06-12T12:01:00.000Z") },
+      {
+        leagueId: league.id,
+        token: shared.value.token,
+      },
+    );
+    expect(landing.ok).toBe(true);
+    if (!landing.ok) throw landing.error;
+    expect(landing.value).toMatchObject({
+      inviteeDisplayName: "Fixture Manager Two",
+      teamNames: ["Invite Team"],
+    });
 
     const accepted = await acceptLeagueInvite(
       { db: handle.db, now: () => new Date("2026-06-12T12:05:00.000Z") },
@@ -424,7 +450,9 @@ describe("leaguemate invites", () => {
           status: leagueInvites.status,
         })
         .from(leagueInvites)
-        .where(eq(leagueInvites.token, shared.value.token));
+        .where(
+          eq(leagueInvites.tokenHash, inviteTokenHash(shared.value.token)),
+        );
       return { claims, invites };
     });
     expect(rows.claims).toEqual([
