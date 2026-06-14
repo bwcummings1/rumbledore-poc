@@ -35,7 +35,7 @@ Disposable, loop-maintained backlog. The loop works `## Scope` until none unbloc
 - [x] Implement the cadence and trigger framework (scheduled plus event-driven). (specs/12)
 - [x] Implement the instigator engine: seed a debate, run a poll, open a lore claim, write the verdict column. (specs/12)
 - [x] Implement the authenticity engine grounded in canon/history/rivalries, fixing the AI near-dup vector ordering. (specs/12)
-- [ ] Implement the LLM-judge eval gate scoring authenticity-to-this-league. (specs/12)
+- [x] Implement the LLM-judge eval gate scoring authenticity-to-this-league. (specs/12)
 
 ### E. League lore (see specs/13)
 - [ ] Build the lore data model and RLS for claims/votes/canon/branches/disputes. (specs/13)

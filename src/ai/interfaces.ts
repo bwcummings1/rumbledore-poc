@@ -185,6 +185,36 @@ export interface LlmClient {
   generate(request: LlmGenerateRequest): Promise<BlogDraft>;
 }
 
+export interface LlmJudgeRubric {
+  authenticityThreshold: number;
+  personaMatchThreshold: number;
+}
+
+export interface LlmJudgeLeagueFacts {
+  context: LeagueBlogContext;
+  otherLeagueEntityTokens?: string[];
+}
+
+export interface LlmJudgeRequest {
+  piece: BlogDraft;
+  rubric: LlmJudgeRubric;
+  leagueFacts: LlmJudgeLeagueFacts;
+}
+
+export interface LlmJudgeScore {
+  authenticity: number;
+  personaMatch: number;
+  leakage: boolean;
+  matchedLeagueFacts: string[];
+  matchedPersonaMarkers: string[];
+  leakedTokens: string[];
+  notes: string[];
+}
+
+export interface LlmJudge {
+  score(request: LlmJudgeRequest): Promise<LlmJudgeScore>;
+}
+
 export interface WebGrounding {
   fetch(input: {
     leagueId: string;

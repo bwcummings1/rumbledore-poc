@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-14: Offline LLM-judge eval gate landed — deterministic mock judge scores generated cast output for authenticity, persona match, and cross-league leakage across all content types in CI.
 - 2026-06-14: Authenticity engine landed — AI prompts now carry league-scoped canonical people, rivalries, record facts, and ratified canon; generic drafts retry/skip, and near-dup checks query nearest same-content vectors before publishing.
 - 2026-06-14: Instigator engine landed — grounded settle-it seeds now create first-class instigations, polls, one-vote-per-member tallies, poll-derived canon claims, and idempotent Commissioner verdict columns with RLS/append-only coverage.
 - 2026-06-14: AI cadence and trigger framework landed — mid-week cadence, event-driven planners for transactions/waivers/records/lore/polls/bet settlements, rivalry/milestone/instigation/verdict templates, and bet-settled fan-out now emit idempotent content generation candidates.

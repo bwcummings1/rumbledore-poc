@@ -25,16 +25,28 @@ export type {
   LeagueContextPoll,
   LeagueContextRivalry,
   LeagueContextTrigger,
+  LeaguePersonaCard,
   LlmClient,
   LlmGenerateRequest,
+  LlmJudge,
+  LlmJudgeLeagueFacts,
+  LlmJudgeRequest,
+  LlmJudgeRubric,
+  LlmJudgeScore,
   NewsItem,
   PromptParts,
   WebGrounding,
 } from "./interfaces";
 export {
+  assertLlmJudgeScorePasses,
+  DEFAULT_LLM_JUDGE_RUBRIC,
+  llmJudgeScorePasses,
+} from "./judge";
+export {
   ConstantEmbeddingProvider,
   DeterministicEmbeddingProvider,
   MockLlmClient,
+  MockLlmJudge,
   MockWebGrounding,
 } from "./mocks";
 export {

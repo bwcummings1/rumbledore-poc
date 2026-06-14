@@ -15,6 +15,7 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 - Typecheck: `pnpm typecheck`
 - Lint: `pnpm lint`
 - Tests: `pnpm test` (unit/integration) — run the tests for the unit you touched, plus the suite before commit. Requires the local stack (`pnpm db:up`) for db integration tests.
+- AI eval (if you touched AI/cast/content quality): `pnpm eval:ai:offline` (offline mock LLM/judge; CI gate).
 - E2E: `pnpm test:e2e` for onboarding/flagship-flow changes. It auto-migrates and starts Next on `127.0.0.1:3100`; first run may need `pnpm exec playwright install chromium`.
 - Build: `pnpm build`
 - Secret scan: `pnpm secret-scan`

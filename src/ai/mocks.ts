@@ -1,4 +1,5 @@
 import {
+  blogDraftText,
   bodyBlocksToMarkdown,
   defaultLeagueArticleSectionForContentType,
 } from "./article-draft";
@@ -23,6 +24,9 @@ import type {
   LeagueContextTeam,
   LlmClient,
   LlmGenerateRequest,
+  LlmJudge,
+  LlmJudgeRequest,
+  LlmJudgeScore,
   NewsItem,
   WebGrounding,
 } from "./interfaces";
@@ -57,6 +61,67 @@ function primaryRecord(
 
 function cleanSummary(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function includesToken(text: string, token: string): boolean {
+  return text.toLocaleLowerCase().includes(token.toLocaleLowerCase());
+}
+
+function uniqueJudgeTokens(values: readonly (string | null | undefined)[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const token = value?.replace(/\s+/g, " ").trim();
+    if (!token || token.length < 3) {
+      continue;
+    }
+    const key = token.toLocaleLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(token);
+  }
+  return result;
+}
+
+function judgeLeagueTokens(request: LlmJudgeRequest): readonly string[] {
+  const context = request.leagueFacts.context;
+  const leagueLevelTokens = new Set(
+    [context.league.id, context.league.name, context.league.providerLeagueId]
+      .map((token) => token.toLocaleLowerCase())
+      .filter(Boolean),
+  );
+  return uniqueJudgeTokens([
+    ...context.authenticity.entityTokens,
+    ...context.teams.flatMap((team) => [team.name, ...team.managerNames]),
+    ...context.records.flatMap((record) => [record.holderName, record.label]),
+    ...context.authenticity.people.flatMap((person) => [
+      person.canonicalName,
+      ...person.ownerNames,
+    ]),
+    ...context.authenticity.rivalries.flatMap((rivalry) => [
+      rivalry.personAName,
+      rivalry.personBName,
+      `${rivalry.personAName} vs ${rivalry.personBName}`,
+      rivalry.currentStreakName,
+      rivalry.longestStreakName,
+    ]),
+    ...context.authenticity.canonLore.flatMap((claim) => [
+      claim.title,
+      claim.statement,
+    ]),
+  ]).filter((token) => !leagueLevelTokens.has(token.toLocaleLowerCase()));
+}
+
+function judgePersonaMarkers(request: LlmJudgeRequest): readonly string[] {
+  const persona = request.leagueFacts.context.persona;
+  return uniqueJudgeTokens([
+    persona.name,
+    persona.beat,
+    persona.pointOfView,
+    ...persona.performsWhen,
+  ]);
 }
 
 function teamRecord(team: LeagueContextTeam): string {
@@ -584,6 +649,60 @@ export class MockLlmClient implements LlmClient {
       ),
       tags,
       title: `${personaName}: ${request.context.league.name} snapshot`,
+    };
+  }
+}
+
+export class MockLlmJudge implements LlmJudge {
+  readonly requests: LlmJudgeRequest[] = [];
+
+  async score(request: LlmJudgeRequest): Promise<LlmJudgeScore> {
+    this.requests.push(request);
+    const text = blogDraftText(request.piece);
+    const leagueTokens = judgeLeagueTokens(request);
+    const personaMarkers = judgePersonaMarkers(request);
+    const otherLeagueTokens = uniqueJudgeTokens(
+      request.leagueFacts.otherLeagueEntityTokens ?? [],
+    );
+    const matchedLeagueFacts = leagueTokens.filter((token) =>
+      includesToken(text, token),
+    );
+    const matchedPersonaMarkers = personaMarkers.filter((marker) =>
+      includesToken(text, marker),
+    );
+    const leakedTokens = otherLeagueTokens.filter((token) =>
+      includesToken(text, token),
+    );
+    const requiredLeagueHits = Math.max(1, Math.min(2, leagueTokens.length));
+    const requiredPersonaHits = Math.max(1, Math.min(2, personaMarkers.length));
+    const authenticity =
+      leagueTokens.length === 0
+        ? 0
+        : Math.min(1, matchedLeagueFacts.length / requiredLeagueHits);
+    const personaMatch =
+      personaMarkers.length === 0
+        ? 0
+        : Math.min(1, matchedPersonaMarkers.length / requiredPersonaHits);
+    const notes = [
+      matchedLeagueFacts.length > 0
+        ? `Matched league facts: ${matchedLeagueFacts.join(", ")}`
+        : "No concrete league-owned fact token matched.",
+      matchedPersonaMarkers.length > 0
+        ? `Matched persona markers: ${matchedPersonaMarkers.join(", ")}`
+        : "No persona marker matched.",
+      leakedTokens.length > 0
+        ? `Leaked other-league tokens: ${leakedTokens.join(", ")}`
+        : "No other-league token matched.",
+    ];
+
+    return {
+      authenticity,
+      leakedTokens,
+      leakage: leakedTokens.length > 0,
+      matchedLeagueFacts,
+      matchedPersonaMarkers,
+      notes,
+      personaMatch,
     };
   }
 }

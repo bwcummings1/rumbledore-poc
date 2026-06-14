@@ -78,6 +78,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Offline AI eval
+        run: pnpm eval:ai:offline
+
       - name: Build
         run: pnpm build
 
