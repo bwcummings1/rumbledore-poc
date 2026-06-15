@@ -4,7 +4,7 @@ import { InngestTestEngine } from "@inngest/test";
 import { and, eq, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createMockAiDependencies } from "@/ai";
+import { createMockAiDependencies, MockLlmClient } from "@/ai";
 import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -85,6 +85,12 @@ const regularByeQuietState = {
   isQuietWeek: true,
   phase: "regular",
   seasonWeek: 12,
+} as const satisfies NflWeekState;
+
+const playoffPostGamesState = {
+  gamePhase: "post_games",
+  phase: "playoffs",
+  seasonWeek: 17,
 } as const satisfies NflWeekState;
 
 const offseasonState = {
@@ -827,11 +833,13 @@ describe("content planning", () => {
       data: { gameId, leagueId: league.id },
       db: handle.db,
       env: openEntitlementEnv,
+      nflWeekState: regularPostGamesState,
     });
     const second = await planGameFinalContent({
       data: { gameId, leagueId: league.id },
       db: handle.db,
       env: openEntitlementEnv,
+      nflWeekState: regularPostGamesState,
     });
 
     expect(first.game).toMatchObject({
@@ -852,9 +860,9 @@ describe("content planning", () => {
       second.planned.map((event) => event.id),
     );
     expect(first.planned.map((event) => event.data.triggerKey)).toEqual([
-      `game-final:2026:3:${gameId}`,
-      `game-final:2026:3:${gameId}`,
-      `game-final:2026:3:${gameId}`,
+      "cron:weekly-wrap:regular:7",
+      "cron:weekly-wrap:regular:7",
+      "cron:weekly-wrap:regular:7",
     ]);
 
     const milestone = await planGameFinalContent({
@@ -865,6 +873,7 @@ describe("content planning", () => {
       },
       db: handle.db,
       env: openEntitlementEnv,
+      nflWeekState: regularPostGamesState,
     });
     expect(
       milestone.planned
@@ -883,6 +892,19 @@ describe("content planning", () => {
         persona: "narrator",
         triggerKey: "record-broken:highest_single_week_score",
       },
+    ]);
+
+    const playoff = await planGameFinalContent({
+      data: { gameId, leagueId: league.id },
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: playoffPostGamesState,
+    });
+    expect(playoff.game?.triggerReasons).toContain("stakes:playoffs");
+    expect(playoff.planned.map((event) => event.data.triggerKey)).toEqual([
+      "cron:weekly-wrap:playoffs:17",
+      "cron:weekly-wrap:playoffs:17",
+      "cron:weekly-wrap:playoffs:17",
     ]);
 
     const deps = {
@@ -909,7 +931,10 @@ describe("content planning", () => {
   it("plans game.final content through the Inngest step API", async () => {
     const league = await seedLeague("job-game-final");
     const gameId = await seedFinalMatchup({ league, tag: "job-game-final" });
-    const fn = createContentPlanGameFinalFunction(() => plannerDeps());
+    const fn = createContentPlanGameFinalFunction(() => ({
+      ...plannerDeps(),
+      nflWeekState: regularPostGamesState,
+    }));
     const testEngine = new InngestTestEngine({ function: fn });
     const event = {
       data: {
@@ -936,12 +961,57 @@ describe("content planning", () => {
             contentType: "weekly_recap",
             leagueId: league.id,
             persona: "narrator",
-            triggerKey: `game-final:2026:3:${gameId}`,
+            triggerKey: "cron:weekly-wrap:regular:7",
           }),
           name: JOB_EVENTS.contentGenerate,
         }),
       ]),
     });
+  });
+
+  it("carries reactive playoff framing into the generated content task", async () => {
+    const league = await seedLeague("game-final-playoff-context");
+    const gameId = await seedFinalMatchup({
+      league,
+      tag: "game-final-playoff-context",
+    });
+    const plan = await planGameFinalContent({
+      data: { gameId, leagueId: league.id },
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: playoffPostGamesState,
+    });
+    const recap = plan.planned.find(
+      (event) => event.data.contentType === "weekly_recap",
+    );
+    if (!recap) {
+      throw new Error("playoff recap was not planned");
+    }
+
+    const llm = new MockLlmClient();
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      llm,
+      now: () => new Date("2026-01-12T12:00:00.000Z"),
+    };
+    await runContentGenerate({ data: recap.data, deps });
+
+    expect(llm.requests[0]?.context.trigger.cadence).toMatchObject({
+      cadence: "weekly-wrap",
+      event: "game.final",
+      gamePhase: "post_games",
+      phase: "playoffs",
+      seasonWeek: 17,
+      stakes: ["playoff_stakes"],
+      weekToken: "17",
+    });
+    expect(llm.requests[0]?.prompt.volatileContext).toContain(
+      '"phase":"playoffs"',
+    );
+    expect(llm.requests[0]?.prompt.volatileContext).toContain(
+      '"playoff_stakes"',
+    );
   });
 
   it("plans every event-driven content trigger with stable natural keys", async () => {
@@ -1013,6 +1083,7 @@ describe("content planning", () => {
           env: openEntitlementEnv,
           data: { claimId: "claim-1", leagueId },
           eventName: JOB_EVENTS.loreCanonized,
+          nflWeekState: regularQuietState,
         })
       ).planned.map((event) => event.data),
     ).toEqual([
@@ -1020,13 +1091,13 @@ describe("content planning", () => {
         contentType: "verdict_column",
         leagueId,
         persona: "commissioner",
-        triggerKey: "lore-canonized:claim-1",
+        triggerKey: "lore-canonized:regular:7:claim-1",
       },
       {
         contentType: "milestone_record",
         leagueId,
         persona: "narrator",
-        triggerKey: "lore-canonized:claim-1",
+        triggerKey: "lore-canonized:regular:7:claim-1",
       },
     ]);
 
@@ -1037,6 +1108,7 @@ describe("content planning", () => {
           env: openEntitlementEnv,
           data: { claimId: "claim-1", leagueId, sourcePollId: "poll-1" },
           eventName: JOB_EVENTS.loreCanonized,
+          nflWeekState: regularQuietState,
         })
       ).planned.map((event) => event.data),
     ).toEqual([
@@ -1044,7 +1116,7 @@ describe("content planning", () => {
         contentType: "verdict_column",
         leagueId,
         persona: "commissioner",
-        triggerKey: "poll-closed:poll-1",
+        triggerKey: "poll-closed:regular:7:poll-1",
       },
     ]);
 
@@ -1055,6 +1127,7 @@ describe("content planning", () => {
           env: openEntitlementEnv,
           data: { leagueId, pollId: "poll-1" },
           eventName: JOB_EVENTS.pollClosed,
+          nflWeekState: regularQuietState,
         })
       ).planned.map((event) => event.data),
     ).toEqual([
@@ -1062,7 +1135,7 @@ describe("content planning", () => {
         contentType: "verdict_column",
         leagueId,
         persona: "commissioner",
-        triggerKey: "poll-closed:poll-1",
+        triggerKey: "poll-closed:regular:7:poll-1",
       },
     ]);
 
@@ -1077,6 +1150,7 @@ describe("content planning", () => {
             swingKey: "settlement:settle-1:league-1",
           },
           eventName: JOB_EVENTS.arenaStandingsSwing,
+          nflWeekState: regularQuietState,
         })
       ).planned.map((event) => event.data),
     ).toEqual([
@@ -1084,7 +1158,8 @@ describe("content planning", () => {
         contentType: "arena_recap",
         leagueId,
         persona: "narrator",
-        triggerKey: "arena-swing:season-1:settlement:settle-1:league-1",
+        triggerKey:
+          "arena-swing:regular:7:season-1:settlement:settle-1:league-1",
       },
     ]);
 
@@ -1099,6 +1174,7 @@ describe("content planning", () => {
             settlementId: "settle-1",
           },
           eventName: JOB_EVENTS.betSettled,
+          nflWeekState: regularQuietState,
         })
       ).planned.map((event) => event.data),
     ).toEqual([
@@ -1106,14 +1182,30 @@ describe("content planning", () => {
         contentType: "awards_superlatives",
         leagueId,
         persona: "trash_talker",
-        triggerKey: "bet-settled:settle-1",
+        triggerKey: "bet-settled:regular:7:settle-1",
       },
       {
         contentType: "matchup_preview",
         leagueId,
         persona: "betting_advisor",
-        triggerKey: "bet-settled:settle-1",
+        triggerKey: "bet-settled:regular:7:settle-1",
       },
+    ]);
+
+    expect(
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: { claimId: "claim-1", leagueId },
+          eventName: JOB_EVENTS.loreCanonized,
+          nflWeekState: offseasonState,
+          now: () => new Date("2026-06-15T12:00:00.000Z"),
+        })
+      ).planned.map((event) => event.data.triggerKey),
+    ).toEqual([
+      "lore-canonized:offseason:2026-w25:claim-1",
+      "lore-canonized:offseason:2026-w25:claim-1",
     ]);
   });
 

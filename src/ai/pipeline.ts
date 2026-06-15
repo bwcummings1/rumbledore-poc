@@ -56,6 +56,7 @@ import type {
   LeagueContextArena,
   LeagueContextArenaMover,
   LeagueContextArenaStanding,
+  LeagueContextCadenceFrame,
   LeagueContextCanonLore,
   LeagueContextDisputedLore,
   LeagueContextInstigation,
@@ -171,6 +172,14 @@ type TriggerContextTarget =
   | { kind: "poll"; id: string }
   | { kind: "claim"; id: string };
 
+const NFL_PHASES = [
+  "offseason",
+  "preseason",
+  "regular",
+  "playoffs",
+  "superbowl_week",
+] as const;
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -185,12 +194,165 @@ function parseTriggerContextTarget(
     return { id: triggerKey.slice("instigation:".length), kind: "instigation" };
   }
   if (triggerKey.startsWith("poll-closed:")) {
-    return { id: triggerKey.slice("poll-closed:".length), kind: "poll" };
+    return {
+      id: triggerTargetIdFromKey("poll-closed", triggerKey),
+      kind: "poll",
+    };
   }
   if (triggerKey.startsWith("lore-canonized:")) {
-    return { id: triggerKey.slice("lore-canonized:".length), kind: "claim" };
+    return {
+      id: triggerTargetIdFromKey("lore-canonized", triggerKey),
+      kind: "claim",
+    };
   }
   return null;
+}
+
+function triggerTargetIdFromKey(prefix: string, triggerKey: string): string {
+  const rest = triggerKey.slice(`${prefix}:`.length);
+  const parts = rest.split(":");
+  if (parts.length >= 3 && isNflPhase(parts[0])) {
+    return parts.slice(2).join(":");
+  }
+  return rest;
+}
+
+function isNflPhase(
+  value: string | undefined,
+): value is (typeof NFL_PHASES)[number] {
+  return Boolean(value && (NFL_PHASES as readonly string[]).includes(value));
+}
+
+function gamePhaseForCadence(cadence: string): string | null {
+  switch (cadence) {
+    case "weekly-wrap":
+      return "post_games";
+    case "mid-week":
+    case "offseason-beat":
+      return "quiet";
+    case "weekly-preview":
+    case "post-odds-refresh":
+      return "pre_kickoff";
+    default:
+      return null;
+  }
+}
+
+function stakesForFrame({
+  cadence,
+  event,
+  phase,
+}: {
+  cadence: string | null;
+  event: string | null;
+  phase: string;
+}): string[] {
+  if (phase === "playoffs") {
+    return ["playoff_stakes"];
+  }
+  if (phase === "superbowl_week") {
+    return ["championship_stakes"];
+  }
+  if (phase === "preseason") {
+    return ["preseason_countdown"];
+  }
+  if (phase === "offseason") {
+    return ["offseason_mythology"];
+  }
+  if (cadence === "offseason-beat") {
+    return ["quiet_week"];
+  }
+  if (event === "bet.settled" || event === "arena.standings.swing") {
+    return ["arena_movement"];
+  }
+  return [];
+}
+
+function parseSeasonWeek(weekToken: string): number | null {
+  if (!/^\d+$/.test(weekToken)) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(weekToken, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseFramedReactiveKey({
+  event,
+  prefix,
+  triggerKey,
+}: {
+  event: string;
+  prefix: string;
+  triggerKey: string;
+}): LeagueContextCadenceFrame | null {
+  if (!triggerKey.startsWith(`${prefix}:`)) {
+    return null;
+  }
+
+  const parts = triggerKey.slice(`${prefix}:`.length).split(":");
+  const phase = parts[0];
+  const weekToken = parts[1];
+  if (!isNflPhase(phase) || !weekToken) {
+    return null;
+  }
+
+  return {
+    cadence: null,
+    event,
+    gamePhase: null,
+    phase,
+    seasonWeek: parseSeasonWeek(weekToken),
+    source: "reactive",
+    stakes: stakesForFrame({ cadence: null, event, phase }),
+    weekToken,
+  };
+}
+
+function parseTriggerCadenceFrame(
+  triggerKey: string,
+): LeagueContextCadenceFrame | null {
+  if (triggerKey.startsWith("cron:")) {
+    const [, cadence, phase, weekToken] = triggerKey.split(":");
+    if (!cadence || !isNflPhase(phase) || !weekToken) {
+      return null;
+    }
+
+    return {
+      cadence,
+      event: cadence === "weekly-wrap" ? "game.final" : null,
+      gamePhase: gamePhaseForCadence(cadence),
+      phase,
+      seasonWeek: parseSeasonWeek(weekToken),
+      source: "scheduled",
+      stakes: stakesForFrame({ cadence, event: null, phase }),
+      weekToken,
+    };
+  }
+
+  return (
+    parseFramedReactiveKey({
+      event: "lore.canonized",
+      prefix: "lore-canonized",
+      triggerKey,
+    }) ??
+    parseFramedReactiveKey({
+      event: "poll.closed",
+      prefix: "poll-closed",
+      triggerKey,
+    }) ??
+    parseFramedReactiveKey({
+      event: "bet.settled",
+      prefix: "bet-settled",
+      triggerKey,
+    }) ??
+    parseFramedReactiveKey({
+      event: "arena.standings.swing",
+      prefix: "arena-swing",
+      triggerKey,
+    }) ??
+    null
+  );
 }
 
 function recordTargetIdFromTriggerKey(triggerKey: string): string | null {
@@ -923,7 +1085,9 @@ async function loadTriggerContext({
   input: GenerateLeagueBlogPostInput;
   tx: LeagueScopedTx;
 }): Promise<LeagueContextTrigger> {
+  const cadence = parseTriggerCadenceFrame(input.triggerKey);
   const empty = {
+    cadence,
     instigation: null,
     loreClaim: null,
     poll: null,
@@ -962,7 +1126,7 @@ async function loadTriggerContext({
           tx,
         })
       : null;
-    return { instigation, loreClaim, poll };
+    return { cadence, instigation, loreClaim, poll };
   }
 
   const claim = await loadLoreClaimContext({
@@ -995,7 +1159,7 @@ async function loadTriggerContext({
         title: claim.title,
       }
     : null;
-  return { instigation, loreClaim, poll };
+  return { cadence, instigation, loreClaim, poll };
 }
 
 async function prepareGeneration({

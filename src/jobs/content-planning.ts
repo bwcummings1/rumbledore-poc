@@ -88,6 +88,7 @@ export interface ContentPlanGameFinalResult {
     scoringPeriod: number;
     triggerReasons: string[];
   } | null;
+  nflWeekState: NflWeekState;
   planned: PlannedContentGenerateEvent[];
   skippedEntitlement: SkippedContentGenerationLeague | null;
   skippedReason: string | null;
@@ -95,6 +96,7 @@ export interface ContentPlanGameFinalResult {
 
 export interface ContentPlanTriggerResult {
   eventName: ContentPlanTriggerEventName;
+  nflWeekState: NflWeekState;
   planned: PlannedContentGenerateEvent[];
   skippedEntitlement: SkippedContentGenerationLeague | null;
   skippedReason: string | null;
@@ -327,12 +329,38 @@ function cronTriggerKey(
   return `cron:${cadence}:${weekState.phase}:${nflWeekToken(weekState, now)}`;
 }
 
-function gameFinalTriggerKey(matchup: GameFinalMatchup): string {
-  return `game-final:${matchup.season}:${matchup.scoringPeriod}:${matchup.gameId}`;
+function gameFinalTriggerKey({
+  matchup,
+  now,
+  weekState,
+}: {
+  matchup: GameFinalMatchup;
+  now: Date;
+  weekState: NflWeekState;
+}): string {
+  if (hasScheduledGamesPhase(weekState.phase)) {
+    return cronTriggerKey("weekly-wrap", now, weekState);
+  }
+
+  return `game-final:${weekState.phase}:${nflWeekToken(weekState, now)}:${matchup.season}:${matchup.scoringPeriod}:${matchup.gameId}`;
 }
 
 function recordBrokenTriggerKey(recordKey: string): string {
   return `record-broken:${recordKey}`;
+}
+
+function framedReactiveTriggerKey({
+  prefix,
+  sourceKey,
+  now,
+  weekState,
+}: {
+  prefix: string;
+  sourceKey: string;
+  now: Date;
+  weekState: NflWeekState;
+}): string {
+  return `${prefix}:${weekState.phase}:${nflWeekToken(weekState, now)}:${sourceKey}`;
 }
 
 function contentTriggerKey(
@@ -345,6 +373,8 @@ function contentTriggerKey(
     | RecordBrokenData
     | TransactionData
     | WaiverData,
+  now: Date,
+  weekState: NflWeekState,
 ): string {
   switch (eventName) {
     case JOB_EVENTS.transaction:
@@ -356,18 +386,43 @@ function contentTriggerKey(
     case JOB_EVENTS.loreCanonized: {
       const loreData = data as LoreCanonizedData;
       return loreData.sourcePollId
-        ? `poll-closed:${loreData.sourcePollId}`
-        : `lore-canonized:${loreData.claimId}`;
+        ? framedReactiveTriggerKey({
+            now,
+            prefix: "poll-closed",
+            sourceKey: loreData.sourcePollId,
+            weekState,
+          })
+        : framedReactiveTriggerKey({
+            now,
+            prefix: "lore-canonized",
+            sourceKey: loreData.claimId,
+            weekState,
+          });
     }
     case JOB_EVENTS.pollClosed:
-      return `poll-closed:${(data as PollClosedData).pollId}`;
+      return framedReactiveTriggerKey({
+        now,
+        prefix: "poll-closed",
+        sourceKey: (data as PollClosedData).pollId,
+        weekState,
+      });
     case JOB_EVENTS.betSettled: {
       const betData = data as BetSettledData;
-      return `bet-settled:${betData.settlementId}`;
+      return framedReactiveTriggerKey({
+        now,
+        prefix: "bet-settled",
+        sourceKey: betData.settlementId,
+        weekState,
+      });
     }
     case JOB_EVENTS.arenaStandingsSwing: {
       const swingData = data as ArenaStandingsSwingData;
-      return `arena-swing:${swingData.seasonId}:${swingData.swingKey}`;
+      return framedReactiveTriggerKey({
+        now,
+        prefix: "arena-swing",
+        sourceKey: `${swingData.seasonId}:${swingData.swingKey}`,
+        weekState,
+      });
     }
   }
 }
@@ -573,10 +628,12 @@ function gameFinalTriggerReasons({
   matchup,
   milestoneKeys,
   teams,
+  weekState,
 }: {
   matchup: GameFinalMatchup;
   milestoneKeys: readonly string[];
   teams: ReadonlyMap<string, GameFinalTeam>;
+  weekState: NflWeekState;
 }): string[] {
   const reasons: string[] = [];
   const margin = Math.abs(matchup.homeScore - matchup.awayScore);
@@ -611,7 +668,31 @@ function gameFinalTriggerReasons({
     reasons.push(`milestone:${milestoneKey}`);
   }
 
+  for (const reason of weekStateTriggerReasons(weekState)) {
+    reasons.push(reason);
+  }
+
   return reasons;
+}
+
+function weekStateTriggerReasons(weekState: NflWeekState): string[] {
+  if (weekState.phase === "playoffs") {
+    return ["stakes:playoffs"];
+  }
+
+  if (weekState.phase === "superbowl_week") {
+    return ["stakes:championship"];
+  }
+
+  if (weekState.phase === "preseason") {
+    return ["stakes:preseason_countdown"];
+  }
+
+  if (weekState.phase === "offseason") {
+    return ["stakes:offseason"];
+  }
+
+  return weekState.isQuietWeek ? ["stakes:quiet_week"] : [];
 }
 
 function gameFinalCandidates(
@@ -652,22 +733,31 @@ export async function planGameFinalContent({
   data,
   db,
   env,
+  nflCalendar,
+  nflWeekState,
   now,
 }: {
   data: GameFinalData;
   db: Db;
   env: EntitlementResolverEnv;
+  nflCalendar?: NflCalendar;
+  nflWeekState?: NflWeekState;
   now?: () => Date;
 }): Promise<ContentPlanGameFinalResult> {
+  const resolvedNow = now?.() ?? new Date();
+  const resolvedNflWeekState =
+    nflWeekState ??
+    (await (nflCalendar ?? defaultNflCalendar).weekState(resolvedNow));
   const skippedEntitlement = await resolveCadenceEntitlement({
     db,
     env,
     leagueId: data.leagueId,
-    now,
+    now: () => resolvedNow,
   });
   if (skippedEntitlement) {
     return {
       game: null,
+      nflWeekState: resolvedNflWeekState,
       planned: [],
       skippedEntitlement,
       skippedReason: entitlementSkippedReason(skippedEntitlement),
@@ -700,6 +790,7 @@ export async function planGameFinalContent({
     if (!matchup) {
       return {
         game: null,
+        nflWeekState: resolvedNflWeekState,
         planned: [],
         skippedEntitlement: null,
         skippedReason: "game_not_found",
@@ -715,6 +806,7 @@ export async function planGameFinalContent({
           season: matchup.season,
           triggerReasons: [],
         },
+        nflWeekState: resolvedNflWeekState,
         planned: [],
         skippedEntitlement: null,
         skippedReason: "game_not_final",
@@ -746,8 +838,13 @@ export async function planGameFinalContent({
       matchup,
       milestoneKeys: data.milestoneKeys ?? [],
       teams,
+      weekState: resolvedNflWeekState,
     });
-    const triggerKey = gameFinalTriggerKey(matchup);
+    const triggerKey = gameFinalTriggerKey({
+      matchup,
+      now: resolvedNow,
+      weekState: resolvedNflWeekState,
+    });
     const planned = [
       ...gameFinalCandidates(triggerReasons).map((candidate) =>
         toPlannedEvent({
@@ -771,6 +868,7 @@ export async function planGameFinalContent({
         season: matchup.season,
         triggerReasons,
       },
+      nflWeekState: resolvedNflWeekState,
       planned,
       skippedEntitlement: null,
       skippedReason: null,
@@ -781,6 +879,8 @@ export async function planGameFinalContent({
 function planTriggeredContentEvents({
   data,
   eventName,
+  now,
+  weekState,
 }: {
   data:
     | BetSettledData
@@ -791,8 +891,10 @@ function planTriggeredContentEvents({
     | TransactionData
     | WaiverData;
   eventName: ContentPlanTriggerEventName;
+  now: Date;
+  weekState: NflWeekState;
 }): PlannedContentGenerateEvent[] {
-  const triggerKey = contentTriggerKey(eventName, data);
+  const triggerKey = contentTriggerKey(eventName, data, now, weekState);
   const candidates =
     eventName === JOB_EVENTS.loreCanonized &&
     (data as LoreCanonizedData).sourcePollId
@@ -813,6 +915,8 @@ export async function planTriggeredContent({
   db,
   env,
   eventName,
+  nflCalendar,
+  nflWeekState,
   now,
 }: {
   data:
@@ -826,27 +930,40 @@ export async function planTriggeredContent({
   db: Db;
   env: EntitlementResolverEnv;
   eventName: ContentPlanTriggerEventName;
+  nflCalendar?: NflCalendar;
+  nflWeekState?: NflWeekState;
   now?: () => Date;
 }): Promise<ContentPlanTriggerResult> {
+  const resolvedNow = now?.() ?? new Date();
+  const resolvedNflWeekState =
+    nflWeekState ??
+    (await (nflCalendar ?? defaultNflCalendar).weekState(resolvedNow));
   const skippedEntitlement = await resolveCadenceEntitlement({
     db,
     env,
     leagueId: data.leagueId,
-    now,
+    now: () => resolvedNow,
   });
   if (skippedEntitlement) {
     return {
       eventName,
+      nflWeekState: resolvedNflWeekState,
       planned: [],
       skippedEntitlement,
       skippedReason: entitlementSkippedReason(skippedEntitlement),
     };
   }
 
-  const planned = planTriggeredContentEvents({ data, eventName });
+  const planned = planTriggeredContentEvents({
+    data,
+    eventName,
+    now: resolvedNow,
+    weekState: resolvedNflWeekState,
+  });
 
   return {
     eventName,
+    nflWeekState: resolvedNflWeekState,
     planned,
     skippedEntitlement: null,
     skippedReason: null,

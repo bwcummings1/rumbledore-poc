@@ -4,6 +4,7 @@ import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import type { EntitlementResolverEnv } from "@/entitlements";
+import type { NflCalendar, NflWeekState } from "@/sports/nfl-calendar";
 import { inngest } from "../client";
 import {
   type ContentPlanGameFinalResult,
@@ -14,6 +15,8 @@ import { type GameFinalData, JOB_EVENTS } from "../events";
 interface ContentPlanGameFinalDependencies {
   db: Db;
   env: EntitlementResolverEnv;
+  nflCalendar?: NflCalendar;
+  nflWeekState?: NflWeekState;
   now?: () => Date;
 }
 
@@ -73,6 +76,8 @@ export async function runContentPlanGameFinal({
     data,
     db: deps.db,
     env: deps.env,
+    nflCalendar: deps.nflCalendar,
+    nflWeekState: deps.nflWeekState,
     now: deps.now,
   });
 

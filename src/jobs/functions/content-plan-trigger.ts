@@ -4,6 +4,7 @@ import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import type { EntitlementResolverEnv } from "@/entitlements";
+import type { NflCalendar, NflWeekState } from "@/sports/nfl-calendar";
 import { inngest } from "../client";
 import {
   type ContentPlanTriggerEventName,
@@ -20,6 +21,8 @@ export type ContentPlanTriggerResponse = ContentPlanTriggerResult & {
 interface ContentPlanTriggerDependencies {
   db: Db;
   env: EntitlementResolverEnv;
+  nflCalendar?: NflCalendar;
+  nflWeekState?: NflWeekState;
   now?: () => Date;
 }
 
@@ -103,6 +106,8 @@ export async function runContentPlanTrigger({
     db: deps.db,
     env: deps.env,
     eventName,
+    nflCalendar: deps.nflCalendar,
+    nflWeekState: deps.nflWeekState,
     now: deps.now,
   });
 

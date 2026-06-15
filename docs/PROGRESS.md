@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Reactive cadence enrichment landed — game-final pieces now share weekly-wrap idempotency, reactive lore/bet/arena keys carry NFL-week framing, and generation prompts receive structured cadence stakes.
 - 2026-06-15: Offseason/quiet-week cadence landed — scheduled AI planning now has a weekly offseason beat, preseason countdown slate, explicit quiet-week signal, complete-season offseason eligibility, stable keys, and gated tests.
 - 2026-06-15: In-season weekly cadence slate landed — scheduled AI planning now supports explicit missed-week NFL state for backfill, phase-specific cast pairings are locked by tests, and the cron wrapper path is covered.
 - 2026-06-15: NFL calendar cadence seam landed — scheduled AI cadence now uses a mockable league-agnostic week state for phase/game-state slates and calendar-stable cron keys.

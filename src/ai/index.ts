@@ -18,6 +18,7 @@ export type {
   EmbeddingProvider,
   LeagueAuthenticityContext,
   LeagueBlogContext,
+  LeagueContextCadenceFrame,
   LeagueContextCanonLore,
   LeagueContextInstigation,
   LeagueContextLoreClaim,

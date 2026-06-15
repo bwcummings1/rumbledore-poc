@@ -188,7 +188,19 @@ export interface LeagueContextLoreClaim {
   ratifiedAt: Date | null;
 }
 
+export interface LeagueContextCadenceFrame {
+  cadence: string | null;
+  event: string | null;
+  gamePhase: string | null;
+  phase: string;
+  seasonWeek: number | null;
+  source: "scheduled" | "reactive";
+  stakes: string[];
+  weekToken: string;
+}
+
 export interface LeagueContextTrigger {
+  cadence?: LeagueContextCadenceFrame | null;
   instigation: LeagueContextInstigation | null;
   poll: LeagueContextPoll | null;
   loreClaim: LeagueContextLoreClaim | null;
