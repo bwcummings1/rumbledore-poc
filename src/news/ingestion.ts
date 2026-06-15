@@ -3,12 +3,17 @@ import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { contentItems } from "@/db/schema";
 import { stableContentHash } from "@/ingestion/hash";
-import type { CentralNewsSource, CentralNewsSourceItem } from "./interfaces";
+import type {
+  CentralNewsPlayerRef,
+  CentralNewsSource,
+  CentralNewsSourceItem,
+} from "./interfaces";
 import { MockCentralNewsSource } from "./mocks";
 import {
   type CentralPublicationSectionId,
   resolveCentralPublicationSection,
 } from "./sections";
+import { tailorCentralNewsToLeagues } from "./tailoring";
 
 const DEFAULT_TOPIC = "nfl fantasy football";
 const DEFAULT_LIMIT = 25;
@@ -34,13 +39,14 @@ export interface CentralNewsIngestionDependencies {
 }
 
 export interface RefreshCentralNewsResult {
+  contentItemIds: string[];
+  deduped: number;
   fetched: number;
   skipped: number;
-  deduped: number;
   inserted: number;
-  updated: number;
+  tailoredReferences: number;
   unchanged: number;
-  contentItemIds: string[];
+  updated: number;
 }
 
 interface SourceAttribution {
@@ -54,6 +60,7 @@ interface NormalizedCentralNewsBase {
   dedupKey: string;
   heroImageUrl: string | null;
   publishedAt: Date;
+  playerRefs: CentralNewsPlayerRef[];
   source: string;
   sourceIds: string[];
   sources: SourceAttribution[];
@@ -74,6 +81,7 @@ interface NormalizedCentralNewsItem {
   editorialImportance: number;
   heroImageUrl: string | null;
   publishedAt: Date;
+  playerRefs: CentralNewsPlayerRef[];
   source: string;
   sourceIds: string[];
   sources: SourceAttribution[];
@@ -121,6 +129,75 @@ function stringArrayValue(value: unknown): string[] {
 function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort((left, right) =>
     left.localeCompare(right),
+  );
+}
+
+function playerRefKey(
+  ref: Pick<CentralNewsPlayerRef, "provider" | "providerId">,
+): string {
+  return `${ref.provider}\n${ref.providerId}`;
+}
+
+function normalizePlayerRefs(
+  refs: readonly CentralNewsPlayerRef[] | undefined,
+): CentralNewsPlayerRef[] {
+  const byKey = new Map<string, CentralNewsPlayerRef>();
+
+  for (const ref of refs ?? []) {
+    const provider = cleanText(ref.provider).toLowerCase();
+    const providerId = cleanText(ref.providerId);
+    const label = cleanText(ref.label);
+    if (!provider || !providerId) {
+      continue;
+    }
+
+    const key = playerRefKey({ provider, providerId });
+    const existing = byKey.get(key);
+    byKey.set(key, {
+      provider,
+      providerId,
+      ...(label || existing?.label ? { label: label || existing?.label } : {}),
+    });
+  }
+
+  return [...byKey.values()].sort(
+    (left, right) =>
+      left.provider.localeCompare(right.provider) ||
+      left.providerId.localeCompare(right.providerId),
+  );
+}
+
+function mergePlayerRefs(
+  left: readonly CentralNewsPlayerRef[],
+  right: readonly CentralNewsPlayerRef[],
+): CentralNewsPlayerRef[] {
+  return normalizePlayerRefs([...left, ...right]);
+}
+
+function playerRefsValue(value: unknown): CentralNewsPlayerRef[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return normalizePlayerRefs(
+    value.flatMap((item) => {
+      const record = asRecord(item);
+      const provider = textValue(record.provider);
+      const providerId = textValue(record.providerId);
+      if (!provider || !providerId) {
+        return [];
+      }
+
+      return [
+        {
+          provider,
+          providerId,
+          ...(textValue(record.label)
+            ? { label: textValue(record.label) ?? undefined }
+            : {}),
+        },
+      ];
+    }),
   );
 }
 
@@ -398,6 +475,7 @@ function stableMetadata(item: Omit<NormalizedCentralNewsItem, "contentHash">) {
     dek: item.dek,
     editorialImportance: item.editorialImportance,
     heroImageUrl: item.heroImageUrl,
+    playerRefs: item.playerRefs,
     publicationSection: item.centralSection,
     section: item.centralSection,
     sourceIds: item.sourceIds,
@@ -449,6 +527,7 @@ function normalizeSourceItem(
     dedupKey: dedupKeyFor({ canonicalUrl, title }),
     heroImageUrl: heroImageUrlFor(item.heroImageUrl),
     publishedAt,
+    playerRefs: normalizePlayerRefs(item.playerRefs),
     source,
     sourceIds: item.id ? [item.id] : [],
     sources: [{ source, url: sourceUrl }],
@@ -480,6 +559,7 @@ function mergeDuplicate(
   const merged = {
     ...primary,
     heroImageUrl: primary.heroImageUrl ?? candidate.heroImageUrl ?? null,
+    playerRefs: mergePlayerRefs(existing.playerRefs, candidate.playerRefs),
     publishedAt:
       candidate.publishedAt > existing.publishedAt
         ? candidate.publishedAt
@@ -597,6 +677,7 @@ function existingRowToNormalized(
     canonicalUrl,
     dedupKey: row.dedupKey,
     heroImageUrl: heroImageUrlFor(textValue(metadata.heroImageUrl) ?? ""),
+    playerRefs: playerRefsValue(metadata.playerRefs),
     publishedAt: row.publishedAt,
     source,
     sourceIds: sortedUnique(stringArrayValue(metadata.sourceIds)),
@@ -770,11 +851,16 @@ export async function refreshCentralNews({
     contentItemIds.push(persisted.id);
   }
 
+  const tailoring = await tailorCentralNewsToLeagues(deps.db, {
+    contentItemIds,
+  });
+
   return {
     contentItemIds,
     deduped,
     fetched: fetched.length,
     skipped,
+    tailoredReferences: tailoring.referencesUpserted,
     ...stats,
   };
 }

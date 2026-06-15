@@ -19,6 +19,13 @@ export class MockWebGroundingCentralNewsSource implements CentralNewsSource {
         sourceType: "web",
         title: "Mock fantasy week one context",
         topics: ["nfl", "fantasy"],
+        playerRefs: [
+          {
+            label: "Mock Fixture Starter",
+            provider: "espn",
+            providerId: "player-1",
+          },
+        ],
       },
       {
         body: "A mocked practice report with injuries that should land in the injury beat.",
@@ -60,6 +67,13 @@ export class MockRssCentralNewsSource implements CentralNewsSource {
         sourceType: "rss",
         title: "Mock fantasy week one context",
         topics: ["fantasy"],
+        playerRefs: [
+          {
+            label: "Mock Fixture Starter",
+            provider: "espn",
+            providerId: "player-1",
+          },
+        ],
       },
       {
         body: "A mocked RSS item with waiver context and no league-specific framing.",

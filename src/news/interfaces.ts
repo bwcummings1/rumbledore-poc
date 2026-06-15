@@ -1,3 +1,9 @@
+export interface CentralNewsPlayerRef {
+  provider: string;
+  providerId: string;
+  label?: string;
+}
+
 export interface CentralNewsSourceItem {
   id?: string;
   title: string;
@@ -10,6 +16,7 @@ export interface CentralNewsSourceItem {
   publishedAt: Date;
   sourceType?: "rss" | "web" | "mock" | "manual";
   topics?: string[];
+  playerRefs?: readonly CentralNewsPlayerRef[];
 }
 
 export interface CentralNewsFetchInput {

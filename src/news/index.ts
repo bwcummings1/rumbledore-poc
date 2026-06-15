@@ -39,6 +39,7 @@ export {
 } from "./ingestion";
 export type {
   CentralNewsFetchInput,
+  CentralNewsPlayerRef,
   CentralNewsSource,
   CentralNewsSourceItem,
 } from "./interfaces";
@@ -65,3 +66,8 @@ export {
   type LeaguePublicationSectionId,
   type PublicationSection,
 } from "./sections";
+export {
+  type CentralNewsTailoringInput,
+  type CentralNewsTailoringResult,
+  tailorCentralNewsToLeagues,
+} from "./tailoring";
