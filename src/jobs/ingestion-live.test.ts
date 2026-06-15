@@ -1323,7 +1323,7 @@ describe("live ingestion jobs", () => {
   it("rediscovers a higher ESPN season and enqueues live ingest on the same credential", async () => {
     const seeded = await seedLiveLeague("rollover-espn", {
       leagueStatus: "complete",
-      season: 2026,
+      season: 2025,
     });
     const nextSeasonRef: ProviderLeagueRef = {
       provider: "espn",
@@ -1355,6 +1355,7 @@ describe("live ingestion jobs", () => {
       discoveredLeagueCount: 1,
       eventName: JOB_EVENTS.seasonRolloverCheck,
       failures: [],
+      historicalBackfillCount: 1,
       ok: true,
       plannedCount: 1,
       sentCount: 0,
@@ -1369,6 +1370,18 @@ describe("live ingestion jobs", () => {
         season: 2027,
       },
       name: JOB_EVENTS.leagueIngest,
+    });
+    expect(result.historicalBackfills[0]).toMatchObject({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: nextSeasonRef.name,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2027,
+        seasons: [2026, 2025],
+      },
+      name: JOB_EVENTS.importRequested,
     });
     expect(discovery.credentials).toEqual([
       {
@@ -1458,6 +1471,7 @@ describe("live ingestion jobs", () => {
     });
     expect(repeated).toMatchObject({
       advancedLeagueCount: 0,
+      historicalBackfillCount: 0,
       ok: true,
       plannedCount: 0,
     });
@@ -1565,6 +1579,7 @@ describe("live ingestion jobs", () => {
     >;
 
     expect(plan).toMatchObject({
+      historicalBackfillCount: 1,
       ok: true,
       plannedCount: 1,
       sentCount: 0,
@@ -1574,6 +1589,13 @@ describe("live ingestion jobs", () => {
       leagueId: seeded.leagueId,
       provider: "espn",
       season: 2027,
+    });
+    expect(plan.historicalBackfills[0]?.data).toMatchObject({
+      credentialId: seeded.credentialId,
+      leagueId: seeded.leagueId,
+      provider: "espn",
+      season: 2027,
+      seasons: [2026],
     });
   });
 

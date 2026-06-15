@@ -65,6 +65,7 @@ import { createRealtimePublisher, type RealtimePublisher } from "@/realtime";
 import { inngest } from "../client";
 import {
   type GameFinalData,
+  type ImportRequestedData,
   type IngestionTickData,
   JOB_EVENTS,
   type LeagueIngestData,
@@ -179,6 +180,12 @@ export interface PlannedRecordBrokenEvent {
   name: typeof JOB_EVENTS.recordBroken;
 }
 
+export interface PlannedHistoricalBackfillEvent {
+  data: ImportRequestedData;
+  id: string;
+  name: typeof JOB_EVENTS.importRequested;
+}
+
 export interface PausedLeagueIngestTarget {
   connectionInvalidAt?: string;
   connectionState: "invalid";
@@ -231,6 +238,8 @@ export interface SeasonRolloverCheckResponse {
   discoveredLeagueCount: number;
   eventName: typeof JOB_EVENTS.seasonRolloverCheck;
   failures: SeasonRolloverFailure[];
+  historicalBackfillCount: number;
+  historicalBackfills: PlannedHistoricalBackfillEvent[];
   invalidatedCredentialCount: number;
   limit: number;
   ok: true;
@@ -1049,6 +1058,67 @@ function rolloverEventFor({
   };
 }
 
+function rolloverHistoricalBackfillSeasons({
+  currentSeason,
+  previousSeason,
+}: {
+  currentSeason: number;
+  previousSeason: number;
+}): number[] {
+  const seasonCount = Math.min(10, Math.max(0, currentSeason - previousSeason));
+  return Array.from(
+    { length: seasonCount },
+    (_, index) => currentSeason - 1 - index,
+  ).filter((season) => season >= previousSeason);
+}
+
+function rolloverHistoricalBackfillEventFor({
+  credentialId,
+  leagueId,
+  ref,
+  target,
+}: {
+  credentialId: string;
+  leagueId: string;
+  ref: ProviderLeagueRef;
+  target: RolloverCredentialTargetRow;
+}): PlannedHistoricalBackfillEvent | null {
+  const seasons = rolloverHistoricalBackfillSeasons({
+    currentSeason: ref.season,
+    previousSeason: target.season,
+  });
+  if (seasons.length === 0) {
+    return null;
+  }
+
+  const data: ImportRequestedData = {
+    credentialId,
+    leagueId,
+    name: ref.name,
+    provider: ref.provider as IngestableProviderId,
+    providerLeagueId: ref.providerId,
+    season: ref.season,
+    seasons,
+    ...(ref.size === undefined ? {} : { size: ref.size }),
+    sport: ref.sport,
+    ...(ref.teamName ? { teamName: ref.teamName } : {}),
+  };
+
+  return {
+    data,
+    id: [
+      JOB_EVENTS.importRequested,
+      "rollover-backfill",
+      leagueId,
+      ref.provider,
+      ref.providerId,
+      ref.season,
+      seasons.join(","),
+    ].join(":"),
+    name: JOB_EVENTS.importRequested,
+  };
+}
+
 type CoverageByDataClass = Partial<Record<LiveIngestionDataClass, Date>>;
 
 interface DueDataClassPlan {
@@ -1520,6 +1590,7 @@ export async function runSeasonRolloverCheck({
     })
   ).slice(0, data.limit);
   const planned = new Map<string, PlannedLeagueIngestEvent>();
+  const historicalBackfills = new Map<string, PlannedHistoricalBackfillEvent>();
   const failures: SeasonRolloverFailure[] = [];
   let advancedLeagueCount = 0;
   let discoveredLeagueCount = 0;
@@ -1659,6 +1730,15 @@ export async function runSeasonRolloverCheck({
       }
 
       planned.set(event.id, event);
+      const backfill = rolloverHistoricalBackfillEventFor({
+        credentialId: group.credentialId,
+        leagueId: target.leagueId,
+        ref,
+        target,
+      });
+      if (backfill) {
+        historicalBackfills.set(backfill.id, backfill);
+      }
       advancedLeagueCount += 1;
     }
   }
@@ -1669,6 +1749,8 @@ export async function runSeasonRolloverCheck({
     discoveredLeagueCount,
     eventName: JOB_EVENTS.seasonRolloverCheck,
     failures,
+    historicalBackfillCount: historicalBackfills.size,
+    historicalBackfills: [...historicalBackfills.values()],
     invalidatedCredentialCount,
     limit: data.limit,
     ok: true,
@@ -1791,10 +1873,16 @@ export function createSeasonRolloverCheckFunction(
         if (plan.planned.length > 0) {
           await step.sendEvent("send-season-rollover-ingest", plan.planned);
         }
+        if (plan.historicalBackfills.length > 0) {
+          await step.sendEvent(
+            "send-season-rollover-history-backfill",
+            plan.historicalBackfills,
+          );
+        }
 
         return {
           ...plan,
-          sentCount: plan.planned.length,
+          sentCount: plan.planned.length + plan.historicalBackfills.length,
         };
       }),
   );
