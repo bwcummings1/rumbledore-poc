@@ -47,7 +47,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 1. [x] Bankroll rollover production scheduler — correctness/MED: elapsed betting weeks must roll without manual intervention; verified existing `bankroll-rollover` Inngest function has event + hourly cron triggers.
 2. [x] Guard lore vote close time — correctness/LOW: premature close can incorrectly canonize or reject active lore votes before members have the promised window; verified existing `LORE_VOTE_STILL_OPEN` guard and regression test.
 3. [x] Persist paused freshness on pre-sync provider auth failures — correctness/LOW: reconnect CTAs should align with `data_coverage` state even when auth fails before sync work starts.
-4. [ ] Add Yahoo refresh-token renewal before reconnect CTAs — correctness/LOW: live OAuth users should not be forced through reconnect when a stored refresh token can recover access.
+4. [x] Add Yahoo refresh-token renewal before reconnect CTAs — correctness/LOW: live OAuth users should not be forced through reconnect when a stored refresh token can recover access.
 5. [ ] Schedule historical backfill for skipped season rollover gaps — correctness/LOW: same-auth rollover should not leave missing seasons unimported.
 6. [ ] Fix candidate-limited publication section/tag filters — correctness/LOW: sparse section stories beyond the first candidate page can disappear from section fronts.
 7. [ ] Split class-specific provider fetches for scheduler data classes — performance/MED: adaptive polling still pays for full bundle fetches when only narrower classes are due.
@@ -70,7 +70,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 ## Discoveries / bugs (loop appends here)
 - [ ] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
 - [ ] `league.connected` is wired as a force-due ingestion scheduler trigger, but onboarding appears to call `syncCurrentLeague()` directly instead of emitting `JOB_EVENTS.leagueConnected`; confirm before relying on connected-event fan-out.
-- [ ] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
+- [x] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
 - [x] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.
 - [ ] Season rollover advances the durable league root into the newly discovered season, but does not schedule historical backfill for any skipped seasons.
 - [ ] Flat `all_time_record` longest-streak rows still derive from per-season `season_statistics`; future record-chain/materialized UI work should use cross-season H2H-only streaks from the catalog.

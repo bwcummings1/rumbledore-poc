@@ -1,8 +1,9 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { cron, NonRetriableError } from "inngest";
 import { z } from "zod";
+import type { Env } from "@/core/env/schema";
 import { recordJobRun } from "@/core/metrics";
-import { AppError, type Result } from "@/core/result";
+import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -37,6 +38,14 @@ import {
   type ProviderReconnectAction,
   reconnectActionForProvider,
 } from "@/onboarding/reconnect";
+import {
+  refreshStoredYahooCredentials,
+  type YahooCredentialRefresher,
+} from "@/onboarding/yahoo-refresh";
+import {
+  createMockYahooOAuthClient,
+  createYahooOAuthClient,
+} from "@/onboarding/yahoo-service";
 import { createEspnDiscoveryProvider } from "@/providers/espn/client";
 import type {
   FantasyProvider,
@@ -141,6 +150,7 @@ export interface LeagueIngestDependencies {
   providers: LeagueIngestProviderRegistry;
   realtime?: RealtimePublisher;
   syncCurrent?: SyncCurrentLeagueFn;
+  yahooOAuthClient?: YahooCredentialRefresher;
 }
 
 export interface SeasonRolloverCheckDependencies {
@@ -148,6 +158,7 @@ export interface SeasonRolloverCheckDependencies {
   db: Db;
   now?: () => Date;
   providers: SeasonRolloverProviderRegistry;
+  yahooOAuthClient?: YahooCredentialRefresher;
 }
 
 export interface PlannedLeagueIngestEvent {
@@ -238,6 +249,12 @@ const storedCredentialSchemas = {
   sleeper: storedSleeperCredentialsSchema,
   yahoo: yahooCredentialsSchema,
 } satisfies Record<IngestableProviderId, z.ZodType<unknown>>;
+
+interface AuthenticatedProviderSession {
+  credentials: unknown;
+  refreshed: boolean;
+  session: FantasyProviderSession;
+}
 
 const ingestionTickDataSchema = z.object({
   leagueId: z.uuid().optional(),
@@ -481,12 +498,96 @@ function shouldStopRetries(error: ProviderError): boolean {
   return error.code === "PROVIDER_AUTH_EXPIRED";
 }
 
+function isIngestableProvider(
+  provider: FantasyProviderId,
+): provider is IngestableProviderId {
+  switch (provider) {
+    case "espn":
+    case "sleeper":
+    case "yahoo":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isYahooProvider(provider: FantasyProviderId): boolean {
+  switch (provider) {
+    case "yahoo":
+      return true;
+    default:
+      return false;
+  }
+}
+
 function throwProviderError(error: ProviderError): never {
   if (shouldStopRetries(error)) {
     throw toNonRetriable(error);
   }
 
   throw error;
+}
+
+function createYahooOAuthClientForEnv(env: Pick<Env, "auth">) {
+  const redirectUri = env.auth.yahoo.mock
+    ? new URL("/api/onboarding/yahoo/callback", env.auth.url).toString()
+    : env.auth.yahoo.redirectUri;
+  return env.auth.yahoo.mock
+    ? createMockYahooOAuthClient({ redirectUri })
+    : createYahooOAuthClient({
+        clientId: env.auth.yahoo.clientId,
+        clientSecret: env.auth.yahoo.clientSecret,
+        redirectUri,
+        scope: env.auth.yahoo.scope,
+      });
+}
+
+async function authenticateWithYahooRefresh({
+  credentialId,
+  credentials,
+  deps,
+  provider,
+  providerId,
+}: {
+  credentialId: string;
+  credentials: unknown;
+  deps: Pick<
+    LeagueIngestDependencies,
+    "cipher" | "db" | "now" | "yahooOAuthClient"
+  >;
+  provider: Pick<
+    FantasyProvider<unknown, FantasyProviderSession>,
+    "authenticate"
+  >;
+  providerId: IngestableProviderId;
+}): Promise<Result<AuthenticatedProviderSession, ProviderError>> {
+  const session = await provider.authenticate(credentials);
+  if (session.ok) {
+    return ok({ credentials, refreshed: false, session: session.value });
+  }
+  if (!isYahooProvider(providerId) || !shouldStopRetries(session.error)) {
+    return err(session.error);
+  }
+
+  const refreshed = await refreshStoredYahooCredentials({
+    credentialId,
+    credentials,
+    deps,
+  });
+  if (!refreshed.ok) {
+    return err(refreshed.error);
+  }
+
+  const retry = await provider.authenticate(refreshed.value);
+  if (!retry.ok) {
+    return err(retry.error);
+  }
+
+  return ok({
+    credentials: refreshed.value,
+    refreshed: true,
+    session: retry.value,
+  });
 }
 
 async function loadCredentialsForLeagueIngest({
@@ -710,11 +811,7 @@ async function listRolloverCredentialTargets({
 
   const groups = new Map<string, RolloverCredentialGroup>();
   for (const row of rows) {
-    if (
-      row.provider !== "espn" &&
-      row.provider !== "sleeper" &&
-      row.provider !== "yahoo"
-    ) {
+    if (!isIngestableProvider(row.provider)) {
       continue;
     }
 
@@ -855,7 +952,7 @@ function sameRolloverLeague(
     return true;
   }
 
-  if (ref.provider === "yahoo") {
+  if (isYahooProvider(ref.provider)) {
     const refLeagueNumber = yahooLeagueNumber(ref.providerId);
     return (
       refLeagueNumber !== undefined &&
@@ -1185,6 +1282,7 @@ async function getDefaultLeagueIngestDependencies(): Promise<LeagueIngestDepende
       yahoo: createYahooProvider(),
     },
     realtime: createRealtimePublisher(env),
+    yahooOAuthClient: createYahooOAuthClientForEnv(env),
   };
 }
 
@@ -1203,6 +1301,7 @@ async function getDefaultSeasonRolloverCheckDependencies(): Promise<SeasonRollov
       sleeper: createSleeperProvider(),
       yahoo: createYahooProvider(),
     },
+    yahooOAuthClient: createYahooOAuthClientForEnv(env),
   };
 }
 
@@ -1309,30 +1408,71 @@ export async function runLeagueIngest({
   const data = parseLeagueIngestData(rawData);
   const provider = resolveProvider(data, deps);
   const credentials = await loadCredentialsForLeagueIngest({ data, deps });
-  const session = await provider.authenticate(credentials);
+  let auth = await authenticateWithYahooRefresh({
+    credentialId: data.credentialId,
+    credentials,
+    deps,
+    provider,
+    providerId: data.provider,
+  });
 
-  if (!session.ok) {
-    if (shouldStopRetries(session.error)) {
+  if (!auth.ok) {
+    if (shouldStopRetries(auth.error)) {
       await markCredentialInvalid({ credentialId: data.credentialId, deps });
       await recordAuthExpiredCoverage({
         data,
         deps,
-        error: session.error,
+        error: auth.error,
         provider,
         stage: "authenticate",
       });
     }
-    throwProviderError(session.error);
+    throwProviderError(auth.error);
   }
 
-  const sync = await (deps.syncCurrent ?? syncCurrentLeague)({
+  const syncCurrent = deps.syncCurrent ?? syncCurrentLeague;
+  let sync = await syncCurrent({
     db: deps.db,
     now: deps.now,
     provider,
     realtime: deps.realtime,
     ref: toProviderRef(data),
-    session: session.value,
+    session: auth.value.session,
   });
+  if (
+    !sync.ok &&
+    shouldStopRetries(sync.error) &&
+    isYahooProvider(data.provider) &&
+    !auth.value.refreshed
+  ) {
+    const refreshed = await refreshStoredYahooCredentials({
+      credentialId: data.credentialId,
+      credentials: auth.value.credentials,
+      deps,
+    });
+    if (refreshed.ok) {
+      const retryAuth = await provider.authenticate(refreshed.value);
+      if (retryAuth.ok) {
+        auth = ok({
+          credentials: refreshed.value,
+          refreshed: true,
+          session: retryAuth.value,
+        });
+        sync = await syncCurrent({
+          db: deps.db,
+          now: deps.now,
+          provider,
+          realtime: deps.realtime,
+          ref: toProviderRef(data),
+          session: auth.value.session,
+        });
+      } else {
+        sync = err(retryAuth.error);
+      }
+    } else {
+      sync = err(refreshed.error);
+    }
+  }
 
   if (!sync.ok) {
     if (shouldStopRetries(sync.error)) {
@@ -1410,9 +1550,15 @@ export async function runSeasonRolloverCheck({
       continue;
     }
 
-    const session = await provider.authenticate(credentials);
-    if (!session.ok) {
-      if (shouldStopRetries(session.error)) {
+    let auth = await authenticateWithYahooRefresh({
+      credentialId: group.credentialId,
+      credentials,
+      deps,
+      provider,
+      providerId: group.provider,
+    });
+    if (!auth.ok) {
+      if (shouldStopRetries(auth.error)) {
         await markCredentialInvalid({
           credentialId: group.credentialId,
           deps,
@@ -1422,14 +1568,41 @@ export async function runSeasonRolloverCheck({
       failures.push(
         failureForCredential({
           credentialId: group.credentialId,
-          error: session.error,
+          error: auth.error,
           provider: group.provider,
         }),
       );
       continue;
     }
 
-    const discovered = await provider.discoverLeagues(session.value);
+    let discovered = await provider.discoverLeagues(auth.value.session);
+    if (
+      !discovered.ok &&
+      shouldStopRetries(discovered.error) &&
+      isYahooProvider(group.provider) &&
+      !auth.value.refreshed
+    ) {
+      const refreshed = await refreshStoredYahooCredentials({
+        credentialId: group.credentialId,
+        credentials: auth.value.credentials,
+        deps,
+      });
+      if (refreshed.ok) {
+        const retryAuth = await provider.authenticate(refreshed.value);
+        if (retryAuth.ok) {
+          auth = ok({
+            credentials: refreshed.value,
+            refreshed: true,
+            session: retryAuth.value,
+          });
+          discovered = await provider.discoverLeagues(auth.value.session);
+        } else {
+          discovered = err(retryAuth.error);
+        }
+      } else {
+        discovered = err(refreshed.error);
+      }
+    }
     if (!discovered.ok) {
       if (shouldStopRetries(discovered.error)) {
         await markCredentialInvalid({

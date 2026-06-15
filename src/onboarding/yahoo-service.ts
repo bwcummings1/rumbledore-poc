@@ -1,7 +1,14 @@
 import { Buffer } from "node:buffer";
 import { z } from "zod";
-import { err, type Result } from "@/core/result";
+import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
+import {
+  AuthExpiredError,
+  ProviderBlockedError,
+  type ProviderError,
+  ProviderParseError,
+  RateLimitedError,
+} from "@/providers/model";
 import {
   type YahooCredentials,
   type YahooProvider,
@@ -51,6 +58,9 @@ export type YahooImportResult = ProviderImportResult;
 export interface YahooOAuthClient {
   authorizationUrl(input: { state: string }): string;
   exchangeCode(input: { code: string }): Promise<YahooCredentials>;
+  refreshCredentials(input: {
+    credentials: YahooCredentials;
+  }): Promise<Result<YahooCredentials, ProviderError>>;
 }
 
 export interface YahooOnboardingDependencies {
@@ -82,6 +92,7 @@ function providerDeps(
     providers: { yahoo: deps.provider },
     realtime: deps.realtime,
     requestHistoricalImport: deps.requestHistoricalImport,
+    yahooOAuthClient: deps.oauthClient,
   };
 }
 
@@ -92,6 +103,52 @@ function tokenExpiresAt(expiresIn: number | undefined, now: Date) {
   return new Date(
     now.getTime() + (expiresIn - TOKEN_EXPIRY_SAFETY_SECONDS) * 1000,
   ).toISOString();
+}
+
+function yahooTokenErrorForStatus(response: Response): ProviderError {
+  if (
+    response.status === 400 ||
+    response.status === 401 ||
+    response.status === 403
+  ) {
+    return new AuthExpiredError(YAHOO_PROVIDER_ID);
+  }
+  if (response.status === 429) {
+    const retryAfter = Number(response.headers.get("retry-after"));
+    return new RateLimitedError(
+      YAHOO_PROVIDER_ID,
+      Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter : undefined,
+    );
+  }
+  if (response.status >= 500) {
+    return new ProviderBlockedError(YAHOO_PROVIDER_ID);
+  }
+  return new ProviderParseError(
+    YAHOO_PROVIDER_ID,
+    `Yahoo OAuth token endpoint returned HTTP ${response.status}`,
+  );
+}
+
+function credentialsFromTokenResponse({
+  existing,
+  now,
+  token,
+}: {
+  existing?: YahooCredentials;
+  now: Date;
+  token: z.infer<typeof yahooOAuthTokenResponseSchema>;
+}): YahooCredentials {
+  const expiresAt = tokenExpiresAt(token.expires_in, now);
+  return {
+    ...existing,
+    accessToken: token.access_token,
+    ...(expiresAt ? { expiresAt } : {}),
+    ...(token.refresh_token || existing?.refreshToken
+      ? { refreshToken: token.refresh_token ?? existing?.refreshToken }
+      : {}),
+    ...(token.scope ? { scope: token.scope } : {}),
+    tokenType: token.token_type,
+  };
 }
 
 export function createYahooOAuthClient({
@@ -152,17 +209,64 @@ export function createYahooOAuthClient({
         });
       }
 
-      const nowDate = now();
-      const expiresAt = tokenExpiresAt(parsed.data.expires_in, nowDate);
-      return {
-        accessToken: parsed.data.access_token,
-        ...(expiresAt ? { expiresAt } : {}),
-        ...(parsed.data.refresh_token
-          ? { refreshToken: parsed.data.refresh_token }
-          : {}),
-        ...(parsed.data.scope ? { scope: parsed.data.scope } : {}),
-        tokenType: parsed.data.token_type,
-      };
+      return credentialsFromTokenResponse({
+        now: now(),
+        token: parsed.data,
+      });
+    },
+
+    async refreshCredentials({ credentials }) {
+      const parsedCredentials = yahooCredentialsSchema.safeParse(credentials);
+      if (!parsedCredentials.success || !parsedCredentials.data.refreshToken) {
+        return err(new AuthExpiredError(YAHOO_PROVIDER_ID));
+      }
+
+      const body = new URLSearchParams({
+        grant_type: "refresh_token",
+        redirect_uri: redirectUri,
+        refresh_token: parsedCredentials.data.refreshToken,
+      });
+
+      let response: Response;
+      try {
+        response = await fetchImpl(YAHOO_OAUTH_EXCHANGE_URL, {
+          body,
+          headers: {
+            Authorization: `Basic ${Buffer.from(
+              `${clientId}:${clientSecret}`,
+            ).toString("base64")}`,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          method: "POST",
+        });
+      } catch (cause) {
+        return err(new ProviderBlockedError(YAHOO_PROVIDER_ID, cause));
+      }
+
+      if (!response.ok) {
+        return err(yahooTokenErrorForStatus(response));
+      }
+
+      const parsed = yahooOAuthTokenResponseSchema.safeParse(
+        await response.json(),
+      );
+      if (!parsed.success) {
+        return err(
+          new ProviderParseError(
+            YAHOO_PROVIDER_ID,
+            "Yahoo authorization returned an invalid token response",
+            parsed.error,
+          ),
+        );
+      }
+
+      return ok(
+        credentialsFromTokenResponse({
+          existing: parsedCredentials.data,
+          now: now(),
+          token: parsed.data,
+        }),
+      );
     },
   };
 }
@@ -195,6 +299,20 @@ export function createMockYahooOAuthClient({
         refreshToken: FIXTURE_YAHOO_REFRESH_TOKEN,
         tokenType: "Bearer",
       };
+    },
+
+    async refreshCredentials({ credentials }) {
+      const parsed = yahooCredentialsSchema.safeParse(credentials);
+      if (!parsed.success || !parsed.data.refreshToken) {
+        return err(new AuthExpiredError(YAHOO_PROVIDER_ID));
+      }
+      return ok({
+        ...parsed.data,
+        accessToken: `${FIXTURE_YAHOO_ACCESS_TOKEN}-refreshed`,
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        refreshToken: `${FIXTURE_YAHOO_REFRESH_TOKEN}-refreshed`,
+        tokenType: parsed.data.tokenType,
+      });
     },
   };
 }

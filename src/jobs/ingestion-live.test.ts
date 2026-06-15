@@ -33,6 +33,7 @@ import {
   type ProviderDataClass,
   type ProviderLeagueRef,
 } from "@/providers";
+import type { YahooCredentials } from "@/providers/yahoo/client";
 import { JOB_EVENTS } from "./events";
 import {
   createIngestionTickFunction,
@@ -54,6 +55,10 @@ const marker = `liveingesttest-${randomUUID()}`;
 const masterKey = "test-live-ingest-master-key-minimum-32"; // ubs:ignore - fake fixture value
 const fixtureSwid = "{00000000-0000-4000-8000-000000000002}";
 const fixtureEspnS2 = "fixture-live-ingest-session"; // ubs:ignore - fake ESPN cookie value for job tests
+const fixtureYahooAccessToken = "fixture-yahoo-live-access-token"; // ubs:ignore - fake OAuth token for job tests
+const fixtureYahooRefreshToken = "fixture-yahoo-live-refresh-token"; // ubs:ignore - fake OAuth token for job tests
+const refreshedYahooAccessToken = "fixture-yahoo-live-access-token-refreshed"; // ubs:ignore - fake OAuth token for job tests
+const refreshedYahooRefreshToken = "fixture-yahoo-live-refresh-token-refreshed"; // ubs:ignore - fake OAuth token for job tests
 const primaryLiveDataClasses = [
   "league",
   "teams",
@@ -135,19 +140,23 @@ async function addCredential({
   tag: string;
   userId: string;
 }) {
-  const credentialPayload =
-    provider === "sleeper"
-      ? { seasons: [2026], usernameOrUserId: `fixture-${tag}` }
-      : provider === "yahoo"
-        ? {
-            accessToken: `fixture-yahoo-access-${tag}`, // ubs:ignore - fake OAuth token for job tests
-            expiresAt: "2030-01-01T00:00:00.000Z",
-            tokenType: "bearer",
-          }
-        : {
-            espn_s2: fixtureEspnS2,
-            swid: fixtureSwid,
-          };
+  const credentialPayload = (() => {
+    switch (provider) {
+      case "sleeper":
+        return { seasons: [2026], usernameOrUserId: `fixture-${tag}` };
+      case "yahoo":
+        return {
+          accessToken: `fixture-yahoo-access-${tag}`, // ubs:ignore - fake OAuth token for job tests
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          tokenType: "bearer",
+        };
+      case "espn":
+        return {
+          espn_s2: fixtureEspnS2,
+          swid: fixtureSwid,
+        };
+    }
+  })();
 
   const [credential] = await handle.db
     .insert(providerCredentials)
@@ -932,6 +941,130 @@ describe("live ingestion jobs", () => {
     expect(response).toMatchObject({
       gameFinalEvents: [],
       sentGameFinalCount: 0,
+    });
+  });
+
+  it("refreshes stored Yahoo credentials before marking live ingest invalid", async () => {
+    const seeded = await seedLiveLeague("worker-yahoo-refresh", {
+      provider: "yahoo",
+      providerLeagueId: `461.l.${marker}-worker-yahoo-refresh`,
+    });
+    await handle.db
+      .update(providerCredentials)
+      .set({
+        encryptedPayload: cipher.encryptJson({
+          accessToken: fixtureYahooAccessToken,
+          expiresAt: "2020-01-01T00:00:00.000Z",
+          refreshToken: fixtureYahooRefreshToken,
+          tokenType: "Bearer",
+        }),
+      })
+      .where(eq(providerCredentials.id, seeded.credentialId));
+
+    const credentials: YahooCredentials[] = [];
+    const refreshCalls: YahooCredentials[] = [];
+    const syncCalls: CurrentLeagueSyncInput<FantasyProviderSession>[] = [];
+    const provider = {
+      authenticate: async (input: YahooCredentials) => {
+        credentials.push(input);
+        const tokenIsCurrent = new Set([refreshedYahooAccessToken]).has(
+          input.accessToken,
+        );
+        if (!tokenIsCurrent) {
+          return err(new AuthExpiredError("yahoo"));
+        }
+        return ok({
+          provider: "yahoo" as const,
+          authKind: "oauth2" as const,
+          subjectProviderId: "YAHOO-LIVE-REFRESH",
+          accessToken: input.accessToken,
+          discoveryGameKeys: ["nfl"],
+          discoverySeasons: [],
+          historicalLeagueKeysByLeagueKey: {},
+          leagueKeys: [],
+          tokenType: input.tokenType ?? "Bearer",
+        });
+      },
+      capabilities: {
+        ...currentSyncCapabilities,
+        authKind: "oauth2" as const,
+        requiresOAuth: true,
+      },
+      getLeague: async () => err(new ProviderBlockedError("yahoo")),
+      getMatchups: async () => err(new ProviderBlockedError("yahoo")),
+      getMembers: async () => err(new ProviderBlockedError("yahoo")),
+      getTeams: async () => err(new ProviderBlockedError("yahoo")),
+    };
+
+    const response = await runLeagueIngest({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: `${marker} league worker-yahoo-refresh`,
+        provider: "yahoo",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { yahoo: provider },
+        syncCurrent: async (input) => {
+          syncCalls.push(input);
+          return ok(successfulSyncResult(seeded));
+        },
+        yahooOAuthClient: {
+          async refreshCredentials({ credentials }) {
+            refreshCalls.push(credentials);
+            return ok({
+              ...credentials,
+              accessToken: refreshedYahooAccessToken,
+              expiresAt: "2030-01-01T00:00:00.000Z",
+              refreshToken: refreshedYahooRefreshToken,
+            });
+          },
+        },
+      },
+    });
+
+    expect(response).toMatchObject({
+      eventName: JOB_EVENTS.leagueIngest,
+      ok: true,
+      league: {
+        id: seeded.leagueId,
+        provider: "yahoo",
+      },
+    });
+    expect(refreshCalls).toEqual([
+      expect.objectContaining({
+        accessToken: fixtureYahooAccessToken,
+        refreshToken: fixtureYahooRefreshToken,
+      }),
+    ]);
+    expect(credentials).toEqual([
+      expect.objectContaining({ accessToken: fixtureYahooAccessToken }),
+      expect.objectContaining({ accessToken: refreshedYahooAccessToken }),
+    ]);
+    expect(syncCalls).toHaveLength(1);
+    expect(syncCalls[0]?.session).toMatchObject({
+      accessToken: refreshedYahooAccessToken,
+    });
+
+    const [credential] = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.id, seeded.credentialId))
+      .limit(1);
+    expect(credential).toMatchObject({
+      invalidAt: null,
+      status: "connected",
+    });
+    expect(
+      cipher.decryptJson<YahooCredentials>(credential?.encryptedPayload ?? ""),
+    ).toMatchObject({
+      accessToken: refreshedYahooAccessToken,
+      refreshToken: refreshedYahooRefreshToken,
     });
   });
 

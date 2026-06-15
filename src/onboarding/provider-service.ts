@@ -33,6 +33,10 @@ import {
   type DataStewardReviewDoorway,
   listDataStewardDoorway,
 } from "./stewards";
+import {
+  refreshStoredYahooCredentials,
+  type YahooCredentialRefresher,
+} from "./yahoo-refresh";
 
 export type OnboardingConnectionFlow =
   | "browser"
@@ -114,6 +118,7 @@ export interface ProviderOnboardingDependencies {
   providers: OnboardingProviderRegistry;
   realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
+  yahooOAuthClient?: YahooCredentialRefresher;
 }
 
 export type ProviderOnboardingError = AppError | ProviderError;
@@ -201,6 +206,15 @@ function providerAuthExpiredError(
 
 function shouldInvalidateCredential(error: ProviderError): boolean {
   return error.code === "PROVIDER_AUTH_EXPIRED";
+}
+
+function isYahooProvider(provider: FantasyProviderId): boolean {
+  switch (provider) {
+    case "yahoo":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function reconnectErrorForProviderError(
@@ -666,7 +680,21 @@ export async function importDiscoveredLeague(
     );
   }
 
-  const session = await provider.value.authenticate(credentials);
+  let session = await provider.value.authenticate(credentials);
+  if (
+    !session.ok &&
+    shouldInvalidateCredential(session.error) &&
+    isYahooProvider(input.provider)
+  ) {
+    const refreshed = await refreshStoredYahooCredentials({
+      credentialId: discovered.credentialId,
+      credentials,
+      deps,
+    });
+    session = refreshed.ok
+      ? await provider.value.authenticate(refreshed.value)
+      : err(refreshed.error);
+  }
   if (!session.ok) {
     if (shouldInvalidateCredential(session.error)) {
       await markCredentialInvalid({

@@ -107,6 +107,9 @@ export function getYahooOnboardingDependencies(): YahooOnboardingDependencies {
 export function getProviderOnboardingDependencies(): ProviderOnboardingDependencies {
   const env = getEnv();
   const browserbase = env.services.browserbase;
+  const yahooRedirectUri = env.auth.yahoo.mock
+    ? new URL("/api/onboarding/yahoo/callback", env.auth.url).toString()
+    : env.auth.yahoo.redirectUri;
   return {
     cipher: createCredentialCipher(env.credentials.encryptionKey),
     db: getDb(),
@@ -121,6 +124,14 @@ export function getProviderOnboardingDependencies(): ProviderOnboardingDependenc
     },
     realtime: createRealtimePublisher(env),
     requestHistoricalImport,
+    yahooOAuthClient: env.auth.yahoo.mock
+      ? createMockYahooOAuthClient({ redirectUri: yahooRedirectUri })
+      : createYahooOAuthClient({
+          clientId: env.auth.yahoo.clientId,
+          clientSecret: env.auth.yahoo.clientSecret,
+          redirectUri: yahooRedirectUri,
+          scope: env.auth.yahoo.scope,
+        }),
   };
 }
 

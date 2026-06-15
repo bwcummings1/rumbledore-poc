@@ -30,6 +30,8 @@ import {
 
 const marker = `yahooonboardingtest-${randomUUID()}`;
 const masterKey = "test-yahoo-onboarding-master-key-32"; // ubs:ignore — fake fixture value
+const refreshedYahooAccessToken = "fixture-yahoo-access-token-refreshed"; // ubs:ignore — fake OAuth token for onboarding tests
+const refreshedYahooRefreshToken = "fixture-yahoo-refresh-token-refreshed"; // ubs:ignore — fake OAuth token for onboarding tests
 
 let handle: DbHandle;
 const providerLeagueIds = new Set<string>();
@@ -165,6 +167,54 @@ describe("Yahoo onboarding service", () => {
     const body = fetchCalls[0]?.init?.body as URLSearchParams;
     expect(body.get("grant_type")).toBe("authorization_code");
     expect(body.get("code")).toBe("code-123");
+  });
+
+  it("refreshes Yahoo OAuth credentials and rotates the returned refresh token", async () => {
+    const fetchCalls: { init: RequestInit | undefined; url: string }[] = [];
+    const oauth = createYahooOAuthClient({
+      clientId: "fixture-yahoo-client-id",
+      clientSecret: "fixture-yahoo-client-secret", // ubs:ignore — fake fixture value
+      fetch: async (input, init) => {
+        fetchCalls.push({ init, url: input.toString() });
+        return jsonResponse({
+          access_token: refreshedYahooAccessToken,
+          expires_in: 3600,
+          refresh_token: refreshedYahooRefreshToken,
+          token_type: "bearer",
+        });
+      },
+      now: () => new Date("2026-06-12T01:00:00.000Z"),
+      redirectUri: "https://app.example.com/api/onboarding/yahoo/callback",
+      scope: "fspt-r",
+    });
+
+    const refreshed = await oauth.refreshCredentials({
+      credentials: {
+        accessToken: FIXTURE_YAHOO_ACCESS_TOKEN,
+        expiresAt: "2020-01-01T00:00:00.000Z",
+        refreshToken: FIXTURE_YAHOO_REFRESH_TOKEN,
+        tokenType: "Bearer",
+      },
+    });
+
+    expect(refreshed.ok).toBe(true);
+    if (!refreshed.ok) throw refreshed.error;
+    expect(refreshed.value).toMatchObject({
+      accessToken: refreshedYahooAccessToken,
+      expiresAt: "2026-06-12T01:59:00.000Z",
+      refreshToken: refreshedYahooRefreshToken,
+      tokenType: "bearer",
+    });
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0]?.url).toBe(
+      "https://api.login.yahoo.com/oauth2/get_token",
+    );
+    const body = fetchCalls[0]?.init?.body as URLSearchParams;
+    expect(body.get("grant_type")).toBe("refresh_token");
+    expect(body.get("redirect_uri")).toBe(
+      "https://app.example.com/api/onboarding/yahoo/callback",
+    );
+    expect(body.get("refresh_token")).toBe(FIXTURE_YAHOO_REFRESH_TOKEN);
   });
 
   it("discovers Yahoo leagues and imports the selected league", async () => {

@@ -29,6 +29,7 @@ import {
   type FantasyProviderCapabilities,
   type NormalizedSeasonBundle,
   ProviderBlockedError,
+  type ProviderError,
 } from "@/providers";
 import type {
   EspnCookieCredentials,
@@ -53,6 +54,9 @@ const masterKey = "test-import-job-master-key-minimum-32"; // ubs:ignore — fak
 const fixtureSwid = "{00000000-0000-4000-8000-000000000001}";
 const fixtureEspnS2 = "fixture-session-value"; // ubs:ignore — fake ESPN cookie value for job tests
 const fixtureYahooAccessToken = "fixture-yahoo-access-token"; // ubs:ignore — fake OAuth token for job tests
+const fixtureYahooRefreshToken = "fixture-yahoo-refresh-token"; // ubs:ignore — fake OAuth token for job tests
+const refreshedYahooAccessToken = "fixture-yahoo-access-token-refreshed"; // ubs:ignore — fake OAuth token for job tests
+const refreshedYahooRefreshToken = "fixture-yahoo-refresh-token-refreshed"; // ubs:ignore — fake OAuth token for job tests
 
 let handle: DbHandle;
 let cipher: CredentialCipher;
@@ -132,7 +136,9 @@ interface YahooImportProvider {
     capabilities: FantasyProviderCapabilities;
     authenticate(
       credentials: YahooCredentials,
-    ): Promise<{ ok: true; value: YahooSession }>;
+    ): Promise<
+      { ok: true; value: YahooSession } | { ok: false; error: ProviderError }
+    >;
     getHistory(
       session: YahooSession,
       ref: {
@@ -562,7 +568,11 @@ function sleeperHistoryProvider(): SleeperImportProvider {
   };
 }
 
-function yahooHistoryProvider(): YahooImportProvider {
+function yahooHistoryProvider({
+  validAccessToken,
+}: {
+  validAccessToken?: string;
+} = {}): YahooImportProvider {
   const calls: number[] = [];
   const credentials: YahooCredentials[] = [];
   return {
@@ -572,6 +582,14 @@ function yahooHistoryProvider(): YahooImportProvider {
       capabilities: yahooImportCapabilities,
       async authenticate(input) {
         credentials.push(input);
+        if (validAccessToken) {
+          const tokenIsCurrent = new Set([validAccessToken]).has(
+            input.accessToken,
+          );
+          if (!tokenIsCurrent) {
+            return err(new AuthExpiredError("yahoo"));
+          }
+        }
         return ok({
           provider: "yahoo",
           authKind: "oauth2",
@@ -1026,6 +1044,88 @@ describe("import.requested Inngest function", () => {
     expect(rows.teams).toHaveLength(2);
     expect(rows.members).toHaveLength(2);
     expect(rows.matchups).toHaveLength(1);
+  });
+
+  it("refreshes stored Yahoo credentials before marking historical imports invalid", async () => {
+    const seeded = await seedImport("yahoo-refresh", {
+      credentialPayload: {
+        accessToken: fixtureYahooAccessToken,
+        expiresAt: "2020-01-01T00:00:00.000Z",
+        historicalLeagueKeysByLeagueKey: {
+          "461.l.95050": ["449.l.95050"],
+        },
+        leagueKeys: ["449.l.95050"],
+        refreshToken: fixtureYahooRefreshToken,
+        tokenType: "Bearer",
+      },
+      provider: "yahoo",
+      subjectProviderId: "YAHOO-GUID-REFRESH",
+    });
+    const fixtureProvider = yahooHistoryProvider({
+      validAccessToken: refreshedYahooAccessToken,
+    });
+    const refreshCalls: YahooCredentials[] = [];
+
+    const response = await runImportRequested({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        provider: "yahoo",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+        name: `${marker} yahoo refresh league`,
+        size: 2,
+        seasons: [2025],
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { yahoo: fixtureProvider.provider },
+        yahooOAuthClient: {
+          async refreshCredentials({ credentials }) {
+            refreshCalls.push(credentials);
+            return ok({
+              ...credentials,
+              accessToken: refreshedYahooAccessToken,
+              expiresAt: "2030-01-01T00:00:00.000Z",
+              refreshToken: refreshedYahooRefreshToken,
+            });
+          },
+        },
+      },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      eventName: JOB_EVENTS.importRequested,
+    });
+    expect(refreshCalls).toEqual([
+      expect.objectContaining({
+        accessToken: fixtureYahooAccessToken,
+        refreshToken: fixtureYahooRefreshToken,
+      }),
+    ]);
+    expect(fixtureProvider.credentials).toEqual([
+      expect.objectContaining({ accessToken: fixtureYahooAccessToken }),
+      expect.objectContaining({ accessToken: refreshedYahooAccessToken }),
+    ]);
+
+    const [credential] = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.id, seeded.credentialId))
+      .limit(1);
+    expect(credential).toMatchObject({
+      invalidAt: null,
+      status: "connected",
+    });
+    expect(
+      cipher.decryptJson<YahooCredentials>(credential?.encryptedPayload ?? ""),
+    ).toMatchObject({
+      accessToken: refreshedYahooAccessToken,
+      refreshToken: refreshedYahooRefreshToken,
+    });
   });
 
   it("is exported through the shared function registry", () => {

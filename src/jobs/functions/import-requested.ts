@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
+import type { Env } from "@/core/env/schema";
 import { recordJobRun } from "@/core/metrics";
-import { AppError } from "@/core/result";
+import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { leagues, members, providerCredentials } from "@/db/schema";
 import { type HistoricalImportResult, importLeagueHistory } from "@/ingestion";
@@ -11,6 +12,14 @@ import {
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
 import { storedSleeperCredentialsSchema } from "@/onboarding/provider-service";
+import {
+  refreshStoredYahooCredentials,
+  type YahooCredentialRefresher,
+} from "@/onboarding/yahoo-refresh";
+import {
+  createMockYahooOAuthClient,
+  createYahooOAuthClient,
+} from "@/onboarding/yahoo-service";
 import { createEspnDiscoveryProvider } from "@/providers/espn/client";
 import type {
   FantasyProvider,
@@ -48,6 +57,7 @@ interface ImportRequestedDependencies {
   recomputeStats?: typeof recomputeLeagueStatistics;
   now?: () => Date;
   realtime?: RealtimePublisher;
+  yahooOAuthClient?: YahooCredentialRefresher;
 }
 
 export interface ImportRequestedResponse extends HistoricalImportResult {
@@ -66,6 +76,12 @@ const storedCredentialSchemas = {
   sleeper: storedSleeperCredentialsSchema,
   yahoo: yahooCredentialsSchema,
 } satisfies Record<ImportableProviderId, z.ZodType<unknown>>;
+
+interface AuthenticatedProviderSession {
+  credentials: unknown;
+  refreshed: boolean;
+  session: FantasyProviderSession;
+}
 
 const importRequestedDataSchema = z.object({
   credentialId: z.uuid(),
@@ -246,12 +262,84 @@ function shouldStopRetries(error: ProviderError): boolean {
   return error.code === "PROVIDER_AUTH_EXPIRED";
 }
 
+function isYahooProvider(provider: ImportableProviderId): boolean {
+  switch (provider) {
+    case "yahoo":
+      return true;
+    case "espn":
+    case "sleeper":
+      return false;
+  }
+}
+
 function throwProviderError(error: ProviderError): never {
   if (shouldStopRetries(error)) {
     throw toNonRetriable(error);
   }
 
   throw error;
+}
+
+function createYahooOAuthClientForEnv(env: Pick<Env, "auth">) {
+  const redirectUri = env.auth.yahoo.mock
+    ? new URL("/api/onboarding/yahoo/callback", env.auth.url).toString()
+    : env.auth.yahoo.redirectUri;
+  return env.auth.yahoo.mock
+    ? createMockYahooOAuthClient({ redirectUri })
+    : createYahooOAuthClient({
+        clientId: env.auth.yahoo.clientId,
+        clientSecret: env.auth.yahoo.clientSecret,
+        redirectUri,
+        scope: env.auth.yahoo.scope,
+      });
+}
+
+async function authenticateWithYahooRefresh({
+  credentialId,
+  credentials,
+  deps,
+  provider,
+  providerId,
+}: {
+  credentialId: string;
+  credentials: unknown;
+  deps: Pick<
+    ImportRequestedDependencies,
+    "cipher" | "db" | "now" | "yahooOAuthClient"
+  >;
+  provider: Pick<
+    FantasyProvider<unknown, FantasyProviderSession>,
+    "authenticate"
+  >;
+  providerId: ImportableProviderId;
+}): Promise<Result<AuthenticatedProviderSession, ProviderError>> {
+  const session = await provider.authenticate(credentials);
+  if (session.ok) {
+    return ok({ credentials, refreshed: false, session: session.value });
+  }
+  if (!isYahooProvider(providerId) || !shouldStopRetries(session.error)) {
+    return err(session.error);
+  }
+
+  const refreshed = await refreshStoredYahooCredentials({
+    credentialId,
+    credentials,
+    deps,
+  });
+  if (!refreshed.ok) {
+    return err(refreshed.error);
+  }
+
+  const retry = await provider.authenticate(refreshed.value);
+  if (!retry.ok) {
+    return err(retry.error);
+  }
+
+  return ok({
+    credentials: refreshed.value,
+    refreshed: true,
+    session: retry.value,
+  });
 }
 
 async function getDefaultImportRequestedDependencies(): Promise<ImportRequestedDependencies> {
@@ -270,6 +358,7 @@ async function getDefaultImportRequestedDependencies(): Promise<ImportRequestedD
       yahoo: createYahooProvider(),
     },
     realtime: createRealtimePublisher(env),
+    yahooOAuthClient: createYahooOAuthClientForEnv(env),
   };
 }
 
@@ -283,16 +372,22 @@ export async function runImportRequested({
   const data = parseImportRequestedData(rawData);
   const provider = resolveProvider(data, deps);
   const credentials = await loadCredentialsForImport({ data, deps });
-  const session = await provider.authenticate(credentials);
+  let auth = await authenticateWithYahooRefresh({
+    credentialId: data.credentialId,
+    credentials,
+    deps,
+    provider,
+    providerId: data.provider,
+  });
 
-  if (!session.ok) {
-    if (shouldStopRetries(session.error)) {
+  if (!auth.ok) {
+    if (shouldStopRetries(auth.error)) {
       await markCredentialInvalid({ credentialId: data.credentialId, deps });
     }
-    throwProviderError(session.error);
+    throwProviderError(auth.error);
   }
 
-  const history = await importLeagueHistory({
+  let history = await importLeagueHistory({
     db: deps.db,
     maxSeasons: data.maxSeasons,
     now: deps.now,
@@ -300,8 +395,44 @@ export async function runImportRequested({
     ref: toProviderRef(data),
     realtime: deps.realtime,
     seasons: data.seasons,
-    session: session.value,
+    session: auth.value.session,
   });
+  if (
+    !history.ok &&
+    shouldStopRetries(history.error) &&
+    isYahooProvider(data.provider) &&
+    !auth.value.refreshed
+  ) {
+    const refreshed = await refreshStoredYahooCredentials({
+      credentialId: data.credentialId,
+      credentials: auth.value.credentials,
+      deps,
+    });
+    if (refreshed.ok) {
+      const retryAuth = await provider.authenticate(refreshed.value);
+      if (retryAuth.ok) {
+        auth = ok({
+          credentials: refreshed.value,
+          refreshed: true,
+          session: retryAuth.value,
+        });
+        history = await importLeagueHistory({
+          db: deps.db,
+          maxSeasons: data.maxSeasons,
+          now: deps.now,
+          provider,
+          ref: toProviderRef(data),
+          realtime: deps.realtime,
+          seasons: data.seasons,
+          session: auth.value.session,
+        });
+      } else {
+        history = err(retryAuth.error);
+      }
+    } else {
+      history = err(refreshed.error);
+    }
+  }
 
   if (!history.ok) {
     if (shouldStopRetries(history.error)) {
