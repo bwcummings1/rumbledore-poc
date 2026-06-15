@@ -769,6 +769,68 @@ describe("recomputeLeagueStatistics", () => {
         (row) => row.personId === alex2024.personId && row.length === 2,
       ),
     ).toBe(true);
+
+    const alexDrewPair = catalog.headToHead.allTimePairs.find(
+      (row) =>
+        [row.personA.personId, row.personB.personId].includes(
+          alex2024.personId,
+        ) &&
+        [row.personA.personId, row.personB.personId].includes(
+          drew2024.personId,
+        ),
+    );
+    expect(alexDrewPair).toMatchObject({
+      meetings: 2,
+      ties: 0,
+    });
+    expect(
+      (alexDrewPair?.personA.wins ?? 0) + (alexDrewPair?.personB.wins ?? 0),
+    ).toBe(2);
+
+    const alexDrewLedger = catalog.headToHead.managerLedgers.find(
+      (row) =>
+        row.season === 0 &&
+        row.personId === alex2024.personId &&
+        row.opponentPersonId === drew2024.personId,
+    );
+    const drewAlexLedger = catalog.headToHead.managerLedgers.find(
+      (row) =>
+        row.season === 0 &&
+        row.personId === drew2024.personId &&
+        row.opponentPersonId === alex2024.personId,
+    );
+    expect(alexDrewLedger).toMatchObject({
+      avgPointsAgainst: 93,
+      avgPointsFor: 102.5,
+      highestScore: 110,
+      losses: 1,
+      meetings: 2,
+      opponentHighestScore: 96,
+      pointsAgainst: 186,
+      pointsFor: 205,
+      wins: 1,
+    });
+    expect(alexDrewLedger?.currentStreak).toMatchObject({
+      isAgainst: true,
+      length: 1,
+      personId: drew2024.personId,
+    });
+    expect(drewAlexLedger).toMatchObject({
+      avgPointsAgainst: 102.5,
+      avgPointsFor: 93,
+      highestScore: 96,
+      losses: 1,
+      meetings: 2,
+      opponentHighestScore: 110,
+      pointsAgainst: 205,
+      pointsFor: 186,
+      wins: 1,
+    });
+    expect(drewAlexLedger?.currentStreak).toMatchObject({
+      isAgainst: false,
+      length: 1,
+      personId: drew2024.personId,
+    });
   });
 
   it("recomputes only the affected season and H2H pair for changed finalized matchups", async () => {
@@ -1135,6 +1197,93 @@ describe("recomputeLeagueStatistics", () => {
       championshipMeetings: 1,
       meetings: 2,
       playoffMeetings: 1,
+    });
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 20,
+    });
+    const title2024 = catalog.championships.seasons.find(
+      (row) => row.season === 2024,
+    );
+    expect(title2024).toMatchObject({
+      champion: { personId: drew2024.personId },
+      championshipScore: 130,
+      regularSeasonWinner: { personId: alex2024.personId },
+      runnerUp: { personId: alex2024.personId },
+      runnerUpScore: 125,
+      thirdPlace: { personId: blair2024.personId },
+    });
+
+    const drewPostseasonRecord = catalog.championships.managerRecords.find(
+      (row) => row.personId === drew2024.personId,
+    );
+    const alexPostseasonRecord = catalog.championships.managerRecords.find(
+      (row) => row.personId === alex2024.personId,
+    );
+    expect(drewPostseasonRecord).toMatchObject({
+      championshipGameLosses: 0,
+      championshipGamePointsAgainst: 125,
+      championshipGamePointsFor: 130,
+      championshipGameWins: 1,
+      playoffLosses: 0,
+      playoffPointsAgainst: 245,
+      playoffPointsFor: 260,
+      playoffWins: 2,
+    });
+    expect(drewPostseasonRecord?.championships).toBeGreaterThanOrEqual(1);
+    expect(alexPostseasonRecord).toMatchObject({
+      championshipGameLosses: 1,
+      championshipGamePointsAgainst: 130,
+      championshipGamePointsFor: 125,
+      championshipGameWins: 0,
+      playoffLosses: 1,
+      playoffPointsAgainst: 231,
+      playoffPointsFor: 243,
+      playoffWins: 1,
+      regularSeasonTitles: 1,
+      runnerUps: 1,
+    });
+
+    const alexDrewLedger2024 = catalog.headToHead.managerLedgers.find(
+      (row) =>
+        row.season === 2024 &&
+        row.personId === alex2024.personId &&
+        row.opponentPersonId === drew2024.personId,
+    );
+    const drewAlexLedger2024 = catalog.headToHead.managerLedgers.find(
+      (row) =>
+        row.season === 2024 &&
+        row.personId === drew2024.personId &&
+        row.opponentPersonId === alex2024.personId,
+    );
+    expect(alexDrewLedger2024).toMatchObject({
+      championshipMeetings: 1,
+      losses: 1,
+      meetings: 2,
+      playoffMeetings: 1,
+      pointsAgainst: 220,
+      pointsFor: 235,
+      wins: 1,
+    });
+    expect(alexDrewLedger2024?.currentStreak).toMatchObject({
+      isAgainst: true,
+      length: 1,
+      personId: drew2024.personId,
+    });
+    expect(drewAlexLedger2024).toMatchObject({
+      championshipMeetings: 1,
+      losses: 1,
+      meetings: 2,
+      playoffMeetings: 1,
+      pointsAgainst: 235,
+      pointsFor: 220,
+      wins: 1,
+    });
+    expect(drewAlexLedger2024?.currentStreak).toMatchObject({
+      isAgainst: false,
+      length: 1,
+      personId: drew2024.personId,
     });
   });
 

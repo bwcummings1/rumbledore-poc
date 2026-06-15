@@ -4,6 +4,7 @@ import { withLeagueContext } from "@/db/rls";
 import {
   championshipRecords,
   dataIntegrityChecks,
+  headToHeadRecords,
   persons,
   seasonStatistics,
   weeklyStatistics,
@@ -15,6 +16,7 @@ const DEFAULT_CATALOG_LIMIT = 10;
 type SeasonStatisticsRow = typeof seasonStatistics.$inferSelect;
 type WeeklyStatisticsRow = typeof weeklyStatistics.$inferSelect;
 type ChampionshipRecordRow = typeof championshipRecords.$inferSelect;
+type HeadToHeadRecordRow = typeof headToHeadRecords.$inferSelect;
 
 interface PeriodContext {
   matchupId?: string;
@@ -90,11 +92,113 @@ export interface StreakCatalogEntry {
   startSeason: number;
 }
 
+export interface PersonCatalogRef {
+  personId: string;
+  personName: string;
+}
+
+export interface HeadToHeadStreakSummary extends PersonCatalogRef {
+  length: number;
+}
+
+export interface ManagerHeadToHeadStreakSummary
+  extends HeadToHeadStreakSummary {
+  isAgainst: boolean;
+}
+
+export interface HeadToHeadPairSide extends PersonCatalogRef {
+  avgPoints: number;
+  highestScore: number;
+  losses: number;
+  points: number;
+  wins: number;
+}
+
+export interface HeadToHeadPairCatalogEntry {
+  championshipMeetings: number;
+  currentStreak: HeadToHeadStreakSummary | null;
+  lastScoringPeriod: number | null;
+  lastSeason: number | null;
+  longestStreak: HeadToHeadStreakSummary | null;
+  meetings: number;
+  personA: HeadToHeadPairSide;
+  personB: HeadToHeadPairSide;
+  playoffMeetings: number;
+  season: number;
+  ties: number;
+}
+
+export interface ManagerHeadToHeadLedgerEntry {
+  avgPointsAgainst: number;
+  avgPointsFor: number;
+  championshipMeetings: number;
+  currentStreak: ManagerHeadToHeadStreakSummary | null;
+  highestScore: number;
+  lastScoringPeriod: number | null;
+  lastSeason: number | null;
+  longestStreak: ManagerHeadToHeadStreakSummary | null;
+  losses: number;
+  meetings: number;
+  opponentHighestScore: number;
+  opponentName: string;
+  opponentPersonId: string;
+  playoffMeetings: number;
+  personId: string;
+  personName: string;
+  pointsAgainst: number;
+  pointsFor: number;
+  season: number;
+  ties: number;
+  wins: number;
+}
+
+export interface ChampionshipSeasonCatalogEntry {
+  champion: PersonCatalogRef | null;
+  championshipScore: number | null;
+  regularSeasonWinner: PersonCatalogRef | null;
+  runnerUp: PersonCatalogRef | null;
+  runnerUpScore: number | null;
+  season: number;
+  thirdPlace: PersonCatalogRef | null;
+}
+
+export interface ManagerChampionshipRecord {
+  bestFinish: SeasonSummary | null;
+  championshipAppearances: number;
+  championshipGameLosses: number;
+  championshipGamePointsAgainst: number;
+  championshipGamePointsFor: number;
+  championshipGameTies: number;
+  championshipGameWins: number;
+  championships: number;
+  personId: string;
+  personName: string;
+  playoffAppearances: number;
+  playoffLosses: number;
+  playoffPointsAgainst: number;
+  playoffPointsFor: number;
+  playoffTies: number;
+  playoffWins: number;
+  regularSeasonTitles: number;
+  runnerUps: number;
+  seasons: number;
+  thirdPlaces: number;
+}
+
 export interface RecordsCatalog {
   allTimeStandings: AllTimeStandingCatalogRow[];
   blowouts: {
     biggest: BlowoutCatalogEntry[];
     narrowestWins: BlowoutCatalogEntry[];
+  };
+  championships: {
+    managerRecords: ManagerChampionshipRecord[];
+    seasons: ChampionshipSeasonCatalogEntry[];
+  };
+  headToHead: {
+    allTimePairs: HeadToHeadPairCatalogEntry[];
+    managerLedgers: ManagerHeadToHeadLedgerEntry[];
+    seasonPairs: HeadToHeadPairCatalogEntry[];
   };
   highLow: {
     bestScoresInLosses: WeeklyCatalogEntry[];
@@ -132,6 +236,27 @@ interface MatchupCombinedAccumulator {
   rows: WeeklyStatisticsRow[];
 }
 
+interface ChampionshipAccumulator {
+  championshipAppearances: number;
+  championshipGameLosses: number;
+  championshipGamePointsAgainst: number;
+  championshipGamePointsFor: number;
+  championshipGameTies: number;
+  championshipGameWins: number;
+  championships: number;
+  personId: string;
+  playoffAppearances: number;
+  playoffLosses: number;
+  playoffPointsAgainst: number;
+  playoffPointsFor: number;
+  playoffTies: number;
+  playoffWins: number;
+  regularSeasonTitles: number;
+  runnerUps: number;
+  seasons: SeasonStatisticsRow[];
+  thirdPlaces: number;
+}
+
 function round(value: number, places = 4): number {
   const factor = 10 ** places;
   return Math.round((value + Number.EPSILON) * factor) / factor;
@@ -149,6 +274,15 @@ function personName(
   personId: string,
 ) {
   return personNames.get(personId) ?? "Unknown manager";
+}
+
+function personRef(
+  personNames: ReadonlyMap<string, string>,
+  personId: string | null,
+): PersonCatalogRef | null {
+  return personId
+    ? { personId, personName: personName(personNames, personId) }
+    : null;
 }
 
 function periodContext(
@@ -500,8 +634,395 @@ function compareStreak(
   );
 }
 
+function emptyRecordsCatalog(integrityBlocked: boolean): RecordsCatalog {
+  return {
+    allTimeStandings: [],
+    blowouts: { biggest: [], narrowestWins: [] },
+    championships: { managerRecords: [], seasons: [] },
+    headToHead: { allTimePairs: [], managerLedgers: [], seasonPairs: [] },
+    highLow: {
+      bestScoresInLosses: [],
+      highestCombinedMatchups: [],
+      highestScores: [],
+      lowestScores: [],
+      worstScoresInWins: [],
+    },
+    integrityBlocked,
+    streaks: { longestLosses: [], longestWins: [] },
+  };
+}
+
+function avg(points: number, meetings: number): number {
+  return meetings > 0 ? round(points / meetings, 4) : 0;
+}
+
+function h2hStreak(
+  personNames: ReadonlyMap<string, string>,
+  personId: string | null,
+  length: number,
+): HeadToHeadStreakSummary | null {
+  if (!personId || length <= 0) {
+    return null;
+  }
+  return { length, personId, personName: personName(personNames, personId) };
+}
+
+function managerH2hStreak(
+  personNames: ReadonlyMap<string, string>,
+  personId: string,
+  streakPersonId: string | null,
+  length: number,
+): ManagerHeadToHeadStreakSummary | null {
+  const streak = h2hStreak(personNames, streakPersonId, length);
+  return streak ? { ...streak, isAgainst: streak.personId !== personId } : null;
+}
+
+function headToHeadPairEntry(
+  row: HeadToHeadRecordRow,
+  personNames: ReadonlyMap<string, string>,
+): HeadToHeadPairCatalogEntry {
+  return {
+    championshipMeetings: row.championshipMeetings,
+    currentStreak: h2hStreak(
+      personNames,
+      row.currentStreakPersonId,
+      row.currentStreakLength,
+    ),
+    lastScoringPeriod: row.lastScoringPeriod,
+    lastSeason: row.lastSeason,
+    longestStreak: h2hStreak(
+      personNames,
+      row.longestStreakPersonId,
+      row.longestStreakLength,
+    ),
+    meetings: row.meetings,
+    personA: {
+      avgPoints: avg(row.personAPoints, row.meetings),
+      highestScore: round(row.personAHighestScore, 4),
+      losses: row.personBWins,
+      personId: row.personAId,
+      personName: personName(personNames, row.personAId),
+      points: round(row.personAPoints, 4),
+      wins: row.personAWins,
+    },
+    personB: {
+      avgPoints: avg(row.personBPoints, row.meetings),
+      highestScore: round(row.personBHighestScore, 4),
+      losses: row.personAWins,
+      personId: row.personBId,
+      personName: personName(personNames, row.personBId),
+      points: round(row.personBPoints, 4),
+      wins: row.personBWins,
+    },
+    playoffMeetings: row.playoffMeetings,
+    season: row.season,
+    ties: row.ties,
+  };
+}
+
+function h2hSeasonSortValue(season: number): number {
+  return season === 0 ? Number.NEGATIVE_INFINITY : -season;
+}
+
+function compareHeadToHeadPair(
+  left: HeadToHeadPairCatalogEntry,
+  right: HeadToHeadPairCatalogEntry,
+): number {
+  const leftCombined = left.personA.points + left.personB.points;
+  const rightCombined = right.personA.points + right.personB.points;
+  return (
+    h2hSeasonSortValue(left.season) - h2hSeasonSortValue(right.season) ||
+    right.meetings - left.meetings ||
+    right.playoffMeetings - left.playoffMeetings ||
+    right.championshipMeetings - left.championshipMeetings ||
+    rightCombined - leftCombined ||
+    compareStable(left.personA.personName, right.personA.personName) ||
+    compareStable(left.personB.personName, right.personB.personName) ||
+    compareStable(left.personA.personId, right.personA.personId) ||
+    compareStable(left.personB.personId, right.personB.personId)
+  );
+}
+
+function managerLedgerEntry(
+  row: HeadToHeadRecordRow,
+  personNames: ReadonlyMap<string, string>,
+  side: "a" | "b",
+): ManagerHeadToHeadLedgerEntry {
+  const isA = side === "a";
+  const personId = isA ? row.personAId : row.personBId;
+  const opponentPersonId = isA ? row.personBId : row.personAId;
+  const wins = isA ? row.personAWins : row.personBWins;
+  const losses = isA ? row.personBWins : row.personAWins;
+  const pointsFor = isA ? row.personAPoints : row.personBPoints;
+  const pointsAgainst = isA ? row.personBPoints : row.personAPoints;
+  const highestScore = isA ? row.personAHighestScore : row.personBHighestScore;
+  const opponentHighestScore = isA
+    ? row.personBHighestScore
+    : row.personAHighestScore;
+
+  return {
+    avgPointsAgainst: avg(pointsAgainst, row.meetings),
+    avgPointsFor: avg(pointsFor, row.meetings),
+    championshipMeetings: row.championshipMeetings,
+    currentStreak: managerH2hStreak(
+      personNames,
+      personId,
+      row.currentStreakPersonId,
+      row.currentStreakLength,
+    ),
+    highestScore: round(highestScore, 4),
+    lastScoringPeriod: row.lastScoringPeriod,
+    lastSeason: row.lastSeason,
+    longestStreak: managerH2hStreak(
+      personNames,
+      personId,
+      row.longestStreakPersonId,
+      row.longestStreakLength,
+    ),
+    losses,
+    meetings: row.meetings,
+    opponentHighestScore: round(opponentHighestScore, 4),
+    opponentName: personName(personNames, opponentPersonId),
+    opponentPersonId,
+    personId,
+    personName: personName(personNames, personId),
+    playoffMeetings: row.playoffMeetings,
+    pointsAgainst: round(pointsAgainst, 4),
+    pointsFor: round(pointsFor, 4),
+    season: row.season,
+    ties: row.ties,
+    wins,
+  };
+}
+
+function compareManagerLedger(
+  left: ManagerHeadToHeadLedgerEntry,
+  right: ManagerHeadToHeadLedgerEntry,
+): number {
+  return (
+    compareStable(left.personName, right.personName) ||
+    compareStable(left.personId, right.personId) ||
+    h2hSeasonSortValue(left.season) - h2hSeasonSortValue(right.season) ||
+    right.meetings - left.meetings ||
+    compareStable(left.opponentName, right.opponentName) ||
+    compareStable(left.opponentPersonId, right.opponentPersonId)
+  );
+}
+
+function buildHeadToHeadCatalog(
+  rows: readonly HeadToHeadRecordRow[],
+  personNames: ReadonlyMap<string, string>,
+): RecordsCatalog["headToHead"] {
+  const pairs = rows
+    .map((row) => headToHeadPairEntry(row, personNames))
+    .sort(compareHeadToHeadPair);
+  const managerLedgers = rows
+    .flatMap((row) => [
+      managerLedgerEntry(row, personNames, "a"),
+      managerLedgerEntry(row, personNames, "b"),
+    ])
+    .sort(compareManagerLedger);
+
+  return {
+    allTimePairs: pairs.filter((row) => row.season === 0),
+    managerLedgers,
+    seasonPairs: pairs.filter((row) => row.season !== 0),
+  };
+}
+
+function ensureChampionshipAccumulator(
+  rowsByPerson: Map<string, ChampionshipAccumulator>,
+  personId: string,
+): ChampionshipAccumulator {
+  const current = rowsByPerson.get(personId);
+  if (current) {
+    return current;
+  }
+  const next = {
+    championshipAppearances: 0,
+    championshipGameLosses: 0,
+    championshipGamePointsAgainst: 0,
+    championshipGamePointsFor: 0,
+    championshipGameTies: 0,
+    championshipGameWins: 0,
+    championships: 0,
+    personId,
+    playoffAppearances: 0,
+    playoffLosses: 0,
+    playoffPointsAgainst: 0,
+    playoffPointsFor: 0,
+    playoffTies: 0,
+    playoffWins: 0,
+    regularSeasonTitles: 0,
+    runnerUps: 0,
+    seasons: [],
+    thirdPlaces: 0,
+  };
+  rowsByPerson.set(personId, next);
+  return next;
+}
+
+function addPlacementCount(
+  rowsByPerson: Map<string, ChampionshipAccumulator>,
+  personId: string | null,
+  key: "championships" | "regularSeasonTitles" | "runnerUps" | "thirdPlaces",
+) {
+  if (!personId) {
+    return;
+  }
+  ensureChampionshipAccumulator(rowsByPerson, personId)[key] += 1;
+}
+
+function addPlayoffFact(
+  rowsByPerson: Map<string, ChampionshipAccumulator>,
+  row: WeeklyStatisticsRow,
+) {
+  if (row.matchupKind !== "head_to_head" || !row.isPlayoff) {
+    return;
+  }
+  const current = ensureChampionshipAccumulator(rowsByPerson, row.personId);
+  current.playoffPointsFor = round(current.playoffPointsFor + row.pointsFor, 4);
+  current.playoffPointsAgainst = round(
+    current.playoffPointsAgainst + row.pointsAgainst,
+    4,
+  );
+  if (row.result === "win") {
+    current.playoffWins += 1;
+  } else if (row.result === "loss") {
+    current.playoffLosses += 1;
+  } else {
+    current.playoffTies += 1;
+  }
+
+  if (!row.isChampionship) {
+    return;
+  }
+  current.championshipGamePointsFor = round(
+    current.championshipGamePointsFor + row.pointsFor,
+    4,
+  );
+  current.championshipGamePointsAgainst = round(
+    current.championshipGamePointsAgainst + row.pointsAgainst,
+    4,
+  );
+  if (row.result === "win") {
+    current.championshipGameWins += 1;
+  } else if (row.result === "loss") {
+    current.championshipGameLosses += 1;
+  } else {
+    current.championshipGameTies += 1;
+  }
+}
+
+function compareChampionshipManagerRecord(
+  left: ManagerChampionshipRecord,
+  right: ManagerChampionshipRecord,
+): number {
+  return (
+    right.championships - left.championships ||
+    right.runnerUps - left.runnerUps ||
+    right.regularSeasonTitles - left.regularSeasonTitles ||
+    right.playoffAppearances - left.playoffAppearances ||
+    right.playoffWins - left.playoffWins ||
+    left.playoffLosses - right.playoffLosses ||
+    compareStable(left.personName, right.personName) ||
+    compareStable(left.personId, right.personId)
+  );
+}
+
+function buildChampionshipCatalog({
+  championshipRows,
+  personNames,
+  seasonRows,
+  weeklyRows,
+}: {
+  championshipRows: readonly ChampionshipRecordRow[];
+  personNames: ReadonlyMap<string, string>;
+  seasonRows: readonly SeasonStatisticsRow[];
+  weeklyRows: readonly WeeklyStatisticsRow[];
+}): RecordsCatalog["championships"] {
+  const rowsByPerson = new Map<string, ChampionshipAccumulator>();
+  const championshipSeasons = new Set(
+    championshipRows.map((row) => row.season),
+  );
+
+  for (const row of seasonRows) {
+    const current = ensureChampionshipAccumulator(rowsByPerson, row.personId);
+    current.seasons.push(row);
+    current.playoffAppearances += row.madePlayoffs ? 1 : 0;
+    current.championshipAppearances += row.madeChampionship ? 1 : 0;
+    if (championshipSeasons.has(row.season)) {
+      continue;
+    }
+    current.championships += row.finalPlacement === "champ" ? 1 : 0;
+    current.runnerUps += row.finalPlacement === "runner_up" ? 1 : 0;
+    current.thirdPlaces += row.finalPlacement === "third" ? 1 : 0;
+    current.regularSeasonTitles += row.playoffSeed === 1 ? 1 : 0;
+  }
+
+  for (const row of championshipRows) {
+    addPlacementCount(rowsByPerson, row.championPersonId, "championships");
+    addPlacementCount(rowsByPerson, row.runnerUpPersonId, "runnerUps");
+    addPlacementCount(rowsByPerson, row.thirdPlacePersonId, "thirdPlaces");
+    addPlacementCount(
+      rowsByPerson,
+      row.regularSeasonWinnerPersonId,
+      "regularSeasonTitles",
+    );
+  }
+
+  for (const row of weeklyRows) {
+    addPlayoffFact(rowsByPerson, row);
+  }
+
+  return {
+    managerRecords: [...rowsByPerson.values()]
+      .map((row) => {
+        const bestSeason = [...row.seasons].sort(compareBestSeason)[0] ?? null;
+        return {
+          bestFinish: bestSeason ? seasonSummary(bestSeason) : null,
+          championshipAppearances: row.championshipAppearances,
+          championshipGameLosses: row.championshipGameLosses,
+          championshipGamePointsAgainst: row.championshipGamePointsAgainst,
+          championshipGamePointsFor: row.championshipGamePointsFor,
+          championshipGameTies: row.championshipGameTies,
+          championshipGameWins: row.championshipGameWins,
+          championships: row.championships,
+          personId: row.personId,
+          personName: personName(personNames, row.personId),
+          playoffAppearances: row.playoffAppearances,
+          playoffLosses: row.playoffLosses,
+          playoffPointsAgainst: row.playoffPointsAgainst,
+          playoffPointsFor: row.playoffPointsFor,
+          playoffTies: row.playoffTies,
+          playoffWins: row.playoffWins,
+          regularSeasonTitles: row.regularSeasonTitles,
+          runnerUps: row.runnerUps,
+          seasons: row.seasons.length,
+          thirdPlaces: row.thirdPlaces,
+        };
+      })
+      .sort(compareChampionshipManagerRecord),
+    seasons: championshipRows
+      .map((row) => ({
+        champion: personRef(personNames, row.championPersonId),
+        championshipScore: row.championshipScore,
+        regularSeasonWinner: personRef(
+          personNames,
+          row.regularSeasonWinnerPersonId,
+        ),
+        runnerUp: personRef(personNames, row.runnerUpPersonId),
+        runnerUpScore: row.runnerUpScore,
+        season: row.season,
+        thirdPlace: personRef(personNames, row.thirdPlacePersonId),
+      }))
+      .sort((left, right) => right.season - left.season),
+  };
+}
+
 export function buildRecordsCatalog(input: {
   championshipRows?: readonly ChampionshipRecordRow[];
+  headToHeadRows?: readonly HeadToHeadRecordRow[];
   limit?: number;
   personNames: ReadonlyMap<string, string>;
   seasonRows: readonly SeasonStatisticsRow[];
@@ -537,6 +1058,16 @@ export function buildRecordsCatalog(input: {
         limit,
       ),
     },
+    championships: buildChampionshipCatalog({
+      championshipRows: input.championshipRows ?? [],
+      personNames: input.personNames,
+      seasonRows: input.seasonRows,
+      weeklyRows: input.weeklyRows,
+    }),
+    headToHead: buildHeadToHeadCatalog(
+      input.headToHeadRows ?? [],
+      input.personNames,
+    ),
     highLow: {
       bestScoresInLosses: weeklyTop(
         losers,
@@ -606,19 +1137,7 @@ export async function getLeagueRecordsCatalog(
       )
       .limit(1);
     if (unresolvedFailures.length > 0) {
-      return {
-        allTimeStandings: [],
-        blowouts: { biggest: [], narrowestWins: [] },
-        highLow: {
-          bestScoresInLosses: [],
-          highestCombinedMatchups: [],
-          highestScores: [],
-          lowestScores: [],
-          worstScoresInWins: [],
-        },
-        integrityBlocked: true,
-        streaks: { longestLosses: [], longestWins: [] },
-      };
+      return emptyRecordsCatalog(true);
     }
 
     const personRows = await tx
@@ -643,6 +1162,15 @@ export async function getLeagueRecordsCatalog(
       .from(championshipRecords)
       .where(eq(championshipRecords.leagueId, input.leagueId))
       .orderBy(asc(championshipRecords.season));
+    const headToHeadRows = await tx
+      .select()
+      .from(headToHeadRecords)
+      .where(eq(headToHeadRecords.leagueId, input.leagueId))
+      .orderBy(
+        asc(headToHeadRecords.season),
+        asc(headToHeadRecords.personAId),
+        asc(headToHeadRecords.personBId),
+      );
     const weeklyRows = await tx
       .select()
       .from(weeklyStatistics)
@@ -656,6 +1184,7 @@ export async function getLeagueRecordsCatalog(
 
     return buildRecordsCatalog({
       championshipRows,
+      headToHeadRows,
       limit: input.limit,
       personNames,
       seasonRows,
