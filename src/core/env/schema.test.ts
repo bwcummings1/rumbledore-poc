@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_ENTITLEMENT_CAPS,
   DEV_AUTH_SECRET,
   DEV_CREDENTIAL_ENCRYPTION_KEY,
   DEV_PUSH_PUBLIC_KEY,
@@ -31,6 +32,11 @@ describe("parseEnv", () => {
     expect(env.jobs.inngest).toEqual({ mode: "mock" });
     expect(env.push).toEqual({ mock: true, publicKey: DEV_PUSH_PUBLIC_KEY });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
+    expect(env.entitlements).toEqual({
+      caps: DEFAULT_ENTITLEMENT_CAPS,
+      devOverride: true,
+      gateArenaAdvanced: false,
+    });
   });
 
   it("goes real for a service when its key is set", () => {
@@ -298,6 +304,56 @@ describe("parseEnv", () => {
     expect(env.credentials.encryptionKey).toBe(
       "prod-credential-key-minimum-32-chars",
     );
+    expect(env.entitlements.devOverride).toBe(false);
+  });
+
+  it("configures entitlement dev override by environment", () => {
+    expect(parseEnv({ NODE_ENV: "test" }).entitlements.devOverride).toBe(true);
+    expect(
+      parseEnv({
+        ENTITLEMENTS_DEV_OVERRIDE: "false",
+        NODE_ENV: "test",
+      }).entitlements.devOverride,
+    ).toBe(false);
+    expect(() =>
+      parseEnv({
+        CREDENTIAL_ENCRYPTION_KEY: "prod-credential-key-minimum-32-chars", // ubs:ignore — fake fixture value
+        BETTER_AUTH_SECRET: "prod-secret", // ubs:ignore — fake fixture value
+        ENTITLEMENTS_DEV_OVERRIDE: "1",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(/ENTITLEMENTS_DEV_OVERRIDE=true is not allowed/);
+  });
+
+  it("configures entitlement caps and advisory arena gating", () => {
+    const env = parseEnv({
+      ENTITLEMENTS_AI_POSTS_PER_WEEK: "7",
+      ENTITLEMENTS_GATE_ARENA_ADVANCED: "true",
+      ENTITLEMENTS_INDIVIDUAL_LEAGUES_COVERED: "3",
+      ENTITLEMENTS_MAX_PREMIUM_LEAGUES_PER_USER: "2",
+    });
+
+    expect(env.entitlements).toEqual({
+      caps: {
+        aiPostsPerWeek: 7,
+        individualLeaguesCovered: 3,
+        maxPremiumLeaguesPerUser: 2,
+      },
+      devOverride: true,
+      gateArenaAdvanced: true,
+    });
+  });
+
+  it("rejects invalid entitlement cap values", () => {
+    expect(() => parseEnv({ ENTITLEMENTS_AI_POSTS_PER_WEEK: "0" })).toThrow(
+      /ENTITLEMENTS_AI_POSTS_PER_WEEK/,
+    );
+    expect(() =>
+      parseEnv({ ENTITLEMENTS_INDIVIDUAL_LEAGUES_COVERED: "-1" }),
+    ).toThrow(/ENTITLEMENTS_INDIVIDUAL_LEAGUES_COVERED/);
+    expect(() =>
+      parseEnv({ ENTITLEMENTS_MAX_PREMIUM_LEAGUES_PER_USER: "1.5" }),
+    ).toThrow(/ENTITLEMENTS_MAX_PREMIUM_LEAGUES_PER_USER/);
   });
 
   it("goes real for Google when both OAuth vars are set", () => {

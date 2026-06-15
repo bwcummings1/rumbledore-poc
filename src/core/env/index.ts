@@ -10,6 +10,8 @@ export function getEnv(): Env {
 }
 
 export type {
+  EntitlementCapsConfig,
+  EntitlementsConfig,
   Env,
   GoogleOAuthConfig,
   InngestConfig,
@@ -17,6 +19,7 @@ export type {
   ServiceConfig,
 } from "./schema";
 export {
+  DEFAULT_ENTITLEMENT_CAPS,
   DEV_PUSH_PUBLIC_KEY,
   INNGEST_CLOUD_API_BASE_URL,
   INNGEST_CLOUD_EVENT_BASE_URL,

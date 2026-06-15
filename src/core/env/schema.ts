@@ -73,6 +73,24 @@ export type PushConfig =
       subject: string;
     };
 
+export interface EntitlementCapsConfig {
+  aiPostsPerWeek: number;
+  maxPremiumLeaguesPerUser: number | null;
+  individualLeaguesCovered: number;
+}
+
+export interface EntitlementsConfig {
+  devOverride: boolean;
+  gateArenaAdvanced: boolean;
+  caps: EntitlementCapsConfig;
+}
+
+export const DEFAULT_ENTITLEMENT_CAPS = {
+  aiPostsPerWeek: 25,
+  individualLeaguesCovered: 10,
+  maxPremiumLeaguesPerUser: null,
+} as const satisfies EntitlementCapsConfig;
+
 // Dev-only fallback so the app boots with zero config; production requires BETTER_AUTH_SECRET.
 export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
 export const DEV_CREDENTIAL_ENCRYPTION_KEY =
@@ -149,6 +167,23 @@ const baseSchema = z.object({
   WEB_PUSH_PRIVATE_KEY: secret.optional(),
   WEB_PUSH_SUBJECT: secret.optional(),
   MOCK_PUSH: stringbool.optional(),
+  ENTITLEMENTS_DEV_OVERRIDE: stringbool.optional(),
+  ENTITLEMENTS_GATE_ARENA_ADVANCED: stringbool.optional(),
+  ENTITLEMENTS_AI_POSTS_PER_WEEK: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_ENTITLEMENT_CAPS.aiPostsPerWeek),
+  ENTITLEMENTS_MAX_PREMIUM_LEAGUES_PER_USER: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  ENTITLEMENTS_INDIVIDUAL_LEAGUES_COVERED: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_ENTITLEMENT_CAPS.individualLeaguesCovered),
 
   ANTHROPIC_API_KEY: secret.optional(),
   THE_ODDS_API_KEY: secret.optional(),
@@ -166,6 +201,16 @@ const baseSchema = z.object({
 });
 
 type RawEnv = z.infer<typeof baseSchema>;
+
+function defaultEntitlementDevOverride(nodeEnv: RawEnv["NODE_ENV"]): boolean {
+  switch (nodeEnv) {
+    case "production":
+      return false;
+    case "development":
+    case "test":
+      return true;
+  }
+}
 
 export interface Env {
   nodeEnv: RawEnv["NODE_ENV"];
@@ -190,6 +235,7 @@ export interface Env {
   jobs: {
     inngest: InngestConfig;
   };
+  entitlements: EntitlementsConfig;
   push: PushConfig;
   services: Record<PaidService, ServiceConfig>;
 }
@@ -233,6 +279,20 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         problems.push(
           "✖ CREDENTIAL_ENCRYPTION_KEY is required when NODE_ENV=production\n  → at CREDENTIAL_ENCRYPTION_KEY",
         );
+      }
+      {
+        const entitlementDevOverrideFlag =
+          "ENTITLEMENTS_DEV_OVERRIDE" in present
+            ? stringbool.safeParse(present.ENTITLEMENTS_DEV_OVERRIDE)
+            : undefined;
+        if (
+          entitlementDevOverrideFlag?.success &&
+          entitlementDevOverrideFlag.data === true
+        ) {
+          problems.push(
+            "✖ ENTITLEMENTS_DEV_OVERRIDE=true is not allowed when NODE_ENV=production\n  → at ENTITLEMENTS_DEV_OVERRIDE",
+          );
+        }
       }
       break;
     default:
@@ -448,6 +508,20 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       : { mock: true },
     jobs: {
       inngest,
+    },
+    entitlements: {
+      devOverride:
+        parsed.ENTITLEMENTS_DEV_OVERRIDE ??
+        defaultEntitlementDevOverride(parsed.NODE_ENV),
+      gateArenaAdvanced: parsed.ENTITLEMENTS_GATE_ARENA_ADVANCED ?? false,
+      caps: {
+        aiPostsPerWeek: parsed.ENTITLEMENTS_AI_POSTS_PER_WEEK,
+        individualLeaguesCovered:
+          parsed.ENTITLEMENTS_INDIVIDUAL_LEAGUES_COVERED,
+        maxPremiumLeaguesPerUser:
+          parsed.ENTITLEMENTS_MAX_PREMIUM_LEAGUES_PER_USER ??
+          DEFAULT_ENTITLEMENT_CAPS.maxPremiumLeaguesPerUser,
+      },
     },
     push: pushIsReal
       ? {
