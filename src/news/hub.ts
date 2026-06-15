@@ -94,13 +94,6 @@ function boundedLimit(limit: number | undefined): number {
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
 }
 
-function hasActiveArticleFilter(input: {
-  activeSection: PublicationSection<CentralPublicationSectionId> | null;
-  tag?: string | null;
-}): boolean {
-  return Boolean(input.activeSection || input.tag?.trim());
-}
-
 function hubItemFromRow(row: CentralNewsRow): CentralNewsHubItem {
   const section = resolveCentralPublicationSection({
     metadata: row.metadata,
@@ -173,16 +166,9 @@ export async function getCentralNewsHubData(
     CENTRAL_PUBLICATION_SECTIONS.find(
       (section) => section.id === input.sectionId,
     ) ?? null;
-  const scanAllCandidates = hasActiveArticleFilter({
-    activeSection,
-    tag: input.tag,
-  });
-  const candidateLimit = input.sectionId
-    ? MAX_LIMIT
-    : Math.min(limit * 3, MAX_LIMIT);
   const rows = await getCentralNewsRows(db, {
-    candidateLimit,
-    scanAllCandidates,
+    candidateLimit: MAX_LIMIT,
+    scanAllCandidates: true,
   });
 
   return {

@@ -157,6 +157,45 @@ describe("central news hub", () => {
     ]);
   });
 
+  it("ranks the central front across older stories beyond the first recency page", async () => {
+    await handle.db.insert(contentItems).values([
+      {
+        body: "Older corpus lead body.",
+        contentHash: `${marker}-corpus-rank-lead-hash`,
+        dedupKey: `${marker}-corpus-rank-lead`,
+        kind: "news",
+        leagueId: null,
+        metadata: { editorialImportance: 100 },
+        publishedAt: new Date("2026-06-01T12:00:00.000Z"),
+        source: "Corpus Wire",
+        sourceUrl: `https://news.example.com/${marker}/corpus-rank-lead`,
+        summary: "An older story with enough importance to lead the front.",
+        title: "Older important story survives the recency page",
+      },
+      ...Array.from({ length: 110 }, (_, index) => ({
+        body: `Recent minor central body ${index}.`,
+        contentHash: `${marker}-corpus-rank-minor-${index}-hash`,
+        dedupKey: `${marker}-corpus-rank-minor-${index}`,
+        kind: "news" as const,
+        leagueId: null,
+        publishedAt: new Date(Date.UTC(2026, 5, 12, 12, index)),
+        source: "Recent Wire",
+        sourceUrl: `https://news.example.com/${marker}/corpus-rank-minor-${index}`,
+        summary: `Recent minor central summary ${index}.`,
+        title: `Recent minor central story ${index}`,
+      })),
+    ]);
+
+    const data = await getCentralNewsHubData(handle.db, { limit: 100 });
+    const markedItems = data.items.filter((item) =>
+      item.sourceUrl.includes(`${marker}/corpus-rank-`),
+    );
+
+    expect(markedItems[0]?.title).toBe(
+      "Older important story survives the recency page",
+    );
+  });
+
   it("filters central section fronts by the declared taxonomy", async () => {
     await handle.db.insert(contentItems).values([
       {

@@ -34,7 +34,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 
 ### L. Central news / two-tier depth (see specs/21)
 - [x] Build the multi-source central news pipeline behind mocked adapters with provenance and dedup. (specs/21)
-- [ ] Build the central Front/sections editorial layer ranked by freshness and importance. (specs/21)
+- [x] Build the central Front/sections editorial layer ranked by freshness and importance. (specs/21)
 - [ ] Wire the central→`league_feed_reference` tailoring hand-off into the existing rail. (specs/21)
 
 ### O. Mobile PWA shell (see specs/24)
@@ -51,6 +51,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — split routes or use a neutral slug.
 - [ ] **[realtime/LOW] Realtime declares `odds.updated` and `central.news.updated` payloads without publisher helpers** — add typed publish methods when specs/21 or odds freshness fan-out needs them.
 - [ ] **[maintainability/LOW] Real RSS central-news parsing is intentionally lightweight** — replace the regex extractor with a dedicated parser before broad real-feed rollout.
+- [ ] **[maintainability/LOW] Central News editorial ranking scans all central rows in app memory** — add indexed/queryable publication section and rank fields before high-volume rollout.
 
 ## Discoveries / bugs (loop appends here)
 - [ ] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
