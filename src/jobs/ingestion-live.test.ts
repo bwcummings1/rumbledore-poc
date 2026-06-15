@@ -378,10 +378,24 @@ describe("live ingestion jobs", () => {
       connectedRows: 3,
       eventName: JOB_EVENTS.ingestionTick,
       ok: true,
+      pausedCount: 1,
       plannedCount: 2,
       sentCount: 0,
       skippedDuplicateCredentials: 1,
     });
+    expect(result.paused).toEqual([
+      expect.objectContaining({
+        connectionState: "invalid",
+        credentialId: invalid.credentialId,
+        leagueId: invalid.leagueId,
+        provider: "espn",
+        reconnect: expect.objectContaining({
+          href: "/onboarding/espn",
+          label: "Reconnect ESPN",
+          provider: "espn",
+        }),
+      }),
+    ]);
     expect(result.planned.map((event) => event.name)).toEqual([
       JOB_EVENTS.leagueIngest,
       JOB_EVENTS.leagueIngest,
@@ -392,6 +406,67 @@ describe("live ingestion jobs", () => {
     expect(result.planned.map((event) => event.data.leagueId)).not.toContain(
       invalid.leagueId,
     );
+  });
+
+  it("pauses auth-invalid targets with a reconnect action and resumes after reconnect", async () => {
+    const seeded = await seedLiveLeague("tick-paused", { status: "invalid" });
+
+    const paused = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+      },
+      deps: { db: handle.db },
+    });
+
+    expect(paused).toMatchObject({
+      connectedRows: 0,
+      ok: true,
+      pausedCount: 1,
+      plannedCount: 0,
+    });
+    expect(paused.paused).toEqual([
+      expect.objectContaining({
+        connectionInvalidAt: "2026-06-12T00:00:00.000Z",
+        connectionState: "invalid",
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        reconnect: expect.objectContaining({
+          href: "/onboarding/espn",
+          label: "Reconnect ESPN",
+          provider: "espn",
+        }),
+      }),
+    ]);
+
+    await handle.db
+      .update(providerCredentials)
+      .set({
+        invalidAt: null,
+        status: "connected",
+      })
+      .where(eq(providerCredentials.id, seeded.credentialId));
+
+    const resumed = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+      },
+      deps: { db: handle.db },
+    });
+
+    expect(resumed).toMatchObject({
+      connectedRows: 1,
+      ok: true,
+      pausedCount: 0,
+      plannedCount: 1,
+    });
+    expect(resumed.paused).toEqual([]);
+    expect(resumed.planned[0]?.data).toMatchObject({
+      credentialId: seeded.credentialId,
+      leagueId: seeded.leagueId,
+      provider: "espn",
+    });
   });
 
   it("plans league.ingest events through the Inngest step API", async () => {
@@ -804,6 +879,38 @@ describe("live ingestion jobs", () => {
           db: handle.db,
           providers: { espn: fixtureProvider.provider },
           syncCurrent: async () => ok(successfulSyncResult(seeded)),
+        },
+      }),
+    ).rejects.toBeInstanceOf(NonRetriableError);
+
+    const [credential] = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.id, seeded.credentialId))
+      .limit(1);
+    expect(credential).toMatchObject({ status: "invalid" });
+  });
+
+  it("marks credentials invalid when current sync reports auth expiry", async () => {
+    const seeded = await seedLiveLeague("worker-sync-expired");
+    const fixtureProvider = currentSyncProvider();
+
+    await expect(
+      runLeagueIngest({
+        data: {
+          credentialId: seeded.credentialId,
+          leagueId: seeded.leagueId,
+          name: `${marker} league worker-sync-expired`,
+          provider: "espn",
+          providerLeagueId: seeded.providerLeagueId,
+          season: 2026,
+          sport: "ffl",
+        },
+        deps: {
+          cipher,
+          db: handle.db,
+          providers: { espn: fixtureProvider.provider },
+          syncCurrent: async () => err(new AuthExpiredError("espn")),
         },
       }),
     ).rejects.toBeInstanceOf(NonRetriableError);

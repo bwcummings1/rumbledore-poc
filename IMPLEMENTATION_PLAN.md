@@ -10,7 +10,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Drive adaptive cadence from an injectable NFL game-state/calendar provider (live-window fast path vs off-hours). (specs/19)
 - [x] Make the poll policy a pluggable config seam, with cadence as data (cost-optimization deferred to research). (specs/19)
 - [x] Harden incremental sync to never downgrade finalized matchups, idempotently. (specs/19)
-- [ ] Wire reconnect-on-expiry into the scheduler so expired auth pauses with a CTA, not a crash. (specs/19)
+- [x] Wire reconnect-on-expiry into the scheduler so expired auth pauses with a CTA, not a crash. (specs/19)
 - [ ] Support multi-league fan-out and automatic next-season rollover on the same auth. (specs/19)
 
 ### N. Records & history surfaces (see specs/23)
@@ -53,3 +53,5 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 ## Discoveries / bugs (loop appends here)
 - [ ] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
 - [ ] `league.connected` is wired as a force-due ingestion scheduler trigger, but onboarding appears to call `syncCurrentLeague()` directly instead of emitting `JOB_EVENTS.leagueConnected`; confirm before relying on connected-event fan-out.
+- [ ] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
+- [ ] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.

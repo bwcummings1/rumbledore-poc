@@ -31,6 +31,10 @@ import {
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
 import { storedSleeperCredentialsSchema } from "@/onboarding/provider-service";
+import {
+  type ProviderReconnectAction,
+  reconnectActionForProvider,
+} from "@/onboarding/reconnect";
 import { createEspnDiscoveryProvider } from "@/providers/espn/client";
 import type {
   FantasyProvider,
@@ -136,6 +140,19 @@ export interface PlannedGameFinalEvent {
   name: typeof JOB_EVENTS.gameFinal;
 }
 
+export interface PausedLeagueIngestTarget {
+  connectionInvalidAt?: string;
+  connectionState: "invalid";
+  credentialId: string;
+  leagueId: string;
+  name: string;
+  provider: IngestableProviderId;
+  providerLeagueId: string;
+  reconnect: ProviderReconnectAction;
+  season: number;
+  sport: "ffl" | "unknown";
+}
+
 export interface IngestionTickResponse {
   connectedRows: number;
   eventName:
@@ -143,6 +160,8 @@ export interface IngestionTickResponse {
     | typeof JOB_EVENTS.leagueConnected;
   limit: number;
   ok: true;
+  paused: PausedLeagueIngestTarget[];
+  pausedCount: number;
   planned: PlannedLeagueIngestEvent[];
   plannedCount: number;
   sentCount: number;
@@ -393,8 +412,10 @@ async function loadCredentialsForLeagueIngest({
   }
 }
 
-interface ConnectedLeagueRow {
+interface LeagueCredentialRow {
   credentialId: string;
+  credentialInvalidAt: Date | null;
+  connectionState: "connected" | "invalid";
   currentScoringPeriod: number;
   leagueId: string;
   leagueStatus: IngestionGameStateInput["leagueStatus"];
@@ -406,13 +427,13 @@ interface ConnectedLeagueRow {
   sport: "ffl" | "unknown";
 }
 
-async function listConnectedLeagueTargets({
+async function listLeagueCredentialTargets({
   db,
   leagueIds,
 }: {
   db: Db;
   leagueIds?: readonly string[];
-}): Promise<ConnectedLeagueRow[]> {
+}): Promise<LeagueCredentialRow[]> {
   if (leagueIds?.length === 0) {
     return [];
   }
@@ -420,6 +441,8 @@ async function listConnectedLeagueTargets({
   return db
     .select({
       credentialId: providerCredentials.id,
+      credentialInvalidAt: providerCredentials.invalidAt,
+      connectionState: providerCredentials.status,
       currentScoringPeriod: leagues.currentScoringPeriod,
       leagueId: leagues.id,
       leagueStatus: leagues.status,
@@ -452,12 +475,7 @@ async function listConnectedLeagueTargets({
         eq(onboardingDiscoveredLeagues.season, leagues.season),
       ),
     )
-    .where(
-      and(
-        eq(providerCredentials.status, "connected"),
-        leagueIds ? inArray(leagues.id, [...leagueIds]) : undefined,
-      ),
-    )
+    .where(leagueIds ? inArray(leagues.id, [...leagueIds]) : undefined)
     .orderBy(
       asc(leagues.id),
       asc(providerCredentials.provider),
@@ -477,7 +495,7 @@ async function loadCoverageByDataClass({
   row,
 }: {
   db: Db;
-  row: ConnectedLeagueRow;
+  row: LeagueCredentialRow;
 }): Promise<CoverageByDataClass> {
   const coverageRows = await withLeagueContext(db, row.leagueId, (tx) =>
     tx
@@ -552,7 +570,7 @@ function plannedEventFor({
   dueDataClasses: readonly DueDataClassPlan[];
   gameState: IngestionGameState;
   now: Date;
-  row: ConnectedLeagueRow;
+  row: LeagueCredentialRow;
 }): PlannedLeagueIngestEvent {
   const dataClasses = dueDataClasses.map((plan) => plan.dataClass);
   const shortestIntervalMs = dueDataClasses.reduce(
@@ -589,6 +607,53 @@ function plannedEventFor({
     ].join(":"),
     name: JOB_EVENTS.leagueIngest,
   };
+}
+
+function targetKeyFor(
+  row: Pick<
+    LeagueCredentialRow,
+    "leagueId" | "provider" | "providerLeagueId" | "season"
+  >,
+): string {
+  return [row.leagueId, row.provider, row.providerLeagueId, row.season].join(
+    ":",
+  );
+}
+
+function pausedTargetsFor(
+  rows: readonly LeagueCredentialRow[],
+  connectedKeys: ReadonlySet<string>,
+): PausedLeagueIngestTarget[] {
+  const seen = new Set<string>();
+  const paused: PausedLeagueIngestTarget[] = [];
+
+  for (const row of rows) {
+    if (row.connectionState !== "invalid") {
+      continue;
+    }
+    const key = targetKeyFor(row);
+    if (connectedKeys.has(key) || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    paused.push({
+      connectionState: "invalid",
+      credentialId: row.credentialId,
+      leagueId: row.leagueId,
+      name: row.name,
+      provider: row.provider,
+      providerLeagueId: row.providerLeagueId,
+      reconnect: reconnectActionForProvider(row.provider),
+      season: row.season,
+      sport: row.sport,
+      ...(row.credentialInvalidAt
+        ? { connectionInvalidAt: row.credentialInvalidAt.toISOString() }
+        : {}),
+    });
+  }
+
+  return paused;
 }
 
 function plannedGameFinalEventsFor(
@@ -662,22 +727,22 @@ export async function runIngestionTick({
       globalConfig: deps.globalPollPolicyConfig,
     });
   const forceDue = eventName === JOB_EVENTS.leagueConnected;
-  const rows = await listConnectedLeagueTargets({
+  const rows = await listLeagueCredentialTargets({
     db: deps.db,
     leagueIds: data.leagueIds,
   });
+  const connectedRows = rows.filter(
+    (row) => row.connectionState === "connected",
+  );
+  const connectedKeys = new Set(connectedRows.map(targetKeyFor));
+  const paused = pausedTargetsFor(rows, connectedKeys);
   const planned: PlannedLeagueIngestEvent[] = [];
   const seen = new Set<string>();
   let skippedDuplicateCredentials = 0;
   let skippedNotDue = 0;
 
-  for (const row of rows) {
-    const key = [
-      row.leagueId,
-      row.provider,
-      row.providerLeagueId,
-      row.season,
-    ].join(":");
+  for (const row of connectedRows) {
+    const key = targetKeyFor(row);
     if (seen.has(key)) {
       skippedDuplicateCredentials += 1;
       continue;
@@ -720,10 +785,12 @@ export async function runIngestionTick({
   }
 
   return {
-    connectedRows: rows.length,
+    connectedRows: connectedRows.length,
     eventName,
     limit: data.limit,
     ok: true,
+    paused,
+    pausedCount: paused.length,
     planned,
     plannedCount: planned.length,
     sentCount: 0,

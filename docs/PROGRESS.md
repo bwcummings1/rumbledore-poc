@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Reconnect-on-expiry scheduler pause landed — live ingestion now reports invalid credential targets with provider reconnect CTAs, skips fan-out until reconnect, and still treats auth expiry as non-retriable.
 - 2026-06-15: Finalized-state ingestion hardening landed — current sync now rejects final-to-non-final matchup flaps with steward-visible integrity notes, preserves completed league seasons, allows final score corrections, and fans out hash-keyed `game.final` events from live ingest.
 - 2026-06-15: Pluggable ingestion poll policy landed — cadence now lives in a validated data config with env/global and explicit override seams, while `ingestion.tick` consumes the injectable policy interface.
 - 2026-06-15: Adaptive ingestion cadence landed — `ingestion.tick` now consults an injectable game-state provider and `data_coverage` freshness to fast-path live matchup polling while skipping off-hours rows before their window.
