@@ -4,6 +4,7 @@ import {
   leagueBlogChannel,
   leagueHistoryChannel,
   leagueLeaderboardChannel,
+  leagueLoreChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
 } from "./interfaces";
@@ -42,6 +43,10 @@ describe("realtime publisher", () => {
       "league:league-123:leaderboard",
     );
     expect(arenaLeaderboardChannel()).toBe("arena:leaderboard");
+  });
+
+  it("uses the stable per-league lore channel name", () => {
+    expect(leagueLoreChannel("league-123")).toBe("league:league-123:lore");
   });
 
   it("posts blog.published payloads to Supabase private broadcast", async () => {
@@ -241,6 +246,56 @@ describe("realtime publisher", () => {
       bankrollWeekId: "week-1",
       leagueId: "league-123",
       type: "league.leaderboard.updated",
+      v: 1,
+    });
+  });
+
+  it("posts lore payloads to Supabase private broadcast", async () => {
+    const calls: Array<{
+      input: RequestInfo | URL;
+      init: RequestInit | undefined;
+    }> = [];
+    const publisher = new SupabaseRealtimePublisher({
+      apiKey: "supabase-service-key", // ubs:ignore — fake fixture value
+      fetchFn: async (input, init) => {
+        calls.push({ input, init });
+        return okResponse();
+      },
+      url: "https://project.supabase.co/",
+    });
+
+    await publisher.publishLeagueLoreVoteOpened({
+      at: "2026-06-15T12:00:01.000Z",
+      claimId: "claim-1",
+      leagueId: "league-123",
+      type: REALTIME_EVENTS.loreVoteOpened,
+      v: 1,
+      voteClosesAt: "2026-06-22T12:00:00.000Z",
+    });
+    await publisher.publishLeagueLoreCanonized({
+      at: "2026-06-23T12:00:01.000Z",
+      claimId: "claim-1",
+      leagueId: "league-123",
+      ratifiedBy: "vote",
+      type: REALTIME_EVENTS.loreCanonized,
+      v: 1,
+    });
+
+    expect(calls.map((call) => call.input.toString())).toEqual([
+      "https://project.supabase.co/realtime/v1/api/broadcast/league%3Aleague-123%3Alore/events/lore.vote.opened?private=true",
+      "https://project.supabase.co/realtime/v1/api/broadcast/league%3Aleague-123%3Alore/events/lore.canonized?private=true",
+    ]);
+    expect(parseJsonBody(calls[0]?.init?.body)).toMatchObject({
+      claimId: "claim-1",
+      leagueId: "league-123",
+      type: "lore.vote.opened",
+      v: 1,
+    });
+    expect(parseJsonBody(calls[1]?.init?.body)).toMatchObject({
+      claimId: "claim-1",
+      leagueId: "league-123",
+      ratifiedBy: "vote",
+      type: "lore.canonized",
       v: 1,
     });
   });
@@ -449,5 +504,66 @@ describe("realtime publisher", () => {
     ]);
 
     unsubscribe();
+  });
+
+  it("delivers lore payloads through the in-process publisher", async () => {
+    const publisher = new InProcessRealtimePublisher();
+    const received: unknown[] = [];
+    const unsubscribeOpened = publisher.subscribe(
+      leagueLoreChannel("league-123"),
+      REALTIME_EVENTS.loreVoteOpened,
+      (message) => {
+        received.push(message);
+      },
+    );
+    const unsubscribeCanonized = publisher.subscribe(
+      leagueLoreChannel("league-123"),
+      REALTIME_EVENTS.loreCanonized,
+      (message) => {
+        received.push(message);
+      },
+    );
+
+    await publisher.publishLeagueLoreVoteOpened({
+      at: "2026-06-15T12:00:01.000Z",
+      claimId: "claim-1",
+      leagueId: "league-123",
+      type: REALTIME_EVENTS.loreVoteOpened,
+      v: 1,
+      voteClosesAt: "2026-06-22T12:00:00.000Z",
+    });
+    await publisher.publishLeagueLoreCanonized({
+      at: "2026-06-23T12:00:01.000Z",
+      claimId: "claim-1",
+      leagueId: "league-123",
+      ratifiedBy: "steward",
+      type: REALTIME_EVENTS.loreCanonized,
+      v: 1,
+    });
+
+    expect(received).toEqual([
+      {
+        event: REALTIME_EVENTS.loreVoteOpened,
+        payload: expect.objectContaining({
+          claimId: "claim-1",
+          leagueId: "league-123",
+          type: "lore.vote.opened",
+        }),
+        topic: "league:league-123:lore",
+      },
+      {
+        event: REALTIME_EVENTS.loreCanonized,
+        payload: expect.objectContaining({
+          claimId: "claim-1",
+          leagueId: "league-123",
+          ratifiedBy: "steward",
+          type: "lore.canonized",
+        }),
+        topic: "league:league-123:lore",
+      },
+    ]);
+
+    unsubscribeOpened();
+    unsubscribeCanonized();
   });
 });

@@ -6,9 +6,12 @@ import {
   type BlogPublishedPayload,
   type HistoryImportProgressPayload,
   type LeagueLeaderboardUpdatedPayload,
+  type LoreCanonizedPayload,
+  type LoreVoteOpenedPayload,
   leagueBlogChannel,
   leagueHistoryChannel,
   leagueLeaderboardChannel,
+  leagueLoreChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
   type RealtimePublisher,
@@ -88,6 +91,28 @@ export class SupabaseRealtimePublisher implements RealtimePublisher {
       payload,
       private: true,
       topic: leagueLeaderboardChannel(payload.leagueId),
+    });
+  }
+
+  async publishLeagueLoreCanonized(
+    payload: LoreCanonizedPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.loreCanonized,
+      payload,
+      private: true,
+      topic: leagueLoreChannel(payload.leagueId),
+    });
+  }
+
+  async publishLeagueLoreVoteOpened(
+    payload: LoreVoteOpenedPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.loreVoteOpened,
+      payload,
+      private: true,
+      topic: leagueLoreChannel(payload.leagueId),
     });
   }
 

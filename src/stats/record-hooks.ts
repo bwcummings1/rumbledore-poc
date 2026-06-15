@@ -3,6 +3,7 @@ import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import { loreVerifications } from "@/db/schema";
 import { submitLoreClaim } from "@/lore";
+import type { RealtimePublisher } from "@/realtime";
 import type { RecordBrokenHook } from "./engine";
 
 export interface RecordBrokenLoreHookResult {
@@ -52,11 +53,13 @@ export async function seedRecordBrokenLoreHooks({
   hooks,
   leagueId,
   now,
+  realtime,
 }: {
   db: Db;
   hooks: readonly RecordBrokenHook[];
   leagueId: string;
   now?: () => Date;
+  realtime?: RealtimePublisher;
 }): Promise<RecordBrokenLoreHookResult[]> {
   const seeded: RecordBrokenLoreHookResult[] = [];
   for (const hook of hooks) {
@@ -68,7 +71,7 @@ export async function seedRecordBrokenLoreHooks({
     }
 
     const result = await submitLoreClaim({
-      deps: { db, now },
+      deps: { db, now, realtime },
       input: {
         assertions: [
           {

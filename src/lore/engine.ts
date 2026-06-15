@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
@@ -16,6 +17,7 @@ import {
   seasonStatistics,
   weeklyStatistics,
 } from "@/db/schema";
+import { REALTIME_EVENTS, type RealtimePublisher } from "@/realtime";
 
 const DEFAULT_VOTE_DAYS = 7;
 const DEFAULT_QUORUM_RATIO = 0.34;
@@ -103,6 +105,7 @@ export interface LoreSubjectInput {
 export interface LoreDependencies {
   db: Db;
   now?: () => Date;
+  realtime?: RealtimePublisher;
 }
 
 export interface OpenOpinionClaimInput {
@@ -224,6 +227,74 @@ function currentTime(deps: Pick<LoreDependencies, "now">): Date {
 
 function defaultVoteClosesAt(base: Date): Date {
   return new Date(base.getTime() + DEFAULT_VOTE_DAYS * MS_PER_DAY);
+}
+
+async function publishLoreVoteOpened({
+  deps,
+  input,
+  result,
+  timestamp,
+}: {
+  deps: LoreDependencies;
+  input: Pick<OpenOpinionClaimInput, "leagueId">;
+  result: OpenOpinionClaimResult;
+  timestamp: Date;
+}): Promise<void> {
+  if (!deps.realtime) {
+    return;
+  }
+
+  try {
+    await deps.realtime.publishLeagueLoreVoteOpened({
+      at: timestamp.toISOString(),
+      claimId: result.claimId,
+      leagueId: input.leagueId,
+      type: REALTIME_EVENTS.loreVoteOpened,
+      v: 1,
+      voteClosesAt: result.voteClosesAt.toISOString(),
+    });
+  } catch (error) {
+    logger.warn("Realtime lore vote-opened event failed", {
+      claimId: result.claimId,
+      error,
+      leagueId: input.leagueId,
+    });
+  }
+}
+
+async function publishLoreCanonized({
+  claimId,
+  deps,
+  leagueId,
+  ratifiedBy,
+  timestamp,
+}: {
+  claimId: string;
+  deps: LoreDependencies;
+  leagueId: string;
+  ratifiedBy: "steward" | "verified" | "vote";
+  timestamp: Date;
+}): Promise<void> {
+  if (!deps.realtime) {
+    return;
+  }
+
+  try {
+    await deps.realtime.publishLeagueLoreCanonized({
+      at: timestamp.toISOString(),
+      claimId,
+      leagueId,
+      ratifiedBy,
+      type: REALTIME_EVENTS.loreCanonized,
+      v: 1,
+    });
+  } catch (error) {
+    logger.warn("Realtime lore canonized event failed", {
+      claimId,
+      error,
+      leagueId,
+    });
+  }
 }
 
 function cleanText(value: string, field: string): string {
@@ -1533,7 +1604,7 @@ export async function openOpinionClaim({
 }): Promise<OpenOpinionClaimResult> {
   const timestamp = currentTime(deps);
 
-  return withLeagueContext(deps.db, input.leagueId, (tx) =>
+  const result = await withLeagueContext(deps.db, input.leagueId, (tx) =>
     createVotingClaimInTx({
       input,
       kind: "opinion",
@@ -1542,6 +1613,8 @@ export async function openOpinionClaim({
       verification: "n_a",
     }),
   );
+  await publishLoreVoteOpened({ deps, input, result, timestamp });
+  return result;
 }
 
 export async function submitLoreClaim({
@@ -1554,70 +1627,102 @@ export async function submitLoreClaim({
   const timestamp = currentTime(deps);
   const assertions = input.assertions ?? [];
 
-  return withLeagueContext(deps.db, input.leagueId, async (tx) => {
-    if (assertions.length === 0) {
-      const claim = await createVotingClaimInTx({
-        input,
-        kind: "opinion",
-        timestamp,
-        tx,
-        verification: "n_a",
-      });
-      return {
-        claimId: claim.claimId,
-        kind: "opinion",
-        status: "vote",
-        threadRootId: claim.threadRootId,
-        verification: "n_a",
-        voteClosesAt: claim.voteClosesAt,
-      };
-    }
-
-    const outcomes: VerificationOutcome[] = [];
-    for (const assertion of assertions) {
-      outcomes.push(
-        await verifyAssertion({ assertion, leagueId: input.leagueId, tx }),
-      );
-    }
-
-    switch (aggregateVerificationResult(outcomes)) {
-      case "uncheckable": {
+  const result: SubmitLoreClaimResult = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (tx): Promise<SubmitLoreClaimResult> => {
+      if (assertions.length === 0) {
         const claim = await createVotingClaimInTx({
-          extraSubjects: outcomes.map((outcome) => outcome.subject),
           input,
-          kind: "data_verifiable",
+          kind: "opinion",
           timestamp,
           tx,
-          verification: "unverifiable",
-          verificationData: { outcomes, result: "uncheckable" },
+          verification: "n_a",
         });
         return {
           claimId: claim.claimId,
-          kind: "data_verifiable",
+          kind: "opinion",
           status: "vote",
           threadRootId: claim.threadRootId,
-          verification: "unverifiable",
+          verification: "n_a",
           voteClosesAt: claim.voteClosesAt,
         };
       }
-      case "match":
-        return createResolvedDataClaimInTx({
-          input,
-          outcomes,
-          result: "match",
-          timestamp,
-          tx,
-        });
-      case "contradiction":
-        return createResolvedDataClaimInTx({
-          input,
-          outcomes,
-          result: "contradiction",
-          timestamp,
-          tx,
-        });
-    }
-  });
+
+      const outcomes: VerificationOutcome[] = [];
+      for (const assertion of assertions) {
+        outcomes.push(
+          await verifyAssertion({ assertion, leagueId: input.leagueId, tx }),
+        );
+      }
+
+      switch (aggregateVerificationResult(outcomes)) {
+        case "uncheckable": {
+          const claim = await createVotingClaimInTx({
+            extraSubjects: outcomes.map((outcome) => outcome.subject),
+            input,
+            kind: "data_verifiable",
+            timestamp,
+            tx,
+            verification: "unverifiable",
+            verificationData: { outcomes, result: "uncheckable" },
+          });
+          return {
+            claimId: claim.claimId,
+            kind: "data_verifiable",
+            status: "vote",
+            threadRootId: claim.threadRootId,
+            verification: "unverifiable",
+            voteClosesAt: claim.voteClosesAt,
+          };
+        }
+        case "match":
+          return createResolvedDataClaimInTx({
+            input,
+            outcomes,
+            result: "match",
+            timestamp,
+            tx,
+          });
+        case "contradiction":
+          return createResolvedDataClaimInTx({
+            input,
+            outcomes,
+            result: "contradiction",
+            timestamp,
+            tx,
+          });
+      }
+    },
+  );
+
+  switch (result.status) {
+    case "vote":
+      await publishLoreVoteOpened({
+        deps,
+        input,
+        result: {
+          claimId: result.claimId,
+          threadRootId: result.threadRootId,
+          voteClosesAt: result.voteClosesAt,
+        },
+        timestamp,
+      });
+      break;
+    case "canonized":
+      await publishLoreCanonized({
+        claimId: result.claimId,
+        deps,
+        leagueId: input.leagueId,
+        ratifiedBy: result.ratifiedBy,
+        timestamp,
+      });
+      break;
+    case "rejected":
+      break;
+  }
+
+  return result;
 }
 
 export async function castLoreVote({
@@ -1738,162 +1843,188 @@ export async function closeLoreVote({
   const timestamp = currentTime(deps);
   const quorumRatio = input.quorumRatio ?? DEFAULT_QUORUM_RATIO;
 
-  return withLeagueContext(deps.db, input.leagueId, async (tx) => {
-    const [claim] = await tx
-      .select({
-        branchOf: loreClaims.branchOf,
-        id: loreClaims.id,
-        ratifiedAt: loreClaims.ratifiedAt,
-        ratifiedBy: loreClaims.ratifiedBy,
-        relation: loreClaims.relation,
-        status: loreClaims.status,
-        threadRootId: loreClaims.threadRootId,
-        voteClosesAt: loreClaims.voteClosesAt,
-      })
-      .from(loreClaims)
-      .where(
-        and(
-          eq(loreClaims.leagueId, input.leagueId),
-          eq(loreClaims.id, input.claimId),
-        ),
-      )
-      .limit(1);
+  const result: CloseLoreVoteResult = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (tx): Promise<CloseLoreVoteResult> => {
+      const [claim] = await tx
+        .select({
+          branchOf: loreClaims.branchOf,
+          id: loreClaims.id,
+          ratifiedAt: loreClaims.ratifiedAt,
+          ratifiedBy: loreClaims.ratifiedBy,
+          relation: loreClaims.relation,
+          status: loreClaims.status,
+          threadRootId: loreClaims.threadRootId,
+          voteClosesAt: loreClaims.voteClosesAt,
+        })
+        .from(loreClaims)
+        .where(
+          and(
+            eq(loreClaims.leagueId, input.leagueId),
+            eq(loreClaims.id, input.claimId),
+          ),
+        )
+        .limit(1);
 
-    if (!claim) {
-      throw new AppError({
-        code: "LORE_CLAIM_NOT_FOUND",
-        message: "Lore claim could not be found",
-        status: 404,
-      });
-    }
-
-    switch (claim.status) {
-      case "canon":
-        return {
-          claimId: claim.id,
-          ratifiedBy: claim.ratifiedBy ?? "vote",
-          reused: true,
-          status: "canonized",
-          tally: null,
-        };
-      case "rejected":
-        return {
-          claimId: claim.id,
-          reused: true,
-          status: "rejected",
-          tally: null,
-        };
-      case "vote":
-        break;
-      default:
+      if (!claim) {
         throw new AppError({
-          code: "LORE_CLAIM_NOT_CLOSABLE",
-          message: "Lore claim is not open for close-out",
+          code: "LORE_CLAIM_NOT_FOUND",
+          message: "Lore claim could not be found",
+          status: 404,
+        });
+      }
+
+      switch (claim.status) {
+        case "canon":
+          return {
+            claimId: claim.id,
+            ratifiedBy: claim.ratifiedBy ?? "vote",
+            reused: true,
+            status: "canonized",
+            tally: null,
+          };
+        case "rejected":
+          return {
+            claimId: claim.id,
+            reused: true,
+            status: "rejected",
+            tally: null,
+          };
+        case "vote":
+          break;
+        default:
+          throw new AppError({
+            code: "LORE_CLAIM_NOT_CLOSABLE",
+            message: "Lore claim is not open for close-out",
+            status: 409,
+          });
+      }
+      if (claim.voteClosesAt && timestamp < claim.voteClosesAt) {
+        throw new AppError({
+          code: "LORE_VOTE_STILL_OPEN",
+          message: "Lore claim voting window is still open",
           status: 409,
         });
-    }
-    if (claim.voteClosesAt && timestamp < claim.voteClosesAt) {
-      throw new AppError({
-        code: "LORE_VOTE_STILL_OPEN",
-        message: "Lore claim voting window is still open",
-        status: 409,
+      }
+
+      const activeMembers = (
+        await tx
+          .select({ id: members.id })
+          .from(members)
+          .where(eq(members.organizationId, input.leagueId))
+      ).length;
+      const votes = await tx
+        .select({ choice: loreVotes.choice })
+        .from(loreVotes)
+        .where(
+          and(
+            eq(loreVotes.leagueId, input.leagueId),
+            eq(loreVotes.claimId, input.claimId),
+          ),
+        );
+      const tally = buildTally({ activeMembers, quorumRatio, votes });
+      const beforeState = claimSnapshot(claim);
+      const nextStatus = shouldCanonize(tally) ? "canon" : "rejected";
+      const ratifiedAt = nextStatus === "canon" ? timestamp : null;
+      const ratifiedBy = nextStatus === "canon" ? "vote" : null;
+
+      const [updated] = await tx
+        .update(loreClaims)
+        .set({
+          ratifiedAt,
+          ratifiedBy,
+          status: nextStatus,
+          updatedAt: timestamp,
+        })
+        .where(
+          and(
+            eq(loreClaims.leagueId, input.leagueId),
+            eq(loreClaims.id, input.claimId),
+            eq(loreClaims.status, "vote"),
+          ),
+        )
+        .returning({
+          branchOf: loreClaims.branchOf,
+          id: loreClaims.id,
+          ratifiedAt: loreClaims.ratifiedAt,
+          ratifiedBy: loreClaims.ratifiedBy,
+          relation: loreClaims.relation,
+          status: loreClaims.status,
+          threadRootId: loreClaims.threadRootId,
+          voteClosesAt: loreClaims.voteClosesAt,
+        });
+
+      if (!updated) {
+        throw new AppError({
+          code: "LORE_CLAIM_CLOSE_FAILED",
+          message: "Lore claim could not be closed",
+          status: 409,
+        });
+      }
+
+      await tx.insert(loreEvents).values({
+        afterState: {
+          ...claimSnapshot(updated),
+          tally,
+        },
+        beforeState,
+        claimId: input.claimId,
+        kind: nextStatus === "canon" ? "ratified" : "rejected",
+        leagueId: input.leagueId,
+        reason:
+          nextStatus === "canon"
+            ? "vote_threshold_met"
+            : "vote_threshold_failed",
       });
-    }
-
-    const activeMembers = (
-      await tx
-        .select({ id: members.id })
-        .from(members)
-        .where(eq(members.organizationId, input.leagueId))
-    ).length;
-    const votes = await tx
-      .select({ choice: loreVotes.choice })
-      .from(loreVotes)
-      .where(
-        and(
-          eq(loreVotes.leagueId, input.leagueId),
-          eq(loreVotes.claimId, input.claimId),
-        ),
-      );
-    const tally = buildTally({ activeMembers, quorumRatio, votes });
-    const beforeState = claimSnapshot(claim);
-    const nextStatus = shouldCanonize(tally) ? "canon" : "rejected";
-    const ratifiedAt = nextStatus === "canon" ? timestamp : null;
-    const ratifiedBy = nextStatus === "canon" ? "vote" : null;
-
-    const [updated] = await tx
-      .update(loreClaims)
-      .set({
-        ratifiedAt,
-        ratifiedBy,
-        status: nextStatus,
-        updatedAt: timestamp,
-      })
-      .where(
-        and(
-          eq(loreClaims.leagueId, input.leagueId),
-          eq(loreClaims.id, input.claimId),
-          eq(loreClaims.status, "vote"),
-        ),
-      )
-      .returning({
-        branchOf: loreClaims.branchOf,
-        id: loreClaims.id,
-        ratifiedAt: loreClaims.ratifiedAt,
-        ratifiedBy: loreClaims.ratifiedBy,
-        relation: loreClaims.relation,
-        status: loreClaims.status,
-        threadRootId: loreClaims.threadRootId,
-        voteClosesAt: loreClaims.voteClosesAt,
+      await resolveChallengeInTx({
+        challenge: updated,
+        leagueId: input.leagueId,
+        nextStatus,
+        reason:
+          nextStatus === "canon"
+            ? "vote_threshold_met"
+            : "vote_threshold_failed",
+        timestamp,
+        tx,
       });
 
-    if (!updated) {
-      throw new AppError({
-        code: "LORE_CLAIM_CLOSE_FAILED",
-        message: "Lore claim could not be closed",
-        status: 409,
-      });
-    }
+      if (nextStatus === "canon") {
+        return {
+          claimId: input.claimId,
+          ratifiedBy: "vote",
+          reused: false,
+          status: "canonized",
+          tally,
+        };
+      }
 
-    await tx.insert(loreEvents).values({
-      afterState: {
-        ...claimSnapshot(updated),
-        tally,
-      },
-      beforeState,
-      claimId: input.claimId,
-      kind: nextStatus === "canon" ? "ratified" : "rejected",
-      leagueId: input.leagueId,
-      reason:
-        nextStatus === "canon" ? "vote_threshold_met" : "vote_threshold_failed",
-    });
-    await resolveChallengeInTx({
-      challenge: updated,
-      leagueId: input.leagueId,
-      nextStatus,
-      reason:
-        nextStatus === "canon" ? "vote_threshold_met" : "vote_threshold_failed",
-      timestamp,
-      tx,
-    });
-
-    if (nextStatus === "canon") {
       return {
         claimId: input.claimId,
-        ratifiedBy: "vote",
         reused: false,
-        status: "canonized",
+        status: "rejected",
         tally,
       };
-    }
+    },
+  );
 
-    return {
-      claimId: input.claimId,
-      reused: false,
-      status: "rejected",
-      tally,
-    };
-  });
+  switch (result.status) {
+    case "canonized":
+      if (!result.reused) {
+        await publishLoreCanonized({
+          claimId: result.claimId,
+          deps,
+          leagueId: input.leagueId,
+          ratifiedBy: result.ratifiedBy,
+          timestamp,
+        });
+      }
+      break;
+    case "rejected":
+      break;
+  }
+
+  return result;
 }
 
 export async function stewardLoreClaim({
@@ -1906,338 +2037,359 @@ export async function stewardLoreClaim({
   const timestamp = currentTime(deps);
   const reason = cleanText(input.reason, "reason");
 
-  return withLeagueContext(deps.db, input.leagueId, async (tx) => {
-    await assertStewardMember({
-      leagueId: input.leagueId,
-      memberId: input.actorMemberId,
-      tx,
-    });
-
-    const [claim] = await tx
-      .select({
-        branchOf: loreClaims.branchOf,
-        id: loreClaims.id,
-        ratifiedAt: loreClaims.ratifiedAt,
-        ratifiedBy: loreClaims.ratifiedBy,
-        relation: loreClaims.relation,
-        status: loreClaims.status,
-        threadRootId: loreClaims.threadRootId,
-        voteClosesAt: loreClaims.voteClosesAt,
-      })
-      .from(loreClaims)
-      .where(
-        and(
-          eq(loreClaims.leagueId, input.leagueId),
-          eq(loreClaims.id, input.claimId),
-        ),
-      )
-      .limit(1);
-
-    if (!claim) {
-      throw new AppError({
-        code: "LORE_CLAIM_NOT_FOUND",
-        message: "Lore claim could not be found",
-        status: 404,
+  const result: StewardLoreClaimResult = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (tx): Promise<StewardLoreClaimResult> => {
+      await assertStewardMember({
+        leagueId: input.leagueId,
+        memberId: input.actorMemberId,
+        tx,
       });
-    }
 
-    const beforeState = claimSnapshot(claim);
-    switch (input.action) {
-      case "veto": {
-        switch (claim.status) {
-          case "canon":
-            break;
-          default:
+      const [claim] = await tx
+        .select({
+          branchOf: loreClaims.branchOf,
+          id: loreClaims.id,
+          ratifiedAt: loreClaims.ratifiedAt,
+          ratifiedBy: loreClaims.ratifiedBy,
+          relation: loreClaims.relation,
+          status: loreClaims.status,
+          threadRootId: loreClaims.threadRootId,
+          voteClosesAt: loreClaims.voteClosesAt,
+        })
+        .from(loreClaims)
+        .where(
+          and(
+            eq(loreClaims.leagueId, input.leagueId),
+            eq(loreClaims.id, input.claimId),
+          ),
+        )
+        .limit(1);
+
+      if (!claim) {
+        throw new AppError({
+          code: "LORE_CLAIM_NOT_FOUND",
+          message: "Lore claim could not be found",
+          status: 404,
+        });
+      }
+
+      const beforeState = claimSnapshot(claim);
+      switch (input.action) {
+        case "veto": {
+          switch (claim.status) {
+            case "canon":
+              break;
+            default:
+              throw new AppError({
+                code: "LORE_CLAIM_NOT_VETOABLE",
+                message: "Only canon lore claims can be vetoed",
+                status: 409,
+              });
+          }
+
+          const [updated] = await tx
+            .update(loreClaims)
+            .set({
+              ratifiedAt: null,
+              ratifiedBy: null,
+              status: "rejected",
+              updatedAt: timestamp,
+            })
+            .where(
+              and(
+                eq(loreClaims.leagueId, input.leagueId),
+                eq(loreClaims.id, input.claimId),
+                eq(loreClaims.status, "canon"),
+              ),
+            )
+            .returning({
+              id: loreClaims.id,
+              ratifiedAt: loreClaims.ratifiedAt,
+              ratifiedBy: loreClaims.ratifiedBy,
+              status: loreClaims.status,
+              threadRootId: loreClaims.threadRootId,
+              voteClosesAt: loreClaims.voteClosesAt,
+            });
+
+          if (!updated) {
             throw new AppError({
-              code: "LORE_CLAIM_NOT_VETOABLE",
-              message: "Only canon lore claims can be vetoed",
+              code: "LORE_STEWARD_ACTION_FAILED",
+              message: "Lore claim could not be steward-adjudicated",
               status: 409,
             });
-        }
+          }
 
-        const [updated] = await tx
-          .update(loreClaims)
-          .set({
-            ratifiedAt: null,
-            ratifiedBy: null,
+          await tx.insert(loreEvents).values([
+            {
+              actorMemberId: input.actorMemberId,
+              afterState: {
+                ...claimSnapshot(updated),
+                action: "veto",
+                reason,
+              },
+              beforeState,
+              claimId: input.claimId,
+              kind: "steward_action",
+              leagueId: input.leagueId,
+              reason: "steward:veto",
+            },
+            {
+              actorMemberId: input.actorMemberId,
+              afterState: {
+                ...claimSnapshot(updated),
+                reason,
+              },
+              beforeState,
+              claimId: input.claimId,
+              kind: "rejected",
+              leagueId: input.leagueId,
+              reason: "steward:veto",
+            },
+          ]);
+
+          return {
+            claimId: input.claimId,
             status: "rejected",
-            updatedAt: timestamp,
-          })
-          .where(
-            and(
-              eq(loreClaims.leagueId, input.leagueId),
-              eq(loreClaims.id, input.claimId),
-              eq(loreClaims.status, "canon"),
-            ),
-          )
-          .returning({
-            id: loreClaims.id,
-            ratifiedAt: loreClaims.ratifiedAt,
-            ratifiedBy: loreClaims.ratifiedBy,
-            status: loreClaims.status,
-            threadRootId: loreClaims.threadRootId,
-            voteClosesAt: loreClaims.voteClosesAt,
-          });
-
-        if (!updated) {
-          throw new AppError({
-            code: "LORE_STEWARD_ACTION_FAILED",
-            message: "Lore claim could not be steward-adjudicated",
-            status: 409,
-          });
+          };
         }
+        case "extend": {
+          switch (claim.status) {
+            case "vote":
+              break;
+            default:
+              throw new AppError({
+                code: "LORE_CLAIM_NOT_STEWARDABLE",
+                message: "Only open lore votes can be steward-adjudicated",
+                status: 409,
+              });
+          }
 
-        await tx.insert(loreEvents).values([
-          {
+          const [previousExtension] = await tx
+            .select({ id: loreEvents.id })
+            .from(loreEvents)
+            .where(
+              and(
+                eq(loreEvents.leagueId, input.leagueId),
+                eq(loreEvents.claimId, input.claimId),
+                eq(loreEvents.kind, "steward_action"),
+                eq(loreEvents.reason, "steward:extend"),
+              ),
+            )
+            .limit(1);
+
+          if (previousExtension) {
+            throw new AppError({
+              code: "LORE_VOTE_ALREADY_EXTENDED",
+              message: "Lore vote window can only be extended once",
+              status: 409,
+            });
+          }
+
+          const voteClosesAt =
+            input.extendUntil ?? defaultVoteClosesAt(timestamp);
+          if (voteClosesAt <= timestamp) {
+            throw new AppError({
+              code: "LORE_EXTENSION_INVALID",
+              message: "Lore vote extension must end in the future",
+              status: 400,
+            });
+          }
+
+          const [updated] = await tx
+            .update(loreClaims)
+            .set({ updatedAt: timestamp, voteClosesAt })
+            .where(
+              and(
+                eq(loreClaims.leagueId, input.leagueId),
+                eq(loreClaims.id, input.claimId),
+                eq(loreClaims.status, "vote"),
+              ),
+            )
+            .returning({
+              id: loreClaims.id,
+              ratifiedAt: loreClaims.ratifiedAt,
+              ratifiedBy: loreClaims.ratifiedBy,
+              status: loreClaims.status,
+              threadRootId: loreClaims.threadRootId,
+              voteClosesAt: loreClaims.voteClosesAt,
+            });
+
+          if (!updated) {
+            throw new AppError({
+              code: "LORE_EXTENSION_FAILED",
+              message: "Lore vote window could not be extended",
+              status: 409,
+            });
+          }
+
+          await tx.insert(loreEvents).values({
             actorMemberId: input.actorMemberId,
             afterState: {
               ...claimSnapshot(updated),
-              action: "veto",
+              action: "extend",
               reason,
             },
             beforeState,
             claimId: input.claimId,
             kind: "steward_action",
             leagueId: input.leagueId,
-            reason: "steward:veto",
-          },
-          {
-            actorMemberId: input.actorMemberId,
-            afterState: {
-              ...claimSnapshot(updated),
-              reason,
-            },
-            beforeState,
-            claimId: input.claimId,
-            kind: "rejected",
-            leagueId: input.leagueId,
-            reason: "steward:veto",
-          },
-        ]);
-
-        return {
-          claimId: input.claimId,
-          status: "rejected",
-        };
-      }
-      case "extend": {
-        switch (claim.status) {
-          case "vote":
-            break;
-          default:
-            throw new AppError({
-              code: "LORE_CLAIM_NOT_STEWARDABLE",
-              message: "Only open lore votes can be steward-adjudicated",
-              status: 409,
-            });
-        }
-
-        const [previousExtension] = await tx
-          .select({ id: loreEvents.id })
-          .from(loreEvents)
-          .where(
-            and(
-              eq(loreEvents.leagueId, input.leagueId),
-              eq(loreEvents.claimId, input.claimId),
-              eq(loreEvents.kind, "steward_action"),
-              eq(loreEvents.reason, "steward:extend"),
-            ),
-          )
-          .limit(1);
-
-        if (previousExtension) {
-          throw new AppError({
-            code: "LORE_VOTE_ALREADY_EXTENDED",
-            message: "Lore vote window can only be extended once",
-            status: 409,
+            reason: "steward:extend",
           });
-        }
 
-        const voteClosesAt =
-          input.extendUntil ?? defaultVoteClosesAt(timestamp);
-        if (voteClosesAt <= timestamp) {
+          return {
+            claimId: input.claimId,
+            status: "extended",
+            voteClosesAt,
+          };
+        }
+        case "ratify":
+        case "reject":
+          break;
+        default:
           throw new AppError({
-            code: "LORE_EXTENSION_INVALID",
-            message: "Lore vote extension must end in the future",
+            code: "LORE_STEWARD_ACTION_INVALID",
+            message: "Lore steward action is invalid",
             status: 400,
           });
-        }
+      }
 
-        const [updated] = await tx
-          .update(loreClaims)
-          .set({ updatedAt: timestamp, voteClosesAt })
-          .where(
-            and(
-              eq(loreClaims.leagueId, input.leagueId),
-              eq(loreClaims.id, input.claimId),
-              eq(loreClaims.status, "vote"),
-            ),
-          )
-          .returning({
-            id: loreClaims.id,
-            ratifiedAt: loreClaims.ratifiedAt,
-            ratifiedBy: loreClaims.ratifiedBy,
-            status: loreClaims.status,
-            threadRootId: loreClaims.threadRootId,
-            voteClosesAt: loreClaims.voteClosesAt,
-          });
-
-        if (!updated) {
+      switch (claim.status) {
+        case "vote":
+          break;
+        default:
           throw new AppError({
-            code: "LORE_EXTENSION_FAILED",
-            message: "Lore vote window could not be extended",
+            code: "LORE_CLAIM_NOT_STEWARDABLE",
+            message: "Only open lore votes can be steward-adjudicated",
             status: 409,
           });
-        }
+      }
 
-        await tx.insert(loreEvents).values({
+      let nextStatus: "canon" | "rejected";
+      let ratifiedAt: Date | null;
+      let ratifiedBy: "steward" | null;
+      let transitionKind: "ratified" | "rejected";
+      switch (input.action) {
+        case "ratify":
+          nextStatus = "canon";
+          ratifiedAt = timestamp;
+          ratifiedBy = "steward";
+          transitionKind = "ratified";
+          break;
+        case "reject":
+          nextStatus = "rejected";
+          ratifiedAt = null;
+          ratifiedBy = null;
+          transitionKind = "rejected";
+          break;
+        default:
+          throw new AppError({
+            code: "LORE_STEWARD_ACTION_INVALID",
+            message: "Lore steward action is invalid",
+            status: 400,
+          });
+      }
+      const [updated] = await tx
+        .update(loreClaims)
+        .set({
+          ratifiedAt,
+          ratifiedBy,
+          status: nextStatus,
+          updatedAt: timestamp,
+        })
+        .where(
+          and(
+            eq(loreClaims.leagueId, input.leagueId),
+            eq(loreClaims.id, input.claimId),
+            eq(loreClaims.status, "vote"),
+          ),
+        )
+        .returning({
+          branchOf: loreClaims.branchOf,
+          id: loreClaims.id,
+          ratifiedAt: loreClaims.ratifiedAt,
+          ratifiedBy: loreClaims.ratifiedBy,
+          relation: loreClaims.relation,
+          status: loreClaims.status,
+          threadRootId: loreClaims.threadRootId,
+          voteClosesAt: loreClaims.voteClosesAt,
+        });
+
+      if (!updated) {
+        throw new AppError({
+          code: "LORE_STEWARD_ACTION_FAILED",
+          message: "Lore claim could not be steward-adjudicated",
+          status: 409,
+        });
+      }
+
+      await tx.insert(loreEvents).values([
+        {
           actorMemberId: input.actorMemberId,
           afterState: {
             ...claimSnapshot(updated),
-            action: "extend",
+            action: input.action,
             reason,
           },
           beforeState,
           claimId: input.claimId,
           kind: "steward_action",
           leagueId: input.leagueId,
-          reason: "steward:extend",
-        });
-
-        return {
+          reason: `steward:${input.action}`,
+        },
+        {
+          actorMemberId: input.actorMemberId,
+          afterState: {
+            ...claimSnapshot(updated),
+            reason,
+          },
+          beforeState,
           claimId: input.claimId,
-          status: "extended",
-          voteClosesAt,
-        };
+          kind: transitionKind,
+          leagueId: input.leagueId,
+          reason: `steward:${input.action}`,
+        },
+      ]);
+      await resolveChallengeInTx({
+        challenge: updated,
+        leagueId: input.leagueId,
+        nextStatus,
+        reason: `steward:${input.action}`,
+        timestamp,
+        tx,
+      });
+
+      switch (input.action) {
+        case "ratify":
+          return {
+            claimId: input.claimId,
+            ratifiedBy: "steward",
+            status: "canonized",
+          };
+        case "reject":
+          return {
+            claimId: input.claimId,
+            status: "rejected",
+          };
       }
-      case "ratify":
-      case "reject":
-        break;
-      default:
-        throw new AppError({
-          code: "LORE_STEWARD_ACTION_INVALID",
-          message: "Lore steward action is invalid",
-          status: 400,
-        });
-    }
+    },
+  );
 
-    switch (claim.status) {
-      case "vote":
-        break;
-      default:
-        throw new AppError({
-          code: "LORE_CLAIM_NOT_STEWARDABLE",
-          message: "Only open lore votes can be steward-adjudicated",
-          status: 409,
-        });
-    }
-
-    let nextStatus: "canon" | "rejected";
-    let ratifiedAt: Date | null;
-    let ratifiedBy: "steward" | null;
-    let transitionKind: "ratified" | "rejected";
-    switch (input.action) {
-      case "ratify":
-        nextStatus = "canon";
-        ratifiedAt = timestamp;
-        ratifiedBy = "steward";
-        transitionKind = "ratified";
-        break;
-      case "reject":
-        nextStatus = "rejected";
-        ratifiedAt = null;
-        ratifiedBy = null;
-        transitionKind = "rejected";
-        break;
-      default:
-        throw new AppError({
-          code: "LORE_STEWARD_ACTION_INVALID",
-          message: "Lore steward action is invalid",
-          status: 400,
-        });
-    }
-    const [updated] = await tx
-      .update(loreClaims)
-      .set({
-        ratifiedAt,
-        ratifiedBy,
-        status: nextStatus,
-        updatedAt: timestamp,
-      })
-      .where(
-        and(
-          eq(loreClaims.leagueId, input.leagueId),
-          eq(loreClaims.id, input.claimId),
-          eq(loreClaims.status, "vote"),
-        ),
-      )
-      .returning({
-        branchOf: loreClaims.branchOf,
-        id: loreClaims.id,
-        ratifiedAt: loreClaims.ratifiedAt,
-        ratifiedBy: loreClaims.ratifiedBy,
-        relation: loreClaims.relation,
-        status: loreClaims.status,
-        threadRootId: loreClaims.threadRootId,
-        voteClosesAt: loreClaims.voteClosesAt,
-      });
-
-    if (!updated) {
-      throw new AppError({
-        code: "LORE_STEWARD_ACTION_FAILED",
-        message: "Lore claim could not be steward-adjudicated",
-        status: 409,
-      });
-    }
-
-    await tx.insert(loreEvents).values([
-      {
-        actorMemberId: input.actorMemberId,
-        afterState: {
-          ...claimSnapshot(updated),
-          action: input.action,
-          reason,
-        },
-        beforeState,
-        claimId: input.claimId,
-        kind: "steward_action",
+  switch (result.status) {
+    case "canonized":
+      await publishLoreCanonized({
+        claimId: result.claimId,
+        deps,
         leagueId: input.leagueId,
-        reason: `steward:${input.action}`,
-      },
-      {
-        actorMemberId: input.actorMemberId,
-        afterState: {
-          ...claimSnapshot(updated),
-          reason,
-        },
-        beforeState,
-        claimId: input.claimId,
-        kind: transitionKind,
-        leagueId: input.leagueId,
-        reason: `steward:${input.action}`,
-      },
-    ]);
-    await resolveChallengeInTx({
-      challenge: updated,
-      leagueId: input.leagueId,
-      nextStatus,
-      reason: `steward:${input.action}`,
-      timestamp,
-      tx,
-    });
+        ratifiedBy: result.ratifiedBy,
+        timestamp,
+      });
+      break;
+    case "extended":
+    case "rejected":
+      break;
+  }
 
-    switch (input.action) {
-      case "ratify":
-        return {
-          claimId: input.claimId,
-          ratifiedBy: "steward",
-          status: "canonized",
-        };
-      case "reject":
-        return {
-          claimId: input.claimId,
-          status: "rejected",
-        };
-    }
-  });
+  return result;
 }

@@ -193,6 +193,11 @@ describe("realtime subscription grants", () => {
     ).toEqual(["broadcast:read"]);
     expect(
       result.value.channels.find(
+        (channel) => channel.topic === leagueRealtimeChannel(leagueAId, "lore"),
+      )?.capabilities,
+    ).toEqual(["broadcast:read"]);
+    expect(
+      result.value.channels.find(
         (channel) =>
           channel.topic === leagueRealtimeChannel(leagueAId, "presence"),
       )?.capabilities,

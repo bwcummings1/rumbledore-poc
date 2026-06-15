@@ -167,4 +167,68 @@ describe("realtime browser client", () => {
     handle.unsubscribe();
     expect(client.removed).toEqual(client.channels);
   });
+
+  it("subscribes one channel to multiple broadcast events", async () => {
+    const topic = "arena:leaderboard" as const;
+    const leaderboardPayload = {
+      at: "2026-06-15T12:00:00.000Z",
+      seasonId: "season-1",
+      type: REALTIME_EVENTS.arenaLeaderboardUpdated,
+      v: 1,
+    } as const;
+    const swingPayload: RealtimePayload = {
+      at: "2026-06-15T12:00:01.000Z",
+      computedAt: "2026-06-15T12:00:00.000Z",
+      seasonId: "season-1",
+      swings: [],
+      type: REALTIME_EVENTS.arenaStandingsSwing,
+      v: 1,
+    };
+    const grant: RealtimeSubscriptionGrant = {
+      channels: [{ capabilities: ["broadcast:read"], private: true, topic }],
+      expiresAt: "2026-06-12T00:05:00.000Z",
+      issuedAt: "2026-06-12T00:00:00.000Z",
+      token: fixtureValue("client", "grant"),
+      transport: {
+        kind: "supabase",
+        publishableKey: fixtureValue("publishable", "key"),
+        url: "https://project.supabase.co",
+      },
+      ttlSeconds: 300,
+    };
+    const client = new FakeClient();
+    const onRefresh = vi.fn();
+
+    await openRealtimeRefreshSubscription({
+      createClient: () => client,
+      fetcher: async () => jsonResponse(grant),
+      onRefresh,
+      subscriptions: [
+        {
+          events: [
+            REALTIME_EVENTS.arenaLeaderboardUpdated,
+            REALTIME_EVENTS.arenaStandingsSwing,
+          ],
+          topic,
+        },
+      ],
+    });
+
+    client.channels[0]?.emit(
+      REALTIME_EVENTS.arenaLeaderboardUpdated,
+      leaderboardPayload,
+    );
+    client.channels[0]?.emit(REALTIME_EVENTS.arenaStandingsSwing, swingPayload);
+
+    expect(onRefresh).toHaveBeenCalledWith({
+      event: REALTIME_EVENTS.arenaLeaderboardUpdated,
+      payload: leaderboardPayload,
+      topic,
+    });
+    expect(onRefresh).toHaveBeenCalledWith({
+      event: REALTIME_EVENTS.arenaStandingsSwing,
+      payload: swingPayload,
+      topic,
+    });
+  });
 });

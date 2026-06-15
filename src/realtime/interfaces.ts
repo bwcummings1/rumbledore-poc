@@ -7,6 +7,8 @@ export const REALTIME_EVENTS = {
   centralNewsUpdated: "central.news.updated",
   historyImportProgress: "history.import.progress",
   leagueLeaderboardUpdated: "league.leaderboard.updated",
+  loreCanonized: "lore.canonized",
+  loreVoteOpened: "lore.vote.opened",
   oddsUpdated: "odds.updated",
   scoresUpdated: "scores.updated",
 } as const;
@@ -71,6 +73,24 @@ export interface LeagueLeaderboardUpdatedPayload {
   bankrollWeekId: string | null;
 }
 
+export interface LoreVoteOpenedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.loreVoteOpened;
+  at: string;
+  leagueId: string;
+  claimId: string;
+  voteClosesAt: string;
+}
+
+export interface LoreCanonizedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.loreCanonized;
+  at: string;
+  leagueId: string;
+  claimId: string;
+  ratifiedBy: "steward" | "verified" | "vote";
+}
+
 export interface ArenaLeaderboardUpdatedPayload {
   v: 1;
   type: typeof REALTIME_EVENTS.arenaLeaderboardUpdated;
@@ -112,6 +132,8 @@ export type RealtimePayload =
   | CentralNewsUpdatedPayload
   | HistoryImportProgressPayload
   | LeagueLeaderboardUpdatedPayload
+  | LoreCanonizedPayload
+  | LoreVoteOpenedPayload
   | OddsUpdatedPayload
   | ScoresUpdatedPayload;
 
@@ -129,6 +151,8 @@ export interface RealtimePublisher {
   publishLeagueLeaderboardUpdated(
     payload: LeagueLeaderboardUpdatedPayload,
   ): Promise<void>;
+  publishLeagueLoreCanonized(payload: LoreCanonizedPayload): Promise<void>;
+  publishLeagueLoreVoteOpened(payload: LoreVoteOpenedPayload): Promise<void>;
   publishLeagueScoresUpdated(payload: ScoresUpdatedPayload): Promise<void>;
 }
 
@@ -137,6 +161,7 @@ export const LEAGUE_REALTIME_CHANNEL_KINDS = [
   "odds",
   "leaderboard",
   "blog",
+  "lore",
   "history",
   "presence",
 ] as const;
@@ -175,6 +200,10 @@ export function leagueLeaderboardChannel(
   leagueId: string,
 ): `league:${string}:leaderboard` {
   return `league:${leagueId}:leaderboard`;
+}
+
+export function leagueLoreChannel(leagueId: string): `league:${string}:lore` {
+  return `league:${leagueId}:lore`;
 }
 
 export function leagueHistoryChannel(

@@ -1466,6 +1466,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
           hooks: recompute.recordBrokenHooks,
           leagueId: leagueWrite.id,
           now: input.now,
+          realtime: input.realtime,
         })
       : [];
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
 import { AppError, toAppError } from "@/core/result";
 import { stewardLoreClaim } from "@/lore";
@@ -8,6 +9,7 @@ import {
   type LoreStewardActionResponse,
 } from "@/lore/member-ui";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
+import { createRealtimePublisher } from "@/realtime";
 import {
   authorizeLoreMember,
   getMemberIdForUser,
@@ -64,7 +66,7 @@ async function loreStewardPost(
       userId: access.value.userId,
     });
     const result = await stewardLoreClaim({
-      deps: { db },
+      deps: { db, realtime: createRealtimePublisher(getEnv()) },
       input: {
         action: parsed.data.action,
         actorMemberId: memberId,

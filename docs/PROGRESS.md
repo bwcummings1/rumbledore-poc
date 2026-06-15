@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Lore realtime broadcast fan-out landed — lore vote-opened/canonized events now publish on league-scoped realtime channels from member submissions, steward actions, poll instigations, vote closes, and record-broken verified hooks.
 - 2026-06-15: Record-broken cast/lore hooks landed — incremental record displacements now emit stable record-broken cast events, seed idempotent AI-origin data-verifiable lore claims, and give milestone generation the displaced prior holder.
 - 2026-06-15: Record-book aggregate materialization landed — all-time standings and keeper milestones now persist as RLS-scoped aggregates, full and targeted stats recomputes refresh them idempotently, and live finalized-score changes run a distinct records pass.
 - 2026-06-15: League Records surface deepening landed — `/records` now renders a structured record book with standings, records, championships, rivalries, and dedicated per-manager plus canonical head-to-head pages.

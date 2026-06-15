@@ -7,6 +7,7 @@ import {
   generateLeagueBlogPost,
   parseAiPersona,
 } from "@/ai";
+import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -21,6 +22,7 @@ import {
   polls,
   pollVotes,
 } from "@/db/schema";
+import { REALTIME_EVENTS } from "@/realtime";
 
 export const INSTIGATION_KINDS = [
   "settle_it_poll",
@@ -100,6 +102,66 @@ function now(deps: Pick<AiGenerationDependencies, "now">): Date {
 
 function defaultClosesAt(base: Date): Date {
   return new Date(base.getTime() + 7 * 24 * 60 * 60 * 1000);
+}
+
+async function publishInstigationLoreVoteOpened({
+  claimId,
+  closesAt,
+  deps,
+  leagueId,
+  timestamp,
+}: {
+  claimId: string;
+  closesAt: Date;
+  deps: AiGenerationDependencies;
+  leagueId: string;
+  timestamp: Date;
+}): Promise<void> {
+  try {
+    await deps.realtime.publishLeagueLoreVoteOpened({
+      at: timestamp.toISOString(),
+      claimId,
+      leagueId,
+      type: REALTIME_EVENTS.loreVoteOpened,
+      v: 1,
+      voteClosesAt: closesAt.toISOString(),
+    });
+  } catch (error) {
+    logger.warn("Realtime instigation lore vote-opened event failed", {
+      claimId,
+      error,
+      leagueId,
+    });
+  }
+}
+
+async function publishInstigationLoreCanonized({
+  claimId,
+  deps,
+  leagueId,
+  timestamp,
+}: {
+  claimId: string;
+  deps: AiGenerationDependencies;
+  leagueId: string;
+  timestamp: Date;
+}): Promise<void> {
+  try {
+    await deps.realtime.publishLeagueLoreCanonized({
+      at: timestamp.toISOString(),
+      claimId,
+      leagueId,
+      ratifiedBy: "vote",
+      type: REALTIME_EVENTS.loreCanonized,
+      v: 1,
+    });
+  } catch (error) {
+    logger.warn("Realtime poll lore canonized event failed", {
+      claimId,
+      error,
+      leagueId,
+    });
+  }
 }
 
 function cleanText(value: string, field: string): string {
@@ -546,7 +608,7 @@ export async function seedInstigation({
       : null);
 
   if (validated.kind === "settle_it_poll" && pollId) {
-    await ensurePollLoreClaim({
+    const claimId = await ensurePollLoreClaim({
       closesAt,
       deps,
       groundingRefs: validated.groundingRefs,
@@ -558,6 +620,15 @@ export async function seedInstigation({
       pollId,
       promptText: validated.promptText,
     });
+    if (seeded.pollId) {
+      await publishInstigationLoreVoteOpened({
+        claimId,
+        closesAt,
+        deps,
+        leagueId: input.leagueId,
+        timestamp,
+      });
+    }
   }
 
   const column = await generateLeagueBlogPost({
@@ -1149,6 +1220,15 @@ export async function closePoll({
       totalVotes: closed.totalVotes,
       verdictContentItemId: null,
     };
+  }
+
+  if (!closed.reused) {
+    await publishInstigationLoreCanonized({
+      claimId: closed.loreClaimId,
+      deps,
+      leagueId: input.leagueId,
+      timestamp,
+    });
   }
 
   const verdict = await generateLeagueBlogPost({

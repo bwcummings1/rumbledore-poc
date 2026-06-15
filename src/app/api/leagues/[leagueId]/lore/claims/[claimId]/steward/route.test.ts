@@ -1,17 +1,28 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { requireLeagueRole } from "@/auth/guards";
 import { stewardLoreClaim } from "@/lore";
 import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({
   db: { select: vi.fn() },
+  getEnv: vi.fn(),
   getLoreClaimCard: vi.fn(),
   requireLeagueRole: vi.fn(),
+  realtime: { publishLeagueLoreCanonized: vi.fn() },
+  createRealtimePublisher: vi.fn(),
   stewardLoreClaim: vi.fn(),
+}));
+
+vi.mock("@/core/env", () => ({
+  getEnv: mocks.getEnv,
 }));
 
 vi.mock("@/db", () => ({
   getDb: () => mocks.db,
+}));
+
+vi.mock("@/realtime", () => ({
+  createRealtimePublisher: mocks.createRealtimePublisher,
 }));
 
 vi.mock("@/auth/guards", () => ({
@@ -74,6 +85,11 @@ function mockMembership() {
   mocks.db.select.mockReturnValue({ from });
 }
 
+beforeEach(() => {
+  mocks.getEnv.mockReturnValue({ realtime: { mock: true } });
+  mocks.createRealtimePublisher.mockReturnValue(mocks.realtime);
+});
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -118,7 +134,7 @@ describe("POST /api/leagues/[leagueId]/lore/claims/[claimId]/steward", () => {
       }),
     );
     expect(stewardLoreClaim).toHaveBeenCalledWith({
-      deps: { db: mocks.db },
+      deps: { db: mocks.db, realtime: mocks.realtime },
       input: {
         action: "ratify",
         actorMemberId: memberId,

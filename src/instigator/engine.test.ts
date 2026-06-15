@@ -20,6 +20,7 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import { castPollVote, closePoll, seedInstigation } from ".";
 
 const marker = `instigator-${randomUUID()}`;
@@ -151,11 +152,14 @@ async function seedLeague(tag: string): Promise<SeededLeague> {
   };
 }
 
-function aiDeps() {
+function aiDeps(
+  overrides: Partial<ReturnType<typeof createMockAiDependencies>> = {},
+) {
   return {
     ...createMockAiDependencies(handle.db),
     duplicateThreshold: 1.1,
     now: () => new Date("2026-06-14T12:00:00.000Z"),
+    ...overrides,
   };
 }
 
@@ -186,6 +190,7 @@ afterAll(async () => {
 describe("instigator engine", () => {
   it("seeds a grounded settle-it poll and writes one instigation column idempotently", async () => {
     const league = await seedLeague("seed");
+    const realtime = new RecordingRealtimePublisher();
     const input = {
       dedupKey: "week-4-main-instigation",
       groundingRefs: [
@@ -202,8 +207,11 @@ describe("instigator engine", () => {
       promptText: `Settle it: is ${league.homeTeamName} the league's main character?`,
     };
 
-    const first = await seedInstigation({ deps: aiDeps(), input });
-    const second = await seedInstigation({ deps: aiDeps(), input });
+    const first = await seedInstigation({ deps: aiDeps({ realtime }), input });
+    const second = await seedInstigation({
+      deps: aiDeps({ realtime }),
+      input,
+    });
 
     expect(first).toMatchObject({
       pollId: expect.any(String),
@@ -217,6 +225,16 @@ describe("instigator engine", () => {
       reused: true,
       status: "polling",
     });
+    expect(realtime.loreVoteOpened).toEqual([
+      {
+        at: "2026-06-14T12:00:00.000Z",
+        claimId: expect.any(String),
+        leagueId: league.id,
+        type: REALTIME_EVENTS.loreVoteOpened,
+        v: 1,
+        voteClosesAt: "2026-06-21T12:00:00.000Z",
+      },
+    ]);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
       instigations: await tx
@@ -291,8 +309,9 @@ describe("instigator engine", () => {
 
   it("records one vote per member, canonizes the poll result, and writes one verdict", async () => {
     const league = await seedLeague("close");
+    const realtime = new RecordingRealtimePublisher();
     const seed = await seedInstigation({
-      deps: aiDeps(),
+      deps: aiDeps({ realtime }),
       input: {
         dedupKey: "week-4-verdict",
         groundingRefs: [
@@ -313,7 +332,7 @@ describe("instigator engine", () => {
     if (!pollId) throw new Error("poll was not created");
 
     await castPollVote({
-      deps: aiDeps(),
+      deps: aiDeps({ realtime }),
       input: {
         leagueId: league.id,
         memberId: league.memberAId,
@@ -322,7 +341,7 @@ describe("instigator engine", () => {
       },
     });
     await castPollVote({
-      deps: aiDeps(),
+      deps: aiDeps({ realtime }),
       input: {
         leagueId: league.id,
         memberId: league.memberBId,
@@ -331,7 +350,7 @@ describe("instigator engine", () => {
       },
     });
     await castPollVote({
-      deps: aiDeps(),
+      deps: aiDeps({ realtime }),
       input: {
         leagueId: league.id,
         memberId: league.memberBId,
@@ -341,11 +360,11 @@ describe("instigator engine", () => {
     });
 
     const closed = await closePoll({
-      deps: aiDeps(),
+      deps: aiDeps({ realtime }),
       input: { leagueId: league.id, pollId },
     });
     const closedAgain = await closePoll({
-      deps: aiDeps(),
+      deps: aiDeps({ realtime }),
       input: { leagueId: league.id, pollId },
     });
 
@@ -363,6 +382,16 @@ describe("instigator engine", () => {
       reused: true,
       status: "canonized",
     });
+    expect(realtime.loreCanonized).toEqual([
+      {
+        at: "2026-06-14T12:00:00.000Z",
+        claimId: closed.loreClaimId,
+        leagueId: league.id,
+        ratifiedBy: "vote",
+        type: REALTIME_EVENTS.loreCanonized,
+        v: 1,
+      },
+    ]);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
       claims: await tx

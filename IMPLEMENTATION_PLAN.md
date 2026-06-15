@@ -21,7 +21,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Add cast "record broken" and data-verifiable lore hooks sourced from records. (specs/23)
 
 ### K. Realtime & notifications (see specs/20)
-- [ ] Broadcast score/standings, settlement, content, lore, and arena events on per-league RLS channels. (specs/20)
+- [x] Broadcast score/standings, settlement, content, lore, and arena events on per-league RLS channels. (specs/20)
 - [ ] Wire client subscription via short-lived league-scoped tokens with reconnect/backoff (mock + Supabase). (specs/20)
 - [ ] Deliver Web Push end-to-end with per-league RLS scoping and VAPID config (mock until keys). (specs/20)
 - [ ] Build the notification taxonomy plus an RLS-scoped preferences/opt-out enforced at fan-out. (specs/20)
@@ -49,6 +49,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — guard `closeLoreVote()` on the close time.
 - [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` / `src/news/league-feed.ts`.
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — split routes or use a neutral slug.
+- [ ] **[realtime/LOW] Realtime declares `odds.updated` and `central.news.updated` payloads without publisher helpers** — add typed publish methods when specs/21 or odds freshness fan-out needs them.
 
 ## Discoveries / bugs (loop appends here)
 - [ ] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.

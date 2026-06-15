@@ -40,8 +40,11 @@ function parseLoreVoteCloseData(data: unknown): LoreVoteCloseData {
 }
 
 async function getDefaultLoreVoteCloseDependencies(): Promise<LoreVoteCloseDependencies> {
+  const { getEnv } = await import("@/core/env");
   const { getDb } = await import("@/db");
-  return { db: getDb() };
+  const { createRealtimePublisher } = await import("@/realtime");
+  const env = getEnv();
+  return { db: getDb(), realtime: createRealtimePublisher(env) };
 }
 
 export async function runLoreVoteClose({

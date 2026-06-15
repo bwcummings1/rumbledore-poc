@@ -21,6 +21,7 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import {
   castLoreVote,
   closeLoreVote,
@@ -53,6 +54,12 @@ function deps(now = baseNow) {
     db: handle.db,
     now: () => now,
   };
+}
+
+class FailingLoreRealtimePublisher extends RecordingRealtimePublisher {
+  override async publishLeagueLoreVoteOpened(): Promise<void> {
+    throw new Error("lore realtime unavailable");
+  }
 }
 
 async function seedLeague(
@@ -416,6 +423,85 @@ describe("lore claim voting lifecycle", () => {
     ]);
   });
 
+  it("publishes realtime lore events when votes open and canonize", async () => {
+    const league = await seedLeague("realtime-lore", [
+      "commissioner",
+      "member",
+      "member",
+      "member",
+    ]);
+    const realtime = new RecordingRealtimePublisher();
+
+    const claim = await openOpinionClaim({
+      deps: { ...deps(), realtime },
+      input: {
+        authorMemberId: league.members[0]?.id,
+        body: "Realtime lore should wake up the league.",
+        leagueId: league.id,
+        title: "The live lore vote",
+        voteClosesAt: baseNow,
+      },
+    });
+    await affirmClaim(league, claim.claimId);
+    const closed = await closeLoreVote({
+      deps: { ...deps(), realtime },
+      input: { claimId: claim.claimId, leagueId: league.id },
+    });
+    await closeLoreVote({
+      deps: { ...deps(), realtime },
+      input: { claimId: claim.claimId, leagueId: league.id },
+    });
+
+    expect(closed.status).toBe("canonized");
+    expect(realtime.loreVoteOpened).toEqual([
+      {
+        at: baseNow.toISOString(),
+        claimId: claim.claimId,
+        leagueId: league.id,
+        type: REALTIME_EVENTS.loreVoteOpened,
+        v: 1,
+        voteClosesAt: baseNow.toISOString(),
+      },
+    ]);
+    expect(realtime.loreCanonized).toEqual([
+      {
+        at: baseNow.toISOString(),
+        claimId: claim.claimId,
+        leagueId: league.id,
+        ratifiedBy: "vote",
+        type: REALTIME_EVENTS.loreCanonized,
+        v: 1,
+      },
+    ]);
+  });
+
+  it("keeps lore writes durable when realtime vote-opened publish fails", async () => {
+    const league = await seedLeague("realtime-failure", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+    const claim = await openOpinionClaim({
+      deps: { ...deps(), realtime: new FailingLoreRealtimePublisher() },
+      input: {
+        authorMemberId: league.members[0]?.id,
+        body: "The claim should survive a realtime outage.",
+        leagueId: league.id,
+        title: "The resilient lore vote",
+        voteClosesAt: baseNow,
+      },
+    });
+
+    const [row] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ id: loreClaims.id, status: loreClaims.status })
+        .from(loreClaims)
+        .where(eq(loreClaims.id, claim.claimId)),
+    );
+
+    expect(row).toEqual({ id: claim.claimId, status: "vote" });
+  });
+
   it("does not close an open vote before its voting window ends", async () => {
     const league = await seedLeague("early-close", [
       "commissioner",
@@ -704,9 +790,10 @@ describe("lore claim voting lifecycle", () => {
       "member",
     ]);
     const weekly = await seedWeeklyScore({ league, tag: "verified-score" });
+    const realtime = new RecordingRealtimePublisher();
 
     const submitted = await submitLoreClaim({
-      deps: deps(),
+      deps: { ...deps(), realtime },
       input: {
         assertions: [
           {
@@ -731,6 +818,16 @@ describe("lore claim voting lifecycle", () => {
       status: "canonized",
       verification: "verified",
     });
+    expect(realtime.loreCanonized).toEqual([
+      {
+        at: baseNow.toISOString(),
+        claimId: submitted.claimId,
+        leagueId: league.id,
+        ratifiedBy: "verified",
+        type: REALTIME_EVENTS.loreCanonized,
+        v: 1,
+      },
+    ]);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
       claim: (

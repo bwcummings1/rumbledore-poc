@@ -17,6 +17,7 @@ import {
 import type { LoreClaimSubmitResponse } from "@/lore/member-ui";
 import { SEASON_LORE_METRICS, WEEKLY_LORE_METRICS } from "@/lore/member-ui";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
+import { createRealtimePublisher } from "@/realtime";
 import { authorizeLoreMember, getMemberIdForUser } from "../lore-route-helpers";
 
 export const runtime = "nodejs";
@@ -143,7 +144,7 @@ async function loreClaimsPost(
       userId: access.value.userId,
     });
     const result = await submitLoreClaim({
-      deps: { db },
+      deps: { db, realtime: createRealtimePublisher(getEnv()) },
       input: {
         ...(parsed.data.assertions
           ? {

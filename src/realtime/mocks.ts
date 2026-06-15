@@ -5,9 +5,12 @@ import {
   type BlogPublishedPayload,
   type HistoryImportProgressPayload,
   type LeagueLeaderboardUpdatedPayload,
+  type LoreCanonizedPayload,
+  type LoreVoteOpenedPayload,
   leagueBlogChannel,
   leagueHistoryChannel,
   leagueLeaderboardChannel,
+  leagueLoreChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
   type RealtimeChannel,
@@ -48,6 +51,18 @@ export class NoopRealtimePublisher implements RealtimePublisher {
     return;
   }
 
+  async publishLeagueLoreCanonized(
+    _payload: LoreCanonizedPayload,
+  ): Promise<void> {
+    return;
+  }
+
+  async publishLeagueLoreVoteOpened(
+    _payload: LoreVoteOpenedPayload,
+  ): Promise<void> {
+    return;
+  }
+
   async publishLeagueScoresUpdated(
     _payload: ScoresUpdatedPayload,
   ): Promise<void> {
@@ -61,6 +76,8 @@ export class RecordingRealtimePublisher implements RealtimePublisher {
   readonly blogPublished: BlogPublishedPayload[] = [];
   readonly historyImportProgress: HistoryImportProgressPayload[] = [];
   readonly leagueLeaderboardUpdated: LeagueLeaderboardUpdatedPayload[] = [];
+  readonly loreCanonized: LoreCanonizedPayload[] = [];
+  readonly loreVoteOpened: LoreVoteOpenedPayload[] = [];
   readonly scoresUpdated: ScoresUpdatedPayload[] = [];
 
   async publishArenaLeaderboardUpdated(
@@ -91,6 +108,18 @@ export class RecordingRealtimePublisher implements RealtimePublisher {
     payload: LeagueLeaderboardUpdatedPayload,
   ): Promise<void> {
     this.leagueLeaderboardUpdated.push(payload);
+  }
+
+  async publishLeagueLoreCanonized(
+    payload: LoreCanonizedPayload,
+  ): Promise<void> {
+    this.loreCanonized.push(payload);
+  }
+
+  async publishLeagueLoreVoteOpened(
+    payload: LoreVoteOpenedPayload,
+  ): Promise<void> {
+    this.loreVoteOpened.push(payload);
   }
 
   async publishLeagueScoresUpdated(
@@ -178,6 +207,26 @@ export class InProcessRealtimePublisher implements RealtimePublisher {
     await this.publish(
       leagueLeaderboardChannel(payload.leagueId),
       REALTIME_EVENTS.leagueLeaderboardUpdated,
+      payload,
+    );
+  }
+
+  async publishLeagueLoreCanonized(
+    payload: LoreCanonizedPayload,
+  ): Promise<void> {
+    await this.publish(
+      leagueLoreChannel(payload.leagueId),
+      REALTIME_EVENTS.loreCanonized,
+      payload,
+    );
+  }
+
+  async publishLeagueLoreVoteOpened(
+    payload: LoreVoteOpenedPayload,
+  ): Promise<void> {
+    await this.publish(
+      leagueLoreChannel(payload.leagueId),
+      REALTIME_EVENTS.loreVoteOpened,
       payload,
     );
   }
