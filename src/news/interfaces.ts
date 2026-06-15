@@ -6,7 +6,9 @@ export interface CentralNewsSourceItem {
   source: string;
   sourceUrl: string;
   canonicalUrl?: string;
+  heroImageUrl?: string;
   publishedAt: Date;
+  sourceType?: "rss" | "web" | "mock" | "manual";
   topics?: string[];
 }
 

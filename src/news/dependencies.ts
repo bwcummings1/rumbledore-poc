@@ -1,17 +1,28 @@
 import type { Env } from "@/core/env/schema";
 import type { Db } from "@/db/client";
+import { CompositeCentralNewsSource } from "./composite";
 import type { CentralNewsIngestionDependencies } from "./ingestion";
-import { MockCentralNewsSource } from "./mocks";
-import { TavilyCentralNewsSource } from "./real";
+import {
+  MockRssCentralNewsSource,
+  MockWebGroundingCentralNewsSource,
+} from "./mocks";
+import { RssCentralNewsSource, TavilyCentralNewsSource } from "./real";
 
-export function createNewsDependencies(
+export function createCentralNewsDependencies(
   db: Db,
-  env: Pick<Env, "services">,
+  env: Pick<Env, "news">,
 ): CentralNewsIngestionDependencies {
+  const grounding = env.news.grounding.mock
+    ? new MockWebGroundingCentralNewsSource()
+    : new TavilyCentralNewsSource({ apiKey: env.news.grounding.apiKey });
+  const rss = env.news.rss.mock
+    ? new MockRssCentralNewsSource()
+    : new RssCentralNewsSource({ feedUrls: env.news.rss.feedUrls });
+
   return {
     db,
-    source: env.services.tavily.mock
-      ? new MockCentralNewsSource()
-      : new TavilyCentralNewsSource({ apiKey: env.services.tavily.apiKey }),
+    source: new CompositeCentralNewsSource([grounding, rss]),
   };
 }
+
+export const createNewsDependencies = createCentralNewsDependencies;

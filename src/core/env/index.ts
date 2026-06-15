@@ -16,6 +16,8 @@ export type {
   GoogleOAuthConfig,
   IngestionConfig,
   InngestConfig,
+  NewsConfig,
+  NewsRssConfig,
   PushConfig,
   ServiceConfig,
 } from "./schema";

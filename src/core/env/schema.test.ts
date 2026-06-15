@@ -33,6 +33,10 @@ describe("parseEnv", () => {
     expect(env.push).toEqual({ mock: true, publicKey: DEV_PUSH_PUBLIC_KEY });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
     expect(env.ingestion).toEqual({ pollPolicyConfig: undefined });
+    expect(env.news).toEqual({
+      grounding: { mock: true },
+      rss: { mock: true },
+    });
     expect(env.entitlements).toEqual({
       caps: DEFAULT_ENTITLEMENT_CAPS,
       devOverride: true,
@@ -48,6 +52,56 @@ describe("parseEnv", () => {
       apiKey: "test-anthropic-key", // ubs:ignore — fake fixture value
     });
     expect(env.services.tavily).toEqual({ mock: true });
+  });
+
+  it("maps Tavily config into the central news grounding seam", () => {
+    const key = fixtureValue("tavily", "news", "fixture");
+    const env = parseEnv({ TAVILY_API_KEY: key });
+
+    expect(env.services.tavily).toEqual({ mock: false, apiKey: key });
+    expect(env.news.grounding).toEqual({ mock: false, apiKey: key });
+  });
+
+  it("configures central RSS feeds from comma or newline separated URLs", () => {
+    const env = parseEnv({
+      NEWS_RSS_FEED_URLS:
+        "https://feeds.example.invalid/nfl.xml,\nhttps://feeds.example.invalid/fantasy.xml",
+    });
+
+    expect(env.news.rss).toEqual({
+      mock: false,
+      feedUrls: [
+        "https://feeds.example.invalid/nfl.xml",
+        "https://feeds.example.invalid/fantasy.xml",
+      ],
+    });
+  });
+
+  it("MOCK_NEWS_RSS=true keeps RSS mocked even when feed URLs are set", () => {
+    const env = parseEnv({
+      MOCK_NEWS_RSS: "true",
+      NEWS_RSS_FEED_URLS: "https://feeds.example.invalid/nfl.xml",
+    });
+
+    expect(env.news.rss).toEqual({ mock: true });
+  });
+
+  it("MOCK_NEWS_RSS=false requires RSS feed URLs", () => {
+    expect(() => parseEnv({ MOCK_NEWS_RSS: "false" })).toThrow(
+      /MOCK_NEWS_RSS=false requires NEWS_RSS_FEED_URLS/,
+    );
+  });
+
+  it("rejects malformed RSS feed URLs without echoing them", () => {
+    let message = "";
+    try {
+      parseEnv({ NEWS_RSS_FEED_URLS: "malformed feed value" });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("NEWS_RSS_FEED_URLS");
+    expect(message).not.toContain("malformed feed value");
   });
 
   it("MOCK_<X>=true forces mock even when a key is set", () => {

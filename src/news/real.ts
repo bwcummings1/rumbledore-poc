@@ -13,6 +13,17 @@ export interface TavilyCentralNewsSourceOptions {
   client?: TavilySearchClient;
 }
 
+export interface RssCentralNewsSourceOptions {
+  feedUrls: readonly string[];
+  fetcher?: RssFetcher;
+}
+
+type RssFetcherResponse = Pick<Response, "ok" | "status" | "text">;
+type RssFetcher = (
+  input: string,
+  init?: { signal?: AbortSignal },
+) => Promise<RssFetcherResponse>;
+
 function stableId(fields: readonly string[]): string {
   return `tavily:${createHash("sha256").update(fields.join("\n")).digest("hex")}`;
 }
@@ -28,6 +39,77 @@ function sourceFromUrl(rawUrl: string): string {
   } catch {
     return "Tavily";
   }
+}
+
+function cleanXmlText(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tagValue(block: string, tags: readonly string[]): string {
+  for (const tag of tags) {
+    const match = new RegExp(
+      `<(?:[\\w-]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?${tag}>`,
+      "i",
+    ).exec(block);
+    const value = cleanXmlText(match?.[1]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function atomLinkValue(block: string): string {
+  const match = /<link\b[^>]*href=["']([^"']+)["'][^>]*>/i.exec(block);
+  return cleanXmlText(match?.[1]);
+}
+
+function rssSourceName(xml: string, feedUrl: string): string {
+  const channelMatch = /<channel\b[^>]*>([\s\S]*?)<\/channel>/i.exec(xml);
+  const channelTitle = channelMatch
+    ? tagValue(channelMatch[1] ?? "", ["title"])
+    : "";
+  if (channelTitle) {
+    return channelTitle;
+  }
+
+  return sourceFromUrl(feedUrl);
+}
+
+function categoriesFrom(block: string): string[] {
+  const categories: string[] = [];
+  for (const match of block.matchAll(
+    /<(?:[\w-]+:)?category\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?category>/gi,
+  )) {
+    const value = cleanXmlText(match[1]);
+    if (value) {
+      categories.push(value);
+    }
+  }
+  return categories;
+}
+
+function blocksFor(xml: string): string[] {
+  const rssItems = [...xml.matchAll(/<item\b[^>]*>[\s\S]*?<\/item>/gi)].map(
+    ([block]) => block,
+  );
+  if (rssItems.length > 0) {
+    return rssItems;
+  }
+
+  return [...xml.matchAll(/<entry\b[^>]*>[\s\S]*?<\/entry>/gi)].map(
+    ([block]) => block,
+  );
 }
 
 export class TavilyCentralNewsSource implements CentralNewsSource {
@@ -60,9 +142,68 @@ export class TavilyCentralNewsSource implements CentralNewsSource {
       publishedAt: parsePublishedAt(result.publishedDate, input.now),
       source: sourceFromUrl(result.url),
       sourceUrl: result.url,
+      sourceType: "web",
       summary: result.content,
       title: result.title,
       topics: ["nfl", "fantasy"],
     }));
+  }
+}
+
+export class RssCentralNewsSource implements CentralNewsSource {
+  private readonly feedUrls: readonly string[];
+  private readonly fetcher: RssFetcher;
+
+  constructor(options: RssCentralNewsSourceOptions) {
+    this.feedUrls = options.feedUrls;
+    this.fetcher = options.fetcher ?? fetch;
+  }
+
+  async fetch(input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
+    const fetchedFeeds = await Promise.all(
+      this.feedUrls.map(async (feedUrl) => {
+        const response = await this.fetcher(feedUrl, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!response.ok) {
+          return [];
+        }
+
+        const xml = await response.text();
+        const source = rssSourceName(xml, feedUrl);
+        return blocksFor(xml)
+          .slice(0, input.limit)
+          .map((block, index): CentralNewsSourceItem => {
+            const sourceUrl =
+              tagValue(block, ["link"]) || atomLinkValue(block) || feedUrl;
+            const summary = tagValue(block, [
+              "description",
+              "summary",
+              "content",
+            ]);
+            const body =
+              tagValue(block, ["encoded", "content"]) || summary || "";
+            return {
+              body,
+              canonicalUrl: sourceUrl,
+              id:
+                tagValue(block, ["guid", "id"]) ||
+                stableId([feedUrl, sourceUrl, String(index)]),
+              publishedAt: parsePublishedAt(
+                tagValue(block, ["pubDate", "published", "updated"]),
+                input.now,
+              ),
+              source,
+              sourceType: "rss",
+              sourceUrl,
+              summary,
+              title: tagValue(block, ["title"]),
+              topics: ["rss", ...categoriesFrom(block)],
+            };
+          });
+      }),
+    );
+
+    return fetchedFeeds.flat();
   }
 }

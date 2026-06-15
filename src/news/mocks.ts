@@ -1,44 +1,95 @@
+import { CompositeCentralNewsSource } from "./composite";
 import type {
   CentralNewsFetchInput,
   CentralNewsSource,
   CentralNewsSourceItem,
 } from "./interfaces";
 
-export class MockCentralNewsSource implements CentralNewsSource {
+export class MockWebGroundingCentralNewsSource implements CentralNewsSource {
   async fetch(_input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
     return [
       {
-        body: "A mocked national fantasy update suitable for the central firehose.",
-        id: "mock-central-news-1",
+        body: "A mocked national fantasy update suitable for the central firehose. It is general-audience football context, not league framing.",
+        id: "mock-web-central-news-1",
         publishedAt: new Date("2026-06-11T12:00:00.000Z"),
-        source: "Mock NFL Wire",
+        source: "Mock Web Wire",
         sourceUrl:
           "https://example.invalid/fantasy/week-one-context?utm_source=rumbledore",
         summary: "Central fantasy context without league-specific framing.",
+        sourceType: "web",
         title: "Mock fantasy week one context",
         topics: ["nfl", "fantasy"],
       },
       {
-        body: "The same mocked update through a second feed; URL tracking should not create a second story.",
-        id: "mock-central-news-1-duplicate",
-        publishedAt: new Date("2026-06-11T12:00:00.000Z"),
-        source: "Mock RSS Mirror",
+        body: "A mocked practice report with injuries that should land in the injury beat.",
+        id: "mock-web-central-news-2",
+        publishedAt: new Date("2026-06-11T11:00:00.000Z"),
+        source: "Mock Injury Desk",
+        sourceUrl: "https://example.invalid/fantasy/injury-roundup",
+        summary: "Mock injury roundup for central news.",
+        sourceType: "web",
+        title: "Mock injury roundup",
+        topics: ["injury", "fantasy"],
+      },
+      {
+        body: "A mocked rankings note that gives the central front another beat.",
+        id: "mock-web-central-news-3",
+        publishedAt: new Date("2026-06-11T10:30:00.000Z"),
+        source: "Mock Rankings Board",
+        sourceUrl: "https://example.invalid/fantasy/week-one-rankings",
+        summary: "Mock rankings movement for central news.",
+        sourceType: "web",
+        title: "Mock week one rankings update",
+        topics: ["rankings", "fantasy"],
+      },
+    ];
+  }
+}
+
+export class MockRssCentralNewsSource implements CentralNewsSource {
+  async fetch(_input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
+    return [
+      {
+        body: "The same mocked update through an RSS feed; URL tracking should not create a second story.",
+        id: "mock-rss-central-news-1",
+        publishedAt: new Date("2026-06-11T12:05:00.000Z"),
+        source: "Mock RSS Wire",
         sourceUrl:
           "https://example.invalid/fantasy/week-one-context/?utm_medium=rss",
-        summary: "Duplicate central fantasy context from another source.",
+        summary: "Duplicate central fantasy context from a feed source.",
+        sourceType: "rss",
         title: "Mock fantasy week one context",
         topics: ["fantasy"],
       },
       {
-        body: "A separate mocked injury news item for hub smoke coverage.",
-        id: "mock-central-news-2",
-        publishedAt: new Date("2026-06-11T11:00:00.000Z"),
-        source: "Mock Injury Feed",
-        sourceUrl: "https://example.invalid/fantasy/injury-roundup",
-        summary: "Mock injury roundup for central news.",
-        title: "Mock injury roundup",
-        topics: ["injury", "fantasy"],
+        body: "A mocked RSS item with waiver context and no league-specific framing.",
+        id: "mock-rss-central-news-2",
+        publishedAt: new Date("2026-06-11T09:45:00.000Z"),
+        source: "Mock Waiver Feed",
+        sourceUrl: "https://example.invalid/fantasy/waiver-wire",
+        summary: "Mock waiver wire movement for central news.",
+        sourceType: "rss",
+        title: "Mock waiver wire movement",
+        topics: ["waivers", "fantasy"],
+      },
+      {
+        body: "This item is intentionally missing a title so ingestion proves bad feed rows are inertly skipped.",
+        id: "mock-rss-central-news-bad",
+        publishedAt: new Date("2026-06-11T09:00:00.000Z"),
+        source: "Mock Broken Feed",
+        sourceType: "rss",
+        sourceUrl: "https://example.invalid/fantasy/broken",
+        title: "   ",
       },
     ];
+  }
+}
+
+export class MockCentralNewsSource extends CompositeCentralNewsSource {
+  constructor() {
+    super([
+      new MockWebGroundingCentralNewsSource(),
+      new MockRssCentralNewsSource(),
+    ]);
   }
 }

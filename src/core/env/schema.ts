@@ -21,6 +21,15 @@ export const INNGEST_CLOUD_EVENT_BASE_URL = "https://inn.gs";
  */
 export type ServiceConfig = { mock: true } | { mock: false; apiKey: string };
 
+export type NewsRssConfig =
+  | { mock: true }
+  | { mock: false; feedUrls: string[] };
+
+export interface NewsConfig {
+  grounding: ServiceConfig;
+  rss: NewsRssConfig;
+}
+
 /**
  * Google OAuth is the social-login stub (spec 02 §8): with no creds Better
  * Auth gets placeholder values so the provider routes exist; real creds drop
@@ -193,6 +202,8 @@ const baseSchema = z.object({
     .positive()
     .default(DEFAULT_ENTITLEMENT_CAPS.individualLeaguesCovered),
   INGESTION_POLL_POLICY_JSON: z.string().trim().min(1).optional(),
+  NEWS_RSS_FEED_URLS: z.string().trim().min(1).optional(),
+  MOCK_NEWS_RSS: stringbool.optional(),
 
   ANTHROPIC_API_KEY: secret.optional(),
   THE_ODDS_API_KEY: secret.optional(),
@@ -246,6 +257,7 @@ export interface Env {
   };
   entitlements: EntitlementsConfig;
   ingestion: IngestionConfig;
+  news: NewsConfig;
   push: PushConfig;
   services: Record<PaidService, ServiceConfig>;
 }
@@ -403,6 +415,35 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     }
   }
 
+  const newsRssFlag =
+    "MOCK_NEWS_RSS" in present
+      ? stringbool.safeParse(present.MOCK_NEWS_RSS)
+      : undefined;
+  if (newsRssFlag?.success && newsRssFlag.data === false) {
+    if (!("NEWS_RSS_FEED_URLS" in present)) {
+      problems.push(
+        "✖ MOCK_NEWS_RSS=false requires NEWS_RSS_FEED_URLS to be set\n  → at NEWS_RSS_FEED_URLS",
+      );
+    }
+  }
+  const rawNewsRssFeedUrls = (present.NEWS_RSS_FEED_URLS ?? "")
+    .split(/[,\n]/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  for (const feedUrl of rawNewsRssFeedUrls) {
+    try {
+      const url = new URL(feedUrl);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error("unsupported protocol");
+      }
+    } catch {
+      problems.push(
+        "✖ NEWS_RSS_FEED_URLS must contain only http(s) URLs separated by commas or newlines\n  → at NEWS_RSS_FEED_URLS",
+      );
+      break;
+    }
+  }
+
   if (!base.success || problems.length > 0) {
     throw new Error(
       `Invalid environment configuration:\n${problems.join("\n")}`,
@@ -417,6 +458,11 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     // (mockFlag === false && key undefined) was rejected above, so "not forced mock + key present" = real.
     mockFlag !== true && key !== undefined
       ? { mock: false, apiKey: key }
+      : { mock: true };
+
+  const newsRss: NewsRssConfig =
+    parsed.MOCK_NEWS_RSS !== true && rawNewsRssFeedUrls.length > 0
+      ? { mock: false, feedUrls: rawNewsRssFeedUrls }
       : { mock: true };
 
   // Presence checks, not secret-value comparisons (empty strings were
@@ -548,6 +594,10 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     },
     ingestion: {
       pollPolicyConfig: ingestionPollPolicyConfig,
+    },
+    news: {
+      grounding: service(parsed.TAVILY_API_KEY, parsed.MOCK_TAVILY),
+      rss: newsRss,
     },
     push: pushIsReal
       ? {

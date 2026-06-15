@@ -5,6 +5,10 @@ import { contentItems } from "@/db/schema";
 import { stableContentHash } from "@/ingestion/hash";
 import type { CentralNewsSource, CentralNewsSourceItem } from "./interfaces";
 import { MockCentralNewsSource } from "./mocks";
+import {
+  type CentralPublicationSectionId,
+  resolveCentralPublicationSection,
+} from "./sections";
 
 const DEFAULT_TOPIC = "nfl fantasy football";
 const DEFAULT_LIMIT = 25;
@@ -44,17 +48,39 @@ interface SourceAttribution {
   url: string;
 }
 
-interface NormalizedCentralNewsItem {
+interface NormalizedCentralNewsBase {
   body: string;
   canonicalUrl: string | null;
-  contentHash: string;
   dedupKey: string;
+  heroImageUrl: string | null;
   publishedAt: Date;
   source: string;
   sourceIds: string[];
   sources: SourceAttribution[];
+  sourceTypes: string[];
   sourceUrl: string;
   summary: string;
+  title: string;
+  topics: string[];
+}
+
+interface NormalizedCentralNewsItem {
+  body: string;
+  canonicalUrl: string | null;
+  centralSection: CentralPublicationSectionId;
+  contentHash: string;
+  dek: string;
+  dedupKey: string;
+  editorialImportance: number;
+  heroImageUrl: string | null;
+  publishedAt: Date;
+  source: string;
+  sourceIds: string[];
+  sources: SourceAttribution[];
+  sourceTypes: string[];
+  sourceUrl: string;
+  summary: string;
+  tags: string[];
   title: string;
   topics: string[];
 }
@@ -67,6 +93,29 @@ function timestamp(deps: Pick<CentralNewsIngestionDependencies, "now">): Date {
 
 function cleanText(value: string | undefined): string {
   return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function textValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    const text = textValue(item);
+    return text ? [text] : [];
+  });
 }
 
 function sortedUnique(values: readonly string[]): string[] {
@@ -152,11 +201,209 @@ function dedupKeyFor({
   return canonicalUrl ? `url:${canonicalUrl}` : normalizedTitleKey(title);
 }
 
+function firstSentence(value: string): string {
+  const trimmed = cleanText(value);
+  const match = /^(.+?[.!?])(?:\s|$)/.exec(trimmed);
+  return cleanText(match?.[1] ?? trimmed);
+}
+
+function truncateDek(value: string): string {
+  const trimmed = cleanText(value);
+  if (trimmed.length <= 180) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, 177).trimEnd()}...`;
+}
+
+function dekFor({
+  body,
+  summary,
+  title,
+}: Pick<NormalizedCentralNewsBase, "body" | "summary" | "title">): string {
+  return (
+    truncateDek(summary) ||
+    truncateDek(firstSentence(body)) ||
+    truncateDek(title)
+  );
+}
+
+function heroImageUrlFor(value: string | undefined): string | null {
+  const cleaned = cleanText(value);
+  if (!cleaned) {
+    return null;
+  }
+
+  try {
+    const url = new URL(cleaned);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : null;
+  } catch {
+    return cleaned.startsWith("/") ? cleaned : null;
+  }
+}
+
+function keywordTags({
+  summary,
+  title,
+}: Pick<NormalizedCentralNewsBase, "summary" | "title">): string[] {
+  const haystack = `${title} ${summary}`.toLowerCase();
+  const tags: string[] = [];
+
+  for (const [needle, tag] of [
+    ["injur", "injuries"],
+    ["practice", "practice report"],
+    ["rank", "rankings"],
+    ["start", "start-sit"],
+    ["sit", "start-sit"],
+    ["waiver", "waivers"],
+    ["rookie", "rookies"],
+    ["trade", "trades"],
+  ] as const) {
+    if (haystack.includes(needle)) {
+      tags.push(tag);
+    }
+  }
+
+  return tags;
+}
+
+function tagsFor(
+  item: NormalizedCentralNewsBase,
+  centralSection: CentralPublicationSectionId,
+): string[] {
+  return sortedUnique([
+    centralSection,
+    ...item.topics,
+    ...keywordTags(item),
+  ]).slice(0, 12);
+}
+
+function editorialImportanceFor({
+  canonicalUrl,
+  centralSection,
+  sourceTypes,
+  summary,
+  title,
+  topics,
+}: Pick<
+  NormalizedCentralNewsBase,
+  "canonicalUrl" | "sourceTypes" | "summary" | "title" | "topics"
+> & { centralSection: CentralPublicationSectionId }): number {
+  let score = 35;
+
+  switch (centralSection) {
+    case "injuries":
+      score += 24;
+      break;
+    case "rankings":
+      score += 14;
+      break;
+    case "fantasy":
+      score += 10;
+      break;
+    case "nfl":
+      score += 6;
+      break;
+  }
+
+  if (sourceTypes.includes("web")) {
+    score += 8;
+  }
+  if (sourceTypes.includes("rss")) {
+    score += 6;
+  }
+  if (canonicalUrl) {
+    score += 5;
+  }
+  if (summary.length >= 80) {
+    score += 4;
+  }
+  if (topics.length >= 2) {
+    score += 3;
+  }
+  if (/breaking|out|questionable|doubtful|inactive/i.test(title)) {
+    score += 8;
+  }
+
+  return Math.min(Math.max(score, 0), 100);
+}
+
+function specificSectionFromText({
+  summary,
+  title,
+}: Pick<
+  NormalizedCentralNewsBase,
+  "summary" | "title"
+>): CentralPublicationSectionId | null {
+  const haystack = `${title} ${summary}`.toLowerCase();
+  if (
+    /injur|questionable|doubtful|inactive|practice report|missed practice/.test(
+      haystack,
+    )
+  ) {
+    return "injuries";
+  }
+  if (/rank|start[-\s]?sit/.test(haystack)) {
+    return "rankings";
+  }
+  if (/waiver|lineup|roster|fantasy/.test(haystack)) {
+    return "fantasy";
+  }
+  if (
+    /nfl|football|team|coach|quarterback|running back|receiver/.test(haystack)
+  ) {
+    return "nfl";
+  }
+
+  return null;
+}
+
+function completeNormalizedItem(
+  base: NormalizedCentralNewsBase,
+): NormalizedCentralNewsItem {
+  const textSection = specificSectionFromText(base);
+  const topicSection = resolveCentralPublicationSection({
+    metadata: { topics: base.topics },
+    summary: base.summary,
+    title: base.title,
+  }).id;
+  const centralSection = textSection ?? topicSection;
+  const completed = {
+    ...base,
+    centralSection,
+    dek: dekFor(base),
+    editorialImportance: editorialImportanceFor({
+      canonicalUrl: base.canonicalUrl,
+      centralSection,
+      sourceTypes: base.sourceTypes,
+      summary: base.summary,
+      title: base.title,
+      topics: base.topics,
+    }),
+    tags: tagsFor(base, centralSection),
+  };
+
+  return {
+    ...completed,
+    contentHash: contentHashFor(completed),
+  };
+}
+
 function stableMetadata(item: Omit<NormalizedCentralNewsItem, "contentHash">) {
   return {
     canonicalUrl: item.canonicalUrl,
+    centralSection: item.centralSection,
+    dek: item.dek,
+    editorialImportance: item.editorialImportance,
+    heroImageUrl: item.heroImageUrl,
+    publicationSection: item.centralSection,
+    section: item.centralSection,
     sourceIds: item.sourceIds,
     sources: item.sources,
+    sourceTypes: item.sourceTypes,
+    tags: item.tags,
     topics: item.topics,
   };
 }
@@ -200,20 +447,19 @@ function normalizeSourceItem(
     body,
     canonicalUrl,
     dedupKey: dedupKeyFor({ canonicalUrl, title }),
+    heroImageUrl: heroImageUrlFor(item.heroImageUrl),
     publishedAt,
     source,
     sourceIds: item.id ? [item.id] : [],
     sources: [{ source, url: sourceUrl }],
+    sourceTypes: [item.sourceType ?? "manual"],
     sourceUrl,
     summary,
     title,
     topics: sortedUnique(item.topics ?? []),
   };
 
-  return {
-    ...normalized,
-    contentHash: contentHashFor(normalized),
-  };
+  return completeNormalizedItem(normalized);
 }
 
 function qualityScore(item: NormalizedCentralNewsItem): number {
@@ -233,19 +479,21 @@ function mergeDuplicate(
     qualityScore(candidate) > qualityScore(existing) ? candidate : existing;
   const merged = {
     ...primary,
+    heroImageUrl: primary.heroImageUrl ?? candidate.heroImageUrl ?? null,
     publishedAt:
       candidate.publishedAt > existing.publishedAt
         ? candidate.publishedAt
         : existing.publishedAt,
     sourceIds: sortedUnique([...existing.sourceIds, ...candidate.sourceIds]),
     sources: mergeAttributions(existing.sources, candidate.sources),
+    sourceTypes: sortedUnique([
+      ...existing.sourceTypes,
+      ...candidate.sourceTypes,
+    ]),
     topics: sortedUnique([...existing.topics, ...candidate.topics]),
   };
 
-  return {
-    ...merged,
-    contentHash: contentHashFor(merged),
-  };
+  return completeNormalizedItem(merged);
 }
 
 function normalizeAndDeduplicate(items: readonly CentralNewsSourceItem[]): {
@@ -258,20 +506,23 @@ function normalizeAndDeduplicate(items: readonly CentralNewsSourceItem[]): {
   const byDedupKey = new Map<string, NormalizedCentralNewsItem>();
 
   for (const sourceItem of items) {
-    const normalized = normalizeSourceItem(sourceItem);
-    if (!normalized) {
+    const normalizedItem = normalizeSourceItem(sourceItem);
+    if (normalizedItem === null) {
       skipped += 1;
       continue;
     }
 
-    const existing = byDedupKey.get(normalized.dedupKey);
+    const existing = byDedupKey.get(normalizedItem.dedupKey);
     if (existing) {
-      byDedupKey.set(normalized.dedupKey, mergeDuplicate(existing, normalized));
+      byDedupKey.set(
+        normalizedItem.dedupKey,
+        mergeDuplicate(existing, normalizedItem),
+      );
       deduped += 1;
       continue;
     }
 
-    byDedupKey.set(normalized.dedupKey, normalized);
+    byDedupKey.set(normalizedItem.dedupKey, normalizedItem);
   }
 
   return {
@@ -302,11 +553,84 @@ function contentValues(item: NormalizedCentralNewsItem, at: Date) {
   };
 }
 
+type ExistingCentralNewsRow = {
+  body: string;
+  contentHash: string;
+  dedupKey: string;
+  id: string;
+  metadata: Record<string, unknown>;
+  publishedAt: Date;
+  source: string | null;
+  sourceUrl: string | null;
+  summary: string;
+  title: string;
+};
+
+function sourceAttributionsValue(
+  value: unknown,
+  fallback: SourceAttribution,
+): SourceAttribution[] {
+  if (!Array.isArray(value)) {
+    return [fallback];
+  }
+
+  const sources = value.flatMap((item) => {
+    const record = asRecord(item);
+    const source = textValue(record.source);
+    const url = textValue(record.url);
+    return source && url ? [{ source, url }] : [];
+  });
+
+  return sources.length > 0 ? mergeAttributions(sources, []) : [fallback];
+}
+
+function existingRowToNormalized(
+  row: ExistingCentralNewsRow,
+): NormalizedCentralNewsItem {
+  const metadata = asRecord(row.metadata);
+  const source = row.source ?? "Unknown source";
+  const sourceUrl = row.sourceUrl ?? "";
+  const canonicalUrl =
+    textValue(metadata.canonicalUrl) ?? canonicalizeNewsUrl(sourceUrl);
+  const base = {
+    body: row.body,
+    canonicalUrl,
+    dedupKey: row.dedupKey,
+    heroImageUrl: heroImageUrlFor(textValue(metadata.heroImageUrl) ?? ""),
+    publishedAt: row.publishedAt,
+    source,
+    sourceIds: sortedUnique(stringArrayValue(metadata.sourceIds)),
+    sources: sourceAttributionsValue(metadata.sources, {
+      source,
+      url: canonicalUrl ?? sourceUrl,
+    }),
+    sourceTypes: sortedUnique(
+      stringArrayValue(metadata.sourceTypes).length > 0
+        ? stringArrayValue(metadata.sourceTypes)
+        : ["manual"],
+    ),
+    sourceUrl,
+    summary: row.summary,
+    title: row.title,
+    topics: sortedUnique(stringArrayValue(metadata.topics)),
+  };
+
+  return completeNormalizedItem(base);
+}
+
 async function findExistingCentralNews(db: Db, dedupKey: string) {
   const [existing] = await db
     .select({
+      body: contentItems.body,
       contentHash: contentItems.contentHash,
+      dedupKey: contentItems.dedupKey,
       id: contentItems.id,
+      metadata: contentItems.metadata,
+      publishedAt: contentItems.publishedAt,
+      source: contentItems.source,
+      sourceUrl: contentItems.sourceUrl,
+      summary: contentItems.summary,
+      title: contentItems.title,
     })
     .from(contentItems)
     .where(
@@ -331,9 +655,12 @@ async function persistCentralNewsItem({
   item: NormalizedCentralNewsItem;
 }): Promise<{ id: string; status: PersistStatus }> {
   const existing = await findExistingCentralNews(db, item.dedupKey);
-  const values = contentValues(item, at);
+  const persistedItem = existing
+    ? mergeDuplicate(existingRowToNormalized(existing), item)
+    : item;
+  const values = contentValues(persistedItem, at);
 
-  if (existing?.contentHash === item.contentHash) {
+  if (existing?.contentHash === persistedItem.contentHash) {
     return { id: existing.id, status: "unchanged" };
   }
 
@@ -381,13 +708,17 @@ async function persistCentralNewsItem({
     });
   }
 
-  if (conflicted.contentHash === item.contentHash) {
+  const conflictedItem = mergeDuplicate(
+    existingRowToNormalized(conflicted),
+    item,
+  );
+  if (conflicted.contentHash === conflictedItem.contentHash) {
     return { id: conflicted.id, status: "unchanged" };
   }
 
   const [updated] = await db
     .update(contentItems)
-    .set(values)
+    .set(contentValues(conflictedItem, at))
     .where(eq(contentItems.id, conflicted.id))
     .returning({ id: contentItems.id });
   if (!updated) {

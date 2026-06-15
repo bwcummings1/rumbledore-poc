@@ -21,6 +21,7 @@ export {
   type LeagueBlogPostData,
   type LeagueBlogPostLoadResult,
 } from "./blog-post";
+export { CompositeCentralNewsSource } from "./composite";
 export {
   type CentralNewsForYourLeagueItem,
   type CentralNewsForYourLeagueRail,
@@ -49,7 +50,12 @@ export {
   type UpsertLeagueFeedReferenceInput,
   upsertLeagueFeedReference,
 } from "./league-feed";
-export { MockCentralNewsSource } from "./mocks";
+export {
+  MockCentralNewsSource,
+  MockRssCentralNewsSource,
+  MockWebGroundingCentralNewsSource,
+} from "./mocks";
+export { RssCentralNewsSource, TavilyCentralNewsSource } from "./real";
 export {
   CENTRAL_PUBLICATION_SECTIONS,
   type CentralPublicationSectionId,

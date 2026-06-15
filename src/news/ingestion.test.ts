@@ -12,6 +12,7 @@ import {
   canonicalizeNewsUrl,
   refreshCentralNews,
 } from "@/news";
+import { CompositeCentralNewsSource } from "./composite";
 
 const marker = `newstest-${randomUUID()}`;
 let handle: DbHandle;
@@ -80,45 +81,54 @@ describe("central news ingestion", () => {
   it("deduplicates source items and persists central news idempotently", async () => {
     const storyUrl = `https://news.example.com/${marker}/qb-injury`;
     const roundupUrl = `https://news.example.com/${marker}/waiver-roundup`;
-    const source = new StaticCentralNewsSource([
-      {
-        body: "The starting quarterback missed practice, changing the fantasy outlook for Sunday.",
-        id: `${marker}-qb-primary`,
-        publishedAt: new Date("2026-06-11T14:00:00.000Z"),
-        source: "NFL Wire",
-        sourceUrl: `${storyUrl}?utm_source=newsletter`,
-        summary: "A quarterback injury update with central fantasy relevance.",
-        title: "Quarterback injury changes Sunday fantasy outlook",
-        topics: ["injury", "fantasy"],
-      },
-      {
-        body: "Duplicate mirror item.",
-        id: `${marker}-qb-mirror`,
-        publishedAt: new Date("2026-06-11T13:00:00.000Z"),
-        source: "Fantasy Mirror",
-        sourceUrl: `${storyUrl}/?utm_medium=rss`,
-        summary: "A mirrored quarterback injury update.",
-        title: "Quarterback injury changes Sunday fantasy outlook",
-        topics: ["fantasy"],
-      },
-      {
-        body: "A separate waiver roundup with broad fantasy relevance.",
-        id: `${marker}-waivers`,
-        publishedAt: new Date("2026-06-11T12:00:00.000Z"),
-        source: "Waiver Wire",
-        sourceUrl: roundupUrl,
-        summary: "Waiver names to monitor before Sunday.",
-        title: "Waiver wire names to monitor",
-        topics: ["waivers"],
-      },
-      {
-        body: "Missing title should be skipped.",
-        id: `${marker}-bad`,
-        publishedAt: new Date("2026-06-11T12:00:00.000Z"),
-        source: "Broken Feed",
-        sourceUrl: `https://news.example.com/${marker}/broken`,
-        title: "   ",
-      },
+    const source = new CompositeCentralNewsSource([
+      new StaticCentralNewsSource([
+        {
+          body: "The starting quarterback missed practice, changing the fantasy outlook for Sunday.",
+          id: `${marker}-qb-primary`,
+          publishedAt: new Date("2026-06-11T14:00:00.000Z"),
+          source: "NFL Wire",
+          sourceType: "web",
+          sourceUrl: `${storyUrl}?utm_source=newsletter`,
+          summary:
+            "A quarterback injury update with central fantasy relevance.",
+          title: "Quarterback injury changes Sunday fantasy outlook",
+          topics: ["injury", "fantasy"],
+        },
+        {
+          body: "A separate waiver roundup with broad fantasy relevance.",
+          id: `${marker}-waivers`,
+          publishedAt: new Date("2026-06-11T12:00:00.000Z"),
+          source: "Waiver Wire",
+          sourceType: "web",
+          sourceUrl: roundupUrl,
+          summary: "Waiver names to monitor before Sunday.",
+          title: "Waiver wire names to monitor",
+          topics: ["waivers"],
+        },
+        {
+          body: "Missing title should be skipped.",
+          id: `${marker}-bad`,
+          publishedAt: new Date("2026-06-11T12:00:00.000Z"),
+          source: "Broken Feed",
+          sourceType: "web",
+          sourceUrl: `https://news.example.com/${marker}/broken`,
+          title: "   ",
+        },
+      ]),
+      new StaticCentralNewsSource([
+        {
+          body: "Duplicate mirror item.",
+          id: `${marker}-qb-mirror`,
+          publishedAt: new Date("2026-06-11T13:00:00.000Z"),
+          source: "Fantasy Mirror",
+          sourceType: "rss",
+          sourceUrl: `${storyUrl}/?utm_medium=rss`,
+          summary: "A mirrored quarterback injury update.",
+          title: "Quarterback injury changes Sunday fantasy outlook",
+          topics: ["fantasy"],
+        },
+      ]),
     ]);
 
     const first = await refreshCentralNews({
@@ -168,6 +178,15 @@ describe("central news ingestion", () => {
     expect(
       (injury?.metadata as { sources?: unknown[] } | undefined)?.sources,
     ).toHaveLength(2);
+    expect(injury?.metadata).toMatchObject({
+      centralSection: "injuries",
+      dek: "A quarterback injury update with central fantasy relevance.",
+      editorialImportance: expect.any(Number),
+      section: "injuries",
+      sourceTypes: ["rss", "web"],
+      tags: expect.arrayContaining(["fantasy", "injuries"]),
+      topics: ["fantasy", "injury"],
+    });
   });
 
   it("updates an existing central story when the canonical content changes", async () => {
@@ -222,6 +241,71 @@ describe("central news ingestion", () => {
       body: "Updated report body with materially different fantasy context.",
       summary: "Updated report.",
     });
+  });
+
+  it("merges provenance when a later refresh sees an existing story from a new source", async () => {
+    const storyUrl = `https://news.example.com/${marker}/cross-batch`;
+    const initialSource = new StaticCentralNewsSource([
+      {
+        body: "Initial web report body.",
+        id: `${marker}-cross-batch-web`,
+        publishedAt: new Date("2026-06-11T19:00:00.000Z"),
+        source: "Web Desk",
+        sourceType: "web",
+        sourceUrl: storyUrl,
+        summary: "Initial web report.",
+        title: "Cross batch report",
+        topics: ["fantasy"],
+      },
+    ]);
+    const rssSource = new StaticCentralNewsSource([
+      {
+        body: "RSS follow-up with materially more context for the same report.",
+        id: `${marker}-cross-batch-rss`,
+        publishedAt: new Date("2026-06-11T19:05:00.000Z"),
+        source: "RSS Desk",
+        sourceType: "rss",
+        sourceUrl: `${storyUrl}?utm_medium=rss`,
+        summary: "RSS follow-up report.",
+        title: "Cross batch report",
+        topics: ["rss", "fantasy"],
+      },
+    ]);
+
+    await refreshCentralNews({
+      deps: {
+        db: handle.db,
+        now: () => new Date("2026-06-11T19:01:00.000Z"),
+        source: initialSource,
+      },
+    });
+    const updated = await refreshCentralNews({
+      deps: {
+        db: handle.db,
+        now: () => new Date("2026-06-11T19:06:00.000Z"),
+        source: rssSource,
+      },
+    });
+
+    expect(updated).toMatchObject({
+      inserted: 0,
+      unchanged: 0,
+      updated: 1,
+    });
+
+    const [row] = (await centralRows()).filter(
+      (item) => item.sourceUrl === storyUrl,
+    );
+    expect(row.metadata).toMatchObject({
+      sourceIds: [`${marker}-cross-batch-rss`, `${marker}-cross-batch-web`],
+      sourceTypes: ["rss", "web"],
+    });
+    expect((row.metadata as { sources?: unknown[] }).sources).toEqual(
+      expect.arrayContaining([
+        { source: "RSS Desk", url: storyUrl },
+        { source: "Web Desk", url: storyUrl },
+      ]),
+    );
   });
 
   it("enforces central deduplication at the database level", async () => {
