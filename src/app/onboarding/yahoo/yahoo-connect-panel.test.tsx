@@ -72,7 +72,7 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
   let discoveryReads = 0;
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
-    if (url === "/api/onboarding/yahoo/discovered") {
+    if (url === "/api/onboarding/discovered") {
       discoveryReads += 1;
       return jsonResponse(
         discoveryReads === 1
@@ -87,7 +87,7 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
             ],
       );
     }
-    if (url === "/api/onboarding/yahoo/import") {
+    if (url === "/api/onboarding/import") {
       importBodies.push(parseRequestBody(init));
       return jsonResponse({
         leagueId: "league-yahoo",
@@ -120,7 +120,7 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
 
   await waitFor(() => {
     expect(importBodies).toEqual([
-      { providerLeagueId: "461.l.95050", season: 2026 },
+      { provider: "yahoo", providerLeagueId: "461.l.95050", season: 2026 },
     ]);
   });
   expect(await screen.findByText("Imported")).toBeDefined();
@@ -133,7 +133,7 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
 test("Yahoo connect panel blocks invalid stored credentials with a reconnect CTA", async () => {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = input.toString();
-    if (url === "/api/onboarding/yahoo/discovered") {
+    if (url === "/api/onboarding/discovered") {
       return jsonResponse([
         {
           ...discoveredLeague,

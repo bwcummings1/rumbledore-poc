@@ -386,9 +386,9 @@ export async function connectProviderWithCredentials({
   });
 }
 
-export async function listDiscoveredLeagues(
+async function listDiscoveredLeagueCandidates(
   deps: Pick<ProviderOnboardingDependencies, "db">,
-  input: { provider: FantasyProviderId; userId: string },
+  input: { provider?: FantasyProviderId; userId: string },
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   const rows = await deps.db
     .select({
@@ -433,12 +433,15 @@ export async function listDiscoveredLeagues(
       ),
     )
     .where(
-      and(
-        eq(onboardingDiscoveredLeagues.userId, input.userId),
-        eq(onboardingDiscoveredLeagues.provider, input.provider),
-      ),
+      input.provider
+        ? and(
+            eq(onboardingDiscoveredLeagues.userId, input.userId),
+            eq(onboardingDiscoveredLeagues.provider, input.provider),
+          )
+        : eq(onboardingDiscoveredLeagues.userId, input.userId),
     )
     .orderBy(
+      asc(onboardingDiscoveredLeagues.provider),
       desc(onboardingDiscoveredLeagues.season),
       asc(onboardingDiscoveredLeagues.name),
     );
@@ -491,6 +494,20 @@ export async function listDiscoveredLeagues(
       };
     }),
   );
+}
+
+export async function listDiscoveredLeagues(
+  deps: Pick<ProviderOnboardingDependencies, "db">,
+  input: { provider: FantasyProviderId; userId: string },
+): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
+  return listDiscoveredLeagueCandidates(deps, input);
+}
+
+export async function listDiscoveredLeagueInventory(
+  deps: Pick<ProviderOnboardingDependencies, "db">,
+  input: { userId: string },
+): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
+  return listDiscoveredLeagueCandidates(deps, input);
 }
 
 async function loadStoredCredentials({

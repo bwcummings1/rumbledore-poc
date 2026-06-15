@@ -75,7 +75,7 @@ test("Sleeper connect panel lists persisted discoveries and imports the selected
   let discoveryReads = 0;
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
-    if (url === "/api/onboarding/sleeper/discovered") {
+    if (url === "/api/onboarding/discovered") {
       discoveryReads += 1;
       return jsonResponse(
         discoveryReads === 1
@@ -90,7 +90,7 @@ test("Sleeper connect panel lists persisted discoveries and imports the selected
             ],
       );
     }
-    if (url === "/api/onboarding/sleeper/import") {
+    if (url === "/api/onboarding/import") {
       importBodies.push(parseRequestBody(init));
       return jsonResponse({
         leagueId: "league-sleeper",
@@ -123,7 +123,7 @@ test("Sleeper connect panel lists persisted discoveries and imports the selected
 
   await waitFor(() => {
     expect(importBodies).toEqual([
-      { providerLeagueId: "sleeper-2026", season: 2026 },
+      { provider: "sleeper", providerLeagueId: "sleeper-2026", season: 2026 },
     ]);
   });
   expect(await screen.findByText("Imported")).toBeDefined();
@@ -138,7 +138,7 @@ test("Sleeper connect panel posts public username discovery", async () => {
   let discoveryReads = 0;
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
-    if (url === "/api/onboarding/sleeper/discovered") {
+    if (url === "/api/onboarding/discovered") {
       discoveryReads += 1;
       return jsonResponse(discoveryReads === 1 ? [] : [discoveredLeague]);
     }
@@ -175,7 +175,7 @@ test("Sleeper connect panel posts public username discovery", async () => {
 test("Sleeper connect panel blocks invalid stored credentials with a reconnect CTA", async () => {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = input.toString();
-    if (url === "/api/onboarding/sleeper/discovered") {
+    if (url === "/api/onboarding/discovered") {
       return jsonResponse([
         {
           ...discoveredLeague,

@@ -18,7 +18,9 @@ import {
 } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getProviderBadgeLabel } from "@/navigation";
 import type { ProviderReconnectAction } from "@/onboarding/reconnect";
+import type { FantasyProviderId } from "@/providers";
 import {
   getJson,
   type OnboardingPanelError,
@@ -28,7 +30,7 @@ import {
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
 
 interface DiscoveredLeague {
-  provider: "sleeper";
+  provider: FantasyProviderId;
   providerId: string;
   season: number;
   sport: "ffl" | "unknown";
@@ -62,10 +64,12 @@ interface ImportResult {
   };
 }
 
-const DISCOVERED_LEAGUES_URL = "/api/onboarding/sleeper/discovered";
+const DISCOVERED_LEAGUES_URL = "/api/onboarding/discovered";
 
-function leagueKey(league: Pick<DiscoveredLeague, "providerId" | "season">) {
-  return `${league.providerId}:${league.season}`;
+function leagueKey(
+  league: Pick<DiscoveredLeague, "provider" | "providerId" | "season">,
+) {
+  return `${league.provider}:${league.providerId}:${league.season}`;
 }
 
 function canImportLeague(
@@ -253,7 +257,8 @@ export function SleeperConnectPanel() {
   async function importLeague(league: DiscoveredLeagueCandidate) {
     const key = leagueKey(league);
     const imported = await run(`import-${key}`, () =>
-      postJson<ImportResult>("/api/onboarding/sleeper/import", {
+      postJson<ImportResult>("/api/onboarding/import", {
+        provider: league.provider,
         providerLeagueId: league.providerId,
         season: league.season,
       }),
@@ -276,13 +281,11 @@ export function SleeperConnectPanel() {
     const imported = await run("import-selected", async () => {
       const results: Record<string, ImportResult> = {};
       for (const league of selectedLeagues) {
-        const result = await postJson<ImportResult>(
-          "/api/onboarding/sleeper/import",
-          {
-            providerLeagueId: league.providerId,
-            season: league.season,
-          },
-        );
+        const result = await postJson<ImportResult>("/api/onboarding/import", {
+          provider: league.provider,
+          providerLeagueId: league.providerId,
+          season: league.season,
+        });
         results[leagueKey(league)] = result;
       }
       return results;
@@ -338,15 +341,15 @@ export function SleeperConnectPanel() {
       <section className="grid gap-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Discovered leagues</h2>
+            <h2 className="text-lg font-semibold">Your leagues</h2>
             <p className="text-sm text-muted-foreground">
               {discoveredLeagues.length > 0
-                ? `${discoveredLeagues.length} Sleeper league${
+                ? `${discoveredLeagues.length} league${
                     discoveredLeagues.length === 1 ? "" : "s"
-                  } found.`
+                  } found across connected providers.`
                 : connection
                   ? "No Sleeper fantasy football leagues were found."
-                  : "Find a Sleeper account to populate this import list."}
+                  : "Connect a provider to populate this import list."}
             </p>
           </div>
           <Button
@@ -404,7 +407,9 @@ export function SleeperConnectPanel() {
                       {league.name}
                     </span>
                     <span className="mt-1 block text-sm text-muted-foreground">
-                      {league.season} · {league.size ?? "unknown"} teams
+                      {getProviderBadgeLabel(league.provider)} · {league.season}{" "}
+                      · {league.size ?? "unknown"} teams
+                      {league.teamName ? ` · ${league.teamName}` : ""}
                     </span>
                   </span>
                 </label>
@@ -425,7 +430,7 @@ export function SleeperConnectPanel() {
                         ? `${importStats.sync.teams.total} teams · ${importStats.sync.members.total} members · ${importStats.sync.matchups.total} matchups`
                         : league.isRecommendedImport
                           ? "Selected by default"
-                          : `Sleeper league ${league.providerId}`}
+                          : `${getProviderBadgeLabel(league.provider)} league ${league.providerId}`}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {league.imported && league.leagueId ? (

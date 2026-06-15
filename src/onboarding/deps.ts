@@ -14,6 +14,7 @@ import { createFixtureEspnProvider } from "./fixture-espn";
 import { createFixtureYahooProvider } from "./fixture-yahoo";
 import type { LeagueInviteDependencies } from "./invites";
 import { RecordingInviteNotifier } from "./notifier";
+import type { ProviderOnboardingDependencies } from "./provider-service";
 import type { SleeperOnboardingDependencies } from "./sleeper-service";
 import {
   createMockYahooOAuthClient,
@@ -98,6 +99,26 @@ export function getYahooOnboardingDependencies(): YahooOnboardingDependencies {
     provider: env.auth.yahoo.mock
       ? createFixtureYahooProvider()
       : createYahooProvider(),
+    realtime: createRealtimePublisher(env),
+    requestHistoricalImport,
+  };
+}
+
+export function getProviderOnboardingDependencies(): ProviderOnboardingDependencies {
+  const env = getEnv();
+  const browserbase = env.services.browserbase;
+  return {
+    cipher: createCredentialCipher(env.credentials.encryptionKey),
+    db: getDb(),
+    providers: {
+      espn: browserbase.mock
+        ? createFixtureEspnProvider()
+        : createEspnDiscoveryProvider(),
+      sleeper: createSleeperProvider(),
+      yahoo: env.auth.yahoo.mock
+        ? createFixtureYahooProvider()
+        : createYahooProvider(),
+    },
     realtime: createRealtimePublisher(env),
     requestHistoricalImport,
   };

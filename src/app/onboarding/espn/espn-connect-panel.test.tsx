@@ -62,7 +62,7 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
   let discoveryReads = 0;
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
-    if (url === "/api/onboarding/espn/discovered") {
+    if (url === "/api/onboarding/discovered") {
       discoveryReads += 1;
       return jsonResponse(
         discoveryReads === 1
@@ -73,7 +73,7 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
             ],
       );
     }
-    if (url === "/api/onboarding/espn/import") {
+    if (url === "/api/onboarding/import") {
       importBodies.push(JSON.parse(init?.body?.toString() ?? "{}"));
       return jsonResponse({
         leagueId: "league-95050",
@@ -106,7 +106,9 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
   fireEvent.click(screen.getByRole("button", { name: /import selected/i }));
 
   await waitFor(() => {
-    expect(importBodies).toEqual([{ providerLeagueId: "95050", season: 2026 }]);
+    expect(importBodies).toEqual([
+      { provider: "espn", providerLeagueId: "95050", season: 2026 },
+    ]);
   });
   expect(await screen.findByText("Imported")).toBeDefined();
   const homeLink = screen.getByRole("link", {
@@ -118,7 +120,7 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
 test("ESPN connect panel blocks invalid stored credentials with a reconnect CTA", async () => {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = input.toString();
-    if (url === "/api/onboarding/espn/discovered") {
+    if (url === "/api/onboarding/discovered") {
       return jsonResponse([
         {
           ...discoveredLeague,
@@ -157,10 +159,10 @@ test("ESPN connect panel blocks invalid stored credentials with a reconnect CTA"
 test("ESPN connect panel renders reconnect CTA from import auth errors", async () => {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = input.toString();
-    if (url === "/api/onboarding/espn/discovered") {
+    if (url === "/api/onboarding/discovered") {
       return jsonResponse([discoveredLeague]);
     }
-    if (url === "/api/onboarding/espn/import") {
+    if (url === "/api/onboarding/import") {
       return jsonResponse(
         {
           error: {
