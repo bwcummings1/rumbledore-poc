@@ -1792,6 +1792,13 @@ export async function closeLoreVote({
           status: 409,
         });
     }
+    if (claim.voteClosesAt && timestamp < claim.voteClosesAt) {
+      throw new AppError({
+        code: "LORE_VOTE_STILL_OPEN",
+        message: "Lore claim voting window is still open",
+        status: 409,
+      });
+    }
 
     const activeMembers = (
       await tx

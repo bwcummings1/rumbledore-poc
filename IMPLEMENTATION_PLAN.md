@@ -40,7 +40,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 Carried forward from Phase 1 — **re-verify each before acting** ("don't assume not implemented"); some may already be fixed by the Phase 1 harden pass.
 - [x] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`. (Verified already fixed by `token_hash`, migration `0033_hash_invite_tokens.sql`, and invite tests.)
 - [x] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads returning scheduled/in-progress. `src/ingestion/current-league.ts`. (Verified already fixed by matchup upsert guard and regression tests.)
-- [ ] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — `closeLoreVote()` will tally an open vote early if called directly; guard on the close time.
+- [x] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — fixed by guarding `closeLoreVote()` against pre-deadline close-outs and proving early attempts leave the claim open.
 - [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` / `src/news/league-feed.ts` fetch a bounded candidate set before filtering, so sparse old beats can vanish as archives grow.
 - [ ] **[observability/LOW] Historical import progress is not published to realtime** — onboarding can't subscribe to a live history-build channel yet (relevant to the Phase 2 onboarding activation hook).
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]`; split routes or use a neutral slug.
@@ -61,7 +61,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 3. [x] **Member-submitted lore votes are not scheduled for automatic close-out** — functionality risk: votes can remain pending indefinitely without manual intervention.
 4. [x] **Bankroll rollover has no production scheduler** — functionality risk: weekly betting balances and arena standings can stale without an automated rollover path. Fixed by the scheduled `bankroll-rollover` Inngest job, which skips weeks with pending slips, opens the next bankroll week, rebuilds arena standings, and publishes realtime leaderboard updates.
 5. [x] **First bet requires an existing open bankroll week** — functionality/product risk: the intended first-bet flow can fail for leagues without pre-created weeks. Fixed by first-bet auto-opening plus regression coverage; settlement/rollover arena rebuilds are now scoped to affected seasons discovered during validation.
-6. [ ] **Lore vote close can run before `vote_closes_at`** — correctness risk: direct callers can finalize votes before their announced window ends.
+6. [x] **Lore vote close can run before `vote_closes_at`** — correctness risk: direct callers can finalize votes before their announced window ends. Fixed by returning `LORE_VOTE_STILL_OPEN` before tally/mutation until the voting deadline is reached.
 7. [ ] **Publication section/tag filters are candidate-limited in memory** — correctness/scale risk: sparse sections can disappear as archives grow.
 8. [ ] **Invite auth return path does not preserve the claim URL** — robustness risk: unauthenticated invitees can lose the claim context after auth.
 9. [ ] **Historical import progress is not published to realtime** — robustness/UX risk: long onboarding history builds lack live progress feedback.

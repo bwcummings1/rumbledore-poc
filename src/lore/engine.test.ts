@@ -130,6 +130,7 @@ async function openClaim(league: SeededLeague, tag: string) {
       body: `${tag} is now league lore`,
       leagueId: league.id,
       title: `${tag} lore claim`,
+      voteClosesAt: baseNow,
     },
   });
 }
@@ -415,6 +416,74 @@ describe("lore claim voting lifecycle", () => {
     ]);
   });
 
+  it("does not close an open vote before its voting window ends", async () => {
+    const league = await seedLeague("early-close", [
+      "commissioner",
+      "member",
+      "member",
+    ]);
+    const voteClosesAt = new Date("2026-06-21T12:00:00.000Z");
+    const claim = await openOpinionClaim({
+      deps: deps(),
+      input: {
+        authorMemberId: league.members[0]?.id,
+        body: "This vote should stay open until the announced deadline.",
+        leagueId: league.id,
+        title: "The premature close",
+        voteClosesAt,
+      },
+    });
+
+    for (const member of league.members) {
+      await castLoreVote({
+        deps: deps(),
+        input: {
+          choice: "affirm",
+          claimId: claim.claimId,
+          leagueId: league.id,
+          voterMemberId: member.id,
+        },
+      });
+    }
+
+    await expect(
+      closeLoreVote({
+        deps: deps(),
+        input: { claimId: claim.claimId, leagueId: league.id },
+      }),
+    ).rejects.toMatchObject({ code: "LORE_VOTE_STILL_OPEN" });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      claim: (
+        await tx
+          .select()
+          .from(loreClaims)
+          .where(eq(loreClaims.id, claim.claimId))
+      )[0],
+      events: await tx
+        .select()
+        .from(loreEvents)
+        .where(eq(loreEvents.claimId, claim.claimId)),
+    }));
+    expect(rows.claim).toMatchObject({
+      ratifiedAt: null,
+      ratifiedBy: null,
+      status: "vote",
+    });
+    expect(rows.events.map((event) => event.kind)).not.toContain("ratified");
+
+    const closed = await closeLoreVote({
+      deps: deps(voteClosesAt),
+      input: { claimId: claim.claimId, leagueId: league.id },
+    });
+    expect(closed).toMatchObject({
+      claimId: claim.claimId,
+      ratifiedBy: "vote",
+      reused: false,
+      status: "canonized",
+    });
+  });
+
   it("opens a dispute branch and supersedes original canon when the challenge succeeds", async () => {
     const league = await seedLeague("dispute-succeeds", [
       "commissioner",
@@ -433,6 +502,7 @@ describe("lore claim voting lifecycle", () => {
         leagueId: league.id,
         relation: "dispute",
         title: "The cursed trade deserves a retrial",
+        voteClosesAt: baseNow,
       },
     });
 
@@ -540,6 +610,7 @@ describe("lore claim voting lifecycle", () => {
         leagueId: league.id,
         relation: "relitigation",
         title: "Strike the asterisk",
+        voteClosesAt: baseNow,
       },
     });
 
