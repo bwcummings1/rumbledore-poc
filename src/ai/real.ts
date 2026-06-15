@@ -130,6 +130,14 @@ const blogDraftSchema = z.object({
       type: z.literal("rivalry_piece"),
     }),
     z.object({
+      biggestMovers: z.array(z.string().trim().min(1)).min(1),
+      fieldLeader: z.string().trim().min(1),
+      leaguePosition: z.string().trim().min(1),
+      needle: z.string().trim().min(1),
+      rivalWatch: z.string().trim().min(1),
+      type: z.literal("arena_recap"),
+    }),
+    z.object({
       legend: z.string().trim().min(1),
       math: z.string().trim().min(1),
       newHolder: z.string().trim().min(1),

@@ -13,7 +13,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Build the Arena with league-vs-league and individual leaderboards, seasons, and rank movement. (specs/15)
 - [x] Add league head-to-head and rivalry framing to the Arena. (specs/15)
 - [x] Wire settlement notifications and standings-swing signals. (specs/15)
-- [ ] Add the arena_recap AI content type so the cast narrates the betting rivalry. (specs/15, specs/12)
+- [x] Add the arena_recap AI content type so the cast narrates the betting rivalry. (specs/15, specs/12)
 
 ### G. Onboarding completeness (see specs/16)
 - [ ] Implement multi-league discovery: connect once, discover all the user's leagues across ESPN/Sleeper/Yahoo. (specs/16)

@@ -43,6 +43,15 @@ function requestFor(
         people: [],
         rivalries: [],
       },
+      arena: {
+        computedAt: null,
+        fieldLeader: null,
+        headToHead: null,
+        leagueStanding: null,
+        movers: { fallers: [], risers: [] },
+        season: null,
+        topLeagueStandings: [],
+      },
       memory: [],
       persona: {
         beat: "League-official framing",

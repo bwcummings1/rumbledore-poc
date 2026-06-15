@@ -4,6 +4,7 @@ import {
   defaultLeagueArticleSectionForContentType,
 } from "./article-draft";
 import type {
+  ArenaRecapStructure,
   AwardsSuperlativesStructure,
   BlogContentStructure,
   InstigationColumnStructure,
@@ -126,6 +127,12 @@ function judgePersonaMarkers(request: LlmJudgeRequest): readonly string[] {
 
 function teamRecord(team: LeagueContextTeam): string {
   return `${team.wins}-${team.losses}-${team.ties}`;
+}
+
+function formatMoney(cents: number): string {
+  const sign = cents < 0 ? "-" : "";
+  const absolute = Math.abs(cents);
+  return `${sign}$${Math.round(absolute / 100).toLocaleString("en-US")}`;
 }
 
 function firstManager(team: LeagueContextTeam | null): string {
@@ -323,6 +330,51 @@ function rivalryPieceStructure({
   };
 }
 
+function arenaRecapStructure({
+  context,
+  team,
+}: {
+  context: LlmGenerateRequest["context"];
+  team: LeagueContextTeam | null;
+}): ArenaRecapStructure {
+  const standing = context.arena.leagueStanding;
+  const leader = context.arena.fieldLeader;
+  const headToHead = context.arena.headToHead;
+  const movers = [
+    ...context.arena.movers.risers,
+    ...context.arena.movers.fallers,
+  ];
+  const anchorName = standing?.displayName ?? context.league.name;
+  const teamNeedle = team
+    ? `${team.name} gives ${anchorName} a local face for the arena fight.`
+    : `${anchorName} needs imported team facts before the needle gets sharper.`;
+
+  return {
+    biggestMovers:
+      movers.length > 0
+        ? movers
+            .slice(0, 3)
+            .map(
+              (mover) =>
+                `${mover.displayName} moved from ${mover.previousRank} to ${mover.rank} on aggregate arena standings.`,
+            )
+        : [
+            `${anchorName} sees no rank-change mover yet, so the board is daring someone to move it.`,
+          ],
+    fieldLeader: leader
+      ? `${leader.displayName} leads the field at rank ${leader.rank} with ${formatMoney(leader.netPnlCents)} net.`
+      : `${context.league.name} has no arena field leader until standings materialize.`,
+    leaguePosition: standing
+      ? `${anchorName} is ${standing.rank} in the arena with ${formatMoney(standing.netPnlCents)} net.`
+      : `${context.league.name} is waiting on an arena standing.`,
+    needle: `${teamNeedle} This stays play-money bragging rights, not a payout pitch.`,
+    rivalWatch: headToHead
+      ? `${headToHead.anchor.displayName} is ${headToHead.comparison} ${headToHead.rival.displayName} by ${formatMoney(headToHead.marginCents)} with ${headToHead.rankGap} rank slot${headToHead.rankGap === 1 ? "" : "s"} between them.`
+      : `${anchorName} needs a second league on the board before the natural rival forms.`,
+    type: "arena_recap",
+  };
+}
+
 function milestoneRecordStructure({
   record,
   team,
@@ -447,6 +499,8 @@ function structureForRequest(
       return seasonArcStructure({ context: request.context, team });
     case "rivalry_piece":
       return rivalryPieceStructure({ team, teams });
+    case "arena_recap":
+      return arenaRecapStructure({ context: request.context, team });
     case "milestone_record":
       return milestoneRecordStructure({ record, team });
     case "instigation_column":
@@ -558,6 +612,19 @@ function blocksForStructure(
           items: [structure.score, structure.stakes, structure.needle],
           type: "list",
         },
+      ];
+    case "arena_recap":
+      return [
+        { text: `${personaName}'s arena recap`, type: "heading" },
+        {
+          text: `${structure.leaguePosition} ${structure.fieldLeader} ${personaLine}`,
+          type: "paragraph",
+        },
+        {
+          items: [structure.rivalWatch, ...structure.biggestMovers],
+          type: "list",
+        },
+        { text: structure.needle, type: "quote" },
       ];
     case "milestone_record":
       return [

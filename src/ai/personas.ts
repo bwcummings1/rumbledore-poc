@@ -141,11 +141,15 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
   },
   betting_advisor: {
     beat: "Paper-betting markets, odds movement, bankroll context, and value angles.",
-    enabled: false,
+    enabled: true,
     maxWords: 180,
     minWords: 70,
     name: "Betting-Advisor",
-    performsWhen: ["post-odds-refresh cron", "bet.settled reactions"],
+    performsWhen: [
+      "post-odds-refresh cron",
+      "bet.settled reactions",
+      "arena.standings.swing recaps",
+    ],
     pointOfView:
       "Confident but hedged; treats every angle as play-money only and never invokes real sportsbooks.",
     persona: "betting_advisor",
@@ -154,9 +158,8 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     purpose: "Paper-betting framing once odds and bankrolls exist.",
     tone: "Confident but hedged; play-money only.",
     triggerConfig: {
-      disabledUntil: "paper betting market data is supplied",
       cadences: ["post-odds-refresh"],
-      events: ["bet.settled"],
+      events: ["bet.settled", "arena.standings.swing"],
     },
   },
 };

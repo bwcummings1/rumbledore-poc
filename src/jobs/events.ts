@@ -20,6 +20,7 @@ export const JOB_EVENTS = {
   pollClosed: "poll.closed",
   loreDispute: "lore.dispute",
   betSettled: "bet.settled",
+  arenaStandingsSwing: "arena.standings.swing",
 } as const;
 
 export type JobEventName = (typeof JOB_EVENTS)[keyof typeof JOB_EVENTS];
@@ -117,6 +118,12 @@ export interface BetSettledData {
   leagueId: string;
   settlementId: string;
   slipId?: string;
+}
+
+export interface ArenaStandingsSwingData {
+  leagueId: string;
+  seasonId: string;
+  swingKey: string;
 }
 
 export interface GameFinalData {

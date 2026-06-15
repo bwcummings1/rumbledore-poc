@@ -16,11 +16,16 @@ export type ContentPlanTriggerResponse = ContentPlanTriggerResult & {
 };
 
 const idValue = z.string().trim().min(1).max(200);
+const keyValue = z.string().trim().min(1).max(1000);
 const leagueScopedDataSchema = z.object({
   leagueId: z.uuid(),
 });
 
 const triggerDataSchemas = {
+  [JOB_EVENTS.arenaStandingsSwing]: leagueScopedDataSchema.extend({
+    seasonId: idValue,
+    swingKey: keyValue,
+  }),
   [JOB_EVENTS.betSettled]: leagueScopedDataSchema.extend({
     bettingEventId: idValue.optional(),
     settlementId: idValue,
@@ -154,4 +159,10 @@ export const contentPlanBetSettled = createContentPlanTriggerFunction({
   eventName: JOB_EVENTS.betSettled,
   functionId: "content-plan-bet-settled",
   name: "AI content bet-settled planner",
+});
+
+export const contentPlanArenaStandingsSwing = createContentPlanTriggerFunction({
+  eventName: JOB_EVENTS.arenaStandingsSwing,
+  functionId: "content-plan-arena-standings-swing",
+  name: "AI content arena standings swing planner",
 });

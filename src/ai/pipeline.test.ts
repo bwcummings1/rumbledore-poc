@@ -24,6 +24,8 @@ import {
   aiMemory,
   aiPersonaCards,
   allTimeRecords,
+  arenaSeasons,
+  arenaStandings,
   contentItems,
   dataIntegrityChecks,
   fantasyMembers,
@@ -232,6 +234,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!handle) return;
+  await handle.db
+    .delete(arenaSeasons)
+    .where(sql`${arenaSeasons.name} like ${`${marker}-%`}`);
   await handle.db
     .delete(leagues)
     .where(sql`${leagues.providerLeagueId} like ${`${marker}-%`}`);
@@ -529,6 +534,149 @@ describe("generateLeagueBlogPost", () => {
         type: "power_rankings",
       },
     });
+  });
+
+  it("grounds arena recaps in aggregate arena standings and rival movement", async () => {
+    const league = await seedLeague("arena-alpha");
+    const rival = await seedLeague("arena-beta");
+    const now = new Date();
+    const offsetMs =
+      Number.parseInt(league.id.replaceAll("-", "").slice(0, 8), 16) %
+      (12 * 60 * 60 * 1000);
+    const computedAt = new Date(now.getTime() + offsetMs);
+    const [season] = await handle.db
+      .insert(arenaSeasons)
+      .values({
+        endsAt: new Date(computedAt.getTime() + 30 * 24 * 60 * 60 * 1000),
+        name: `${marker}-arena-recap`,
+        startsAt: new Date(computedAt.getTime() - 24 * 60 * 60 * 1000),
+      })
+      .returning({ id: arenaSeasons.id });
+    if (!season) throw new Error("arena season was not inserted");
+
+    await handle.db.insert(arenaStandings).values([
+      {
+        computedAt,
+        currentBalanceCents: 13_000,
+        kind: "league",
+        leagueId: rival.id,
+        netPnlCents: 3_000,
+        previousRank: 1,
+        pushVoidSlipCount: 0,
+        rank: 1,
+        rankDelta: 0,
+        roiBps: 2_500,
+        seasonId: season.id,
+        settledSlipCount: 3,
+        subjectId: rival.id,
+        totalReturnCents: 9_000,
+        totalStakeCents: 6_000,
+        userId: null,
+        weeksPlayed: 1,
+        weeksSurvived: 1,
+        winRateBps: 6_667,
+        wonSlipCount: 2,
+      },
+      {
+        computedAt,
+        currentBalanceCents: 11_500,
+        kind: "league",
+        leagueId: league.id,
+        netPnlCents: 1_500,
+        previousRank: 4,
+        pushVoidSlipCount: 0,
+        rank: 2,
+        rankDelta: 2,
+        roiBps: 1_500,
+        seasonId: season.id,
+        settledSlipCount: 2,
+        subjectId: league.id,
+        totalReturnCents: 5_500,
+        totalStakeCents: 4_000,
+        userId: null,
+        weeksPlayed: 1,
+        weeksSurvived: 1,
+        winRateBps: 5_000,
+        wonSlipCount: 1,
+      },
+    ]);
+
+    const llm = new MockLlmClient();
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        llm,
+        now: () => computedAt,
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "arena_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: `arena-swing:${season.id}:fixture`,
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests[0]?.context.arena).toMatchObject({
+      fieldLeader: {
+        displayName: `${marker} arena-beta`,
+        rank: 1,
+      },
+      headToHead: {
+        comparison: "trailing",
+        marginCents: 1_500,
+        rival: {
+          displayName: `${marker} arena-beta`,
+          rank: 1,
+        },
+      },
+      leagueStanding: {
+        displayName: `${marker} arena-alpha`,
+        rank: 2,
+        rankDelta: 2,
+      },
+      movers: {
+        risers: [
+          expect.objectContaining({
+            displayName: `${marker} arena-alpha`,
+            previousRank: 4,
+            rank: 2,
+          }),
+        ],
+      },
+    });
+
+    const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ body: contentItems.body, metadata: contentItems.metadata })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+            eq(
+              contentItems.dedupKey,
+              `blog:narrator:arena_recap:arena-swing:${season.id}:fixture`,
+            ),
+          ),
+        )
+        .limit(1),
+    );
+    expect(post?.metadata).toMatchObject({
+      content_type: "arena_recap",
+      structure: {
+        fieldLeader: expect.stringContaining(`${marker} arena-beta`),
+        leaguePosition: expect.stringContaining(`${marker} arena-alpha`),
+        type: "arena_recap",
+      },
+    });
+    expect(post?.body).toContain(`${marker} arena-beta`);
+    expect(post?.body).toContain("arena-alpha Team");
   });
 
   it("grounds the prompt in canon lore, rivalries, and canonical people only for the active league", async () => {

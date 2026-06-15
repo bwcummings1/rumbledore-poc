@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Arena recap narration landed — the AI cast now has a structured `arena_recap` content type, aggregate arena context in prompts, post-odds-refresh and standings-swing planning, and settlement-driven swing fanout.
 - 2026-06-15: Settlement reactions landed — settled slips now send member-specific outcome/payout/bankroll push notifications, refresh league/arena realtime leaderboards, and emit idempotent arena standings-swing signals from materialized rank deltas.
 - 2026-06-15: Arena rivalry framing landed — `/arena` now carries focused league context, computes league head-to-head leaders/margins from aggregate standings, and renders compare-against rivalry links.
 - 2026-06-15: Arena season movement landed — `/arena` now defaults to the active arena season, links prior seasons, stamps prior-rank deltas on materialized league/individual standings, and surfaces biggest risers/fallers.

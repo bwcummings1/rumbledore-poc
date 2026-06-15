@@ -27,7 +27,12 @@ import {
   type RealtimePublisher,
 } from "@/realtime";
 import { inngest } from "../client";
-import { type BetSettledData, type GameFinalData, JOB_EVENTS } from "../events";
+import {
+  type ArenaStandingsSwingData,
+  type BetSettledData,
+  type GameFinalData,
+  JOB_EVENTS,
+} from "../events";
 
 interface PlannedBetSettledEvent {
   id: string;
@@ -35,11 +40,18 @@ interface PlannedBetSettledEvent {
   data: BetSettledData;
 }
 
+interface PlannedArenaStandingsSwingEvent {
+  id: string;
+  name: typeof JOB_EVENTS.arenaStandingsSwing;
+  data: ArenaStandingsSwingData;
+}
+
 export type BettingSettleGameFinalResponse = Omit<
   SettleBettingEventResult,
   "ledgerEntries" | "settlements"
 > & {
   arenaLeaderboardUpdates: ArenaLeaderboardUpdatedPayload[];
+  arenaRecapEvents: PlannedArenaStandingsSwingEvent[];
   arenaSwingSignals: ArenaStandingsSwingPayload[];
   betSettledEvents: PlannedBetSettledEvent[];
   eventName: typeof JOB_EVENTS.gameFinal;
@@ -357,6 +369,48 @@ async function publishSettlementRealtimeSignals({
   };
 }
 
+function planArenaSwingContentEvents({
+  arenaSwingSignals,
+  leagueId,
+  settlementIds,
+}: {
+  arenaSwingSignals: readonly ArenaStandingsSwingPayload[];
+  leagueId: string;
+  settlementIds: readonly string[];
+}): PlannedArenaStandingsSwingEvent[] {
+  if (arenaSwingSignals.length === 0 || settlementIds.length === 0) {
+    return [];
+  }
+
+  const seasonIds = uniqueValues(
+    arenaSwingSignals.map((payload) => payload.seasonId),
+  );
+  const movedLeagueIds = uniqueValues(
+    arenaSwingSignals.flatMap((payload) =>
+      payload.swings.flatMap((swing) =>
+        swing.kind === "league" && swing.leagueId ? [swing.leagueId] : [],
+      ),
+    ),
+  );
+  const targetLeagueIds = uniqueValues([leagueId, ...movedLeagueIds]);
+  const settlementKey = [...settlementIds].sort().join(",");
+
+  return seasonIds.flatMap((seasonId) =>
+    targetLeagueIds.map((targetLeagueId) => {
+      const swingKey = `settlement:${settlementKey}:${targetLeagueId}`;
+      return {
+        data: {
+          leagueId: targetLeagueId,
+          seasonId,
+          swingKey,
+        },
+        id: `${JOB_EVENTS.arenaStandingsSwing}:${targetLeagueId}:${seasonId}:${swingKey}`,
+        name: JOB_EVENTS.arenaStandingsSwing,
+      };
+    }),
+  );
+}
+
 export async function runBettingSettleGameFinal({
   data: rawData,
   deps,
@@ -373,6 +427,7 @@ export async function runBettingSettleGameFinal({
     },
   });
   let arenaLeaderboardUpdates: ArenaLeaderboardUpdatedPayload[] = [];
+  let arenaRecapEvents: PlannedArenaStandingsSwingEvent[] = [];
   let arenaSwingSignals: ArenaStandingsSwingPayload[] = [];
   let leagueLeaderboardUpdates: LeagueLeaderboardUpdatedPayload[] = [];
 
@@ -389,6 +444,11 @@ export async function runBettingSettleGameFinal({
     arenaLeaderboardUpdates = realtimeUpdates.arenaLeaderboardUpdates;
     arenaSwingSignals = realtimeUpdates.arenaSwingSignals;
     leagueLeaderboardUpdates = realtimeUpdates.leagueLeaderboardUpdates;
+    arenaRecapEvents = planArenaSwingContentEvents({
+      arenaSwingSignals,
+      leagueId: result.leagueId,
+      settlementIds: result.settlements.map((settlement) => settlement.id),
+    });
     await sendSettlementPushNotifications({
       deps,
       details,
@@ -409,6 +469,7 @@ export async function runBettingSettleGameFinal({
 
   return {
     arenaLeaderboardUpdates,
+    arenaRecapEvents,
     arenaSwingSignals,
     betSettledEvents,
     bettingEventId: result.bettingEventId,
@@ -450,6 +511,12 @@ export function createBettingSettleGameFinalFunction(
           await step.sendEvent(
             "send-bet-settled-events",
             result.betSettledEvents,
+          );
+        }
+        if (result.arenaRecapEvents.length > 0) {
+          await step.sendEvent(
+            "send-arena-swing-content-events",
+            result.arenaRecapEvents,
           );
         }
         return result;

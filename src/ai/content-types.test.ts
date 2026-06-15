@@ -110,6 +110,23 @@ describe("content type templates", () => {
 
     expect(
       validateContentStructure({
+        contentType: "arena_recap",
+        context,
+        structure: {
+          biggestMovers: [
+            "Fixture League jumped from 4th to 2nd in the arena.",
+          ],
+          fieldLeader: "Alpha League leads the field at rank 1.",
+          leaguePosition: "Fixture League is 2nd in the arena.",
+          needle: "Alpha Team needs one clean week to make the room louder.",
+          rivalWatch: "Fixture League trails Alpha League by one rank.",
+          type: "arena_recap",
+        },
+      }),
+    ).toMatchObject({ type: "arena_recap" });
+
+    expect(
+      validateContentStructure({
         contentType: "milestone_record",
         context,
         structure: {

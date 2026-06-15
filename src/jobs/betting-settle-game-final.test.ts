@@ -260,6 +260,9 @@ describe("betting game.final settlement job", () => {
       ],
     });
 
+    const settleResult = stepRun.result as Awaited<
+      ReturnType<typeof runBettingSettleGameFinal>
+    >;
     expect(stepRun.result).toMatchObject({
       arenaLeaderboardUpdates: [
         {
@@ -319,6 +322,33 @@ describe("betting game.final settlement job", () => {
       ok: true,
       skippedReason: null,
     });
+    expect(settleResult.arenaRecapEvents).toHaveLength(2);
+    expect(settleResult.arenaRecapEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            leagueId: league.id,
+            seasonId: arenaSeason.id,
+            swingKey: expect.stringContaining(`:${league.id}`),
+          }),
+          id: expect.stringContaining(
+            `${JOB_EVENTS.arenaStandingsSwing}:${league.id}:${arenaSeason.id}:settlement:`,
+          ),
+          name: JOB_EVENTS.arenaStandingsSwing,
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            leagueId: rivalLeague.id,
+            seasonId: arenaSeason.id,
+            swingKey: expect.stringContaining(`:${rivalLeague.id}`),
+          }),
+          id: expect.stringContaining(
+            `${JOB_EVENTS.arenaStandingsSwing}:${rivalLeague.id}:${arenaSeason.id}:settlement:`,
+          ),
+          name: JOB_EVENTS.arenaStandingsSwing,
+        }),
+      ]),
+    );
     const [slip] = await withLeagueContext(handle.db, league.id, (tx) =>
       tx.select().from(betSlips).where(eq(betSlips.id, seeded.placed.slip.id)),
     );
@@ -393,6 +423,7 @@ describe("betting game.final settlement job", () => {
       },
     });
     expect(retry).toMatchObject({
+      arenaRecapEvents: [],
       arenaSwingSignals: [],
       finalizedSlips: 0,
       leagueLeaderboardUpdates: [],

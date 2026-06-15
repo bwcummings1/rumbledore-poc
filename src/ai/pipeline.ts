@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { getArenaLeaderboardData } from "@/betting/arena";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -44,6 +45,9 @@ import type {
   EmbeddingProvider,
   LeagueAuthenticityContext,
   LeagueBlogContext,
+  LeagueContextArena,
+  LeagueContextArenaMover,
+  LeagueContextArenaStanding,
   LeagueContextCanonLore,
   LeagueContextDisputedLore,
   LeagueContextInstigation,
@@ -89,6 +93,13 @@ export interface AiGenerationDependencies {
   duplicateThreshold?: number;
   now?: () => Date;
 }
+
+type ArenaLeaderboardData = Awaited<ReturnType<typeof getArenaLeaderboardData>>;
+type ArenaLeaderboardRow = ArenaLeaderboardData["leagueStandings"][number];
+type ArenaHeadToHeadLeague = NonNullable<
+  ArenaLeaderboardData["headToHead"]
+>["anchor"];
+type ArenaMoverRow = ArenaLeaderboardData["movers"]["risers"][number];
 
 export type GenerateLeagueBlogPostResult =
   | {
@@ -333,6 +344,104 @@ function stableAuthenticityFacts(context: LeagueBlogContext) {
   };
 }
 
+function emptyArenaContext(): LeagueContextArena {
+  return {
+    computedAt: null,
+    fieldLeader: null,
+    headToHead: null,
+    leagueStanding: null,
+    movers: { fallers: [], risers: [] },
+    season: null,
+    topLeagueStandings: [],
+  };
+}
+
+function arenaStandingFromLeaderboardRow(
+  row: ArenaLeaderboardRow,
+): LeagueContextArenaStanding {
+  return {
+    currentBalanceCents: row.currentBalanceCents,
+    displayName: row.displayName,
+    id: row.id,
+    netPnlCents: row.netPnlCents,
+    rank: row.rank,
+    rankDelta: row.rankDelta,
+    roiBps: row.roiBps,
+    weeksSurvived: row.weeksSurvived,
+    winRateBps: row.winRateBps,
+  };
+}
+
+function arenaStandingFromHeadToHeadLeague(
+  row: ArenaHeadToHeadLeague,
+): LeagueContextArenaStanding {
+  return {
+    currentBalanceCents: row.currentBalanceCents,
+    displayName: row.displayName,
+    id: row.id,
+    netPnlCents: row.netPnlCents,
+    rank: row.rank,
+    rankDelta: row.rankDelta,
+    roiBps: row.roiBps,
+    weeksSurvived: row.weeksSurvived,
+    winRateBps: row.winRateBps,
+  };
+}
+
+function arenaMoverFromRow(row: ArenaMoverRow): LeagueContextArenaMover {
+  return {
+    displayName: row.displayName,
+    kind: row.kind,
+    netPnlCents: row.netPnlCents,
+    previousRank: row.previousRank,
+    rank: row.rank,
+    rankDelta: row.rankDelta,
+  };
+}
+
+async function loadArenaContext({
+  db,
+  leagueId,
+}: {
+  db: Db;
+  leagueId: string;
+}): Promise<LeagueContextArena> {
+  const data = await getArenaLeaderboardData(db, {
+    leagueId,
+    limit: 5,
+    movementLimit: 5,
+  });
+  const topLeagueStandings = data.leagueStandings.map(
+    arenaStandingFromLeaderboardRow,
+  );
+  const headToHead = data.headToHead
+    ? {
+        anchor: arenaStandingFromHeadToHeadLeague(data.headToHead.anchor),
+        comparison: data.headToHead.comparison,
+        leaderDisplayName: data.headToHead.leader?.displayName ?? null,
+        marginCents: data.headToHead.marginCents,
+        rankGap: data.headToHead.rankGap,
+        rival: arenaStandingFromHeadToHeadLeague(data.headToHead.rival),
+      }
+    : null;
+
+  return {
+    computedAt: data.computedAt,
+    fieldLeader: topLeagueStandings[0] ?? null,
+    headToHead,
+    leagueStanding:
+      headToHead?.anchor ??
+      topLeagueStandings.find((row) => row.id === leagueId) ??
+      null,
+    movers: {
+      fallers: data.movers.fallers.map(arenaMoverFromRow),
+      risers: data.movers.risers.map(arenaMoverFromRow),
+    },
+    season: data.season,
+    topLeagueStandings,
+  };
+}
+
 function uniqueStrings(
   values: readonly (string | null | undefined)[],
 ): string[] {
@@ -481,6 +590,7 @@ export function buildPromptParts({
   };
   const systemPrefix = JSON.stringify(stablePrefix);
   const volatileContext = JSON.stringify({
+    arena: context.arena,
     currentScoringPeriod: context.league.currentScoringPeriod,
     contentType: contentTypePromptContract(contentType),
     duplicateNudge: duplicateNudge ?? null,
@@ -1332,6 +1442,7 @@ async function prepareGeneration({
   return {
     context: {
       league,
+      arena: emptyArenaContext(),
       authenticity,
       memory,
       persona,
@@ -1585,11 +1696,19 @@ export async function generateLeagueBlogPost({
     return prepared;
   }
 
+  const context: LeagueBlogContext = {
+    ...prepared.context,
+    arena: await loadArenaContext({
+      db: deps.db,
+      leagueId: input.leagueId,
+    }),
+  };
+
   let newsItems: NewsItem[] = [];
   try {
     newsItems = await deps.web.fetch({
       leagueId: input.leagueId,
-      leagueName: prepared.context.league.name,
+      leagueName: context.league.name,
       persona: input.persona,
       triggerKey: input.triggerKey,
     });
@@ -1598,17 +1717,17 @@ export async function generateLeagueBlogPost({
   }
   const prompt = buildPromptParts({
     contentType: input.contentType,
-    context: prepared.context,
+    context,
     newsItems,
     triggerKey: input.triggerKey,
   });
   const promptPrefixHash = hashText(prompt.systemPrefix);
   const initialDraft = validateDraftOrGeneric({
     contentType: input.contentType,
-    context: prepared.context,
+    context,
     draft: await deps.llm.generate({
       attempt: 1,
-      context: prepared.context,
+      context,
       contentType: input.contentType,
       newsItems,
       persona: input.persona,
@@ -1617,22 +1736,22 @@ export async function generateLeagueBlogPost({
   });
   let draft = initialDraft;
   let alreadyRetried = false;
-  if (!draft || !referencedLeagueEntity({ context: prepared.context, draft })) {
+  if (!draft || !referencedLeagueEntity({ context, draft })) {
     const authenticityNudge =
       "The first draft was too generic. Name a concrete league-owned team, manager, record, rivalry, or canon fact from the supplied context.";
     const retryPrompt = buildPromptParts({
       contentType: input.contentType,
-      context: prepared.context,
+      context,
       duplicateNudge: authenticityNudge,
       newsItems,
       triggerKey: input.triggerKey,
     });
     draft = validateDraftOrGeneric({
       contentType: input.contentType,
-      context: prepared.context,
+      context,
       draft: await deps.llm.generate({
         attempt: 2,
-        context: prepared.context,
+        context,
         contentType: input.contentType,
         duplicateNudge: authenticityNudge,
         newsItems,
@@ -1643,7 +1762,7 @@ export async function generateLeagueBlogPost({
     alreadyRetried = true;
   }
 
-  if (!draft || !referencedLeagueEntity({ context: prepared.context, draft })) {
+  if (!draft || !referencedLeagueEntity({ context, draft })) {
     return markSkipped({
       deps,
       input,
@@ -1665,17 +1784,17 @@ export async function generateLeagueBlogPost({
       "The first draft was too similar to a prior league post. Use a different angle and avoid repeating phrasing.";
     const retryPrompt = buildPromptParts({
       contentType: input.contentType,
-      context: prepared.context,
+      context,
       duplicateNudge,
       newsItems,
       triggerKey: input.triggerKey,
     });
     const duplicateDraft = validateDraftOrGeneric({
       contentType: input.contentType,
-      context: prepared.context,
+      context,
       draft: await deps.llm.generate({
         attempt: 2,
-        context: prepared.context,
+        context,
         contentType: input.contentType,
         duplicateNudge,
         newsItems,
@@ -1693,7 +1812,7 @@ export async function generateLeagueBlogPost({
     }
     draft = duplicateDraft;
     embedding = await deps.embeddings.embed(blogDraftText(draft));
-    if (!referencedLeagueEntity({ context: prepared.context, draft })) {
+    if (!referencedLeagueEntity({ context, draft })) {
       return markSkipped({
         deps,
         input,

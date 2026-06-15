@@ -9,6 +9,7 @@ import {
 } from "./functions/content-plan-cron";
 import { contentPlanGameFinal } from "./functions/content-plan-game-final";
 import {
+  contentPlanArenaStandingsSwing,
   contentPlanBetSettled,
   contentPlanLoreCanonized,
   contentPlanPollClosed,
@@ -36,6 +37,7 @@ export {
 } from "./functions/content-plan-cron";
 export { contentPlanGameFinal } from "./functions/content-plan-game-final";
 export {
+  contentPlanArenaStandingsSwing,
   contentPlanBetSettled,
   contentPlanLoreCanonized,
   contentPlanPollClosed,
@@ -65,6 +67,7 @@ export const functions = [
   contentPlanLoreCanonized,
   contentPlanPollClosed,
   contentPlanBetSettled,
+  contentPlanArenaStandingsSwing,
   instigationSeed,
   pollClose,
   loreVoteClose,

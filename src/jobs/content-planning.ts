@@ -9,6 +9,7 @@ import {
   leagues,
 } from "@/db/schema";
 import {
+  type ArenaStandingsSwingData,
   type BetSettledData,
   type ContentGenerateData,
   type GameFinalData,
@@ -37,6 +38,7 @@ export const CONTENT_PLAN_TRIGGER_EVENTS = [
   JOB_EVENTS.loreCanonized,
   JOB_EVENTS.pollClosed,
   JOB_EVENTS.betSettled,
+  JOB_EVENTS.arenaStandingsSwing,
 ] as const;
 
 export type ContentPlanTriggerEventName =
@@ -89,6 +91,7 @@ const CRON_CANDIDATES: Record<
   ],
   "post-odds-refresh": [
     { contentType: "matchup_preview", persona: "betting_advisor" },
+    { contentType: "arena_recap", persona: "betting_advisor" },
   ],
   "weekly-preview": [
     { contentType: "matchup_preview", persona: "commissioner" },
@@ -109,6 +112,9 @@ const TRIGGER_CANDIDATES: Record<
   [JOB_EVENTS.betSettled]: [
     { contentType: "awards_superlatives", persona: "trash_talker" },
     { contentType: "matchup_preview", persona: "betting_advisor" },
+  ],
+  [JOB_EVENTS.arenaStandingsSwing]: [
+    { contentType: "arena_recap", persona: "narrator" },
   ],
   [JOB_EVENTS.loreCanonized]: [
     { contentType: "verdict_column", persona: "commissioner" },
@@ -187,6 +193,7 @@ function contentTriggerKey(
   eventName: ContentPlanTriggerEventName,
   data:
     | BetSettledData
+    | ArenaStandingsSwingData
     | LoreCanonizedData
     | PollClosedData
     | RecordBrokenData
@@ -211,6 +218,10 @@ function contentTriggerKey(
     case JOB_EVENTS.betSettled: {
       const betData = data as BetSettledData;
       return `bet-settled:${betData.settlementId}`;
+    }
+    case JOB_EVENTS.arenaStandingsSwing: {
+      const swingData = data as ArenaStandingsSwingData;
+      return `arena-swing:${swingData.seasonId}:${swingData.swingKey}`;
     }
   }
 }
@@ -490,6 +501,7 @@ export function planTriggeredContent({
 }: {
   data:
     | BetSettledData
+    | ArenaStandingsSwingData
     | LoreCanonizedData
     | PollClosedData
     | RecordBrokenData

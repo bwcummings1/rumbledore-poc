@@ -29,6 +29,12 @@ describe("persona cast defaults", () => {
         events: ["transaction", "waiver", "bet.placed"],
       },
     });
-    expect(DEFAULT_PERSONA_CARDS.betting_advisor.enabled).toBe(false);
+    expect(DEFAULT_PERSONA_CARDS.betting_advisor).toMatchObject({
+      enabled: true,
+      triggerConfig: {
+        cadences: ["post-odds-refresh"],
+        events: ["bet.settled", "arena.standings.swing"],
+      },
+    });
   });
 });

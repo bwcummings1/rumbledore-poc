@@ -10,6 +10,7 @@ export const AI_CONTENT_TYPES = [
   "transaction_reaction",
   "season_arc",
   "rivalry_piece",
+  "arena_recap",
   "milestone_record",
   "instigation_column",
   "verdict_column",
@@ -89,6 +90,15 @@ export interface RivalryPieceStructure {
   needle: string;
 }
 
+export interface ArenaRecapStructure {
+  type: "arena_recap";
+  leaguePosition: string;
+  fieldLeader: string;
+  rivalWatch: string;
+  biggestMovers: string[];
+  needle: string;
+}
+
 export interface MilestoneRecordStructure {
   type: "milestone_record";
   record: string;
@@ -122,6 +132,7 @@ export type BlogContentStructure =
   | TransactionReactionStructure
   | SeasonArcStructure
   | RivalryPieceStructure
+  | ArenaRecapStructure
   | MilestoneRecordStructure
   | InstigationColumnStructure
   | VerdictColumnStructure;
@@ -207,6 +218,14 @@ export const CONTENT_TYPE_TEMPLATES: Record<
     promptContract:
       "Return the rivalry history, current score, stakes this week, and an affectionate needle grounded in supplied head-to-head or team facts.",
     section: "trash-talk",
+  },
+  arena_recap: {
+    contentType: "arena_recap",
+    defaultPersonas: ["betting_advisor", "narrator"],
+    label: "Arena Recap",
+    promptContract:
+      "Return the active league's arena position, the field leader, head-to-head rival watch, biggest aggregate movers, and one play-money needle without exposing raw bets from other leagues.",
+    section: "recaps",
   },
   transaction_reaction: {
     contentType: "transaction_reaction",
@@ -512,6 +531,31 @@ function normalizeRivalryPiece(
   return normalized;
 }
 
+function normalizeArenaRecap(structure: unknown): ArenaRecapStructure {
+  const record = asRecord(structure);
+  const biggestMovers = arrayValue(record.biggestMovers)
+    .map((value) => cleanText(value))
+    .filter(Boolean);
+  const normalized = {
+    biggestMovers,
+    fieldLeader: cleanText(record.fieldLeader),
+    leaguePosition: cleanText(record.leaguePosition),
+    needle: cleanText(record.needle),
+    rivalWatch: cleanText(record.rivalWatch),
+    type: "arena_recap" as const,
+  };
+  if (
+    !normalized.leaguePosition ||
+    !normalized.fieldLeader ||
+    !normalized.rivalWatch ||
+    normalized.biggestMovers.length === 0 ||
+    !normalized.needle
+  ) {
+    throwStructureError("arena_recap structure is missing a required section");
+  }
+  return normalized;
+}
+
 function normalizeMilestoneRecord(
   structure: unknown,
   context: ContentStructureValidationContext,
@@ -666,6 +710,8 @@ export function validateContentStructure({
       return normalizeSeasonArc(record, context);
     case "rivalry_piece":
       return normalizeRivalryPiece(record, context);
+    case "arena_recap":
+      return normalizeArenaRecap(record);
     case "milestone_record":
       return normalizeMilestoneRecord(record, context);
     case "instigation_column":

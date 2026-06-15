@@ -189,6 +189,55 @@ export interface LeagueContextTrigger {
   loreClaim: LeagueContextLoreClaim | null;
 }
 
+export interface LeagueContextArenaStanding {
+  currentBalanceCents: number;
+  displayName: string;
+  id: string;
+  netPnlCents: number;
+  rank: number;
+  rankDelta: number;
+  roiBps: number;
+  weeksSurvived: number;
+  winRateBps: number;
+}
+
+export interface LeagueContextArenaMover {
+  displayName: string;
+  kind: "league" | "individual";
+  netPnlCents: number;
+  previousRank: number;
+  rank: number;
+  rankDelta: number;
+}
+
+export interface LeagueContextArenaHeadToHead {
+  anchor: LeagueContextArenaStanding;
+  comparison: "leading" | "tied" | "trailing";
+  leaderDisplayName: string | null;
+  marginCents: number;
+  rankGap: number;
+  rival: LeagueContextArenaStanding;
+}
+
+export interface LeagueContextArena {
+  computedAt: string | null;
+  fieldLeader: LeagueContextArenaStanding | null;
+  headToHead: LeagueContextArenaHeadToHead | null;
+  leagueStanding: LeagueContextArenaStanding | null;
+  movers: {
+    fallers: LeagueContextArenaMover[];
+    risers: LeagueContextArenaMover[];
+  };
+  season: {
+    endsAt: string;
+    id: string;
+    name: string;
+    startsAt: string;
+    status: "active" | "complete" | "upcoming";
+  } | null;
+  topLeagueStandings: LeagueContextArenaStanding[];
+}
+
 export interface LeaguePersonaCard {
   id: string;
   persona: AiPersona;
@@ -221,6 +270,7 @@ export interface LeagueBlogContext {
   priorPosts: LeagueContextPriorPost[];
   memory: LeagueContextMemory[];
   trigger: LeagueContextTrigger;
+  arena: LeagueContextArena;
 }
 
 export interface PromptParts {

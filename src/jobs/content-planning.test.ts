@@ -42,6 +42,7 @@ import {
   runContentPlanGameFinal,
 } from "./functions/content-plan-game-final";
 import {
+  contentPlanArenaStandingsSwing,
   contentPlanBetSettled,
   contentPlanLoreCanonized,
   contentPlanPollClosed,
@@ -315,6 +316,20 @@ describe("content planning", () => {
     expect(
       rivalryForActive.map((event) => event.data.contentType).sort(),
     ).toEqual(["matchup_preview", "matchup_preview", "rivalry_piece"]);
+
+    const postOdds = await planCronContent({
+      cadence: "post-odds-refresh",
+      db: handle.db,
+    });
+    const postOddsForActive = postOdds.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(
+      postOddsForActive.map((event) => event.data.contentType).sort(),
+    ).toEqual(["arena_recap", "matchup_preview"]);
+    expect(postOddsForActive.map((event) => event.data.persona).sort()).toEqual(
+      ["betting_advisor", "betting_advisor"],
+    );
   });
 
   it("runs mid-week instigation candidates as poll-backed lore claims", async () => {
@@ -626,6 +641,24 @@ describe("content planning", () => {
 
     expect(
       planTriggeredContent({
+        data: {
+          leagueId,
+          seasonId: "season-1",
+          swingKey: "settlement:settle-1:league-1",
+        },
+        eventName: JOB_EVENTS.arenaStandingsSwing,
+      }).planned.map((event) => event.data),
+    ).toEqual([
+      {
+        contentType: "arena_recap",
+        leagueId,
+        persona: "narrator",
+        triggerKey: "arena-swing:season-1:settlement:settle-1:league-1",
+      },
+    ]);
+
+    expect(
+      planTriggeredContent({
         data: { bettingEventId: "event-1", leagueId, settlementId: "settle-1" },
         eventName: JOB_EVENTS.betSettled,
       }).planned.map((event) => event.data),
@@ -728,5 +761,6 @@ describe("content planning", () => {
     expect(functions).toContain(contentPlanLoreCanonized);
     expect(functions).toContain(contentPlanPollClosed);
     expect(functions).toContain(contentPlanBetSettled);
+    expect(functions).toContain(contentPlanArenaStandingsSwing);
   });
 });
