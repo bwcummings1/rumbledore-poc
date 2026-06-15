@@ -18,6 +18,7 @@ import {
   type ProviderOnboardingDependencies,
   type ProviderOnboardingError,
   type RequestHistoricalImport,
+  type RequestLeagueConnected,
   storedSleeperCredentialsSchema,
 } from "./provider-service";
 
@@ -38,6 +39,7 @@ export interface SleeperOnboardingDependencies {
   provider: SleeperProvider;
   realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
+  requestLeagueConnected?: RequestLeagueConnected;
 }
 
 function providerDeps(
@@ -50,6 +52,7 @@ function providerDeps(
     providers: { sleeper: deps.provider },
     realtime: deps.realtime,
     requestHistoricalImport: deps.requestHistoricalImport,
+    requestLeagueConnected: deps.requestLeagueConnected,
   };
 }
 

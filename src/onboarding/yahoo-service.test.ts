@@ -62,10 +62,12 @@ function deps({
   currentLeagueKey,
   previousLeagueKey,
   requestedImports,
+  requestedLiveIngest,
 }: {
   currentLeagueKey: string;
   previousLeagueKey: string;
   requestedImports: unknown[];
+  requestedLiveIngest?: unknown[];
 }): YahooOnboardingDependencies {
   providerLeagueIds.add(currentLeagueKey);
   providerLeagueIds.add(previousLeagueKey);
@@ -83,6 +85,9 @@ function deps({
     }),
     requestHistoricalImport: async (data) => {
       requestedImports.push(data);
+    },
+    requestLeagueConnected: async (data) => {
+      requestedLiveIngest?.push(data);
     },
   };
 }
@@ -222,10 +227,12 @@ describe("Yahoo onboarding service", () => {
     const previousLeagueKey = `449.l.${marker}`;
     const user = await seedUser("oauth");
     const requestedImports: unknown[] = [];
+    const requestedLiveIngest: unknown[] = [];
     const testDeps = deps({
       currentLeagueKey,
       previousLeagueKey,
       requestedImports,
+      requestedLiveIngest,
     });
 
     const connected = await connectYahooOAuth(testDeps, {
@@ -341,6 +348,11 @@ describe("Yahoo onboarding service", () => {
         size: 4,
         sport: "ffl",
         teamName: "Yahoo Alpha",
+      },
+    ]);
+    expect(requestedLiveIngest).toEqual([
+      {
+        leagueId: imported.value.leagueId,
       },
     ]);
 

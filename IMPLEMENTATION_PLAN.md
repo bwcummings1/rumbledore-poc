@@ -51,7 +51,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 5. [x] Schedule historical backfill for skipped season rollover gaps — correctness/LOW: same-auth rollover should not leave missing seasons unimported.
 6. [x] Fix candidate-limited publication section/tag filters — correctness/LOW: verified central News and league Press scan beyond the first candidate page when section/tag filters are active.
 7. [x] Split class-specific provider fetches for scheduler data classes — performance/MED: live ingest now passes due classes/current period into sync and avoids broad provider calls for narrow polls.
-8. [ ] Confirm and wire `league.connected` fan-out from onboarding — robustness/LOW: connected-event ingestion triggers should be reliable before depending on them operationally.
+8. [x] Confirm and wire `league.connected` fan-out from onboarding — robustness/LOW: imports now enqueue the live-ingest trigger after durable league/member setup, and `league.connected` force-fanout is covered.
 9. [ ] Normalize provider-player refs in real central-news adapters — source-quality/MED: league tailoring is materially weaker when real feeds cannot match roster entities.
 10. [ ] Add account-wide server push disable/cleanup — robustness/LOW: sign-out currently only unsubscribes the browser, leaving stale server rows until delivery cleanup.
 
@@ -69,7 +69,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 
 ## Discoveries / bugs (loop appends here)
 - [x] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
-- [ ] `league.connected` is wired as a force-due ingestion scheduler trigger, but onboarding appears to call `syncCurrentLeague()` directly instead of emitting `JOB_EVENTS.leagueConnected`; confirm before relying on connected-event fan-out.
+- [x] `league.connected` is wired as a force-due ingestion scheduler trigger, but onboarding appears to call `syncCurrentLeague()` directly instead of emitting `JOB_EVENTS.leagueConnected`; imports now enqueue the trigger after durable league/member setup.
 - [x] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
 - [x] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.
 - [x] Season rollover advances the durable league root into the newly discovered season, but does not schedule historical backfill for any skipped seasons.

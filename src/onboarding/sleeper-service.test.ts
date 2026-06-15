@@ -183,6 +183,7 @@ describe("Sleeper onboarding service", () => {
     const previousLeagueId = `${marker}-2025`;
     const user = await seedUser("public");
     const requestedImports: unknown[] = [];
+    const requestedLiveIngest: unknown[] = [];
     const testDeps: SleeperOnboardingDependencies = {
       ...deps(
         fixtureProvider({
@@ -192,6 +193,9 @@ describe("Sleeper onboarding service", () => {
       ),
       requestHistoricalImport: async (data) => {
         requestedImports.push(data);
+      },
+      requestLeagueConnected: async (data) => {
+        requestedLiveIngest.push(data);
       },
     };
 
@@ -299,6 +303,11 @@ describe("Sleeper onboarding service", () => {
         season: 2026,
         size: 4,
         sport: "ffl",
+      },
+    ]);
+    expect(requestedLiveIngest).toEqual([
+      {
+        leagueId: imported.value.leagueId,
       },
     ]);
 

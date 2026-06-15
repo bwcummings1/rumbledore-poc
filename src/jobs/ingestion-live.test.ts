@@ -641,6 +641,63 @@ describe("live ingestion jobs", () => {
     ]);
   });
 
+  it("forces current ingest when league.connected is the trigger", async () => {
+    const seeded = await seedLiveLeague("connected-fanout");
+    const now = new Date("2026-09-13T18:01:00Z");
+    await seedDataCoverage(seeded, {
+      league: now,
+      matchups: now,
+      members: now,
+      rosters: now,
+      teams: now,
+    });
+
+    const normalTick = await runIngestionTick({
+      data: {
+        leagueId: seeded.leagueId,
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: {
+          stateForLeague: () => "live_window",
+        },
+      },
+    });
+    const connectedTick = await runIngestionTick({
+      data: {
+        leagueId: seeded.leagueId,
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: {
+          stateForLeague: () => "live_window",
+        },
+      },
+      eventName: JOB_EVENTS.leagueConnected,
+    });
+
+    expect(normalTick).toMatchObject({
+      ok: true,
+      plannedCount: 0,
+      skippedNotDue: 1,
+    });
+    expect(connectedTick).toMatchObject({
+      eventName: JOB_EVENTS.leagueConnected,
+      ok: true,
+      plannedCount: 1,
+    });
+    expect(connectedTick.planned[0]?.data).toMatchObject({
+      leagueId: seeded.leagueId,
+      provider: seeded.provider,
+      providerLeagueId: seeded.providerLeagueId,
+    });
+    expect(connectedTick.planned[0]?.data.dataClasses).toEqual([
+      ...primaryLiveDataClasses,
+    ]);
+  });
+
   it("uses injected live game state to poll matchups faster than off-hours", async () => {
     const seeded = await seedLiveLeague("cadence-live");
     const now = new Date("2026-09-13T18:02:00Z");

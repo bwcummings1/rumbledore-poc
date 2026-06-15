@@ -9,7 +9,7 @@ import {
   providerCredentials,
 } from "@/db/schema";
 import { type CurrentLeagueSyncResult, syncCurrentLeague } from "@/ingestion";
-import type { ImportRequestedData } from "@/jobs/events";
+import type { ImportRequestedData, LeagueConnectedData } from "@/jobs/events";
 import type {
   FantasyProvider,
   FantasyProviderId,
@@ -95,6 +95,10 @@ export type RequestHistoricalImport = (
   data: ImportRequestedData,
 ) => Promise<void>;
 
+export type RequestLeagueConnected = (
+  data: LeagueConnectedData,
+) => Promise<void>;
+
 type OnboardingProvider = Pick<
   FantasyProvider<unknown, FantasyProviderSession>,
   | "authenticate"
@@ -118,6 +122,7 @@ export interface ProviderOnboardingDependencies {
   providers: OnboardingProviderRegistry;
   realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
+  requestLeagueConnected?: RequestLeagueConnected;
   yahooOAuthClient?: YahooCredentialRefresher;
 }
 
@@ -790,6 +795,21 @@ export async function importDiscoveredLeague(
         cause,
         code: "ONBOARDING_IMPORT_JOB_ENQUEUE_FAILED",
         message: "Historical import could not be enqueued",
+        status: 500,
+      }),
+    );
+  }
+
+  try {
+    await deps.requestLeagueConnected?.({
+      leagueId: sync.value.league.id,
+    });
+  } catch (cause) {
+    return err(
+      new OnboardingError({
+        cause,
+        code: "ONBOARDING_LIVE_INGEST_JOB_ENQUEUE_FAILED",
+        message: "Live ingestion could not be enqueued",
         status: 500,
       }),
     );

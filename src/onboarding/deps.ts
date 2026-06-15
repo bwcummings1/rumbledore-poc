@@ -2,7 +2,11 @@ import "server-only";
 import { getEnv } from "@/core/env";
 import { getDb } from "@/db";
 import { inngest } from "@/jobs/client";
-import { type ImportRequestedData, JOB_EVENTS } from "@/jobs/events";
+import {
+  type ImportRequestedData,
+  JOB_EVENTS,
+  type LeagueConnectedData,
+} from "@/jobs/events";
 import { createEspnDiscoveryProvider } from "@/providers/espn";
 import { createSleeperProvider } from "@/providers/sleeper";
 import { createYahooProvider } from "@/providers/yahoo";
@@ -52,6 +56,20 @@ async function requestHistoricalImport(
   });
 }
 
+async function requestLeagueConnected(
+  data: LeagueConnectedData,
+): Promise<void> {
+  if (getEnv().jobs.inngest.mode === "mock") {
+    return;
+  }
+
+  await inngest.send({
+    data,
+    id: `league.connected:${data.leagueId}`,
+    name: JOB_EVENTS.leagueConnected,
+  });
+}
+
 export function getEspnOnboardingDependencies(): EspnOnboardingDependencies {
   const env = getEnv();
   const browserbase = env.services.browserbase;
@@ -66,6 +84,7 @@ export function getEspnOnboardingDependencies(): EspnOnboardingDependencies {
       : createEspnDiscoveryProvider(),
     realtime: createRealtimePublisher(env),
     requestHistoricalImport,
+    requestLeagueConnected,
   };
 }
 
@@ -77,6 +96,7 @@ export function getSleeperOnboardingDependencies(): SleeperOnboardingDependencie
     provider: createSleeperProvider(),
     realtime: createRealtimePublisher(env),
     requestHistoricalImport,
+    requestLeagueConnected,
   };
 }
 
@@ -101,6 +121,7 @@ export function getYahooOnboardingDependencies(): YahooOnboardingDependencies {
       : createYahooProvider(),
     realtime: createRealtimePublisher(env),
     requestHistoricalImport,
+    requestLeagueConnected,
   };
 }
 
@@ -124,6 +145,7 @@ export function getProviderOnboardingDependencies(): ProviderOnboardingDependenc
     },
     realtime: createRealtimePublisher(env),
     requestHistoricalImport,
+    requestLeagueConnected,
     yahooOAuthClient: env.auth.yahoo.mock
       ? createMockYahooOAuthClient({ redirectUri: yahooRedirectUri })
       : createYahooOAuthClient({

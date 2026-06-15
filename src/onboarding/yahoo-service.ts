@@ -32,6 +32,7 @@ import {
   type ProviderOnboardingDependencies,
   type ProviderOnboardingError,
   type RequestHistoricalImport,
+  type RequestLeagueConnected,
 } from "./provider-service";
 
 const YAHOO_PROVIDER_ID = "yahoo";
@@ -71,6 +72,7 @@ export interface YahooOnboardingDependencies {
   provider: YahooProvider;
   realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
+  requestLeagueConnected?: RequestLeagueConnected;
 }
 
 export interface YahooOAuthClientOptions {
@@ -92,6 +94,7 @@ function providerDeps(
     providers: { yahoo: deps.provider },
     realtime: deps.realtime,
     requestHistoricalImport: deps.requestHistoricalImport,
+    requestLeagueConnected: deps.requestLeagueConnected,
     yahooOAuthClient: deps.oauthClient,
   };
 }

@@ -236,10 +236,14 @@ describe("ESPN onboarding service", () => {
     const user = await seedUser("import");
     const provider = providerFor(providerLeagueId);
     const requestedImports: unknown[] = [];
+    const requestedLiveIngest: unknown[] = [];
     const testDeps: EspnOnboardingDependencies = {
       ...deps(provider),
       requestHistoricalImport: async (data) => {
         requestedImports.push(data);
+      },
+      requestLeagueConnected: async (data) => {
+        requestedLiveIngest.push(data);
       },
     };
 
@@ -289,6 +293,11 @@ describe("ESPN onboarding service", () => {
         size: 12,
         sport: "ffl",
         teamName: "Fixture Team",
+      },
+    ]);
+    expect(requestedLiveIngest).toEqual([
+      {
+        leagueId: imported.value.leagueId,
       },
     ]);
     expect(imported.value.sync.teams).toEqual({

@@ -55,6 +55,10 @@ export interface IngestionTickData {
   now?: string;
 }
 
+export interface LeagueConnectedData {
+  leagueId: string;
+}
+
 export interface LeagueIngestData {
   credentialId: string;
   currentScoringPeriod?: number;

@@ -22,6 +22,7 @@ import {
   type ProviderOnboardingDependencies,
   type ProviderOnboardingError,
   type RequestHistoricalImport,
+  type RequestLeagueConnected,
 } from "./provider-service";
 
 const ESPN_PROVIDER_ID = "espn";
@@ -49,6 +50,7 @@ export interface EspnOnboardingDependencies {
   provider: EspnProvider;
   realtime?: RealtimePublisher;
   requestHistoricalImport?: RequestHistoricalImport;
+  requestLeagueConnected?: RequestLeagueConnected;
 }
 
 function now(deps: Pick<EspnOnboardingDependencies, "now">): Date {
@@ -69,6 +71,7 @@ function providerDeps(
     providers: { espn: deps.provider },
     realtime: deps.realtime,
     requestHistoricalImport: deps.requestHistoricalImport,
+    requestLeagueConnected: deps.requestLeagueConnected,
   };
 }
 
