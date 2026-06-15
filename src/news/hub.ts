@@ -77,11 +77,85 @@ export interface CentralNewsHubData {
   sections: readonly PublicationSection<CentralPublicationSectionId>[];
 }
 
+type CentralNewsRow = {
+  id: string;
+  metadata: Record<string, unknown>;
+  publishedAt: Date;
+  source: string | null;
+  sourceUrl: string | null;
+  summary: string;
+  title: string;
+};
+
 function boundedLimit(limit: number | undefined): number {
   if (limit === undefined) {
     return DEFAULT_LIMIT;
   }
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
+}
+
+function hasActiveArticleFilter(input: {
+  activeSection: PublicationSection<CentralPublicationSectionId> | null;
+  tag?: string | null;
+}): boolean {
+  return Boolean(input.activeSection || input.tag?.trim());
+}
+
+function hubItemFromRow(row: CentralNewsRow): CentralNewsHubItem {
+  const section = resolveCentralPublicationSection({
+    metadata: row.metadata,
+    summary: row.summary,
+    title: row.title,
+  });
+
+  return {
+    dek: articleDek(row.metadata, row.summary),
+    section,
+    editorialImportance: editorialImportance(row.metadata),
+    id: row.id,
+    publishedAt: row.publishedAt.toISOString(),
+    source: row.source ?? "Unknown source",
+    sourceUrl: row.sourceUrl ?? "",
+    summary: row.summary,
+    tags: articleTags(row.metadata),
+    thumbnailUrl: articleHeroImageUrl(row.metadata),
+    title: row.title,
+  };
+}
+
+async function getCentralNewsRows(
+  db: Db,
+  input: { candidateLimit: number; scanAllCandidates: boolean },
+): Promise<CentralNewsRow[]> {
+  const rows: CentralNewsRow[] = [];
+  const pageLimit = input.scanAllCandidates ? MAX_LIMIT : input.candidateLimit;
+  let offset = 0;
+
+  while (true) {
+    const page = await db
+      .select({
+        id: contentItems.id,
+        metadata: contentItems.metadata,
+        publishedAt: contentItems.publishedAt,
+        source: contentItems.source,
+        sourceUrl: contentItems.sourceUrl,
+        summary: contentItems.summary,
+        title: contentItems.title,
+      })
+      .from(contentItems)
+      .where(and(isNull(contentItems.leagueId), eq(contentItems.kind, "news")))
+      .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
+      .limit(pageLimit)
+      .offset(offset);
+
+    rows.push(...page);
+
+    if (!input.scanAllCandidates || page.length < pageLimit) {
+      return rows;
+    }
+
+    offset += page.length;
+  }
 }
 
 export async function getCentralNewsHubData(
@@ -95,28 +169,21 @@ export async function getCentralNewsHubData(
   } = {},
 ): Promise<CentralNewsHubData> {
   const limit = boundedLimit(input.limit);
-  const candidateLimit = input.sectionId
-    ? MAX_LIMIT
-    : Math.min(limit * 3, MAX_LIMIT);
-  const rows = await db
-    .select({
-      id: contentItems.id,
-      metadata: contentItems.metadata,
-      publishedAt: contentItems.publishedAt,
-      source: contentItems.source,
-      sourceUrl: contentItems.sourceUrl,
-      summary: contentItems.summary,
-      title: contentItems.title,
-    })
-    .from(contentItems)
-    .where(and(isNull(contentItems.leagueId), eq(contentItems.kind, "news")))
-    .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
-    .limit(candidateLimit);
-
   const activeSection =
     CENTRAL_PUBLICATION_SECTIONS.find(
       (section) => section.id === input.sectionId,
     ) ?? null;
+  const scanAllCandidates = hasActiveArticleFilter({
+    activeSection,
+    tag: input.tag,
+  });
+  const candidateLimit = input.sectionId
+    ? MAX_LIMIT
+    : Math.min(limit * 3, MAX_LIMIT);
+  const rows = await getCentralNewsRows(db, {
+    candidateLimit,
+    scanAllCandidates,
+  });
 
   return {
     activeSection,
@@ -126,27 +193,7 @@ export async function getCentralNewsHubData(
       userId: input.userId,
     }),
     items: rows
-      .map((row) => {
-        const section = resolveCentralPublicationSection({
-          metadata: row.metadata,
-          summary: row.summary,
-          title: row.title,
-        });
-
-        return {
-          dek: articleDek(row.metadata, row.summary),
-          section,
-          editorialImportance: editorialImportance(row.metadata),
-          id: row.id,
-          publishedAt: row.publishedAt.toISOString(),
-          source: row.source ?? "Unknown source",
-          sourceUrl: row.sourceUrl ?? "",
-          summary: row.summary,
-          tags: articleTags(row.metadata),
-          thumbnailUrl: articleHeroImageUrl(row.metadata),
-          title: row.title,
-        };
-      })
+      .map(hubItemFromRow)
       .filter((item) => !activeSection || item.section.id === activeSection.id)
       .filter((item) => articleHasTag(item.tags, input.tag))
       .sort(

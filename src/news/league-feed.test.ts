@@ -316,6 +316,56 @@ describe("league-tailored feed", () => {
     expect(markedItems[0]?.section.label).toBe("Trash Talk");
   });
 
+  it("keeps sparse section stories beyond the first candidate page", async () => {
+    await withLeagueContext(handle.db, leagueAId, async (tx) => {
+      await tx.insert(contentItems).values([
+        {
+          authorPersona: "trash_talker",
+          body: "Deep league trash body.",
+          contentHash: `${marker}-deep-section-trash-hash`,
+          dedupKey: `${marker}-deep-section-trash`,
+          kind: "blog",
+          leagueId: leagueAId,
+          metadata: { section: "trash-talk" },
+          publishedAt: new Date("2026-06-10T12:00:00.000Z"),
+          summary: "An older Trash Talk post should stay in the section.",
+          title: "Deep section trash talk",
+        },
+        ...Array.from({ length: 110 }, (_, index) => ({
+          authorPersona: "narrator" as const,
+          body: `Deep league non-matching body ${index}.`,
+          contentHash: `${marker}-deep-section-recap-${index}-hash`,
+          dedupKey: `${marker}-deep-section-recap-${index}`,
+          kind: "blog" as const,
+          leagueId: leagueAId,
+          metadata: { section: "recaps" },
+          publishedAt: new Date(Date.UTC(2026, 5, 12, 12, index)),
+          summary: `Newer non-matching recap item ${index}.`,
+          title: `Deep section recap noise ${index}`,
+        })),
+      ]);
+    });
+
+    const result = await getLeagueFeedData(handle.db, {
+      leagueId: leagueAId,
+      limit: 10,
+      sectionId: "trash-talk",
+      userId,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected feed result: ${result.status}`);
+    }
+
+    const markedItems = result.data.items.filter((item) =>
+      item.title.includes("Deep section"),
+    );
+    expect(markedItems.map((item) => item.title)).toEqual([
+      "Deep section trash talk",
+    ]);
+  });
+
   it("rejects a feed reference that does not point to central news", async () => {
     await expect(
       upsertLeagueFeedReference(handle.db, {

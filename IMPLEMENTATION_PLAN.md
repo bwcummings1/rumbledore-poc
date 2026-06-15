@@ -41,7 +41,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 - [x] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`. (Verified already fixed by `token_hash`, migration `0033_hash_invite_tokens.sql`, and invite tests.)
 - [x] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads returning scheduled/in-progress. `src/ingestion/current-league.ts`. (Verified already fixed by matchup upsert guard and regression tests.)
 - [x] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — fixed by guarding `closeLoreVote()` against pre-deadline close-outs and proving early attempts leave the claim open.
-- [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` / `src/news/league-feed.ts` fetch a bounded candidate set before filtering, so sparse old beats can vanish as archives grow.
+- [x] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — fixed by paging through the full candidate set when section/tag filters are active, preserving sparse older beats without changing the default front window.
 - [ ] **[observability/LOW] Historical import progress is not published to realtime** — onboarding can't subscribe to a live history-build channel yet (relevant to the Phase 2 onboarding activation hook).
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]`; split routes or use a neutral slug.
 
@@ -54,6 +54,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 - [x] **[correctness/MED] Member-submitted lore votes are not scheduled for automatic close-out** — `lore.vote.close` exists, but `submitLoreClaim()`/the POST claim route do not enqueue it when an opinion claim opens a vote. Fixed by scheduling `lore.vote.close` from the submit route when Inngest is configured.
 - [ ] **[product/LOW] AI canon citation metadata is inferred from exact title/statement matches** — paraphrased canon can be asserted in a generated article without a `canonCitations` link unless the trigger claim is the canonized claim.
 - [ ] **[correctness/MED] Lore vote extensions do not enqueue replacement close events** — if a steward extends a vote after its original close event was scheduled, the extended window needs a fresh `lore.vote.close` event.
+- [ ] **[correctness/LOW] Default publication fronts are still candidate-window ranked** — unfiltered central/league fronts rank only the recent bounded candidate window, so very old high-importance stories will not lead without a future DB-backed ranking/indexing strategy.
 
 ## Harden shortlist
 1. [x] **Invite tokens stored plaintext at rest** — security/isolation risk: leaked invite rows are reusable bearer tokens, so hashing materially reduces credential blast radius. Verified already fixed.
@@ -62,7 +63,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 4. [x] **Bankroll rollover has no production scheduler** — functionality risk: weekly betting balances and arena standings can stale without an automated rollover path. Fixed by the scheduled `bankroll-rollover` Inngest job, which skips weeks with pending slips, opens the next bankroll week, rebuilds arena standings, and publishes realtime leaderboard updates.
 5. [x] **First bet requires an existing open bankroll week** — functionality/product risk: the intended first-bet flow can fail for leagues without pre-created weeks. Fixed by first-bet auto-opening plus regression coverage; settlement/rollover arena rebuilds are now scoped to affected seasons discovered during validation.
 6. [x] **Lore vote close can run before `vote_closes_at`** — correctness risk: direct callers can finalize votes before their announced window ends. Fixed by returning `LORE_VOTE_STILL_OPEN` before tally/mutation until the voting deadline is reached.
-7. [ ] **Publication section/tag filters are candidate-limited in memory** — correctness/scale risk: sparse sections can disappear as archives grow.
+7. [x] **Publication section/tag filters are candidate-limited in memory** — correctness/scale risk: sparse sections can disappear as archives grow. Fixed by full candidate pagination only when section/tag filters are active, with central and league Press regressions for matches buried beyond the first 100 candidates.
 8. [ ] **Invite auth return path does not preserve the claim URL** — robustness risk: unauthenticated invitees can lose the claim context after auth.
 9. [ ] **Historical import progress is not published to realtime** — robustness/UX risk: long onboarding history builds lack live progress feedback.
 10. [ ] **AI canon citation metadata is inferred from exact title/statement matches** — correctness/provenance risk: paraphrased canon can miss citation links.

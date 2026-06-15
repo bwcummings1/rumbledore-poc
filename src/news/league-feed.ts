@@ -34,6 +34,32 @@ const UUID_RE =
 
 type LeagueFeedKind = "blog" | "ingest_event" | "news";
 
+type LeagueContentRow = {
+  authorPersona: AiPersona | null;
+  id: string;
+  kind: LeagueFeedKind;
+  metadata: Record<string, unknown>;
+  publishedAt: Date;
+  summary: string;
+  title: string;
+};
+
+type LeagueCentralReferenceRow = {
+  contentItemId: string;
+  framingSummary: string | null;
+  framingTitle: string | null;
+  id: string;
+  matchedEntities: LeagueFeedMatchedEntity[];
+  metadata: Record<string, unknown>;
+  publishedAt: Date;
+  reason: string;
+  relevanceScore: number;
+  source: string | null;
+  sourceUrl: string | null;
+  summary: string;
+  title: string;
+};
+
 export interface LeagueFeedItem {
   id: string;
   contentItemId: string;
@@ -90,6 +116,13 @@ function boundedLimit(limit: number | undefined): number {
     return DEFAULT_LIMIT;
   }
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
+}
+
+function hasActiveArticleFilter(input: {
+  activeSection: PublicationSection<LeaguePublicationSectionId> | null;
+  tag?: string | null;
+}): boolean {
+  return Boolean(input.activeSection || input.tag?.trim());
 }
 
 function cleanOptional(value: string | null | undefined): string | null {
@@ -286,60 +319,92 @@ export async function getLeagueFeedData(
     LEAGUE_PUBLICATION_SECTIONS.find(
       (section) => section.id === input.sectionId,
     ) ?? null;
+  const scanAllCandidates = hasActiveArticleFilter({
+    activeSection,
+    tag: input.tag,
+  });
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
-    const leagueRows = await tx
-      .select({
-        authorPersona: contentItems.authorPersona,
-        id: contentItems.id,
-        kind: contentItems.kind,
-        metadata: contentItems.metadata,
-        publishedAt: contentItems.publishedAt,
-        summary: contentItems.summary,
-        title: contentItems.title,
-      })
-      .from(contentItems)
-      .where(
-        and(
-          eq(contentItems.leagueId, input.leagueId),
-          inArray(contentItems.kind, ["blog", "ingest_event"]),
-        ),
-      )
-      .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
-      .limit(candidateLimit);
+    const pageLimit = scanAllCandidates ? MAX_LIMIT : candidateLimit;
+    const leagueRows: LeagueContentRow[] = [];
+    const centralRows: LeagueCentralReferenceRow[] = [];
+    let leagueOffset = 0;
+    let centralOffset = 0;
 
-    const centralRows = await tx
-      .select({
-        contentItemId: contentItems.id,
-        framingSummary: leagueFeedReferences.framingSummary,
-        framingTitle: leagueFeedReferences.framingTitle,
-        id: leagueFeedReferences.id,
-        matchedEntities: leagueFeedReferences.matchedEntities,
-        metadata: contentItems.metadata,
-        publishedAt: contentItems.publishedAt,
-        reason: leagueFeedReferences.reason,
-        relevanceScore: leagueFeedReferences.relevanceScore,
-        source: contentItems.source,
-        sourceUrl: contentItems.sourceUrl,
-        summary: contentItems.summary,
-        title: contentItems.title,
-      })
-      .from(leagueFeedReferences)
-      .innerJoin(
-        contentItems,
-        eq(leagueFeedReferences.contentItemId, contentItems.id),
-      )
-      .where(
-        and(
-          eq(leagueFeedReferences.leagueId, input.leagueId),
-          isNull(contentItems.leagueId),
-          eq(contentItems.kind, "news"),
-        ),
-      )
-      .orderBy(
-        desc(leagueFeedReferences.relevanceScore),
-        desc(contentItems.publishedAt),
-      )
-      .limit(candidateLimit);
+    while (true) {
+      const page = await tx
+        .select({
+          authorPersona: contentItems.authorPersona,
+          id: contentItems.id,
+          kind: contentItems.kind,
+          metadata: contentItems.metadata,
+          publishedAt: contentItems.publishedAt,
+          summary: contentItems.summary,
+          title: contentItems.title,
+        })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, input.leagueId),
+            inArray(contentItems.kind, ["blog", "ingest_event"]),
+          ),
+        )
+        .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
+        .limit(pageLimit)
+        .offset(leagueOffset);
+
+      leagueRows.push(...page);
+
+      if (!scanAllCandidates || page.length < pageLimit) {
+        break;
+      }
+
+      leagueOffset += page.length;
+    }
+
+    while (true) {
+      const page = await tx
+        .select({
+          contentItemId: contentItems.id,
+          framingSummary: leagueFeedReferences.framingSummary,
+          framingTitle: leagueFeedReferences.framingTitle,
+          id: leagueFeedReferences.id,
+          matchedEntities: leagueFeedReferences.matchedEntities,
+          metadata: contentItems.metadata,
+          publishedAt: contentItems.publishedAt,
+          reason: leagueFeedReferences.reason,
+          relevanceScore: leagueFeedReferences.relevanceScore,
+          source: contentItems.source,
+          sourceUrl: contentItems.sourceUrl,
+          summary: contentItems.summary,
+          title: contentItems.title,
+        })
+        .from(leagueFeedReferences)
+        .innerJoin(
+          contentItems,
+          eq(leagueFeedReferences.contentItemId, contentItems.id),
+        )
+        .where(
+          and(
+            eq(leagueFeedReferences.leagueId, input.leagueId),
+            isNull(contentItems.leagueId),
+            eq(contentItems.kind, "news"),
+          ),
+        )
+        .orderBy(
+          desc(leagueFeedReferences.relevanceScore),
+          desc(contentItems.publishedAt),
+        )
+        .limit(pageLimit)
+        .offset(centralOffset);
+
+      centralRows.push(...page);
+
+      if (!scanAllCandidates || page.length < pageLimit) {
+        break;
+      }
+
+      centralOffset += page.length;
+    }
 
     const leagueItems: LeagueFeedItem[] = leagueRows.map((row) => {
       const title = row.title;

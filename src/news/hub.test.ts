@@ -208,6 +208,49 @@ describe("central news hub", () => {
     expect(markedItems[0]?.section.label).toBe("Injuries");
   });
 
+  it("keeps sparse section stories beyond the first candidate page", async () => {
+    await handle.db.insert(contentItems).values([
+      {
+        body: "Deep archive injury body.",
+        contentHash: `${marker}-deep-section-injury-hash`,
+        dedupKey: `${marker}-deep-section-injury`,
+        kind: "news",
+        leagueId: null,
+        metadata: { section: "injuries" },
+        publishedAt: new Date("2026-06-10T12:00:00.000Z"),
+        source: "Deep Injury Desk",
+        sourceUrl: `https://news.example.com/${marker}/deep-section-injury`,
+        summary: "An older injury item should not vanish from its section.",
+        title: "Deep archive injury report",
+      },
+      ...Array.from({ length: 110 }, (_, index) => ({
+        body: `Deep archive non-matching body ${index}.`,
+        contentHash: `${marker}-deep-section-rankings-${index}-hash`,
+        dedupKey: `${marker}-deep-section-rankings-${index}`,
+        kind: "news" as const,
+        leagueId: null,
+        metadata: { section: "rankings" },
+        publishedAt: new Date(Date.UTC(2026, 5, 12, 12, index)),
+        source: "Deep Rankings Desk",
+        sourceUrl: `https://news.example.com/${marker}/deep-section-rankings-${index}`,
+        summary: `Newer non-matching rankings item ${index}.`,
+        title: `Deep rankings noise ${index}`,
+      })),
+    ]);
+
+    const data = await getCentralNewsHubData(handle.db, {
+      limit: 10,
+      sectionId: "injuries",
+    });
+    const markedItems = data.items.filter((item) =>
+      item.sourceUrl.includes(`${marker}/deep-section-`),
+    );
+
+    expect(markedItems.map((item) => item.title)).toEqual([
+      "Deep archive injury report",
+    ]);
+  });
+
   it("returns a for your league rail from matched central references only", async () => {
     const [memberUser] = await handle.db
       .insert(users)
@@ -267,7 +310,7 @@ describe("central news hub", () => {
           kind: "news",
           leagueId: null,
           metadata: { section: "injuries" },
-          publishedAt: new Date("2026-06-11T21:00:00.000Z"),
+          publishedAt: new Date("2026-06-13T21:00:00.000Z"),
           source: "Central Rail Wire",
           sourceUrl: `https://news.example.com/${marker}/rail-a`,
           summary: "Central story with league A relevance.",
@@ -279,7 +322,7 @@ describe("central news hub", () => {
           dedupKey: `${marker}-rail-unrelated`,
           kind: "news",
           leagueId: null,
-          publishedAt: new Date("2026-06-11T20:00:00.000Z"),
+          publishedAt: new Date("2026-06-13T20:00:00.000Z"),
           source: "Central Rail Wire",
           sourceUrl: `https://news.example.com/${marker}/rail-unrelated`,
           summary: "Central story with no league intersection.",
@@ -291,7 +334,7 @@ describe("central news hub", () => {
           dedupKey: `${marker}-rail-b-central`,
           kind: "news",
           leagueId: null,
-          publishedAt: new Date("2026-06-11T22:00:00.000Z"),
+          publishedAt: new Date("2026-06-13T22:00:00.000Z"),
           source: "Central Rail Wire",
           sourceUrl: `https://news.example.com/${marker}/rail-b`,
           summary: "Central story with league B relevance.",
