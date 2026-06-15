@@ -54,7 +54,18 @@ export interface CreatedLeaguemateInvite {
   token: string;
 }
 
+export interface CreatedOpenLeagueInvite {
+  channel: "share";
+  expiresAt: string;
+  inviteUrl: string;
+  target: null;
+  targetHint: null;
+  token: string;
+}
+
 export interface LeagueInviteLanding {
+  claimMode: "targeted" | "open";
+  claimTargets: LeagueInviteTarget[];
   expiresAt: string;
   inviteeDisplayName: string;
   league: {
@@ -107,6 +118,10 @@ type IdentityClaimRow = Pick<
   "providerMemberId" | "userId"
 >;
 
+type AcceptableInvite = LeagueInvite & {
+  providerMemberId: string | null;
+};
+
 interface LoadedInviteTargets {
   importedMembers: number;
   targets: LeagueInviteTarget[];
@@ -117,6 +132,8 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PHONE_DIGITS = 7;
+const OPEN_INVITE_DISPLAY_NAME = "Claim your team";
+const OPEN_INVITE_TARGET_HASH = "roster";
 
 function currentTime(deps: Pick<LeagueInviteDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
@@ -146,6 +163,14 @@ function invalidDestinationError(): LeagueInviteError {
   return new AppError({
     code: "LEAGUE_INVITE_DESTINATION_INVALID",
     message: "Invite destination is required for this channel",
+    status: 400,
+  });
+}
+
+function inviteTeamRequiredError(): LeagueInviteError {
+  return new AppError({
+    code: "LEAGUE_INVITE_TEAM_REQUIRED",
+    message: "Choose a team before accepting this invite",
     status: 400,
   });
 }
@@ -345,6 +370,30 @@ function toInviteTarget(
     suggestedChannel: "share",
     teamNames: sortedUnique(teamRefs.map((team) => team.name)),
   };
+}
+
+function toInviteTargetFromInvite(
+  invite: AcceptableInvite,
+): LeagueInviteTarget | null {
+  if (!invite.providerMemberId || !invite.fantasyMemberId) {
+    return null;
+  }
+
+  return {
+    displayName: invite.inviteeDisplayName,
+    fantasyMemberId: invite.fantasyMemberId,
+    provider: invite.provider,
+    providerMemberId: invite.providerMemberId,
+    providerTeamIds: invite.providerTeamIds,
+    suggestedChannel: invite.channel,
+    teamNames: invite.teamNames,
+  };
+}
+
+function openClaimTargets(
+  targets: readonly LeagueInviteTarget[],
+): LeagueInviteTarget[] {
+  return targets.filter((target) => target.providerTeamIds.length > 0);
 }
 
 async function authorizeLeagueMember(
@@ -698,6 +747,66 @@ export async function createLeaguemateInvite(
   });
 }
 
+export async function createOpenLeagueInvite(
+  deps: LeagueInviteDependencies,
+  input: {
+    appBaseUrl: string;
+    leagueId: string;
+    userId: string;
+    userRole?: LeagueRole;
+  },
+): Promise<Result<CreatedOpenLeagueInvite, LeagueInviteError>> {
+  const authorized = await authorizeLeagueMember(deps, input);
+  if (!authorized.ok) {
+    return authorized;
+  }
+
+  const league = await loadLeague(deps.db, input.leagueId);
+  if (!league) {
+    return err(notFoundError());
+  }
+
+  const now = currentTime(deps);
+  const expiresAt = inviteExpiresAt(now);
+  const token = inviteToken();
+  const [invite] = await withLeagueContext(deps.db, league.id, (tx) =>
+    tx
+      .insert(leagueInvites)
+      .values({
+        channel: "share",
+        expiresAt,
+        fantasyMemberId: null,
+        inviteeDisplayName: OPEN_INVITE_DISPLAY_NAME,
+        inviterUserId: input.userId,
+        leagueId: league.id,
+        provider: league.provider,
+        providerMemberId: null,
+        providerTeamIds: [],
+        status: "pending",
+        targetHash: OPEN_INVITE_TARGET_HASH,
+        targetHint: null,
+        teamNames: [],
+        tokenHash: inviteTokenHash(token),
+      })
+      .returning(),
+  );
+  if (!invite) {
+    return err(notFoundError());
+  }
+
+  return ok({
+    channel: "share",
+    expiresAt: expiresAt.toISOString(),
+    inviteUrl: inviteUrl(input.appBaseUrl, {
+      leagueId: invite.leagueId,
+      token,
+    }),
+    target: null,
+    targetHint: null,
+    token,
+  });
+}
+
 export async function getLeagueInviteLanding(
   deps: Pick<LeagueInviteDependencies, "db" | "now">,
   input: { leagueId: string; token: string },
@@ -713,6 +822,8 @@ export async function getLeagueInviteLanding(
       .select({
         expiresAt: leagueInvites.expiresAt,
         inviteeDisplayName: leagueInvites.inviteeDisplayName,
+        inviterUserId: leagueInvites.inviterUserId,
+        providerMemberId: leagueInvites.providerMemberId,
         status: leagueInvites.status,
         teamNames: leagueInvites.teamNames,
       })
@@ -739,7 +850,20 @@ export async function getLeagueInviteLanding(
     return err(notFoundError());
   }
 
+  const claimTargets = invite.providerMemberId
+    ? []
+    : openClaimTargets(
+        (
+          await loadTargets(deps, {
+            league,
+            userId: invite.inviterUserId,
+          })
+        ).targets,
+      );
+
   return ok({
+    claimMode: invite.providerMemberId ? "targeted" : "open",
+    claimTargets,
     expiresAt: invite.expiresAt.toISOString(),
     inviteeDisplayName: invite.inviteeDisplayName,
     league: {
@@ -758,9 +882,111 @@ type AcceptInviteOutcome =
   | { kind: "claim_conflict" }
   | { kind: "not_found" };
 
+interface ResolvedInviteAcceptance {
+  invite: AcceptableInvite;
+  league: LeagueRow;
+  target: LeagueInviteTarget;
+}
+
+async function resolveInviteAcceptance(
+  deps: Pick<LeagueInviteDependencies, "db">,
+  input: {
+    leagueId: string;
+    now: Date;
+    providerMemberId?: string;
+    tokenHash: string;
+    userId: string;
+  },
+): Promise<Result<ResolvedInviteAcceptance, LeagueInviteError>> {
+  const [invite] = await withLeagueContext(deps.db, input.leagueId, (tx) =>
+    tx
+      .select()
+      .from(leagueInvites)
+      .where(
+        and(
+          eq(leagueInvites.leagueId, input.leagueId),
+          eq(leagueInvites.tokenHash, input.tokenHash),
+        ),
+      )
+      .limit(1),
+  );
+
+  if (!invite || inviteCannotBeAccepted(invite, input.now)) {
+    return err(notFoundError());
+  }
+
+  if (acceptedByAnotherUser(invite, input.userId)) {
+    return err(alreadyAcceptedError());
+  }
+
+  const league = await loadLeague(deps.db, input.leagueId);
+  if (!league) {
+    return err(notFoundError());
+  }
+
+  const selectedProviderMemberId = input.providerMemberId?.trim();
+  if (invite.providerMemberId) {
+    if (
+      selectedProviderMemberId &&
+      stringValuesDiffer(selectedProviderMemberId, invite.providerMemberId)
+    ) {
+      return err(invalidTargetError());
+    }
+
+    const target = toInviteTargetFromInvite(invite);
+    return target ? ok({ invite, league, target }) : err(notFoundError());
+  }
+
+  if (!selectedProviderMemberId) {
+    return err(inviteTeamRequiredError());
+  }
+
+  const availableTargets = openClaimTargets(
+    (
+      await loadTargets(deps, {
+        league,
+        userId: invite.inviterUserId,
+      })
+    ).targets,
+  );
+  const target = availableTargets.find(
+    (candidate) => candidate.providerMemberId === selectedProviderMemberId,
+  );
+  if (target) {
+    return ok({ invite, league, target });
+  }
+
+  const [existingClaim] = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    (tx) =>
+      tx
+        .select({ userId: leagueMemberIdentityClaims.userId })
+        .from(leagueMemberIdentityClaims)
+        .where(
+          and(
+            eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
+            eq(leagueMemberIdentityClaims.provider, league.provider),
+            eq(
+              leagueMemberIdentityClaims.providerMemberId,
+              selectedProviderMemberId,
+            ),
+          ),
+        )
+        .limit(1),
+  );
+
+  return existingClaim ? err(claimConflictError()) : err(invalidTargetError());
+}
+
 export async function acceptLeagueInvite(
   deps: Pick<LeagueInviteDependencies, "db" | "now">,
-  input: { leagueId: string; token: string; userId: string },
+  input: {
+    leagueId: string;
+    providerMemberId?: string;
+    token: string;
+    userId: string;
+  },
 ): Promise<Result<AcceptedLeagueInvite, LeagueInviteError>> {
   if (!UUID_RE.test(input.leagueId) || input.token.trim().length === 0) {
     return err(notFoundError());
@@ -768,6 +994,17 @@ export async function acceptLeagueInvite(
 
   const now = currentTime(deps);
   const tokenHash = inviteTokenHash(input.token);
+  const resolved = await resolveInviteAcceptance(deps, {
+    leagueId: input.leagueId,
+    now,
+    providerMemberId: input.providerMemberId,
+    tokenHash,
+    userId: input.userId,
+  });
+  if (!resolved.ok) {
+    return resolved;
+  }
+
   const outcome = await withLeagueContext(
     deps.db,
     input.leagueId,
@@ -791,18 +1028,85 @@ export async function acceptLeagueInvite(
         return { kind: "already_accepted" };
       }
 
-      const [league] = await tx
-        .select({
-          id: leagues.id,
-          name: leagues.name,
-          provider: leagues.provider,
-          season: leagues.season,
-        })
-        .from(leagues)
-        .where(eq(leagues.id, input.leagueId))
-        .limit(1);
-      if (!league) {
+      if (
+        invite.providerMemberId &&
+        stringValuesDiffer(
+          invite.providerMemberId,
+          resolved.value.target.providerMemberId,
+        )
+      ) {
         return { kind: "not_found" };
+      }
+
+      const [existingForUser] = await tx
+        .select({
+          providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+        })
+        .from(leagueMemberIdentityClaims)
+        .where(
+          and(
+            eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
+            eq(leagueMemberIdentityClaims.userId, input.userId),
+            eq(
+              leagueMemberIdentityClaims.provider,
+              resolved.value.target.provider,
+            ),
+          ),
+        )
+        .limit(1);
+      if (
+        existingForUser &&
+        stringValuesDiffer(
+          existingForUser.providerMemberId,
+          resolved.value.target.providerMemberId,
+        )
+      ) {
+        return { kind: "claim_conflict" };
+      }
+
+      const [existingForProviderMember] = await tx
+        .select({ userId: leagueMemberIdentityClaims.userId })
+        .from(leagueMemberIdentityClaims)
+        .where(
+          and(
+            eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
+            eq(
+              leagueMemberIdentityClaims.provider,
+              resolved.value.target.provider,
+            ),
+            eq(
+              leagueMemberIdentityClaims.providerMemberId,
+              resolved.value.target.providerMemberId,
+            ),
+          ),
+        )
+        .limit(1);
+      if (
+        existingForProviderMember &&
+        stringValuesDiffer(existingForProviderMember.userId, input.userId)
+      ) {
+        return { kind: "claim_conflict" };
+      }
+
+      if (!existingForUser) {
+        const [claim] = await tx
+          .insert(leagueMemberIdentityClaims)
+          .values({
+            claimedAt: now,
+            fantasyMemberId: resolved.value.target.fantasyMemberId,
+            leagueId: input.leagueId,
+            provider: resolved.value.target.provider,
+            providerMemberId: resolved.value.target.providerMemberId,
+            providerTeamIds: resolved.value.target.providerTeamIds,
+            sourceInviteId: invite.id,
+            userId: input.userId,
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        if (!claim) {
+          return { kind: "claim_conflict" };
+        }
       }
 
       await tx
@@ -816,68 +1120,9 @@ export async function acceptLeagueInvite(
           target: [members.organizationId, members.userId],
         });
 
-      const [claim] = await tx
-        .insert(leagueMemberIdentityClaims)
-        .values({
-          claimedAt: now,
-          fantasyMemberId: invite.fantasyMemberId,
-          leagueId: input.leagueId,
-          provider: invite.provider,
-          providerMemberId: invite.providerMemberId,
-          providerTeamIds: invite.providerTeamIds,
-          sourceInviteId: invite.id,
-          userId: input.userId,
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (!claim) {
-        const [existingForUser] = await tx
-          .select({
-            providerMemberId: leagueMemberIdentityClaims.providerMemberId,
-          })
-          .from(leagueMemberIdentityClaims)
-          .where(
-            and(
-              eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
-              eq(leagueMemberIdentityClaims.userId, input.userId),
-              eq(leagueMemberIdentityClaims.provider, invite.provider),
-            ),
-          )
-          .limit(1);
-        if (
-          existingForUser &&
-          stringValuesDiffer(
-            existingForUser.providerMemberId,
-            invite.providerMemberId,
-          )
-        ) {
-          return { kind: "claim_conflict" };
-        }
-
-        const [existingForProviderMember] = await tx
-          .select({ userId: leagueMemberIdentityClaims.userId })
-          .from(leagueMemberIdentityClaims)
-          .where(
-            and(
-              eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
-              eq(leagueMemberIdentityClaims.provider, invite.provider),
-              eq(
-                leagueMemberIdentityClaims.providerMemberId,
-                invite.providerMemberId,
-              ),
-            ),
-          )
-          .limit(1);
-        if (
-          existingForProviderMember &&
-          stringValuesDiffer(existingForProviderMember.userId, input.userId)
-        ) {
-          return { kind: "claim_conflict" };
-        }
-      }
-
-      const acceptedAt = invite.acceptedAt ?? now;
+      const acceptedAt = invite.providerMemberId
+        ? (invite.acceptedAt ?? now)
+        : now;
       await tx
         .update(leagueInvites)
         .set({
@@ -889,8 +1134,11 @@ export async function acceptLeagueInvite(
         .where(
           and(
             eq(leagueInvites.leagueId, input.leagueId),
-            eq(leagueInvites.provider, invite.provider),
-            eq(leagueInvites.providerMemberId, invite.providerMemberId),
+            eq(leagueInvites.provider, resolved.value.target.provider),
+            eq(
+              leagueInvites.providerMemberId,
+              resolved.value.target.providerMemberId,
+            ),
             ne(leagueInvites.status, "canceled"),
           ),
         );
@@ -899,10 +1147,15 @@ export async function acceptLeagueInvite(
         kind: "accepted",
         value: {
           acceptedAt: acceptedAt.toISOString(),
-          league,
-          providerMemberId: invite.providerMemberId,
-          providerTeamIds: invite.providerTeamIds,
-          teamNames: invite.teamNames,
+          league: {
+            id: resolved.value.league.id,
+            name: resolved.value.league.name,
+            provider: resolved.value.league.provider,
+            season: resolved.value.league.season,
+          },
+          providerMemberId: resolved.value.target.providerMemberId,
+          providerTeamIds: resolved.value.target.providerTeamIds,
+          teamNames: resolved.value.target.teamNames,
         },
       };
     },

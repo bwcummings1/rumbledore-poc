@@ -47,7 +47,7 @@ interface CreatedInvite {
   channel: "share" | "sms" | "email";
   expiresAt: string;
   inviteUrl: string;
-  target: LeagueInviteTarget;
+  target: LeagueInviteTarget | null;
   targetHint: string | null;
   token: string;
 }
@@ -93,6 +93,7 @@ export function LeagueInviteView({
   const [emailInputs, setEmailInputs] = useState<Record<string, string>>({});
   const [smsInputs, setSmsInputs] = useState<Record<string, string>>({});
   const [results, setResults] = useState<Record<string, CreatedInvite>>({});
+  const [openInvite, setOpenInvite] = useState<CreatedInvite | null>(null);
   const [rosterLinksCopied, setRosterLinksCopied] = useState(false);
   const apiUrl = `/api/leagues/${initialSummary.league.id}/invites`;
 
@@ -183,6 +184,26 @@ export function LeagueInviteView({
     }
   }
 
+  async function copyOpenInviteLink() {
+    const busy = "league:share";
+    setBusyKey(busy);
+    setError(null);
+    setRosterLinksCopied(false);
+    try {
+      const invite =
+        openInvite ??
+        (await postJson<CreatedInvite>(apiUrl, {
+          channel: "share",
+        }));
+      setOpenInvite(invite);
+      await copyInvite(invite.inviteUrl);
+    } catch (cause) {
+      setError(onboardingPanelError(cause));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   async function sendEmail(
     event: FormEvent<HTMLFormElement>,
     target: LeagueInviteTarget,
@@ -221,25 +242,55 @@ export function LeagueInviteView({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2">
           <h2 className="text-base font-semibold">{heading}</h2>
-          {initialSummary.targets.length > 1 ? (
-            <div className="flex flex-wrap items-center gap-2">
+          {initialSummary.targets.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void copyOpenInviteLink()}
+                disabled={busyKey !== null}
+              >
+                <Link2 data-icon="inline-start" />
+                Copy claim link
+              </Button>
               {rosterLinksCopied ? (
                 <p className="text-xs font-medium text-positive">
                   Roster links copied.
                 </p>
               ) : null}
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void copyRosterLinks()}
-                disabled={busyKey !== null}
-              >
-                <Copy data-icon="inline-start" />
-                Copy roster links
-              </Button>
+              {initialSummary.targets.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void copyRosterLinks()}
+                  disabled={busyKey !== null}
+                >
+                  <Copy data-icon="inline-start" />
+                  Copy roster links
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </div>
+        {openInvite ? (
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-control border border-border bg-background">
+            <input
+              readOnly
+              value={openInvite.inviteUrl}
+              className="min-h-10 min-w-0 bg-transparent px-3 text-sm outline-none"
+              aria-label="League claim link"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => void copyInvite(openInvite.inviteUrl)}
+              aria-label="Copy league claim link"
+            >
+              <Copy />
+            </Button>
+          </div>
+        ) : null}
       </header>
 
       {error ? (

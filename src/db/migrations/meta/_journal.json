@@ -260,6 +260,13 @@
       "when": 1781483600000,
       "tag": "0036_onboarding_provider_team_id",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1781487200000,
+      "tag": "0037_open_claim_invites",
+      "breakpoints": true
     }
   ]
 }

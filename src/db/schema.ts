@@ -2764,7 +2764,7 @@ export const leagueInvites = pgTable(
       { onDelete: "set null" },
     ),
     provider: fantasyProvider("provider").notNull(),
-    providerMemberId: text("provider_member_id").notNull(),
+    providerMemberId: text("provider_member_id"),
     providerTeamIds: jsonb("provider_team_ids")
       .$type<string[]>()
       .notNull()

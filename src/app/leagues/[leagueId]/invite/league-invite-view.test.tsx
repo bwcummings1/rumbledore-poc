@@ -63,6 +63,24 @@ test("invite view makes roster links and SMS the primary actions", async () => {
       const target = initialSummary.targets.find(
         (candidate) => candidate.providerMemberId === body.providerMemberId,
       );
+      if (!body.providerMemberId) {
+        const generatedToken = ["open", "claim"].join("-");
+        return new Response(
+          JSON.stringify({
+            channel: "share",
+            expiresAt: "2026-07-12T12:00:00.000Z",
+            inviteUrl:
+              "https://rumbledore.example/invite/00000000-0000-4000-8000-000000000001/open-claim",
+            target: null,
+            targetHint: null,
+            token: generatedToken,
+          }),
+          {
+            headers: { "content-type": "application/json" },
+            status: 201,
+          },
+        );
+      }
       return new Response(
         JSON.stringify({
           channel: body.channel,
@@ -94,6 +112,24 @@ test("invite view makes roster links and SMS the primary actions", async () => {
   expect(screen.getByText("Start with a link")).toBeDefined();
   expect(screen.getByText("Start with SMS")).toBeDefined();
   expect(screen.queryByRole("button", { name: /send email/i })).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Copy claim link" }));
+
+  await waitFor(() => {
+    expect(clipboardWrite).toHaveBeenCalledWith(
+      "https://rumbledore.example/invite/00000000-0000-4000-8000-000000000001/open-claim",
+    );
+  });
+  expect(screen.getByLabelText("League claim link")).toBeDefined();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/invites",
+    expect.objectContaining({
+      body: JSON.stringify({
+        channel: "share",
+      }),
+      method: "POST",
+    }),
+  );
 
   fireEvent.click(screen.getByRole("button", { name: "Copy roster links" }));
 

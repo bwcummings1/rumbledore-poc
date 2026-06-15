@@ -16,6 +16,15 @@ function teamLabel(teamNames: readonly string[]): string {
   return teamNames.length > 0 ? teamNames.join(", ") : "Team match pending";
 }
 
+function isOpenClaimMode(mode: "targeted" | "open"): boolean {
+  switch (mode) {
+    case "open":
+      return true;
+    case "targeted":
+      return false;
+  }
+}
+
 export default async function InvitePreviewPage({
   params,
 }: InvitePreviewPageProps) {
@@ -31,6 +40,7 @@ export default async function InvitePreviewPage({
 
   const session = await requireSession({ headers: await headers() });
   const isAuthenticated = session.ok;
+  const isOpenInvite = isOpenClaimMode(invite.value.claimMode);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -52,10 +62,14 @@ export default async function InvitePreviewPage({
           />
           <div className="min-w-0">
             <h2 className="text-base font-semibold">
-              {invite.value.inviteeDisplayName}
+              {isOpenInvite
+                ? "Claim your team"
+                : invite.value.inviteeDisplayName}
             </h2>
             <p className="mt-1 truncate text-sm text-muted-foreground">
-              {teamLabel(invite.value.teamNames)}
+              {isOpenInvite
+                ? `${invite.value.claimTargets.length} teams still available`
+                : teamLabel(invite.value.teamNames)}
             </p>
           </div>
         </div>
@@ -63,6 +77,8 @@ export default async function InvitePreviewPage({
 
       <InviteAcceptPanel
         acceptUrl={`/api/invite/${leagueId}/${token}/accept`}
+        claimMode={invite.value.claimMode}
+        claimTargets={invite.value.claimTargets}
         isAuthenticated={isAuthenticated}
         onboardingUrl={`/onboarding/${invite.value.league.provider}`}
       />

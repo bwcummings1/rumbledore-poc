@@ -19,6 +19,7 @@ import { migrateSerialized } from "@/db/test-support";
 import {
   acceptLeagueInvite,
   createLeaguemateInvite,
+  createOpenLeagueInvite,
   getLeagueInviteLanding,
   listLeaguemateInviteTargets,
 } from "./invites";
@@ -525,6 +526,117 @@ describe("leaguemate invites", () => {
     ).toBe(false);
   });
 
+  it("accepts an open roster invite by claiming a selected unclaimed team", async () => {
+    const league = await seedLeague();
+    const inviter = await seedUser("open-inviter");
+    const invitee = await seedUser("open-invitee");
+    const imported = await seedImportedMembers({
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+    });
+    await handle.db.insert(members).values({
+      organizationId: league.id,
+      role: "commissioner",
+      userId: inviter.id,
+    });
+    await handle.db.insert(providerCredentials).values({
+      connectionFlow: "manual",
+      encryptedPayload: `${marker}-encrypted-open`,
+      lastValidatedAt: new Date("2026-06-12T00:00:00.000Z"),
+      provider: "espn",
+      subjectProviderId: imported.self.providerMemberId,
+      userId: inviter.id,
+    });
+
+    const deps = {
+      db: handle.db,
+      notifier: new RecordingInviteNotifier(),
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    };
+    const openInvite = await createOpenLeagueInvite(deps, {
+      appBaseUrl: "https://rumbledore.example",
+      leagueId: league.id,
+      userId: inviter.id,
+    });
+    expect(openInvite.ok).toBe(true);
+    if (!openInvite.ok) throw openInvite.error;
+    expect(openInvite.value.target).toBeNull();
+    expect(openInvite.value.inviteUrl).toContain(`/invite/${league.id}/`);
+
+    const landing = await getLeagueInviteLanding(
+      { db: handle.db, now: () => new Date("2026-06-12T12:01:00.000Z") },
+      {
+        leagueId: league.id,
+        token: openInvite.value.token,
+      },
+    );
+    expect(landing.ok).toBe(true);
+    if (!landing.ok) throw landing.error;
+    expect(landing.value).toMatchObject({
+      claimMode: "open",
+      inviteeDisplayName: "Claim your team",
+      teamNames: [],
+    });
+    expect(
+      landing.value.claimTargets.map((target) => target.providerMemberId),
+    ).toEqual([imported.invited.providerMemberId]);
+
+    const accepted = await acceptLeagueInvite(
+      { db: handle.db, now: () => new Date("2026-06-12T12:05:00.000Z") },
+      {
+        leagueId: league.id,
+        providerMemberId: imported.invited.providerMemberId,
+        token: openInvite.value.token,
+        userId: invitee.id,
+      },
+    );
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw accepted.error;
+    expect(accepted.value).toMatchObject({
+      providerMemberId: imported.invited.providerMemberId,
+      providerTeamIds: [`${marker}-team-two`],
+      teamNames: ["Invite Team"],
+    });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
+      const [claim] = await tx
+        .select({
+          fantasyMemberId: leagueMemberIdentityClaims.fantasyMemberId,
+          providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+          providerTeamIds: leagueMemberIdentityClaims.providerTeamIds,
+          sourceInviteId: leagueMemberIdentityClaims.sourceInviteId,
+          userId: leagueMemberIdentityClaims.userId,
+        })
+        .from(leagueMemberIdentityClaims)
+        .where(eq(leagueMemberIdentityClaims.leagueId, league.id));
+      const [invite] = await tx
+        .select({
+          acceptedAt: leagueInvites.acceptedAt,
+          acceptedUserId: leagueInvites.acceptedUserId,
+          providerMemberId: leagueInvites.providerMemberId,
+          status: leagueInvites.status,
+        })
+        .from(leagueInvites)
+        .where(
+          eq(leagueInvites.tokenHash, inviteTokenHash(openInvite.value.token)),
+        );
+      return { claim, invite };
+    });
+    expect(rows.claim).toMatchObject({
+      fantasyMemberId: imported.invited.id,
+      providerMemberId: imported.invited.providerMemberId,
+      providerTeamIds: [`${marker}-team-two`],
+      sourceInviteId: expect.any(String),
+      userId: invitee.id,
+    });
+    expect(rows.invite).toEqual({
+      acceptedAt: null,
+      acceptedUserId: null,
+      providerMemberId: null,
+      status: "pending",
+    });
+  });
+
   it("rejects an accepted invite claimed by another user", async () => {
     const league = await seedLeague();
     const inviter = await seedUser("claimed-inviter");
@@ -587,6 +699,80 @@ describe("leaguemate invites", () => {
       code: "LEAGUE_INVITE_ALREADY_ACCEPTED",
       status: 409,
     });
+  });
+
+  it("rejects conflicting claims without granting partial membership", async () => {
+    const league = await seedLeague();
+    const inviter = await seedUser("conflict-inviter");
+    const claimedBy = await seedUser("conflict-claimed-by");
+    const rejectedUser = await seedUser("conflict-rejected");
+    const imported = await seedImportedMembers({
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+    });
+    await handle.db.insert(members).values({
+      organizationId: league.id,
+      role: "commissioner",
+      userId: inviter.id,
+    });
+    await handle.db.insert(providerCredentials).values({
+      connectionFlow: "manual",
+      encryptedPayload: `${marker}-encrypted-conflict`,
+      lastValidatedAt: new Date("2026-06-12T00:00:00.000Z"),
+      provider: "espn",
+      subjectProviderId: imported.self.providerMemberId,
+      userId: inviter.id,
+    });
+    await withLeagueContext(handle.db, league.id, (tx) =>
+      tx.insert(leagueMemberIdentityClaims).values({
+        fantasyMemberId: imported.invited.id,
+        leagueId: league.id,
+        provider: "espn",
+        providerMemberId: imported.invited.providerMemberId,
+        providerTeamIds: [`${marker}-team-two`],
+        userId: claimedBy.id,
+      }),
+    );
+
+    const deps = {
+      db: handle.db,
+      notifier: new RecordingInviteNotifier(),
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    };
+    const openInvite = await createOpenLeagueInvite(deps, {
+      appBaseUrl: "https://rumbledore.example",
+      leagueId: league.id,
+      userId: inviter.id,
+    });
+    expect(openInvite.ok).toBe(true);
+    if (!openInvite.ok) throw openInvite.error;
+
+    const rejected = await acceptLeagueInvite(
+      { db: handle.db, now: () => new Date("2026-06-12T12:06:00.000Z") },
+      {
+        leagueId: league.id,
+        providerMemberId: imported.invited.providerMemberId,
+        token: openInvite.value.token,
+        userId: rejectedUser.id,
+      },
+    );
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error("expected claim conflict");
+    expect(rejected.error).toMatchObject({
+      code: "LEAGUE_INVITE_CLAIM_CONFLICT",
+      status: 409,
+    });
+
+    const [membership] = await handle.db
+      .select({ role: members.role })
+      .from(members)
+      .where(
+        and(
+          eq(members.organizationId, league.id),
+          eq(members.userId, rejectedUser.id),
+        ),
+      );
+    expect(membership).toBeUndefined();
   });
 
   it("rejects invite listing for a non-member before scoped reads", async () => {

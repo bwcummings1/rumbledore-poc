@@ -7,6 +7,7 @@ import { getLeagueInviteDependencies } from "@/onboarding/deps";
 import { errorJson, readJsonBody, resultJson } from "@/onboarding/http";
 import {
   createLeaguemateInvite,
+  createOpenLeagueInvite,
   listLeaguemateInviteTargets,
 } from "@/onboarding/invites";
 
@@ -20,7 +21,7 @@ const providerMemberIdSchema = z.string().trim().min(1).max(256);
 const createInviteSchema = z.discriminatedUnion("channel", [
   z.object({
     channel: z.literal("share"),
-    providerMemberId: providerMemberIdSchema,
+    providerMemberId: providerMemberIdSchema.optional(),
   }),
   z.object({
     channel: z.literal("email"),
@@ -56,6 +57,18 @@ function inviteDestination(
     case "email":
     case "sms":
       return parsed.destination;
+  }
+}
+
+function isOpenShareInviteRequest(
+  parsed: z.infer<typeof createInviteSchema>,
+): boolean {
+  switch (parsed.channel) {
+    case "share":
+      return !parsed.providerMemberId;
+    case "email":
+    case "sms":
+      return false;
   }
 }
 
@@ -109,12 +122,33 @@ async function invitesPost(request: Request, context: InviteRouteContext) {
     );
   }
 
+  if (isOpenShareInviteRequest(parsed.data)) {
+    const result = await createOpenLeagueInvite(getLeagueInviteDependencies(), {
+      appBaseUrl: appOrigin(request),
+      leagueId,
+      userId: access.value.userId,
+      userRole: access.value.role,
+    });
+    return resultJson(result, result.ok ? 201 : 200);
+  }
+
+  const providerMemberId = parsed.data.providerMemberId;
+  if (!providerMemberId) {
+    return errorJson(
+      new AppError({
+        code: "INVALID_INVITE_REQUEST",
+        message: "Invite request payload is invalid",
+        status: 400,
+      }),
+    );
+  }
+
   const result = await createLeaguemateInvite(getLeagueInviteDependencies(), {
     appBaseUrl: appOrigin(request),
     channel: parsed.data.channel,
     destination: inviteDestination(parsed.data),
     leagueId,
-    providerMemberId: parsed.data.providerMemberId,
+    providerMemberId,
     userId: access.value.userId,
     userRole: access.value.role,
   });

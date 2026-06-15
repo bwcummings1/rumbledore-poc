@@ -10,6 +10,8 @@ test("invite accept panel sends unauthenticated users to provider onboarding", (
   render(
     <InviteAcceptPanel
       acceptUrl="/api/invite/league/token/accept"
+      claimMode="targeted"
+      claimTargets={[]}
       isAuthenticated={false}
       onboardingUrl="/onboarding/espn"
     />,
@@ -33,6 +35,8 @@ test("invite accept panel posts acceptance and surfaces claim errors", async () 
   render(
     <InviteAcceptPanel
       acceptUrl="/api/invite/league/token/accept"
+      claimMode="targeted"
+      claimTargets={[]}
       isAuthenticated={true}
       onboardingUrl="/onboarding/espn"
     />,
@@ -52,5 +56,45 @@ test("invite accept panel posts acceptance and surfaces claim errors", async () 
   );
   await waitFor(() => {
     expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+test("open invite accept panel posts the selected provider member", async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(new Response(JSON.stringify({}), { status: 409 }));
+
+  render(
+    <InviteAcceptPanel
+      acceptUrl="/api/invite/league/token/accept"
+      claimMode="open"
+      claimTargets={[
+        {
+          displayName: "Fixture Manager Two",
+          providerMemberId: "member-two",
+          teamNames: ["Fixture Team 02"],
+        },
+        {
+          displayName: "Fixture Manager Three",
+          providerMemberId: "member-three",
+          teamNames: ["Fixture Team 03"],
+        },
+      ]}
+      isAuthenticated={true}
+      onboardingUrl="/onboarding/espn"
+    />,
+  );
+
+  fireEvent.click(screen.getByLabelText(/Fixture Team 03/i));
+  fireEvent.click(screen.getByRole("button", { name: /claim team/i }));
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/invite/league/token/accept",
+      expect.objectContaining({
+        body: JSON.stringify({ providerMemberId: "member-three" }),
+        method: "POST",
+      }),
+    );
   });
 });
