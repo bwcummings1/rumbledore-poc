@@ -214,6 +214,7 @@ describe("Sleeper provider", () => {
       {
         provider: "sleeper",
         providerId: "sleeper-2026",
+        previousProviderId: "sleeper-2025",
         season: 2026,
         sport: "ffl",
         name: "Sleeper Fixture League",

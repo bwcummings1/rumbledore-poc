@@ -7,6 +7,7 @@ export const JOB_EVENTS = {
   gameFinal: "game.final",
   ingestionTick: "ingestion.tick",
   leagueIngest: "league.ingest",
+  seasonRolloverCheck: "season.rollover.check",
   importRequested: "import.requested",
   bankrollRollover: "bankroll.rollover",
   oddsPoll: "odds.poll",
@@ -64,6 +65,13 @@ export interface LeagueIngestData {
   season: number;
   size?: number;
   sport: "ffl" | "unknown";
+}
+
+export interface SeasonRolloverCheckData {
+  credentialIds?: string[];
+  leagueIds?: string[];
+  limit?: number;
+  now?: string;
 }
 
 export interface ContentGenerateData {

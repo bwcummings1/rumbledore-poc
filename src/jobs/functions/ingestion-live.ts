@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { cron, NonRetriableError } from "inngest";
 import { z } from "zod";
 import { recordJobRun } from "@/core/metrics";
@@ -57,10 +57,13 @@ import {
   type IngestionTickData,
   JOB_EVENTS,
   type LeagueIngestData,
+  type SeasonRolloverCheckData,
 } from "../events";
 
 const DEFAULT_TICK_LIMIT = 500;
 const MAX_TICK_LIMIT = 2000;
+const DEFAULT_ROLLOVER_LIMIT = 200;
+const MAX_ROLLOVER_LIMIT = 1000;
 
 export interface IngestionGameStateInput {
   currentScoringPeriod: number;
@@ -106,6 +109,15 @@ type LeagueIngestProviderRegistry = Partial<
   Record<IngestableProviderId, unknown>
 >;
 
+type SeasonRolloverProvider = Pick<
+  FantasyProvider<unknown, FantasyProviderSession>,
+  "authenticate" | "discoverLeagues"
+>;
+
+type SeasonRolloverProviderRegistry = Partial<
+  Record<IngestableProviderId, unknown>
+>;
+
 type SyncCurrentLeagueFn = (
   input: CurrentLeagueSyncInput<FantasyProviderSession>,
 ) => Promise<Result<CurrentLeagueSyncResult, CurrentLeagueSyncError>>;
@@ -126,6 +138,13 @@ export interface LeagueIngestDependencies {
   providers: LeagueIngestProviderRegistry;
   realtime?: RealtimePublisher;
   syncCurrent?: SyncCurrentLeagueFn;
+}
+
+export interface SeasonRolloverCheckDependencies {
+  cipher: CredentialCipher;
+  db: Db;
+  now?: () => Date;
+  providers: SeasonRolloverProviderRegistry;
 }
 
 export interface PlannedLeagueIngestEvent {
@@ -177,6 +196,27 @@ export interface LeagueIngestResponse extends CurrentLeagueSyncResult {
   sentGameFinalCount: number;
 }
 
+export interface SeasonRolloverFailure {
+  credentialId: string;
+  code: string;
+  message: string;
+  provider: IngestableProviderId;
+}
+
+export interface SeasonRolloverCheckResponse {
+  advancedLeagueCount: number;
+  checkedCredentialCount: number;
+  discoveredLeagueCount: number;
+  eventName: typeof JOB_EVENTS.seasonRolloverCheck;
+  failures: SeasonRolloverFailure[];
+  invalidatedCredentialCount: number;
+  limit: number;
+  ok: true;
+  planned: PlannedLeagueIngestEvent[];
+  plannedCount: number;
+  sentCount: number;
+}
+
 const storedEspnCredentialsSchema = z.object({
   espn_s2: z.string().min(1),
   swid: z.string().min(1),
@@ -205,6 +245,13 @@ const leagueIngestDataSchema = z.object({
   season: z.number().int().min(2000).max(2100),
   size: z.number().int().positive().optional(),
   sport: z.enum(["ffl", "unknown"]),
+});
+
+const seasonRolloverCheckDataSchema = z.object({
+  credentialIds: z.array(z.uuid()).max(200).optional(),
+  leagueIds: z.array(z.uuid()).max(200).optional(),
+  limit: z.number().int().min(1).max(MAX_ROLLOVER_LIMIT).optional(),
+  now: z.iso.datetime().optional(),
 });
 
 function toNonRetriable(error: AppError): NonRetriableError {
@@ -254,6 +301,17 @@ function leagueIdsFromSingle(data: {
   return data.leagueId ? [data.leagueId] : undefined;
 }
 
+function ingestionTickTriggerName(
+  eventName: string,
+): typeof JOB_EVENTS.ingestionTick | typeof JOB_EVENTS.leagueConnected {
+  switch (eventName) {
+    case JOB_EVENTS.leagueConnected:
+      return JOB_EVENTS.leagueConnected;
+    default:
+      return JOB_EVENTS.ingestionTick;
+  }
+}
+
 function parseLeagueIngestData(data: unknown): LeagueIngestData {
   const parsed = leagueIngestDataSchema.safeParse(data);
   if (!parsed.success) {
@@ -268,6 +326,29 @@ function parseLeagueIngestData(data: unknown): LeagueIngestData {
   }
 
   return parsed.data;
+}
+
+function parseSeasonRolloverCheckData(
+  data: unknown,
+): SeasonRolloverCheckData & { limit: number } {
+  const parsed = seasonRolloverCheckDataSchema.safeParse(data ?? {});
+  if (!parsed.success) {
+    throw toNonRetriable(
+      liveIngestionError({
+        cause: parsed.error,
+        code: "SEASON_ROLLOVER_CHECK_INVALID",
+        message: "Season rollover check payload is invalid",
+        status: 400,
+      }),
+    );
+  }
+
+  return {
+    credentialIds: parsed.data.credentialIds,
+    leagueIds: parsed.data.leagueIds,
+    limit: parsed.data.limit ?? DEFAULT_ROLLOVER_LIMIT,
+    now: parsed.data.now,
+  };
 }
 
 function currentTime(deps: Pick<LeagueIngestDependencies, "now">): Date {
@@ -292,6 +373,24 @@ function resolveProvider(
   return provider as LeagueIngestProvider;
 }
 
+function resolveRolloverProvider(
+  providerId: IngestableProviderId,
+  deps: SeasonRolloverCheckDependencies,
+): SeasonRolloverProvider {
+  const provider = deps.providers[providerId];
+  if (!provider) {
+    throw toNonRetriable(
+      liveIngestionError({
+        code: "SEASON_ROLLOVER_PROVIDER_UNSUPPORTED",
+        message: "Season rollover provider is not supported",
+        status: 400,
+      }),
+    );
+  }
+
+  return provider as SeasonRolloverProvider;
+}
+
 function toProviderRef(data: LeagueIngestData): ProviderLeagueRef {
   return {
     name: data.name,
@@ -308,7 +407,7 @@ async function markCredentialInvalid({
   deps,
 }: {
   credentialId: string;
-  deps: LeagueIngestDependencies;
+  deps: Pick<LeagueIngestDependencies, "db" | "now">;
 }): Promise<void> {
   const now = currentTime(deps);
   await deps.db
@@ -481,6 +580,319 @@ async function listLeagueCredentialTargets({
       asc(providerCredentials.provider),
       asc(providerCredentials.id),
     );
+}
+
+interface RolloverCredentialTargetRow {
+  credentialId: string;
+  encryptedPayload: string;
+  leagueId: string;
+  name: string;
+  provider: IngestableProviderId;
+  providerLeagueId: string;
+  season: number;
+  size: number;
+  sport: "ffl" | "unknown";
+  userId: string;
+}
+
+interface RolloverCredentialGroup {
+  credentialId: string;
+  encryptedPayload: string;
+  provider: IngestableProviderId;
+  targets: RolloverCredentialTargetRow[];
+  userId: string;
+}
+
+async function listRolloverCredentialTargets({
+  credentialIds,
+  db,
+  leagueIds,
+}: {
+  credentialIds?: readonly string[];
+  db: Db;
+  leagueIds?: readonly string[];
+}): Promise<RolloverCredentialGroup[]> {
+  if (credentialIds?.length === 0 || leagueIds?.length === 0) {
+    return [];
+  }
+
+  const filters = [
+    eq(providerCredentials.status, "connected"),
+    credentialIds ? inArray(providerCredentials.id, [...credentialIds]) : null,
+    leagueIds ? inArray(leagues.id, [...leagueIds]) : null,
+  ].filter((filter): filter is NonNullable<typeof filter> => filter !== null);
+
+  const rows = await db
+    .select({
+      credentialId: providerCredentials.id,
+      encryptedPayload: providerCredentials.encryptedPayload,
+      leagueId: leagues.id,
+      name: leagues.name,
+      provider: providerCredentials.provider,
+      providerLeagueId: leagues.providerLeagueId,
+      season: leagues.season,
+      size: leagues.size,
+      sport: leagues.sport,
+      userId: providerCredentials.userId,
+    })
+    .from(providerCredentials)
+    .innerJoin(members, eq(members.userId, providerCredentials.userId))
+    .innerJoin(
+      leagues,
+      and(
+        eq(leagues.id, members.organizationId),
+        eq(leagues.provider, providerCredentials.provider),
+      ),
+    )
+    .where(and(...filters))
+    .orderBy(
+      asc(providerCredentials.provider),
+      asc(providerCredentials.id),
+      asc(leagues.id),
+    );
+
+  const groups = new Map<string, RolloverCredentialGroup>();
+  for (const row of rows) {
+    if (
+      row.provider !== "espn" &&
+      row.provider !== "sleeper" &&
+      row.provider !== "yahoo"
+    ) {
+      continue;
+    }
+
+    const group = groups.get(row.credentialId) ?? {
+      credentialId: row.credentialId,
+      encryptedPayload: row.encryptedPayload,
+      provider: row.provider,
+      targets: [],
+      userId: row.userId,
+    };
+    group.targets.push({
+      credentialId: row.credentialId,
+      encryptedPayload: row.encryptedPayload,
+      leagueId: row.leagueId,
+      name: row.name,
+      provider: row.provider,
+      providerLeagueId: row.providerLeagueId,
+      season: row.season,
+      size: row.size,
+      sport: row.sport,
+      userId: row.userId,
+    });
+    groups.set(row.credentialId, group);
+  }
+
+  return [...groups.values()];
+}
+
+function parseStoredCredentialsForProvider({
+  encryptedPayload,
+  group,
+  deps,
+}: {
+  deps: SeasonRolloverCheckDependencies;
+  encryptedPayload: string;
+  group: Pick<RolloverCredentialGroup, "provider">;
+}): unknown {
+  return storedCredentialSchemas[group.provider].parse(
+    deps.cipher.decryptJson(encryptedPayload),
+  );
+}
+
+function failureForCredential({
+  credentialId,
+  error,
+  provider,
+}: {
+  credentialId: string;
+  error: AppError;
+  provider: IngestableProviderId;
+}): SeasonRolloverFailure {
+  return {
+    code: error.code,
+    credentialId,
+    message: error.message,
+    provider,
+  };
+}
+
+async function persistRolloverDiscoveries({
+  credentialId,
+  db,
+  discovered,
+  now,
+  userId,
+}: {
+  credentialId: string;
+  db: Db;
+  discovered: readonly ProviderLeagueRef[];
+  now: Date;
+  userId: string;
+}): Promise<void> {
+  for (const ref of discovered) {
+    await db
+      .insert(onboardingDiscoveredLeagues)
+      .values({
+        credentialId,
+        lastDiscoveredAt: now,
+        name: ref.name,
+        provider: ref.provider,
+        providerLeagueId: ref.providerId,
+        providerTeamId: ref.providerTeamId ?? null,
+        season: ref.season,
+        size: ref.size ?? null,
+        sport: ref.sport,
+        teamName: ref.teamName ?? null,
+        userId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          onboardingDiscoveredLeagues.userId,
+          onboardingDiscoveredLeagues.provider,
+          onboardingDiscoveredLeagues.providerLeagueId,
+          onboardingDiscoveredLeagues.season,
+        ],
+        set: {
+          credentialId: sql`excluded.credential_id`,
+          lastDiscoveredAt: sql`excluded.last_discovered_at`,
+          name: sql`excluded.name`,
+          providerTeamId: sql`excluded.provider_team_id`,
+          size: sql`excluded.size`,
+          sport: sql`excluded.sport`,
+          teamName: sql`excluded.team_name`,
+          updatedAt: sql`now()`,
+        },
+      });
+  }
+}
+
+function yahooLeagueNumber(providerLeagueId: string): string | undefined {
+  const marker = ".l.";
+  const markerIndex = providerLeagueId.indexOf(marker);
+  if (markerIndex < 0) {
+    return undefined;
+  }
+
+  const leagueNumber = providerLeagueId.slice(markerIndex + marker.length);
+  return leagueNumber.length > 0 ? leagueNumber : undefined;
+}
+
+function sameRolloverLeague(
+  ref: ProviderLeagueRef,
+  target: RolloverCredentialTargetRow,
+): boolean {
+  if (ref.provider !== target.provider || ref.season <= target.season) {
+    return false;
+  }
+
+  if (ref.providerId === target.providerLeagueId) {
+    return true;
+  }
+
+  if (ref.previousProviderId === target.providerLeagueId) {
+    return true;
+  }
+
+  if (ref.linkedProviderIds?.includes(target.providerLeagueId)) {
+    return true;
+  }
+
+  if (ref.provider === "yahoo") {
+    const refLeagueNumber = yahooLeagueNumber(ref.providerId);
+    return (
+      refLeagueNumber !== undefined &&
+      refLeagueNumber === yahooLeagueNumber(target.providerLeagueId)
+    );
+  }
+
+  return false;
+}
+
+function latestRolloverRefForTarget({
+  discovered,
+  target,
+}: {
+  discovered: readonly ProviderLeagueRef[];
+  target: RolloverCredentialTargetRow;
+}): ProviderLeagueRef | undefined {
+  return discovered
+    .filter((ref) => sameRolloverLeague(ref, target))
+    .sort(
+      (left, right) =>
+        right.season - left.season ||
+        right.providerId.localeCompare(left.providerId),
+    )[0];
+}
+
+async function advanceLeagueForRollover({
+  db,
+  now,
+  ref,
+  target,
+}: {
+  db: Db;
+  now: Date;
+  ref: ProviderLeagueRef;
+  target: RolloverCredentialTargetRow;
+}): Promise<boolean> {
+  const [updated] = await db
+    .update(leagues)
+    .set({
+      name: ref.name,
+      providerLeagueId: ref.providerId,
+      season: ref.season,
+      size: ref.size ?? target.size,
+      sport: ref.sport,
+      status: "unknown",
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(leagues.id, target.leagueId),
+        eq(leagues.provider, target.provider),
+        eq(leagues.providerLeagueId, target.providerLeagueId),
+        eq(leagues.season, target.season),
+      ),
+    )
+    .returning({ id: leagues.id });
+
+  return updated !== undefined;
+}
+
+function rolloverEventFor({
+  credentialId,
+  leagueId,
+  ref,
+}: {
+  credentialId: string;
+  leagueId: string;
+  ref: ProviderLeagueRef;
+}): PlannedLeagueIngestEvent {
+  const data: LeagueIngestData = {
+    credentialId,
+    dataClasses: [...LIVE_INGESTION_DATA_CLASSES],
+    leagueId,
+    name: ref.name,
+    provider: ref.provider as IngestableProviderId,
+    providerLeagueId: ref.providerId,
+    season: ref.season,
+    ...(ref.size === undefined ? {} : { size: ref.size }),
+    sport: ref.sport,
+  };
+
+  return {
+    data,
+    id: [
+      JOB_EVENTS.leagueIngest,
+      "rollover",
+      leagueId,
+      ref.provider,
+      ref.providerId,
+      ref.season,
+    ].join(":"),
+    name: JOB_EVENTS.leagueIngest,
+  };
 }
 
 type CoverageByDataClass = Partial<Record<LiveIngestionDataClass, Date>>;
@@ -706,6 +1118,24 @@ async function getDefaultLeagueIngestDependencies(): Promise<LeagueIngestDepende
   };
 }
 
+async function getDefaultSeasonRolloverCheckDependencies(): Promise<SeasonRolloverCheckDependencies> {
+  const [{ getEnv }, { getDb }] = await Promise.all([
+    import("@/core/env"),
+    import("@/db"),
+  ]);
+  const env = getEnv();
+
+  return {
+    cipher: createCredentialCipher(env.credentials.encryptionKey),
+    db: getDb(),
+    providers: {
+      espn: createEspnDiscoveryProvider(),
+      sleeper: createSleeperProvider(),
+      yahoo: createYahooProvider(),
+    },
+  };
+}
+
 export async function runIngestionTick({
   data: rawData,
   deps,
@@ -846,6 +1276,148 @@ export async function runLeagueIngest({
   };
 }
 
+export async function runSeasonRolloverCheck({
+  data: rawData,
+  deps,
+}: {
+  data: unknown;
+  deps: SeasonRolloverCheckDependencies;
+}): Promise<SeasonRolloverCheckResponse> {
+  const data = parseSeasonRolloverCheckData(rawData);
+  const now = data.now ? new Date(data.now) : currentTime(deps);
+  const groups = (
+    await listRolloverCredentialTargets({
+      credentialIds: data.credentialIds,
+      db: deps.db,
+      leagueIds: data.leagueIds,
+    })
+  ).slice(0, data.limit);
+  const planned = new Map<string, PlannedLeagueIngestEvent>();
+  const failures: SeasonRolloverFailure[] = [];
+  let advancedLeagueCount = 0;
+  let discoveredLeagueCount = 0;
+  let invalidatedCredentialCount = 0;
+
+  for (const group of groups) {
+    const provider = resolveRolloverProvider(group.provider, deps);
+    let credentials: unknown;
+    try {
+      credentials = parseStoredCredentialsForProvider({
+        deps,
+        encryptedPayload: group.encryptedPayload,
+        group,
+      });
+    } catch (cause) {
+      failures.push(
+        failureForCredential({
+          credentialId: group.credentialId,
+          error: liveIngestionError({
+            cause,
+            code: "SEASON_ROLLOVER_CREDENTIAL_DECRYPT_FAILED",
+            message: "Provider credential could not be read",
+            status: 500,
+          }),
+          provider: group.provider,
+        }),
+      );
+      continue;
+    }
+
+    const session = await provider.authenticate(credentials);
+    if (!session.ok) {
+      if (shouldStopRetries(session.error)) {
+        await markCredentialInvalid({
+          credentialId: group.credentialId,
+          deps,
+        });
+        invalidatedCredentialCount += 1;
+      }
+      failures.push(
+        failureForCredential({
+          credentialId: group.credentialId,
+          error: session.error,
+          provider: group.provider,
+        }),
+      );
+      continue;
+    }
+
+    const discovered = await provider.discoverLeagues(session.value);
+    if (!discovered.ok) {
+      if (shouldStopRetries(discovered.error)) {
+        await markCredentialInvalid({
+          credentialId: group.credentialId,
+          deps,
+        });
+        invalidatedCredentialCount += 1;
+      }
+      failures.push(
+        failureForCredential({
+          credentialId: group.credentialId,
+          error: discovered.error,
+          provider: group.provider,
+        }),
+      );
+      continue;
+    }
+
+    discoveredLeagueCount += discovered.value.length;
+    await persistRolloverDiscoveries({
+      credentialId: group.credentialId,
+      db: deps.db,
+      discovered: discovered.value,
+      now,
+      userId: group.userId,
+    });
+
+    for (const target of group.targets) {
+      const ref = latestRolloverRefForTarget({
+        discovered: discovered.value,
+        target,
+      });
+      if (!ref) {
+        continue;
+      }
+
+      const event = rolloverEventFor({
+        credentialId: group.credentialId,
+        leagueId: target.leagueId,
+        ref,
+      });
+      if (planned.has(event.id)) {
+        continue;
+      }
+
+      const advanced = await advanceLeagueForRollover({
+        db: deps.db,
+        now,
+        ref,
+        target,
+      });
+      if (!advanced) {
+        continue;
+      }
+
+      planned.set(event.id, event);
+      advancedLeagueCount += 1;
+    }
+  }
+
+  return {
+    advancedLeagueCount,
+    checkedCredentialCount: groups.length,
+    discoveredLeagueCount,
+    eventName: JOB_EVENTS.seasonRolloverCheck,
+    failures,
+    invalidatedCredentialCount,
+    limit: data.limit,
+    ok: true,
+    planned: [...planned.values()],
+    plannedCount: planned.size,
+    sentCount: 0,
+  };
+}
+
 export function createIngestionTickFunction(
   resolveDeps: () =>
     | IngestionTickDependencies
@@ -871,10 +1443,7 @@ export function createIngestionTickFunction(
           runIngestionTick({
             data: event.data,
             deps,
-            eventName:
-              event.name === JOB_EVENTS.leagueConnected
-                ? JOB_EVENTS.leagueConnected
-                : JOB_EVENTS.ingestionTick,
+            eventName: ingestionTickTriggerName(event.name),
           }),
         );
 
@@ -928,5 +1497,42 @@ export function createLeagueIngestFunction(
   );
 }
 
+export function createSeasonRolloverCheckFunction(
+  resolveDeps: () =>
+    | SeasonRolloverCheckDependencies
+    | Promise<SeasonRolloverCheckDependencies> = getDefaultSeasonRolloverCheckDependencies,
+) {
+  return inngest.createFunction(
+    {
+      description:
+        "Re-discovers connected fantasy credentials and starts live ingestion when a provider opens a new season.",
+      id: "season-rollover-check",
+      idempotency: "event.id",
+      name: "Season rollover check",
+      triggers: [
+        { event: JOB_EVENTS.seasonRolloverCheck },
+        cron("TZ=UTC 17 9 * * *"),
+      ],
+    },
+    async ({ event, step }): Promise<SeasonRolloverCheckResponse> =>
+      recordJobRun("season-rollover-check", async () => {
+        const deps = await resolveDeps();
+        const plan = await step.run("plan-season-rollover-ingest", () =>
+          runSeasonRolloverCheck({ data: event.data, deps }),
+        );
+
+        if (plan.planned.length > 0) {
+          await step.sendEvent("send-season-rollover-ingest", plan.planned);
+        }
+
+        return {
+          ...plan,
+          sentCount: plan.planned.length,
+        };
+      }),
+  );
+}
+
 export const ingestionTick = createIngestionTickFunction();
 export const leagueIngest = createLeagueIngestFunction();
+export const seasonRolloverCheck = createSeasonRolloverCheckFunction();

@@ -617,6 +617,7 @@ function normalizeLeague(
 
 function toLeagueRef(league: SleeperLeague): ProviderLeagueRef {
   const normalized = normalizeLeague(league);
+  const previousProviderId = toId(league.previous_league_id);
   return {
     provider: normalized.provider,
     providerId: normalized.providerId,
@@ -624,11 +625,13 @@ function toLeagueRef(league: SleeperLeague): ProviderLeagueRef {
     sport: normalized.sport,
     name: normalized.name,
     size: normalized.size,
+    ...(previousProviderId ? { previousProviderId } : {}),
   };
 }
 
 function sleeperLeagueRef(league: SleeperLeague): ProviderLeagueRef {
   const normalized = normalizeLeague(league);
+  const previousProviderId = toId(league.previous_league_id);
   return {
     provider: SLEEPER_PROVIDER_ID,
     providerId: normalized.providerId,
@@ -636,6 +639,7 @@ function sleeperLeagueRef(league: SleeperLeague): ProviderLeagueRef {
     sport: normalized.sport,
     name: normalized.name,
     size: normalized.size,
+    ...(previousProviderId ? { previousProviderId } : {}),
   };
 }
 

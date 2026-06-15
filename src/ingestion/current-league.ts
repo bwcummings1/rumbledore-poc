@@ -607,7 +607,9 @@ async function upsertLeague(
         sport: sql`excluded.sport`,
         status: sql`
           case
-            when ${leagues.status} = 'complete' and excluded.status <> 'complete'
+            when ${leagues.season} = excluded.season
+              and ${leagues.status} = 'complete'
+              and excluded.status <> 'complete'
               then ${leagues.status}
             else excluded.status
           end
@@ -623,7 +625,11 @@ async function upsertLeague(
         or ${leagues.size} is distinct from excluded.size
         or ${leagues.currentScoringPeriod} is distinct from excluded.current_scoring_period
         or (
-          not (${leagues.status} = 'complete' and excluded.status <> 'complete')
+          not (
+            ${leagues.season} = excluded.season
+            and ${leagues.status} = 'complete'
+            and excluded.status <> 'complete'
+          )
           and ${leagues.status} is distinct from excluded.status
         )
       `,

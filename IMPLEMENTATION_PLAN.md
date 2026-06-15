@@ -11,7 +11,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Make the poll policy a pluggable config seam, with cadence as data (cost-optimization deferred to research). (specs/19)
 - [x] Harden incremental sync to never downgrade finalized matchups, idempotently. (specs/19)
 - [x] Wire reconnect-on-expiry into the scheduler so expired auth pauses with a CTA, not a crash. (specs/19)
-- [ ] Support multi-league fan-out and automatic next-season rollover on the same auth. (specs/19)
+- [x] Support multi-league fan-out and automatic next-season rollover on the same auth. (specs/19)
 
 ### N. Records & history surfaces (see specs/23)
 - [ ] Build the all-time records catalog aggregates (standings, highs/lows, streaks, blowouts) from history. (specs/23)
@@ -55,3 +55,4 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] `league.connected` is wired as a force-due ingestion scheduler trigger, but onboarding appears to call `syncCurrentLeague()` directly instead of emitting `JOB_EVENTS.leagueConnected`; confirm before relying on connected-event fan-out.
 - [ ] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
 - [ ] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.
+- [ ] Season rollover advances the durable league root into the newly discovered season, but does not schedule historical backfill for any skipped seasons.

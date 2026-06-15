@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import { InngestTestEngine } from "@inngest/test";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
@@ -31,16 +31,24 @@ import {
   type FantasyProviderSession,
   ProviderBlockedError,
   type ProviderDataClass,
+  type ProviderLeagueRef,
 } from "@/providers";
 import { JOB_EVENTS } from "./events";
 import {
   createIngestionTickFunction,
   createLeagueIngestFunction,
+  createSeasonRolloverCheckFunction,
   type IngestionGameStateProvider,
   runIngestionTick,
   runLeagueIngest,
+  runSeasonRolloverCheck,
 } from "./functions/ingestion-live";
-import { functions, ingestionTick, leagueIngest } from "./index";
+import {
+  functions,
+  ingestionTick,
+  leagueIngest,
+  seasonRolloverCheck,
+} from "./index";
 
 const marker = `liveingesttest-${randomUUID()}`;
 const masterKey = "test-live-ingest-master-key-minimum-32"; // ubs:ignore - fake fixture value
@@ -62,6 +70,7 @@ interface SeededLiveLeague {
   leagueId: string;
   provider: "espn" | "sleeper" | "yahoo";
   providerLeagueId: string;
+  season: number;
   userId: string;
 }
 
@@ -162,12 +171,14 @@ async function addDiscoveredLeague({
   name,
   provider,
   providerLeagueId,
+  season = 2026,
   userId,
 }: {
   credentialId: string;
   name: string;
   provider: SeededLiveLeague["provider"];
   providerLeagueId: string;
+  season?: number;
   userId: string;
 }) {
   await handle.db.insert(onboardingDiscoveredLeagues).values({
@@ -176,7 +187,7 @@ async function addDiscoveredLeague({
     name,
     provider,
     providerLeagueId,
-    season: 2026,
+    season,
     size: 2,
     sport: "ffl",
     userId,
@@ -187,14 +198,20 @@ async function seedLiveLeague(
   tag: string,
   {
     provider = "espn",
+    providerLeagueId: explicitProviderLeagueId,
+    leagueStatus = "in_season",
+    season = 2026,
     status = "connected",
   }: {
     provider?: SeededLiveLeague["provider"];
+    providerLeagueId?: string;
+    leagueStatus?: "preseason" | "in_season" | "complete" | "unknown";
+    season?: number;
     status?: "connected" | "invalid";
   } = {},
 ): Promise<SeededLiveLeague> {
   const user = await addUser(tag);
-  const providerLeagueId = `${marker}-${tag}`;
+  const providerLeagueId = explicitProviderLeagueId ?? `${marker}-${tag}`;
   const [league] = await handle.db
     .insert(leagues)
     .values({
@@ -203,10 +220,10 @@ async function seedLiveLeague(
       provider,
       providerLeagueId,
       scoringType: "H2H_POINTS",
-      season: 2026,
+      season,
       size: 2,
       sport: "ffl",
-      status: "in_season",
+      status: leagueStatus,
     })
     .returning();
   if (!league) throw new Error("league was not created");
@@ -227,6 +244,7 @@ async function seedLiveLeague(
     name: league.name,
     provider,
     providerLeagueId,
+    season,
     userId: user.id,
   });
 
@@ -235,6 +253,7 @@ async function seedLiveLeague(
     leagueId: league.id,
     provider,
     providerLeagueId,
+    season,
     userId: user.id,
   };
 }
@@ -268,7 +287,7 @@ function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
       id: seed.leagueId,
       provider: seed.provider,
       providerLeagueId: seed.providerLeagueId,
-      season: 2026,
+      season: seed.season,
       unchanged: 1,
     },
     matchups: emptySyncStats,
@@ -310,6 +329,55 @@ function currentSyncProvider({
       getMatchups: async () => err(new ProviderBlockedError("espn")),
       getMembers: async () => err(new ProviderBlockedError("espn")),
       getTeams: async () => err(new ProviderBlockedError("espn")),
+    },
+  };
+}
+
+function authKindFor(provider: SeededLiveLeague["provider"]) {
+  switch (provider) {
+    case "espn":
+      return "cookie" as const;
+    case "sleeper":
+      return "none" as const;
+    case "yahoo":
+      return "oauth2" as const;
+  }
+}
+
+function rolloverDiscoveryProvider({
+  authExpired = false,
+  blockedDiscovery = false,
+  provider = "espn",
+  refs,
+}: {
+  authExpired?: boolean;
+  blockedDiscovery?: boolean;
+  provider?: SeededLiveLeague["provider"];
+  refs: ProviderLeagueRef[];
+}) {
+  const credentials: unknown[] = [];
+  const session: FantasyProviderSession = {
+    authKind: authKindFor(provider),
+    provider,
+    subjectProviderId: `${provider}-rollover-user`,
+  };
+
+  return {
+    credentials,
+    provider: {
+      authenticate: async (input: unknown) => {
+        credentials.push(input);
+        if (authExpired) {
+          return err(new AuthExpiredError(provider));
+        }
+        return ok(session);
+      },
+      discoverLeagues: async () => {
+        if (blockedDiscovery) {
+          return err(new ProviderBlockedError(provider));
+        }
+        return ok(refs);
+      },
     },
   };
 }
@@ -406,6 +474,59 @@ describe("live ingestion jobs", () => {
     expect(result.planned.map((event) => event.data.leagueId)).not.toContain(
       invalid.leagueId,
     );
+  });
+
+  it("fans out multiple imported leagues authorized by the same credential", async () => {
+    const first = await seedLiveLeague("fanout-shared-a");
+    const secondProviderLeagueId = `${marker}-fanout-shared-b`;
+    const [secondLeague] = await handle.db
+      .insert(leagues)
+      .values({
+        currentScoringPeriod: 1,
+        name: `${marker} league fanout-shared-b`,
+        provider: "espn",
+        providerLeagueId: secondProviderLeagueId,
+        scoringType: "H2H_POINTS",
+        season: 2026,
+        size: 2,
+        sport: "ffl",
+        status: "in_season",
+      })
+      .returning();
+    if (!secondLeague) throw new Error("second league was not created");
+    await handle.db.insert(members).values({
+      organizationId: secondLeague.id,
+      role: "commissioner",
+      userId: first.userId,
+    });
+    await addDiscoveredLeague({
+      credentialId: first.credentialId,
+      name: secondLeague.name,
+      provider: "espn",
+      providerLeagueId: secondProviderLeagueId,
+      userId: first.userId,
+    });
+
+    const result = await runIngestionTick({
+      data: {
+        leagueIds: [first.leagueId, secondLeague.id],
+      },
+      deps: { db: handle.db },
+    });
+
+    expect(result).toMatchObject({
+      connectedRows: 2,
+      ok: true,
+      plannedCount: 2,
+      skippedDuplicateCredentials: 0,
+    });
+    expect(result.planned.map((event) => event.data.credentialId)).toEqual([
+      first.credentialId,
+      first.credentialId,
+    ]);
+    expect(
+      result.planned.map((event) => event.data.providerLeagueId).sort(),
+    ).toEqual([first.providerLeagueId, secondProviderLeagueId].sort());
   });
 
   it("pauses auth-invalid targets with a reconnect action and resumes after reconnect", async () => {
@@ -955,7 +1076,264 @@ describe("live ingestion jobs", () => {
     expect(credential).toMatchObject({ status: "connected" });
   });
 
-  it("registers both live ingestion functions", () => {
+  it("rediscovers a higher ESPN season and enqueues live ingest on the same credential", async () => {
+    const seeded = await seedLiveLeague("rollover-espn", {
+      leagueStatus: "complete",
+      season: 2026,
+    });
+    const nextSeasonRef: ProviderLeagueRef = {
+      provider: "espn",
+      providerId: seeded.providerLeagueId,
+      season: 2027,
+      sport: "ffl",
+      name: `${marker} league rollover-espn 2027`,
+      size: 2,
+    };
+    const discovery = rolloverDiscoveryProvider({
+      refs: [nextSeasonRef],
+    });
+
+    const result = await runSeasonRolloverCheck({
+      data: {
+        credentialIds: [seeded.credentialId],
+        now: "2026-08-01T12:00:00.000Z",
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { espn: discovery.provider },
+      },
+    });
+
+    expect(result).toMatchObject({
+      advancedLeagueCount: 1,
+      checkedCredentialCount: 1,
+      discoveredLeagueCount: 1,
+      eventName: JOB_EVENTS.seasonRolloverCheck,
+      failures: [],
+      ok: true,
+      plannedCount: 1,
+      sentCount: 0,
+    });
+    expect(result.planned[0]).toMatchObject({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: nextSeasonRef.name,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2027,
+      },
+      name: JOB_EVENTS.leagueIngest,
+    });
+    expect(discovery.credentials).toEqual([
+      {
+        espn_s2: fixtureEspnS2,
+        swid: fixtureSwid,
+      },
+    ]);
+
+    const [league] = await handle.db
+      .select()
+      .from(leagues)
+      .where(eq(leagues.id, seeded.leagueId))
+      .limit(1);
+    expect(league).toMatchObject({
+      id: seeded.leagueId,
+      name: nextSeasonRef.name,
+      providerLeagueId: seeded.providerLeagueId,
+      season: 2027,
+      status: "unknown",
+    });
+
+    const [discovered] = await handle.db
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(
+        and(
+          eq(onboardingDiscoveredLeagues.credentialId, seeded.credentialId),
+          eq(onboardingDiscoveredLeagues.provider, "espn"),
+          eq(
+            onboardingDiscoveredLeagues.providerLeagueId,
+            seeded.providerLeagueId,
+          ),
+          eq(onboardingDiscoveredLeagues.season, 2027),
+        ),
+      )
+      .limit(1);
+    expect(discovered).toMatchObject({
+      credentialId: seeded.credentialId,
+      lastDiscoveredAt: new Date("2026-08-01T12:00:00.000Z"),
+      season: 2027,
+    });
+
+    const syncCalls: CurrentLeagueSyncInput<FantasyProviderSession>[] = [];
+    const workerProvider = currentSyncProvider();
+    await expect(
+      runLeagueIngest({
+        data: result.planned[0]?.data,
+        deps: {
+          cipher,
+          db: handle.db,
+          providers: { espn: workerProvider.provider },
+          syncCurrent: async (input) => {
+            syncCalls.push(input);
+            return ok(
+              successfulSyncResult({
+                ...seeded,
+                season: 2027,
+              }),
+            );
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      league: {
+        id: seeded.leagueId,
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2027,
+      },
+    });
+    expect(syncCalls[0]?.ref).toMatchObject({
+      provider: "espn",
+      providerId: seeded.providerLeagueId,
+      season: 2027,
+    });
+
+    const repeated = await runSeasonRolloverCheck({
+      data: {
+        credentialIds: [seeded.credentialId],
+        now: "2026-08-01T12:01:00.000Z",
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { espn: discovery.provider },
+      },
+    });
+    expect(repeated).toMatchObject({
+      advancedLeagueCount: 0,
+      ok: true,
+      plannedCount: 0,
+    });
+  });
+
+  it("advances Yahoo leagues when the new season uses a linked league key", async () => {
+    const oldYahooKey = `449.l.${marker}-rollover-yahoo`;
+    const newYahooKey = `461.l.${marker}-rollover-yahoo`;
+    const seeded = await seedLiveLeague("rollover-yahoo", {
+      leagueStatus: "complete",
+      provider: "yahoo",
+      providerLeagueId: oldYahooKey,
+      season: 2025,
+    });
+    const discovery = rolloverDiscoveryProvider({
+      provider: "yahoo",
+      refs: [
+        {
+          provider: "yahoo",
+          providerId: newYahooKey,
+          season: 2026,
+          sport: "ffl",
+          name: `${marker} Yahoo rollover`,
+          size: 12,
+        },
+      ],
+    });
+
+    const result = await runSeasonRolloverCheck({
+      data: {
+        credentialIds: [seeded.credentialId],
+        now: "2026-08-02T12:00:00.000Z",
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { yahoo: discovery.provider },
+      },
+    });
+
+    expect(result).toMatchObject({
+      advancedLeagueCount: 1,
+      ok: true,
+      plannedCount: 1,
+    });
+    expect(result.planned[0]?.data).toMatchObject({
+      credentialId: seeded.credentialId,
+      leagueId: seeded.leagueId,
+      provider: "yahoo",
+      providerLeagueId: newYahooKey,
+      season: 2026,
+    });
+
+    const [league] = await handle.db
+      .select()
+      .from(leagues)
+      .where(eq(leagues.id, seeded.leagueId))
+      .limit(1);
+    expect(league).toMatchObject({
+      providerLeagueId: newYahooKey,
+      season: 2026,
+      status: "unknown",
+    });
+  });
+
+  it("plans season rollover events through the Inngest step API", async () => {
+    const seeded = await seedLiveLeague("rollover-job", {
+      leagueStatus: "complete",
+      season: 2026,
+    });
+    const discovery = rolloverDiscoveryProvider({
+      refs: [
+        {
+          provider: "espn",
+          providerId: seeded.providerLeagueId,
+          season: 2027,
+          sport: "ffl",
+          name: `${marker} league rollover-job 2027`,
+          size: 2,
+        },
+      ],
+    });
+    const fn = createSeasonRolloverCheckFunction(() => ({
+      cipher,
+      db: handle.db,
+      providers: { espn: discovery.provider },
+    }));
+    const testEngine = new InngestTestEngine({ function: fn });
+    const event = {
+      data: {
+        credentialIds: [seeded.credentialId],
+        now: "2026-08-03T12:00:00.000Z",
+      },
+      name: JOB_EVENTS.seasonRolloverCheck,
+    };
+
+    const stepRun = await testEngine.executeStep(
+      "plan-season-rollover-ingest",
+      {
+        events: [event],
+      },
+    );
+    const plan = stepRun.result as Awaited<
+      ReturnType<typeof runSeasonRolloverCheck>
+    >;
+
+    expect(plan).toMatchObject({
+      ok: true,
+      plannedCount: 1,
+      sentCount: 0,
+    });
+    expect(plan.planned[0]?.data).toMatchObject({
+      credentialId: seeded.credentialId,
+      leagueId: seeded.leagueId,
+      provider: "espn",
+      season: 2027,
+    });
+  });
+
+  it("registers live ingestion functions", () => {
     const fn = createLeagueIngestFunction(() => ({
       cipher,
       db: handle.db,
@@ -964,5 +1342,6 @@ describe("live ingestion jobs", () => {
     expect(fn).toBeDefined();
     expect(functions).toContain(ingestionTick);
     expect(functions).toContain(leagueIngest);
+    expect(functions).toContain(seasonRolloverCheck);
   });
 });
