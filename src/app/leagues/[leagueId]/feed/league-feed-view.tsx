@@ -1,4 +1,4 @@
-import { ArrowLeft, Newspaper, Rss } from "lucide-react";
+import { ArrowLeft, Landmark, Newspaper, Rss } from "lucide-react";
 import Link from "next/link";
 import {
   type PublicationStory,
@@ -116,6 +116,15 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
           >
             <Newspaper data-icon="inline-start" />
             Central news
+          </Link>
+          <Link
+            href={`/leagues/${data.league.id}/lore`}
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "outline" }),
+            )}
+          >
+            <Landmark data-icon="inline-start" />
+            Lore
           </Link>
         </div>
         <div className="grid gap-3">

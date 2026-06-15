@@ -170,6 +170,9 @@ test("league press view renders league posts and relevant central stories", () =
   expect(
     screen.getByRole("link", { name: /league home/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001");
+  expect(screen.getByRole("link", { name: "Lore" }).getAttribute("href")).toBe(
+    "/leagues/00000000-0000-4000-8000-000000000001/lore",
+  );
 });
 
 test("league press view renders an empty state", () => {

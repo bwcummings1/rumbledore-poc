@@ -100,7 +100,7 @@ describe("NavigationShellView", () => {
       within(tabs)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Home", "The Press", "Bet", "Records", "Members"]);
+    ).toEqual(["Home", "The Press", "Bet", "Records", "Lore", "Members"]);
     expect(
       within(tabs)
         .getByRole("link", { name: "The Press" })
@@ -171,6 +171,13 @@ describe("NavigationShellView", () => {
         name: "Records",
       }),
     ).toBeDefined();
+    expect(
+      within(screen.getByLabelText("League sections"))
+        .getByRole("link", {
+          name: "Lore",
+        })
+        .getAttribute("href"),
+    ).toBe("/leagues/league-a/lore");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Collapse navigation" }),

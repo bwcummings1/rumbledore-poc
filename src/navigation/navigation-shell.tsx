@@ -4,6 +4,7 @@ import {
   BookOpen,
   ChevronDown,
   Home,
+  Landmark,
   Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
@@ -55,6 +56,7 @@ const NAVIGATION_SHELL_HIDDEN_SEGMENTS = new Set([
 const NAVIGATION_ICON_COMPONENTS = {
   "book-open": BookOpen,
   home: Home,
+  landmark: Landmark,
   newspaper: Newspaper,
   "scroll-text": ScrollText,
   ticket: Ticket,

@@ -4,10 +4,17 @@ export type AppScopeId = "global" | "league";
 
 export type GlobalSectionId = "your-leagues" | "news" | "arena" | "you";
 
-export type LeagueSectionId = "home" | "press" | "bet" | "records" | "members";
+export type LeagueSectionId =
+  | "home"
+  | "press"
+  | "bet"
+  | "records"
+  | "lore"
+  | "members";
 
 export type NavigationIconName =
   | "home"
+  | "landmark"
   | "newspaper"
   | "trophy"
   | "user"
@@ -108,6 +115,13 @@ export const LEAGUE_NAVIGATION_SECTIONS = [
     id: "records",
     label: "Records",
     pathSegment: "records",
+    scope: "league",
+  },
+  {
+    icon: "landmark",
+    id: "lore",
+    label: "Lore",
+    pathSegment: "lore",
     scope: "league",
   },
   {

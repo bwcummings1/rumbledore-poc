@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Trophy } from "lucide-react";
+import { ArrowLeft, BookOpen, Landmark, Trophy } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import type { LeagueHomeData } from "@/home/league-home";
@@ -32,15 +32,26 @@ export function LeagueRecordsView({ data }: { data: LeagueHomeData }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <header className="grid gap-4">
-        <Link
-          href={`/leagues/${data.league.id}`}
-          className={cn(
-            buttonVariants({ className: "w-fit", variant: "ghost" }),
-          )}
-        >
-          <ArrowLeft data-icon="inline-start" />
-          League home
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/leagues/${data.league.id}`}
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "ghost" }),
+            )}
+          >
+            <ArrowLeft data-icon="inline-start" />
+            League home
+          </Link>
+          <Link
+            href={`/leagues/${data.league.id}/lore`}
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "outline" }),
+            )}
+          >
+            <Landmark data-icon="inline-start" />
+            Lore
+          </Link>
+        </div>
         <div className="grid gap-3">
           <div className="flex items-center gap-2 text-primary">
             <BookOpen className="size-5" aria-hidden="true" />
@@ -53,7 +64,8 @@ export function LeagueRecordsView({ data }: { data: LeagueHomeData }) {
             <p className="mt-2 text-sm text-muted-foreground">
               Current all-time marks from the imported league history. This is
               the scorekeeping spine the cast uses when it mythologizes a
-              collapse or crowns a recurring villain.
+              collapse or crowns a recurring villain. Lore is where the league
+              decides what the numbers mean.
             </p>
           </div>
         </div>

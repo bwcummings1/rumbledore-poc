@@ -31,7 +31,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Implement configurable caps (posts/week, leagues) plus an admin grant path. (specs/17)
 
 ### I. Lore member experience (see specs/18)
-- [ ] Build the lore section in the league IA with the submit-claim entry for both lore types. (specs/18)
+- [x] Build the lore section in the league IA with the submit-claim entry for both lore types. (specs/18)
 - [ ] Build the vote experience surfacing threshold, vote window, tally, and steward tiebreak. (specs/18)
 - [ ] Build canon and branch/dispute browsing reusing the publication card/section patterns. (specs/18)
 - [ ] Build the challenge/branch flow and surface the cast's instigated claims and cited canon. (specs/18)
