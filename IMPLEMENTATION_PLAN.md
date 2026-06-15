@@ -41,7 +41,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Add the install affordance (Android prompt plus the documented iOS Share→Add flow) over the existing manifest. (specs/24)
 - [x] Harden the service worker for RLS-cache-safety and sign-out cache clearing. (specs/24)
 - [x] Implement share-link routing into the right scope or onboarding with the destination preserved. (specs/24)
-- [ ] Define and check a mobile perf budget (fast transitions, skeletons over spinners). (specs/24)
+- [x] Define and check a mobile perf budget (fast transitions, skeletons over spinners). (specs/24)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
 Carried from Phase 2 — **re-verify each before acting** ("don't assume not implemented"); several may already be fixed by the Phase 2 harden pass.
@@ -62,4 +62,5 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.
 - [ ] Season rollover advances the durable league root into the newly discovered season, but does not schedule historical backfill for any skipped seasons.
 - [ ] Flat `all_time_record` longest-streak rows still derive from per-season `season_statistics`; future record-chain/materialized UI work should use cross-season H2H-only streaks from the catalog.
+- [ ] PWA perf budget is currently a post-build structural/bundle gate; add a runtime Lighthouse or Playwright user-flow pass before production launch to measure FCP, CLS, and INP under throttling.
 - [x] Scheduled weekly recaps and reactive `game.final` recaps still use different trigger keys; add a targeted shared-idempotency pass when enriching reactive cadence.

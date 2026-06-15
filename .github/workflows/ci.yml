@@ -84,6 +84,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Mobile PWA performance budget
+        run: pnpm perf:pwa
+
       - name: Install UBS
         run: |
           curl -sSL https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh | bash

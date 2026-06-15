@@ -18,6 +18,7 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 - AI eval (if you touched AI/cast/content quality): `pnpm eval:ai:offline` (offline mock LLM/judge; CI gate).
 - E2E: `pnpm test:e2e` for onboarding/flagship-flow changes. It auto-migrates and starts Next on `127.0.0.1:3100`; first run may need `pnpm exec playwright install chromium`.
 - Build: `pnpm build`
+- PWA perf (if shell/PWA/routes changed; run after build): `pnpm perf:pwa`
 - Secret scan: `pnpm secret-scan`
 - Bug scan: `ubs <changed files>` (exit 0 required; see /home/ubuntu/AGENTS.md UBS section)
 - UI (only if you touched UI): `npx impeccable detect src/` must pass

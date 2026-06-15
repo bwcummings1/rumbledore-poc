@@ -1,0 +1,52 @@
+{
+  "profile": "Mid-tier Android on throttled 4G, mobile-first PWA shell routes",
+  "thresholds": {
+    "firstContentfulPaintMs": 1800,
+    "repeatShellVisibleMs": 1000,
+    "routeTransitionPerceivedMs": 300,
+    "cumulativeLayoutShift": 0.1,
+    "interactionToNextPaintMs": 200,
+    "minimumTapTargetPx": 44,
+    "maxRouteJsGzipKb": 300
+  },
+  "loadingFiles": ["src/app/loading.tsx"],
+  "shellRoutes": [
+    "/",
+    "/you",
+    "/arena",
+    "/invite/[leagueId]/[token]",
+    "/news",
+    "/news/[section]",
+    "/news/articles/[articleId]",
+    "/leagues/[leagueId]",
+    "/leagues/[leagueId]/bet",
+    "/leagues/[leagueId]/feed",
+    "/leagues/[leagueId]/invite",
+    "/leagues/[leagueId]/lore",
+    "/leagues/[leagueId]/lore/[claimId]",
+    "/leagues/[leagueId]/lore/new",
+    "/leagues/[leagueId]/lore/steward",
+    "/leagues/[leagueId]/members",
+    "/leagues/[leagueId]/members/steward",
+    "/leagues/[leagueId]/posts/[postId]",
+    "/leagues/[leagueId]/press",
+    "/leagues/[leagueId]/press/[postId]",
+    "/leagues/[leagueId]/records",
+    "/leagues/[leagueId]/records/h2h/[personAId]/[personBId]",
+    "/leagues/[leagueId]/records/managers/[personId]"
+  ],
+  "routeLoadingFiles": [
+    "src/app/arena/loading.tsx",
+    "src/app/invite/[leagueId]/[token]/loading.tsx",
+    "src/app/leagues/[leagueId]/bet/loading.tsx",
+    "src/app/leagues/[leagueId]/loading.tsx",
+    "src/app/leagues/[leagueId]/lore/loading.tsx",
+    "src/app/leagues/[leagueId]/members/loading.tsx",
+    "src/app/leagues/[leagueId]/press/[postId]/loading.tsx",
+    "src/app/leagues/[leagueId]/press/loading.tsx",
+    "src/app/leagues/[leagueId]/records/loading.tsx",
+    "src/app/news/articles/[articleId]/loading.tsx",
+    "src/app/news/loading.tsx",
+    "src/app/you/loading.tsx"
+  ]
+}
