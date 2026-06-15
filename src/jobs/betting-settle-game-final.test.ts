@@ -25,6 +25,7 @@ import {
   bettingMarkets,
   type League,
   leagues,
+  members,
   oddsSnapshots,
   type User,
   users,
@@ -205,6 +206,18 @@ beforeAll(async () => {
       },
     ])
     .returning();
+  await handle.db.insert(members).values([
+    {
+      organizationId: league.id,
+      role: "member",
+      userId: user.id,
+    },
+    {
+      organizationId: rivalLeague.id,
+      role: "member",
+      userId: rivalUser.id,
+    },
+  ]);
 });
 
 afterAll(async () => {
@@ -395,6 +408,15 @@ describe("betting game.final settlement job", () => {
     ]);
     expect(push.notifications).toEqual([
       {
+        body: "A rival just passed you in the arena. You fell from 1 to 2.",
+        leagueId: rivalLeague.id,
+        tag: `arena:${arenaSeason.id}:rival-passed:${rivalUser.id}`,
+        title: "Arena rank changed",
+        type: "arena.rival.passed",
+        url: `/arena?season=${arenaSeason.id}`,
+        userIds: [rivalUser.id],
+      },
+      {
         body: "Won $171 on a single. Bankroll now $10,071.",
         leagueId: league.id,
         tag: `league:${league.id}:betting:${seeded.placed.slip.id}`,
@@ -429,7 +451,7 @@ describe("betting game.final settlement job", () => {
       leagueLeaderboardUpdates: [],
       settlementIds: [],
     });
-    expect(push.notifications).toHaveLength(1);
+    expect(push.notifications).toHaveLength(2);
     expect(realtime.arenaStandingsSwing).toHaveLength(1);
   });
 

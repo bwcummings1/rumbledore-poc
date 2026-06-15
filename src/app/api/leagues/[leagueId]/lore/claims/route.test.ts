@@ -10,8 +10,10 @@ const mocks = vi.hoisted(() => ({
   getEnv: vi.fn(),
   getLoreClaimVerificationSummary: vi.fn(),
   inngestSend: vi.fn(),
+  push: { notifyLeague: vi.fn() },
   requireLeagueRole: vi.fn(),
   realtime: { publishLeagueLoreVoteOpened: vi.fn() },
+  createPushNotifier: vi.fn(),
   createRealtimePublisher: vi.fn(),
   submitLoreClaim: vi.fn(),
 }));
@@ -30,6 +32,14 @@ vi.mock("@/jobs/client", () => ({
 
 vi.mock("@/realtime", () => ({
   createRealtimePublisher: mocks.createRealtimePublisher,
+}));
+
+vi.mock("@/push", () => ({
+  PUSH_EVENTS: {
+    leagueLoreCanonized: "league.lore.canonized",
+    leagueLoreVoteOpened: "league.lore.vote.opened",
+  },
+  createPushNotifier: mocks.createPushNotifier,
 }));
 
 vi.mock("@/auth/guards", () => ({
@@ -96,6 +106,7 @@ function mockMembership() {
 
 beforeEach(() => {
   mocks.getEnv.mockReturnValue({ jobs: { inngest: { mode: "mock" } } });
+  mocks.createPushNotifier.mockReturnValue(mocks.push);
   mocks.createRealtimePublisher.mockReturnValue(mocks.realtime);
 });
 
@@ -143,7 +154,7 @@ describe("POST /api/leagues/[leagueId]/lore/claims", () => {
       }),
     );
     expect(submitLoreClaim).toHaveBeenCalledWith({
-      deps: { db: mocks.db, realtime: mocks.realtime },
+      deps: { db: mocks.db, push: mocks.push, realtime: mocks.realtime },
       input: expect.objectContaining({
         authorMemberId: memberId,
         body: "This trade lives in shame.",
@@ -236,7 +247,7 @@ describe("POST /api/leagues/[leagueId]/lore/claims", () => {
       },
     });
     expect(submitLoreClaim).toHaveBeenCalledWith({
-      deps: { db: mocks.db, realtime: mocks.realtime },
+      deps: { db: mocks.db, push: mocks.push, realtime: mocks.realtime },
       input: expect.objectContaining({
         assertions: [
           {
@@ -289,7 +300,7 @@ describe("POST /api/leagues/[leagueId]/lore/claims", () => {
       status: "vote",
     });
     expect(submitLoreClaim).toHaveBeenCalledWith({
-      deps: { db: mocks.db, realtime: mocks.realtime },
+      deps: { db: mocks.db, push: mocks.push, realtime: mocks.realtime },
       input: expect.objectContaining({
         authorMemberId: memberId,
         body: "The old canon needs to be overturned.",

@@ -302,6 +302,13 @@
       "when": 1781508800000,
       "tag": "0042_record_book_materialized_aggregates",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1781512400000,
+      "tag": "0043_push_notification_preferences",
+      "breakpoints": true
     }
   ]
 }

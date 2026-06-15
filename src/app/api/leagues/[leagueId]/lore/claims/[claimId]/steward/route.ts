@@ -9,6 +9,7 @@ import {
   type LoreStewardActionResponse,
 } from "@/lore/member-ui";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
+import { createPushNotifier } from "@/push";
 import { createRealtimePublisher } from "@/realtime";
 import {
   authorizeLoreMember,
@@ -65,8 +66,13 @@ async function loreStewardPost(
       leagueId,
       userId: access.value.userId,
     });
+    const env = getEnv();
     const result = await stewardLoreClaim({
-      deps: { db, realtime: createRealtimePublisher(getEnv()) },
+      deps: {
+        db,
+        push: createPushNotifier(db, env),
+        realtime: createRealtimePublisher(env),
+      },
       input: {
         action: parsed.data.action,
         actorMemberId: memberId,

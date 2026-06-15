@@ -17,6 +17,7 @@ import {
 import type { LoreClaimSubmitResponse } from "@/lore/member-ui";
 import { SEASON_LORE_METRICS, WEEKLY_LORE_METRICS } from "@/lore/member-ui";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
+import { createPushNotifier } from "@/push";
 import { createRealtimePublisher } from "@/realtime";
 import { authorizeLoreMember, getMemberIdForUser } from "../lore-route-helpers";
 
@@ -143,8 +144,13 @@ async function loreClaimsPost(
       leagueId,
       userId: access.value.userId,
     });
+    const env = getEnv();
     const result = await submitLoreClaim({
-      deps: { db, realtime: createRealtimePublisher(getEnv()) },
+      deps: {
+        db,
+        push: createPushNotifier(db, env),
+        realtime: createRealtimePublisher(env),
+      },
       input: {
         ...(parsed.data.assertions
           ? {

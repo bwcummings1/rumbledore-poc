@@ -31,8 +31,10 @@ import {
   members,
   type Poll,
   type PollVote,
+  type PushNotificationPreference,
   polls,
   pollVotes,
+  pushNotificationPreferences,
   type User,
   users,
 } from "./schema";
@@ -92,6 +94,8 @@ let loreVerificationA: LoreVerification;
 let loreVerificationB: LoreVerification;
 let loreVoteA: LoreVote;
 let loreVoteB: LoreVote;
+let pushPreferenceA: PushNotificationPreference;
+let pushPreferenceB: PushNotificationPreference;
 
 /** Drizzle wraps pg errors; the SQLSTATE lives on `cause.code`. */
 async function sqlstateOf(query: Promise<unknown>): Promise<string> {
@@ -131,7 +135,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -484,6 +488,24 @@ beforeAll(async () => {
     ])
     .returning();
 
+  [pushPreferenceA, pushPreferenceB] = await admin.db
+    .insert(pushNotificationPreferences)
+    .values([
+      {
+        enabled: false,
+        leagueId: leagueA,
+        type: "arena.rival.passed",
+        userId: userA.id,
+      },
+      {
+        enabled: false,
+        leagueId: leagueB,
+        type: "arena.rival.passed",
+        userId: userB.id,
+      },
+    ])
+    .returning();
+
   const canaryUrl = new URL(adminUrl);
   canaryUrl.username = CANARY_ROLE;
   canaryUrl.password = CANARY_PASSWORD;
@@ -597,6 +619,19 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(eventRows).toHaveLength(0);
   });
 
+  it("sees no push preference rows at all outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(pushNotificationPreferences)
+      .where(
+        inArray(pushNotificationPreferences.id, [
+          pushPreferenceA.id,
+          pushPreferenceB.id,
+        ]),
+      );
+    expect(rows).toHaveLength(0);
+  });
+
   it("scoped to league A, sees A's fantasy team and nothing of league B", async () => {
     const { mine, theirs } = await withLeagueContext(
       canary.db,
@@ -698,6 +733,16 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows.events.map((row) => row.id)).toContain(loreEventA.id);
     expect(rows.events.map((row) => row.id)).not.toContain(loreEventB.id);
     expect(rows.events.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered push preference scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(pushNotificationPreferences),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(pushPreferenceA.id);
+    expect(rows.map((row) => row.id)).not.toContain(pushPreferenceB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
   it("scoped to league A, content scans include central rows and league A only", async () => {
@@ -826,6 +871,21 @@ describe("two-league isolation under withLeagueContext", () => {
             claimId: loreClaimB.id,
             leagueId: leagueB,
             voterMemberId: memberB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B push preference from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(pushNotificationPreferences).values({
+            enabled: false,
+            leagueId: leagueB,
+            type: "league.lore.vote.opened",
+            userId: userB.id,
           }),
         ),
       ),

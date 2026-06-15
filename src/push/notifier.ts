@@ -1,9 +1,9 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import webpush from "web-push";
 import { logger } from "@/core/logging";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { pushSubscriptions } from "@/db/schema";
+import { pushNotificationPreferences, pushSubscriptions } from "@/db/schema";
 import type {
   LeaguePushNotificationInput,
   PushDeliverySummary,
@@ -86,7 +86,7 @@ function isExpiredSubscriptionError(error: unknown): boolean {
 
 async function loadActiveSubscriptions(
   db: Db,
-  input: Pick<LeaguePushNotificationInput, "leagueId" | "userIds">,
+  input: Pick<LeaguePushNotificationInput, "leagueId" | "type" | "userIds">,
 ): Promise<PushSubscriptionRow[]> {
   const userIds = [...new Set(input.userIds ?? [])];
   if (input.userIds !== undefined && userIds.length === 0) {
@@ -98,6 +98,10 @@ async function loadActiveSubscriptions(
       eq(pushSubscriptions.leagueId, input.leagueId),
       eq(pushSubscriptions.status, "active"),
       isNull(pushSubscriptions.disabledAt),
+      or(
+        isNull(pushNotificationPreferences.enabled),
+        eq(pushNotificationPreferences.enabled, true),
+      ),
     ];
     if (userIds.length > 0) {
       filters.push(inArray(pushSubscriptions.userId, userIds));
@@ -112,6 +116,14 @@ async function loadActiveSubscriptions(
         p256dh: pushSubscriptions.p256dh,
       })
       .from(pushSubscriptions)
+      .leftJoin(
+        pushNotificationPreferences,
+        and(
+          eq(pushNotificationPreferences.leagueId, pushSubscriptions.leagueId),
+          eq(pushNotificationPreferences.userId, pushSubscriptions.userId),
+          eq(pushNotificationPreferences.type, input.type),
+        ),
+      )
       .where(and(...filters));
   });
 }

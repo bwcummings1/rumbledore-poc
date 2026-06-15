@@ -1,9 +1,20 @@
+export const PUSH_EVENT_VALUES = [
+  "league.bet.settled",
+  "league.blog.published",
+  "league.lore.vote.opened",
+  "league.lore.canonized",
+  "arena.rival.passed",
+] as const;
+
 export const PUSH_EVENTS = {
+  arenaRivalPassed: "arena.rival.passed",
   leagueBetSettled: "league.bet.settled",
   leagueBlogPublished: "league.blog.published",
-} as const;
+  leagueLoreCanonized: "league.lore.canonized",
+  leagueLoreVoteOpened: "league.lore.vote.opened",
+} as const satisfies Record<string, (typeof PUSH_EVENT_VALUES)[number]>;
 
-export type PushEventType = (typeof PUSH_EVENTS)[keyof typeof PUSH_EVENTS];
+export type PushEventType = (typeof PUSH_EVENT_VALUES)[number];
 
 export interface BrowserPushSubscriptionInput {
   endpoint: string;

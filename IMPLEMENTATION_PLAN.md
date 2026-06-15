@@ -24,7 +24,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Broadcast score/standings, settlement, content, lore, and arena events on per-league RLS channels. (specs/20)
 - [x] Wire client subscription via short-lived league-scoped tokens with reconnect/backoff (mock + Supabase). (specs/20)
 - [x] Deliver Web Push end-to-end with per-league RLS scoping and VAPID config (mock until keys). (specs/20)
-- [ ] Build the notification taxonomy plus an RLS-scoped preferences/opt-out enforced at fan-out. (specs/20)
+- [x] Build the notification taxonomy plus an RLS-scoped preferences/opt-out enforced at fan-out. (specs/20)
 
 ### M. Weekly cadence orchestration (see specs/22)
 - [ ] Add a mockable NFL calendar service that drives cadence by phase and game-state. (specs/22)

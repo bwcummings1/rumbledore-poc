@@ -7,9 +7,13 @@ export type {
   PushNotificationPayload,
   PushNotifier,
 } from "./interfaces";
-export { PUSH_EVENTS } from "./interfaces";
+export { PUSH_EVENT_VALUES, PUSH_EVENTS } from "./interfaces";
 export { NoopPushNotifier, RecordingPushNotifier } from "./mocks";
 export { type SendWebPushNotification, WebPushNotifier } from "./notifier";
+export {
+  isPushNotificationEnabled,
+  setPushNotificationPreference,
+} from "./preferences";
 export {
   disablePushSubscription,
   getPushSubscriptionStatus,

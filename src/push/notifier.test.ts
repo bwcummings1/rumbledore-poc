@@ -5,7 +5,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { leagues, members, pushSubscriptions, users } from "@/db/schema";
+import {
+  leagues,
+  members,
+  pushNotificationPreferences,
+  pushSubscriptions,
+  users,
+} from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import type { PushNotificationPayload, SendWebPushNotification } from ".";
 import { PUSH_EVENTS, WebPushNotifier } from ".";
@@ -15,13 +21,14 @@ const marker = `pushnotify-${randomUUID()}`;
 const unusedPrivateKey = ["unused", "private"].join("-");
 let handle: DbHandle;
 let userId: string;
+let otherUserId: string;
 let leagueId: string;
 
 function endpoint(tag: string) {
   return `https://push.example.test/${marker}/${tag}`;
 }
 
-async function seedSubscription(tag: string) {
+async function seedSubscription(tag: string, targetUserId = userId) {
   const result = await upsertPushSubscription(
     { db: handle.db, now: () => new Date("2026-06-12T12:00:00.000Z") },
     {
@@ -35,7 +42,7 @@ async function seedSubscription(tag: string) {
         },
       },
       userAgent: "vitest",
-      userId,
+      userId: targetUserId,
     },
   );
   if (!result.ok) {
@@ -56,12 +63,18 @@ beforeAll(async () => {
   }
   await migrateSerialized(handle);
 
-  const [user] = await handle.db
+  const [user, otherUser] = await handle.db
     .insert(users)
-    .values({
-      displayName: "Push Notify User",
-      email: `${marker}@example.test`,
-    })
+    .values([
+      {
+        displayName: "Push Notify User",
+        email: `${marker}@example.test`,
+      },
+      {
+        displayName: "Push Notify Other User",
+        email: `${marker}-other@example.test`,
+      },
+    ])
     .returning();
   const [league] = await handle.db
     .insert(leagues)
@@ -71,16 +84,24 @@ beforeAll(async () => {
       providerLeagueId: marker,
     })
     .returning();
-  if (!user || !league) {
+  if (!user || !otherUser || !league) {
     throw new Error("push notifier seed failed");
   }
   userId = user.id;
+  otherUserId = otherUser.id;
   leagueId = league.id;
-  await handle.db.insert(members).values({
-    organizationId: leagueId,
-    role: "member",
-    userId,
-  });
+  await handle.db.insert(members).values([
+    {
+      organizationId: leagueId,
+      role: "member",
+      userId,
+    },
+    {
+      organizationId: leagueId,
+      role: "member",
+      userId: otherUserId,
+    },
+  ]);
 });
 
 afterAll(async () => {
@@ -90,7 +111,7 @@ afterAll(async () => {
     .where(sql`${leagues.providerLeagueId} = ${marker}`);
   await handle.db
     .delete(users)
-    .where(sql`${users.email} = ${`${marker}@example.test`}`);
+    .where(sql`${users.email} like ${`${marker}%@example.test`}`);
   await handle.pool.end();
 });
 
@@ -168,6 +189,98 @@ describe("WebPushNotifier", () => {
 
     expect(summary).toEqual({ attempted: 0, expired: 0, failed: 0, sent: 0 });
     expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("excludes a personally targeted opted-out user before delivery", async () => {
+    await seedSubscription("personal-opt-out");
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(pushNotificationPreferences).values({
+        enabled: false,
+        leagueId,
+        type: PUSH_EVENTS.arenaRivalPassed,
+        userId,
+      });
+    });
+    const sendNotification = vi.fn(
+      async () => ({ body: "", headers: {}, statusCode: 201 }) as const,
+    ) as unknown as SendWebPushNotification;
+    const notifier = new WebPushNotifier({
+      db: handle.db,
+      privateKey: unusedPrivateKey,
+      publicKey: "unused-public",
+      sendNotification,
+      subject: "mailto:ops@example.invalid",
+    });
+
+    const summary = await notifier.notifyLeague({
+      at: new Date("2026-06-12T14:45:00.000Z"),
+      body: "A rival passed you.",
+      leagueId,
+      title: "Arena rank changed",
+      type: PUSH_EVENTS.arenaRivalPassed,
+      url: "/arena?season=season-1",
+      userIds: [userId],
+    });
+
+    expect(summary).toEqual({ attempted: 0, expired: 0, failed: 0, sent: 0 });
+    expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("applies per-user opt-outs to league-wide fan-out", async () => {
+    await seedSubscription("league-wide-opted-out", userId);
+    await seedSubscription("league-wide-default-on", otherUserId);
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .insert(pushNotificationPreferences)
+        .values({
+          enabled: false,
+          leagueId,
+          type: PUSH_EVENTS.leagueLoreVoteOpened,
+          userId,
+        })
+        .onConflictDoUpdate({
+          target: [
+            pushNotificationPreferences.leagueId,
+            pushNotificationPreferences.userId,
+            pushNotificationPreferences.type,
+          ],
+          set: { enabled: false },
+        });
+    });
+    const calls: { endpoint: string; payload: PushNotificationPayload }[] = [];
+    const sendNotification = vi.fn(async (subscription, payload) => {
+      calls.push({
+        endpoint: subscription.endpoint,
+        payload: (await new Response(
+          String(payload),
+        ).json()) as PushNotificationPayload,
+      });
+      return { body: "", headers: {}, statusCode: 201 };
+    }) as unknown as SendWebPushNotification;
+    const notifier = new WebPushNotifier({
+      db: handle.db,
+      privateKey: unusedPrivateKey,
+      publicKey: "unused-public",
+      sendNotification,
+      subject: "mailto:ops@example.invalid",
+    });
+
+    const summary = await notifier.notifyLeague({
+      at: new Date("2026-06-12T14:50:00.000Z"),
+      body: "Settle it.",
+      leagueId,
+      title: "Lore vote opened",
+      type: PUSH_EVENTS.leagueLoreVoteOpened,
+      url: `/leagues/${leagueId}/lore/claim-1`,
+    });
+
+    expect(summary.sent).toBeGreaterThanOrEqual(1);
+    expect(calls.map((call) => call.endpoint)).toContain(
+      endpoint("league-wide-default-on"),
+    );
+    expect(calls.map((call) => call.endpoint)).not.toContain(
+      endpoint("league-wide-opted-out"),
+    );
   });
 
   it("disables expired subscriptions after a 410 response", async () => {

@@ -22,6 +22,7 @@ import {
   polls,
   pollVotes,
 } from "@/db/schema";
+import { PUSH_EVENTS } from "@/push";
 import { REALTIME_EVENTS } from "@/realtime";
 
 export const INSTIGATION_KINDS = [
@@ -133,6 +134,24 @@ async function publishInstigationLoreVoteOpened({
       leagueId,
     });
   }
+
+  try {
+    await deps.push.notifyLeague({
+      at: timestamp,
+      body: "Settle it: the cast opened a league vote.",
+      leagueId,
+      tag: `league:${leagueId}:lore:${claimId}:opened`,
+      title: "Lore vote opened",
+      type: PUSH_EVENTS.leagueLoreVoteOpened,
+      url: `/leagues/${leagueId}/lore/${claimId}`,
+    });
+  } catch (error) {
+    logger.warn("Push instigation lore vote-opened notification failed", {
+      claimId,
+      error,
+      leagueId,
+    });
+  }
 }
 
 async function publishInstigationLoreCanonized({
@@ -157,6 +176,24 @@ async function publishInstigationLoreCanonized({
     });
   } catch (error) {
     logger.warn("Realtime poll lore canonized event failed", {
+      claimId,
+      error,
+      leagueId,
+    });
+  }
+
+  try {
+    await deps.push.notifyLeague({
+      at: timestamp,
+      body: "Canon changed: the league settled a story.",
+      leagueId,
+      tag: `league:${leagueId}:lore:${claimId}:canonized`,
+      title: "Lore became canon",
+      type: PUSH_EVENTS.leagueLoreCanonized,
+      url: `/leagues/${leagueId}/lore/${claimId}`,
+    });
+  } catch (error) {
+    logger.warn("Push instigation lore canonized notification failed", {
       claimId,
       error,
       leagueId,

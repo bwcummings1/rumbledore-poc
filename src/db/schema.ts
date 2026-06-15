@@ -380,6 +380,14 @@ export const pushSubscriptionStatus = pgEnum("push_subscription_status", [
   "disabled",
 ]);
 
+export const pushNotificationType = pgEnum("push_notification_type", [
+  "league.bet.settled",
+  "league.blog.published",
+  "league.lore.vote.opened",
+  "league.lore.canonized",
+  "arena.rival.passed",
+]);
+
 export interface LeagueFeedMatchedEntity {
   provider: string;
   type: "player" | "team" | "member" | "storyline";
@@ -2251,6 +2259,39 @@ export const pushSubscriptions = pgTable(
   ],
 );
 
+export const pushNotificationPreferences = pgTable(
+  "push_notification_preferences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: pushNotificationType("type").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("push_notification_preferences_user_type_unique").on(
+      table.leagueId,
+      table.userId,
+      table.type,
+    ),
+    index("push_notification_preferences_league_type_idx").on(
+      table.leagueId,
+      table.type,
+      table.enabled,
+    ),
+    pgPolicy("push_notification_preferences_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const aiPersonaCards = pgTable(
   "ai_persona_card",
   {
@@ -3210,6 +3251,10 @@ export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;
 export type NewLeagueFeedReference = typeof leagueFeedReferences.$inferInsert;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
+export type PushNotificationPreference =
+  typeof pushNotificationPreferences.$inferSelect;
+export type NewPushNotificationPreference =
+  typeof pushNotificationPreferences.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;

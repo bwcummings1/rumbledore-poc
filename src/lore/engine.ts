@@ -17,6 +17,7 @@ import {
   seasonStatistics,
   weeklyStatistics,
 } from "@/db/schema";
+import { PUSH_EVENTS, type PushNotifier } from "@/push";
 import { REALTIME_EVENTS, type RealtimePublisher } from "@/realtime";
 
 const DEFAULT_VOTE_DAYS = 7;
@@ -105,6 +106,7 @@ export interface LoreSubjectInput {
 export interface LoreDependencies {
   db: Db;
   now?: () => Date;
+  push?: PushNotifier;
   realtime?: RealtimePublisher;
 }
 
@@ -240,25 +242,43 @@ async function publishLoreVoteOpened({
   result: OpenOpinionClaimResult;
   timestamp: Date;
 }): Promise<void> {
-  if (!deps.realtime) {
-    return;
+  if (deps.realtime) {
+    try {
+      await deps.realtime.publishLeagueLoreVoteOpened({
+        at: timestamp.toISOString(),
+        claimId: result.claimId,
+        leagueId: input.leagueId,
+        type: REALTIME_EVENTS.loreVoteOpened,
+        v: 1,
+        voteClosesAt: result.voteClosesAt.toISOString(),
+      });
+    } catch (error) {
+      logger.warn("Realtime lore vote-opened event failed", {
+        claimId: result.claimId,
+        error,
+        leagueId: input.leagueId,
+      });
+    }
   }
 
-  try {
-    await deps.realtime.publishLeagueLoreVoteOpened({
-      at: timestamp.toISOString(),
-      claimId: result.claimId,
-      leagueId: input.leagueId,
-      type: REALTIME_EVENTS.loreVoteOpened,
-      v: 1,
-      voteClosesAt: result.voteClosesAt.toISOString(),
-    });
-  } catch (error) {
-    logger.warn("Realtime lore vote-opened event failed", {
-      claimId: result.claimId,
-      error,
-      leagueId: input.leagueId,
-    });
+  if (deps.push) {
+    try {
+      await deps.push.notifyLeague({
+        at: timestamp,
+        body: "Settle it: your league needs a vote.",
+        leagueId: input.leagueId,
+        tag: `league:${input.leagueId}:lore:${result.claimId}:opened`,
+        title: "Lore vote opened",
+        type: PUSH_EVENTS.leagueLoreVoteOpened,
+        url: `/leagues/${input.leagueId}/lore/${result.claimId}`,
+      });
+    } catch (error) {
+      logger.warn("Push lore vote-opened notification failed", {
+        claimId: result.claimId,
+        error,
+        leagueId: input.leagueId,
+      });
+    }
   }
 }
 
@@ -275,25 +295,43 @@ async function publishLoreCanonized({
   ratifiedBy: "steward" | "verified" | "vote";
   timestamp: Date;
 }): Promise<void> {
-  if (!deps.realtime) {
-    return;
+  if (deps.realtime) {
+    try {
+      await deps.realtime.publishLeagueLoreCanonized({
+        at: timestamp.toISOString(),
+        claimId,
+        leagueId,
+        ratifiedBy,
+        type: REALTIME_EVENTS.loreCanonized,
+        v: 1,
+      });
+    } catch (error) {
+      logger.warn("Realtime lore canonized event failed", {
+        claimId,
+        error,
+        leagueId,
+      });
+    }
   }
 
-  try {
-    await deps.realtime.publishLeagueLoreCanonized({
-      at: timestamp.toISOString(),
-      claimId,
-      leagueId,
-      ratifiedBy,
-      type: REALTIME_EVENTS.loreCanonized,
-      v: 1,
-    });
-  } catch (error) {
-    logger.warn("Realtime lore canonized event failed", {
-      claimId,
-      error,
-      leagueId,
-    });
+  if (deps.push) {
+    try {
+      await deps.push.notifyLeague({
+        at: timestamp,
+        body: "Canon changed: a league story is now part of the record.",
+        leagueId,
+        tag: `league:${leagueId}:lore:${claimId}:canonized`,
+        title: "Lore became canon",
+        type: PUSH_EVENTS.leagueLoreCanonized,
+        url: `/leagues/${leagueId}/lore/${claimId}`,
+      });
+    } catch (error) {
+      logger.warn("Push lore canonized notification failed", {
+        claimId,
+        error,
+        leagueId,
+      });
+    }
   }
 }
 

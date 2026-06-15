@@ -17,7 +17,7 @@ import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { bankrollLedger, bankrollWeeks, betSlips } from "@/db/schema";
+import { bankrollLedger, bankrollWeeks, betSlips, members } from "@/db/schema";
 import { createPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
   type ArenaLeaderboardUpdatedPayload,
@@ -385,6 +385,94 @@ async function publishSettlementRealtimeSignals({
   };
 }
 
+async function loadLeagueIdsByUser(
+  db: Db,
+  userIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const uniqueUserIds = uniqueValues(userIds);
+  if (uniqueUserIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select({
+      leagueId: members.organizationId,
+      userId: members.userId,
+    })
+    .from(members)
+    .where(inArray(members.userId, uniqueUserIds));
+  const byUser = new Map<string, string[]>();
+  for (const row of rows) {
+    const existing = byUser.get(row.userId) ?? [];
+    existing.push(row.leagueId);
+    byUser.set(row.userId, existing);
+  }
+  return byUser;
+}
+
+async function sendArenaRivalPassedPushNotifications({
+  arenaSwingSignals,
+  deps,
+}: {
+  arenaSwingSignals: readonly ArenaStandingsSwingPayload[];
+  deps: BettingSettleGameFinalDependencies;
+}): Promise<void> {
+  const passedByUser = new Map<
+    string,
+    { newRank: number; oldRank: number; seasonId: string }
+  >();
+  for (const payload of arenaSwingSignals) {
+    for (const swing of payload.swings) {
+      if (
+        swing.kind !== "individual" ||
+        !swing.userId ||
+        swing.rankDelta >= 0
+      ) {
+        continue;
+      }
+      const existing = passedByUser.get(swing.userId);
+      if (
+        existing &&
+        Math.abs(existing.oldRank - existing.newRank) >=
+          Math.abs(swing.oldRank - swing.newRank)
+      ) {
+        continue;
+      }
+      passedByUser.set(swing.userId, {
+        newRank: swing.newRank,
+        oldRank: swing.oldRank,
+        seasonId: payload.seasonId,
+      });
+    }
+  }
+
+  const leagueIdsByUser = await loadLeagueIdsByUser(deps.db, [
+    ...passedByUser.keys(),
+  ]);
+  for (const [userId, passed] of passedByUser) {
+    for (const leagueId of leagueIdsByUser.get(userId) ?? []) {
+      try {
+        await deps.push.notifyLeague({
+          body: `A rival just passed you in the arena. You fell from ${passed.oldRank} to ${passed.newRank}.`,
+          leagueId,
+          tag: `arena:${passed.seasonId}:rival-passed:${userId}`,
+          title: "Arena rank changed",
+          type: PUSH_EVENTS.arenaRivalPassed,
+          url: `/arena?season=${passed.seasonId}`,
+          userIds: [userId],
+        });
+      } catch (error) {
+        logger.warn("Push arena rival-passed notification failed", {
+          error,
+          leagueId,
+          seasonId: passed.seasonId,
+          userId,
+        });
+      }
+    }
+  }
+}
+
 function planArenaSwingContentEvents({
   arenaSwingSignals,
   leagueId,
@@ -469,6 +557,10 @@ export async function runBettingSettleGameFinal({
       arenaSwingSignals,
       leagueId: result.leagueId,
       settlementIds: result.settlements.map((settlement) => settlement.id),
+    });
+    await sendArenaRivalPassedPushNotifications({
+      arenaSwingSignals,
+      deps,
     });
     await sendSettlementPushNotifications({
       deps,
