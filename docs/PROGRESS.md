@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Individual personal-agent gate landed — `/you` now resolves `ai.individual.agent` before cross-league briefing work, renders a locked individual-tier state for free users, and caps active coverage from entitlement config.
 - 2026-06-15: Premium AI gate landed — league cast generation now blocks before web/LLM/embed spend for free leagues and cadence planners skip free-league fan-out while preserving dev/test override.
 - 2026-06-15: Entitlement resolver landed — capability checks now resolve league premium, user individual, dev override, expiry/suspension, caps, and advisory arena gating from one injectable server-side path.
 - 2026-06-15: Entitlement model landed — auth-plane league/user entitlement rows now represent FREE/PREMIUM league access and INDIVIDUAL user access with append-only audit events.

@@ -1,5 +1,6 @@
-import { ArrowRight, Bell, Link2, User } from "lucide-react";
+import { ArrowRight, Bell, Bot, Link2, LockKeyhole, User } from "lucide-react";
 import Link from "next/link";
+import type { PersonalAgentBriefingResult } from "@/ai/personal-agent";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LeagueSwitcherViewItem } from "@/navigation";
@@ -23,6 +24,7 @@ export interface YouProviderConnection {
 export interface YouAccountData {
   readonly connections: YouProviderConnection[];
   readonly leagues: LeagueSwitcherViewItem[];
+  readonly personalAgent: PersonalAgentBriefingResult;
   readonly user: {
     readonly displayName: string;
     readonly email: string;
@@ -39,6 +41,13 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
+function formatPoints(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+  }).format(value);
+}
+
 function flowLabel(flow: YouProviderConnection["connectionFlow"]): string {
   switch (flow) {
     case "browser":
@@ -52,6 +61,110 @@ function flowLabel(flow: YouProviderConnection["connectionFlow"]): string {
     case "public":
       return "Public ID";
   }
+}
+
+function personalAgentLockedCopy(
+  reason: PersonalAgentBriefingResult["entitlement"]["reason"],
+): string {
+  switch (reason) {
+    case "EXPIRED":
+      return "Individual access expired. Your leagues and records stay available.";
+    case "SUSPENDED":
+      return "Individual access is suspended. Your leagues and records stay available.";
+    case "CAP_EXCEEDED":
+      return "The individual coverage limit has been reached.";
+    case "TIER_REQUIRED":
+      return "Get your personal agent for cross-league briefings about your teams.";
+    case "DEV_OVERRIDE":
+    case "ENTITLED":
+      return "Personal agent access is available.";
+  }
+}
+
+function PersonalAgentPanel({
+  personalAgent,
+}: {
+  personalAgent: PersonalAgentBriefingResult;
+}) {
+  if (personalAgent.status === "blocked") {
+    return (
+      <div className="rounded-card border border-border bg-card p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-primary">Personal agent</p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight">
+              Individual tier required
+            </h2>
+          </div>
+          <LockKeyhole className="size-5 text-primary" aria-hidden="true" />
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {personalAgentLockedCopy(personalAgent.entitlement.reason)}
+        </p>
+      </div>
+    );
+  }
+
+  const { briefing } = personalAgent;
+  return (
+    <div className="rounded-card border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-primary">Personal agent</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight">
+            Watching {briefing.coveredLeagueCount} of{" "}
+            {briefing.totalLeagueCount} leagues
+          </h2>
+        </div>
+        <Bot className="size-5 text-primary" aria-hidden="true" />
+      </div>
+      {briefing.capped ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Showing the first {briefing.leagueLimit} leagues by recency.
+        </p>
+      ) : null}
+      <div className="mt-4 grid gap-3">
+        {briefing.leagues.length > 0 ? (
+          briefing.leagues.map((league) => (
+            <Link
+              className="grid gap-1 border-border border-t pt-3 first:border-t-0 first:pt-0 transition-colors hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+              href={league.href}
+              key={league.leagueId}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="truncate text-sm font-semibold">{league.name}</p>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {league.providerLabel}
+                </span>
+              </div>
+              {league.matchup ? (
+                <p className="text-sm text-muted-foreground">
+                  Week {league.matchup.scoringPeriod}: {league.matchup.label}
+                  {league.matchup.userScore !== null &&
+                  league.matchup.opponentScore !== null
+                    ? ` (${formatPoints(league.matchup.userScore)}-${formatPoints(league.matchup.opponentScore)})`
+                    : ""}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No current matchup has been ingested.
+                </p>
+              )}
+              {league.latestPressTitle ? (
+                <p className="line-clamp-1 text-xs text-muted-foreground">
+                  Press: {league.latestPressTitle}
+                </p>
+              ) : null}
+            </Link>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Connect a league to give the personal agent something to follow.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function YouAccountView({ data }: { data: YouAccountData }) {
@@ -73,7 +186,7 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-3 lg:grid-cols-3">
         <div className="rounded-card border border-border bg-card p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -139,6 +252,8 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
             </Link>
           </div>
         </div>
+
+        <PersonalAgentPanel personalAgent={data.personalAgent} />
 
         <div className="rounded-card border border-border bg-card p-4">
           <div className="flex items-center justify-between gap-3">

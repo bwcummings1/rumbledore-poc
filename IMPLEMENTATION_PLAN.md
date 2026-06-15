@@ -27,7 +27,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Build the entitlement model: FREE and PREMIUM league tiers plus an INDIVIDUAL tier, per-league and per-user. (specs/17)
 - [x] Implement the injectable `resolveEntitlement` resolver with a dev override. (specs/17)
 - [x] Gate AI content generation and cadence behind premium, failing gracefully into an upgrade state. (specs/17)
-- [ ] Gate the individual personal-agent feature behind the individual tier. (specs/17)
+- [x] Gate the individual personal-agent feature behind the individual tier. (specs/17)
 - [ ] Implement configurable caps (posts/week, leagues) plus an admin grant path. (specs/17)
 
 ### I. Lore member experience (see specs/18)

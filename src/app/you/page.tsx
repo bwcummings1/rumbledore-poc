@@ -3,8 +3,10 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getPersonalAgentBriefing } from "@/ai/personal-agent";
 import { requireSession } from "@/auth/guards";
 import { buttonVariants } from "@/components/ui/button";
+import { getEnv } from "@/core/env";
 import { getDb } from "@/db";
 import { providerCredentials, users } from "@/db/schema";
 import { cn } from "@/lib/utils";
@@ -50,6 +52,7 @@ export default async function YouPage() {
   }
 
   const db = getDb();
+  const env = getEnv();
   const [user] = await db
     .select({
       displayName: users.displayName,
@@ -83,6 +86,11 @@ export default async function YouPage() {
   if (!leagues.ok) {
     throw leagues.error;
   }
+  const personalAgent = await getPersonalAgentBriefing({
+    db,
+    env: { entitlements: env.entitlements },
+    userId: session.value.userId,
+  });
 
   const data: YouAccountData = {
     connections: credentialRows.map((credential) => ({
@@ -95,6 +103,7 @@ export default async function YouPage() {
       subjectProviderId: credential.subjectProviderId,
     })),
     leagues: leagues.value.map(serializeLeagueSwitcherItem),
+    personalAgent,
     user,
   };
 
