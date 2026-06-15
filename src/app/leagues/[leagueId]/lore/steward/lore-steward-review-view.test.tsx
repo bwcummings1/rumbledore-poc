@@ -44,6 +44,7 @@ const data: LoreStewardReviewData = {
       ratifiedBy: null,
       relation: "root",
       status: "vote",
+      subjects: [],
       title: "Worst collapse",
       verification: "n_a",
       vote: {

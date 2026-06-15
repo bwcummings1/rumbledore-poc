@@ -17,10 +17,19 @@ export const metadata: Metadata = {
 
 interface LeagueLorePageProps {
   params: Promise<{ leagueId: string }>;
+  searchParams?: Promise<{ subject?: string | string[] }>;
 }
 
-export default async function LeagueLorePage({ params }: LeagueLorePageProps) {
+function firstSearchValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+export default async function LeagueLorePage({
+  params,
+  searchParams,
+}: LeagueLorePageProps) {
   const { leagueId } = await params;
+  const activeSubject = firstSearchValue((await searchParams)?.subject);
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -51,7 +60,10 @@ export default async function LeagueLorePage({ params }: LeagueLorePageProps) {
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
-  const result = await getLoreSectionData(db, { leagueId });
+  const result = await getLoreSectionData(db, {
+    leagueId,
+    subject: activeSubject,
+  });
 
   switch (result.status) {
     case "ready":

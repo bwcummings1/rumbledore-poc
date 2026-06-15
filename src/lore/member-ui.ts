@@ -85,6 +85,8 @@ export interface LoreSubmitOptions {
 }
 
 export interface LoreSectionData {
+  readonly activeSubject: LoreSubjectSummary | null;
+  readonly canon: readonly LoreClaimCard[];
   readonly counts: {
     readonly canon: number;
     readonly openVotes: number;
@@ -96,6 +98,7 @@ export interface LoreSectionData {
     readonly name: string;
   };
   readonly openVotes: readonly LoreClaimCard[];
+  readonly subjectFilters: readonly LoreSubjectFilter[];
   readonly submitOptions: LoreSubmitOptions;
   readonly stewardReviewHref: string;
 }
@@ -128,9 +131,20 @@ export interface LoreClaimCard {
   readonly ratifiedBy: "steward" | "verified" | "vote" | null;
   readonly relation: LoreClaimRelation;
   readonly status: LoreClaimStatus;
+  readonly subjects: readonly LoreSubjectSummary[];
   readonly title: string;
   readonly verification: LoreClaimVerification;
   readonly vote: LoreVoteStatusSummary | null;
+}
+
+export interface LoreSubjectSummary {
+  readonly key: string;
+  readonly label: string;
+  readonly type: "person" | "record" | "rivalry" | "season" | "week";
+}
+
+export interface LoreSubjectFilter extends LoreSubjectSummary {
+  readonly count: number;
 }
 
 export interface LoreClaimDetailData {
@@ -147,6 +161,7 @@ export interface LoreClaimDetailData {
   };
   readonly stewardApiUrl: string;
   readonly stewardReviewHref: string;
+  readonly thread: readonly LoreClaimCard[];
   readonly verificationResult: LoreClaimVerificationSummary | null;
   readonly voteApiUrl: string;
 }

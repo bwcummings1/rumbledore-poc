@@ -5,6 +5,7 @@ import {
   Bot,
   Check,
   Clock3,
+  GitBranch,
   Landmark,
   Scale,
   ShieldCheck,
@@ -108,6 +109,25 @@ function statusClass(status: LoreClaimCard["status"]): string {
   }
 }
 
+function relationLabel(relation: LoreClaimCard["relation"]): string {
+  switch (relation) {
+    case "addendum":
+      return "Addendum";
+    case "dispute":
+      return "Dispute";
+    case "relitigation":
+      return "Relitigation";
+    case "response":
+      return "Response";
+    case "root":
+      return "Original claim";
+  }
+}
+
+function isChallenge(claim: LoreClaimCard): boolean {
+  return claim.relation === "dispute" || claim.relation === "relitigation";
+}
+
 function voteRead(vote: LoreVoteStatusSummary): string {
   if (vote.passesAtClose) {
     return "Passing if the vote closed now.";
@@ -123,6 +143,136 @@ function isSelectedChoice(
   choice: LoreVoteChoice,
 ): boolean {
   return currentChoice ? [currentChoice].includes(choice) : false;
+}
+
+interface ThreadNode {
+  readonly children: ThreadNode[];
+  readonly claim: LoreClaimCard;
+}
+
+function buildThreadTree(claims: readonly LoreClaimCard[]): ThreadNode[] {
+  const nodesById = new Map<string, ThreadNode>();
+  for (const claim of claims) {
+    nodesById.set(claim.id, { children: [], claim });
+  }
+  const roots: ThreadNode[] = [];
+
+  for (const node of nodesById.values()) {
+    if (node.claim.branchOf) {
+      const parent = nodesById.get(node.claim.branchOf);
+      if (parent) {
+        parent.children.push(node);
+        continue;
+      }
+    }
+    roots.push(node);
+  }
+
+  return roots;
+}
+
+function lineageAnnotation(
+  node: ThreadNode,
+  allClaims: readonly LoreClaimCard[],
+): string | null {
+  if (node.claim.status === "superseded") {
+    const replacement = allClaims.find(
+      (claim) =>
+        claim.branchOf === node.claim.id &&
+        isChallenge(claim) &&
+        claim.status === "canon",
+    );
+    return replacement ? `Superseded by ${replacement.title}` : "Superseded";
+  }
+  if (
+    node.claim.status === "canon" &&
+    allClaims.some(
+      (claim) =>
+        claim.branchOf === node.claim.id &&
+        isChallenge(claim) &&
+        claim.status === "rejected",
+    )
+  ) {
+    return "Challenged and upheld";
+  }
+  if (node.claim.status === "disputed") {
+    return "Challenge open";
+  }
+  return null;
+}
+
+function ThreadNodeView({
+  allClaims,
+  leagueId,
+  node,
+  selectedClaimId,
+}: {
+  allClaims: readonly LoreClaimCard[];
+  leagueId: string;
+  node: ThreadNode;
+  selectedClaimId: string;
+}) {
+  const annotation = lineageAnnotation(node, allClaims);
+  const isSelected = node.claim.id === selectedClaimId;
+
+  return (
+    <div className="grid gap-3">
+      <article
+        className={cn(
+          "rounded-card border bg-card p-4",
+          isSelected ? "border-primary/50" : "border-border",
+        )}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border bg-muted/30 px-2 py-1 text-xs font-medium text-muted-foreground">
+            {relationLabel(node.claim.relation)}
+          </span>
+          <span
+            className={cn(
+              "rounded-full border px-2 py-1 text-xs font-medium",
+              statusClass(node.claim.status),
+            )}
+          >
+            {statusLabel(node.claim)}
+          </span>
+          {annotation ? (
+            <span className="rounded-full border border-highlight/40 bg-highlight/10 px-2 py-1 text-xs font-medium text-highlight">
+              {annotation}
+            </span>
+          ) : null}
+        </div>
+        <h3 className="mt-3 text-base font-semibold">
+          <Link
+            href={`/leagues/${encodeURIComponent(leagueId)}/lore/${encodeURIComponent(node.claim.id)}`}
+            className="hover:text-primary"
+          >
+            {node.claim.title}
+          </Link>
+        </h3>
+        <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+          {node.claim.bodyPreview}
+        </p>
+        <p className="mt-3 text-xs font-medium text-muted-foreground">
+          By {node.claim.author.displayName}
+          {node.claim.author.isAi ? " - AI cast" : ""}
+        </p>
+      </article>
+
+      {node.children.length > 0 ? (
+        <div className="ml-3 grid gap-3 border-l border-border pl-3 sm:ml-5 sm:pl-5">
+          {node.children.map((child) => (
+            <ThreadNodeView
+              allClaims={allClaims}
+              key={child.claim.id}
+              leagueId={leagueId}
+              node={child}
+              selectedClaimId={selectedClaimId}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function StewardControls({
@@ -209,6 +359,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
   const [busyChoice, setBusyChoice] = useState<LoreVoteChoice | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const threadTree = buildThreadTree(data.thread);
 
   async function castVote(choice: LoreVoteChoice) {
     setBusyChoice(choice);
@@ -288,6 +439,25 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
             </p>
           </div>
           <p className="whitespace-pre-wrap text-sm leading-6">{claim.body}</p>
+          {claim.subjects.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {claim.subjects.map((subject) => (
+                <Link
+                  key={subject.key}
+                  href={`/leagues/${encodeURIComponent(data.league.id)}/lore?${new URLSearchParams({ subject: subject.key }).toString()}`}
+                  className={cn(
+                    buttonVariants({
+                      className: "w-fit",
+                      size: "sm",
+                      variant: "outline",
+                    }),
+                  )}
+                >
+                  {subject.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -382,6 +552,39 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
           </p>
         </section>
       ) : null}
+
+      <section className="grid gap-4">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <GitBranch className="size-4 text-primary" aria-hidden="true" />
+            Thread lineage
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Branches stay visible after verdicts, including disputes that
+            replaced canon and challenges the league upheld.
+          </p>
+        </div>
+        {threadTree.length > 0 ? (
+          <div className="grid gap-3">
+            {threadTree.map((node) => (
+              <ThreadNodeView
+                allClaims={data.thread}
+                key={node.claim.id}
+                leagueId={data.league.id}
+                node={node}
+                selectedClaimId={claim.id}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-card border border-dashed border-border bg-muted/20 p-4">
+            <p className="text-sm font-medium">No branches yet</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Responses, addenda, disputes, and re-litigation will appear here.
+            </p>
+          </div>
+        )}
+      </section>
 
       {data.isSteward ? (
         <StewardControls claim={claim} onAction={stewardAction} />

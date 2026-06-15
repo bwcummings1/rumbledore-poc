@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
@@ -6,6 +6,7 @@ import {
   type LoreClaim,
   leagues,
   loreClaims,
+  loreSubjects,
   loreVerifications,
   loreVotes,
   members,
@@ -22,12 +23,16 @@ import type {
   LoreClaimVerificationSummary,
   LoreSectionData,
   LoreStewardReviewData,
+  LoreSubjectFilter,
+  LoreSubjectSummary,
   LoreSubmitOptions,
   LoreVoteStatusSummary,
 } from "./member-ui";
 
 const DEFAULT_QUORUM_RATIO = 0.34;
+const CANON_LIMIT = 25;
 const OPEN_VOTE_LIMIT = 6;
+const SUBJECT_FILTER_LIMIT = 16;
 const BODY_PREVIEW_LIMIT = 180;
 
 export type LoreSectionResult =
@@ -41,7 +46,7 @@ export type LoreSectionResult =
 
 export async function getLoreSectionData(
   db: Db,
-  input: { leagueId: string },
+  input: { leagueId: string; subject?: string | null },
 ): Promise<LoreSectionResult> {
   const [league] = await db
     .select({
@@ -57,6 +62,7 @@ export async function getLoreSectionData(
   }
 
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
+    const activeSubject = parseLoreSubjectKey(input.subject ?? null);
     const [counts] = await tx
       .select({
         canon: sql<number>`count(*) filter (where ${loreClaims.status} = 'canon')::int`,
@@ -71,19 +77,39 @@ export async function getLoreSectionData(
       leagueId: input.leagueId,
       limit: OPEN_VOTE_LIMIT,
     });
+    const canon = await listCanonCardsInContext(tx, {
+      leagueId: input.leagueId,
+      limit: CANON_LIMIT,
+      subject: activeSubject,
+    });
+    const subjectFilters = await listLoreSubjectFiltersInContext(tx, {
+      leagueId: input.leagueId,
+      limit: SUBJECT_FILTER_LIMIT,
+    });
 
     return {
+      activeSubject:
+        activeSubject === null
+          ? null
+          : (subjectFilters.find(
+              (subject) => subject.key === activeSubject.key,
+            ) ?? null),
+      canon,
       counts: counts ?? { canon: 0, openVotes: 0, refuted: 0, total: 0 },
       openVotes,
+      subjectFilters,
       submitOptions: await getLoreSubmitOptionsInContext(tx, input),
     };
   });
 
   return {
     data: {
+      activeSubject: scoped.activeSubject,
+      canon: scoped.canon,
       counts: scoped.counts,
       league,
       openVotes: scoped.openVotes,
+      subjectFilters: scoped.subjectFilters,
       submitOptions: scoped.submitOptions,
       stewardReviewHref: `/leagues/${encodeURIComponent(input.leagueId)}/lore/steward`,
     },
@@ -132,16 +158,39 @@ export async function getLoreClaimDetailData(
       return null;
     }
 
-    const vote =
-      claimRow.status === "vote"
-        ? await getVoteStatusForClaimInContext(tx, {
-            claimId: input.claimId,
-            leagueId: input.leagueId,
-            memberId: input.memberId,
-            voteOpensAt: claimRow.voteOpensAt,
-            voteClosesAt: claimRow.voteClosesAt,
-          })
-        : null;
+    const threadRootId = claimRow.threadRootId ?? claimRow.id;
+    const threadRows = await selectThreadClaimRowsInContext(tx, {
+      leagueId: input.leagueId,
+      threadRootId,
+    });
+    const rowsById = new Map(threadRows.map((row) => [row.id, row]));
+    rowsById.set(claimRow.id, claimRow);
+    const rows = [...rowsById.values()].sort(
+      (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+    );
+    const voteClaimIds = rows
+      .filter((row) => row.status === "vote")
+      .map((row) => row.id);
+    const voteStatusByClaimId = await getVoteStatusesForClaimsInContext(tx, {
+      claimIds: voteClaimIds,
+      leagueId: input.leagueId,
+      memberId: input.memberId,
+    });
+    const subjectsByClaimId = await getLoreSubjectsByClaimIdInContext(tx, {
+      claimIds: rows.map((row) => row.id),
+      leagueId: input.leagueId,
+    });
+    const thread = rows.map((row) =>
+      serializeClaimCard(
+        row,
+        voteStatusByClaimId.get(row.id) ?? null,
+        subjectsByClaimId.get(row.id) ?? [],
+      ),
+    );
+    const claim = thread.find((item) => item.id === input.claimId);
+    if (!claim) {
+      return null;
+    }
     const verificationResult = await getLoreClaimVerificationSummaryInContext(
       tx,
       {
@@ -151,7 +200,8 @@ export async function getLoreClaimDetailData(
     );
 
     return {
-      claim: serializeClaimCard(claimRow, vote),
+      claim,
+      thread,
       verificationResult,
     };
   });
@@ -173,6 +223,7 @@ export async function getLoreClaimDetailData(
       league,
       stewardApiUrl: `/api/leagues/${encodeURIComponent(input.leagueId)}/lore/claims/${encodeURIComponent(input.claimId)}/steward`,
       stewardReviewHref: `/leagues/${encodeURIComponent(input.leagueId)}/lore/steward`,
+      thread: scoped.thread,
       verificationResult: scoped.verificationResult,
       voteApiUrl: `/api/leagues/${encodeURIComponent(input.leagueId)}/lore/claims/${encodeURIComponent(input.claimId)}/votes`,
     },
@@ -277,8 +328,16 @@ export async function getLoreClaimCard(
             voteOpensAt: claimRow.voteOpensAt,
           })
         : null;
+    const subjectsByClaimId = await getLoreSubjectsByClaimIdInContext(tx, {
+      claimIds: [claimRow.id],
+      leagueId: input.leagueId,
+    });
 
-    return serializeClaimCard(claimRow, vote);
+    return serializeClaimCard(
+      claimRow,
+      vote,
+      subjectsByClaimId.get(claimRow.id) ?? [],
+    );
   });
 }
 
@@ -404,6 +463,113 @@ async function selectClaimRows(
     .limit(input.limit);
 }
 
+async function selectCanonClaimRowsInContext(
+  tx: LeagueScopedTx,
+  input: {
+    leagueId: string;
+    limit: number;
+    subject: ParsedLoreSubjectKey | null;
+  },
+): Promise<ClaimRow[]> {
+  const filters = [
+    eq(loreClaims.leagueId, input.leagueId),
+    inArray(loreClaims.status, ["canon", "disputed"]),
+  ];
+
+  if (input.subject) {
+    const claimIds = await listClaimIdsForSubjectInContext(tx, {
+      leagueId: input.leagueId,
+      subject: input.subject,
+    });
+    if (claimIds.length === 0) {
+      return [];
+    }
+    filters.push(inArray(loreClaims.id, claimIds));
+  }
+
+  return tx
+    .select(claimSelectFields())
+    .from(loreClaims)
+    .leftJoin(members, eq(members.id, loreClaims.authorMemberId))
+    .leftJoin(users, eq(users.id, members.userId))
+    .where(and(...filters))
+    .orderBy(
+      sql`${loreClaims.ratifiedAt} desc nulls last`,
+      desc(loreClaims.createdAt),
+    )
+    .limit(input.limit);
+}
+
+async function selectThreadClaimRowsInContext(
+  tx: LeagueScopedTx,
+  input: { leagueId: string; threadRootId: string },
+): Promise<ClaimRow[]> {
+  return tx
+    .select(claimSelectFields())
+    .from(loreClaims)
+    .leftJoin(members, eq(members.id, loreClaims.authorMemberId))
+    .leftJoin(users, eq(users.id, members.userId))
+    .where(
+      and(
+        eq(loreClaims.leagueId, input.leagueId),
+        or(
+          eq(loreClaims.id, input.threadRootId),
+          eq(loreClaims.threadRootId, input.threadRootId),
+        ),
+      ),
+    )
+    .orderBy(asc(loreClaims.createdAt), asc(loreClaims.id));
+}
+
+async function hydrateClaimCardsInContext(
+  tx: LeagueScopedTx,
+  input: {
+    claimRows: readonly ClaimRow[];
+    leagueId: string;
+    memberId?: string;
+  },
+): Promise<LoreClaimCard[]> {
+  if (input.claimRows.length === 0) {
+    return [];
+  }
+
+  const voteClaimIds = input.claimRows
+    .filter((claim) => claim.status === "vote")
+    .map((claim) => claim.id);
+  const voteStatusByClaimId = await getVoteStatusesForClaimsInContext(tx, {
+    claimIds: voteClaimIds,
+    leagueId: input.leagueId,
+    memberId: input.memberId,
+  });
+  const subjectsByClaimId = await getLoreSubjectsByClaimIdInContext(tx, {
+    claimIds: input.claimRows.map((claim) => claim.id),
+    leagueId: input.leagueId,
+  });
+
+  return input.claimRows.map((claim) =>
+    serializeClaimCard(
+      claim,
+      voteStatusByClaimId.get(claim.id) ?? null,
+      subjectsByClaimId.get(claim.id) ?? [],
+    ),
+  );
+}
+
+async function listCanonCardsInContext(
+  tx: LeagueScopedTx,
+  input: {
+    leagueId: string;
+    limit: number;
+    subject: ParsedLoreSubjectKey | null;
+  },
+): Promise<LoreClaimCard[]> {
+  const claimRows = await selectCanonClaimRowsInContext(tx, input);
+  return hydrateClaimCardsInContext(tx, {
+    claimRows,
+    leagueId: input.leagueId,
+  });
+}
+
 async function listOpenVoteCardsInContext(
   tx: LeagueScopedTx,
   input: { leagueId: string; limit: number },
@@ -416,14 +582,335 @@ async function listOpenVoteCardsInContext(
     return [];
   }
 
-  const voteStatusByClaimId = await getVoteStatusesForClaimsInContext(tx, {
-    claimIds: claimRows.map((claim) => claim.id),
+  return hydrateClaimCardsInContext(tx, {
+    claimRows,
     leagueId: input.leagueId,
   });
+}
 
-  return claimRows.map((claim) =>
-    serializeClaimCard(claim, voteStatusByClaimId.get(claim.id) ?? null),
-  );
+type ParsedLoreSubjectKey =
+  | { key: string; personId: string; type: "person" }
+  | { key: string; personAId: string; personBId: string; type: "rivalry" }
+  | { key: string; season: number; type: "season" }
+  | { key: string; season: number; type: "week"; week: number }
+  | { key: string; recordType: string; type: "record" };
+
+type LoreSubjectRow = {
+  readonly claimId: string;
+  readonly personAId: string | null;
+  readonly personBId: string | null;
+  readonly personId: string | null;
+  readonly recordType: string | null;
+  readonly season: number | null;
+  readonly subjectType: "person" | "record" | "rivalry" | "season" | "week";
+  readonly week: number | null;
+};
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parsePositiveInt(value: string | undefined): number | null {
+  if (!value || !/^\d+$/.test(value)) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseLoreSubjectKey(
+  value: string | null,
+): ParsedLoreSubjectKey | null {
+  if (!value) {
+    return null;
+  }
+
+  const [type, first, second] = value.split(":");
+  switch (type) {
+    case "person":
+      return first && UUID_PATTERN.test(first)
+        ? { key: `person:${first}`, personId: first, type }
+        : null;
+    case "rivalry":
+      return first &&
+        second &&
+        UUID_PATTERN.test(first) &&
+        UUID_PATTERN.test(second)
+        ? {
+            key: `rivalry:${first}:${second}`,
+            personAId: first,
+            personBId: second,
+            type,
+          }
+        : null;
+    case "season": {
+      const season = parsePositiveInt(first);
+      return season ? { key: `season:${season}`, season, type } : null;
+    }
+    case "week": {
+      const season = parsePositiveInt(first);
+      const week = parsePositiveInt(second);
+      return season && week
+        ? { key: `week:${season}:${week}`, season, type, week }
+        : null;
+    }
+    case "record": {
+      const recordType = first?.trim();
+      return recordType && recordType.length <= 120
+        ? { key: `record:${recordType}`, recordType, type }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function titleCase(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+async function personNamesByIdInContext(
+  tx: LeagueScopedTx,
+  input: { leagueId: string; personIds: readonly string[] },
+): Promise<Map<string, string>> {
+  const personIds = [...new Set(input.personIds)];
+  if (personIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await tx
+    .select({
+      id: persons.id,
+      name: persons.canonicalName,
+    })
+    .from(persons)
+    .where(
+      and(eq(persons.leagueId, input.leagueId), inArray(persons.id, personIds)),
+    );
+
+  return new Map(rows.map((person) => [person.id, person.name]));
+}
+
+function subjectSummaryFromRow(
+  row: LoreSubjectRow,
+  personNamesById: ReadonlyMap<string, string>,
+): LoreSubjectSummary | null {
+  switch (row.subjectType) {
+    case "person":
+      return row.personId
+        ? {
+            key: `person:${row.personId}`,
+            label: personNamesById.get(row.personId) ?? "Unknown person",
+            type: "person",
+          }
+        : null;
+    case "rivalry":
+      return row.personAId && row.personBId
+        ? {
+            key: `rivalry:${row.personAId}:${row.personBId}`,
+            label: `${personNamesById.get(row.personAId) ?? "Unknown person"} vs ${personNamesById.get(row.personBId) ?? "Unknown person"}`,
+            type: "rivalry",
+          }
+        : null;
+    case "season":
+      return row.season
+        ? {
+            key: `season:${row.season}`,
+            label: `${row.season} season`,
+            type: "season",
+          }
+        : null;
+    case "week":
+      return row.season && row.week
+        ? {
+            key: `week:${row.season}:${row.week}`,
+            label: `Week ${row.week}, ${row.season}`,
+            type: "week",
+          }
+        : null;
+    case "record":
+      return row.recordType
+        ? {
+            key: `record:${row.recordType}`,
+            label: titleCase(row.recordType),
+            type: "record",
+          }
+        : null;
+  }
+}
+
+function subjectPersonIds(rows: readonly LoreSubjectRow[]): string[] {
+  return [
+    ...new Set(
+      rows
+        .flatMap((row) => [row.personId, row.personAId, row.personBId])
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+}
+
+async function getLoreSubjectsByClaimIdInContext(
+  tx: LeagueScopedTx,
+  input: { claimIds: readonly string[]; leagueId: string },
+): Promise<Map<string, LoreSubjectSummary[]>> {
+  const claimIds = [...new Set(input.claimIds)];
+  if (claimIds.length === 0) {
+    return new Map();
+  }
+
+  const rows: LoreSubjectRow[] = await tx
+    .select({
+      claimId: loreSubjects.claimId,
+      personAId: loreSubjects.personAId,
+      personBId: loreSubjects.personBId,
+      personId: loreSubjects.personId,
+      recordType: loreSubjects.recordType,
+      season: loreSubjects.season,
+      subjectType: loreSubjects.subjectType,
+      week: loreSubjects.week,
+    })
+    .from(loreSubjects)
+    .where(
+      and(
+        eq(loreSubjects.leagueId, input.leagueId),
+        inArray(loreSubjects.claimId, claimIds),
+      ),
+    )
+    .orderBy(asc(loreSubjects.createdAt), asc(loreSubjects.id));
+
+  const personNamesById = await personNamesByIdInContext(tx, {
+    leagueId: input.leagueId,
+    personIds: subjectPersonIds(rows),
+  });
+  const subjectsByClaimId = new Map<string, LoreSubjectSummary[]>();
+  const seenByClaimId = new Map<string, Set<string>>();
+
+  for (const row of rows) {
+    const summary = subjectSummaryFromRow(row, personNamesById);
+    if (!summary) {
+      continue;
+    }
+    const seen = seenByClaimId.get(row.claimId) ?? new Set<string>();
+    if (seen.has(summary.key)) {
+      continue;
+    }
+    seen.add(summary.key);
+    seenByClaimId.set(row.claimId, seen);
+    const subjects = subjectsByClaimId.get(row.claimId) ?? [];
+    subjects.push(summary);
+    subjectsByClaimId.set(row.claimId, subjects);
+  }
+
+  return subjectsByClaimId;
+}
+
+async function listLoreSubjectFiltersInContext(
+  tx: LeagueScopedTx,
+  input: { leagueId: string; limit: number },
+): Promise<LoreSubjectFilter[]> {
+  const rows: LoreSubjectRow[] = await tx
+    .select({
+      claimId: loreSubjects.claimId,
+      personAId: loreSubjects.personAId,
+      personBId: loreSubjects.personBId,
+      personId: loreSubjects.personId,
+      recordType: loreSubjects.recordType,
+      season: loreSubjects.season,
+      subjectType: loreSubjects.subjectType,
+      week: loreSubjects.week,
+    })
+    .from(loreSubjects)
+    .innerJoin(
+      loreClaims,
+      and(
+        eq(loreClaims.leagueId, loreSubjects.leagueId),
+        eq(loreClaims.id, loreSubjects.claimId),
+      ),
+    )
+    .where(
+      and(
+        eq(loreSubjects.leagueId, input.leagueId),
+        inArray(loreClaims.status, ["canon", "disputed"]),
+      ),
+    )
+    .limit(500);
+
+  const personNamesById = await personNamesByIdInContext(tx, {
+    leagueId: input.leagueId,
+    personIds: subjectPersonIds(rows),
+  });
+  const filtersByKey = new Map<string, LoreSubjectFilter>();
+
+  for (const row of rows) {
+    const summary = subjectSummaryFromRow(row, personNamesById);
+    if (!summary) {
+      continue;
+    }
+    const current = filtersByKey.get(summary.key);
+    filtersByKey.set(summary.key, {
+      ...summary,
+      count: (current?.count ?? 0) + 1,
+    });
+  }
+
+  return [...filtersByKey.values()]
+    .sort((left, right) => {
+      const countSort = right.count - left.count;
+      return countSort === 0
+        ? left.label.localeCompare(right.label)
+        : countSort;
+    })
+    .slice(0, input.limit);
+}
+
+function subjectCondition(subject: ParsedLoreSubjectKey) {
+  switch (subject.type) {
+    case "person":
+      return or(
+        eq(loreSubjects.personId, subject.personId),
+        eq(loreSubjects.personAId, subject.personId),
+        eq(loreSubjects.personBId, subject.personId),
+      );
+    case "record":
+      return eq(loreSubjects.recordType, subject.recordType);
+    case "rivalry":
+      return or(
+        and(
+          eq(loreSubjects.personAId, subject.personAId),
+          eq(loreSubjects.personBId, subject.personBId),
+        ),
+        and(
+          eq(loreSubjects.personAId, subject.personBId),
+          eq(loreSubjects.personBId, subject.personAId),
+        ),
+      );
+    case "season":
+      return eq(loreSubjects.season, subject.season);
+    case "week":
+      return and(
+        eq(loreSubjects.season, subject.season),
+        eq(loreSubjects.week, subject.week),
+      );
+  }
+}
+
+async function listClaimIdsForSubjectInContext(
+  tx: LeagueScopedTx,
+  input: { leagueId: string; subject: ParsedLoreSubjectKey },
+): Promise<string[]> {
+  const rows = await tx
+    .select({ claimId: loreSubjects.claimId })
+    .from(loreSubjects)
+    .where(
+      and(
+        eq(loreSubjects.leagueId, input.leagueId),
+        subjectCondition(input.subject),
+      ),
+    )
+    .limit(500);
+
+  return [...new Set(rows.map((row) => row.claimId))];
 }
 
 async function getVoteStatusForClaimInContext(
@@ -589,6 +1076,7 @@ function serializeVoteStatus({
 function serializeClaimCard(
   claim: ClaimRow,
   vote: LoreVoteStatusSummary | null,
+  subjects: readonly LoreSubjectSummary[],
 ): LoreClaimCard & SerializedClaimDetailFields {
   return {
     author: claimAuthor(claim),
@@ -604,6 +1092,7 @@ function serializeClaimCard(
     relation: claim.relation,
     statement: claim.statement,
     status: claim.status,
+    subjects,
     threadRootId: claim.threadRootId,
     title: claim.title,
     updatedAt: claim.updatedAt.toISOString(),

@@ -41,6 +41,7 @@ const data: LoreClaimDetailData = {
     relation: "root",
     statement: "This collapse belongs in the permanent record.",
     status: "vote",
+    subjects: [],
     threadRootId: claimId,
     title: "Worst collapse",
     updatedAt: "2026-06-15T12:00:00.000Z",
@@ -71,6 +72,7 @@ const data: LoreClaimDetailData = {
   },
   stewardApiUrl: `/api/leagues/${leagueId}/lore/claims/${claimId}/steward`,
   stewardReviewHref: `/leagues/${leagueId}/lore/steward`,
+  thread: [],
   verificationResult: null,
   voteApiUrl: `/api/leagues/${leagueId}/lore/claims/${claimId}/votes`,
 };
@@ -147,5 +149,63 @@ describe("LeagueLoreClaimView", () => {
       await screen.findByText("Steward action recorded: ratify."),
     ).toBeDefined();
     expect(screen.getByText("Canon · steward ratified")).toBeDefined();
+  });
+
+  it("renders branch lineage with superseded and replacement claims", () => {
+    const originalId = "00000000-0000-4000-8000-000000000010";
+    const disputeId = "00000000-0000-4000-8000-000000000011";
+
+    render(
+      <LeagueLoreClaimView
+        data={{
+          ...data,
+          claim: {
+            ...data.claim,
+            branchOf: originalId,
+            id: disputeId,
+            relation: "dispute",
+            status: "canon",
+            title: "Actually, the Watson trade was justified",
+            vote: null,
+          },
+          thread: [
+            {
+              ...data.claim,
+              branchOf: null,
+              bodyPreview: "The original version of the trade story.",
+              id: originalId,
+              ratifiedAt: "2026-06-14T12:00:00.000Z",
+              ratifiedBy: "vote",
+              status: "superseded",
+              title: "The Watson trade broke the league",
+              vote: null,
+            },
+            {
+              ...data.claim,
+              branchOf: originalId,
+              bodyPreview: "The league flipped after the dispute.",
+              id: disputeId,
+              ratifiedAt: "2026-06-15T12:00:00.000Z",
+              ratifiedBy: "vote",
+              relation: "dispute",
+              status: "canon",
+              title: "Actually, the Watson trade was justified",
+              vote: null,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Thread lineage")).toBeDefined();
+    expect(screen.getByText("Dispute")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Superseded by Actually, the Watson trade was justified",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getAllByText("Actually, the Watson trade was justified").length,
+    ).toBeGreaterThanOrEqual(2);
   });
 });

@@ -27,6 +27,8 @@ const leagueId = "00000000-0000-4000-8000-000000000001";
 const personId = "00000000-0000-4000-8000-000000000002";
 
 const data: LoreSectionData = {
+  activeSubject: null,
+  canon: [],
   counts: {
     canon: 0,
     openVotes: 0,
@@ -38,6 +40,7 @@ const data: LoreSectionData = {
     name: "NHS Alumni Annual",
   },
   openVotes: [],
+  subjectFilters: [],
   submitOptions: {
     people: [
       {

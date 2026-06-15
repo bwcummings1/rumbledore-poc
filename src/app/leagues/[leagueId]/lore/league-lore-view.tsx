@@ -1,15 +1,22 @@
 import {
   ArrowLeft,
+  BookOpenText,
   Clock3,
   FilePlus2,
   Landmark,
   ShieldCheck,
+  Tags,
   Vote,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  type PublicationStory,
+  PublicationStoryCard,
+} from "@/components/publication/story-card";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LoreClaimCard, LoreSectionData } from "@/lore/member-ui";
+import { buildPublicationFront } from "@/news/front";
 
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
@@ -41,8 +48,71 @@ function voteRead(claim: LoreClaimCard): string {
   return "Needs affirm to stay ahead of reject.";
 }
 
+function provenanceLabel(claim: LoreClaimCard): string {
+  if (claim.status === "disputed") {
+    return "Canon under challenge";
+  }
+  switch (claim.ratifiedBy) {
+    case "verified":
+      return "Canon - verified";
+    case "steward":
+      return "Canon - steward";
+    case "vote":
+    case null:
+      return "Canon - league decided";
+  }
+}
+
+function relationLabel(relation: LoreClaimCard["relation"]): string {
+  return relation.replaceAll("_", " ");
+}
+
+function subjectRead(claim: LoreClaimCard): string | null {
+  if (claim.subjects.length === 0) {
+    return null;
+  }
+  return `Subjects: ${claim.subjects.map((subject) => subject.label).join(", ")}`;
+}
+
+function toCanonStory({
+  claim,
+  leagueId,
+}: {
+  claim: LoreClaimCard;
+  leagueId: string;
+}): PublicationStory {
+  const branchRead =
+    claim.relation === "root"
+      ? null
+      : `Branch: ${relationLabel(claim.relation)}`;
+  return {
+    byline: claim.author.isAi
+      ? `${claim.author.displayName} - AI cast`
+      : claim.author.displayName,
+    dek: claim.bodyPreview,
+    headline: claim.title,
+    href: `/leagues/${encodeURIComponent(leagueId)}/lore/${encodeURIComponent(claim.id)}`,
+    hrefLabel: "Open claim",
+    id: claim.id,
+    publishedAt: claim.ratifiedAt ?? claim.createdAt,
+    relevanceReason: [subjectRead(claim), branchRead]
+      .filter((part): part is string => Boolean(part))
+      .join(" | "),
+    sectionTag: provenanceLabel(claim),
+  };
+}
+
+function subjectHref(leagueId: string, subjectKey: string): string {
+  const params = new URLSearchParams({ subject: subjectKey });
+  return `/leagues/${encodeURIComponent(leagueId)}/lore?${params.toString()}`;
+}
+
 export function LeagueLoreView({ data }: { data: LoreSectionData }) {
   const submitHref = `/leagues/${encodeURIComponent(data.league.id)}/lore/new`;
+  const canonFront = buildPublicationFront(data.canon);
+  const canonHeading = data.activeSubject
+    ? `Canon about ${data.activeSubject.label}`
+    : "Official canon";
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -111,6 +181,136 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
             {formatCount(data.counts.refuted)}
           </p>
         </article>
+      </section>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <BookOpenText
+                className="size-4 text-primary"
+                aria-hidden="true"
+              />
+              {canonHeading}
+            </p>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Ratified claims are tiered like the league publication, but this
+              register is the official ledger the cast can cite as settled
+              truth.
+            </p>
+          </div>
+          {data.activeSubject ? (
+            <Link
+              href={`/leagues/${encodeURIComponent(data.league.id)}/lore`}
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+            >
+              Clear filter
+            </Link>
+          ) : null}
+        </div>
+
+        {data.subjectFilters.length > 0 ? (
+          <nav
+            aria-label="Lore subject filters"
+            className="flex flex-wrap gap-2"
+          >
+            <Link
+              href={`/leagues/${encodeURIComponent(data.league.id)}/lore`}
+              aria-current={data.activeSubject ? undefined : "page"}
+              className={cn(
+                buttonVariants({
+                  className: "w-fit",
+                  size: "sm",
+                  variant: data.activeSubject ? "outline" : "default",
+                }),
+              )}
+            >
+              <Tags data-icon="inline-start" />
+              All canon
+            </Link>
+            {data.subjectFilters.map((subject) => (
+              <Link
+                key={subject.key}
+                href={subjectHref(data.league.id, subject.key)}
+                aria-current={
+                  data.activeSubject?.key === subject.key ? "page" : undefined
+                }
+                className={cn(
+                  buttonVariants({
+                    className: "w-fit",
+                    size: "sm",
+                    variant:
+                      data.activeSubject?.key === subject.key
+                        ? "default"
+                        : "outline",
+                  }),
+                )}
+              >
+                {subject.label}
+                <span className="font-mono text-xs tabular-nums">
+                  {formatCount(subject.count)}
+                </span>
+              </Link>
+            ))}
+          </nav>
+        ) : null}
+
+        {canonFront.lead ? (
+          <div className="grid gap-5">
+            <section aria-label="Lead canon" data-front-tier="lead">
+              <PublicationStoryCard
+                story={toCanonStory({
+                  claim: canonFront.lead,
+                  leagueId: data.league.id,
+                })}
+                variant="hero"
+              />
+            </section>
+            {canonFront.secondaries.length > 0 ? (
+              <section
+                className="grid gap-3 md:grid-cols-3"
+                aria-label="Secondary canon"
+                data-front-tier="secondary"
+              >
+                {canonFront.secondaries.map((claim) => (
+                  <PublicationStoryCard
+                    key={claim.id}
+                    story={toCanonStory({ claim, leagueId: data.league.id })}
+                    variant="secondary"
+                  />
+                ))}
+              </section>
+            ) : null}
+            {canonFront.river.length > 0 ? (
+              <section
+                className="grid gap-3 sm:grid-cols-2"
+                aria-label="Canon river"
+                data-front-tier="river"
+              >
+                {canonFront.river.map((claim) => (
+                  <PublicationStoryCard
+                    key={claim.id}
+                    story={toCanonStory({ claim, leagueId: data.league.id })}
+                    variant="river"
+                  />
+                ))}
+              </section>
+            ) : null}
+          </div>
+        ) : (
+          <div className="rounded-card border border-dashed border-border bg-muted/20 p-4">
+            <p className="text-sm font-medium">
+              {data.activeSubject
+                ? "No canon for this subject"
+                : "No canon yet"}
+            </p>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              {data.activeSubject
+                ? "Clear the subject filter to browse the full ledger."
+                : "Make the first claim, let the league vote, and the record will start here."}
+            </p>
+          </div>
+        )}
       </section>
 
       <section className="grid gap-4">
