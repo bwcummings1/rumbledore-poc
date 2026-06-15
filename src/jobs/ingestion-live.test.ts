@@ -292,6 +292,8 @@ function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
     },
     matchups: emptySyncStats,
     members: emptySyncStats,
+    recordBrokenHooks: [],
+    recordLoreClaims: [],
     rosters: emptySyncStats,
     teams: emptySyncStats,
   };
@@ -977,6 +979,68 @@ describe("live ingestion jobs", () => {
       gameFinalEvents: [expectedGameFinalEvent],
       ok: true,
       sentGameFinalCount: 0,
+    });
+  });
+
+  it("plans record.broken events for materialized record displacements through the worker step", async () => {
+    const seeded = await seedLiveLeague("worker-record-broken");
+    const fixtureProvider = currentSyncProvider();
+    const allTimeRecordId = randomUUID();
+    const previousRecordId = randomUUID();
+    const holderPersonId = randomUUID();
+    const recordKey = `highest_single_week_score:${allTimeRecordId}`;
+    const fn = createLeagueIngestFunction(() => ({
+      cipher,
+      db: handle.db,
+      providers: { espn: fixtureProvider.provider },
+      syncCurrent: async () =>
+        ok({
+          ...successfulSyncResult(seeded),
+          recordBrokenHooks: [
+            {
+              allTimeRecordId,
+              holderPersonId,
+              previousRecordId,
+              recordKey,
+              recordType: "highest_single_week_score",
+              scoringPeriod: 4,
+              season: 2026,
+              value: 188.4,
+            },
+          ],
+        }),
+    }));
+    const testEngine = new InngestTestEngine({ function: fn });
+    const event = {
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: `${marker} league worker-record-broken`,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+      },
+      name: JOB_EVENTS.leagueIngest,
+    };
+
+    const stepRun = await testEngine.executeStep("sync-current-league", {
+      events: [event],
+    });
+
+    expect(stepRun.result).toMatchObject({
+      ok: true,
+      recordBrokenEvents: [
+        {
+          data: {
+            leagueId: seeded.leagueId,
+            recordKey,
+          },
+          id: `${JOB_EVENTS.recordBroken}:${seeded.leagueId}:${recordKey}`,
+          name: JOB_EVENTS.recordBroken,
+        },
+      ],
+      sentRecordBrokenCount: 0,
     });
   });
 

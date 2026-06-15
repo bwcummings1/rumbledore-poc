@@ -1,6 +1,7 @@
 export {
   mergePersons,
   RECORD_TYPE_LABELS,
+  type RecordBrokenHook,
   type RecordType,
   recomputeChangedMatchupStatistics,
   recomputeLeagueStatistics,
@@ -9,6 +10,10 @@ export {
   splitPerson,
 } from "./engine";
 export { identityNameSimilarity, normalizeIdentityName } from "./fuzzy";
+export {
+  type RecordBrokenLoreHookResult,
+  seedRecordBrokenLoreHooks,
+} from "./record-hooks";
 export {
   type AllTimeStandingCatalogRow,
   type BlowoutCatalogEntry,

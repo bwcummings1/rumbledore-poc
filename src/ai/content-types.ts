@@ -149,6 +149,10 @@ export interface ContentStructureValidationContext {
     ties: number;
     pointsFor: number;
   }[];
+  records?: readonly {
+    holderName: string | null;
+    previousHolderName?: string | null;
+  }[];
 }
 
 export interface ContentTypeTemplate {
@@ -287,6 +291,14 @@ function knownEntityNames(
     names.add(team.name);
     for (const manager of team.managerNames) {
       names.add(manager);
+    }
+  }
+  for (const record of context.records ?? []) {
+    if (record.holderName) {
+      names.add(record.holderName);
+    }
+    if (record.previousHolderName) {
+      names.add(record.previousHolderName);
     }
   }
   return names;

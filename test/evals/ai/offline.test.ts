@@ -125,7 +125,12 @@ function contextFor({
   const records = [
     {
       holderName: fixture.primaryManager,
+      id: `${fixture.leagueId}-record-primary`,
       label: fixture.recordLabel,
+      previousHolderName: null,
+      previousRecordId: null,
+      previousValue: null,
+      recordType: "highest_single_week_score",
       scoringPeriod: 9,
       season: 2024,
       value: 186.4,

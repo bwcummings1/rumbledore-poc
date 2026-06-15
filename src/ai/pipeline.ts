@@ -171,6 +171,9 @@ type TriggerContextTarget =
   | { kind: "poll"; id: string }
   | { kind: "claim"; id: string };
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function now(deps: Pick<AiGenerationDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
 }
@@ -188,6 +191,14 @@ function parseTriggerContextTarget(
     return { id: triggerKey.slice("lore-canonized:".length), kind: "claim" };
   }
   return null;
+}
+
+function recordTargetIdFromTriggerKey(triggerKey: string): string | null {
+  if (!triggerKey.startsWith("record-broken:")) {
+    return null;
+  }
+  const candidate = triggerKey.slice(triggerKey.lastIndexOf(":") + 1);
+  return UUID_PATTERN.test(candidate) ? candidate : null;
 }
 
 function managerNamesFor(
@@ -291,7 +302,12 @@ function stableTeamFacts(teams: readonly LeagueContextTeam[]) {
 function stableRecordFacts(context: LeagueBlogContext) {
   return context.records.map((record) => ({
     holderName: record.holderName,
+    id: record.id,
     label: record.label,
+    previousHolderName: record.previousHolderName,
+    previousRecordId: record.previousRecordId,
+    previousValue: record.previousValue,
+    recordType: record.recordType,
     scoringPeriod: record.scoringPeriod,
     season: record.season,
     value: record.value,
@@ -1146,12 +1162,15 @@ async function prepareGeneration({
     )
     .limit(1);
 
-  const recordRows =
+  const recordTargetId = recordTargetIdFromTriggerKey(input.triggerKey);
+  const defaultRecordRows =
     unresolvedIntegrityFailures.length > 0
       ? []
       : await tx
           .select({
             holderPersonId: allTimeRecords.holderPersonId,
+            id: allTimeRecords.id,
+            previousRecordId: allTimeRecords.previousRecordId,
             recordType: allTimeRecords.recordType,
             scoringPeriod: allTimeRecords.scoringPeriod,
             season: allTimeRecords.season,
@@ -1166,6 +1185,61 @@ async function prepareGeneration({
           )
           .orderBy(asc(allTimeRecords.recordType))
           .limit(8);
+  const targetedRecordRows =
+    unresolvedIntegrityFailures.length > 0 || !recordTargetId
+      ? []
+      : await tx
+          .select({
+            holderPersonId: allTimeRecords.holderPersonId,
+            id: allTimeRecords.id,
+            previousRecordId: allTimeRecords.previousRecordId,
+            recordType: allTimeRecords.recordType,
+            scoringPeriod: allTimeRecords.scoringPeriod,
+            season: allTimeRecords.season,
+            value: allTimeRecords.value,
+          })
+          .from(allTimeRecords)
+          .where(
+            and(
+              eq(allTimeRecords.leagueId, input.leagueId),
+              eq(allTimeRecords.id, recordTargetId),
+              eq(allTimeRecords.isCurrent, true),
+            ),
+          )
+          .limit(1);
+  const recordRows = [
+    ...targetedRecordRows,
+    ...defaultRecordRows.filter(
+      (record) =>
+        !targetedRecordRows.some((targeted) => targeted.id === record.id),
+    ),
+  ];
+  const previousRecordIds = [
+    ...new Set(
+      recordRows
+        .map((record) => record.previousRecordId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const previousRecordRows =
+    previousRecordIds.length > 0
+      ? await tx
+          .select({
+            holderPersonId: allTimeRecords.holderPersonId,
+            id: allTimeRecords.id,
+            value: allTimeRecords.value,
+          })
+          .from(allTimeRecords)
+          .where(
+            and(
+              eq(allTimeRecords.leagueId, input.leagueId),
+              inArray(allTimeRecords.id, previousRecordIds),
+            ),
+          )
+      : [];
+  const previousRecordsById = new Map(
+    previousRecordRows.map((record) => [record.id, record]),
+  );
 
   const rivalryRows =
     unresolvedIntegrityFailures.length > 0
@@ -1207,6 +1281,7 @@ async function prepareGeneration({
     ...new Set(
       [
         ...recordRows.map((record) => record.holderPersonId),
+        ...previousRecordRows.map((record) => record.holderPersonId),
         ...rivalryRows.flatMap((rivalry) => [
           rivalry.currentStreakPersonId,
           rivalry.longestStreakPersonId,
@@ -1369,15 +1444,27 @@ async function prepareGeneration({
     .orderBy(desc(loreClaims.createdAt))
     .limit(8);
 
-  const records = recordRows.map((record) => ({
-    holderName: record.holderPersonId
-      ? (personNamesById.get(record.holderPersonId) ?? null)
-      : null,
-    label: recordLabel(record.recordType),
-    scoringPeriod: record.scoringPeriod,
-    season: record.season,
-    value: record.value,
-  }));
+  const records = recordRows.map((record) => {
+    const previous = record.previousRecordId
+      ? previousRecordsById.get(record.previousRecordId)
+      : null;
+    return {
+      holderName: record.holderPersonId
+        ? (personNamesById.get(record.holderPersonId) ?? null)
+        : null,
+      id: record.id,
+      label: recordLabel(record.recordType),
+      previousHolderName: previous?.holderPersonId
+        ? (personNamesById.get(previous.holderPersonId) ?? null)
+        : null,
+      previousRecordId: record.previousRecordId,
+      previousValue: previous?.value ?? null,
+      recordType: record.recordType,
+      scoringPeriod: record.scoringPeriod,
+      season: record.season,
+      value: record.value,
+    };
+  });
   const people = allPersonRows.map((person) => ({
     canonicalName: person.canonicalName,
     id: person.id,

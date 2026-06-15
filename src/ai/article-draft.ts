@@ -131,6 +131,7 @@ function draftReferencesLeagueEntity(
     ...context.records.flatMap((record) => [
       record.holderName ?? "",
       record.label,
+      record.previousHolderName ?? "",
     ]),
   ]
     .map((value) => value.trim())

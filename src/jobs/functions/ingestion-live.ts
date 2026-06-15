@@ -57,6 +57,7 @@ import {
   type IngestionTickData,
   JOB_EVENTS,
   type LeagueIngestData,
+  type RecordBrokenData,
   type SeasonRolloverCheckData,
 } from "../events";
 
@@ -159,6 +160,12 @@ export interface PlannedGameFinalEvent {
   name: typeof JOB_EVENTS.gameFinal;
 }
 
+export interface PlannedRecordBrokenEvent {
+  data: RecordBrokenData;
+  id: string;
+  name: typeof JOB_EVENTS.recordBroken;
+}
+
 export interface PausedLeagueIngestTarget {
   connectionInvalidAt?: string;
   connectionState: "invalid";
@@ -193,7 +200,9 @@ export interface LeagueIngestResponse extends CurrentLeagueSyncResult {
   eventName: typeof JOB_EVENTS.leagueIngest;
   gameFinalEvents: PlannedGameFinalEvent[];
   ok: true;
+  recordBrokenEvents: PlannedRecordBrokenEvent[];
   sentGameFinalCount: number;
+  sentRecordBrokenCount: number;
 }
 
 export interface SeasonRolloverFailure {
@@ -1087,6 +1096,19 @@ function plannedGameFinalEventsFor(
   }));
 }
 
+function plannedRecordBrokenEventsFor(
+  sync: CurrentLeagueSyncResult,
+): PlannedRecordBrokenEvent[] {
+  return sync.recordBrokenHooks.map((hook) => ({
+    data: {
+      leagueId: sync.league.id,
+      recordKey: hook.recordKey,
+    },
+    id: `${JOB_EVENTS.recordBroken}:${sync.league.id}:${hook.recordKey}`,
+    name: JOB_EVENTS.recordBroken,
+  }));
+}
+
 async function getDefaultIngestionTickDependencies(): Promise<IngestionTickDependencies> {
   const [{ getEnv }, { getDb }] = await Promise.all([
     import("@/core/env"),
@@ -1265,13 +1287,16 @@ export async function runLeagueIngest({
   }
 
   const gameFinalEvents = plannedGameFinalEventsFor(sync.value);
+  const recordBrokenEvents = plannedRecordBrokenEventsFor(sync.value);
 
   return {
     dataClasses: data.dataClasses ?? [...PROVIDER_DATA_CLASSES],
     eventName: JOB_EVENTS.leagueIngest,
     gameFinalEvents,
     ok: true,
+    recordBrokenEvents,
     sentGameFinalCount: 0,
+    sentRecordBrokenCount: 0,
     ...sync.value,
   };
 }
@@ -1489,9 +1514,16 @@ export function createLeagueIngestFunction(
             result.gameFinalEvents,
           );
         }
+        if (result.recordBrokenEvents.length > 0) {
+          await step.sendEvent(
+            "send-record-broken-events",
+            result.recordBrokenEvents,
+          );
+        }
         return {
           ...result,
           sentGameFinalCount: result.gameFinalEvents.length,
+          sentRecordBrokenCount: result.recordBrokenEvents.length,
         };
       }),
   );

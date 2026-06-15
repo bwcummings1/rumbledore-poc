@@ -1330,6 +1330,98 @@ describe("generateLeagueBlogPost", () => {
     );
   });
 
+  it("loads the displaced prior holder for record-broken milestone generation", async () => {
+    const league = await seedLeague("record-broken");
+    const llm = new MockLlmClient();
+    let currentRecordId = "";
+
+    await withLeagueContext(handle.db, league.id, async (tx) => {
+      const [previousHolder] = await tx
+        .insert(persons)
+        .values({
+          canonicalName: "Prior Record Holder",
+          leagueId: league.id,
+        })
+        .returning({ id: persons.id });
+      const [newHolder] = await tx
+        .insert(persons)
+        .values({
+          canonicalName: "New Record Holder",
+          leagueId: league.id,
+        })
+        .returning({ id: persons.id });
+      if (!previousHolder || !newHolder) {
+        throw new Error("record holder people were not inserted");
+      }
+      const [previousRecord] = await tx
+        .insert(allTimeRecords)
+        .values({
+          holderPersonId: previousHolder.id,
+          isCurrent: false,
+          leagueId: league.id,
+          recordType: "highest_single_week_score",
+          scoringPeriod: 2,
+          season: 2025,
+          value: 144.2,
+        })
+        .returning({ id: allTimeRecords.id });
+      if (!previousRecord) {
+        throw new Error("previous record was not inserted");
+      }
+      const [currentRecord] = await tx
+        .insert(allTimeRecords)
+        .values({
+          holderPersonId: newHolder.id,
+          isCurrent: true,
+          leagueId: league.id,
+          previousRecordId: previousRecord.id,
+          recordType: "highest_single_week_score",
+          scoringPeriod: 4,
+          season: 2026,
+          value: 188.4,
+        })
+        .returning({ id: allTimeRecords.id });
+      if (!currentRecord) {
+        throw new Error("current record was not inserted");
+      }
+      currentRecordId = currentRecord.id;
+    });
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "milestone_record",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: `record-broken:highest_single_week_score:${currentRecordId}`,
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests[0]?.context.records[0]).toMatchObject({
+      holderName: "New Record Holder",
+      id: currentRecordId,
+      label: "Highest weekly score",
+      previousHolderName: "Prior Record Holder",
+      previousRecordId: expect.any(String),
+      previousValue: 144.2,
+      recordType: "highest_single_week_score",
+      scoringPeriod: 4,
+      season: 2026,
+      value: 188.4,
+    });
+  });
+
   it("continues league-only generation when web grounding fails", async () => {
     const league = await seedLeague("webfail");
     const result = await generateLeagueBlogPost({

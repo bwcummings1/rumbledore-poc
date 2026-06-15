@@ -22,8 +22,13 @@ export interface LeagueContextTeam {
 }
 
 export interface LeagueContextRecord {
+  id: string;
   label: string;
+  recordType: string;
   holderName: string | null;
+  previousHolderName: string | null;
+  previousRecordId: string | null;
+  previousValue: number | null;
   value: number;
   season: number | null;
   scoringPeriod: number | null;

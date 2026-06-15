@@ -18,7 +18,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Build symmetric head-to-head manager ledgers plus championship/playoff records. (specs/23)
 - [x] Deepen the league Records section and add per-manager and head-to-head pages. (specs/23)
 - [x] Materialize record aggregates with idempotent incremental refresh tied to ingestion. (specs/23)
-- [ ] Add cast "record broken" and data-verifiable lore hooks sourced from records. (specs/23)
+- [x] Add cast "record broken" and data-verifiable lore hooks sourced from records. (specs/23)
 
 ### K. Realtime & notifications (see specs/20)
 - [ ] Broadcast score/standings, settlement, content, lore, and arena events on per-league RLS channels. (specs/20)

@@ -20,6 +20,8 @@ import {
   identityMappings,
   leagueSeasonSettings,
   leagues,
+  loreClaims,
+  loreVerifications,
   persons,
   providerFinalStandings,
   recordBookAllTimeStandings,
@@ -38,6 +40,7 @@ import {
   runDataIntegrityChecks,
   splitPerson,
 } from "./engine";
+import { seedRecordBrokenLoreHooks } from "./record-hooks";
 import { getLeagueRecordsCatalog } from "./records-catalog";
 import {
   markIntegrityCheckReviewed,
@@ -1047,6 +1050,7 @@ describe("recomputeLeagueStatistics", () => {
     expect(recomputed.targetedPairs).toEqual([
       { personAId: targetPair[0], personBId: targetPair[1] },
     ]);
+    expect(recomputed.recordBrokenHooks.length).toBeGreaterThan(0);
 
     const after = await selectStatsRows(leagueId);
     const afterAlex2025Season = after.seasonRows.find(
@@ -1096,6 +1100,71 @@ describe("recomputeLeagueStatistics", () => {
     });
     expect(afterCurrentHighScore?.previousRecordId).toBeTruthy();
     expect(afterCurrentHighScore?.id).not.toBe(beforeCurrentHighScore.id);
+    const highScoreHook = recomputed.recordBrokenHooks.find(
+      (hook) => hook.recordType === "highest_single_week_score",
+    );
+    expect(highScoreHook).toMatchObject({
+      allTimeRecordId: afterCurrentHighScore?.id,
+      holderPersonId: alex2025.personId,
+      previousRecordId: afterCurrentHighScore?.previousRecordId,
+      recordKey: `highest_single_week_score:${afterCurrentHighScore?.id}`,
+      recordType: "highest_single_week_score",
+      scoringPeriod: 1,
+      season: 2025,
+      value: 130,
+    });
+    const seededLore = await seedRecordBrokenLoreHooks({
+      db: handle.db,
+      hooks: recomputed.recordBrokenHooks,
+      leagueId,
+      now: () => new Date("2026-01-01T00:00:00.000Z"),
+    });
+    expect(seededLore).toContainEqual(
+      expect.objectContaining({
+        allTimeRecordId: afterCurrentHighScore?.id,
+        status: "canonized",
+        verification: "verified",
+      }),
+    );
+    const duplicateLore = await seedRecordBrokenLoreHooks({
+      db: handle.db,
+      hooks: recomputed.recordBrokenHooks,
+      leagueId,
+      now: () => new Date("2026-01-01T00:00:00.000Z"),
+    });
+    expect(duplicateLore).toEqual([]);
+    const loreRows = await withLeagueContext(
+      handle.db,
+      leagueId,
+      async (tx) => {
+        const claims = await tx
+          .select()
+          .from(loreClaims)
+          .where(eq(loreClaims.leagueId, leagueId));
+        const verifications = await tx
+          .select()
+          .from(loreVerifications)
+          .where(eq(loreVerifications.leagueId, leagueId));
+        return { claims, verifications };
+      },
+    );
+    expect(loreRows.claims).toContainEqual(
+      expect.objectContaining({
+        authorPersona: "narrator",
+        kind: "data_verifiable",
+        origin: "ai",
+        status: "canon",
+        verification: "verified",
+      }),
+    );
+    expect(loreRows.verifications).toContainEqual(
+      expect.objectContaining({
+        actualValue: "130",
+        allTimeRecordId: afterCurrentHighScore?.id,
+        assertedValue: "130",
+        result: "match",
+      }),
+    );
     expect(
       after.allTimeStandingRows.find(
         (row) => row.personId === alex2025.personId,
@@ -1146,6 +1215,7 @@ describe("recomputeLeagueStatistics", () => {
     );
     expect(unchangedRecords.records).toBe(0);
     expect(unchangedRecords.recordBookAggregates).toBe(0);
+    expect(unchangedRecords.recordBrokenHooks).toEqual([]);
   });
 
   it("uses provider final standings for postseason placement and championship records", async () => {

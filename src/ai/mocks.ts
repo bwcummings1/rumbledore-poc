@@ -384,13 +384,20 @@ function milestoneRecordStructure({
 }): MilestoneRecordStructure {
   const holder = team?.name ?? firstManager(team);
   const recordName = record?.label ?? "current weekly points pace";
+  const newHolder = record?.holderName ?? holder;
+  const hasPreviousRecord = Boolean(
+    record?.previousHolderName ?? record?.previousRecordId,
+  );
+  const previousHolder = hasPreviousRecord
+    ? (record?.previousHolderName ?? "the previous record book entry")
+    : newHolder;
   return {
-    legend: `${holder} gets the record-book paragraph, not a generic applause line.`,
+    legend: `${newHolder} gets the record-book paragraph, not a generic applause line.`,
     math: record
       ? `${recordName} sits at ${record.value}, which is the number the room can audit.`
       : `${holder}'s ${team?.pointsFor ?? 0} points for is the only imported number in play.`,
-    newHolder: holder,
-    previousHolder: record?.holderName ?? holder,
+    newHolder,
+    previousHolder,
     record: recordName,
     type: "milestone_record",
   };
@@ -668,7 +675,11 @@ export class MockLlmClient implements LlmClient {
     const manager = team?.managerNames[0] ?? "the league room";
     const personaName = request.context.persona.name;
     const recordLine = record
-      ? `${record.holderName ?? "The record book"} still owns ${record.label} at ${record.value}.`
+      ? `${record.holderName ?? "The record book"} owns ${record.label} at ${record.value}${
+          record.previousHolderName
+            ? ` after passing ${record.previousHolderName}`
+            : ""
+        }.`
       : "No current record-book event is being forced into the story.";
     const canon = request.context.authenticity.canonLore[0];
     const canonLine = canon

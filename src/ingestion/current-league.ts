@@ -34,7 +34,12 @@ import type {
 } from "@/providers";
 import { PROVIDER_DATA_CLASSES } from "@/providers";
 import { REALTIME_EVENTS, type RealtimePublisher } from "@/realtime";
-import { recomputeChangedMatchupStatistics } from "@/stats";
+import {
+  type RecordBrokenHook,
+  type RecordBrokenLoreHookResult,
+  recomputeChangedMatchupStatistics,
+  seedRecordBrokenLoreHooks,
+} from "@/stats";
 import { stableContentHash } from "./hash";
 
 export type CurrentLeagueProvider<Session extends FantasyProviderSession> =
@@ -57,6 +62,8 @@ export interface ChangedFinalMatchup {
 
 export interface CurrentLeagueSyncResult {
   changedFinalMatchups: ChangedFinalMatchup[];
+  recordBrokenHooks: RecordBrokenHook[];
+  recordLoreClaims: RecordBrokenLoreHookResult[];
   league: {
     id: string;
     provider: NormalizedLeague["provider"];
@@ -1446,16 +1453,26 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     matchupIds: scoped.changedMatchupIds,
     scoringPeriods: scoped.changedMatchupScoringPeriods,
   });
-  await (input.recomputeChangedMatchups ?? recomputeChangedMatchupStatistics)(
-    db,
-    {
-      leagueId: leagueWrite.id,
-      matchupIds: scoped.changedMatchupIds,
-    },
-  );
+  const recompute = await (
+    input.recomputeChangedMatchups ?? recomputeChangedMatchupStatistics
+  )(db, {
+    leagueId: leagueWrite.id,
+    matchupIds: scoped.changedMatchupIds,
+  });
+  const recordLoreClaims =
+    recompute.recordBrokenHooks.length > 0
+      ? await seedRecordBrokenLoreHooks({
+          db,
+          hooks: recompute.recordBrokenHooks,
+          leagueId: leagueWrite.id,
+          now: input.now,
+        })
+      : [];
 
   return ok({
     changedFinalMatchups,
+    recordBrokenHooks: recompute.recordBrokenHooks,
+    recordLoreClaims,
     league: {
       id: leagueWrite.id,
       provider: league.value.provider,

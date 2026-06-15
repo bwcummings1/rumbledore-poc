@@ -175,11 +175,23 @@ interface StatsComputationState {
   weeklyFacts: WeeklyFact[];
 }
 
+export interface RecordBrokenHook {
+  allTimeRecordId: string;
+  holderPersonId: string | null;
+  previousRecordId: string;
+  recordKey: string;
+  recordType: RecordType;
+  scoringPeriod: number | null;
+  season: number | null;
+  value: number;
+}
+
 interface ChangedMatchupRecomputeSummary {
   headToHeadRecords: number;
   integrityChecks: number;
   integrityFailures: number;
   recordBookAggregates: number;
+  recordBrokenHooks: RecordBrokenHook[];
   records: number;
   seasonStatistics: number;
   seasons: number[];
@@ -1738,6 +1750,34 @@ function recordNaturalKey(recordType: RecordType, sortKey: string): string {
   return `${recordType}\u001f${sortKey}`;
 }
 
+function recordBrokenKey(
+  recordType: RecordType,
+  allTimeRecordId: string,
+): string {
+  return `${recordType}:${allTimeRecordId}`;
+}
+
+function recordBrokenHookFor({
+  event,
+  id,
+  previousRecordId,
+}: {
+  event: RecordEvent;
+  id: string;
+  previousRecordId: string;
+}): RecordBrokenHook {
+  return {
+    allTimeRecordId: id,
+    holderPersonId: event.holderPersonId,
+    previousRecordId,
+    recordKey: recordBrokenKey(event.recordType, id),
+    recordType: event.recordType,
+    scoringPeriod: event.scoringPeriod ?? null,
+    season: event.season ?? null,
+    value: round(event.value, 4),
+  };
+}
+
 function recordEventValues({
   event,
   isCurrent,
@@ -1788,7 +1828,7 @@ async function refreshAllTimeRecords(
   tx: LeagueScopedTx,
   leagueId: string,
   events: readonly RecordEvent[],
-): Promise<number> {
+): Promise<{ recordBrokenHooks: RecordBrokenHook[]; records: number }> {
   const byType = new Map<RecordType, RecordEvent[]>();
   for (const event of events) {
     byType.set(event.recordType, [
@@ -1813,6 +1853,8 @@ async function refreshAllTimeRecords(
     );
   }
 
+  const canEmitHooks = existingRows.length > 0;
+  const recordBrokenHooks: RecordBrokenHook[] = [];
   let writes = 0;
   const targetKeys = new Set<string>();
   for (const [recordType, typeEvents] of byType) {
@@ -1838,15 +1880,39 @@ async function refreshAllTimeRecords(
         if (!inserted) {
           throw new Error("all-time record row was not inserted");
         }
+        if (canEmitHooks && values.isCurrent && values.previousRecordId) {
+          recordBrokenHooks.push(
+            recordBrokenHookFor({
+              event,
+              id: inserted.id,
+              previousRecordId: values.previousRecordId,
+            }),
+          );
+        }
         previousRecordId = inserted.id;
         writes += 1;
         continue;
       }
+      const becameCurrentRecord =
+        values.isCurrent &&
+        values.previousRecordId &&
+        (!existing.isCurrent ||
+          existing.previousRecordId !== values.previousRecordId);
       if (allTimeRecordChanged(existing, values)) {
         await tx
           .update(allTimeRecords)
           .set({ ...values, updatedAt: new Date() })
           .where(eq(allTimeRecords.id, existing.id));
+        const nextPreviousRecordId = values.previousRecordId;
+        if (canEmitHooks && becameCurrentRecord && nextPreviousRecordId) {
+          recordBrokenHooks.push(
+            recordBrokenHookFor({
+              event,
+              id: existing.id,
+              previousRecordId: nextPreviousRecordId,
+            }),
+          );
+        }
         writes += 1;
       }
       previousRecordId = existing.id;
@@ -1867,7 +1933,7 @@ async function refreshAllTimeRecords(
     writes += staleIds.length;
   }
 
-  return writes;
+  return { recordBrokenHooks, records: writes };
 }
 
 function amountEqual(left: number, right: number, tolerance = 0.01): boolean {
@@ -2607,7 +2673,7 @@ export async function recomputeLeagueStatistics(
       tx,
     });
 
-    const recordCount = await refreshAllTimeRecords(
+    const recordRefresh = await refreshAllTimeRecords(
       tx,
       input.leagueId,
       recordEvents({
@@ -2624,7 +2690,7 @@ export async function recomputeLeagueStatistics(
       weeklyRows +
       seasonRows +
       h2hRows +
-      recordCount +
+      recordRefresh.records +
       recordBookAggregateCount.standings +
       recordBookAggregateCount.milestones +
       integrity.checks;
@@ -2641,7 +2707,7 @@ export async function recomputeLeagueStatistics(
       recordBookAggregates:
         recordBookAggregateCount.standings +
         recordBookAggregateCount.milestones,
-      records: recordCount,
+      records: recordRefresh.records,
       seasonStatistics: seasonRows,
       weeklyStatistics: weeklyRows,
     };
@@ -2659,6 +2725,7 @@ export async function recomputeChangedMatchupStatistics(
       integrityChecks: 0,
       integrityFailures: 0,
       recordBookAggregates: 0,
+      recordBrokenHooks: [],
       records: 0,
       seasonStatistics: 0,
       seasons: [],
@@ -2694,6 +2761,7 @@ export async function recomputeChangedMatchupStatistics(
       integrityChecks: 0,
       integrityFailures: 0,
       recordBookAggregates: 0,
+      recordBrokenHooks: [],
       records: 0,
       seasonStatistics: 0,
       seasons: [],
@@ -2836,7 +2904,7 @@ export async function recomputeChangedMatchupStatistics(
       leagueId: input.leagueId,
       metadata: calculationMetadata,
     });
-    const recordRows = await refreshAllTimeRecords(
+    const recordRefresh = await refreshAllTimeRecords(
       tx,
       input.leagueId,
       recordEvents({
@@ -2852,7 +2920,7 @@ export async function recomputeChangedMatchupStatistics(
       recordBookAggregateCount.standings + recordBookAggregateCount.milestones;
     await completeStatsCalculation(tx, {
       ...recordsCalculation,
-      rowsProcessed: recordRows + aggregateRows,
+      rowsProcessed: recordRefresh.records + aggregateRows,
     });
 
     return {
@@ -2860,7 +2928,8 @@ export async function recomputeChangedMatchupStatistics(
       integrityChecks: integrity.checks,
       integrityFailures: integrity.failures,
       recordBookAggregates: aggregateRows,
-      records: recordRows,
+      recordBrokenHooks: recordRefresh.recordBrokenHooks,
+      records: recordRefresh.records,
       seasonStatistics: seasonRows,
       seasons: targetSeasons,
       targetedPairs: [...targetPairKeys].map(personPairFromKey),
