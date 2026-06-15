@@ -40,7 +40,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 ### O. Mobile PWA shell (see specs/24)
 - [x] Add the install affordance (Android prompt plus the documented iOS Share→Add flow) over the existing manifest. (specs/24)
 - [x] Harden the service worker for RLS-cache-safety and sign-out cache clearing. (specs/24)
-- [ ] Implement share-link routing into the right scope or onboarding with the destination preserved. (specs/24)
+- [x] Implement share-link routing into the right scope or onboarding with the destination preserved. (specs/24)
 - [ ] Define and check a mobile perf budget (fast transitions, skeletons over spinners). (specs/24)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)

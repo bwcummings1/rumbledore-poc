@@ -7,6 +7,10 @@ import { getDb } from "@/db";
 import { leagues } from "@/db/schema";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { listDataStewardReview } from "@/stats";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
 import { DataStewardReviewView } from "./data-steward-review-view";
 
@@ -19,12 +23,15 @@ export const metadata: Metadata = {
 
 interface DataStewardReviewPageProps {
   params: Promise<{ leagueId: string }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 export default async function DataStewardReviewPage({
   params,
+  searchParams,
 }: DataStewardReviewPageProps) {
   const { leagueId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -38,12 +45,11 @@ export default async function DataStewardReviewPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Sign in before opening data review."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["members", "steward"],
+      });
     }
     return (
       <LeagueSectionAccessState

@@ -34,6 +34,11 @@ import {
 } from "../leaguemate-detection-callout";
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
 import { ReturnToInviteLink } from "../return-to-invite-link";
+import {
+  continueToReturnTo,
+  returnToAfterConnection,
+  returnToAfterImport,
+} from "../return-to-navigation";
 
 interface DiscoveredLeague {
   provider: FantasyProviderId;
@@ -249,6 +254,10 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
       }),
     );
     if (connected) {
+      const returnHref = returnToAfterConnection(returnTo);
+      if (continueToReturnTo(returnHref)) {
+        return;
+      }
       await showConnectedLeagues(connected);
     }
   }
@@ -264,6 +273,10 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
     if (connected) {
       setManualEspnS2("");
       setManualSwid("");
+      const returnHref = returnToAfterConnection(returnTo);
+      if (continueToReturnTo(returnHref)) {
+        return;
+      }
       await showConnectedLeagues(connected);
     }
   }
@@ -312,6 +325,7 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
+      continueToReturnTo(returnToAfterImport(returnTo, [imported.leagueId]));
     }
   }
 
@@ -342,6 +356,12 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
+      continueToReturnTo(
+        returnToAfterImport(
+          returnTo,
+          Object.values(imported).map((result) => result.leagueId),
+        ),
+      );
     }
   }
 

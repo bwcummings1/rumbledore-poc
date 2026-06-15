@@ -4,6 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../../../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../../../league-section-access-state";
 import { HeadToHeadRecordsView } from "../../../h2h-records-view";
 import {
@@ -24,12 +28,15 @@ interface HeadToHeadRecordsPageProps {
     personAId: string;
     personBId: string;
   }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 export default async function HeadToHeadRecordsPage({
   params,
+  searchParams,
 }: HeadToHeadRecordsPageProps) {
   const { leagueId, personAId, personBId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -43,12 +50,11 @@ export default async function HeadToHeadRecordsPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Connect a provider or sign in before opening rivalry records."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["records", "h2h", personAId, personBId],
+      });
     }
     return (
       <LeagueSectionAccessState

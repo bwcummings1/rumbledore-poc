@@ -33,6 +33,11 @@ import {
 } from "../leaguemate-detection-callout";
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
 import { ReturnToInviteLink } from "../return-to-invite-link";
+import {
+  continueToReturnTo,
+  returnToAfterConnection,
+  returnToAfterImport,
+} from "../return-to-navigation";
 
 interface DiscoveredLeague {
   provider: FantasyProviderId;
@@ -232,6 +237,10 @@ export function SleeperConnectPanel({
       }),
     );
     if (connected) {
+      const returnHref = returnToAfterConnection(returnTo);
+      if (continueToReturnTo(returnHref)) {
+        return;
+      }
       await showConnectedLeagues(connected);
     }
   }
@@ -280,6 +289,7 @@ export function SleeperConnectPanel({
         preserveSelection: true,
         silent: true,
       });
+      continueToReturnTo(returnToAfterImport(returnTo, [imported.leagueId]));
     }
   }
 
@@ -310,6 +320,12 @@ export function SleeperConnectPanel({
         preserveSelection: true,
         silent: true,
       });
+      continueToReturnTo(
+        returnToAfterImport(
+          returnTo,
+          Object.values(imported).map((result) => result.leagueId),
+        ),
+      );
     }
   }
 

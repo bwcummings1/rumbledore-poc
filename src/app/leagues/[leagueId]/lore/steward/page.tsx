@@ -5,6 +5,10 @@ import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getLoreStewardReviewData } from "@/lore/member-experience";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
 import { LoreStewardReviewView } from "./lore-steward-review-view";
 
@@ -17,12 +21,15 @@ export const metadata: Metadata = {
 
 interface LoreStewardReviewPageProps {
   params: Promise<{ leagueId: string }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 export default async function LoreStewardReviewPage({
   params,
+  searchParams,
 }: LoreStewardReviewPageProps) {
   const { leagueId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -36,12 +43,11 @@ export default async function LoreStewardReviewPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Sign in before opening lore steward review."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["lore", "steward"],
+      });
     }
     return (
       <LeagueSectionAccessState

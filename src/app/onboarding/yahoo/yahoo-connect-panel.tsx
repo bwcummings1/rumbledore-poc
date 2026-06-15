@@ -27,6 +27,11 @@ import {
 } from "../leaguemate-detection-callout";
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
 import { ReturnToInviteLink } from "../return-to-invite-link";
+import {
+  continueToReturnTo,
+  returnToAfterConnection,
+  returnToAfterImport,
+} from "../return-to-navigation";
 
 interface DiscoveredLeague {
   provider: FantasyProviderId;
@@ -152,6 +157,10 @@ export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
       const connected = params.get("connected");
       const callbackError = params.get("error");
       if (connected) {
+        const returnHref = returnToAfterConnection(returnTo);
+        if (continueToReturnTo(returnHref)) {
+          return;
+        }
         setNotice("Yahoo connected. Choose leagues to import.");
       }
       if (callbackError) {
@@ -169,7 +178,7 @@ export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
     return () => {
       cancelled = true;
     };
-  }, [replaceDiscoveredLeagues]);
+  }, [replaceDiscoveredLeagues, returnTo]);
 
   async function run<T>(
     label: string,
@@ -240,6 +249,7 @@ export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
+      continueToReturnTo(returnToAfterImport(returnTo, [imported.leagueId]));
     }
   }
 
@@ -270,6 +280,12 @@ export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
+      continueToReturnTo(
+        returnToAfterImport(
+          returnTo,
+          Object.values(imported).map((result) => result.leagueId),
+        ),
+      );
     }
   }
 

@@ -5,6 +5,10 @@ import { requireLeagueRole } from "@/auth/guards";
 import { getLeagueBetData } from "@/betting";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../league-section-access-state";
 import { LeagueBetView } from "./league-bet-view";
 
@@ -17,10 +21,15 @@ export const metadata: Metadata = {
 
 interface LeagueBetPageProps {
   params: Promise<{ leagueId: string }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
-export default async function LeagueBetPage({ params }: LeagueBetPageProps) {
+export default async function LeagueBetPage({
+  params,
+  searchParams,
+}: LeagueBetPageProps) {
   const { leagueId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -34,12 +43,11 @@ export default async function LeagueBetPage({ params }: LeagueBetPageProps) {
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Connect a provider or sign in before opening league betting."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["bet"],
+      });
     }
     return (
       <LeagueSectionAccessState

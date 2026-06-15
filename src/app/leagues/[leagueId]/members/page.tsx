@@ -8,6 +8,10 @@ import { getLeagueInviteDependencies } from "@/onboarding/deps";
 import { listLeaguemateInviteTargets } from "@/onboarding/invites";
 import { listDataStewardDoorway } from "@/onboarding/stewards";
 import { LeagueInviteView } from "../invite/league-invite-view";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../league-section-access-state";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +23,15 @@ export const metadata: Metadata = {
 
 interface LeagueMembersPageProps {
   params: Promise<{ leagueId: string }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 export default async function LeagueMembersPage({
   params,
+  searchParams,
 }: LeagueMembersPageProps) {
   const { leagueId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -38,12 +45,11 @@ export default async function LeagueMembersPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Sign in before opening league members."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["members"],
+      });
     }
     return (
       <LeagueSectionAccessState

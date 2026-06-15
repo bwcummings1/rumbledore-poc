@@ -8,12 +8,17 @@ import { getDb } from "@/db";
 import { getLeagueHomeData } from "@/home/league-home";
 import { cn } from "@/lib/utils";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "./league-deep-link-routing";
 import { LeagueHomeView } from "./league-home-view";
 
 export const dynamic = "force-dynamic";
 
 interface LeagueHomePageProps {
   params: Promise<{ leagueId: string }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 function AccessState({ body, title }: { body: string; title: string }) {
@@ -34,8 +39,12 @@ function AccessState({ body, title }: { body: string; title: string }) {
   );
 }
 
-export default async function LeagueHomePage({ params }: LeagueHomePageProps) {
+export default async function LeagueHomePage({
+  params,
+  searchParams,
+}: LeagueHomePageProps) {
   const { leagueId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -49,12 +58,7 @@ export default async function LeagueHomePage({ params }: LeagueHomePageProps) {
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <AccessState
-          title="Sign in required"
-          body="Connect ESPN or sign in before opening a league home."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({ leagueId, searchParams: query });
     }
     return (
       <AccessState

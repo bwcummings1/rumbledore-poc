@@ -6,6 +6,10 @@ import { getDb } from "@/db";
 import { getLoreMemberIdForUser, isLoreSteward } from "@/lore/member-auth";
 import { getLoreClaimDetailData } from "@/lore/member-experience";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
 import { LeagueLoreClaimView } from "./league-lore-claim-view";
 
@@ -18,12 +22,15 @@ export const metadata: Metadata = {
 
 interface LeagueLoreClaimPageProps {
   params: Promise<{ claimId: string; leagueId: string }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 export default async function LeagueLoreClaimPage({
   params,
+  searchParams,
 }: LeagueLoreClaimPageProps) {
   const { claimId, leagueId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -37,12 +44,11 @@ export default async function LeagueLoreClaimPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Sign in before opening league lore."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["lore", claimId],
+      });
     }
     return (
       <LeagueSectionAccessState

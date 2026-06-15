@@ -6,6 +6,10 @@ import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { getLeagueFeedData } from "@/news";
 import { LeagueFeedView } from "../feed/league-feed-view";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../league-section-access-state";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +21,7 @@ export const metadata: Metadata = {
 
 interface LeaguePressPageProps {
   params: Promise<{ leagueId: string }>;
-  searchParams?: Promise<{ tag?: string | string[] }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 function firstSearchValue(value: string | string[] | undefined): string | null {
@@ -29,7 +33,8 @@ export default async function LeaguePressPage({
   searchParams,
 }: LeaguePressPageProps) {
   const { leagueId } = await params;
-  const activeTag = firstSearchValue((await searchParams)?.tag);
+  const query = await searchParams;
+  const activeTag = firstSearchValue(query?.tag);
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -43,12 +48,11 @@ export default async function LeaguePressPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Connect a provider or sign in before opening The Press."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["press"],
+      });
     }
     return (
       <LeagueSectionAccessState

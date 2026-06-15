@@ -7,6 +7,10 @@ import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { getLeagueFeedData, getLeaguePressArticleData } from "@/news";
 import { getLeaguePublicationSectionBySlug } from "@/news/sections";
 import { LeagueFeedView } from "../../feed/league-feed-view";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
 import { LeagueBlogPostView } from "../../posts/[postId]/league-blog-post-view";
 
@@ -19,7 +23,7 @@ export const metadata: Metadata = {
 
 interface LeaguePressPostPageProps {
   params: Promise<{ leagueId: string; postId: string }>;
-  searchParams?: Promise<{ tag?: string | string[] }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 function firstSearchValue(value: string | string[] | undefined): string | null {
@@ -31,7 +35,8 @@ export default async function LeaguePressPostPage({
   searchParams,
 }: LeaguePressPostPageProps) {
   const { leagueId, postId } = await params;
-  const activeTag = firstSearchValue((await searchParams)?.tag);
+  const query = await searchParams;
+  const activeTag = firstSearchValue(query?.tag);
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -45,12 +50,11 @@ export default async function LeaguePressPostPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Connect a provider or sign in before opening a Press article."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["press", postId],
+      });
     }
     return (
       <LeagueSectionAccessState

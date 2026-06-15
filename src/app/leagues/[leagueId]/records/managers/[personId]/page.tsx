@@ -4,6 +4,10 @@ import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../../league-section-access-state";
 import { ManagerRecordsView } from "../../manager-records-view";
 import { getManagerRecordsPageData } from "../../records-page-data";
@@ -17,12 +21,15 @@ export const metadata: Metadata = {
 
 interface ManagerRecordsPageProps {
   params: Promise<{ leagueId: string; personId: string }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 export default async function ManagerRecordsPage({
   params,
+  searchParams,
 }: ManagerRecordsPageProps) {
   const { leagueId, personId } = await params;
+  const query = await searchParams;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -36,12 +43,11 @@ export default async function ManagerRecordsPage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Connect a provider or sign in before opening manager records."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["records", "managers", personId],
+      });
     }
     return (
       <LeagueSectionAccessState

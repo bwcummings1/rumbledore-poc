@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Share-link deep routing landed — unauthenticated league-scope links now bounce through onboarding with a safe preserved destination, invite links return after provider connection, and matching league imports continue to the saved destination.
 - 2026-06-15: PWA cache-safety hardening landed — service worker runtime caches now skip API/cross-origin/auth/private/no-store/Vary responses, sign-out clears page caches, and browser push is unsubscribed before session exit.
 - 2026-06-15: PWA install affordance landed — `/you` now exposes Android `beforeinstallprompt` install flow, iOS Safari Share→Add instructions, standalone hiding, and persisted dismissal.
 - 2026-06-15: Central news tailoring hand-off landed — refreshes now carry provider-player refs into central metadata, match them against latest league rosters, and upsert league-scoped feed references for the existing `/news` rail and Press blend.

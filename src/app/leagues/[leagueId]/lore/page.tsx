@@ -5,6 +5,10 @@ import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getLoreSectionData } from "@/lore/member-experience";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import {
+  type LeagueDeepLinkSearchParams,
+  redirectToLeagueDeepLinkOnboarding,
+} from "../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../league-section-access-state";
 import { LeagueLoreView } from "./league-lore-view";
 
@@ -17,7 +21,7 @@ export const metadata: Metadata = {
 
 interface LeagueLorePageProps {
   params: Promise<{ leagueId: string }>;
-  searchParams?: Promise<{ subject?: string | string[] }>;
+  searchParams?: Promise<LeagueDeepLinkSearchParams>;
 }
 
 function firstSearchValue(value: string | string[] | undefined): string | null {
@@ -29,7 +33,8 @@ export default async function LeagueLorePage({
   searchParams,
 }: LeagueLorePageProps) {
   const { leagueId } = await params;
-  const activeSubject = firstSearchValue((await searchParams)?.subject);
+  const query = await searchParams;
+  const activeSubject = firstSearchValue(query?.subject);
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -43,12 +48,11 @@ export default async function LeagueLorePage({
       notFound();
     }
     if (access.error.status === 401) {
-      return (
-        <LeagueSectionAccessState
-          title="Sign in required"
-          body="Connect a provider or sign in before opening league lore."
-        />
-      );
+      redirectToLeagueDeepLinkOnboarding({
+        leagueId,
+        searchParams: query,
+        segments: ["lore"],
+      });
     }
     return (
       <LeagueSectionAccessState
