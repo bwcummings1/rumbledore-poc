@@ -17,6 +17,12 @@ import {
   resolveEntitlement,
 } from "@/entitlements";
 import {
+  defaultNflCalendar,
+  type NflCalendar,
+  type NflWeekState,
+  nflWeekToken,
+} from "@/sports/nfl-calendar";
+import {
   type ArenaStandingsSwingData,
   type BetSettledData,
   type ContentGenerateData,
@@ -68,6 +74,7 @@ export interface SkippedContentGenerationLeague {
 
 export interface ContentPlanCronResult {
   cadence: ContentPlanCronCadence;
+  nflWeekState: NflWeekState;
   planned: PlannedContentGenerateEvent[];
   skipped: SkippedContentGenerationLeague[];
 }
@@ -101,28 +108,37 @@ interface ContentCandidate {
   contentType: AiContentType;
 }
 
-const CRON_CANDIDATES: Record<
+const POST_GAMES_CANDIDATES = [
+  { contentType: "weekly_recap", persona: "narrator" },
+  { contentType: "power_rankings", persona: "analyst" },
+  { contentType: "awards_superlatives", persona: "trash_talker" },
+] as const satisfies readonly ContentCandidate[];
+
+const MIDWEEK_CANDIDATES = [
+  { contentType: "power_rankings", persona: "analyst" },
+  { contentType: "awards_superlatives", persona: "beat_reporter" },
+  { contentType: "instigation_column", persona: "trash_talker" },
+  { contentType: "season_arc", persona: "narrator" },
+] as const satisfies readonly ContentCandidate[];
+
+const PRE_KICKOFF_CANDIDATES = [
+  { contentType: "matchup_preview", persona: "commissioner" },
+  { contentType: "matchup_preview", persona: "analyst" },
+] as const satisfies readonly ContentCandidate[];
+
+const PRE_KICKOFF_ODDS_CANDIDATES = [
+  { contentType: "matchup_preview", persona: "betting_advisor" },
+  { contentType: "arena_recap", persona: "betting_advisor" },
+] as const satisfies readonly ContentCandidate[];
+
+const CALENDAR_CANDIDATES: Record<
   ContentPlanCronCadence,
   readonly ContentCandidate[]
 > = {
-  "mid-week": [
-    { contentType: "transaction_reaction", persona: "beat_reporter" },
-    { contentType: "instigation_column", persona: "trash_talker" },
-  ],
-  "post-odds-refresh": [
-    { contentType: "matchup_preview", persona: "betting_advisor" },
-    { contentType: "arena_recap", persona: "betting_advisor" },
-  ],
-  "weekly-preview": [
-    { contentType: "matchup_preview", persona: "commissioner" },
-    { contentType: "matchup_preview", persona: "analyst" },
-  ],
-  "weekly-wrap": [
-    { contentType: "weekly_recap", persona: "narrator" },
-    { contentType: "power_rankings", persona: "analyst" },
-    { contentType: "awards_superlatives", persona: "beat_reporter" },
-    { contentType: "season_arc", persona: "narrator" },
-  ],
+  "mid-week": [...MIDWEEK_CANDIDATES],
+  "post-odds-refresh": [...PRE_KICKOFF_ODDS_CANDIDATES],
+  "weekly-preview": [...PRE_KICKOFF_CANDIDATES],
+  "weekly-wrap": [...POST_GAMES_CANDIDATES],
 };
 
 const TRIGGER_CANDIDATES: Record<
@@ -154,12 +170,6 @@ const TRIGGER_CANDIDATES: Record<
     { contentType: "transaction_reaction", persona: "beat_reporter" },
   ],
 };
-
-interface LeaguePlanRow {
-  id: string;
-  currentScoringPeriod: number;
-  season: number;
-}
 
 interface GameFinalMatchup {
   awayScore: number;
@@ -298,9 +308,10 @@ function toPlannedEvent(
 
 function cronTriggerKey(
   cadence: ContentPlanCronCadence,
-  league: LeaguePlanRow,
+  now: Date,
+  weekState: NflWeekState,
 ): string {
-  return `cron:${cadence}:${league.season}:${league.currentScoringPeriod}`;
+  return `cron:${cadence}:${weekState.phase}:${nflWeekToken(weekState, now)}`;
 }
 
 function gameFinalTriggerKey(matchup: GameFinalMatchup): string {
@@ -351,18 +362,55 @@ function contentTriggerKey(
 function scheduledCandidatesFor({
   cadence,
   hasRivalryWeek,
+  weekState,
 }: {
   cadence: ContentPlanCronCadence;
   hasRivalryWeek: boolean;
+  weekState: NflWeekState;
 }): ContentCandidate[] {
-  const candidates = [...CRON_CANDIDATES[cadence]];
-  if (cadence === "weekly-preview" && hasRivalryWeek) {
+  if (!cadenceMatchesWeekState({ cadence, weekState })) {
+    return [];
+  }
+
+  const candidates = [...CALENDAR_CANDIDATES[cadence]];
+  if (
+    cadence === "weekly-preview" &&
+    (hasRivalryWeek || weekState.isRivalryWindow)
+  ) {
     candidates.push({
       contentType: "rivalry_piece",
       persona: "trash_talker",
     });
   }
   return candidates;
+}
+
+function cadenceMatchesWeekState({
+  cadence,
+  weekState,
+}: {
+  cadence: ContentPlanCronCadence;
+  weekState: NflWeekState;
+}): boolean {
+  if (!hasScheduledGamesPhase(weekState.phase)) {
+    return false;
+  }
+
+  switch (cadence) {
+    case "weekly-wrap":
+      return weekState.gamePhase === "post_games";
+    case "mid-week":
+      return weekState.gamePhase === "quiet";
+    case "weekly-preview":
+    case "post-odds-refresh":
+      return weekState.gamePhase === "pre_kickoff";
+  }
+}
+
+function hasScheduledGamesPhase(phase: NflWeekState["phase"]): boolean {
+  return (
+    phase === "regular" || phase === "playoffs" || phase === "superbowl_week"
+  );
 }
 
 async function hasRivalrySignal({
@@ -392,18 +440,22 @@ export async function planCronContent({
   cadence,
   db,
   env,
+  nflCalendar,
   now,
 }: {
   cadence: ContentPlanCronCadence;
   db: Db;
   env: EntitlementResolverEnv;
+  nflCalendar?: NflCalendar;
   now?: () => Date;
 }): Promise<ContentPlanCronResult> {
+  const resolvedNow = now?.() ?? new Date();
+  const nflWeekState = await (nflCalendar ?? defaultNflCalendar).weekState(
+    resolvedNow,
+  );
   const activeLeagues = await db
     .select({
-      currentScoringPeriod: leagues.currentScoringPeriod,
       id: leagues.id,
-      season: leagues.season,
     })
     .from(leagues)
     .where(inArray(leagues.status, ACTIVE_LEAGUE_STATUSES))
@@ -416,7 +468,7 @@ export async function planCronContent({
       db,
       env,
       leagueId: league.id,
-      now,
+      now: () => resolvedNow,
     });
     if (skippedEntitlement) {
       skipped.push(skippedEntitlement);
@@ -424,13 +476,15 @@ export async function planCronContent({
     }
 
     const hasRivalryWeek =
-      cadence === "weekly-preview"
+      cadence === "weekly-preview" &&
+      cadenceMatchesWeekState({ cadence, weekState: nflWeekState })
         ? await hasRivalrySignal({ db, leagueId: league.id })
         : false;
-    const triggerKey = cronTriggerKey(cadence, league);
+    const triggerKey = cronTriggerKey(cadence, resolvedNow, nflWeekState);
     for (const candidate of scheduledCandidatesFor({
       cadence,
       hasRivalryWeek,
+      weekState: nflWeekState,
     })) {
       planned.push(
         toPlannedEvent({
@@ -443,7 +497,7 @@ export async function planCronContent({
     }
   }
 
-  return { cadence, planned, skipped };
+  return { cadence, nflWeekState, planned, skipped };
 }
 
 function gameFinalTriggerReasons({

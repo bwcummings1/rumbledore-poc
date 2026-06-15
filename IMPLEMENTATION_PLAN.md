@@ -27,7 +27,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Build the notification taxonomy plus an RLS-scoped preferences/opt-out enforced at fan-out. (specs/20)
 
 ### M. Weekly cadence orchestration (see specs/22)
-- [ ] Add a mockable NFL calendar service that drives cadence by phase and game-state. (specs/22)
+- [x] Add a mockable NFL calendar service that drives cadence by phase and game-state. (specs/22)
 - [ ] Plan the in-season weekly slate (recaps, rankings, previews) with stable natural keys and backfill. (specs/22)
 - [ ] Add a distinct offseason/quiet-week cadence. (specs/22)
 - [ ] Enrich reactive event-driven pieces (game final, swing, lore canonized, bet settled), entitlement-gated. (specs/22)

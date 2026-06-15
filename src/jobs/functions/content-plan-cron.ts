@@ -2,6 +2,7 @@ import { cron } from "inngest";
 import { recordJobRun } from "@/core/metrics";
 import type { Db } from "@/db/client";
 import type { EntitlementResolverEnv } from "@/entitlements";
+import type { NflCalendar } from "@/sports/nfl-calendar";
 import { inngest } from "../client";
 import {
   type ContentPlanCronCadence,
@@ -12,6 +13,7 @@ import {
 interface ContentPlanCronDependencies {
   db: Db;
   env: EntitlementResolverEnv;
+  nflCalendar?: NflCalendar;
   now?: () => Date;
 }
 
@@ -39,6 +41,7 @@ export async function runContentPlanCron({
     cadence,
     db: deps.db,
     env: deps.env,
+    nflCalendar: deps.nflCalendar,
     now: deps.now,
   });
 
