@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
+  check,
   customType,
   doublePrecision,
   index,
@@ -390,6 +391,37 @@ export const leagueRole = pgEnum("league_role", [
   "league_admin",
   "data_steward",
   "member",
+]);
+
+export const leagueEntitlementTier = pgEnum("league_entitlement_tier", [
+  "free",
+  "premium",
+]);
+
+export const userEntitlementTier = pgEnum("user_entitlement_tier", [
+  "individual",
+]);
+
+export const entitlementStatus = pgEnum("entitlement_status", [
+  "active",
+  "expired",
+  "suspended",
+]);
+
+export const entitlementSource = pgEnum("entitlement_source", [
+  "granted",
+  "comp",
+  "dev",
+  "purchased",
+]);
+
+export const entitlementEventAction = pgEnum("entitlement_event_action", [
+  "grant",
+  "revoke",
+  "expire",
+  "suspend",
+  "resume",
+  "update_caps",
 ]);
 
 const timestamps = {
@@ -2290,6 +2322,112 @@ export const invitations = pgTable(
   (table) => [index("invitations_organization_idx").on(table.organizationId)],
 );
 
+// ── Entitlements (auth plane; central, no restrictive RLS) ─────────────────
+
+export const leagueEntitlements = pgTable(
+  "league_entitlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    tier: leagueEntitlementTier("tier").notNull().default("free"),
+    status: entitlementStatus("status").notNull().default("active"),
+    source: entitlementSource("source").notNull().default("granted"),
+    capsOverride: jsonb("caps_override")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    grantedBy: uuid("granted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("league_entitlements_league_unique").on(table.leagueId),
+    index("league_entitlements_status_idx").on(table.status, table.expiresAt),
+  ],
+);
+
+export const userEntitlements = pgTable(
+  "user_entitlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tier: userEntitlementTier("tier").notNull().default("individual"),
+    status: entitlementStatus("status").notNull().default("active"),
+    source: entitlementSource("source").notNull().default("granted"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    grantedBy: uuid("granted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("user_entitlements_user_unique").on(table.userId),
+    index("user_entitlements_status_idx").on(table.status, table.expiresAt),
+  ],
+);
+
+export const entitlementEvents = pgTable(
+  "entitlement_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueEntitlementId: uuid("league_entitlement_id").references(
+      () => leagueEntitlements.id,
+      { onDelete: "set null" },
+    ),
+    userEntitlementId: uuid("user_entitlement_id").references(
+      () => userEntitlements.id,
+      { onDelete: "set null" },
+    ),
+    leagueId: uuid("league_id").references(() => leagues.id, {
+      onDelete: "cascade",
+    }),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    action: entitlementEventAction("action").notNull(),
+    source: entitlementSource("source"),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    beforeState: jsonb("before_state")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    afterState: jsonb("after_state")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("entitlement_events_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("entitlement_events_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("entitlement_events_actor_created_idx").on(
+      table.actorUserId,
+      table.createdAt,
+    ),
+    check(
+      "entitlement_events_single_scope_check",
+      sql`(
+        (${table.leagueId} is not null and ${table.userId} is null and ${table.userEntitlementId} is null)
+        or (${table.userId} is not null and ${table.leagueId} is null and ${table.leagueEntitlementId} is null)
+      )`,
+    ),
+  ],
+);
+
 // ── AI instigation and lightweight lore lifecycle (league-scoped) ─────────
 
 export const instigations = pgTable(
@@ -2924,6 +3062,12 @@ export type Session = typeof sessions.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type Member = typeof members.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;
+export type LeagueEntitlement = typeof leagueEntitlements.$inferSelect;
+export type NewLeagueEntitlement = typeof leagueEntitlements.$inferInsert;
+export type UserEntitlement = typeof userEntitlements.$inferSelect;
+export type NewUserEntitlement = typeof userEntitlements.$inferInsert;
+export type EntitlementEvent = typeof entitlementEvents.$inferSelect;
+export type NewEntitlementEvent = typeof entitlementEvents.$inferInsert;
 export type Instigation = typeof instigations.$inferSelect;
 export type NewInstigation = typeof instigations.$inferInsert;
 export type Poll = typeof polls.$inferSelect;

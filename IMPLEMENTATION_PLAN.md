@@ -24,7 +24,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Complete the data-steward cleaning doorway per specs/14 §E. (specs/16)
 
 ### H. Entitlements (see specs/17)
-- [ ] Build the entitlement model: FREE and PREMIUM league tiers plus an INDIVIDUAL tier, per-league and per-user. (specs/17)
+- [x] Build the entitlement model: FREE and PREMIUM league tiers plus an INDIVIDUAL tier, per-league and per-user. (specs/17)
 - [ ] Implement the injectable `resolveEntitlement` resolver with a dev override. (specs/17)
 - [ ] Gate AI content generation and cadence behind premium, failing gracefully into an upgrade state. (specs/17)
 - [ ] Gate the individual personal-agent feature behind the individual tier. (specs/17)

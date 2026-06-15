@@ -29,6 +29,8 @@ import {
 } from "./bankroll";
 
 const marker = `arenatest-${randomUUID()}`;
+const testYear =
+  2036 + (Number.parseInt(marker.slice("arenatest-".length, 18), 16) % 500);
 const CANARY_ROLE = "rumbledore_rls_canary";
 const CANARY_PASSWORD = "rls-canary"; // ubs:ignore — local test-role password, not a real secret
 
@@ -40,7 +42,7 @@ let userBeta: User;
 let userGamma: User;
 
 function day(value: number): Date {
-  return new Date(Date.UTC(2036, 8, value));
+  return new Date(Date.UTC(testYear, 8, value));
 }
 
 async function seedBettingWeek(

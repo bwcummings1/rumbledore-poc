@@ -267,6 +267,13 @@
       "when": 1781487200000,
       "tag": "0037_open_claim_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781494290295,
+      "tag": "0038_entitlement_model",
+      "breakpoints": true
     }
   ]
 }
