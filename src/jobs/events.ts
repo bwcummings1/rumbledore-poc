@@ -6,6 +6,7 @@ export const JOB_EVENTS = {
   leagueConnected: "league.connected",
   gameFinal: "game.final",
   importRequested: "import.requested",
+  bankrollRollover: "bankroll.rollover",
   oddsPoll: "odds.poll",
   newsRefresh: "news.refresh",
   contentGenerate: "content.generate",
@@ -49,6 +50,12 @@ export interface ContentGenerateData {
   persona: AiPersona;
   contentType: AiContentType;
   triggerKey: string;
+}
+
+export interface BankrollRolloverData {
+  leagueIds?: string[];
+  limit?: number;
+  now?: string;
 }
 
 export interface InstigationSeedData {

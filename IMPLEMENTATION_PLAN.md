@@ -59,7 +59,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 1. [x] **Invite tokens stored plaintext at rest** — security/isolation risk: leaked invite rows are reusable bearer tokens, so hashing materially reduces credential blast radius. Verified already fixed.
 2. [x] **Current sync can downgrade finalized matchups** — correctness risk: transient provider states can corrupt settled/final league history and downstream records. Verified already fixed.
 3. [x] **Member-submitted lore votes are not scheduled for automatic close-out** — functionality risk: votes can remain pending indefinitely without manual intervention.
-4. [ ] **Bankroll rollover has no production scheduler** — functionality risk: weekly betting balances and arena standings can stale without an automated rollover path.
+4. [x] **Bankroll rollover has no production scheduler** — functionality risk: weekly betting balances and arena standings can stale without an automated rollover path. Fixed by the scheduled `bankroll-rollover` Inngest job, which skips weeks with pending slips, opens the next bankroll week, rebuilds arena standings, and publishes realtime leaderboard updates.
 5. [ ] **First bet requires an existing open bankroll week** — functionality/product risk: the intended first-bet flow can fail for leagues without pre-created weeks.
 6. [ ] **Lore vote close can run before `vote_closes_at`** — correctness risk: direct callers can finalize votes before their announced window ends.
 7. [ ] **Publication section/tag filters are candidate-limited in memory** — correctness/scale risk: sparse sections can disappear as archives grow.

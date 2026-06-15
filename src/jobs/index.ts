@@ -1,4 +1,5 @@
 import { appPing } from "./functions/app-ping";
+import { bankrollRollover } from "./functions/bankroll-rollover";
 import { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
 import { contentGenerate } from "./functions/content-generate";
 import {
@@ -27,6 +28,7 @@ import { pollClose } from "./functions/poll-close";
 export { inngest } from "./client";
 export { JOB_EVENTS } from "./events";
 export { appPing } from "./functions/app-ping";
+export { bankrollRollover } from "./functions/bankroll-rollover";
 export { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
 export { contentGenerate } from "./functions/content-generate";
 export {
@@ -54,6 +56,7 @@ export { pollClose } from "./functions/poll-close";
 
 export const functions = [
   appPing,
+  bankrollRollover,
   importRequested,
   contentGenerate,
   contentPlanWeeklyPreview,
