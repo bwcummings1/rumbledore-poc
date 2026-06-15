@@ -279,6 +279,13 @@ async function seedDataCoverage(
   );
 }
 
+async function dataCoverageRowsFor(leagueId: string) {
+  return handle.db
+    .select()
+    .from(dataCoverage)
+    .where(eq(dataCoverage.leagueId, leagueId));
+}
+
 function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
   return {
     changedFinalMatchups: [],
@@ -1074,6 +1081,36 @@ describe("live ingestion jobs", () => {
       .where(eq(providerCredentials.id, seeded.credentialId))
       .limit(1);
     expect(credential).toMatchObject({ status: "invalid" });
+
+    const coverageRows = await dataCoverageRowsFor(seeded.leagueId);
+    expect(
+      coverageRows
+        .flatMap((row) => {
+          switch (row.errorCode) {
+            case "PROVIDER_AUTH_EXPIRED":
+              return [row.dataClass];
+            default:
+              return [];
+          }
+        })
+        .sort(),
+    ).toEqual([
+      "final_standings",
+      "league",
+      "matchups",
+      "members",
+      "rosters",
+      "scoring_detail",
+      "teams",
+    ]);
+    expect(
+      coverageRows.find((row) => row.dataClass === "league"),
+    ).toMatchObject({
+      details: { stage: "authenticate", sync: "current" },
+      errorCode: "PROVIDER_AUTH_EXPIRED",
+      itemCount: 0,
+      status: "error",
+    });
   });
 
   it("marks credentials invalid when current sync reports auth expiry", async () => {
@@ -1106,6 +1143,16 @@ describe("live ingestion jobs", () => {
       .where(eq(providerCredentials.id, seeded.credentialId))
       .limit(1);
     expect(credential).toMatchObject({ status: "invalid" });
+
+    const coverageRows = await dataCoverageRowsFor(seeded.leagueId);
+    expect(
+      coverageRows.find((row) => row.dataClass === "league"),
+    ).toMatchObject({
+      details: { stage: "sync", sync: "current" },
+      errorCode: "PROVIDER_AUTH_EXPIRED",
+      itemCount: 0,
+      status: "error",
+    });
   });
 
   it("keeps credentials connected for retryable provider blocks", async () => {

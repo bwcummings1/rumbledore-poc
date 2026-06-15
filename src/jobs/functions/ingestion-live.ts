@@ -16,6 +16,8 @@ import {
   type CurrentLeagueSyncError,
   type CurrentLeagueSyncInput,
   type CurrentLeagueSyncResult,
+  type DataCoverageObservationMap,
+  recordDataCoverage,
   syncCurrentLeague,
 } from "@/ingestion";
 import {
@@ -427,6 +429,52 @@ async function markCredentialInvalid({
       updatedAt: now,
     })
     .where(eq(providerCredentials.id, credentialId));
+}
+
+function authFailureCoverageObservations({
+  error,
+  provider,
+}: {
+  error: ProviderError;
+  provider: LeagueIngestProvider;
+}): DataCoverageObservationMap {
+  const observations: DataCoverageObservationMap = {};
+  for (const dataClass of PROVIDER_DATA_CLASSES) {
+    if (provider.capabilities.dataClasses[dataClass] === "none") {
+      continue;
+    }
+    observations[dataClass] = {
+      error,
+      itemCount: 0,
+    };
+  }
+  return observations;
+}
+
+async function recordAuthExpiredCoverage({
+  data,
+  deps,
+  error,
+  provider,
+  stage,
+}: {
+  data: LeagueIngestData;
+  deps: Pick<LeagueIngestDependencies, "db" | "now">;
+  error: ProviderError;
+  provider: LeagueIngestProvider;
+  stage: "authenticate" | "sync";
+}): Promise<void> {
+  await recordDataCoverage({
+    capabilities: provider.capabilities,
+    db: deps.db,
+    defaultDetails: { stage, sync: "current" },
+    leagueId: data.leagueId,
+    observedAt: currentTime(deps),
+    observations: authFailureCoverageObservations({ error, provider }),
+    provider: data.provider,
+    providerLeagueId: data.providerLeagueId,
+    season: data.season,
+  });
 }
 
 function shouldStopRetries(error: ProviderError): boolean {
@@ -1266,6 +1314,13 @@ export async function runLeagueIngest({
   if (!session.ok) {
     if (shouldStopRetries(session.error)) {
       await markCredentialInvalid({ credentialId: data.credentialId, deps });
+      await recordAuthExpiredCoverage({
+        data,
+        deps,
+        error: session.error,
+        provider,
+        stage: "authenticate",
+      });
     }
     throwProviderError(session.error);
   }
@@ -1282,6 +1337,13 @@ export async function runLeagueIngest({
   if (!sync.ok) {
     if (shouldStopRetries(sync.error)) {
       await markCredentialInvalid({ credentialId: data.credentialId, deps });
+      await recordAuthExpiredCoverage({
+        data,
+        deps,
+        error: sync.error,
+        provider,
+        stage: "sync",
+      });
     }
     throwProviderError(sync.error);
   }
