@@ -16,7 +16,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 ### N. Records & history surfaces (see specs/23)
 - [x] Build the all-time records catalog aggregates (standings, highs/lows, streaks, blowouts) from history. (specs/23)
 - [x] Build symmetric head-to-head manager ledgers plus championship/playoff records. (specs/23)
-- [ ] Deepen the league Records section and add per-manager and head-to-head pages. (specs/23)
+- [x] Deepen the league Records section and add per-manager and head-to-head pages. (specs/23)
 - [ ] Materialize record aggregates with idempotent incremental refresh tied to ingestion. (specs/23)
 - [ ] Add cast "record broken" and data-verifiable lore hooks sourced from records. (specs/23)
 

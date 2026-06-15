@@ -4,25 +4,25 @@ import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
-import { LeagueSectionAccessState } from "../league-section-access-state";
-import { LeagueRecordsView } from "./league-records-view";
-import { getLeagueRecordsPageData } from "./records-page-data";
+import { LeagueSectionAccessState } from "../../../league-section-access-state";
+import { ManagerRecordsView } from "../../manager-records-view";
+import { getManagerRecordsPageData } from "../../records-page-data";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Records | Rumbledore",
-  description: "All-time and season records for this league.",
+  title: "Manager Records | Rumbledore",
+  description: "Manager history and head-to-head records for this league.",
 };
 
-interface LeagueRecordsPageProps {
-  params: Promise<{ leagueId: string }>;
+interface ManagerRecordsPageProps {
+  params: Promise<{ leagueId: string; personId: string }>;
 }
 
-export default async function LeagueRecordsPage({
+export default async function ManagerRecordsPage({
   params,
-}: LeagueRecordsPageProps) {
-  const { leagueId } = await params;
+}: ManagerRecordsPageProps) {
+  const { leagueId, personId } = await params;
   const db = getDb();
   const access = await requireLeagueRole({
     db,
@@ -39,7 +39,7 @@ export default async function LeagueRecordsPage({
       return (
         <LeagueSectionAccessState
           title="Sign in required"
-          body="Connect a provider or sign in before opening league records."
+          body="Connect a provider or sign in before opening manager records."
         />
       );
     }
@@ -53,13 +53,10 @@ export default async function LeagueRecordsPage({
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
-  const result = await getLeagueRecordsPageData(db, {
-    leagueId,
-  });
-
+  const result = await getManagerRecordsPageData(db, { leagueId, personId });
   switch (result.status) {
     case "ready":
-      return <LeagueRecordsView data={result.data} />;
+      return <ManagerRecordsView data={result.data} />;
     case "not_found":
       notFound();
   }
