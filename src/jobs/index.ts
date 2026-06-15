@@ -19,6 +19,7 @@ import {
   contentPlanWaiver,
 } from "./functions/content-plan-trigger";
 import { importRequested } from "./functions/import-requested";
+import { ingestionTick, leagueIngest } from "./functions/ingestion-live";
 import { instigationSeed } from "./functions/instigation-seed";
 import { loreVoteClose } from "./functions/lore-vote-close";
 import { newsRefresh } from "./functions/news-refresh";
@@ -48,6 +49,10 @@ export {
   contentPlanWaiver,
 } from "./functions/content-plan-trigger";
 export { importRequested } from "./functions/import-requested";
+export {
+  ingestionTick,
+  leagueIngest,
+} from "./functions/ingestion-live";
 export { instigationSeed } from "./functions/instigation-seed";
 export { loreVoteClose } from "./functions/lore-vote-close";
 export { newsRefresh } from "./functions/news-refresh";
@@ -57,6 +62,8 @@ export { pollClose } from "./functions/poll-close";
 export const functions = [
   appPing,
   bankrollRollover,
+  ingestionTick,
+  leagueIngest,
   importRequested,
   contentGenerate,
   contentPlanWeeklyPreview,

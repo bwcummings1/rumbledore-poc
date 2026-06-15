@@ -1,10 +1,12 @@
 import type { AiContentType, AiPersona } from "@/ai";
-import type { FantasyProviderId } from "@/providers";
+import type { FantasyProviderId, ProviderDataClass } from "@/providers";
 
 export const JOB_EVENTS = {
   appPing: "app.ping",
   leagueConnected: "league.connected",
   gameFinal: "game.final",
+  ingestionTick: "ingestion.tick",
+  leagueIngest: "league.ingest",
   importRequested: "import.requested",
   bankrollRollover: "bankroll.rollover",
   oddsPoll: "odds.poll",
@@ -43,6 +45,25 @@ export interface ImportRequestedData {
   size?: number;
   seasons?: number[];
   maxSeasons?: number;
+}
+
+export interface IngestionTickData {
+  leagueId?: string;
+  leagueIds?: string[];
+  limit?: number;
+  now?: string;
+}
+
+export interface LeagueIngestData {
+  credentialId: string;
+  dataClasses?: ProviderDataClass[];
+  leagueId: string;
+  name: string;
+  provider: Extract<FantasyProviderId, "espn" | "sleeper" | "yahoo">;
+  providerLeagueId: string;
+  season: number;
+  size?: number;
+  sport: "ffl" | "unknown";
 }
 
 export interface ContentGenerateData {

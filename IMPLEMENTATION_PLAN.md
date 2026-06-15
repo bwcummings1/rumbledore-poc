@@ -6,7 +6,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 ## Scope — Phase 3 (build in order; dependencies first)
 
 ### J. Always-on ingestion & freshness (see specs/19)
-- [ ] Build the `ingestion.tick` cron orchestrator that fans out per-league ingest workers. (specs/19)
+- [x] Build the `ingestion.tick` cron orchestrator that fans out per-league ingest workers. (specs/19)
 - [ ] Drive adaptive cadence from an injectable NFL game-state/calendar provider (live-window fast path vs off-hours). (specs/19)
 - [ ] Make the poll policy a pluggable config seam, with cadence as data (cost-optimization deferred to research). (specs/19)
 - [ ] Harden incremental sync to never downgrade finalized matchups, idempotently. (specs/19)
