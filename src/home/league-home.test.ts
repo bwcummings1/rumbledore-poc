@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -9,9 +9,15 @@ import {
   allTimeRecords,
   contentItems,
   dataIntegrityChecks,
+  fantasyMembers,
+  fantasyTeams,
+  identityMappings,
+  leagueMemberIdentityClaims,
   leagues,
   members,
   persons,
+  seasonStatistics,
+  teamSeasons,
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
@@ -232,6 +238,306 @@ describe("getLeagueHomeData", () => {
         title: "Commissioner: Home league storyline",
       },
     ]);
+  });
+
+  it("builds the claimed-team activation hook from records and existing cast coverage", async () => {
+    let recordId = "";
+    let matchedStoryId = "";
+    let claimedTeamName = "";
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [team] = await tx
+        .select({
+          id: fantasyTeams.id,
+          leagueProviderId: fantasyTeams.leagueProviderId,
+          name: fantasyTeams.name,
+          ownerMemberIds: fantasyTeams.ownerMemberIds,
+          provider: fantasyTeams.provider,
+          providerTeamId: fantasyTeams.providerTeamId,
+          season: fantasyTeams.season,
+        })
+        .from(fantasyTeams)
+        .where(eq(fantasyTeams.leagueId, leagueId))
+        .orderBy(asc(fantasyTeams.name))
+        .limit(1);
+      if (!team) {
+        throw new Error("fixture team was not found");
+      }
+      const providerMemberId = team.ownerMemberIds[0];
+      if (!providerMemberId) {
+        throw new Error("fixture team has no owner");
+      }
+      const [fantasyMember] = await tx
+        .select({
+          displayName: fantasyMembers.displayName,
+          id: fantasyMembers.id,
+        })
+        .from(fantasyMembers)
+        .where(
+          and(
+            eq(fantasyMembers.leagueId, leagueId),
+            eq(fantasyMembers.providerMemberId, providerMemberId),
+          ),
+        )
+        .limit(1);
+      if (!fantasyMember) {
+        throw new Error("fixture member was not found");
+      }
+      const [person] = await tx
+        .insert(persons)
+        .values({
+          canonicalName: fantasyMember.displayName,
+          leagueId,
+        })
+        .returning({ id: persons.id });
+      if (!person) {
+        throw new Error("activation person was not inserted");
+      }
+      const [teamSeason] = await tx
+        .insert(teamSeasons)
+        .values({
+          fantasyTeamId: team.id,
+          leagueId,
+          leagueProviderId: team.leagueProviderId,
+          ownerMemberIds: team.ownerMemberIds,
+          ownerNames: [fantasyMember.displayName],
+          provider: team.provider,
+          providerTeamId: team.providerTeamId,
+          season: team.season,
+          teamName: team.name,
+        })
+        .returning({ id: teamSeasons.id });
+      if (!teamSeason) {
+        throw new Error("activation team-season was not inserted");
+      }
+      await tx.insert(identityMappings).values({
+        leagueId,
+        leagueProviderId: team.leagueProviderId,
+        personId: person.id,
+        provider: team.provider,
+        providerTeamId: team.providerTeamId,
+        season: team.season,
+        teamSeasonId: teamSeason.id,
+      });
+      await tx.insert(seasonStatistics).values([
+        {
+          leagueId,
+          losses: 3,
+          personId: person.id,
+          pointsAgainst: 910.75,
+          pointsFor: 1010.25,
+          season: 2025,
+          ties: 0,
+          wins: 7,
+        },
+        {
+          leagueId,
+          losses: 1,
+          personId: person.id,
+          pointsAgainst: 500,
+          pointsFor: 600,
+          season: team.season,
+          ties: 1,
+          wins: 3,
+        },
+      ]);
+      await tx.insert(leagueMemberIdentityClaims).values({
+        fantasyMemberId: fantasyMember.id,
+        leagueId,
+        provider: team.provider,
+        providerMemberId,
+        providerTeamIds: [team.providerTeamId],
+        userId,
+      });
+      const [record] = await tx
+        .insert(allTimeRecords)
+        .values({
+          holderPersonId: person.id,
+          isCurrent: true,
+          leagueId,
+          recordType: "highest_single_week_score",
+          scoringPeriod: 7,
+          season: 2025,
+          value: 188.2,
+        })
+        .returning({ id: allTimeRecords.id });
+      if (!record) {
+        throw new Error("activation record was not inserted");
+      }
+      const [matchedStory] = await tx
+        .insert(contentItems)
+        .values({
+          authorPersona: "beat_reporter",
+          body: `${team.name} is already in the copy.`,
+          contentHash: `${marker}-activation-team-story-hash`,
+          dedupKey: `${marker}-activation-team-story`,
+          kind: "blog",
+          leagueId,
+          publishedAt: new Date("2026-06-12T00:00:00.000Z"),
+          summary: `${team.name} has the room watching.`,
+          title: `Beat Reporter: ${team.name} has arrived`,
+        })
+        .returning({ id: contentItems.id });
+      await tx.insert(contentItems).values({
+        authorPersona: "commissioner",
+        body: "Latest generic league note.",
+        contentHash: `${marker}-activation-latest-story-hash`,
+        dedupKey: `${marker}-activation-latest-story`,
+        kind: "blog",
+        leagueId,
+        publishedAt: new Date("2026-06-13T00:00:00.000Z"),
+        summary: "Latest generic league note.",
+        title: "Commissioner: Generic league bulletin",
+      });
+      if (!matchedStory) {
+        throw new Error("activation story was not inserted");
+      }
+      recordId = record.id;
+      matchedStoryId = matchedStory.id;
+      claimedTeamName = team.name;
+    });
+
+    const result = await getLeagueHomeData(handle.db, { leagueId, userId });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected home result: ${result.status}`);
+    }
+    expect(result.data.activation).toMatchObject({
+      allTime: {
+        losses: 4,
+        pointsAgainst: 1410.75,
+        pointsFor: 1610.25,
+        seasons: 2,
+        ties: 1,
+        wins: 10,
+      },
+      castTeaser: {
+        mode: "team_reference",
+        storyline: {
+          id: matchedStoryId,
+          title: `Beat Reporter: ${claimedTeamName} has arrived`,
+        },
+      },
+      records: [expect.objectContaining({ id: recordId })],
+      team: expect.objectContaining({
+        isClaimedByUser: true,
+        name: claimedTeamName,
+        wins: 0,
+      }),
+    });
+    expect(result.data.activation?.currentMatchup).not.toBeNull();
+    expect(
+      result.data.standings.find((row) => row.name === claimedTeamName)
+        ?.isClaimedByUser,
+    ).toBe(true);
+  });
+
+  it("falls back to the latest league cast headline when the claimed team has no direct coverage", async () => {
+    const [fallbackUser] = await handle.db
+      .insert(users)
+      .values({
+        displayName: "Activation Fallback Member",
+        email: `${marker}-activation-fallback@example.com`,
+      })
+      .returning({ id: users.id });
+    if (!fallbackUser) {
+      throw new Error("activation fallback user was not inserted");
+    }
+    await handle.db.insert(members).values({
+      organizationId: leagueId,
+      role: "member",
+      userId: fallbackUser.id,
+    });
+
+    let fallbackStoryId = "";
+    let claimedTeamName = "";
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const teams = await tx
+        .select({
+          id: fantasyTeams.id,
+          name: fantasyTeams.name,
+          ownerMemberIds: fantasyTeams.ownerMemberIds,
+          provider: fantasyTeams.provider,
+          providerTeamId: fantasyTeams.providerTeamId,
+        })
+        .from(fantasyTeams)
+        .where(eq(fantasyTeams.leagueId, leagueId))
+        .orderBy(asc(fantasyTeams.name))
+        .limit(2);
+      const team = teams[1];
+      if (!team) {
+        throw new Error("activation fallback fixture team was not found");
+      }
+      const providerMemberId = team.ownerMemberIds[0];
+      if (!providerMemberId) {
+        throw new Error("activation fallback fixture team has no owner");
+      }
+      const [fantasyMember] = await tx
+        .select({ id: fantasyMembers.id })
+        .from(fantasyMembers)
+        .where(
+          and(
+            eq(fantasyMembers.leagueId, leagueId),
+            eq(fantasyMembers.providerMemberId, providerMemberId),
+          ),
+        )
+        .limit(1);
+      if (!fantasyMember) {
+        throw new Error("activation fallback member was not found");
+      }
+      await tx.insert(leagueMemberIdentityClaims).values({
+        fantasyMemberId: fantasyMember.id,
+        leagueId,
+        provider: team.provider,
+        providerMemberId,
+        providerTeamIds: [team.providerTeamId],
+        userId: fallbackUser.id,
+      });
+      const [story] = await tx
+        .insert(contentItems)
+        .values({
+          authorPersona: "commissioner",
+          body: "A league-wide bulletin without a named team.",
+          contentHash: `${marker}-activation-fallback-story-hash`,
+          dedupKey: `${marker}-activation-fallback-story`,
+          kind: "blog",
+          leagueId,
+          publishedAt: new Date("2026-06-14T00:00:00.000Z"),
+          summary: "A league-wide bulletin without a named team.",
+          title: "Commissioner: Latest league bulletin",
+        })
+        .returning({ id: contentItems.id });
+      if (!story) {
+        throw new Error("activation fallback story was not inserted");
+      }
+      fallbackStoryId = story.id;
+      claimedTeamName = team.name;
+    });
+
+    const result = await getLeagueHomeData(handle.db, {
+      leagueId,
+      userId: fallbackUser.id,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected home result: ${result.status}`);
+    }
+    expect(result.data.activation).toMatchObject({
+      allTime: null,
+      castTeaser: {
+        mode: "latest",
+        storyline: {
+          id: fallbackStoryId,
+          title: "Commissioner: Latest league bulletin",
+        },
+      },
+      records: [],
+      team: expect.objectContaining({
+        isClaimedByUser: true,
+        name: claimedTeamName,
+      }),
+    });
   });
 
   it("suppresses record-book reads while integrity failures are unresolved", async () => {

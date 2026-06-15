@@ -20,7 +20,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Implement leaguemate detection from imported members and the "we found your N leaguemates" surface. (specs/16)
 - [x] Implement SMS and copy-link invites as the primary path, with email only where an address exists (mock delivery). (specs/16)
 - [x] Implement the claim-your-team invitee flow mapping the user to an imported provider-member. (specs/16)
-- [ ] Implement the activation hook (their team and records waiting; the cast already wrote about them). (specs/16)
+- [x] Implement the activation hook (their team and records waiting; the cast already wrote about them). (specs/16)
 - [ ] Complete the data-steward cleaning doorway per specs/14 §E. (specs/16)
 
 ### H. Entitlements (see specs/17)
@@ -48,3 +48,5 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 ## Discoveries / bugs (loop appends here)
 - [ ] **[correctness/MED] Bankroll rollover has no production scheduler** — `rolloverBankrollWeek()` is covered in domain tests but no Inngest/cron caller opens/closes weekly rows or triggers arena rebuilds.
 - [ ] **[product/MED] Spec says first bet opens the bankroll week, but placement requires an existing open week** — decide whether to implement first-bet week opening or adjust the spec/copy consistently.
+- [ ] **[product/LOW] Invite auth return path does not preserve the claim URL** — unauthenticated invite previews send users to provider onboarding without an explicit return-to continuation back to the invite after sign-in/sign-up.
+- [ ] **[maintainability/LOW] Activation cast matching is text-search based** — generated league posts do not persist structured team/person subject ids, so activation uses title/summary/body/metadata search before falling back to the latest headline.

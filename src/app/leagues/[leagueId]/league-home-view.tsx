@@ -2,6 +2,7 @@ import {
   Activity,
   ArrowRight,
   CalendarDays,
+  Clapperboard,
   ListOrdered,
   Newspaper,
   Rss,
@@ -48,6 +49,10 @@ function formatGamesBack(value: number): string {
     return "-";
   }
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatWinPercentage(value: number): string {
+  return `${Math.round(value * 1000) / 10}%`;
 }
 
 function leagueStatusLabel(status: LeagueHomeData["league"]["status"]): string {
@@ -160,12 +165,24 @@ function StatPill({ label, value }: { label: string; value: string | number }) {
 function StandingsRow({ row }: { row: LeagueHomeStanding }) {
   return (
     <>
-      <div className="grid min-h-14 grid-cols-[2rem_minmax(0,1fr)_4.25rem_4.25rem] items-center gap-2 border-border border-t px-3 py-2 text-sm sm:grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_3.25rem]">
+      <div
+        className={cn(
+          "grid min-h-14 grid-cols-[2rem_minmax(0,1fr)_4.25rem_4.25rem] items-center gap-2 border-border border-t px-3 py-2 text-sm sm:grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_3.25rem]",
+          row.isClaimedByUser ? "bg-primary/10" : "",
+        )}
+      >
         <div className="font-mono text-muted-foreground tabular-nums">
           {row.rank}
         </div>
         <div className="min-w-0">
-          <p className="truncate font-medium">{row.name}</p>
+          <p className="truncate font-medium">
+            {row.name}
+            {row.isClaimedByUser ? (
+              <span className="ml-2 rounded-control border border-primary/40 px-1.5 py-0.5 align-middle text-[0.65rem] font-semibold text-primary">
+                You
+              </span>
+            ) : null}
+          </p>
           <p className="truncate text-xs text-muted-foreground">
             {row.managerNames.join(", ")}
           </p>
@@ -189,6 +206,101 @@ function StandingsRow({ row }: { row: LeagueHomeStanding }) {
         </div>
       ) : null}
     </>
+  );
+}
+
+function ActivationHookSection({ data }: { data: LeagueHomeData }) {
+  const activation = data.activation;
+  if (!activation) {
+    return null;
+  }
+
+  const story = activation.castTeaser.storyline
+    ? toPressTeaserStory({
+        leagueId: data.league.id,
+        storyline: activation.castTeaser.storyline,
+      })
+    : null;
+
+  return (
+    <section className="-mx-4 grid gap-4 border-primary/30 border-y bg-primary/10 px-4 py-4 sm:-mx-6 sm:px-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-primary">
+            Your team is waiting
+          </p>
+          <h2 className="mt-1 truncate text-xl font-semibold tracking-tight">
+            {activation.team.name}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Rank {activation.team.rank} · {activation.team.wins}-
+            {activation.team.losses}-{activation.team.ties} ·{" "}
+            {formatPoints(activation.team.pointsFor)} PF
+          </p>
+        </div>
+        <Clapperboard className="size-6 text-primary" aria-hidden="true" />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-control border border-primary/20 bg-background/70 px-3 py-2">
+          <p className="text-xs text-muted-foreground">Standings</p>
+          <p className="mt-1 font-mono text-base font-semibold tabular-nums">
+            #{activation.team.rank} · {activation.team.wins}-
+            {activation.team.losses}-{activation.team.ties}
+          </p>
+        </div>
+        <div className="rounded-control border border-primary/20 bg-background/70 px-3 py-2">
+          <p className="text-xs text-muted-foreground">Current matchup</p>
+          <p className="mt-1 truncate text-sm font-semibold">
+            {activation.currentMatchup
+              ? `${activation.currentMatchup.away.name} at ${activation.currentMatchup.home.name}`
+              : "No matchup on the board"}
+          </p>
+        </div>
+        <div className="rounded-control border border-primary/20 bg-background/70 px-3 py-2">
+          <p className="text-xs text-muted-foreground">All-time</p>
+          <p className="mt-1 font-mono text-base font-semibold tabular-nums">
+            {activation.allTime
+              ? `${activation.allTime.wins}-${activation.allTime.losses}-${activation.allTime.ties} · ${formatWinPercentage(
+                  activation.allTime.winPercentage,
+                )}`
+              : "History building"}
+          </p>
+        </div>
+      </div>
+
+      {activation.records.length > 0 ? (
+        <div className="grid gap-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Record-book hits
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {activation.records.map((record) => (
+              <div
+                key={record.id}
+                className="rounded-control border border-primary/20 bg-background/70 px-3 py-2"
+              >
+                <p className="truncate text-xs font-semibold">{record.label}</p>
+                <p className="mt-1 font-mono text-sm tabular-nums">
+                  {formatRecordValue(record.recordType, record.value)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-2">
+        <p className="text-sm font-medium">{activation.castTeaser.message}</p>
+        {story ? (
+          <PublicationStoryCard story={story} variant="rail" />
+        ) : (
+          <p className="rounded-control border border-dashed border-primary/30 bg-background/60 px-3 py-3 text-sm text-muted-foreground">
+            You're in the next one.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -457,6 +569,8 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
           <StatPill label="Role" value={data.userRole.replace("_", " ")} />
         </div>
       </header>
+
+      <ActivationHookSection data={data} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.75fr)]">
         <div className="grid gap-6">

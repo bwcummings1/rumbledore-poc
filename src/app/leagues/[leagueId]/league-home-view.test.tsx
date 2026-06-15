@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
 import type { LeagueHomeData } from "@/home/league-home";
 import { LEAGUE_PUBLICATION_SECTIONS } from "@/news/sections";
 import { LeagueHomeView } from "./league-home-view";
@@ -10,7 +10,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => router,
 }));
 
+afterEach(() => {
+  cleanup();
+});
+
 const data: LeagueHomeData = {
+  activation: null,
   currentMatchups: [
     {
       away: {
@@ -169,4 +174,50 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(
     screen.getByRole("link", { name: /invite/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/members");
+});
+
+test("league home view renders the claimed-team activation hook", () => {
+  const claimedStanding = data.standings[0];
+  if (!claimedStanding) {
+    throw new Error("claimed standing fixture is missing");
+  }
+
+  render(
+    <LeagueHomeView
+      data={{
+        ...data,
+        activation: {
+          allTime: {
+            losses: 5,
+            pointsAgainst: 1800.5,
+            pointsFor: 2010.25,
+            seasons: 2,
+            ties: 1,
+            winPercentage: 0.65625,
+            wins: 10,
+          },
+          castTeaser: {
+            message: "The cast has been covering Fixture Team 01.",
+            mode: "team_reference",
+            storyline: data.storylines[0] ?? null,
+          },
+          currentMatchup: data.currentMatchups[0] ?? null,
+          providerMemberId: "provider-member-1",
+          records: data.records,
+          team: { ...claimedStanding, isClaimedByUser: true },
+        },
+        standings: [
+          { ...claimedStanding, isClaimedByUser: true },
+          ...data.standings.slice(1),
+        ],
+      }}
+    />,
+  );
+
+  expect(screen.getByText("Your team is waiting")).toBeDefined();
+  expect(screen.getByText("10-5-1 · 65.6%")).toBeDefined();
+  expect(
+    screen.getByText("The cast has been covering Fixture Team 01."),
+  ).toBeDefined();
+  expect(screen.getByText("You")).toBeDefined();
 });

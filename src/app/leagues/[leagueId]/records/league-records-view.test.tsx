@@ -4,6 +4,7 @@ import type { LeagueHomeData } from "@/home/league-home";
 import { LeagueRecordsView } from "./league-records-view";
 
 const data: LeagueHomeData = {
+  activation: null,
   currentMatchups: [],
   currentScoringPeriod: 1,
   league: {

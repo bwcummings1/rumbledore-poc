@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Invite activation hook landed — claimed members now see their team, current matchup, all-time stats/record hits, and cast coverage on league home with latest-headline fallback.
 - 2026-06-15: Claim-your-team invite flow landed — Members can copy a reusable roster claim link, invitees can pick an unclaimed imported team, and acceptance now maps user→provider-member before granting league access.
 - 2026-06-15: Primary roster invites landed — Members now bulk-copy roster invite links, keep SMS as the prominent contact-supplied path, and keep email behind an entered-address fallback with hashed/hinted destinations.
 - 2026-06-15: Leaguemate detection surface landed — imports now carry provider-aware "we found your N leaguemates" summaries, exclude the connector's known team slot, and link directly into roster invites.

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, type SQL, sql } from "drizzle-orm";
 import type { AiPersona } from "@/ai";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -10,9 +10,12 @@ import {
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
+  identityMappings,
+  leagueMemberIdentityClaims,
   leagues,
   type Member,
   persons,
+  seasonStatistics,
 } from "@/db/schema";
 import { articleDek, articleHeroImageUrl } from "@/news/article-metadata";
 import {
@@ -29,6 +32,7 @@ export interface LeagueHomeTeam {
   name: string;
   abbrev: string;
   logo: string | null;
+  isClaimedByUser?: boolean;
   managerNames: string[];
 }
 
@@ -82,6 +86,29 @@ export interface LeagueHomeStoryline {
   thumbnailUrl: string;
 }
 
+export interface LeagueHomeActivationAllTime {
+  losses: number;
+  pointsAgainst: number;
+  pointsFor: number;
+  seasons: number;
+  ties: number;
+  winPercentage: number;
+  wins: number;
+}
+
+export interface LeagueHomeActivation {
+  allTime: LeagueHomeActivationAllTime | null;
+  castTeaser: {
+    mode: "team_reference" | "latest" | "empty";
+    message: string;
+    storyline: LeagueHomeStoryline | null;
+  };
+  currentMatchup: LeagueHomeMatchup | null;
+  providerMemberId: string;
+  records: LeagueHomeRecord[];
+  team: LeagueHomeStanding;
+}
+
 export interface LeagueHomeData {
   league: {
     id: string;
@@ -100,6 +127,7 @@ export interface LeagueHomeData {
   storylines: LeagueHomeStoryline[];
   standings: LeagueHomeStanding[];
   teams: LeagueHomeTeam[];
+  activation: LeagueHomeActivation | null;
   currentScoringPeriod: number | null;
   currentMatchups: LeagueHomeMatchup[];
   totals: {
@@ -137,6 +165,21 @@ type FantasyMemberRow = Pick<
   "displayName" | "providerMemberId"
 >;
 
+type IdentityClaimRow = Pick<
+  typeof leagueMemberIdentityClaims.$inferSelect,
+  "providerMemberId" | "providerTeamIds"
+>;
+
+type IdentityMappingRow = Pick<
+  typeof identityMappings.$inferSelect,
+  "personId" | "season"
+>;
+
+type SeasonStatisticRow = Pick<
+  typeof seasonStatistics.$inferSelect,
+  "losses" | "pointsAgainst" | "pointsFor" | "season" | "ties" | "wins"
+>;
+
 type FantasyMatchupRow = Pick<
   typeof fantasyMatchups.$inferSelect,
   | "awayScore"
@@ -167,6 +210,13 @@ type StorylineRow = Pick<
   "authorPersona" | "id" | "metadata" | "publishedAt" | "summary" | "title"
 >;
 
+interface ScopedActivationRows {
+  identityClaim: IdentityClaimRow;
+  matchedStoryline: StorylineRow | null;
+  personIds: string[];
+  seasonStats: SeasonStatisticRow[];
+}
+
 function compareTeamsByProviderId(left: string, right: string): number {
   return left.localeCompare(right, undefined, {
     numeric: true,
@@ -191,10 +241,12 @@ function managerNamesFor(
 function toHomeTeam(
   team: FantasyTeamRow,
   membersByProviderId: ReadonlyMap<string, string>,
+  claimedProviderTeamIds: ReadonlySet<string>,
 ): LeagueHomeTeam {
   return {
     abbrev: team.abbrev,
     id: team.id,
+    isClaimedByUser: claimedProviderTeamIds.has(team.providerTeamId),
     logo: team.logo,
     managerNames: managerNamesFor(team.ownerMemberIds, membersByProviderId),
     name: team.name,
@@ -218,6 +270,7 @@ function recordGamesBack(
 function buildStandings(
   teams: readonly FantasyTeamRow[],
   membersByProviderId: ReadonlyMap<string, string>,
+  claimedProviderTeamIds: ReadonlySet<string>,
 ): LeagueHomeStanding[] {
   const sorted = [...teams].sort((left, right) => {
     return (
@@ -233,7 +286,7 @@ function buildStandings(
   const playoffCut = sorted.length >= 8 ? Math.ceil(sorted.length / 2) : 0;
 
   return sorted.map((team, index) => ({
-    ...toHomeTeam(team, membersByProviderId),
+    ...toHomeTeam(team, membersByProviderId, claimedProviderTeamIds),
     gamesBack: recordGamesBack(team, leader),
     losses: team.losses,
     playoffLineAfter: playoffCut > 0 && index + 1 === playoffCut,
@@ -350,6 +403,184 @@ function buildStorylines(rows: readonly StorylineRow[]): LeagueHomeStoryline[] {
   }));
 }
 
+function normalizedSearchTerm(value: string): string {
+  return value.replace(/[%_]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function searchPattern(value: string): string {
+  return `%${normalizedSearchTerm(value).replace(/\s+/g, "%")}%`;
+}
+
+function contentMatchesSearchTerm(term: string): SQL {
+  const pattern = searchPattern(term);
+  return sql`(
+    lower(${contentItems.title}) like ${pattern}
+    or lower(${contentItems.summary}) like ${pattern}
+    or lower(${contentItems.body}) like ${pattern}
+    or lower(${contentItems.metadata}::text) like ${pattern}
+  )`;
+}
+
+function activationSearchTerms({
+  identityClaim,
+  members,
+  teams,
+}: {
+  identityClaim: IdentityClaimRow;
+  members: readonly FantasyMemberRow[];
+  teams: readonly FantasyTeamRow[];
+}): string[] {
+  const claimedTeamIds = new Set(identityClaim.providerTeamIds);
+  const ownerMemberIds = new Set([identityClaim.providerMemberId]);
+  const claimedTeams = teams.filter(
+    (team) =>
+      claimedTeamIds.has(team.providerTeamId) ||
+      team.ownerMemberIds.includes(identityClaim.providerMemberId),
+  );
+  for (const team of claimedTeams) {
+    for (const ownerMemberId of team.ownerMemberIds) {
+      ownerMemberIds.add(ownerMemberId);
+    }
+  }
+
+  return sortedUnique([
+    ...claimedTeams.map((team) => team.name),
+    ...members
+      .filter((member) => ownerMemberIds.has(member.providerMemberId))
+      .map((member) => member.displayName),
+  ]).filter((term) => normalizedSearchTerm(term).length >= 3);
+}
+
+function selectedActivationPersonIds(
+  mappings: readonly IdentityMappingRow[],
+  leagueSeason: number,
+): string[] {
+  const currentSeasonIds = mappings
+    .filter((mapping) => mapping.season === leagueSeason)
+    .map((mapping) => mapping.personId);
+  return sortedUnique(
+    currentSeasonIds.length > 0
+      ? currentSeasonIds
+      : mappings.map((mapping) => mapping.personId),
+  );
+}
+
+function buildAllTimeStats(
+  rows: readonly SeasonStatisticRow[],
+): LeagueHomeActivationAllTime | null {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const totals = rows.reduce(
+    (acc, row) => ({
+      losses: acc.losses + row.losses,
+      pointsAgainst: acc.pointsAgainst + row.pointsAgainst,
+      pointsFor: acc.pointsFor + row.pointsFor,
+      ties: acc.ties + row.ties,
+      wins: acc.wins + row.wins,
+    }),
+    {
+      losses: 0,
+      pointsAgainst: 0,
+      pointsFor: 0,
+      ties: 0,
+      wins: 0,
+    },
+  );
+  const decisions = totals.wins + totals.losses + totals.ties;
+
+  return {
+    ...totals,
+    pointsAgainst: Math.round(totals.pointsAgainst * 100) / 100,
+    pointsFor: Math.round(totals.pointsFor * 100) / 100,
+    seasons: new Set(rows.map((row) => row.season)).size,
+    winPercentage:
+      decisions > 0 ? (totals.wins + totals.ties / 2) / decisions : 0,
+  };
+}
+
+function currentMatchupForTeam(
+  matchups: readonly LeagueHomeMatchup[],
+  providerTeamId: string,
+): LeagueHomeMatchup | null {
+  return (
+    matchups.find(
+      (matchup) =>
+        matchup.home.teamId === providerTeamId ||
+        matchup.away.teamId === providerTeamId,
+    ) ?? null
+  );
+}
+
+function buildActivation({
+  activation,
+  currentMatchups,
+  latestStoryline,
+  personNamesById,
+  recordRows,
+  standings,
+}: {
+  activation: ScopedActivationRows | null;
+  currentMatchups: readonly LeagueHomeMatchup[];
+  latestStoryline: LeagueHomeStoryline | null;
+  personNamesById: ReadonlyMap<string, string>;
+  recordRows: readonly RecordRow[];
+  standings: readonly LeagueHomeStanding[];
+}): LeagueHomeActivation | null {
+  if (!activation) {
+    return null;
+  }
+
+  const claimedProviderTeamIds = new Set(
+    activation.identityClaim.providerTeamIds,
+  );
+  const team = standings.find((candidate) =>
+    claimedProviderTeamIds.has(candidate.providerTeamId),
+  );
+  if (!team) {
+    return null;
+  }
+
+  const activationRecords = buildRecords(
+    recordRows.filter(
+      (record) =>
+        Boolean(record.holderPersonId) &&
+        activation.personIds.includes(record.holderPersonId ?? ""),
+    ),
+    personNamesById,
+  ).slice(0, 3);
+  const matchedStorylines = buildStorylines(
+    activation.matchedStoryline ? [activation.matchedStoryline] : [],
+  );
+  const matchedStoryline = matchedStorylines[0] ?? null;
+
+  return {
+    allTime: buildAllTimeStats(activation.seasonStats),
+    castTeaser: matchedStoryline
+      ? {
+          message: `The cast has been covering ${team.name}.`,
+          mode: "team_reference",
+          storyline: matchedStoryline,
+        }
+      : latestStoryline
+        ? {
+            message: `The cast has been covering this league. ${team.name} is in the next one.`,
+            mode: "latest",
+            storyline: latestStoryline,
+          }
+        : {
+            message: `${team.name} is on the board. The cast will have them in the next dispatch.`,
+            mode: "empty",
+            storyline: null,
+          },
+    currentMatchup: currentMatchupForTeam(currentMatchups, team.providerTeamId),
+    providerMemberId: activation.identityClaim.providerMemberId,
+    records: activationRecords,
+    team,
+  };
+}
+
 export async function getLeagueHomeData(
   db: Db,
   input: { leagueId: string; userId: string; userRole?: Member["role"] },
@@ -434,6 +665,21 @@ export async function getLeagueHomeData(
           eq(fantasyMembers.season, league.season),
         ),
       );
+
+    const [identityClaim] = await tx
+      .select({
+        providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+        providerTeamIds: leagueMemberIdentityClaims.providerTeamIds,
+      })
+      .from(leagueMemberIdentityClaims)
+      .where(
+        and(
+          eq(leagueMemberIdentityClaims.leagueId, input.leagueId),
+          eq(leagueMemberIdentityClaims.userId, input.userId),
+          eq(leagueMemberIdentityClaims.provider, league.provider),
+        ),
+      )
+      .limit(1);
 
     const matchupRows = await tx
       .select({
@@ -534,7 +780,102 @@ export async function getLeagueHomeData(
       .orderBy(desc(contentItems.publishedAt))
       .limit(3);
 
+    let activation: ScopedActivationRows | null = null;
+    if (identityClaim) {
+      const providerTeamIds = sortedUnique(
+        identityClaim.providerTeamIds.length > 0
+          ? identityClaim.providerTeamIds
+          : teamRows
+              .filter((team) =>
+                team.ownerMemberIds.includes(identityClaim.providerMemberId),
+              )
+              .map((team) => team.providerTeamId),
+      );
+      const mappingRows =
+        providerTeamIds.length > 0
+          ? await tx
+              .select({
+                personId: identityMappings.personId,
+                season: identityMappings.season,
+              })
+              .from(identityMappings)
+              .where(
+                and(
+                  eq(identityMappings.leagueId, input.leagueId),
+                  eq(identityMappings.provider, league.provider),
+                  inArray(identityMappings.providerTeamId, providerTeamIds),
+                ),
+              )
+          : [];
+      const personIds = selectedActivationPersonIds(mappingRows, league.season);
+      const seasonStatRows =
+        personIds.length > 0
+          ? await tx
+              .select({
+                losses: seasonStatistics.losses,
+                pointsAgainst: seasonStatistics.pointsAgainst,
+                pointsFor: seasonStatistics.pointsFor,
+                season: seasonStatistics.season,
+                ties: seasonStatistics.ties,
+                wins: seasonStatistics.wins,
+              })
+              .from(seasonStatistics)
+              .where(
+                and(
+                  eq(seasonStatistics.leagueId, input.leagueId),
+                  inArray(seasonStatistics.personId, personIds),
+                ),
+              )
+              .orderBy(asc(seasonStatistics.season))
+          : [];
+      const searchTerms = activationSearchTerms({
+        identityClaim: {
+          ...identityClaim,
+          providerTeamIds,
+        },
+        members: memberRows,
+        teams: teamRows,
+      });
+      const searchConditions = searchTerms.map(contentMatchesSearchTerm);
+      const [matchedStoryline] =
+        searchConditions.length > 0
+          ? await tx
+              .select({
+                authorPersona: contentItems.authorPersona,
+                id: contentItems.id,
+                metadata: contentItems.metadata,
+                publishedAt: contentItems.publishedAt,
+                summary: contentItems.summary,
+                title: contentItems.title,
+              })
+              .from(contentItems)
+              .where(
+                and(
+                  eq(contentItems.leagueId, input.leagueId),
+                  eq(contentItems.kind, "blog"),
+                  or(...searchConditions),
+                ),
+              )
+              .orderBy(
+                desc(contentItems.publishedAt),
+                desc(contentItems.createdAt),
+              )
+              .limit(1)
+          : [];
+
+      activation = {
+        identityClaim: {
+          ...identityClaim,
+          providerTeamIds,
+        },
+        matchedStoryline: matchedStoryline ?? null,
+        personIds,
+        seasonStats: seasonStatRows satisfies SeasonStatisticRow[],
+      };
+    }
+
     return {
+      activation,
       matchups: matchupRows satisfies FantasyMatchupRow[],
       members: memberRows satisfies FantasyMemberRow[],
       personNamesById: new Map(
@@ -553,7 +894,11 @@ export async function getLeagueHomeData(
     ]),
   );
   const teams = scoped.teams.map((team) =>
-    toHomeTeam(team, membersByProviderId),
+    toHomeTeam(
+      team,
+      membersByProviderId,
+      new Set(scoped.activation?.identityClaim.providerTeamIds ?? []),
+    ),
   );
   const teamsByProviderId = new Map(
     teams.map((team) => [team.providerTeamId, team]),
@@ -562,20 +907,39 @@ export async function getLeagueHomeData(
     league.currentScoringPeriod,
     scoped.matchups,
   );
+  const claimedProviderTeamIds = new Set(
+    scoped.activation?.identityClaim.providerTeamIds ?? [],
+  );
+  const currentMatchups = buildCurrentMatchups(
+    scoped.matchups,
+    teamsByProviderId,
+    currentPeriod,
+  );
+  const records = buildRecords(scoped.records, scoped.personNamesById);
+  const standings = buildStandings(
+    scoped.teams,
+    membersByProviderId,
+    claimedProviderTeamIds,
+  );
+  const storylines = buildStorylines(scoped.storylines);
 
   return {
     status: "ready",
     data: {
-      currentMatchups: buildCurrentMatchups(
-        scoped.matchups,
-        teamsByProviderId,
-        currentPeriod,
-      ),
+      activation: buildActivation({
+        activation: scoped.activation,
+        currentMatchups,
+        latestStoryline: storylines[0] ?? null,
+        personNamesById: scoped.personNamesById,
+        recordRows: scoped.records,
+        standings,
+      }),
+      currentMatchups,
       currentScoringPeriod: currentPeriod,
       league,
-      records: buildRecords(scoped.records, scoped.personNamesById),
-      storylines: buildStorylines(scoped.storylines),
-      standings: buildStandings(scoped.teams, membersByProviderId),
+      records,
+      storylines,
+      standings,
       teams,
       totals: {
         matchups: scoped.matchups.length,
