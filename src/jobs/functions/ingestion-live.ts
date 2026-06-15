@@ -4,7 +4,9 @@ import { z } from "zod";
 import { recordJobRun } from "@/core/metrics";
 import { AppError, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
+import { withLeagueContext } from "@/db/rls";
 import {
+  dataCoverage,
   leagues,
   members,
   onboardingDiscoveredLeagues,
@@ -46,6 +48,76 @@ import {
 
 const DEFAULT_TICK_LIMIT = 500;
 const MAX_TICK_LIMIT = 2000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+const LIVE_INGESTION_DATA_CLASSES = [
+  "league",
+  "teams",
+  "members",
+  "rosters",
+  "matchups",
+] as const satisfies readonly ProviderDataClass[];
+
+type LiveIngestionDataClass = (typeof LIVE_INGESTION_DATA_CLASSES)[number];
+
+export type IngestionGameState =
+  | "live_window"
+  | "in_season_off_hours"
+  | "off_season";
+
+export interface IngestionGameStateInput {
+  currentScoringPeriod: number;
+  leagueId: string;
+  leagueStatus: "preseason" | "in_season" | "complete" | "unknown";
+  now: Date;
+  provider: IngestableProviderId;
+  providerLeagueId: string;
+  season: number;
+}
+
+export interface IngestionGameStateProvider {
+  stateForLeague(
+    input: IngestionGameStateInput,
+  ): IngestionGameState | Promise<IngestionGameState>;
+}
+
+const DEFAULT_CADENCE_MS: Record<
+  IngestionGameState,
+  Record<LiveIngestionDataClass, number>
+> = {
+  live_window: {
+    league: HOUR_MS,
+    teams: DAY_MS,
+    members: DAY_MS,
+    rosters: 5 * MINUTE_MS,
+    matchups: MINUTE_MS,
+  },
+  in_season_off_hours: {
+    league: DAY_MS,
+    teams: DAY_MS,
+    members: DAY_MS,
+    rosters: HOUR_MS,
+    matchups: HOUR_MS,
+  },
+  off_season: {
+    league: WEEK_MS,
+    teams: WEEK_MS,
+    members: WEEK_MS,
+    rosters: WEEK_MS,
+    matchups: DAY_MS,
+  },
+};
+
+const defaultGameStateProvider: IngestionGameStateProvider = {
+  stateForLeague(input) {
+    return input.leagueStatus === "complete"
+      ? "off_season"
+      : "in_season_off_hours";
+  },
+};
 
 type LeagueIngestProvider = Pick<
   FantasyProvider<unknown, FantasyProviderSession>,
@@ -73,6 +145,7 @@ type SyncCurrentLeagueFn = (
 
 export interface IngestionTickDependencies {
   db: Db;
+  gameStateProvider?: IngestionGameStateProvider;
   now?: () => Date;
 }
 
@@ -102,6 +175,7 @@ export interface IngestionTickResponse {
   plannedCount: number;
   sentCount: number;
   skippedDuplicateCredentials: number;
+  skippedNotDue: number;
 }
 
 export interface LeagueIngestResponse extends CurrentLeagueSyncResult {
@@ -347,7 +421,9 @@ async function loadCredentialsForLeagueIngest({
 
 interface ConnectedLeagueRow {
   credentialId: string;
+  currentScoringPeriod: number;
   leagueId: string;
+  leagueStatus: IngestionGameStateInput["leagueStatus"];
   name: string;
   provider: IngestableProviderId;
   providerLeagueId: string;
@@ -370,7 +446,9 @@ async function listConnectedLeagueTargets({
   return db
     .select({
       credentialId: providerCredentials.id,
+      currentScoringPeriod: leagues.currentScoringPeriod,
       leagueId: leagues.id,
+      leagueStatus: leagues.status,
       name: leagues.name,
       provider: leagues.provider,
       providerLeagueId: leagues.providerLeagueId,
@@ -413,10 +491,100 @@ async function listConnectedLeagueTargets({
     );
 }
 
-function plannedEventFor(row: ConnectedLeagueRow): PlannedLeagueIngestEvent {
+type CoverageByDataClass = Partial<Record<LiveIngestionDataClass, Date>>;
+
+async function loadCoverageByDataClass({
+  db,
+  row,
+}: {
+  db: Db;
+  row: ConnectedLeagueRow;
+}): Promise<CoverageByDataClass> {
+  const coverageRows = await withLeagueContext(db, row.leagueId, (tx) =>
+    tx
+      .select({
+        dataClass: dataCoverage.dataClass,
+        observedAt: dataCoverage.observedAt,
+      })
+      .from(dataCoverage)
+      .where(
+        and(
+          eq(dataCoverage.leagueId, row.leagueId),
+          eq(dataCoverage.provider, row.provider),
+          eq(dataCoverage.providerLeagueId, row.providerLeagueId),
+          eq(dataCoverage.season, row.season),
+          inArray(dataCoverage.dataClass, [...LIVE_INGESTION_DATA_CLASSES]),
+        ),
+      ),
+  );
+
+  return Object.fromEntries(
+    coverageRows.map((coverage) => [
+      coverage.dataClass as LiveIngestionDataClass,
+      coverage.observedAt,
+    ]),
+  );
+}
+
+function dueDataClassesFor({
+  coverage,
+  force,
+  gameState,
+  now,
+}: {
+  coverage: CoverageByDataClass;
+  force: boolean;
+  gameState: IngestionGameState;
+  now: Date;
+}): LiveIngestionDataClass[] {
+  if (force) {
+    return [...LIVE_INGESTION_DATA_CLASSES];
+  }
+
+  const cadence = DEFAULT_CADENCE_MS[gameState];
+  return LIVE_INGESTION_DATA_CLASSES.filter((dataClass) => {
+    const observedAt = coverage[dataClass];
+    if (!observedAt) {
+      return true;
+    }
+    return now.getTime() - observedAt.getTime() >= cadence[dataClass];
+  });
+}
+
+function idempotencyWindowBucket({
+  dataClasses,
+  gameState,
+  now,
+}: {
+  dataClasses: readonly LiveIngestionDataClass[];
+  gameState: IngestionGameState;
+  now: Date;
+}): string {
+  const cadence = DEFAULT_CADENCE_MS[gameState];
+  const shortestIntervalMs = dataClasses.reduce(
+    (shortest, dataClass) => Math.min(shortest, cadence[dataClass]),
+    Number.POSITIVE_INFINITY,
+  );
+  const intervalMs = Number.isFinite(shortestIntervalMs)
+    ? shortestIntervalMs
+    : MINUTE_MS;
+  return `${gameState}:${Math.floor(now.getTime() / intervalMs)}`;
+}
+
+function plannedEventFor({
+  dataClasses,
+  gameState,
+  now,
+  row,
+}: {
+  dataClasses: readonly LiveIngestionDataClass[];
+  gameState: IngestionGameState;
+  now: Date;
+  row: ConnectedLeagueRow;
+}): PlannedLeagueIngestEvent {
   const data: LeagueIngestData = {
     credentialId: row.credentialId,
-    dataClasses: ["league", "teams", "members", "rosters", "matchups"],
+    dataClasses: [...dataClasses],
     leagueId: row.leagueId,
     name: row.name,
     provider: row.provider,
@@ -433,6 +601,8 @@ function plannedEventFor(row: ConnectedLeagueRow): PlannedLeagueIngestEvent {
       row.provider,
       row.providerLeagueId,
       row.season,
+      dataClasses.join(","),
+      idempotencyWindowBucket({ dataClasses, gameState, now }),
     ].join(":"),
     name: JOB_EVENTS.leagueIngest,
   };
@@ -474,6 +644,9 @@ export async function runIngestionTick({
     | typeof JOB_EVENTS.leagueConnected;
 }): Promise<IngestionTickResponse> {
   const data = parseIngestionTickData(rawData);
+  const now = data.now ? new Date(data.now) : (deps.now?.() ?? new Date());
+  const gameStateProvider = deps.gameStateProvider ?? defaultGameStateProvider;
+  const forceDue = eventName === JOB_EVENTS.leagueConnected;
   const rows = await listConnectedLeagueTargets({
     db: deps.db,
     leagueIds: data.leagueIds,
@@ -481,6 +654,7 @@ export async function runIngestionTick({
   const planned: PlannedLeagueIngestEvent[] = [];
   const seen = new Set<string>();
   let skippedDuplicateCredentials = 0;
+  let skippedNotDue = 0;
 
   for (const row of rows) {
     const key = [
@@ -494,7 +668,36 @@ export async function runIngestionTick({
       continue;
     }
     seen.add(key);
-    planned.push(plannedEventFor(row));
+
+    const gameState = await gameStateProvider.stateForLeague({
+      currentScoringPeriod: row.currentScoringPeriod,
+      leagueId: row.leagueId,
+      leagueStatus: row.leagueStatus,
+      now,
+      provider: row.provider,
+      providerLeagueId: row.providerLeagueId,
+      season: row.season,
+    });
+    const coverage = await loadCoverageByDataClass({ db: deps.db, row });
+    const dueDataClasses = dueDataClassesFor({
+      coverage,
+      force: forceDue,
+      gameState,
+      now,
+    });
+    if (dueDataClasses.length === 0) {
+      skippedNotDue += 1;
+      continue;
+    }
+
+    planned.push(
+      plannedEventFor({
+        dataClasses: dueDataClasses,
+        gameState,
+        now,
+        row,
+      }),
+    );
     if (planned.length >= data.limit) {
       break;
     }
@@ -509,6 +712,7 @@ export async function runIngestionTick({
     plannedCount: planned.length,
     sentCount: 0,
     skippedDuplicateCredentials,
+    skippedNotDue,
   };
 }
 

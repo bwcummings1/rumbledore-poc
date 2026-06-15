@@ -7,7 +7,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 
 ### J. Always-on ingestion & freshness (see specs/19)
 - [x] Build the `ingestion.tick` cron orchestrator that fans out per-league ingest workers. (specs/19)
-- [ ] Drive adaptive cadence from an injectable NFL game-state/calendar provider (live-window fast path vs off-hours). (specs/19)
+- [x] Drive adaptive cadence from an injectable NFL game-state/calendar provider (live-window fast path vs off-hours). (specs/19)
 - [ ] Make the poll policy a pluggable config seam, with cadence as data (cost-optimization deferred to research). (specs/19)
 - [ ] Harden incremental sync to never downgrade finalized matchups, idempotently. (specs/19)
 - [ ] Wire reconnect-on-expiry into the scheduler so expired auth pauses with a CTA, not a crash. (specs/19)
@@ -51,4 +51,4 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — split routes or use a neutral slug.
 
 ## Discoveries / bugs (loop appends here)
-- (none yet this phase)
+- [ ] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.

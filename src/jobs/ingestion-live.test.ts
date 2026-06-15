@@ -8,6 +8,7 @@ import { parseEnv } from "@/core/env/schema";
 import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import {
+  dataCoverage,
   leagues,
   members,
   onboardingDiscoveredLeagues,
@@ -28,11 +29,13 @@ import {
   type FantasyProviderCapabilities,
   type FantasyProviderSession,
   ProviderBlockedError,
+  type ProviderDataClass,
 } from "@/providers";
 import { JOB_EVENTS } from "./events";
 import {
   createIngestionTickFunction,
   createLeagueIngestFunction,
+  type IngestionGameStateProvider,
   runIngestionTick,
   runLeagueIngest,
 } from "./functions/ingestion-live";
@@ -42,6 +45,13 @@ const marker = `liveingesttest-${randomUUID()}`;
 const masterKey = "test-live-ingest-master-key-minimum-32"; // ubs:ignore - fake fixture value
 const fixtureSwid = "{00000000-0000-4000-8000-000000000002}";
 const fixtureEspnS2 = "fixture-live-ingest-session"; // ubs:ignore - fake ESPN cookie value for job tests
+const primaryLiveDataClasses = [
+  "league",
+  "teams",
+  "members",
+  "rosters",
+  "matchups",
+] as const satisfies readonly ProviderDataClass[];
 
 let handle: DbHandle;
 let cipher: CredentialCipher;
@@ -228,6 +238,27 @@ async function seedLiveLeague(
   };
 }
 
+async function seedDataCoverage(
+  seed: SeededLiveLeague,
+  observedAtByClass: Partial<Record<ProviderDataClass, Date>>,
+) {
+  await handle.db.insert(dataCoverage).values(
+    primaryLiveDataClasses.map((dataClass) => ({
+      capability: "full" as const,
+      dataClass,
+      details: { test: marker },
+      itemCount: 1,
+      leagueId: seed.leagueId,
+      observedAt:
+        observedAtByClass[dataClass] ?? new Date("2026-09-13T18:00:00Z"),
+      provider: seed.provider,
+      providerLeagueId: seed.providerLeagueId,
+      season: 2026,
+      status: "complete" as const,
+    })),
+  );
+}
+
 function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
   return {
     league: {
@@ -392,6 +423,101 @@ describe("live ingestion jobs", () => {
         name: JOB_EVENTS.leagueIngest,
       }),
     ]);
+  });
+
+  it("uses injected live game state to poll matchups faster than off-hours", async () => {
+    const seeded = await seedLiveLeague("cadence-live");
+    const now = new Date("2026-09-13T18:02:00Z");
+    await seedDataCoverage(seeded, {
+      matchups: new Date("2026-09-13T18:00:00Z"),
+      rosters: new Date("2026-09-13T18:00:00Z"),
+    });
+    const calls: Parameters<IngestionGameStateProvider["stateForLeague"]>[0][] =
+      [];
+    const liveWindowProvider: IngestionGameStateProvider = {
+      stateForLeague(input) {
+        calls.push(input);
+        return "live_window";
+      },
+    };
+    const offHoursProvider: IngestionGameStateProvider = {
+      stateForLeague: () => "in_season_off_hours",
+    };
+
+    const live = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: liveWindowProvider,
+      },
+    });
+    const offHours = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: offHoursProvider,
+      },
+    });
+
+    expect(live).toMatchObject({
+      ok: true,
+      plannedCount: 1,
+      skippedNotDue: 0,
+    });
+    expect(live.planned[0]?.data.dataClasses).toEqual(["matchups"]);
+    expect(live.planned[0]?.id).toContain("matchups:live_window:");
+    expect(calls[0]).toMatchObject({
+      currentScoringPeriod: 1,
+      leagueId: seeded.leagueId,
+      provider: "espn",
+      providerLeagueId: seeded.providerLeagueId,
+      season: 2026,
+    });
+    expect(offHours).toMatchObject({
+      ok: true,
+      plannedCount: 0,
+      skippedNotDue: 1,
+    });
+  });
+
+  it("uses off-hours cadence once the hourly matchup window is due", async () => {
+    const seeded = await seedLiveLeague("cadence-offhours");
+    const now = new Date("2026-09-13T19:01:00Z");
+    await seedDataCoverage(seeded, {
+      matchups: new Date("2026-09-13T18:00:00Z"),
+      rosters: new Date("2026-09-13T18:00:00Z"),
+    });
+
+    const result = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: {
+          stateForLeague: () => "in_season_off_hours",
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      plannedCount: 1,
+    });
+    expect(result.planned[0]?.data.dataClasses).toEqual([
+      "rosters",
+      "matchups",
+    ]);
+    expect(result.planned[0]?.id).toContain(
+      "rosters,matchups:in_season_off_hours:",
+    );
   });
 
   it("does not send fan-out events when no connected league is due", async () => {
