@@ -101,7 +101,9 @@ describe("WebPushNotifier", () => {
     const sendNotification = vi.fn(async (subscription, payload) => {
       calls.push({
         endpoint: subscription.endpoint,
-        payload: JSON.parse(String(payload)) as PushNotificationPayload,
+        payload: (await new Response(
+          String(payload),
+        ).json()) as PushNotificationPayload,
       });
       return { body: "", headers: {}, statusCode: 201 };
     }) as unknown as SendWebPushNotification;
@@ -139,6 +141,33 @@ describe("WebPushNotifier", () => {
         },
       },
     ]);
+  });
+
+  it("treats an explicit empty user list as no recipients", async () => {
+    await seedSubscription("empty-user-list");
+    const sendNotification = vi.fn(
+      async () => ({ body: "", headers: {}, statusCode: 201 }) as const,
+    ) as unknown as SendWebPushNotification;
+    const notifier = new WebPushNotifier({
+      db: handle.db,
+      privateKey: unusedPrivateKey,
+      publicKey: "unused-public",
+      sendNotification,
+      subject: "mailto:ops@example.invalid",
+    });
+
+    const summary = await notifier.notifyLeague({
+      at: new Date("2026-06-12T14:30:00.000Z"),
+      body: "Nobody should receive this personal fan-out.",
+      leagueId,
+      title: "No recipients",
+      type: PUSH_EVENTS.leagueBetSettled,
+      url: `/leagues/${leagueId}/bet`,
+      userIds: [],
+    });
+
+    expect(summary).toEqual({ attempted: 0, expired: 0, failed: 0, sent: 0 });
+    expect(sendNotification).not.toHaveBeenCalled();
   });
 
   it("disables expired subscriptions after a 410 response", async () => {

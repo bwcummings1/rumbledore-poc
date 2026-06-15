@@ -25,6 +25,12 @@ export interface DisablePushSubscriptionInput {
   userId: string;
 }
 
+export interface GetPushSubscriptionStatusInput {
+  endpoint: string;
+  leagueId: string;
+  userId: string;
+}
+
 export interface PushSubscriptionMutationResult {
   id: string | null;
   status: "active" | "disabled";
@@ -189,4 +195,44 @@ export async function disablePushSubscription(
   });
 
   return ok({ id: row?.id ?? null, status: "disabled" });
+}
+
+export async function getPushSubscriptionStatus(
+  deps: Pick<PushSubscriptionMutationDeps, "db">,
+  input: GetPushSubscriptionStatusInput,
+): Promise<Result<PushSubscriptionMutationResult, AppError>> {
+  const validLeagueId = validateLeagueId(input.leagueId);
+  if (!validLeagueId.ok) {
+    return validLeagueId;
+  }
+
+  const membership = await requireLeagueMembership(deps.db, input);
+  if (!membership.ok) {
+    return membership;
+  }
+
+  const endpointHash = pushEndpointHash(input.endpoint);
+  const row = await withLeagueContext(deps.db, input.leagueId, async (tx) => {
+    const [saved] = await tx
+      .select({
+        disabledAt: pushSubscriptions.disabledAt,
+        id: pushSubscriptions.id,
+        status: pushSubscriptions.status,
+      })
+      .from(pushSubscriptions)
+      .where(
+        and(
+          eq(pushSubscriptions.leagueId, input.leagueId),
+          eq(pushSubscriptions.userId, input.userId),
+          eq(pushSubscriptions.endpointHash, endpointHash),
+        ),
+      );
+    return saved;
+  });
+
+  if (!row || row.status !== "active" || row.disabledAt !== null) {
+    return ok({ id: row?.id ?? null, status: "disabled" });
+  }
+
+  return ok({ id: row.id, status: "active" });
 }

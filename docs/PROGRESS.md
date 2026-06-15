@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Web Push end-to-end scoping landed — league notification toggles now verify per-league endpoint rows before showing enabled, empty personal recipient sets no longer fan out league-wide, and VAPID public-key exposure is covered.
 - 2026-06-15: Realtime client reconnect hardening landed — league-scoped subscriptions now refetch short-lived grants before expiry and recover from Supabase channel failures or token fetch errors with fallback backoff.
 - 2026-06-15: Lore realtime broadcast fan-out landed — lore vote-opened/canonized events now publish on league-scoped realtime channels from member submissions, steward actions, poll instigations, vote closes, and record-broken verified hooks.
 - 2026-06-15: Record-broken cast/lore hooks landed — incremental record displacements now emit stable record-broken cast events, seed idempotent AI-origin data-verifiable lore claims, and give milestone generation the displaced prior holder.

@@ -9,6 +9,7 @@ import { leagues, members, pushSubscriptions, users } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
   disablePushSubscription,
+  getPushSubscriptionStatus,
   pushEndpointHash,
   upsertPushSubscription,
 } from "./subscriptions";
@@ -19,10 +20,11 @@ let handle: DbHandle;
 let userId: string;
 let otherUserId: string;
 let leagueId: string;
+let otherLeagueId: string;
 
-function subscription() {
+function subscription(subscriptionEndpoint = endpoint) {
   return {
-    endpoint,
+    endpoint: subscriptionEndpoint,
     expirationTime: Date.parse("2037-09-01T00:00:00.000Z"),
     keys: {
       auth: `${marker}-auth-secret`,
@@ -43,52 +45,63 @@ beforeAll(async () => {
   }
   await migrateSerialized(handle);
 
-  const [user, otherUser, league] = await Promise.all([
-    handle.db
-      .insert(users)
-      .values({
-        displayName: "Push User",
-        email: `${marker}-member@example.test`,
-      })
-      .returning()
-      .then(([row]) => row),
-    handle.db
-      .insert(users)
-      .values({
-        displayName: "Other Push User",
-        email: `${marker}-other@example.test`,
-      })
-      .returning()
-      .then(([row]) => row),
-    handle.db
-      .insert(leagues)
-      .values({
-        name: "Push League",
-        provider: "espn",
-        providerLeagueId: marker,
-      })
-      .returning()
-      .then(([row]) => row),
-  ]);
-  if (!user || !otherUser || !league) {
+  const [user] = await handle.db
+    .insert(users)
+    .values({
+      displayName: "Push User",
+      email: `${marker}-member@example.test`,
+    })
+    .returning();
+  const [otherUser] = await handle.db
+    .insert(users)
+    .values({
+      displayName: "Other Push User",
+      email: `${marker}-other@example.test`,
+    })
+    .returning();
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      name: "Push League",
+      provider: "espn",
+      providerLeagueId: marker,
+    })
+    .returning();
+  const [otherLeague] = await handle.db
+    .insert(leagues)
+    .values({
+      name: "Other Push League",
+      provider: "espn",
+      providerLeagueId: `${marker}-other-league`,
+    })
+    .returning();
+  if (!user || !otherUser || !league || !otherLeague) {
     throw new Error("push test seed failed");
   }
   userId = user.id;
   otherUserId = otherUser.id;
   leagueId = league.id;
+  otherLeagueId = otherLeague.id;
 
-  await handle.db.insert(members).values({
-    organizationId: leagueId,
-    role: "member",
-    userId,
-  });
+  await handle.db.insert(members).values([
+    {
+      organizationId: leagueId,
+      role: "member",
+      userId,
+    },
+    {
+      organizationId: otherLeagueId,
+      role: "member",
+      userId,
+    },
+  ]);
 });
 
 afterAll(async () => {
   if (!handle) return;
   await handle.db
     .delete(leagues)
-    .where(sql`${leagues.providerLeagueId} = ${marker}`);
+    .where(sql`${leagues.providerLeagueId} like ${`${marker}%`}`);
   await handle.db
     .delete(users)
     .where(sql`${users.email} like ${`${marker}-%`}`);
@@ -145,6 +158,38 @@ describe("push subscription mutations", () => {
     if (result.ok) return;
     expect(result.error.status).toBe(403);
     expect(result.error.code).toBe("PUSH_LEAGUE_FORBIDDEN");
+  });
+
+  it("reports active status only for the matching league endpoint row", async () => {
+    const statusEndpoint = `${endpoint}/status`;
+    const upserted = await upsertPushSubscription(
+      { db: handle.db, now: () => new Date("2026-06-12T12:30:00.000Z") },
+      {
+        leagueId,
+        subscription: subscription(statusEndpoint),
+        userAgent: "vitest",
+        userId,
+      },
+    );
+    expect(upserted.ok).toBe(true);
+
+    const active = await getPushSubscriptionStatus(
+      { db: handle.db },
+      { endpoint: statusEndpoint, leagueId, userId },
+    );
+    expect(active).toEqual({
+      ok: true,
+      value: { id: expect.any(String), status: "active" },
+    });
+
+    const otherLeague = await getPushSubscriptionStatus(
+      { db: handle.db },
+      { endpoint: statusEndpoint, leagueId: otherLeagueId, userId },
+    );
+    expect(otherLeague).toEqual({
+      ok: true,
+      value: { id: null, status: "disabled" },
+    });
   });
 
   it("disables only the member's matching league subscription", async () => {

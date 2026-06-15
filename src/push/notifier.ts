@@ -88,13 +88,17 @@ async function loadActiveSubscriptions(
   db: Db,
   input: Pick<LeaguePushNotificationInput, "leagueId" | "userIds">,
 ): Promise<PushSubscriptionRow[]> {
+  const userIds = [...new Set(input.userIds ?? [])];
+  if (input.userIds !== undefined && userIds.length === 0) {
+    return [];
+  }
+
   return withLeagueContext(db, input.leagueId, async (tx) => {
     const filters = [
       eq(pushSubscriptions.leagueId, input.leagueId),
       eq(pushSubscriptions.status, "active"),
       isNull(pushSubscriptions.disabledAt),
     ];
-    const userIds = [...new Set(input.userIds ?? [])];
     if (userIds.length > 0) {
       filters.push(inArray(pushSubscriptions.userId, userIds));
     }

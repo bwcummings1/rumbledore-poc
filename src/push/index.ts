@@ -12,6 +12,7 @@ export { NoopPushNotifier, RecordingPushNotifier } from "./mocks";
 export { type SendWebPushNotification, WebPushNotifier } from "./notifier";
 export {
   disablePushSubscription,
+  getPushSubscriptionStatus,
   pushEndpointHash,
   upsertPushSubscription,
 } from "./subscriptions";

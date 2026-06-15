@@ -60,6 +60,24 @@ async function pushFetch(
   }
 }
 
+async function isLeagueSubscriptionActive(input: {
+  endpoint: string;
+  leagueId: string;
+}): Promise<boolean> {
+  const response = await pushFetch("/api/push/subscriptions/status", {
+    body: JSON.stringify(input),
+    cache: "no-store",
+    credentials: "same-origin", // ubs:ignore — Fetch credentials mode enum, not a secret.
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  if (!response.ok) {
+    return false;
+  }
+  const status = (await response.json()) as { status?: string };
+  return status.status === "active";
+}
+
 export function LeagueNotificationToggle({
   leagueId,
 }: LeagueNotificationToggleProps) {
@@ -81,9 +99,15 @@ export function LeagueNotificationToggle({
 
     let mounted = true;
     existingPushSubscription()
-      .then((subscription) => {
+      .then(async (subscription) => {
+        const active = subscription
+          ? await isLeagueSubscriptionActive({
+              endpoint: subscription.endpoint,
+              leagueId,
+            })
+          : false;
         if (mounted) {
-          setState(subscription ? "enabled" : "default");
+          setState(active ? "enabled" : "default");
         }
       })
       .catch(() => {
@@ -94,7 +118,7 @@ export function LeagueNotificationToggle({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [leagueId]);
 
   const enable = useCallback(async () => {
     setState("checking");
