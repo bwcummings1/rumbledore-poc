@@ -101,6 +101,7 @@ describe("AnthropicLlmClient", () => {
                 { text: "Filed from the desk", type: "heading" },
                 { text: "Body from Claude.", type: "paragraph" },
               ],
+              citedCanonClaimIds: [],
               contentType: "matchup_preview",
               dek: "Dek from Claude.",
               section: "previews",
@@ -136,6 +137,7 @@ describe("AnthropicLlmClient", () => {
         { text: "Filed from the desk", type: "heading" },
         { text: "Body from Claude.", type: "paragraph" },
       ],
+      citedCanonClaimIds: [],
       contentType: "matchup_preview",
       dek: "Dek from Claude.",
       section: "previews",
@@ -177,6 +179,9 @@ describe("AnthropicLlmClient", () => {
     );
     expect(system[0]?.text).toEqual(expect.stringContaining("Point of view: "));
     expect(system[0]?.text).toEqual(expect.stringContaining("Performs when: "));
+    expect(system[0]?.text).toEqual(
+      expect.stringContaining("citedCanonClaimIds"),
+    );
     expect(system[1]).toMatchObject({
       cache_control: { type: "ephemeral" },
       text: expect.stringContaining("Stable league context JSON"),

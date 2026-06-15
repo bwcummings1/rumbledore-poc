@@ -292,6 +292,7 @@ export interface BlogDraft {
   dek: string;
   section: LeaguePublicationSectionId;
   tags: string[];
+  citedCanonClaimIds?: string[];
   body: string;
   bodyBlocks: BlogDraftBodyBlock[];
   structure: BlogContentStructure;

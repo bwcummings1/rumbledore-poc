@@ -308,6 +308,7 @@ function stableAuthenticityFacts(context: LeagueBlogContext) {
   ) => ({
     authorPersona: claim.authorPersona,
     branchOf: claim.branchOf,
+    id: claim.id,
     kind: claim.kind,
     origin: claim.origin,
     ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
@@ -323,6 +324,7 @@ function stableAuthenticityFacts(context: LeagueBlogContext) {
   });
   return {
     canonLore: context.authenticity.canonLore.map((claim) => ({
+      id: claim.id,
       ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
       ratifiedBy: claim.ratifiedBy,
       statement: claim.statement,

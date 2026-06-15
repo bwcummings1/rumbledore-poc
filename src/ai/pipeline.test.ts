@@ -966,9 +966,9 @@ describe("generateLeagueBlogPost", () => {
       llm.requests[0]?.prompt.systemPrefix ?? "{}",
     ) as {
       authenticity?: {
-        canonLore?: { statement?: string }[];
+        canonLore?: { id?: string; statement?: string }[];
         lore?: {
-          canon?: { statement?: string }[];
+          canon?: { id?: string; statement?: string }[];
           disputed?: { statement?: string }[];
           pending?: { statement?: string }[];
           refuted?: { statement?: string }[];
@@ -978,11 +978,13 @@ describe("generateLeagueBlogPost", () => {
     };
     expect(stablePrefix.authenticity?.canonLore).toEqual([
       expect.objectContaining({
+        id: expect.any(String),
         statement: "Canon Alpha owns the Snow Bowl collapse",
       }),
     ]);
     expect(stablePrefix.authenticity?.lore?.canon).toEqual([
       expect.objectContaining({
+        id: expect.any(String),
         statement: "Canon Alpha owns the Snow Bowl collapse",
       }),
     ]);
@@ -1022,6 +1024,7 @@ describe("generateLeagueBlogPost", () => {
     );
     expect(post?.body).toContain("Canon Alpha owns the Snow Bowl collapse");
     expect(post?.metadata).toMatchObject({
+      citedCanonClaimIds: [expect.any(String)],
       canonCitations: [
         expect.objectContaining({
           title: "Snow Bowl Collapse",

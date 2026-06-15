@@ -13,7 +13,6 @@ import type {
   BlogDraft,
   BlogDraftBodyBlock,
   LeagueBlogContext,
-  LeagueContextCanonLore,
 } from "./interfaces";
 import type { AiPersona } from "./personas";
 
@@ -218,6 +217,7 @@ export function validateBlogDraft(
   const normalizedDraft: BlogDraft = {
     body: canonicalBody,
     bodyBlocks,
+    citedCanonClaimIds: normalizeCitedCanonClaimIds(draft, options.context),
     contentType,
     dek,
     section,
@@ -256,7 +256,60 @@ function includesDraftText(text: string, value: string): boolean {
   return normalized.length > 0 && text.includes(normalized);
 }
 
-function canonCitationMetadata(claim: LeagueContextCanonLore) {
+function allowedCanonClaimIds(context: LeagueBlogContext): Set<string> {
+  const ids = new Set(context.authenticity.lore.canon.map((claim) => claim.id));
+  const triggerClaim = context.trigger.loreClaim;
+  if (triggerClaim?.status === "canon") {
+    ids.add(triggerClaim.id);
+  }
+  return ids;
+}
+
+function normalizeCitedCanonClaimIds(
+  draft: BlogDraft,
+  context: LeagueBlogContext,
+): string[] {
+  const rawIds = Array.isArray(draft.citedCanonClaimIds)
+    ? draft.citedCanonClaimIds
+    : [];
+  const allowed = allowedCanonClaimIds(context);
+  const seen = new Set<string>();
+  const citedIds: string[] = [];
+  const invalidIds: string[] = [];
+
+  for (const rawId of rawIds) {
+    const id = cleanText(rawId);
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    if (!allowed.has(id)) {
+      invalidIds.push(id);
+      continue;
+    }
+    citedIds.push(id);
+  }
+
+  if (invalidIds.length > 0) {
+    throw new AppError({
+      code: "AI_DRAFT_CANON_CITATION_INVALID",
+      message: "AI draft cited lore claims that are not active canon",
+      status: 422,
+    });
+  }
+
+  return citedIds;
+}
+
+interface CanonCitationSource {
+  id: string;
+  ratifiedAt: Date | null;
+  ratifiedBy: string | null;
+  statement: string;
+  title: string;
+}
+
+function canonCitationMetadata(claim: CanonCitationSource) {
   return {
     claimId: claim.id,
     ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
@@ -274,7 +327,20 @@ function canonCitationsForDraft({
   draft: BlogDraft;
 }) {
   const text = blogDraftText(draft).replace(/\s+/g, " ").toLowerCase();
-  const cited = new Map<string, LeagueContextCanonLore>();
+  const cited = new Map<string, CanonCitationSource>();
+  const canonById = new Map<string, CanonCitationSource>(
+    context.authenticity.lore.canon.map((claim) => [claim.id, claim]),
+  );
+  const triggerClaim = context.trigger.loreClaim;
+  if (triggerClaim?.status === "canon") {
+    canonById.set(triggerClaim.id, {
+      id: triggerClaim.id,
+      ratifiedAt: triggerClaim.ratifiedAt,
+      ratifiedBy: triggerClaim.ratifiedBy,
+      statement: triggerClaim.statement,
+      title: triggerClaim.title,
+    });
+  }
 
   for (const claim of context.authenticity.lore.canon) {
     if (
@@ -285,11 +351,15 @@ function canonCitationsForDraft({
     }
   }
 
-  const triggerClaim = context.trigger.loreClaim;
   if (triggerClaim?.status === "canon") {
-    const claim = context.authenticity.lore.canon.find(
-      (candidate) => candidate.id === triggerClaim.id,
-    );
+    const claim = canonById.get(triggerClaim.id);
+    if (claim) {
+      cited.set(claim.id, claim);
+    }
+  }
+
+  for (const claimId of draft.citedCanonClaimIds ?? []) {
+    const claim = canonById.get(claimId);
     if (claim) {
       cited.set(claim.id, claim);
     }
@@ -312,11 +382,13 @@ export function blogDraftMetadata({
   const canonCitations = context
     ? canonCitationsForDraft({ context, draft })
     : [];
+  const citedCanonClaimIds = canonCitations.map((citation) => citation.claimId);
   return {
     article: {
       bodyBlocks: draft.bodyBlocks,
       bylinePersona: persona,
       canonCitations,
+      citedCanonClaimIds,
       contentType: draft.contentType,
       format: "rumbledore.article.v1",
       headline: draft.title,
@@ -325,6 +397,7 @@ export function blogDraftMetadata({
     bodyBlocks: draft.bodyBlocks,
     byline: persona,
     canonCitations,
+    citedCanonClaimIds,
     content_type: draft.contentType,
     contentType: draft.contentType,
     dek: draft.dek,

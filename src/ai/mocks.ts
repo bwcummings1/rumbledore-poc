@@ -717,6 +717,7 @@ export class MockLlmClient implements LlmClient {
     return {
       body: bodyBlocksToMarkdown(bodyBlocks),
       bodyBlocks,
+      citedCanonClaimIds: canon ? [canon.id] : [],
       contentType: request.contentType,
       dek: cleanSummary(
         `${personaName} files a ${section.replaceAll("-", " ")} piece on ${team?.name ?? request.context.league.name}.`,
