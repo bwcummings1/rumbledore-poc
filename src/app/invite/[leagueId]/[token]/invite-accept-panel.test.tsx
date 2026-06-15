@@ -1,8 +1,15 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { InviteAcceptPanel } from "./invite-accept-panel";
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
@@ -25,6 +32,24 @@ test("invite accept panel sends unauthenticated users to provider onboarding", (
   expect(screen.getByRole("link", { name: "Home" }).getAttribute("href")).toBe(
     "/",
   );
+});
+
+test("invite accept panel preserves return-to onboarding links", () => {
+  render(
+    <InviteAcceptPanel
+      acceptUrl="/api/invite/league/token/accept"
+      claimMode="targeted"
+      claimTargets={[]}
+      isAuthenticated={false}
+      onboardingUrl="/onboarding/espn?returnTo=%2Finvite%2Fleague%2Ftoken"
+    />,
+  );
+
+  expect(
+    screen
+      .getByRole("link", { name: /connect fantasy account/i })
+      .getAttribute("href"),
+  ).toBe("/onboarding/espn?returnTo=%2Finvite%2Fleague%2Ftoken");
 });
 
 test("invite accept panel posts acceptance and surfaces claim errors", async () => {

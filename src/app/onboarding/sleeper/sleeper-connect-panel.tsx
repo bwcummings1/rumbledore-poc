@@ -32,6 +32,7 @@ import {
   LeaguemateDetectionCallout,
 } from "../leaguemate-detection-callout";
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
+import { ReturnToInviteLink } from "../return-to-invite-link";
 
 interface DiscoveredLeague {
   provider: FantasyProviderId;
@@ -112,7 +113,11 @@ function fallbackCandidates(
   }));
 }
 
-export function SleeperConnectPanel() {
+export function SleeperConnectPanel({
+  returnTo,
+}: {
+  returnTo?: string | null;
+}) {
   const [connection, setConnection] = useState<ConnectResult | null>(null);
   const [discoveredLeagues, setDiscoveredLeagues] = useState<
     DiscoveredLeagueCandidate[]
@@ -310,6 +315,7 @@ export function SleeperConnectPanel() {
 
   return (
     <div className="grid gap-5">
+      <ReturnToInviteLink returnTo={returnTo} />
       <form
         onSubmit={submitPublicConnect}
         className="rounded-card border border-border bg-card p-4"

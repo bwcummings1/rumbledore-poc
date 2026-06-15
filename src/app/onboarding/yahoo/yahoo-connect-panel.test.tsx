@@ -147,6 +147,27 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
   expect(homeLink.getAttribute("href")).toBe("/leagues/league-yahoo");
 });
 
+test("Yahoo connect panel surfaces invite continuation links", async () => {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url === "/api/onboarding/discovered") {
+      return jsonResponse([]);
+    }
+    return jsonResponse(
+      { error: { message: `Unexpected request: ${url}` } },
+      { status: 500 },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<YahooConnectPanel returnTo="/invite/league/token" />);
+
+  const returnLink = await screen.findByRole("link", {
+    name: /return to invite/i,
+  });
+  expect(returnLink.getAttribute("href")).toBe("/invite/league/token");
+});
+
 test("Yahoo connect panel blocks invalid stored credentials with a reconnect CTA", async () => {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = input.toString();

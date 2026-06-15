@@ -33,6 +33,7 @@ import {
   LeaguemateDetectionCallout,
 } from "../leaguemate-detection-callout";
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
+import { ReturnToInviteLink } from "../return-to-invite-link";
 
 interface DiscoveredLeague {
   provider: FantasyProviderId;
@@ -119,7 +120,7 @@ function fallbackCandidates(
   }));
 }
 
-export function EspnConnectPanel() {
+export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
   const [browser, setBrowser] = useState<BrowserStartResult | null>(null);
   const [connection, setConnection] = useState<ConnectResult | null>(null);
   const [discoveredLeagues, setDiscoveredLeagues] = useState<
@@ -346,6 +347,7 @@ export function EspnConnectPanel() {
 
   return (
     <div className="grid gap-5">
+      <ReturnToInviteLink returnTo={returnTo} />
       <section className="rounded-card border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>

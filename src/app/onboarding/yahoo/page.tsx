@@ -1,6 +1,15 @@
+import { returnToFromSearchParams } from "@/onboarding/return-to";
 import { YahooConnectPanel } from "./yahoo-connect-panel";
 
-export default function YahooOnboardingPage() {
+interface YahooOnboardingPageProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function YahooOnboardingPage({
+  searchParams,
+}: YahooOnboardingPageProps = {}) {
+  const returnTo = returnToFromSearchParams(await searchParams);
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <header className="grid gap-2">
@@ -13,7 +22,7 @@ export default function YahooOnboardingPage() {
           import the history you want active.
         </p>
       </header>
-      <YahooConnectPanel />
+      <YahooConnectPanel returnTo={returnTo} />
     </main>
   );
 }

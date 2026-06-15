@@ -6,7 +6,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("Yahoo onboarding page renders OAuth connect controls", () => {
+test("Yahoo onboarding page renders OAuth connect controls", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
@@ -18,7 +18,7 @@ test("Yahoo onboarding page renders OAuth connect controls", () => {
     ),
   );
 
-  render(<YahooOnboardingPage />);
+  render(await YahooOnboardingPage());
   expect(
     screen.getByRole("heading", {
       level: 1,

@@ -6,7 +6,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("Sleeper onboarding page renders public connect controls", () => {
+test("Sleeper onboarding page renders public connect controls", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
@@ -18,7 +18,7 @@ test("Sleeper onboarding page renders public connect controls", () => {
     ),
   );
 
-  render(<SleeperOnboardingPage />);
+  render(await SleeperOnboardingPage());
   expect(
     screen.getByRole("heading", {
       level: 1,

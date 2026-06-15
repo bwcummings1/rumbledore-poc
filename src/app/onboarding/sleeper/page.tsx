@@ -1,6 +1,15 @@
+import { returnToFromSearchParams } from "@/onboarding/return-to";
 import { SleeperConnectPanel } from "./sleeper-connect-panel";
 
-export default function SleeperOnboardingPage() {
+interface SleeperOnboardingPageProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function SleeperOnboardingPage({
+  searchParams,
+}: SleeperOnboardingPageProps = {}) {
+  const returnTo = returnToFromSearchParams(await searchParams);
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <header className="grid gap-2">
@@ -13,7 +22,7 @@ export default function SleeperOnboardingPage() {
           leagues, and import the history you want active.
         </p>
       </header>
-      <SleeperConnectPanel />
+      <SleeperConnectPanel returnTo={returnTo} />
     </main>
   );
 }

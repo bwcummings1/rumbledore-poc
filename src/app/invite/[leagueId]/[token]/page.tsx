@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getLeagueInviteLanding } from "@/onboarding/invites";
+import { withReturnTo } from "@/onboarding/return-to";
 import { InviteAcceptPanel } from "./invite-accept-panel";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,11 @@ export default async function InvitePreviewPage({
   const session = await requireSession({ headers: await headers() });
   const isAuthenticated = session.ok;
   const isOpenInvite = isOpenClaimMode(invite.value.claimMode);
+  const invitePath = `/invite/${encodeURIComponent(leagueId)}/${encodeURIComponent(token)}`;
+  const onboardingUrl = withReturnTo(
+    `/onboarding/${invite.value.league.provider}`,
+    invitePath,
+  );
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -80,7 +86,7 @@ export default async function InvitePreviewPage({
         claimMode={invite.value.claimMode}
         claimTargets={invite.value.claimTargets}
         isAuthenticated={isAuthenticated}
-        onboardingUrl={`/onboarding/${invite.value.league.provider}`}
+        onboardingUrl={onboardingUrl}
       />
     </main>
   );

@@ -26,6 +26,7 @@ import {
   LeaguemateDetectionCallout,
 } from "../leaguemate-detection-callout";
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
+import { ReturnToInviteLink } from "../return-to-invite-link";
 
 interface DiscoveredLeague {
   provider: FantasyProviderId;
@@ -82,7 +83,7 @@ function recommendedKeys(leagues: readonly DiscoveredLeagueCandidate[]) {
     .map(leagueKey);
 }
 
-export function YahooConnectPanel() {
+export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
   const [discoveredLeagues, setDiscoveredLeagues] = useState<
     DiscoveredLeagueCandidate[]
   >([]);
@@ -188,7 +189,7 @@ export function YahooConnectPanel() {
 
   async function startYahooConnect() {
     const started = await run("connect", () =>
-      postJson<StartResult>("/api/onboarding/yahoo/start"),
+      postJson<StartResult>("/api/onboarding/yahoo/start", { returnTo }),
     );
     if (started) {
       window.location.assign(started.authorizationUrl);
@@ -274,6 +275,7 @@ export function YahooConnectPanel() {
 
   return (
     <div className="grid gap-5">
+      <ReturnToInviteLink returnTo={returnTo} />
       <section className="rounded-card border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
