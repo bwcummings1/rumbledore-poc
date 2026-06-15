@@ -42,7 +42,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 - [x] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads returning scheduled/in-progress. `src/ingestion/current-league.ts`. (Verified already fixed by matchup upsert guard and regression tests.)
 - [x] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — fixed by guarding `closeLoreVote()` against pre-deadline close-outs and proving early attempts leave the claim open.
 - [x] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — fixed by paging through the full candidate set when section/tag filters are active, preserving sparse older beats without changing the default front window.
-- [ ] **[observability/LOW] Historical import progress is not published to realtime** — onboarding can't subscribe to a live history-build channel yet (relevant to the Phase 2 onboarding activation hook).
+- [x] **[observability/LOW] Historical import progress is not published to realtime** — fixed by adding the league `history` realtime channel, typed `history.import.progress` payloads, best-effort checkpoint progress publishing from historical imports, production job wiring, and publisher/grant/import regressions.
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]`; split routes or use a neutral slug.
 
 ## Discoveries / bugs (loop appends here)
@@ -55,6 +55,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 - [ ] **[product/LOW] AI canon citation metadata is inferred from exact title/statement matches** — paraphrased canon can be asserted in a generated article without a `canonCitations` link unless the trigger claim is the canonized claim.
 - [ ] **[correctness/MED] Lore vote extensions do not enqueue replacement close events** — if a steward extends a vote after its original close event was scheduled, the extended window needs a fresh `lore.vote.close` event.
 - [ ] **[correctness/LOW] Default publication fronts are still candidate-window ranked** — unfiltered central/league fronts rank only the recent bounded candidate window, so very old high-importance stories will not lead without a future DB-backed ranking/indexing strategy.
+- [ ] **[product/LOW] Onboarding pages do not render historical import progress yet** — the realtime `history.import.progress` substrate now exists, but the onboarding inventory API/page state still needs checkpoint fields or a small progress component to show it.
 
 ## Harden shortlist
 1. [x] **Invite tokens stored plaintext at rest** — security/isolation risk: leaked invite rows are reusable bearer tokens, so hashing materially reduces credential blast radius. Verified already fixed.
@@ -65,5 +66,5 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 6. [x] **Lore vote close can run before `vote_closes_at`** — correctness risk: direct callers can finalize votes before their announced window ends. Fixed by returning `LORE_VOTE_STILL_OPEN` before tally/mutation until the voting deadline is reached.
 7. [x] **Publication section/tag filters are candidate-limited in memory** — correctness/scale risk: sparse sections can disappear as archives grow. Fixed by full candidate pagination only when section/tag filters are active, with central and league Press regressions for matches buried beyond the first 100 candidates.
 8. [x] **Invite auth return path does not preserve the claim URL** — robustness risk: unauthenticated invitees can lose the claim context after auth. Fixed by carrying sanitized local `returnTo` paths from invite previews into provider onboarding, preserving them through Yahoo OAuth, and surfacing return-to-invite continuation links.
-9. [ ] **Historical import progress is not published to realtime** — robustness/UX risk: long onboarding history builds lack live progress feedback.
+9. [x] **Historical import progress is not published to realtime** — robustness/UX risk: long onboarding history builds lack live progress feedback. Fixed by publishing `history.import.progress` events on a member-scoped league history channel from each durable checkpoint transition.
 10. [ ] **AI canon citation metadata is inferred from exact title/statement matches** — correctness/provenance risk: paraphrased canon can miss citation links.

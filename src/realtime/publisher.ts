@@ -4,8 +4,10 @@ import {
   type ArenaStandingsSwingPayload,
   arenaLeaderboardChannel,
   type BlogPublishedPayload,
+  type HistoryImportProgressPayload,
   type LeagueLeaderboardUpdatedPayload,
   leagueBlogChannel,
+  leagueHistoryChannel,
   leagueLeaderboardChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
@@ -64,6 +66,17 @@ export class SupabaseRealtimePublisher implements RealtimePublisher {
       payload,
       private: true,
       topic: leagueBlogChannel(payload.leagueId),
+    });
+  }
+
+  async publishLeagueHistoryImportProgress(
+    payload: HistoryImportProgressPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.historyImportProgress,
+      payload,
+      private: true,
+      topic: leagueHistoryChannel(payload.leagueId),
     });
   }
 

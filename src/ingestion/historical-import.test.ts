@@ -25,6 +25,7 @@ import {
   ProviderBlockedError,
   type ProviderLeagueRef,
 } from "@/providers";
+import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import {
   type HistoricalImportProvider,
   importLeagueHistory,
@@ -463,6 +464,80 @@ describe("importLeagueHistory", () => {
       changed: 0,
       unchanged: 0,
     });
+  });
+
+  it("publishes realtime progress as historical checkpoints advance", async () => {
+    const ref = fixtureRef("realtime-progress");
+    const fixtureProvider = providerFor();
+    const realtime = new RecordingRealtimePublisher();
+    const emittedAt = new Date("2026-06-15T12:00:00.000Z");
+
+    const result = await importLeagueHistory({
+      db: handle.db,
+      now: () => emittedAt,
+      provider: fixtureProvider.provider,
+      realtime,
+      ref,
+      seasons: [2025, 2024],
+      session: fixtureSession,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    const leagueId = result.value.league.id;
+    expect(realtime.historyImportProgress).toEqual([
+      {
+        at: emittedAt.toISOString(),
+        currentSeason: 2026,
+        importedSeasons: [],
+        lastCompletedSeason: null,
+        leagueId,
+        nextSeason: 2025,
+        provider: "espn",
+        providerLeagueId: ref.providerId,
+        requestedSeasons: [2025, 2024],
+        seasonsCompleted: 0,
+        seasonsTotal: 2,
+        skippedSeasons: [],
+        status: "running",
+        type: REALTIME_EVENTS.historyImportProgress,
+        v: 1,
+      },
+      {
+        at: emittedAt.toISOString(),
+        currentSeason: 2026,
+        importedSeasons: [2025],
+        lastCompletedSeason: 2025,
+        leagueId,
+        nextSeason: 2024,
+        provider: "espn",
+        providerLeagueId: ref.providerId,
+        requestedSeasons: [2025, 2024],
+        seasonsCompleted: 1,
+        seasonsTotal: 2,
+        skippedSeasons: [],
+        status: "running",
+        type: REALTIME_EVENTS.historyImportProgress,
+        v: 1,
+      },
+      {
+        at: emittedAt.toISOString(),
+        currentSeason: 2026,
+        importedSeasons: [2025, 2024],
+        lastCompletedSeason: 2024,
+        leagueId,
+        nextSeason: null,
+        provider: "espn",
+        providerLeagueId: ref.providerId,
+        requestedSeasons: [2025, 2024],
+        seasonsCompleted: 2,
+        seasonsTotal: 2,
+        skippedSeasons: [],
+        status: "completed",
+        type: REALTIME_EVENTS.historyImportProgress,
+        v: 1,
+      },
+    ]);
   });
 
   it("extends a completed short checkpoint toward full depth without reprocessing completed seasons", async () => {

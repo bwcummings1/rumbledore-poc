@@ -3,8 +3,10 @@ import {
   type ArenaStandingsSwingPayload,
   arenaLeaderboardChannel,
   type BlogPublishedPayload,
+  type HistoryImportProgressPayload,
   type LeagueLeaderboardUpdatedPayload,
   leagueBlogChannel,
+  leagueHistoryChannel,
   leagueLeaderboardChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
@@ -34,6 +36,12 @@ export class NoopRealtimePublisher implements RealtimePublisher {
     return;
   }
 
+  async publishLeagueHistoryImportProgress(
+    _payload: HistoryImportProgressPayload,
+  ): Promise<void> {
+    return;
+  }
+
   async publishLeagueLeaderboardUpdated(
     _payload: LeagueLeaderboardUpdatedPayload,
   ): Promise<void> {
@@ -51,6 +59,7 @@ export class RecordingRealtimePublisher implements RealtimePublisher {
   readonly arenaLeaderboardUpdated: ArenaLeaderboardUpdatedPayload[] = [];
   readonly arenaStandingsSwing: ArenaStandingsSwingPayload[] = [];
   readonly blogPublished: BlogPublishedPayload[] = [];
+  readonly historyImportProgress: HistoryImportProgressPayload[] = [];
   readonly leagueLeaderboardUpdated: LeagueLeaderboardUpdatedPayload[] = [];
   readonly scoresUpdated: ScoresUpdatedPayload[] = [];
 
@@ -70,6 +79,12 @@ export class RecordingRealtimePublisher implements RealtimePublisher {
     payload: BlogPublishedPayload,
   ): Promise<void> {
     this.blogPublished.push(payload);
+  }
+
+  async publishLeagueHistoryImportProgress(
+    payload: HistoryImportProgressPayload,
+  ): Promise<void> {
+    this.historyImportProgress.push(payload);
   }
 
   async publishLeagueLeaderboardUpdated(
@@ -143,6 +158,16 @@ export class InProcessRealtimePublisher implements RealtimePublisher {
     await this.publish(
       leagueBlogChannel(payload.leagueId),
       REALTIME_EVENTS.blogPublished,
+      payload,
+    );
+  }
+
+  async publishLeagueHistoryImportProgress(
+    payload: HistoryImportProgressPayload,
+  ): Promise<void> {
+    await this.publish(
+      leagueHistoryChannel(payload.leagueId),
+      REALTIME_EVENTS.historyImportProgress,
       payload,
     );
   }

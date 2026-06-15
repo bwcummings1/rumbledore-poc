@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   arenaLeaderboardChannel,
   leagueBlogChannel,
+  leagueHistoryChannel,
   leagueLeaderboardChannel,
   leagueScoresChannel,
   REALTIME_EVENTS,
@@ -28,6 +29,12 @@ describe("realtime publisher", () => {
 
   it("uses the stable per-league scores channel name", () => {
     expect(leagueScoresChannel("league-123")).toBe("league:league-123:scores");
+  });
+
+  it("uses the stable per-league history channel name", () => {
+    expect(leagueHistoryChannel("league-123")).toBe(
+      "league:league-123:history",
+    );
   });
 
   it("uses the stable leaderboard channel names", () => {
@@ -148,6 +155,55 @@ describe("realtime publisher", () => {
       matchupIds: ["matchup-1", "matchup-2"],
       scoringPeriod: 3,
       type: "scores.updated",
+      v: 1,
+    });
+  });
+
+  it("posts history.import.progress payloads to Supabase private broadcast", async () => {
+    const calls: Array<{
+      input: RequestInfo | URL;
+      init: RequestInit | undefined;
+    }> = [];
+    const publisher = new SupabaseRealtimePublisher({
+      apiKey: "supabase-service-key", // ubs:ignore — fake fixture value
+      fetchFn: async (input, init) => {
+        calls.push({ input, init });
+        return okResponse();
+      },
+      url: "https://project.supabase.co/",
+    });
+
+    await publisher.publishLeagueHistoryImportProgress({
+      at: "2026-06-15T12:00:01.000Z",
+      currentSeason: 2026,
+      importedSeasons: [2025],
+      lastCompletedSeason: 2025,
+      leagueId: "league-123",
+      nextSeason: 2024,
+      provider: "espn",
+      providerLeagueId: "95050",
+      requestedSeasons: [2025, 2024],
+      seasonsCompleted: 1,
+      seasonsTotal: 2,
+      skippedSeasons: [],
+      status: "running",
+      type: REALTIME_EVENTS.historyImportProgress,
+      v: 1,
+    });
+
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call) throw new Error("expected fetch call");
+
+    expect(call.input.toString()).toBe(
+      "https://project.supabase.co/realtime/v1/api/broadcast/league%3Aleague-123%3Ahistory/events/history.import.progress?private=true",
+    );
+    expect(parseJsonBody(call.init?.body)).toMatchObject({
+      importedSeasons: [2025],
+      leagueId: "league-123",
+      provider: "espn",
+      providerLeagueId: "95050",
+      type: "history.import.progress",
       v: 1,
     });
   });
@@ -295,6 +351,51 @@ describe("realtime publisher", () => {
     });
 
     expect(received).toHaveLength(1);
+  });
+
+  it("delivers history.import.progress payloads through the in-process publisher", async () => {
+    const publisher = new InProcessRealtimePublisher();
+    const received: unknown[] = [];
+    const unsubscribe = publisher.subscribe(
+      leagueHistoryChannel("league-123"),
+      REALTIME_EVENTS.historyImportProgress,
+      (message) => {
+        received.push(message);
+      },
+    );
+
+    await publisher.publishLeagueHistoryImportProgress({
+      at: "2026-06-15T12:00:01.000Z",
+      currentSeason: 2026,
+      importedSeasons: [2025],
+      lastCompletedSeason: 2025,
+      leagueId: "league-123",
+      nextSeason: 2024,
+      provider: "espn",
+      providerLeagueId: "95050",
+      requestedSeasons: [2025, 2024],
+      seasonsCompleted: 1,
+      seasonsTotal: 2,
+      skippedSeasons: [],
+      status: "running",
+      type: REALTIME_EVENTS.historyImportProgress,
+      v: 1,
+    });
+
+    expect(received).toEqual([
+      {
+        event: REALTIME_EVENTS.historyImportProgress,
+        payload: expect.objectContaining({
+          importedSeasons: [2025],
+          leagueId: "league-123",
+          providerLeagueId: "95050",
+          type: "history.import.progress",
+        }),
+        topic: "league:league-123:history",
+      },
+    ]);
+
+    unsubscribe();
   });
 
   it("delivers arena swing payloads through the in-process publisher", async () => {

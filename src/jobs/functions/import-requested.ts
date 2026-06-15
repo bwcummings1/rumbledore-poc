@@ -24,6 +24,7 @@ import {
   createYahooProvider,
   yahooCredentialsSchema,
 } from "@/providers/yahoo/client";
+import { createRealtimePublisher, type RealtimePublisher } from "@/realtime";
 import { recomputeLeagueStatistics } from "@/stats";
 import { inngest } from "../client";
 import { type ImportRequestedData, JOB_EVENTS } from "../events";
@@ -46,6 +47,7 @@ interface ImportRequestedDependencies {
   providers: ImportRequestedProviderRegistry;
   recomputeStats?: typeof recomputeLeagueStatistics;
   now?: () => Date;
+  realtime?: RealtimePublisher;
 }
 
 export interface ImportRequestedResponse extends HistoricalImportResult {
@@ -267,6 +269,7 @@ async function getDefaultImportRequestedDependencies(): Promise<ImportRequestedD
       sleeper: createSleeperProvider(),
       yahoo: createYahooProvider(),
     },
+    realtime: createRealtimePublisher(env),
   };
 }
 
@@ -292,8 +295,10 @@ export async function runImportRequested({
   const history = await importLeagueHistory({
     db: deps.db,
     maxSeasons: data.maxSeasons,
+    now: deps.now,
     provider,
     ref: toProviderRef(data),
+    realtime: deps.realtime,
     seasons: data.seasons,
     session: session.value,
   });

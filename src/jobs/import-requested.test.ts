@@ -39,6 +39,7 @@ import type {
   SleeperSession,
 } from "@/providers/sleeper/client";
 import type { YahooCredentials, YahooSession } from "@/providers/yahoo/client";
+import { RecordingRealtimePublisher } from "@/realtime";
 import { JOB_EVENTS } from "./events";
 import {
   createImportRequestedFunction,
@@ -797,6 +798,50 @@ describe("import.requested Inngest function", () => {
       status: "completed",
       seasonsCompleted: 2,
       seasonsTotal: 2,
+    });
+  });
+
+  it("publishes realtime historical progress from the job dependency", async () => {
+    const seeded = await seedImport("realtime-progress");
+    const fixtureProvider = historyProvider();
+    const realtime = new RecordingRealtimePublisher();
+    const emittedAt = new Date("2026-06-15T12:00:00.000Z");
+
+    const response = await runImportRequested({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+        name: `${marker} league realtime`,
+        size: 2,
+        seasons: [2025],
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        now: () => emittedAt,
+        providers: { espn: fixtureProvider.provider },
+        realtime,
+      },
+    });
+
+    expect(response.ok).toBe(true);
+    expect(
+      realtime.historyImportProgress.map((payload) => payload.status),
+    ).toEqual(["running", "completed"]);
+    expect(realtime.historyImportProgress.at(-1)).toMatchObject({
+      at: emittedAt.toISOString(),
+      importedSeasons: [2025],
+      leagueId: seeded.leagueId,
+      nextSeason: null,
+      provider: "espn",
+      providerLeagueId: seeded.providerLeagueId,
+      seasonsCompleted: 1,
+      seasonsTotal: 1,
+      status: "completed",
     });
   });
 

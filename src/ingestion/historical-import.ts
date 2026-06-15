@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { logger } from "@/core/logging";
 import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -15,6 +16,11 @@ import type {
   ProviderError,
   ProviderLeagueRef,
 } from "@/providers";
+import {
+  type HistoryImportProgressPayload,
+  REALTIME_EVENTS,
+  type RealtimePublisher,
+} from "@/realtime";
 import {
   type DataCoverageObservationMap,
   type EntitySyncStats,
@@ -33,6 +39,8 @@ export interface HistoricalImportInput<Session extends FantasyProviderSession> {
   session: Session;
   seasons?: number[];
   maxSeasons?: number;
+  now?: () => Date;
+  realtime?: RealtimePublisher;
 }
 
 export interface HistoricalImportResult {
@@ -65,6 +73,14 @@ export type HistoricalImportError = ProviderError;
 
 type LeagueRoot = { id: string; created: boolean };
 
+interface HistoricalImportProgressCheckpoint {
+  status: "running" | "completed" | "failed";
+  lastCompletedSeason: number | null;
+  nextSeason: number | null;
+  seasonsCompleted: number;
+  seasonsTotal: number;
+}
+
 function emptyStats(): EntitySyncStats {
   return { total: 0, changed: 0, unchanged: 0 };
 }
@@ -78,6 +94,75 @@ function addStats(
     changed: left.changed + right.changed,
     unchanged: left.unchanged + right.unchanged,
   };
+}
+
+function progressCheckpoint(
+  checkpoint: HistoricalImportCheckpoint,
+): HistoricalImportProgressCheckpoint {
+  return {
+    status: checkpoint.status,
+    lastCompletedSeason: checkpoint.lastCompletedSeason,
+    nextSeason: checkpoint.nextSeason,
+    seasonsCompleted: checkpoint.seasonsCompleted,
+    seasonsTotal: checkpoint.seasonsTotal,
+  };
+}
+
+async function publishHistoricalImportProgress<
+  Session extends FantasyProviderSession,
+>({
+  checkpoint,
+  errorCode,
+  importedSeasons,
+  input,
+  leagueId,
+  ref,
+  requestedSeasons,
+  skippedSeasons,
+}: {
+  checkpoint: HistoricalImportProgressCheckpoint;
+  errorCode?: string;
+  importedSeasons: readonly number[];
+  input: Pick<HistoricalImportInput<Session>, "now" | "realtime">;
+  leagueId: string;
+  ref: ProviderLeagueRef;
+  requestedSeasons: readonly number[];
+  skippedSeasons: readonly number[];
+}): Promise<void> {
+  if (!input.realtime) {
+    return;
+  }
+
+  const payload: HistoryImportProgressPayload = {
+    at: (input.now?.() ?? new Date()).toISOString(),
+    currentSeason: ref.season,
+    importedSeasons: [...importedSeasons],
+    lastCompletedSeason: checkpoint.lastCompletedSeason,
+    leagueId,
+    nextSeason: checkpoint.nextSeason,
+    provider: ref.provider,
+    providerLeagueId: ref.providerId,
+    requestedSeasons: [...requestedSeasons],
+    seasonsCompleted: checkpoint.seasonsCompleted,
+    seasonsTotal: checkpoint.seasonsTotal,
+    skippedSeasons: [...skippedSeasons],
+    status: checkpoint.status,
+    type: REALTIME_EVENTS.historyImportProgress,
+    v: 1,
+    ...(errorCode ? { errorCode } : {}),
+  };
+
+  try {
+    await input.realtime.publishLeagueHistoryImportProgress(payload);
+  } catch (error) {
+    logger.warn("Realtime historical import progress signal failed", {
+      error,
+      leagueId,
+      provider: ref.provider,
+      providerLeagueId: ref.providerId,
+      status: checkpoint.status,
+    });
+  }
 }
 
 function normalizeRequestedSeasons({
@@ -570,7 +655,9 @@ export async function importLeagueHistory<
 >({
   db,
   maxSeasons,
+  now,
   provider,
+  realtime,
   ref,
   seasons: inputSeasons,
   session,
@@ -595,6 +682,15 @@ export async function importLeagueHistory<
     isCompleteForRequest(checkpoint, seasons, completedSeasons)
   ) {
     const completedCheckpoint = checkpoint;
+    await publishHistoricalImportProgress({
+      checkpoint: progressCheckpoint(completedCheckpoint),
+      importedSeasons: [],
+      input: { now, realtime },
+      leagueId: league.id,
+      ref,
+      requestedSeasons: seasons,
+      skippedSeasons: seasons,
+    });
     return ok({
       league: {
         id: league.id,
@@ -655,6 +751,16 @@ export async function importLeagueHistory<
   let transactions = emptyStats();
   let latestCheckpoint = activeCheckpoint;
 
+  await publishHistoricalImportProgress({
+    checkpoint: progressCheckpoint(activeCheckpoint),
+    importedSeasons: imported,
+    input: { now, realtime },
+    leagueId: league.id,
+    ref,
+    requestedSeasons: seasons,
+    skippedSeasons: skipped,
+  });
+
   for (let index = 0; index < seasons.length; index += 1) {
     const season = seasons[index];
     if (completed.has(season)) {
@@ -673,6 +779,22 @@ export async function importLeagueHistory<
         nextSeason: season,
         ref,
       });
+      await publishHistoricalImportProgress({
+        checkpoint: {
+          lastCompletedSeason: latestCheckpoint.lastCompletedSeason,
+          nextSeason: season,
+          seasonsCompleted: completed.size,
+          seasonsTotal: seasons.length,
+          status: "failed",
+        },
+        errorCode: history.error.code,
+        importedSeasons: imported,
+        input: { now, realtime },
+        leagueId: league.id,
+        ref,
+        requestedSeasons: seasons,
+        skippedSeasons: skipped,
+      });
       return err(history.error);
     }
 
@@ -685,6 +807,15 @@ export async function importLeagueHistory<
         leagueId: league.id,
         ref,
         seasons,
+      });
+      await publishHistoricalImportProgress({
+        checkpoint: progressCheckpoint(latestCheckpoint),
+        importedSeasons: imported,
+        input: { now, realtime },
+        leagueId: league.id,
+        ref,
+        requestedSeasons: seasons,
+        skippedSeasons: skipped,
       });
       break;
     }
@@ -722,6 +853,15 @@ export async function importLeagueHistory<
       nextSeason: firstIncompleteSeason(seasons, completed),
       ref,
       seasons,
+    });
+    await publishHistoricalImportProgress({
+      checkpoint: progressCheckpoint(latestCheckpoint),
+      importedSeasons: imported,
+      input: { now, realtime },
+      leagueId: league.id,
+      ref,
+      requestedSeasons: seasons,
+      skippedSeasons: skipped,
     });
   }
 

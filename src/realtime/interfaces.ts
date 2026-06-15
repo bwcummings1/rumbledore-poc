@@ -5,6 +5,7 @@ export const REALTIME_EVENTS = {
   arenaStandingsSwing: "arena.standings.swing",
   blogPublished: "blog.published",
   centralNewsUpdated: "central.news.updated",
+  historyImportProgress: "history.import.progress",
   leagueLeaderboardUpdated: "league.leaderboard.updated",
   oddsUpdated: "odds.updated",
   scoresUpdated: "scores.updated",
@@ -32,6 +33,25 @@ export interface ScoresUpdatedPayload {
   leagueId: string;
   scoringPeriod: number | null;
   matchupIds: string[];
+}
+
+export interface HistoryImportProgressPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.historyImportProgress;
+  at: string;
+  leagueId: string;
+  provider: string;
+  providerLeagueId: string;
+  currentSeason: number;
+  requestedSeasons: number[];
+  importedSeasons: number[];
+  skippedSeasons: number[];
+  status: "running" | "completed" | "failed";
+  lastCompletedSeason: number | null;
+  nextSeason: number | null;
+  seasonsCompleted: number;
+  seasonsTotal: number;
+  errorCode?: string;
 }
 
 export interface OddsUpdatedPayload {
@@ -90,6 +110,7 @@ export type RealtimePayload =
   | ArenaStandingsSwingPayload
   | BlogPublishedPayload
   | CentralNewsUpdatedPayload
+  | HistoryImportProgressPayload
   | LeagueLeaderboardUpdatedPayload
   | OddsUpdatedPayload
   | ScoresUpdatedPayload;
@@ -102,6 +123,9 @@ export interface RealtimePublisher {
     payload: ArenaStandingsSwingPayload,
   ): Promise<void>;
   publishLeagueBlogPublished(payload: BlogPublishedPayload): Promise<void>;
+  publishLeagueHistoryImportProgress(
+    payload: HistoryImportProgressPayload,
+  ): Promise<void>;
   publishLeagueLeaderboardUpdated(
     payload: LeagueLeaderboardUpdatedPayload,
   ): Promise<void>;
@@ -113,6 +137,7 @@ export const LEAGUE_REALTIME_CHANNEL_KINDS = [
   "odds",
   "leaderboard",
   "blog",
+  "history",
   "presence",
 ] as const;
 
@@ -150,6 +175,12 @@ export function leagueLeaderboardChannel(
   leagueId: string,
 ): `league:${string}:leaderboard` {
   return `league:${leagueId}:leaderboard`;
+}
+
+export function leagueHistoryChannel(
+  leagueId: string,
+): `league:${string}:history` {
+  return `league:${leagueId}:history`;
 }
 
 export function leagueScoresChannel(

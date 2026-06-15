@@ -23,6 +23,7 @@ const DEFAULT_LEAGUE_CHANNEL_KINDS = [
   "scores",
   "odds",
   "leaderboard",
+  "history",
 ] as const satisfies readonly Exclude<LeagueRealtimeChannelKind, "presence">[];
 const EMPTY_LEAGUE_IDS = [] as const satisfies readonly string[];
 const CHANNEL_REFRESH_EVENTS: Record<
@@ -30,6 +31,7 @@ const CHANNEL_REFRESH_EVENTS: Record<
   readonly RealtimeEventType[]
 > = {
   blog: [REALTIME_EVENTS.blogPublished],
+  history: [REALTIME_EVENTS.historyImportProgress],
   leaderboard: [REALTIME_EVENTS.leagueLeaderboardUpdated],
   odds: [REALTIME_EVENTS.oddsUpdated],
   scores: [REALTIME_EVENTS.scoresUpdated],
