@@ -40,6 +40,7 @@ export const CONTENT_PLAN_CRON_CADENCES = [
   "weekly-wrap",
   "mid-week",
   "post-odds-refresh",
+  "offseason-beat",
 ] as const;
 
 export type ContentPlanCronCadence =
@@ -131,11 +132,23 @@ const PRE_KICKOFF_ODDS_CANDIDATES = [
   { contentType: "arena_recap", persona: "betting_advisor" },
 ] as const satisfies readonly ContentCandidate[];
 
+const OFFSEASON_BEAT_CANDIDATES = [
+  { contentType: "season_arc", persona: "narrator" },
+  { contentType: "awards_superlatives", persona: "beat_reporter" },
+  { contentType: "instigation_column", persona: "trash_talker" },
+] as const satisfies readonly ContentCandidate[];
+
+const PRESEASON_COUNTDOWN_CANDIDATES = [
+  { contentType: "season_arc", persona: "commissioner" },
+  { contentType: "power_rankings", persona: "analyst" },
+] as const satisfies readonly ContentCandidate[];
+
 const CALENDAR_CANDIDATES: Record<
   ContentPlanCronCadence,
   readonly ContentCandidate[]
 > = {
   "mid-week": [...MIDWEEK_CANDIDATES],
+  "offseason-beat": [...OFFSEASON_BEAT_CANDIDATES],
   "post-odds-refresh": [...PRE_KICKOFF_ODDS_CANDIDATES],
   "weekly-preview": [...PRE_KICKOFF_CANDIDATES],
   "weekly-wrap": [...POST_GAMES_CANDIDATES],
@@ -372,7 +385,10 @@ function scheduledCandidatesFor({
     return [];
   }
 
-  const candidates = [...CALENDAR_CANDIDATES[cadence]];
+  const candidates: ContentCandidate[] =
+    cadence === "offseason-beat" && weekState.phase === "preseason"
+      ? [...PRESEASON_COUNTDOWN_CANDIDATES]
+      : [...CALENDAR_CANDIDATES[cadence]];
   if (
     cadence === "weekly-preview" &&
     (hasRivalryWeek || weekState.isRivalryWindow)
@@ -392,6 +408,10 @@ function cadenceMatchesWeekState({
   cadence: ContentPlanCronCadence;
   weekState: NflWeekState;
 }): boolean {
+  if (cadence === "offseason-beat") {
+    return isOffseasonBeatPhase(weekState);
+  }
+
   if (!hasScheduledGamesPhase(weekState.phase)) {
     return false;
   }
@@ -405,6 +425,41 @@ function cadenceMatchesWeekState({
     case "post-odds-refresh":
       return weekState.gamePhase === "pre_kickoff";
   }
+}
+
+function isOffseasonBeatPhase(weekState: NflWeekState): boolean {
+  return (
+    weekState.gamePhase === "quiet" &&
+    (weekState.phase === "offseason" ||
+      weekState.phase === "preseason" ||
+      weekState.isQuietWeek === true)
+  );
+}
+
+function includesCompleteLeaguesForQuietCadence(
+  weekState: NflWeekState,
+): boolean {
+  return (
+    weekState.gamePhase === "quiet" &&
+    (weekState.phase === "offseason" || weekState.phase === "preseason")
+  );
+}
+
+function leagueStatusesForCadence({
+  cadence,
+  weekState,
+}: {
+  cadence: ContentPlanCronCadence;
+  weekState: NflWeekState;
+}): ("preseason" | "in_season" | "complete")[] {
+  if (
+    cadence === "offseason-beat" &&
+    includesCompleteLeaguesForQuietCadence(weekState)
+  ) {
+    return [...ACTIVE_LEAGUE_STATUSES, "complete"];
+  }
+
+  return [...ACTIVE_LEAGUE_STATUSES];
 }
 
 function hasScheduledGamesPhase(phase: NflWeekState["phase"]): boolean {
@@ -460,7 +515,15 @@ export async function planCronContent({
       id: leagues.id,
     })
     .from(leagues)
-    .where(inArray(leagues.status, ACTIVE_LEAGUE_STATUSES))
+    .where(
+      inArray(
+        leagues.status,
+        leagueStatusesForCadence({
+          cadence,
+          weekState: resolvedNflWeekState,
+        }),
+      ),
+    )
     .orderBy(asc(leagues.id));
 
   const planned: PlannedContentGenerateEvent[] = [];

@@ -34,6 +34,7 @@ import { JOB_EVENTS } from "./events";
 import { runContentGenerate } from "./functions/content-generate";
 import {
   contentPlanMidWeek,
+  contentPlanOffseasonBeat,
   contentPlanPostOddsRefresh,
   contentPlanWeeklyPreview,
   contentPlanWeeklyWrap,
@@ -79,9 +80,22 @@ const regularQuietState = {
   seasonWeek: 7,
 } as const satisfies NflWeekState;
 
+const regularByeQuietState = {
+  gamePhase: "quiet",
+  isQuietWeek: true,
+  phase: "regular",
+  seasonWeek: 12,
+} as const satisfies NflWeekState;
+
 const offseasonState = {
   gamePhase: "quiet",
   phase: "offseason",
+  seasonWeek: null,
+} as const satisfies NflWeekState;
+
+const preseasonQuietState = {
+  gamePhase: "quiet",
+  phase: "preseason",
   seasonWeek: null,
 } as const satisfies NflWeekState;
 
@@ -530,6 +544,149 @@ describe("content planning", () => {
     expect(missedFirstForLeague.map((event) => event.id)).not.toEqual(
       currentForLeague.map((event) => event.id),
     );
+  });
+
+  it("plans a distinct offseason and preseason quiet-week cadence", async () => {
+    const active = await seedLeague("offseason-active");
+    const complete = await seedLeague("offseason-complete", "complete");
+    const offseasonNow = new Date("2026-06-15T12:00:00.000Z");
+    const preseasonNow = new Date("2026-08-10T12:00:00.000Z");
+
+    const offseasonFirst = await planCronContent({
+      cadence: "offseason-beat",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: offseasonState,
+      now: () => offseasonNow,
+    });
+    const offseasonSecond = await runContentPlanCron({
+      cadence: "offseason-beat",
+      deps: {
+        ...plannerDeps(),
+        nflWeekState: offseasonState,
+        now: () => offseasonNow,
+      },
+    });
+
+    const offseasonForComplete = offseasonFirst.planned.filter(
+      (event) => event.data.leagueId === complete.id,
+    );
+    const offseasonSecondForComplete = offseasonSecond.planned.filter(
+      (event) => event.data.leagueId === complete.id,
+    );
+    expect(
+      offseasonFirst.planned.some((event) => event.data.leagueId === active.id),
+    ).toBe(true);
+    expect(
+      offseasonForComplete.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
+    ).toEqual([
+      { contentType: "season_arc", persona: "narrator" },
+      { contentType: "awards_superlatives", persona: "beat_reporter" },
+      { contentType: "instigation_column", persona: "trash_talker" },
+    ]);
+    expect(
+      offseasonForComplete.map((event) => event.data.triggerKey),
+    ).toStrictEqual([
+      "cron:offseason-beat:offseason:2026-w25",
+      "cron:offseason-beat:offseason:2026-w25",
+      "cron:offseason-beat:offseason:2026-w25",
+    ]);
+    expect(
+      offseasonForComplete.some((event) =>
+        ["weekly_recap", "matchup_preview", "arena_recap"].includes(
+          event.data.contentType,
+        ),
+      ),
+    ).toBe(false);
+    expect(offseasonForComplete.map((event) => event.id)).toEqual(
+      offseasonSecondForComplete.map((event) => event.id),
+    );
+
+    const preseason = await planCronContent({
+      cadence: "offseason-beat",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: preseasonQuietState,
+      now: () => preseasonNow,
+    });
+    const preseasonForComplete = preseason.planned.filter(
+      (event) => event.data.leagueId === complete.id,
+    );
+    expect(
+      preseasonForComplete.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+        triggerKey: event.data.triggerKey,
+      })),
+    ).toEqual([
+      {
+        contentType: "season_arc",
+        persona: "commissioner",
+        triggerKey: "cron:offseason-beat:preseason:2026-w33",
+      },
+      {
+        contentType: "power_rankings",
+        persona: "analyst",
+        triggerKey: "cron:offseason-beat:preseason:2026-w33",
+      },
+    ]);
+
+    const regularQuietWithoutSignal = await planCronContent({
+      cadence: "offseason-beat",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: regularQuietState,
+      now: () => new Date("2026-10-14T12:00:00.000Z"),
+    });
+    expect(
+      regularQuietWithoutSignal.planned.some(
+        (event) =>
+          event.data.leagueId === active.id ||
+          event.data.leagueId === complete.id,
+      ),
+    ).toBe(false);
+
+    const regularQuietBeat = await planCronContent({
+      cadence: "offseason-beat",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: regularByeQuietState,
+      now: () => new Date("2026-11-18T12:00:00.000Z"),
+    });
+    const regularQuietForActive = regularQuietBeat.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(
+      regularQuietForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+        triggerKey: event.data.triggerKey,
+      })),
+    ).toEqual([
+      {
+        contentType: "season_arc",
+        persona: "narrator",
+        triggerKey: "cron:offseason-beat:regular:12",
+      },
+      {
+        contentType: "awards_superlatives",
+        persona: "beat_reporter",
+        triggerKey: "cron:offseason-beat:regular:12",
+      },
+      {
+        contentType: "instigation_column",
+        persona: "trash_talker",
+        triggerKey: "cron:offseason-beat:regular:12",
+      },
+    ]);
+    expect(
+      regularQuietBeat.planned.some(
+        (event) => event.data.leagueId === complete.id,
+      ),
+    ).toBe(false);
   });
 
   it("plans scheduled cron content through the Inngest step API", async () => {
@@ -986,6 +1143,29 @@ describe("content planning", () => {
       cron.planned.filter((event) => event.data.leagueId === premium.id),
     ).toHaveLength(2);
 
+    const offseasonCron = await planCronContent({
+      cadence: "offseason-beat",
+      db: handle.db,
+      env: gatedEntitlementEnv,
+      nflWeekState: offseasonState,
+      now: () => new Date("2026-06-15T12:00:00.000Z"),
+    });
+    expect(
+      offseasonCron.planned.some((event) => event.data.leagueId === free.id),
+    ).toBe(false);
+    expect(offseasonCron.skipped).toContainEqual(
+      expect.objectContaining({
+        leagueId: free.id,
+        reason: "TIER_REQUIRED",
+        requiredTier: "premium",
+      }),
+    );
+    expect(
+      offseasonCron.planned.filter(
+        (event) => event.data.leagueId === premium.id,
+      ),
+    ).toHaveLength(3);
+
     const gameId = await seedFinalMatchup({
       league: free,
       tag: "cadence-free",
@@ -1198,6 +1378,7 @@ describe("content planning", () => {
     expect(functions).toContain(contentPlanWeeklyWrap);
     expect(functions).toContain(contentPlanMidWeek);
     expect(functions).toContain(contentPlanPostOddsRefresh);
+    expect(functions).toContain(contentPlanOffseasonBeat);
     expect(functions).toContain(contentPlanGameFinal);
     expect(functions).toContain(contentPlanTransaction);
     expect(functions).toContain(contentPlanWaiver);

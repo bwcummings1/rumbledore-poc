@@ -4,6 +4,7 @@ import { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
 import { contentGenerate } from "./functions/content-generate";
 import {
   contentPlanMidWeek,
+  contentPlanOffseasonBeat,
   contentPlanPostOddsRefresh,
   contentPlanWeeklyPreview,
   contentPlanWeeklyWrap,
@@ -38,6 +39,7 @@ export { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
 export { contentGenerate } from "./functions/content-generate";
 export {
   contentPlanMidWeek,
+  contentPlanOffseasonBeat,
   contentPlanPostOddsRefresh,
   contentPlanWeeklyPreview,
   contentPlanWeeklyWrap,
@@ -76,6 +78,7 @@ export const functions = [
   contentPlanWeeklyWrap,
   contentPlanMidWeek,
   contentPlanPostOddsRefresh,
+  contentPlanOffseasonBeat,
   contentPlanGameFinal,
   contentPlanTransaction,
   contentPlanWaiver,

@@ -125,3 +125,10 @@ export const contentPlanPostOddsRefresh = createContentPlanCronFunction({
   name: "AI content post-odds-refresh planner",
   schedule: "0 16 * * 4",
 });
+
+export const contentPlanOffseasonBeat = createContentPlanCronFunction({
+  cadence: "offseason-beat",
+  functionId: "content-plan-offseason-beat",
+  name: "AI content offseason beat planner",
+  schedule: "0 15 * * 1",
+});

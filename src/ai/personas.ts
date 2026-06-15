@@ -33,6 +33,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     name: "Commissioner",
     performsWhen: [
       "pre-week cron",
+      "preseason countdowns",
       "lore.dispute",
       "transaction controversies",
       "settle-it poll verdicts",
@@ -45,7 +46,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     purpose: "League-official weekly framing and announcements.",
     tone: "Warm, authoritative, inclusive.",
     triggerConfig: {
-      cadences: ["weekly-preview"],
+      cadences: ["weekly-preview", "offseason-beat"],
       events: ["lore.dispute", "poll.closed", "transaction.controversy"],
     },
   },
@@ -57,6 +58,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     name: "Analyst",
     performsWhen: [
       "pre-week cron previews",
+      "preseason countdowns",
       "game.final performance reviews",
       "milestone and record math",
     ],
@@ -68,7 +70,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     purpose: "Matchup breakdowns, trends, and performance reviews.",
     tone: "Dry, credible, numbers-first.",
     triggerConfig: {
-      cadences: ["weekly-preview", "weekly-wrap"],
+      cadences: ["weekly-preview", "weekly-wrap", "offseason-beat"],
       events: ["game.final", "record.broken"],
     },
   },
@@ -80,6 +82,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     name: "Narrator",
     performsWhen: [
       "game.final recaps",
+      "offseason retrospectives",
       "lore.canonized legend pieces",
       "milestone and record pieces",
     ],
@@ -90,7 +93,10 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
       "Write a compact league recap with an editorial voice, using only supplied league history and current facts. Make real league moments feel like part of a longer saga.",
     purpose: "Story-driven recaps that connect results to league history.",
     tone: "Editorial, literary, a little grand.",
-    triggerConfig: { events: ["game.final", "record.broken"] },
+    triggerConfig: {
+      cadences: ["offseason-beat"],
+      events: ["game.final", "record.broken"],
+    },
   },
   trash_talker: {
     beat: "Roasts, rivalry needling, callbacks to past failures, and affectionate antagonism.",
@@ -101,6 +107,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     performsWhen: [
       "game.final blowouts and upsets",
       "rivalry-week cron",
+      "offseason re-litigation beats",
       "bad roster or paper-bet move reactions",
     ],
     pointOfView:
@@ -111,7 +118,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     purpose: "Rivalry needling and punchy postgame banter.",
     tone: "Irreverent, punchy, affectionate.",
     triggerConfig: {
-      cadences: ["rivalry-week"],
+      cadences: ["rivalry-week", "offseason-beat"],
       events: ["game.final", "bet.settled", "user_move.bad"],
     },
   },
@@ -125,6 +132,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
       "transaction events",
       "waiver events",
       "mid-week cron",
+      "offseason superlatives",
       "paper bet placed reactions",
     ],
     pointOfView:
@@ -135,7 +143,7 @@ export const DEFAULT_PERSONA_CARDS: Record<AiPersona, PersonaCardDefaults> = {
     purpose: "Transactions, waivers, and league-room churn.",
     tone: "Scoopy, breathless, faux-insider.",
     triggerConfig: {
-      cadences: ["mid-week"],
+      cadences: ["mid-week", "offseason-beat"],
       events: ["transaction", "waiver", "bet.placed"],
     },
   },

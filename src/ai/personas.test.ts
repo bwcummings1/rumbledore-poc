@@ -25,7 +25,7 @@ describe("persona cast defaults", () => {
       enabled: true,
       name: "Beat Reporter",
       triggerConfig: {
-        cadences: ["mid-week"],
+        cadences: ["mid-week", "offseason-beat"],
         events: ["transaction", "waiver", "bet.placed"],
       },
     });

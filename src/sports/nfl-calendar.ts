@@ -16,6 +16,7 @@ export type NflGamePhase =
 
 export interface NflWeekState {
   gamePhase: NflGamePhase;
+  isQuietWeek?: boolean;
   isRivalryWindow?: boolean;
   phase: NflPhase;
   seasonWeek: number | null;
