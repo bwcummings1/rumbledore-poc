@@ -36,7 +36,8 @@ function hasTrustedRecordData(data: RecordsPageData): boolean {
     data.currentRecords.length > 0 ||
     data.catalog.allTimeStandings.length > 0 ||
     data.catalog.headToHead.allTimePairs.length > 0 ||
-    data.catalog.championships.seasons.length > 0
+    data.catalog.championships.seasons.length > 0 ||
+    data.catalog.milestones.keeper.status === "available"
   );
 }
 
@@ -489,6 +490,59 @@ function Rivalries({ data }: { data: RecordsPageData }) {
   );
 }
 
+function KeeperMilestones({ data }: { data: RecordsPageData }) {
+  const keeper = data.catalog.milestones.keeper;
+  if (keeper.status === "unavailable") {
+    return (
+      <Section title="Draft and keeper milestones">
+        <div className="rounded-card border border-dashed border-border bg-muted/25 p-4">
+          <h3 className="text-sm font-semibold tracking-tight">
+            Keeper milestones unavailable
+          </h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This provider import has no trusted draft or keeper milestone
+            aggregate yet.
+          </p>
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section
+      icon={<Landmark className="size-4 text-primary" aria-hidden="true" />}
+      title="Draft and keeper milestones"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {keeper.entries.slice(0, 6).map((entry) => (
+          <article
+            className="rounded-card border border-border bg-card p-4"
+            key={entry.milestoneKey}
+          >
+            <p className="text-xs uppercase text-muted-foreground">
+              {entry.milestoneType.replaceAll("_", " ")}
+            </p>
+            <h3 className="mt-2 text-sm font-semibold tracking-tight">
+              {entry.label}
+            </h3>
+            <p className="mt-3 font-mono text-lg font-semibold tabular-nums">
+              {formatNumber(entry.value)}
+            </p>
+            {entry.personId ? (
+              <Link
+                className="mt-2 block text-sm text-muted-foreground underline-offset-4 hover:underline"
+                href={managerHref(data.league, entry.personId)}
+              >
+                {entry.personName ?? "Unknown manager"}
+              </Link>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
   const weeklyRecords = recordGroup(data.currentRecords, [
     "highest_single_week_score",
@@ -606,17 +660,7 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
           <StreaksAndBlowouts data={data} />
           <Championships data={data} />
           <Rivalries data={data} />
-          <Section title="Draft and keeper milestones">
-            <div className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-              <h3 className="text-sm font-semibold tracking-tight">
-                Keeper milestones unavailable
-              </h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                This provider import has no trusted draft or keeper milestone
-                aggregate yet.
-              </p>
-            </div>
-          </Section>
+          <KeeperMilestones data={data} />
         </>
       ) : null}
     </main>

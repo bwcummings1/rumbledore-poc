@@ -879,7 +879,11 @@ describe("syncCurrentLeague", () => {
           .from(statsCalculations)
           .where(eq(statsCalculations.leagueId, first.value.league.id)),
     );
-    expect(calculations).toHaveLength(2);
+    expect(calculations.map((row) => row.calculationType).sort()).toEqual([
+      "head_to_head",
+      "records",
+      "season",
+    ]);
 
     const repeatedStale = await syncCurrentLeague({
       db: handle.db,
@@ -1104,6 +1108,7 @@ describe("syncCurrentLeague", () => {
     );
     expect(calculations.map((row) => row.calculationType).sort()).toEqual([
       "head_to_head",
+      "records",
       "season",
     ]);
     const seasonCalculation = calculations.find(
@@ -1137,6 +1142,8 @@ describe("syncCurrentLeague", () => {
           .from(statsCalculations)
           .where(eq(statsCalculations.leagueId, first.value.league.id)),
     );
-    expect(afterNoopCalculations).toHaveLength(2);
+    expect(
+      afterNoopCalculations.map((row) => row.calculationType).sort(),
+    ).toEqual(["head_to_head", "records", "season"]);
   });
 });

@@ -1,11 +1,16 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db/client";
-import { withLeagueContext } from "@/db/rls";
+import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   championshipRecords,
   dataIntegrityChecks,
+  fantasyRosterEntries,
   headToHeadRecords,
+  identityMappings,
+  leagueSeasonSettings,
   persons,
+  recordBookAllTimeStandings,
+  recordBookMilestones,
   seasonStatistics,
   weeklyStatistics,
 } from "@/db/schema";
@@ -17,6 +22,9 @@ type SeasonStatisticsRow = typeof seasonStatistics.$inferSelect;
 type WeeklyStatisticsRow = typeof weeklyStatistics.$inferSelect;
 type ChampionshipRecordRow = typeof championshipRecords.$inferSelect;
 type HeadToHeadRecordRow = typeof headToHeadRecords.$inferSelect;
+type RecordBookAllTimeStandingRow =
+  typeof recordBookAllTimeStandings.$inferSelect;
+type RecordBookMilestoneRow = typeof recordBookMilestones.$inferSelect;
 
 interface PeriodContext {
   matchupId?: string;
@@ -185,6 +193,24 @@ export interface ManagerChampionshipRecord {
   thirdPlaces: number;
 }
 
+export interface KeeperMilestoneCatalogEntry {
+  label: string;
+  metadata: Record<string, unknown>;
+  milestoneKey: string;
+  milestoneType: string;
+  personId: string | null;
+  personName: string | null;
+  providerPlayerId: string | null;
+  season: number | null;
+  value: number;
+}
+
+export interface KeeperMilestoneCatalog {
+  entries: KeeperMilestoneCatalogEntry[];
+  status: "available" | "unavailable";
+  summary: string | null;
+}
+
 export interface RecordsCatalog {
   allTimeStandings: AllTimeStandingCatalogRow[];
   blowouts: {
@@ -208,10 +234,18 @@ export interface RecordsCatalog {
     worstScoresInWins: WeeklyCatalogEntry[];
   };
   integrityBlocked: boolean;
+  milestones: {
+    keeper: KeeperMilestoneCatalog;
+  };
   streaks: {
     longestLosses: StreakCatalogEntry[];
     longestWins: StreakCatalogEntry[];
   };
+}
+
+export interface RecordBookAggregateRefreshSummary {
+  milestones: number;
+  standings: number;
 }
 
 interface AllTimeStandingAccumulator {
@@ -543,6 +577,61 @@ function buildAllTimeStandings(
     .map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
+function seasonSummaryFromJson(value: Record<string, unknown> | null) {
+  if (!value) {
+    return null;
+  }
+  return {
+    finalPlacement:
+      typeof value.finalPlacement === "string" ? value.finalPlacement : "out",
+    finalRank: typeof value.finalRank === "number" ? value.finalRank : 0,
+    losses: typeof value.losses === "number" ? value.losses : 0,
+    pointsFor: typeof value.pointsFor === "number" ? value.pointsFor : 0,
+    season: typeof value.season === "number" ? value.season : 0,
+    ties: typeof value.ties === "number" ? value.ties : 0,
+    winPercentage:
+      typeof value.winPercentage === "number" ? value.winPercentage : 0,
+    wins: typeof value.wins === "number" ? value.wins : 0,
+  } satisfies SeasonSummary;
+}
+
+function materializedAllTimeStandings(
+  rows: readonly RecordBookAllTimeStandingRow[],
+  personNames: ReadonlyMap<string, string>,
+): AllTimeStandingCatalogRow[] {
+  return rows
+    .map((row) => ({
+      avgPointsAgainst: row.avgPointsAgainst,
+      avgPointsFor: row.avgPointsFor,
+      bestSeason: seasonSummaryFromJson(row.bestSeason),
+      careerLuck: row.careerLuck,
+      championships: row.championships,
+      games: row.games,
+      losses: row.losses,
+      madeChampionships: row.madeChampionships,
+      personId: row.personId,
+      personName: personName(personNames, row.personId),
+      playoffAppearances: row.playoffAppearances,
+      pointDifferential: row.pointDifferential,
+      pointsAgainst: row.pointsAgainst,
+      pointsFor: row.pointsFor,
+      rank: row.rank,
+      regularSeasonTitles: row.regularSeasonTitles,
+      runnerUps: row.runnerUps,
+      seasons: row.seasons,
+      ties: row.ties,
+      winPercentage: row.winPercentage,
+      wins: row.wins,
+      worstSeason: seasonSummaryFromJson(row.worstSeason),
+    }))
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        compareStable(left.personName, right.personName) ||
+        compareStable(left.personId, right.personId),
+    );
+}
+
 function bestStreaks(
   weeklyRows: readonly WeeklyStatisticsRow[],
   personNames: ReadonlyMap<string, string>,
@@ -648,6 +737,13 @@ function emptyRecordsCatalog(integrityBlocked: boolean): RecordsCatalog {
       worstScoresInWins: [],
     },
     integrityBlocked,
+    milestones: {
+      keeper: {
+        entries: [],
+        status: "unavailable",
+        summary: null,
+      },
+    },
     streaks: { longestLosses: [], longestWins: [] },
   };
 }
@@ -827,6 +923,48 @@ function buildHeadToHeadCatalog(
     allTimePairs: pairs.filter((row) => row.season === 0),
     managerLedgers,
     seasonPairs: pairs.filter((row) => row.season !== 0),
+  };
+}
+
+function milestoneStatus(
+  rows: readonly RecordBookMilestoneRow[],
+): KeeperMilestoneCatalog["status"] {
+  return rows.some((row) => row.status === "available")
+    ? "available"
+    : "unavailable";
+}
+
+function buildKeeperMilestoneCatalog(
+  rows: readonly RecordBookMilestoneRow[],
+  personNames: ReadonlyMap<string, string>,
+): KeeperMilestoneCatalog {
+  const status = milestoneStatus(rows);
+  const availableRows = rows.filter((row) => row.status === "available");
+  const entries = availableRows
+    .map((row) => ({
+      label: row.label,
+      metadata: row.metadata,
+      milestoneKey: row.milestoneKey,
+      milestoneType: row.milestoneType,
+      personId: row.personId,
+      personName: row.personId ? personName(personNames, row.personId) : null,
+      providerPlayerId: row.providerPlayerId,
+      season: row.season,
+      value: row.value,
+    }))
+    .sort(
+      (left, right) =>
+        right.value - left.value ||
+        compareStable(left.label, right.label) ||
+        compareStable(left.milestoneKey, right.milestoneKey),
+    );
+  return {
+    entries,
+    status,
+    summary:
+      status === "available"
+        ? `${entries.length} keeper milestone${entries.length === 1 ? "" : "s"} materialized`
+        : null,
   };
 }
 
@@ -1020,10 +1158,483 @@ function buildChampionshipCatalog({
   };
 }
 
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => compareStable(left, right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableJson(nested)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function standingValues(
+  leagueId: string,
+  row: AllTimeStandingCatalogRow,
+): typeof recordBookAllTimeStandings.$inferInsert {
+  return {
+    avgPointsAgainst: row.avgPointsAgainst,
+    avgPointsFor: row.avgPointsFor,
+    bestSeason: row.bestSeason as unknown as Record<string, unknown> | null,
+    careerLuck: row.careerLuck,
+    championships: row.championships,
+    games: row.games,
+    leagueId,
+    losses: row.losses,
+    madeChampionships: row.madeChampionships,
+    personId: row.personId,
+    playoffAppearances: row.playoffAppearances,
+    pointDifferential: row.pointDifferential,
+    pointsAgainst: row.pointsAgainst,
+    pointsFor: row.pointsFor,
+    rank: row.rank,
+    regularSeasonTitles: row.regularSeasonTitles,
+    runnerUps: row.runnerUps,
+    seasons: row.seasons,
+    ties: row.ties,
+    winPercentage: row.winPercentage,
+    wins: row.wins,
+    worstSeason: row.worstSeason as unknown as Record<string, unknown> | null,
+  };
+}
+
+function standingChanged(
+  existing: RecordBookAllTimeStandingRow,
+  target: AllTimeStandingCatalogRow,
+): boolean {
+  const values = standingValues(existing.leagueId, target);
+  return (
+    existing.rank !== values.rank ||
+    existing.seasons !== values.seasons ||
+    existing.games !== values.games ||
+    existing.wins !== values.wins ||
+    existing.losses !== values.losses ||
+    existing.ties !== values.ties ||
+    existing.winPercentage !== values.winPercentage ||
+    existing.pointsFor !== values.pointsFor ||
+    existing.pointsAgainst !== values.pointsAgainst ||
+    existing.avgPointsFor !== values.avgPointsFor ||
+    existing.avgPointsAgainst !== values.avgPointsAgainst ||
+    existing.pointDifferential !== values.pointDifferential ||
+    existing.careerLuck !== values.careerLuck ||
+    existing.championships !== values.championships ||
+    existing.runnerUps !== values.runnerUps ||
+    existing.playoffAppearances !== values.playoffAppearances ||
+    existing.madeChampionships !== values.madeChampionships ||
+    existing.regularSeasonTitles !== values.regularSeasonTitles ||
+    stableJson(existing.bestSeason) !== stableJson(values.bestSeason) ||
+    stableJson(existing.worstSeason) !== stableJson(values.worstSeason)
+  );
+}
+
+async function refreshAllTimeStandingAggregates(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  personNames: ReadonlyMap<string, string>,
+): Promise<number> {
+  const seasonRows = await tx
+    .select()
+    .from(seasonStatistics)
+    .where(eq(seasonStatistics.leagueId, leagueId))
+    .orderBy(asc(seasonStatistics.season), asc(seasonStatistics.personId));
+  const championshipRows = await tx
+    .select()
+    .from(championshipRecords)
+    .where(eq(championshipRecords.leagueId, leagueId))
+    .orderBy(asc(championshipRecords.season));
+  const targets = buildAllTimeStandings(
+    seasonRows,
+    personNames,
+    championshipRows,
+  );
+  const existingRows = await tx
+    .select()
+    .from(recordBookAllTimeStandings)
+    .where(eq(recordBookAllTimeStandings.leagueId, leagueId));
+  const existingByPerson = new Map(
+    existingRows.map((row) => [row.personId, row]),
+  );
+  const targetPersonIds = new Set(targets.map((row) => row.personId));
+  let writes = 0;
+
+  for (const target of targets) {
+    const existing = existingByPerson.get(target.personId);
+    const values = standingValues(leagueId, target);
+    if (!existing) {
+      await tx.insert(recordBookAllTimeStandings).values(values);
+      writes += 1;
+      continue;
+    }
+    if (!standingChanged(existing, target)) {
+      continue;
+    }
+    await tx
+      .update(recordBookAllTimeStandings)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(recordBookAllTimeStandings.id, existing.id));
+    writes += 1;
+  }
+
+  const staleIds = existingRows
+    .filter((row) => !targetPersonIds.has(row.personId))
+    .map((row) => row.id);
+  if (staleIds.length > 0) {
+    await tx
+      .delete(recordBookAllTimeStandings)
+      .where(inArray(recordBookAllTimeStandings.id, staleIds));
+    writes += staleIds.length;
+  }
+
+  return writes;
+}
+
+interface MilestoneTarget {
+  label: string;
+  metadata: Record<string, unknown>;
+  milestoneKey: string;
+  milestoneType: string;
+  personId: string | null;
+  providerPlayerId: string | null;
+  season: number | null;
+  status: "available" | "unavailable";
+  value: number;
+}
+
+interface KeeperPlayerRun {
+  displayName: string;
+  earliestKeptSince: number | null;
+  latestSeason: number;
+  personId: string;
+  providerPlayerId: string;
+  seasons: Set<number>;
+}
+
+function teamSeasonKey(providerTeamId: string, season: number): string {
+  return `${providerTeamId}\u001f${season}`;
+}
+
+function keeperMetadataName(metadata: Record<string, unknown>): string | null {
+  for (const key of ["playerName", "fullName", "name"]) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function keptSinceSeason(metadata: Record<string, unknown>): number | null {
+  const value = metadata.keptSinceSeason;
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+async function buildKeeperMilestoneTargets(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  personNames: ReadonlyMap<string, string>,
+): Promise<MilestoneTarget[]> {
+  const settingsRows = await tx
+    .select({
+      isDynastyLeague: leagueSeasonSettings.isDynastyLeague,
+      isKeeperLeague: leagueSeasonSettings.isKeeperLeague,
+      keeperSettings: leagueSeasonSettings.keeperSettings,
+      season: leagueSeasonSettings.season,
+    })
+    .from(leagueSeasonSettings)
+    .where(eq(leagueSeasonSettings.leagueId, leagueId))
+    .orderBy(asc(leagueSeasonSettings.season));
+  const keeperRows = await tx
+    .select({
+      metadata: fantasyRosterEntries.metadata,
+      providerPlayerId: fantasyRosterEntries.providerPlayerId,
+      providerTeamId: fantasyRosterEntries.providerTeamId,
+      season: fantasyRosterEntries.season,
+    })
+    .from(fantasyRosterEntries)
+    .where(
+      and(
+        eq(fantasyRosterEntries.leagueId, leagueId),
+        eq(fantasyRosterEntries.isKeeper, true),
+      ),
+    )
+    .orderBy(
+      asc(fantasyRosterEntries.season),
+      asc(fantasyRosterEntries.providerTeamId),
+      asc(fantasyRosterEntries.providerPlayerId),
+    );
+  const mappingRows = await tx
+    .select({
+      personId: identityMappings.personId,
+      providerTeamId: identityMappings.providerTeamId,
+      season: identityMappings.season,
+    })
+    .from(identityMappings)
+    .where(eq(identityMappings.leagueId, leagueId));
+  const mappingByTeamSeason = new Map(
+    mappingRows.map((row) => [
+      teamSeasonKey(row.providerTeamId, row.season),
+      row.personId,
+    ]),
+  );
+  const hasKeeperSettings = settingsRows.some(
+    (row) =>
+      row.isKeeperLeague ||
+      row.isDynastyLeague ||
+      Object.keys(row.keeperSettings).length > 0,
+  );
+  if (!hasKeeperSettings && keeperRows.length === 0) {
+    return [
+      {
+        label: "Keeper milestones unavailable",
+        metadata: { reason: "provider_has_no_keeper_dynasty_signal" },
+        milestoneKey: "keeper_dynasty:unavailable",
+        milestoneType: "keeper_dynasty_support",
+        personId: null,
+        providerPlayerId: null,
+        season: null,
+        status: "unavailable",
+        value: 0,
+      },
+    ];
+  }
+
+  const targets: MilestoneTarget[] = [
+    {
+      label: "Keeper and dynasty signal available",
+      metadata: {
+        keeperRosterEntries: keeperRows.length,
+        seasons: settingsRows.map((row) => row.season),
+      },
+      milestoneKey: "keeper_dynasty:support",
+      milestoneType: "keeper_dynasty_support",
+      personId: null,
+      providerPlayerId: null,
+      season: settingsRows.at(-1)?.season ?? null,
+      status: "available",
+      value: keeperRows.length,
+    },
+  ];
+
+  const keeperSeasonsByPerson = new Map<string, Set<string>>();
+  const playerRuns = new Map<string, KeeperPlayerRun>();
+
+  for (const row of keeperRows) {
+    const personId = mappingByTeamSeason.get(
+      teamSeasonKey(row.providerTeamId, row.season),
+    );
+    if (!personId) {
+      continue;
+    }
+    const keeperKey = `${row.providerPlayerId}:${row.season}`;
+    keeperSeasonsByPerson.set(
+      personId,
+      keeperSeasonsByPerson.get(personId) ?? new Set(),
+    );
+    keeperSeasonsByPerson.get(personId)?.add(keeperKey);
+
+    const runKey = `${personId}\u001f${row.providerPlayerId}`;
+    const current = playerRuns.get(runKey) ?? {
+      displayName:
+        keeperMetadataName(row.metadata) ?? `Player ${row.providerPlayerId}`,
+      earliestKeptSince: null,
+      latestSeason: row.season,
+      personId,
+      providerPlayerId: row.providerPlayerId,
+      seasons: new Set<number>(),
+    };
+    const keptSince = keptSinceSeason(row.metadata);
+    current.earliestKeptSince =
+      keptSince === null
+        ? current.earliestKeptSince
+        : Math.min(current.earliestKeptSince ?? keptSince, keptSince);
+    current.latestSeason = Math.max(current.latestSeason, row.season);
+    current.seasons.add(row.season);
+    playerRuns.set(runKey, current);
+  }
+
+  for (const [personId, keeperSeasons] of keeperSeasonsByPerson) {
+    targets.push({
+      label: `${personName(personNames, personId)} keeper seasons`,
+      metadata: { uniquePlayerSeasons: keeperSeasons.size },
+      milestoneKey: `person:${personId}:keeper_count`,
+      milestoneType: "keeper_count",
+      personId,
+      providerPlayerId: null,
+      season: null,
+      status: "available",
+      value: keeperSeasons.size,
+    });
+  }
+
+  const longestByPerson = new Map<string, KeeperPlayerRun>();
+  for (const run of playerRuns.values()) {
+    const duration =
+      run.earliestKeptSince === null
+        ? run.seasons.size
+        : run.latestSeason - run.earliestKeptSince + 1;
+    const current = longestByPerson.get(run.personId);
+    const currentDuration = current
+      ? current.earliestKeptSince === null
+        ? current.seasons.size
+        : current.latestSeason - current.earliestKeptSince + 1
+      : -1;
+    if (
+      !current ||
+      duration > currentDuration ||
+      (duration === currentDuration &&
+        compareStable(run.displayName, current.displayName) < 0)
+    ) {
+      longestByPerson.set(run.personId, run);
+    }
+  }
+
+  for (const run of longestByPerson.values()) {
+    const duration =
+      run.earliestKeptSince === null
+        ? run.seasons.size
+        : run.latestSeason - run.earliestKeptSince + 1;
+    targets.push({
+      label: `${personName(personNames, run.personId)} kept ${run.displayName}`,
+      metadata: {
+        displayName: run.displayName,
+        keptSinceSeason: run.earliestKeptSince,
+        seasons: [...run.seasons].sort((left, right) => left - right),
+      },
+      milestoneKey: `person:${run.personId}:longest_kept_player`,
+      milestoneType: "longest_kept_player",
+      personId: run.personId,
+      providerPlayerId: run.providerPlayerId,
+      season: run.latestSeason,
+      status: "available",
+      value: duration,
+    });
+  }
+
+  return targets.sort((left, right) =>
+    compareStable(left.milestoneKey, right.milestoneKey),
+  );
+}
+
+function milestoneValues(
+  leagueId: string,
+  target: MilestoneTarget,
+): typeof recordBookMilestones.$inferInsert {
+  return {
+    label: target.label,
+    leagueId,
+    metadata: target.metadata,
+    milestoneKey: target.milestoneKey,
+    milestoneType: target.milestoneType,
+    personId: target.personId,
+    providerPlayerId: target.providerPlayerId,
+    season: target.season,
+    status: target.status,
+    value: target.value,
+  };
+}
+
+function milestoneChanged(
+  existing: RecordBookMilestoneRow,
+  target: MilestoneTarget,
+): boolean {
+  const values = milestoneValues(existing.leagueId, target);
+  return (
+    existing.label !== values.label ||
+    existing.milestoneType !== values.milestoneType ||
+    existing.status !== values.status ||
+    existing.personId !== values.personId ||
+    existing.providerPlayerId !== values.providerPlayerId ||
+    existing.season !== values.season ||
+    existing.value !== values.value ||
+    stableJson(existing.metadata) !== stableJson(values.metadata)
+  );
+}
+
+async function refreshMilestoneAggregates(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  personNames: ReadonlyMap<string, string>,
+): Promise<number> {
+  const targets = await buildKeeperMilestoneTargets(tx, leagueId, personNames);
+  const existingRows = await tx
+    .select()
+    .from(recordBookMilestones)
+    .where(eq(recordBookMilestones.leagueId, leagueId));
+  const existingByKey = new Map(
+    existingRows.map((row) => [row.milestoneKey, row]),
+  );
+  const targetKeys = new Set(targets.map((row) => row.milestoneKey));
+  let writes = 0;
+
+  for (const target of targets) {
+    const existing = existingByKey.get(target.milestoneKey);
+    const values = milestoneValues(leagueId, target);
+    if (!existing) {
+      await tx.insert(recordBookMilestones).values(values);
+      writes += 1;
+      continue;
+    }
+    if (!milestoneChanged(existing, target)) {
+      continue;
+    }
+    await tx
+      .update(recordBookMilestones)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(recordBookMilestones.id, existing.id));
+    writes += 1;
+  }
+
+  const staleIds = existingRows
+    .filter((row) => !targetKeys.has(row.milestoneKey))
+    .map((row) => row.id);
+  if (staleIds.length > 0) {
+    await tx
+      .delete(recordBookMilestones)
+      .where(inArray(recordBookMilestones.id, staleIds));
+    writes += staleIds.length;
+  }
+
+  return writes;
+}
+
+export async function refreshRecordBookAggregates(
+  tx: LeagueScopedTx,
+  input: { leagueId: string },
+): Promise<RecordBookAggregateRefreshSummary> {
+  const personRows = await tx
+    .select({
+      canonicalName: persons.canonicalName,
+      id: persons.id,
+    })
+    .from(persons)
+    .where(eq(persons.leagueId, input.leagueId))
+    .orderBy(asc(persons.canonicalName), asc(persons.id));
+  const personNames = new Map(
+    personRows.map((person) => [person.id, person.canonicalName]),
+  );
+
+  const standings = await refreshAllTimeStandingAggregates(
+    tx,
+    input.leagueId,
+    personNames,
+  );
+  const milestones = await refreshMilestoneAggregates(
+    tx,
+    input.leagueId,
+    personNames,
+  );
+  return { milestones, standings };
+}
+
 export function buildRecordsCatalog(input: {
+  allTimeStandingRows?: readonly RecordBookAllTimeStandingRow[];
   championshipRows?: readonly ChampionshipRecordRow[];
   headToHeadRows?: readonly HeadToHeadRecordRow[];
   limit?: number;
+  milestoneRows?: readonly RecordBookMilestoneRow[];
   personNames: ReadonlyMap<string, string>;
   seasonRows: readonly SeasonStatisticsRow[];
   weeklyRows: readonly WeeklyStatisticsRow[];
@@ -1037,11 +1648,16 @@ export function buildRecordsCatalog(input: {
   const scoredRows = input.weeklyRows.filter((row) => row.pointsFor > 0);
 
   return {
-    allTimeStandings: buildAllTimeStandings(
-      input.seasonRows,
-      input.personNames,
-      input.championshipRows,
-    ),
+    allTimeStandings: input.allTimeStandingRows
+      ? materializedAllTimeStandings(
+          input.allTimeStandingRows,
+          input.personNames,
+        )
+      : buildAllTimeStandings(
+          input.seasonRows,
+          input.personNames,
+          input.championshipRows,
+        ),
     blowouts: {
       biggest: blowoutTop(
         winners,
@@ -1104,6 +1720,12 @@ export function buildRecordsCatalog(input: {
       ),
     },
     integrityBlocked: false,
+    milestones: {
+      keeper: buildKeeperMilestoneCatalog(
+        input.milestoneRows ?? [],
+        input.personNames,
+      ),
+    },
     streaks: {
       longestLosses: bestStreaks(
         input.weeklyRows,
@@ -1151,6 +1773,22 @@ export async function getLeagueRecordsCatalog(
     const personNames = new Map(
       personRows.map((person) => [person.id, person.canonicalName]),
     );
+    const allTimeStandingRows = await tx
+      .select()
+      .from(recordBookAllTimeStandings)
+      .where(eq(recordBookAllTimeStandings.leagueId, input.leagueId))
+      .orderBy(
+        asc(recordBookAllTimeStandings.rank),
+        asc(recordBookAllTimeStandings.personId),
+      );
+    const milestoneRows = await tx
+      .select()
+      .from(recordBookMilestones)
+      .where(eq(recordBookMilestones.leagueId, input.leagueId))
+      .orderBy(
+        asc(recordBookMilestones.milestoneType),
+        asc(recordBookMilestones.milestoneKey),
+      );
 
     const seasonRows = await tx
       .select()
@@ -1183,9 +1821,11 @@ export async function getLeagueRecordsCatalog(
       );
 
     return buildRecordsCatalog({
+      allTimeStandingRows,
       championshipRows,
       headToHeadRows,
       limit: input.limit,
+      milestoneRows,
       personNames,
       seasonRows,
       weeklyRows,

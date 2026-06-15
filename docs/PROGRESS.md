@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Record-book aggregate materialization landed — all-time standings and keeper milestones now persist as RLS-scoped aggregates, full and targeted stats recomputes refresh them idempotently, and live finalized-score changes run a distinct records pass.
 - 2026-06-15: League Records surface deepening landed — `/records` now renders a structured record book with standings, records, championships, rivalries, and dedicated per-manager plus canonical head-to-head pages.
 - 2026-06-15: Symmetric H2H and postseason records catalog landed — record-book reads now expose all-time/per-season rivalry ledgers, mirrored manager H2H lines, championship seasons, and playoff/title records from trusted materialized stats.
 - 2026-06-15: All-time records catalog aggregates landed — standings, highs/lows, head-to-head-only blowouts/closest wins, and cross-season streaks now assemble behind an integrity-quarantined records catalog service.

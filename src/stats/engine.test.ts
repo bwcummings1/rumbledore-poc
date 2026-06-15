@@ -13,6 +13,7 @@ import {
   dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
   headToHeadRecords,
   identityAuditLog,
@@ -21,6 +22,8 @@ import {
   leagues,
   persons,
   providerFinalStandings,
+  recordBookAllTimeStandings,
+  recordBookMilestones,
   seasonStatistics,
   statsCalculations,
   teamSeasons,
@@ -544,6 +547,16 @@ async function selectStatsRows(leagueId: string) {
       .select()
       .from(allTimeRecords)
       .where(eq(allTimeRecords.leagueId, leagueId));
+    const allTimeStandingRows = await tx
+      .select()
+      .from(recordBookAllTimeStandings)
+      .where(eq(recordBookAllTimeStandings.leagueId, leagueId))
+      .orderBy(asc(recordBookAllTimeStandings.rank));
+    const milestoneRows = await tx
+      .select()
+      .from(recordBookMilestones)
+      .where(eq(recordBookMilestones.leagueId, leagueId))
+      .orderBy(asc(recordBookMilestones.milestoneKey));
     const championshipRows = await tx
       .select()
       .from(championshipRecords)
@@ -567,6 +580,7 @@ async function selectStatsRows(leagueId: string) {
           when 'all' then 0
           when 'season' then 1
           when 'head_to_head' then 2
+          when 'records' then 3
           else 4
         end`,
       );
@@ -577,12 +591,14 @@ async function selectStatsRows(leagueId: string) {
 
     return {
       auditRows,
+      allTimeStandingRows,
       calculationRows,
       championshipRows,
       dataCorrectionAuditRows,
       h2hRows,
       integrityRows,
       mappingRows,
+      milestoneRows,
       personRows,
       recordRows,
       seasonRows,
@@ -725,6 +741,21 @@ describe("recomputeLeagueStatistics", () => {
       winPercentage: 0.6667,
       wins: 2,
     });
+    expect(rows.allTimeStandingRows).toHaveLength(5);
+    expect(rows.allTimeStandingRows[0]).toMatchObject({
+      losses: 0,
+      personId: blair2024.personId,
+      rank: 1,
+      winPercentage: 1,
+      wins: 1,
+    });
+    expect(catalog.milestones.keeper.status).toBe("unavailable");
+    expect(rows.milestoneRows).toContainEqual(
+      expect.objectContaining({
+        milestoneKey: "keeper_dynasty:unavailable",
+        status: "unavailable",
+      }),
+    );
     expect(catalog.highLow.highestScores[0]).toMatchObject({
       personId: casey2025.personId,
       recordType: "highest_single_week_score",
@@ -833,6 +864,99 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("materializes keeper milestone aggregates from trusted roster signals", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague("keepers");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(leagueSeasonSettings).values([
+        {
+          contentHash: `${marker}-keepers-settings-2024`,
+          isKeeperLeague: true,
+          keeperSettings: { isKeeper: true, keeperCount: 2 },
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          season: 2024,
+        },
+        {
+          contentHash: `${marker}-keepers-settings-2025`,
+          isKeeperLeague: true,
+          keeperSettings: { isKeeper: true, keeperCount: 2 },
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          season: 2025,
+        },
+      ]);
+      await tx.insert(fantasyRosterEntries).values([
+        {
+          contentHash: `${marker}-keepers-roster-2024`,
+          isKeeper: true,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          metadata: { keptSinceSeason: 2024, playerName: "Anchor RB" },
+          provider: "espn",
+          providerPlayerId: "player-anchor",
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2024,
+          slot: "RB",
+          status: "active",
+        },
+        {
+          contentHash: `${marker}-keepers-roster-2025`,
+          isKeeper: true,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          metadata: { keptSinceSeason: 2024, playerName: "Anchor RB" },
+          provider: "espn",
+          providerPlayerId: "player-anchor",
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2025,
+          slot: "RB",
+          status: "active",
+        },
+      ]);
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    const rows = await selectStatsRows(leagueId);
+    expect(rows.milestoneRows).toContainEqual(
+      expect.objectContaining({
+        milestoneKey: "keeper_dynasty:support",
+        status: "available",
+      }),
+    );
+    expect(rows.milestoneRows).toContainEqual(
+      expect.objectContaining({
+        milestoneType: "keeper_count",
+        value: 2,
+      }),
+    );
+    expect(rows.milestoneRows).toContainEqual(
+      expect.objectContaining({
+        milestoneType: "longest_kept_player",
+        providerPlayerId: "player-anchor",
+        value: 2,
+      }),
+    );
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(catalog.milestones.keeper.status).toBe("available");
+    expect(catalog.milestones.keeper.entries).toContainEqual(
+      expect.objectContaining({
+        label: expect.stringContaining("Anchor RB"),
+        milestoneType: "longest_kept_player",
+        value: 2,
+      }),
+    );
+  });
+
   it("recomputes only the affected season and H2H pair for changed finalized matchups", async () => {
     const { leagueId } = await seedStatsLeague("targeted");
 
@@ -876,8 +1000,14 @@ describe("recomputeLeagueStatistics", () => {
     const beforeAlex2024Season = before.seasonRows.find(
       (row) => row.personId === alex2024.personId && row.season === 2024,
     );
+    const beforeCurrentHighScore = before.recordRows.find(
+      (row) => row.recordType === "highest_single_week_score" && row.isCurrent,
+    );
     if (!beforeTargetH2h || !beforeUnrelatedH2h || !beforeAlex2024Season) {
       throw new Error("expected baseline rows for targeted recompute");
+    }
+    if (!beforeCurrentHighScore) {
+      throw new Error("expected a current high-score record before recompute");
     }
 
     let changedMatchupId = "";
@@ -912,6 +1042,8 @@ describe("recomputeLeagueStatistics", () => {
       matchupIds: [changedMatchupId],
     });
     expect(recomputed.seasons).toEqual([2025]);
+    expect(recomputed.records).toBeGreaterThan(0);
+    expect(recomputed.recordBookAggregates).toBeGreaterThan(0);
     expect(recomputed.targetedPairs).toEqual([
       { personAId: targetPair[0], personBId: targetPair[1] },
     ]);
@@ -953,11 +1085,31 @@ describe("recomputeLeagueStatistics", () => {
       personAPoints: afterTargetH2h.personAId === alex2025.personId ? 130 : 90,
       personBPoints: afterTargetH2h.personBId === casey2025.personId ? 90 : 130,
     });
+    const afterCurrentHighScore = after.recordRows.find(
+      (row) => row.recordType === "highest_single_week_score" && row.isCurrent,
+    );
+    expect(afterCurrentHighScore).toMatchObject({
+      holderPersonId: alex2025.personId,
+      scoringPeriod: 1,
+      season: 2025,
+      value: 130,
+    });
+    expect(afterCurrentHighScore?.previousRecordId).toBeTruthy();
+    expect(afterCurrentHighScore?.id).not.toBe(beforeCurrentHighScore.id);
+    expect(
+      after.allTimeStandingRows.find(
+        (row) => row.personId === alex2025.personId,
+      ),
+    ).toMatchObject({
+      pointsFor: 335,
+      wins: 2,
+    });
 
     expect(after.calculationRows.map((row) => row.calculationType)).toEqual([
       "all",
       "season",
       "head_to_head",
+      "records",
     ]);
     expect(
       after.calculationRows.filter((row) => row.calculationType === "all"),
@@ -968,6 +1120,9 @@ describe("recomputeLeagueStatistics", () => {
     const h2hCalculation = after.calculationRows.find(
       (row) => row.calculationType === "head_to_head",
     );
+    const recordsCalculation = after.calculationRows.find(
+      (row) => row.calculationType === "records",
+    );
     expect(seasonCalculation?.metadata).toMatchObject({
       matchupIds: [changedMatchupId],
       seasons: [2025],
@@ -976,6 +1131,21 @@ describe("recomputeLeagueStatistics", () => {
     expect(h2hCalculation?.metadata).toMatchObject({
       pairs: [{ personAId: targetPair[0], personBId: targetPair[1] }],
     });
+    expect(recordsCalculation?.metadata).toMatchObject({
+      matchupIds: [changedMatchupId],
+      seasons: [2025],
+      trigger: "changed_finalized_matchup",
+    });
+
+    const unchangedRecords = await recomputeChangedMatchupStatistics(
+      handle.db,
+      {
+        leagueId,
+        matchupIds: [changedMatchupId],
+      },
+    );
+    expect(unchangedRecords.records).toBe(0);
+    expect(unchangedRecords.recordBookAggregates).toBe(0);
   });
 
   it("uses provider final standings for postseason placement and championship records", async () => {

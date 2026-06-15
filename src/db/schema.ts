@@ -1543,6 +1543,147 @@ export const allTimeRecords = pgTable(
   ],
 );
 
+export const recordBookAllTimeStandings = pgTable(
+  "record_book_all_time_standing",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    rank: integer("rank").notNull(),
+    seasons: integer("seasons").notNull().default(0),
+    games: integer("games").notNull().default(0),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    ties: integer("ties").notNull().default(0),
+    winPercentage: numeric("win_percentage", {
+      mode: "number",
+      precision: 8,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    pointsFor: numeric("points_for", {
+      mode: "number",
+      precision: 14,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    pointsAgainst: numeric("points_against", {
+      mode: "number",
+      precision: 14,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    avgPointsFor: numeric("avg_points_for", {
+      mode: "number",
+      precision: 14,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    avgPointsAgainst: numeric("avg_points_against", {
+      mode: "number",
+      precision: 14,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    pointDifferential: numeric("point_differential", {
+      mode: "number",
+      precision: 14,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    careerLuck: numeric("career_luck", {
+      mode: "number",
+      precision: 12,
+      scale: 4,
+    })
+      .notNull()
+      .default(0),
+    championships: integer("championships").notNull().default(0),
+    runnerUps: integer("runner_ups").notNull().default(0),
+    playoffAppearances: integer("playoff_appearances").notNull().default(0),
+    madeChampionships: integer("made_championships").notNull().default(0),
+    regularSeasonTitles: integer("regular_season_titles").notNull().default(0),
+    bestSeason: jsonb("best_season")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    worstSeason: jsonb("worst_season")
+      .$type<Record<string, unknown> | null>()
+      .default(sql`NULL`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("record_book_all_time_standing_person_unique").on(
+      table.leagueId,
+      table.personId,
+    ),
+    index("record_book_all_time_standing_rank_idx").on(
+      table.leagueId,
+      table.rank,
+    ),
+    pgPolicy("record_book_all_time_standing_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const recordBookMilestones = pgTable(
+  "record_book_milestone",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    milestoneKey: text("milestone_key").notNull(),
+    milestoneType: text("milestone_type").notNull(),
+    status: text("status").notNull().default("available"),
+    personId: uuid("person_id").references(() => persons.id, {
+      onDelete: "cascade",
+    }),
+    providerPlayerId: text("provider_player_id"),
+    season: integer("season"),
+    label: text("label").notNull(),
+    value: numeric("value", { mode: "number", precision: 14, scale: 4 })
+      .notNull()
+      .default(0),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("record_book_milestone_key_unique").on(
+      table.leagueId,
+      table.milestoneKey,
+    ),
+    index("record_book_milestone_type_idx").on(
+      table.leagueId,
+      table.milestoneType,
+    ),
+    index("record_book_milestone_person_idx").on(
+      table.leagueId,
+      table.personId,
+    ),
+    pgPolicy("record_book_milestone_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 export const statsCalculations = pgTable(
   "stats_calculation",
   {

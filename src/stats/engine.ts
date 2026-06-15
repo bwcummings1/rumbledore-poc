@@ -23,6 +23,7 @@ import {
 } from "@/db/schema";
 import type { NormalizedMatchupKind } from "@/providers";
 import { identityNameSimilarity } from "./fuzzy";
+import { refreshRecordBookAggregates } from "./records-catalog";
 
 export const RECORD_TYPE_LABELS = {
   best_career_win_percentage: "Best career win %",
@@ -178,6 +179,8 @@ interface ChangedMatchupRecomputeSummary {
   headToHeadRecords: number;
   integrityChecks: number;
   integrityFailures: number;
+  recordBookAggregates: number;
+  records: number;
   seasonStatistics: number;
   seasons: number[];
   targetedPairs: { personAId: string; personBId: string }[];
@@ -1713,7 +1716,75 @@ function recordEvents({
   ];
 }
 
-async function insertRecordEvents(
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => compareStable(left, right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableJson(nested)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function recordSortKey(metadata: Record<string, unknown>): string | null {
+  const value = metadata.sortKey;
+  return typeof value === "string" ? value : null;
+}
+
+function recordNaturalKey(recordType: RecordType, sortKey: string): string {
+  return `${recordType}\u001f${sortKey}`;
+}
+
+function recordEventValues({
+  event,
+  isCurrent,
+  leagueId,
+  previousRecordId,
+}: {
+  event: RecordEvent;
+  isCurrent: boolean;
+  leagueId: string;
+  previousRecordId: string | null;
+}): typeof allTimeRecords.$inferInsert {
+  return {
+    holderPersonId: event.holderPersonId,
+    isCurrent,
+    leagueId,
+    metadata: {
+      label: RECORD_TYPE_LABELS[event.recordType],
+      sortKey: event.sortKey,
+      ...(event.metadata ?? {}),
+    },
+    opponentPersonId: event.opponentPersonId ?? null,
+    previousRecordId,
+    recordType: event.recordType,
+    scoringPeriod: event.scoringPeriod ?? null,
+    season: event.season ?? null,
+    value: round(event.value, 4),
+  };
+}
+
+function allTimeRecordChanged(
+  existing: typeof allTimeRecords.$inferSelect,
+  values: typeof allTimeRecords.$inferInsert,
+): boolean {
+  return (
+    existing.recordType !== values.recordType ||
+    existing.holderPersonId !== values.holderPersonId ||
+    existing.value !== values.value ||
+    existing.season !== values.season ||
+    existing.scoringPeriod !== values.scoringPeriod ||
+    existing.opponentPersonId !== values.opponentPersonId ||
+    existing.previousRecordId !== values.previousRecordId ||
+    existing.isCurrent !== values.isCurrent ||
+    stableJson(existing.metadata) !== stableJson(values.metadata)
+  );
+}
+
+async function refreshAllTimeRecords(
   tx: LeagueScopedTx,
   leagueId: string,
   events: readonly RecordEvent[],
@@ -1726,39 +1797,77 @@ async function insertRecordEvents(
     ]);
   }
 
-  let rows = 0;
+  const existingRows = await tx
+    .select()
+    .from(allTimeRecords)
+    .where(eq(allTimeRecords.leagueId, leagueId));
+  const existingByKey = new Map<string, (typeof existingRows)[number]>();
+  for (const row of existingRows) {
+    const sortKey = recordSortKey(row.metadata);
+    if (!sortKey) {
+      continue;
+    }
+    existingByKey.set(
+      recordNaturalKey(row.recordType as RecordType, sortKey),
+      row,
+    );
+  }
+
+  let writes = 0;
+  const targetKeys = new Set<string>();
   for (const [recordType, typeEvents] of byType) {
     let previousRecordId: string | null = null;
     const sorted = [...typeEvents].sort((left, right) =>
       compareStable(left.sortKey, right.sortKey),
     );
     for (const [index, event] of sorted.entries()) {
-      const insertedRows: { id: string }[] = await tx
-        .insert(allTimeRecords)
-        .values({
-          holderPersonId: event.holderPersonId,
-          isCurrent: index === sorted.length - 1,
-          leagueId,
-          metadata: {
-            label: RECORD_TYPE_LABELS[recordType],
-            sortKey: event.sortKey,
-            ...(event.metadata ?? {}),
-          },
-          opponentPersonId: event.opponentPersonId ?? null,
-          previousRecordId,
-          recordType,
-          scoringPeriod: event.scoringPeriod ?? null,
-          season: event.season ?? null,
-          value: round(event.value, 4),
-        })
-        .returning({ id: allTimeRecords.id });
-      const inserted = insertedRows[0];
-      previousRecordId = inserted?.id ?? null;
-      rows += 1;
+      const key = recordNaturalKey(recordType, event.sortKey);
+      targetKeys.add(key);
+      const existing = existingByKey.get(key);
+      const values = recordEventValues({
+        event,
+        isCurrent: index === sorted.length - 1,
+        leagueId,
+        previousRecordId,
+      });
+      if (!existing) {
+        const [inserted] = await tx
+          .insert(allTimeRecords)
+          .values(values)
+          .returning({ id: allTimeRecords.id });
+        if (!inserted) {
+          throw new Error("all-time record row was not inserted");
+        }
+        previousRecordId = inserted.id;
+        writes += 1;
+        continue;
+      }
+      if (allTimeRecordChanged(existing, values)) {
+        await tx
+          .update(allTimeRecords)
+          .set({ ...values, updatedAt: new Date() })
+          .where(eq(allTimeRecords.id, existing.id));
+        writes += 1;
+      }
+      previousRecordId = existing.id;
     }
   }
 
-  return rows;
+  const staleIds = existingRows
+    .filter((row) => {
+      const sortKey = recordSortKey(row.metadata);
+      return (
+        !sortKey ||
+        !targetKeys.has(recordNaturalKey(row.recordType as RecordType, sortKey))
+      );
+    })
+    .map((row) => row.id);
+  if (staleIds.length > 0) {
+    await tx.delete(allTimeRecords).where(inArray(allTimeRecords.id, staleIds));
+    writes += staleIds.length;
+  }
+
+  return writes;
 }
 
 function amountEqual(left: number, right: number, tolerance = 0.01): boolean {
@@ -2462,6 +2571,7 @@ export async function recomputeLeagueStatistics(
   headToHeadRecords: number;
   integrityChecks: number;
   integrityFailures: number;
+  recordBookAggregates: number;
   records: number;
   seasonStatistics: number;
   weeklyStatistics: number;
@@ -2473,9 +2583,6 @@ export async function recomputeLeagueStatistics(
       leagueId: input.leagueId,
     });
 
-    await tx
-      .delete(allTimeRecords)
-      .where(eq(allTimeRecords.leagueId, input.leagueId));
     await tx
       .delete(championshipRecords)
       .where(eq(championshipRecords.leagueId, input.leagueId));
@@ -2500,7 +2607,7 @@ export async function recomputeLeagueStatistics(
       tx,
     });
 
-    const recordCount = await insertRecordEvents(
+    const recordCount = await refreshAllTimeRecords(
       tx,
       input.leagueId,
       recordEvents({
@@ -2509,9 +2616,18 @@ export async function recomputeLeagueStatistics(
         seasonRows: state.seasonStats,
       }),
     );
+    const recordBookAggregateCount = await refreshRecordBookAggregates(tx, {
+      leagueId: input.leagueId,
+    });
     const integrity = await runDataIntegrityChecksInContext(tx, input.leagueId);
     const rowsProcessed =
-      weeklyRows + seasonRows + h2hRows + recordCount + integrity.checks;
+      weeklyRows +
+      seasonRows +
+      h2hRows +
+      recordCount +
+      recordBookAggregateCount.standings +
+      recordBookAggregateCount.milestones +
+      integrity.checks;
 
     await completeStatsCalculation(tx, {
       ...calculation,
@@ -2522,6 +2638,9 @@ export async function recomputeLeagueStatistics(
       headToHeadRecords: h2hRows,
       integrityChecks: integrity.checks,
       integrityFailures: integrity.failures,
+      recordBookAggregates:
+        recordBookAggregateCount.standings +
+        recordBookAggregateCount.milestones,
       records: recordCount,
       seasonStatistics: seasonRows,
       weeklyStatistics: weeklyRows,
@@ -2539,6 +2658,8 @@ export async function recomputeChangedMatchupStatistics(
       headToHeadRecords: 0,
       integrityChecks: 0,
       integrityFailures: 0,
+      recordBookAggregates: 0,
+      records: 0,
       seasonStatistics: 0,
       seasons: [],
       targetedPairs: [],
@@ -2572,6 +2693,8 @@ export async function recomputeChangedMatchupStatistics(
       headToHeadRecords: 0,
       integrityChecks: 0,
       integrityFailures: 0,
+      recordBookAggregates: 0,
+      records: 0,
       seasonStatistics: 0,
       seasons: [],
       targetedPairs: [],
@@ -2708,10 +2831,36 @@ export async function recomputeChangedMatchupStatistics(
       });
     }
 
+    const recordsCalculation = await startStatsCalculation(tx, {
+      calculationType: "records",
+      leagueId: input.leagueId,
+      metadata: calculationMetadata,
+    });
+    const recordRows = await refreshAllTimeRecords(
+      tx,
+      input.leagueId,
+      recordEvents({
+        facts: state.weeklyFacts,
+        headToHead: state.h2hRows,
+        seasonRows: state.seasonStats,
+      }),
+    );
+    const recordBookAggregateCount = await refreshRecordBookAggregates(tx, {
+      leagueId: input.leagueId,
+    });
+    const aggregateRows =
+      recordBookAggregateCount.standings + recordBookAggregateCount.milestones;
+    await completeStatsCalculation(tx, {
+      ...recordsCalculation,
+      rowsProcessed: recordRows + aggregateRows,
+    });
+
     return {
       headToHeadRecords: h2hRows,
       integrityChecks: integrity.checks,
       integrityFailures: integrity.failures,
+      recordBookAggregates: aggregateRows,
+      records: recordRows,
       seasonStatistics: seasonRows,
       seasons: targetSeasons,
       targetedPairs: [...targetPairKeys].map(personPairFromKey),

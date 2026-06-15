@@ -9,6 +9,8 @@ import {
   leagues,
   type PersonOwnerHistoryEntry,
   persons,
+  recordBookAllTimeStandings,
+  recordBookMilestones,
   seasonStatistics,
   weeklyStatistics,
 } from "@/db/schema";
@@ -44,6 +46,9 @@ type SeasonStatisticsRow = typeof seasonStatistics.$inferSelect;
 type WeeklyStatisticsRow = typeof weeklyStatistics.$inferSelect;
 type ChampionshipRecordRow = typeof championshipRecords.$inferSelect;
 type HeadToHeadRecordRow = typeof headToHeadRecords.$inferSelect;
+type RecordBookAllTimeStandingRow =
+  typeof recordBookAllTimeStandings.$inferSelect;
+type RecordBookMilestoneRow = typeof recordBookMilestones.$inferSelect;
 type AllTimeRecordRow = Pick<
   typeof allTimeRecords.$inferSelect,
   | "holderPersonId"
@@ -174,11 +179,13 @@ export interface HeadToHeadRecordsPageData extends RecordsPageData {
 }
 
 interface RecordsSourceData {
+  allTimeStandingRows: RecordBookAllTimeStandingRow[];
   catalog: RecordsCatalog;
   championshipRows: ChampionshipRecordRow[];
   currentRecordRows: AllTimeRecordRow[];
   headToHeadRows: HeadToHeadRecordRow[];
   league: RecordsLeagueSummary;
+  milestoneRows: RecordBookMilestoneRow[];
   personRows: PersonRow[];
   previousRecordRows: AllTimeRecordRow[];
   seasonRows: SeasonStatisticsRow[];
@@ -468,9 +475,11 @@ async function loadRecordsSourceData(
       });
       return {
         catalog: { ...emptyCatalog, integrityBlocked: true },
+        allTimeStandingRows: [],
         championshipRows: [],
         currentRecordRows: [],
         headToHeadRows: [],
+        milestoneRows: [],
         personRows,
         previousRecordRows: [],
         seasonRows: [],
@@ -557,18 +566,38 @@ async function loadRecordsSourceData(
     const personNames = new Map(
       personRows.map((person) => [person.id, person.canonicalName]),
     );
+    const allTimeStandingRows = await tx
+      .select()
+      .from(recordBookAllTimeStandings)
+      .where(eq(recordBookAllTimeStandings.leagueId, input.leagueId))
+      .orderBy(
+        asc(recordBookAllTimeStandings.rank),
+        asc(recordBookAllTimeStandings.personId),
+      );
+    const milestoneRows = await tx
+      .select()
+      .from(recordBookMilestones)
+      .where(eq(recordBookMilestones.leagueId, input.leagueId))
+      .orderBy(
+        asc(recordBookMilestones.milestoneType),
+        asc(recordBookMilestones.milestoneKey),
+      );
     return {
       catalog: buildRecordsCatalog({
+        allTimeStandingRows,
         championshipRows,
         headToHeadRows,
         limit: input.limit,
+        milestoneRows,
         personNames,
         seasonRows,
         weeklyRows,
       }),
+      allTimeStandingRows,
       championshipRows,
       currentRecordRows,
       headToHeadRows,
+      milestoneRows,
       personRows,
       previousRecordRows,
       seasonRows,

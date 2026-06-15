@@ -78,6 +78,13 @@ const data: HeadToHeadRecordsPageData = {
       worstScoresInWins: [],
     },
     integrityBlocked: false,
+    milestones: {
+      keeper: {
+        entries: [],
+        status: "unavailable",
+        summary: null,
+      },
+    },
     streaks: { longestLosses: [], longestWins: [] },
   },
   currentRecords: [],
