@@ -10,6 +10,16 @@ export {
 } from "./engine";
 export { identityNameSimilarity, normalizeIdentityName } from "./fuzzy";
 export {
+  type AllTimeStandingCatalogRow,
+  type BlowoutCatalogEntry,
+  buildRecordsCatalog,
+  getLeagueRecordsCatalog,
+  type RecordsCatalog,
+  type SeasonSummary,
+  type StreakCatalogEntry,
+  type WeeklyCatalogEntry,
+} from "./records-catalog";
+export {
   type DataIntegrityReviewItem,
   type DataStewardReviewSummary,
   listDataStewardReview,

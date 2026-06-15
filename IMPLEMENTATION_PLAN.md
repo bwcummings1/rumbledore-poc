@@ -14,7 +14,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Support multi-league fan-out and automatic next-season rollover on the same auth. (specs/19)
 
 ### N. Records & history surfaces (see specs/23)
-- [ ] Build the all-time records catalog aggregates (standings, highs/lows, streaks, blowouts) from history. (specs/23)
+- [x] Build the all-time records catalog aggregates (standings, highs/lows, streaks, blowouts) from history. (specs/23)
 - [ ] Build symmetric head-to-head manager ledgers plus championship/playoff records. (specs/23)
 - [ ] Deepen the league Records section and add per-manager and head-to-head pages. (specs/23)
 - [ ] Materialize record aggregates with idempotent incremental refresh tied to ingestion. (specs/23)
@@ -56,3 +56,4 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
 - [ ] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.
 - [ ] Season rollover advances the durable league root into the newly discovered season, but does not schedule historical backfill for any skipped seasons.
+- [ ] Flat `all_time_record` longest-streak rows still derive from per-season `season_statistics`; future record-chain/materialized UI work should use cross-season H2H-only streaks from the catalog.

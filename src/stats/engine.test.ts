@@ -35,6 +35,7 @@ import {
   runDataIntegrityChecks,
   splitPerson,
 } from "./engine";
+import { getLeagueRecordsCatalog } from "./records-catalog";
 import {
   markIntegrityCheckReviewed,
   reassignTeamSeason,
@@ -696,6 +697,78 @@ describe("recomputeLeagueStatistics", () => {
       holderPersonId: alex2024.personId,
       value: 110,
     });
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(catalog.integrityBlocked).toBe(false);
+    expect(catalog.allTimeStandings).toHaveLength(5);
+    expect(catalog.allTimeStandings[0]).toMatchObject({
+      careerLuck: 0.3333,
+      losses: 0,
+      personId: blair2024.personId,
+      pointsFor: 100,
+      rank: 1,
+      winPercentage: 1,
+      wins: 1,
+    });
+    expect(
+      catalog.allTimeStandings.find(
+        (row) => row.personId === alex2024.personId,
+      ),
+    ).toMatchObject({
+      games: 3,
+      losses: 1,
+      pointsAgainst: 276,
+      pointsFor: 305,
+      winPercentage: 0.6667,
+      wins: 2,
+    });
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      personId: casey2025.personId,
+      recordType: "highest_single_week_score",
+      scoringPeriod: 2,
+      season: 2025,
+      value: 120,
+    });
+    expect(catalog.highLow.lowestScores[0]).toMatchObject({
+      recordType: "lowest_single_week_score",
+      season: 2025,
+      value: 70,
+    });
+    expect(catalog.highLow.bestScoresInLosses[0]).toMatchObject({
+      opponentPersonId: casey2025.personId,
+      recordType: "best_score_in_loss",
+      value: 110,
+    });
+    expect(catalog.highLow.worstScoresInWins[0]).toMatchObject({
+      recordType: "worst_score_in_win",
+      value: 80,
+    });
+    expect(catalog.highLow.highestCombinedMatchups[0]).toMatchObject({
+      recordType: "highest_combined_matchup",
+      season: 2025,
+      value: 230,
+    });
+    expect(catalog.blowouts.biggest[0]).toMatchObject({
+      margin: 20,
+      recordType: "biggest_blowout",
+    });
+    expect(catalog.blowouts.narrowestWins[0]).toMatchObject({
+      margin: 1,
+      recordType: "narrowest_win",
+      season: 2025,
+    });
+    expect(catalog.streaks.longestLosses[0]).toMatchObject({
+      length: 3,
+      recordType: "longest_loss_streak",
+    });
+    expect(
+      catalog.streaks.longestWins.some(
+        (row) => row.personId === alex2024.personId && row.length === 2,
+      ),
+    ).toBe(true);
   });
 
   it("recomputes only the affected season and H2H pair for changed finalized matchups", async () => {
@@ -1141,6 +1214,23 @@ describe("recomputeLeagueStatistics", () => {
     expect(
       rows.weeklyRows.filter((row) => row.matchupKind === "median"),
     ).toHaveLength(2);
+    const medianMatchupId = rows.weeklyRows.find(
+      (row) => row.matchupKind === "median",
+    )?.matchupId;
+    if (!medianMatchupId) {
+      throw new Error("median matchup row was not materialized");
+    }
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 20,
+    });
+    expect(
+      [
+        ...catalog.blowouts.biggest,
+        ...catalog.blowouts.narrowestWins,
+        ...catalog.highLow.highestCombinedMatchups,
+      ].some((entry) => entry.matchupId === medianMatchupId),
+    ).toBe(false);
     expect(
       rows.seasonRows.find(
         (row) => row.personId === alex2025.personId && row.season === 2025,
@@ -1196,6 +1286,22 @@ describe("recomputeLeagueStatistics", () => {
     expect(integrity.failures).toBeGreaterThanOrEqual(2);
 
     rows = await selectStatsRows(leagueId);
+    const quarantinedCatalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+    });
+    expect(quarantinedCatalog).toMatchObject({
+      allTimeStandings: [],
+      blowouts: { biggest: [], narrowestWins: [] },
+      highLow: {
+        bestScoresInLosses: [],
+        highestCombinedMatchups: [],
+        highestScores: [],
+        lowestScores: [],
+        worstScoresInWins: [],
+      },
+      integrityBlocked: true,
+      streaks: { longestLosses: [], longestWins: [] },
+    });
     const reconciliationFailure = rows.integrityRows.find(
       (row) =>
         row.checkKey === "reconciliation_totals" &&
