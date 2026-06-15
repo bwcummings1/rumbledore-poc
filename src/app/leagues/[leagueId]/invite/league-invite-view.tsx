@@ -1,12 +1,15 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Copy,
   Link2,
   Mail,
   MessageSquare,
+  ShieldCheck,
+  UserCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -41,6 +44,34 @@ interface LeagueInviteSummary {
     importedMembers: number;
     inviteTargets: number;
   };
+}
+
+interface DataStewardCandidate {
+  displayName: string;
+  email: string;
+  isDataSteward: boolean;
+  memberId: string;
+  role: "member" | "data_steward" | "league_admin" | "commissioner";
+  userId: string;
+}
+
+interface DataStewardReviewDoorway {
+  href: string;
+  latestFailureAt: string | null;
+  needsReview: boolean;
+  suggestedIdentityLinks: number;
+  unresolvedIntegrityChecks: number;
+}
+
+interface DataStewardDoorwaySummary {
+  canAssignStewards: boolean;
+  canOpenReview: boolean;
+  review: DataStewardReviewDoorway | null;
+  stewardCandidates: DataStewardCandidate[];
+}
+
+interface AssignedDataSteward {
+  steward: DataStewardCandidate;
 }
 
 interface CreatedInvite {
@@ -80,10 +111,149 @@ function suggestedChannelLabel(target: LeagueInviteTarget): string {
   }
 }
 
+function reviewStatusText(review: DataStewardReviewDoorway | null): string {
+  if (!review) {
+    return "Data review is ready for appointed stewards.";
+  }
+  if (!review.needsReview) {
+    return "No ambiguous identities or failed checks are waiting.";
+  }
+
+  const parts: string[] = [];
+  if (review.suggestedIdentityLinks > 0) {
+    parts.push(
+      `${review.suggestedIdentityLinks} suggested identity link${
+        review.suggestedIdentityLinks === 1 ? "" : "s"
+      }`,
+    );
+  }
+  if (review.unresolvedIntegrityChecks > 0) {
+    parts.push(
+      `${review.unresolvedIntegrityChecks} integrity flag${
+        review.unresolvedIntegrityChecks === 1 ? "" : "s"
+      }`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+function isAssignedStewardCandidate(
+  existing: DataStewardCandidate,
+  assigned: DataStewardCandidate,
+): boolean {
+  switch (existing.memberId) {
+    case assigned.memberId:
+      return true;
+    default:
+      return false;
+  }
+}
+
+function DataStewardDoorwayCard({
+  busyKey,
+  doorway,
+  onAssign,
+}: {
+  busyKey: string | null;
+  doorway: DataStewardDoorwaySummary;
+  onAssign: (candidate: DataStewardCandidate) => Promise<void>;
+}) {
+  if (!doorway.canAssignStewards && !doorway.canOpenReview) {
+    return null;
+  }
+
+  return (
+    <section className="grid gap-4 rounded-card border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <ShieldCheck className="size-4 shrink-0 text-primary" aria-hidden />
+            Data steward doorway
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {reviewStatusText(doorway.review)}
+          </p>
+        </div>
+        {doorway.review?.needsReview ? (
+          <AlertTriangle className="size-5 text-highlight" aria-hidden />
+        ) : (
+          <CheckCircle2 className="size-5 text-positive" aria-hidden />
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {doorway.canOpenReview && doorway.review ? (
+          <Link
+            href={doorway.review.href}
+            className={cn(buttonVariants({ variant: "secondary" }))}
+          >
+            <ShieldCheck data-icon="inline-start" />
+            Open data review
+          </Link>
+        ) : null}
+        {doorway.review?.latestFailureAt ? (
+          <p className="self-center text-xs text-muted-foreground">
+            Latest flag{" "}
+            {new Date(doorway.review.latestFailureAt).toLocaleString()}
+          </p>
+        ) : null}
+      </div>
+
+      {doorway.canAssignStewards ? (
+        <div className="grid gap-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Appoint a league data steward
+          </p>
+          {doorway.stewardCandidates.length > 0 ? (
+            <div className="grid gap-2">
+              {doorway.stewardCandidates.map((candidate) => (
+                <div
+                  key={candidate.memberId}
+                  className="grid gap-2 rounded-control border border-border bg-background px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {candidate.displayName}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {candidate.email}
+                    </p>
+                  </div>
+                  {candidate.isDataSteward ? (
+                    <span className="inline-flex h-8 items-center justify-center rounded-control border border-positive/30 px-2 text-xs font-medium text-positive">
+                      Data steward
+                    </span>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void onAssign(candidate)}
+                      disabled={busyKey !== null}
+                    >
+                      <UserCheck data-icon="inline-start" />
+                      Make steward
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-control border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
+              No regular members are available to appoint yet.
+            </p>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function LeagueInviteView({
   initialSummary,
+  stewardDoorway,
 }: {
   initialSummary: LeagueInviteSummary;
+  stewardDoorway?: DataStewardDoorwaySummary;
 }) {
   const [error, setError] = useState<OnboardingPanelError | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -95,7 +265,10 @@ export function LeagueInviteView({
   const [results, setResults] = useState<Record<string, CreatedInvite>>({});
   const [openInvite, setOpenInvite] = useState<CreatedInvite | null>(null);
   const [rosterLinksCopied, setRosterLinksCopied] = useState(false);
+  const [stewardDoorwayState, setStewardDoorwayState] =
+    useState(stewardDoorway);
   const apiUrl = `/api/leagues/${initialSummary.league.id}/invites`;
+  const stewardApiUrl = `/api/leagues/${initialSummary.league.id}/stewards`;
 
   const heading = useMemo(
     () =>
@@ -204,6 +377,33 @@ export function LeagueInviteView({
     }
   }
 
+  async function assignSteward(candidate: DataStewardCandidate) {
+    const busy = `steward:${candidate.memberId}`;
+    setBusyKey(busy);
+    setError(null);
+    try {
+      const assigned = await postJson<AssignedDataSteward>(stewardApiUrl, {
+        memberId: candidate.memberId,
+      });
+      setStewardDoorwayState((current) =>
+        current
+          ? {
+              ...current,
+              stewardCandidates: current.stewardCandidates.map((existing) =>
+                isAssignedStewardCandidate(existing, assigned.steward)
+                  ? assigned.steward
+                  : existing,
+              ),
+            }
+          : current,
+      );
+    } catch (cause) {
+      setError(onboardingPanelError(cause));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   async function sendEmail(
     event: FormEvent<HTMLFormElement>,
     target: LeagueInviteTarget,
@@ -297,6 +497,14 @@ export function LeagueInviteView({
         <div className="rounded-card border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error.message}
         </div>
+      ) : null}
+
+      {stewardDoorwayState ? (
+        <DataStewardDoorwayCard
+          busyKey={busyKey}
+          doorway={stewardDoorwayState}
+          onAssign={assignSteward}
+        />
       ) : null}
 
       {initialSummary.targets.length > 0 ? (

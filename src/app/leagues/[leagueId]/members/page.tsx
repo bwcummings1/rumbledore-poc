@@ -6,6 +6,7 @@ import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { getLeagueInviteDependencies } from "@/onboarding/deps";
 import { listLeaguemateInviteTargets } from "@/onboarding/invites";
+import { listDataStewardDoorway } from "@/onboarding/stewards";
 import { LeagueInviteView } from "../invite/league-invite-view";
 import { LeagueSectionAccessState } from "../league-section-access-state";
 
@@ -75,5 +76,24 @@ export default async function LeagueMembersPage({
     );
   }
 
-  return <LeagueInviteView initialSummary={result.value} />;
+  const stewardDoorway = await listDataStewardDoorway(db, {
+    leagueId,
+    userId: access.value.userId,
+    userRole: access.value.role,
+  });
+  if (!stewardDoorway.ok) {
+    return (
+      <LeagueSectionAccessState
+        title="Members unavailable"
+        body={stewardDoorway.error.message}
+      />
+    );
+  }
+
+  return (
+    <LeagueInviteView
+      initialSummary={result.value}
+      stewardDoorway={stewardDoorway.value}
+    />
+  );
 }

@@ -230,3 +230,77 @@ test("invite view keeps email behind an entered-address fallback", async () => {
     }),
   );
 });
+
+test("invite view exposes the data steward doorway for commissioners", async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          steward: {
+            displayName: "Fixture Manager Two",
+            email: "two@example.com",
+            isDataSteward: true,
+            memberId: body.memberId,
+            role: "data_steward",
+            userId: "user-2",
+          },
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      );
+    });
+
+  render(
+    <LeagueInviteView
+      initialSummary={initialSummary}
+      stewardDoorway={{
+        canAssignStewards: true,
+        canOpenReview: true,
+        review: {
+          href: "/leagues/00000000-0000-4000-8000-000000000001/members/steward#identity-review",
+          latestFailureAt: "2026-06-15T12:00:00.000Z",
+          needsReview: true,
+          suggestedIdentityLinks: 1,
+          unresolvedIntegrityChecks: 2,
+        },
+        stewardCandidates: [
+          {
+            displayName: "Fixture Manager Two",
+            email: "two@example.com",
+            isDataSteward: false,
+            memberId: "member-row-2",
+            role: "member",
+            userId: "user-2",
+          },
+        ],
+      }}
+    />,
+  );
+
+  expect(screen.getByText("Data steward doorway")).toBeDefined();
+  expect(
+    screen.getByText("1 suggested identity link · 2 integrity flags"),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: "Open data review" }).getAttribute("href"),
+  ).toBe(
+    "/leagues/00000000-0000-4000-8000-000000000001/members/steward#identity-review",
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Make steward" }));
+
+  await waitFor(() => {
+    expect(screen.getByText("Data steward")).toBeDefined();
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/stewards",
+    expect.objectContaining({
+      body: JSON.stringify({ memberId: "member-row-2" }),
+      method: "POST",
+    }),
+  );
+});

@@ -29,6 +29,10 @@ import {
   type ProviderReconnectAction,
   reconnectActionForProvider,
 } from "./reconnect";
+import {
+  type DataStewardReviewDoorway,
+  listDataStewardDoorway,
+} from "./stewards";
 
 export type OnboardingConnectionFlow =
   | "browser"
@@ -67,6 +71,7 @@ export interface DiscoveredLeagueImportCandidate extends DiscoveredLeague {
 export interface ProviderImportLeaguemateSummary {
   importedMembers: number;
   inviteTargets: number;
+  stewardReview?: DataStewardReviewDoorway;
   targets: Array<
     Pick<
       LeagueInviteTarget,
@@ -730,6 +735,14 @@ export async function importDiscoveredLeague(
   if (!leaguemateInvites.ok) {
     return leaguemateInvites;
   }
+  const stewardDoorway = await listDataStewardDoorway(deps.db, {
+    leagueId: sync.value.league.id,
+    userId: input.userId,
+    userRole: "commissioner",
+  });
+  if (!stewardDoorway.ok) {
+    return stewardDoorway;
+  }
 
   try {
     await deps.requestHistoricalImport?.({
@@ -760,6 +773,9 @@ export async function importDiscoveredLeague(
     leaguemateInvites: {
       importedMembers: leaguemateInvites.value.totals.importedMembers,
       inviteTargets: leaguemateInvites.value.totals.inviteTargets,
+      ...(stewardDoorway.value.review?.needsReview
+        ? { stewardReview: stewardDoorway.value.review }
+        : {}),
       targets: leaguemateInvites.value.targets.map((target) => ({
         displayName: target.displayName,
         providerMemberId: target.providerMemberId,

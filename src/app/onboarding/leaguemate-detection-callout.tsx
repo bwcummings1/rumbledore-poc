@@ -1,4 +1,4 @@
-import { Link2, Users } from "lucide-react";
+import { Link2, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,12 @@ import { cn } from "@/lib/utils";
 export interface ImportLeaguemateSummary {
   importedMembers: number;
   inviteTargets: number;
+  stewardReview?: {
+    href: string;
+    needsReview: boolean;
+    suggestedIdentityLinks: number;
+    unresolvedIntegrityChecks: number;
+  };
   targets: Array<{
     displayName: string;
     providerMemberId: string;
@@ -29,6 +35,14 @@ function targetPreview(summary: ImportLeaguemateSummary): string {
   return remaining > 0
     ? `${sample.join(", ")} + ${remaining} more`
     : sample.join(", ");
+}
+
+function stewardReviewLabel(
+  review: NonNullable<ImportLeaguemateSummary["stewardReview"]>,
+): string {
+  const total =
+    review.suggestedIdentityLinks + review.unresolvedIntegrityChecks;
+  return `${total} data review item${total === 1 ? "" : "s"}`;
 }
 
 export function LeaguemateDetectionCallout({
@@ -57,13 +71,26 @@ export function LeaguemateDetectionCallout({
             {targetPreview(summary)}
           </p>
         </div>
-        <Link
-          href={`/leagues/${leagueId}/members`}
-          className={cn(buttonVariants({ size: "sm" }))}
-        >
-          <Link2 data-icon="inline-start" />
-          Invite roster
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {summary.stewardReview?.needsReview ? (
+            <Link
+              href={summary.stewardReview.href}
+              className={cn(
+                buttonVariants({ size: "sm", variant: "secondary" }),
+              )}
+            >
+              <ShieldCheck data-icon="inline-start" />
+              {stewardReviewLabel(summary.stewardReview)}
+            </Link>
+          ) : null}
+          <Link
+            href={`/leagues/${leagueId}/members`}
+            className={cn(buttonVariants({ size: "sm" }))}
+          >
+            <Link2 data-icon="inline-start" />
+            Invite roster
+          </Link>
+        </div>
       </div>
     </div>
   );
