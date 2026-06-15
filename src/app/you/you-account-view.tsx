@@ -1,6 +1,7 @@
 import { ArrowRight, Bell, Bot, Link2, LockKeyhole, User } from "lucide-react";
 import Link from "next/link";
 import type { PersonalAgentBriefingResult } from "@/ai/personal-agent";
+import { InstallAffordance } from "@/components/pwa/install-affordance";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LeagueSwitcherViewItem } from "@/navigation";
@@ -272,6 +273,8 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
             toggle alerts for that league without exposing cross-league data.
           </p>
         </div>
+
+        <InstallAffordance />
       </section>
 
       <section className="grid gap-3">

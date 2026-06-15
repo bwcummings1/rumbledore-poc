@@ -38,7 +38,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Wire the central→`league_feed_reference` tailoring hand-off into the existing rail. (specs/21)
 
 ### O. Mobile PWA shell (see specs/24)
-- [ ] Add the install affordance (Android prompt plus the documented iOS Share→Add flow) over the existing manifest. (specs/24)
+- [x] Add the install affordance (Android prompt plus the documented iOS Share→Add flow) over the existing manifest. (specs/24)
 - [ ] Harden the service worker for RLS-cache-safety and sign-out cache clearing. (specs/24)
 - [ ] Implement share-link routing into the right scope or onboarding with the destination preserved. (specs/24)
 - [ ] Define and check a mobile perf budget (fast transitions, skeletons over spinners). (specs/24)

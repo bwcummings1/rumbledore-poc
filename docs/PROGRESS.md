@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: PWA install affordance landed — `/you` now exposes Android `beforeinstallprompt` install flow, iOS Safari Share→Add instructions, standalone hiding, and persisted dismissal.
 - 2026-06-15: Central news tailoring hand-off landed — refreshes now carry provider-player refs into central metadata, match them against latest league rosters, and upsert league-scoped feed references for the existing `/news` rail and Press blend.
 - 2026-06-15: Central News editorial front hardening landed — `/news` and section fronts now rank the full central corpus by freshness plus editorial importance before tiering into lead, secondaries, and river.
 - 2026-06-15: Multi-source central news pipeline landed — central refresh now fans in mocked web-grounding plus RSS adapters, carries publication metadata/provenance, and merges duplicate citations across refreshes.
