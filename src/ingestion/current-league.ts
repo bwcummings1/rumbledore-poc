@@ -108,7 +108,10 @@ export type CurrentLeagueSyncError = ProviderError;
 export interface CurrentLeagueSyncInput<
   Session extends FantasyProviderSession,
 > {
+  currentScoringPeriod?: number;
+  dataClasses?: readonly ProviderDataClass[];
   db: Db;
+  leagueId?: string;
   now?: () => Date;
   provider: CurrentLeagueProvider<Session>;
   ref: ProviderLeagueRef;
@@ -1184,6 +1187,7 @@ export type DataCoverageObservationMap = Partial<
 
 export interface RecordDataCoverageInput {
   capabilities: FantasyProviderCapabilities;
+  dataClasses?: readonly ProviderDataClass[];
   db: Db;
   defaultDetails?: Record<string, unknown>;
   leagueId: string;
@@ -1231,6 +1235,7 @@ function coverageDetails({
 
 export async function recordDataCoverage({
   capabilities,
+  dataClasses,
   db,
   defaultDetails,
   leagueId,
@@ -1240,7 +1245,7 @@ export async function recordDataCoverage({
   providerLeagueId,
   season,
 }: RecordDataCoverageInput): Promise<void> {
-  const rows = PROVIDER_DATA_CLASSES.map((dataClass) => {
+  const rows = (dataClasses ?? PROVIDER_DATA_CLASSES).map((dataClass) => {
     const observation = observations[dataClass];
     const capability = capabilities.dataClasses[dataClass];
     return {
@@ -1258,6 +1263,9 @@ export async function recordDataCoverage({
       status: dataCoverageStatus({ capability, observation }),
     };
   });
+  if (rows.length === 0) {
+    return;
+  }
 
   await withLeagueContext(db, leagueId, (tx) =>
     tx
@@ -1283,6 +1291,22 @@ export async function recordDataCoverage({
         },
       }),
   );
+}
+
+function currentLeagueDataClassSet(
+  dataClasses: readonly ProviderDataClass[] | undefined,
+): ReadonlySet<ProviderDataClass> {
+  if (!dataClasses || dataClasses.length === 0) {
+    return new Set(PROVIDER_DATA_CLASSES);
+  }
+  return new Set(dataClasses);
+}
+
+function positiveScoringPeriod(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isInteger(value) || value <= 0) {
+    return undefined;
+  }
+  return value;
 }
 
 function hasOwnKeys(value: Record<string, unknown> | undefined): boolean {
@@ -1353,15 +1377,55 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   input: CurrentLeagueSyncInput<Session>,
 ): Promise<Result<CurrentLeagueSyncResult, CurrentLeagueSyncError>> {
   const { db, provider, ref, session } = input;
-  const league = await provider.getLeague(session, ref);
-  if (!league.ok) {
+  const requestedDataClasses = currentLeagueDataClassSet(input.dataClasses);
+  const hasExplicitDataClasses = (input.dataClasses?.length ?? 0) > 0;
+  const requestedScoringPeriod = positiveScoringPeriod(
+    input.currentScoringPeriod,
+  );
+  const shouldFetchTeams =
+    requestedDataClasses.has("teams") || requestedDataClasses.has("divisions");
+  const shouldFetchMembers = requestedDataClasses.has("members");
+  const shouldFetchMatchups = requestedDataClasses.has("matchups");
+  const shouldFetchRosters =
+    requestedDataClasses.has("rosters") ||
+    requestedDataClasses.has("keeper_dynasty");
+  const needsScoringPeriod =
+    hasExplicitDataClasses &&
+    (shouldFetchMatchups || shouldFetchRosters) &&
+    requestedScoringPeriod === undefined;
+  const shouldFetchLeague =
+    !hasExplicitDataClasses ||
+    !input.leagueId ||
+    needsScoringPeriod ||
+    requestedDataClasses.has("league") ||
+    requestedDataClasses.has("keeper_dynasty") ||
+    requestedDataClasses.has("scoring_detail");
+
+  const league = shouldFetchLeague
+    ? await provider.getLeague(session, ref)
+    : undefined;
+  if (league && !league.ok) {
     return err(league.error);
   }
 
+  const leagueValue = league?.value;
+  const currentScoringPeriod =
+    requestedScoringPeriod ??
+    positiveScoringPeriod(leagueValue?.currentScoringPeriod);
+  const matchupsScoringPeriod = hasExplicitDataClasses
+    ? currentScoringPeriod
+    : undefined;
+
   const [teams, members, matchups] = await Promise.all([
-    provider.getTeams(session, ref),
-    provider.getMembers(session, ref),
-    provider.getMatchups(session, ref),
+    shouldFetchTeams
+      ? provider.getTeams(session, ref)
+      : Promise.resolve(ok<readonly NormalizedTeam[]>([])),
+    shouldFetchMembers
+      ? provider.getMembers(session, ref)
+      : Promise.resolve(ok<readonly NormalizedMember[]>([])),
+    shouldFetchMatchups
+      ? provider.getMatchups(session, ref, matchupsScoringPeriod)
+      : Promise.resolve(ok<readonly NormalizedMatchup[]>([])),
   ]);
 
   if (!teams.ok) {
@@ -1376,12 +1440,15 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
 
   let rosters: readonly NormalizedRoster[] = [];
   let rosterObservation: DataCoverageObservation | undefined;
-  if (provider.capabilities.dataClasses.rosters !== "none") {
+  if (
+    shouldFetchRosters &&
+    provider.capabilities.dataClasses.rosters !== "none"
+  ) {
     if (provider.getRosters) {
       const rosterResult = await provider.getRosters(
         session,
         ref,
-        league.value.currentScoringPeriod || undefined,
+        currentScoringPeriod,
       );
       if (rosterResult.ok) {
         rosters = rosterResult.value;
@@ -1407,39 +1474,94 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     }
   }
 
-  const leagueWrite = await upsertLeague(db, league.value);
+  const leagueWrite = leagueValue
+    ? await upsertLeague(db, leagueValue)
+    : { changed: 0, id: input.leagueId };
+  if (!leagueWrite.id) {
+    throw new Error("current league sync requires a league id");
+  }
   const scoped = await persistNormalizedLeagueRows({
     db,
-    league: league.value,
+    league: leagueValue,
     leagueId: leagueWrite.id,
-    leagueProviderId: league.value.providerId,
+    leagueProviderId: leagueValue?.providerId ?? ref.providerId,
     matchups: matchups.value,
     members: members.value,
     rosters,
     teams: teams.value,
   });
 
-  await recordDataCoverage({
-    capabilities: provider.capabilities,
-    db,
-    defaultDetails: { sync: "current" },
-    leagueId: leagueWrite.id,
-    observations: {
-      league: { itemCount: 1 },
-      teams: { itemCount: teams.value.length },
-      members: { itemCount: members.value.length },
-      rosters: rosterObservation,
-      matchups: { itemCount: matchups.value.length },
-      ...edgeCaseCoverageObservations({
-        league: league.value,
+  const observations: DataCoverageObservationMap = {};
+  const coverageDataClasses = new Set<ProviderDataClass>(
+    hasExplicitDataClasses ? requestedDataClasses : [],
+  );
+  if (leagueValue) {
+    observations.league = { itemCount: 1 };
+    coverageDataClasses.add("league");
+  }
+  if (shouldFetchTeams) {
+    observations.teams = { itemCount: teams.value.length };
+    coverageDataClasses.add("teams");
+  }
+  if (shouldFetchMembers) {
+    observations.members = { itemCount: members.value.length };
+    coverageDataClasses.add("members");
+  }
+  if (shouldFetchRosters) {
+    observations.rosters = rosterObservation;
+    coverageDataClasses.add("rosters");
+  }
+  if (shouldFetchMatchups) {
+    observations.matchups = { itemCount: matchups.value.length };
+    coverageDataClasses.add("matchups");
+  }
+  const edgeCaseObservations = leagueValue
+    ? edgeCaseCoverageObservations({
+        league: leagueValue,
         rosters,
         scoringDetailSource: "current.league.scoringSettings",
         teams: teams.value,
-      }),
-    },
-    provider: league.value.provider,
-    providerLeagueId: league.value.providerId,
-    season: league.value.season,
+      })
+    : {};
+  if (
+    leagueValue &&
+    (!hasExplicitDataClasses ||
+      requestedDataClasses.has("league") ||
+      requestedDataClasses.has("scoring_detail"))
+  ) {
+    observations.scoring_detail = edgeCaseObservations.scoring_detail;
+    coverageDataClasses.add("scoring_detail");
+  }
+  if (
+    shouldFetchTeams &&
+    (!hasExplicitDataClasses ||
+      requestedDataClasses.has("teams") ||
+      requestedDataClasses.has("divisions"))
+  ) {
+    observations.divisions = edgeCaseObservations.divisions;
+    coverageDataClasses.add("divisions");
+  }
+  if (
+    leagueValue &&
+    shouldFetchRosters &&
+    (!hasExplicitDataClasses ||
+      requestedDataClasses.has("rosters") ||
+      requestedDataClasses.has("keeper_dynasty"))
+  ) {
+    observations.keeper_dynasty = edgeCaseObservations.keeper_dynasty;
+    coverageDataClasses.add("keeper_dynasty");
+  }
+
+  await recordDataCoverage({
+    capabilities: provider.capabilities,
+    dataClasses: hasExplicitDataClasses ? [...coverageDataClasses] : undefined,
+    db,
+    defaultDetails: { sync: "current" },
+    leagueId: leagueWrite.id,
+    observations,
+    provider: leagueValue?.provider ?? ref.provider,
+    providerLeagueId: leagueValue?.providerId ?? ref.providerId,
+    season: leagueValue?.season ?? ref.season,
   });
 
   const changedFinalMatchups = await loadChangedFinalMatchups({
@@ -1476,9 +1598,9 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     recordLoreClaims,
     league: {
       id: leagueWrite.id,
-      provider: league.value.provider,
-      providerLeagueId: league.value.providerId,
-      season: league.value.season,
+      provider: leagueValue?.provider ?? ref.provider,
+      providerLeagueId: leagueValue?.providerId ?? ref.providerId,
+      season: leagueValue?.season ?? ref.season,
       changed: leagueWrite.changed,
       unchanged: 1 - leagueWrite.changed,
     },

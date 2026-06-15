@@ -686,6 +686,7 @@ describe("live ingestion jobs", () => {
       plannedCount: 1,
       skippedNotDue: 0,
     });
+    expect(live.planned[0]?.data.currentScoringPeriod).toBe(1);
     expect(live.planned[0]?.data.dataClasses).toEqual(["matchups"]);
     expect(live.planned[0]?.id).toContain("matchups:live_window:");
     expect(calls[0]).toMatchObject({
@@ -898,6 +899,8 @@ describe("live ingestion jobs", () => {
     const response = await runLeagueIngest({
       data: {
         credentialId: seeded.credentialId,
+        currentScoringPeriod: 4,
+        dataClasses: ["matchups"],
         leagueId: seeded.leagueId,
         name: `${marker} league worker-success`,
         provider: "espn",
@@ -938,7 +941,11 @@ describe("live ingestion jobs", () => {
       providerId: seeded.providerLeagueId,
       season: 2026,
     });
+    expect(syncCalls[0]?.currentScoringPeriod).toBe(4);
+    expect(syncCalls[0]?.dataClasses).toEqual(["matchups"]);
+    expect(syncCalls[0]?.leagueId).toBe(seeded.leagueId);
     expect(response).toMatchObject({
+      dataClasses: ["matchups"],
       gameFinalEvents: [],
       sentGameFinalCount: 0,
     });

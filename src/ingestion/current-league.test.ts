@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
-import { ok } from "@/core/result";
+import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -525,6 +525,95 @@ describe("syncCurrentLeague", () => {
     expect(secondRows.teams[0].updatedAt.toISOString()).toBe(
       firstTeamUpdatedAt,
     );
+  });
+
+  it("uses explicit data classes to avoid broad provider fetches", async () => {
+    const providerLeagueId = `${marker}-narrow-current`;
+    const fullProvider = rosterCapableProviderFor(providerLeagueId);
+    const first = await syncCurrentLeague({
+      db: handle.db,
+      provider: fullProvider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+
+    const beforeRows = await selectIngestedRows(first.value.league.id);
+    const beforeCoverage = new Map(
+      beforeRows.coverage.map((row) => [row.dataClass, row]),
+    );
+    const calls: string[] = [];
+    const baseProvider = rosterCapableProviderFor(providerLeagueId);
+    const narrowProvider = {
+      capabilities: baseProvider.capabilities,
+      async getLeague() {
+        calls.push("league");
+        return err(new ProviderBlockedError("espn"));
+      },
+      async getTeams() {
+        calls.push("teams");
+        return err(new ProviderBlockedError("espn"));
+      },
+      async getMembers() {
+        calls.push("members");
+        return err(new ProviderBlockedError("espn"));
+      },
+      async getRosters() {
+        calls.push("rosters");
+        return err(new ProviderBlockedError("espn"));
+      },
+      async getMatchups(
+        _session: EspnSession,
+        _ref: ProviderLeagueRef,
+        scoringPeriod?: number,
+      ) {
+        calls.push(`matchups:${scoringPeriod ?? "all"}`);
+        return baseProvider.getMatchups();
+      },
+    };
+
+    const narrow = await syncCurrentLeague({
+      currentScoringPeriod: 1,
+      dataClasses: ["matchups"],
+      db: handle.db,
+      leagueId: first.value.league.id,
+      provider: narrowProvider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(narrow.ok).toBe(true);
+    if (!narrow.ok) throw narrow.error;
+    expect(calls).toEqual(["matchups:1"]);
+    expect(narrow.value).toMatchObject({
+      league: { changed: 0, id: first.value.league.id, unchanged: 1 },
+      matchups: { total: 1 },
+      members: { total: 0 },
+      rosters: { total: 0 },
+      teams: { total: 0 },
+    });
+
+    const afterRows = await selectIngestedRows(first.value.league.id);
+    const afterCoverage = new Map(
+      afterRows.coverage.map((row) => [row.dataClass, row]),
+    );
+    expect(afterCoverage.get("teams")).toMatchObject({
+      itemCount: beforeCoverage.get("teams")?.itemCount,
+      status: "complete",
+    });
+    expect(afterCoverage.get("members")).toMatchObject({
+      itemCount: beforeCoverage.get("members")?.itemCount,
+      status: "complete",
+    });
+    expect(afterCoverage.get("rosters")).toMatchObject({
+      itemCount: beforeCoverage.get("rosters")?.itemCount,
+      status: "complete",
+    });
+    expect(afterCoverage.get("matchups")).toMatchObject({
+      itemCount: 1,
+      status: "complete",
+    });
   });
 
   it("updates changed normalized fields without creating duplicates", async () => {

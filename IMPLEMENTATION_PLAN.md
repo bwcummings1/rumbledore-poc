@@ -49,8 +49,8 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 3. [x] Persist paused freshness on pre-sync provider auth failures — correctness/LOW: reconnect CTAs should align with `data_coverage` state even when auth fails before sync work starts.
 4. [x] Add Yahoo refresh-token renewal before reconnect CTAs — correctness/LOW: live OAuth users should not be forced through reconnect when a stored refresh token can recover access.
 5. [x] Schedule historical backfill for skipped season rollover gaps — correctness/LOW: same-auth rollover should not leave missing seasons unimported.
-6. [ ] Fix candidate-limited publication section/tag filters — correctness/LOW: sparse section stories beyond the first candidate page can disappear from section fronts.
-7. [ ] Split class-specific provider fetches for scheduler data classes — performance/MED: adaptive polling still pays for full bundle fetches when only narrower classes are due.
+6. [x] Fix candidate-limited publication section/tag filters — correctness/LOW: verified central News and league Press scan beyond the first candidate page when section/tag filters are active.
+7. [x] Split class-specific provider fetches for scheduler data classes — performance/MED: live ingest now passes due classes/current period into sync and avoids broad provider calls for narrow polls.
 8. [ ] Confirm and wire `league.connected` fan-out from onboarding — robustness/LOW: connected-event ingestion triggers should be reliable before depending on them operationally.
 9. [ ] Normalize provider-player refs in real central-news adapters — source-quality/MED: league tailoring is materially weaker when real feeds cannot match roster entities.
 10. [ ] Add account-wide server push disable/cleanup — robustness/LOW: sign-out currently only unsubscribes the browser, leaving stale server rows until delivery cleanup.
@@ -59,7 +59,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 Carried from Phase 2 — **re-verify each before acting** ("don't assume not implemented"); several may already be fixed by the Phase 2 harden pass.
 - [x] **[correctness/MED] Bankroll rollover needs a production scheduler** — verified `rolloverBankrollWeek()` is invoked by the registered `bankroll-rollover` Inngest function via event trigger and hourly UTC cron.
 - [x] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — verified `closeLoreVote()` rejects `LORE_VOTE_STILL_OPEN` before `vote_closes_at` and keeps claims open.
-- [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` / `src/news/league-feed.ts`.
+- [x] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — verified `src/news/hub.ts` / `src/news/league-feed.ts` scan beyond the first candidate page for active section/tag filters.
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — split routes or use a neutral slug.
 - [ ] **[realtime/LOW] Realtime declares `odds.updated` and `central.news.updated` payloads without publisher helpers** — add typed publish methods when specs/21 or odds freshness fan-out needs them.
 - [ ] **[maintainability/LOW] Real RSS central-news parsing is intentionally lightweight** — replace the regex extractor with a dedicated parser before broad real-feed rollout.
@@ -68,7 +68,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] **[pwa/LOW] Sign-out unsubscribes the browser PushSubscription, but server push rows remain active until delivery cleanup** — add an account-wide disable endpoint if stale push rows become noisy.
 
 ## Discoveries / bugs (loop appends here)
-- [ ] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
+- [x] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
 - [ ] `league.connected` is wired as a force-due ingestion scheduler trigger, but onboarding appears to call `syncCurrentLeague()` directly instead of emitting `JOB_EVENTS.leagueConnected`; confirm before relying on connected-event fan-out.
 - [x] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
 - [x] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.

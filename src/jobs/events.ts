@@ -57,6 +57,7 @@ export interface IngestionTickData {
 
 export interface LeagueIngestData {
   credentialId: string;
+  currentScoringPeriod?: number;
   dataClasses?: ProviderDataClass[];
   leagueId: string;
   name: string;

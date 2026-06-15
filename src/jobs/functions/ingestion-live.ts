@@ -274,6 +274,7 @@ const ingestionTickDataSchema = z.object({
 
 const leagueIngestDataSchema = z.object({
   credentialId: z.uuid(),
+  currentScoringPeriod: z.number().int().positive().optional(),
   dataClasses: z.array(z.enum(PROVIDER_DATA_CLASSES)).optional(),
   leagueId: z.uuid(),
   name: z.string().trim().min(1),
@@ -1215,6 +1216,9 @@ function plannedEventFor({
   );
   const data: LeagueIngestData = {
     credentialId: row.credentialId,
+    ...(row.currentScoringPeriod > 0
+      ? { currentScoringPeriod: row.currentScoringPeriod }
+      : {}),
     dataClasses,
     leagueId: row.leagueId,
     name: row.name,
@@ -1502,7 +1506,10 @@ export async function runLeagueIngest({
 
   const syncCurrent = deps.syncCurrent ?? syncCurrentLeague;
   let sync = await syncCurrent({
+    currentScoringPeriod: data.currentScoringPeriod,
+    dataClasses: data.dataClasses,
     db: deps.db,
+    leagueId: data.leagueId,
     now: deps.now,
     provider,
     realtime: deps.realtime,
@@ -1529,7 +1536,10 @@ export async function runLeagueIngest({
           session: retryAuth.value,
         });
         sync = await syncCurrent({
+          currentScoringPeriod: data.currentScoringPeriod,
+          dataClasses: data.dataClasses,
           db: deps.db,
+          leagueId: data.leagueId,
           now: deps.now,
           provider,
           realtime: deps.realtime,
