@@ -730,8 +730,8 @@ function BankrollLoopCard({
         </div>
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">
-          No bankroll week is open yet, so placement is locked until the weekly
-          ledger opens.
+          Your first placed slip opens this betting week at the{" "}
+          {formatCents(balanceCents ?? 0)} floor.
         </p>
       )}
     </div>
@@ -753,7 +753,7 @@ function stakeValidationMessage({
     return null;
   }
   if (balanceCents === null) {
-    return "A bankroll week is not open yet.";
+    return "A bankroll week could not be opened.";
   }
   if (!stakeInput.trim()) {
     return null;
@@ -787,7 +787,7 @@ function placementErrorMessage(payload: unknown): string {
     case "BET_MARKET_CLOSED":
       return "That market is no longer open for betting.";
     case "BANKROLL_WEEK_NOT_FOUND":
-      return "A bankroll week is not open yet.";
+      return "Bankroll week could not be opened. Refresh and try again.";
     default:
       return typeof payload.error.message === "string"
         ? payload.error.message
@@ -826,7 +826,9 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
     status: "idle",
   });
   const balanceCents =
-    balanceOverrideCents ?? data.balance?.balanceCents ?? null;
+    balanceOverrideCents ??
+    data.balance?.balanceCents ??
+    data.firstBetFloorCents;
   const eventGroups = useMemo(() => groupMarkets(data.markets), [data.markets]);
   const stagedSelectionList = useMemo(
     () =>

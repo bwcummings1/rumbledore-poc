@@ -52,6 +52,13 @@ export interface GetBankrollBalanceInput {
   weekStart?: Date;
 }
 
+export interface RequireOrOpenBankrollBalanceInput
+  extends GetBankrollBalanceInput {
+  floorCents?: number;
+  openingWeekEnd: Date;
+  openingWeekStart: Date;
+}
+
 export interface RolloverBankrollWeekInput {
   closingWeekStart: Date;
   floorCents?: number;
@@ -206,6 +213,15 @@ function validateLedgerAmount(
 async function lockWeekLedger(tx: LeagueScopedTx, bankrollWeekId: string) {
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${bankrollWeekId}, 0))`,
+  );
+}
+
+async function lockUserWeek(
+  tx: LeagueScopedTx,
+  input: Pick<BankrollWeekInput, "leagueId" | "userId" | "weekStart">,
+) {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`${input.leagueId}:${input.userId}:${input.weekStart.toISOString()}`}, 0))`,
   );
 }
 
@@ -442,6 +458,71 @@ export async function requireLockedBankrollBalanceInContext(
   });
 }
 
+export function utcBankrollWeekWindow(date: Date): {
+  weekEnd: Date;
+  weekStart: Date;
+} {
+  const resolved = dateValue(date, "date");
+  const weekStart = new Date(
+    Date.UTC(
+      resolved.getUTCFullYear(),
+      resolved.getUTCMonth(),
+      resolved.getUTCDate(),
+    ),
+  );
+  const daysSinceMonday = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
+
+  const weekEnd = new Date(weekStart);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+  return { weekEnd, weekStart };
+}
+
+export async function requireOrOpenLockedBankrollBalanceInContext(
+  tx: LeagueScopedTx,
+  input: RequireOrOpenBankrollBalanceInput,
+): Promise<BankrollBalance> {
+  const openingWeekStart = dateValue(
+    input.openingWeekStart,
+    "openingWeekStart",
+  );
+  const openingWeekEnd = dateValue(input.openingWeekEnd, "openingWeekEnd");
+  validateWeekWindow(openingWeekStart, openingWeekEnd);
+
+  const week = await findWeekForBalance(tx, input);
+  if (week) {
+    await lockWeekLedger(tx, week.id);
+    return requireBankrollBalanceInContext(tx, {
+      bankrollWeekId: week.id,
+      leagueId: input.leagueId,
+      userId: input.userId,
+    });
+  }
+
+  if (input.bankrollWeekId) {
+    throw appError(
+      "BANKROLL_WEEK_NOT_FOUND",
+      "Bankroll week was not found",
+      404,
+    );
+  }
+
+  const opened = await openBankrollWeekInContext(tx, {
+    floorCents: input.floorCents,
+    leagueId: input.leagueId,
+    userId: input.userId,
+    weekEnd: openingWeekEnd,
+    weekStart: openingWeekStart,
+  });
+
+  await lockWeekLedger(tx, opened.week.id);
+  return requireBankrollBalanceInContext(tx, {
+    bankrollWeekId: opened.week.id,
+    leagueId: input.leagueId,
+    userId: input.userId,
+  });
+}
+
 async function openBankrollWeekInContext(
   tx: LeagueScopedTx,
   input: OpenBankrollWeekInput & {
@@ -486,6 +567,12 @@ async function openBankrollWeekInContext(
       400,
     );
   }
+
+  await lockUserWeek(tx, {
+    leagueId: input.leagueId,
+    userId: input.userId,
+    weekStart,
+  });
 
   const existing = await findWeekByStart(tx, {
     leagueId: input.leagueId,
@@ -626,9 +713,11 @@ export async function rolloverBankrollWeek(
   }
 
   return withLeagueContext(db, input.leagueId, async (tx) => {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${`${input.leagueId}:${input.userId}:${closingWeekStart.toISOString()}`}, 0))`,
-    );
+    await lockUserWeek(tx, {
+      leagueId: input.leagueId,
+      userId: input.userId,
+      weekStart: closingWeekStart,
+    });
 
     const previousWeek = await findWeekByStart(tx, {
       leagueId: input.leagueId,

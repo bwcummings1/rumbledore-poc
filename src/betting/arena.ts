@@ -1,4 +1,14 @@
-import { and, desc, eq, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  inArray,
+  lte,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
@@ -746,14 +756,52 @@ export async function rebuildArenaStandings(
   };
 }
 
-export async function rebuildAllArenaStandings(
+export async function findArenaSeasonIdsForWeekStarts(
   db: Db,
-  input: { computedAt?: Date } = {},
-): Promise<RebuildArenaStandingsResult[]> {
-  const seasons = await db
+  input: { weekStarts: readonly Date[] },
+): Promise<string[]> {
+  const weekStarts = [
+    ...new Map(
+      input.weekStarts.map((weekStart, index) => {
+        const resolved = requireDate(weekStart, `weekStarts.${index}`);
+        return [resolved.getTime(), resolved] as const;
+      }),
+    ).values(),
+  ];
+  if (weekStarts.length === 0) {
+    return [];
+  }
+
+  const clauses = weekStarts.map((weekStart) =>
+    and(
+      lte(arenaSeasons.startsAt, weekStart),
+      gt(arenaSeasons.endsAt, weekStart),
+    ),
+  );
+  const rows = await db
     .select({ id: arenaSeasons.id })
     .from(arenaSeasons)
+    .where(or(...clauses))
     .orderBy(arenaSeasons.startsAt);
+
+  return [...new Set(rows.map((row) => row.id))];
+}
+
+export async function rebuildAllArenaStandings(
+  db: Db,
+  input: { computedAt?: Date; seasonIds?: readonly string[] } = {},
+): Promise<RebuildArenaStandingsResult[]> {
+  const seasonIds = input.seasonIds ? [...new Set(input.seasonIds)] : null;
+  if (seasonIds && seasonIds.length === 0) {
+    return [];
+  }
+
+  const query = db.select({ id: arenaSeasons.id }).from(arenaSeasons);
+  const seasons = await (seasonIds
+    ? query
+        .where(inArray(arenaSeasons.id, seasonIds))
+        .orderBy(arenaSeasons.startsAt)
+    : query.orderBy(arenaSeasons.startsAt));
   const results: RebuildArenaStandingsResult[] = [];
 
   for (const season of seasons) {

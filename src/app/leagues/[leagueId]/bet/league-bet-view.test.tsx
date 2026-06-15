@@ -35,6 +35,7 @@ const data: LeagueBetData = {
     weekEnd: "2026-09-14T00:00:00.000Z",
     weekStart: "2026-09-07T00:00:00.000Z",
   },
+  firstBetFloorCents: 1_000_000,
   league: {
     id: "00000000-0000-4000-8000-000000000001",
     name: "NHS Alumni Annual",
@@ -214,8 +215,62 @@ test("league bet view stages selected prices and replaces selections on the same
 test("league bet view renders empty bankroll and market states", () => {
   render(<LeagueBetView data={{ ...data, balance: null, markets: [] }} />);
 
-  expect(screen.getAllByText("No open week").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("$10,000").length).toBeGreaterThan(0);
+  expect(
+    screen.getByText(
+      "Your first placed slip opens this betting week at the $10,000 floor.",
+    ),
+  ).toBeDefined();
   expect(screen.getByText("No open markets")).toBeDefined();
+});
+
+test("league bet view submits the first slip when no bankroll week exists", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        balanceCents: 995_000,
+        reused: false,
+        slip: {
+          id: "slip-first-bet",
+          kind: "single",
+          placedAt: "2026-09-07T16:15:00.000Z",
+          potentialPayoutCents: 9_000,
+          stakeCents: 5_000,
+          status: "pending",
+        },
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+        status: 201,
+      },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LeagueBetView data={{ ...data, balance: null }} />);
+
+  fireEvent.click(
+    screen.getByRole("button", { name: /Chicago -125 locked price/i }),
+  );
+  fireEvent.change(screen.getByLabelText("Stake amount"), {
+    target: { value: "50.00" },
+  });
+
+  const submit = screen.getByRole("button", { name: /Place single/i });
+  expect((submit as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(submit);
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  const [, init] = fetchMock.mock.calls[0] ?? [];
+  const body = JSON.parse(String((init as RequestInit).body));
+  expect(body).toMatchObject({
+    kind: "single",
+    legs: [{ oddsSnapshotId: "snapshot-1", selection: "home" }],
+    stakeCents: 5_000,
+  });
+  expect(
+    await screen.findByText("Slip placed. Odds are locked."),
+  ).toBeDefined();
+  expect(screen.getAllByText("$9,950").length).toBeGreaterThan(0);
 });
 
 test("league bet view surfaces reset-to-floor audit copy", () => {

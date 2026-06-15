@@ -47,7 +47,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 
 ## Discoveries / bugs (loop appends here)
 - [ ] **[correctness/MED] Bankroll rollover has no production scheduler** — `rolloverBankrollWeek()` is covered in domain tests but no Inngest/cron caller opens/closes weekly rows or triggers arena rebuilds.
-- [ ] **[product/MED] Spec says first bet opens the bankroll week, but placement requires an existing open week** — decide whether to implement first-bet week opening or adjust the spec/copy consistently.
+- [x] **[product/MED] Spec says first bet opens the bankroll week, but placement requires an existing open week** — fixed by atomically opening the current Monday-UTC bankroll week during placement when no active week exists, and by letting the Bet surface submit the first slip against the floor.
 - [ ] **[product/LOW] Invite auth return path does not preserve the claim URL** — unauthenticated invite previews send users to provider onboarding without an explicit return-to continuation back to the invite after sign-in/sign-up.
 - [ ] **[maintainability/LOW] Activation cast matching is text-search based** — generated league posts do not persist structured team/person subject ids, so activation uses title/summary/body/metadata search before falling back to the latest headline.
 - [ ] **[product/MED] Steward review UI lacks advanced identity correction forms** — the doorway now supports rerun, mark-reviewed, and confirming fuzzy links, but merge/split/rename/reassign-to-new-person remain API-backed without full in-app forms.
@@ -60,7 +60,7 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 2. [x] **Current sync can downgrade finalized matchups** — correctness risk: transient provider states can corrupt settled/final league history and downstream records. Verified already fixed.
 3. [x] **Member-submitted lore votes are not scheduled for automatic close-out** — functionality risk: votes can remain pending indefinitely without manual intervention.
 4. [x] **Bankroll rollover has no production scheduler** — functionality risk: weekly betting balances and arena standings can stale without an automated rollover path. Fixed by the scheduled `bankroll-rollover` Inngest job, which skips weeks with pending slips, opens the next bankroll week, rebuilds arena standings, and publishes realtime leaderboard updates.
-5. [ ] **First bet requires an existing open bankroll week** — functionality/product risk: the intended first-bet flow can fail for leagues without pre-created weeks.
+5. [x] **First bet requires an existing open bankroll week** — functionality/product risk: the intended first-bet flow can fail for leagues without pre-created weeks. Fixed by first-bet auto-opening plus regression coverage; settlement/rollover arena rebuilds are now scoped to affected seasons discovered during validation.
 6. [ ] **Lore vote close can run before `vote_closes_at`** — correctness risk: direct callers can finalize votes before their announced window ends.
 7. [ ] **Publication section/tag filters are candidate-limited in memory** — correctness/scale risk: sparse sections can disappear as archives grow.
 8. [ ] **Invite auth return path does not preserve the claim URL** — robustness risk: unauthenticated invitees can lose the claim context after auth.

@@ -8,6 +8,7 @@ import { withLeagueContext } from "@/db/rls";
 import {
   type BettingMarket,
   bankrollLedger,
+  bankrollWeeks,
   betLegs,
   betSlips,
   bettingEvents,
@@ -20,7 +21,11 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { openBankrollWeek, replayBankrollLedger } from "./bankroll";
+import {
+  DEFAULT_BANKROLL_FLOOR_CENTS,
+  openBankrollWeek,
+  replayBankrollLedger,
+} from "./bankroll";
 import { placeBetSlip } from "./placement";
 
 const marker = `placementtest-${randomUUID()}`;
@@ -51,7 +56,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function ledgerEntriesFor(bankrollWeekId: string) {
+async function ledgerEntriesFor(bankrollWeekId: string, userId = userA.id) {
   return withLeagueContext(handle.db, leagueA.id, (tx) =>
     tx
       .select()
@@ -59,7 +64,7 @@ async function ledgerEntriesFor(bankrollWeekId: string) {
       .where(
         and(
           eq(bankrollLedger.leagueId, leagueA.id),
-          eq(bankrollLedger.userId, userA.id),
+          eq(bankrollLedger.userId, userId),
           eq(bankrollLedger.bankrollWeekId, bankrollWeekId),
         ),
       )
@@ -221,6 +226,83 @@ afterAll(async () => {
 });
 
 describe("bet placement", () => {
+  it("opens the current bankroll week on first placement and debits the stake", async () => {
+    const [firstBetUser] = await handle.db
+      .insert(users)
+      .values({
+        displayName: "Placement First Bet User",
+        email: `${marker}-first-bet@example.test`,
+      })
+      .returning();
+    const seeded = await seedSnapshot({
+      awayPrice: 120,
+      homePrice: -140,
+      marketType: "moneyline",
+    });
+    const input = {
+      idempotencyKey: `${marker}:first-bet-opens-week`,
+      kind: "single" as const,
+      leagueId: leagueA.id,
+      legs: [
+        { oddsSnapshotId: seeded.snapshot.id, selection: "home" as const },
+      ],
+      now: placedAt,
+      stakeCents: 10_000,
+      userId: firstBetUser.id,
+    };
+
+    const placed = await placeBetSlip(handle.db, input);
+    const retry = await placeBetSlip(handle.db, input);
+
+    expect(placed.reused).toBe(false);
+    expect(retry.reused).toBe(true);
+    expect(retry.slip.id).toBe(placed.slip.id);
+
+    const [openedWeek] = await withLeagueContext(handle.db, leagueA.id, (tx) =>
+      tx
+        .select()
+        .from(bankrollWeeks)
+        .where(
+          and(
+            eq(bankrollWeeks.leagueId, leagueA.id),
+            eq(bankrollWeeks.userId, firstBetUser.id),
+            eq(bankrollWeeks.id, placed.slip.bankrollWeekId),
+          ),
+        ),
+    );
+    expect(openedWeek).toMatchObject({
+      floorCents: DEFAULT_BANKROLL_FLOOR_CENTS,
+      openingBalanceCents: DEFAULT_BANKROLL_FLOOR_CENTS,
+    });
+    expect(openedWeek?.weekStart.toISOString()).toBe(
+      "2026-09-07T00:00:00.000Z",
+    );
+    expect(openedWeek?.weekEnd.toISOString()).toBe("2026-09-14T00:00:00.000Z");
+
+    const entries = await ledgerEntriesFor(
+      placed.slip.bankrollWeekId,
+      firstBetUser.id,
+    );
+    expect(entries.map((entry) => entry.entryType)).toEqual([
+      "week_open",
+      "bet_stake",
+    ]);
+    expect(entries[0]).toMatchObject({
+      amountCents: DEFAULT_BANKROLL_FLOOR_CENTS,
+      runningBalanceCents: DEFAULT_BANKROLL_FLOOR_CENTS,
+      seq: 1,
+    });
+    expect(entries[1]).toMatchObject({
+      amountCents: -10_000,
+      refSlipId: placed.slip.id,
+      runningBalanceCents: DEFAULT_BANKROLL_FLOOR_CENTS - 10_000,
+      seq: 2,
+    });
+    expect(replayBankrollLedger(entries)).toBe(
+      DEFAULT_BANKROLL_FLOOR_CENTS - 10_000,
+    );
+  });
+
   it("locks selected odds for a single bet and leaves them unchanged after line movement", async () => {
     const opened = await openBankrollWeek(handle.db, {
       leagueId: leagueA.id,

@@ -10,6 +10,7 @@ export {
   computeArenaStandings,
   ensureArenaSeason,
   extractArenaStandingSwingSignals,
+  findArenaSeasonIdsForWeekStarts,
   getArenaLeaderboardData,
   type RebuildArenaStandingsResult,
   rebuildAllArenaStandings,

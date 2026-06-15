@@ -15,7 +15,10 @@ import {
 } from "@/db/schema";
 import { getProviderBadgeLabel } from "@/navigation";
 import type { FantasyProviderId } from "@/providers";
-import { getCurrentBankrollBalance } from "./bankroll";
+import {
+  DEFAULT_BANKROLL_FLOOR_CENTS,
+  getCurrentBankrollBalance,
+} from "./bankroll";
 import type { BetLegSelection } from "./placement";
 
 const MARKET_LIMIT = 24;
@@ -23,6 +26,7 @@ const RECENT_SLIP_LIMIT = 5;
 
 export interface LeagueBetData {
   readonly balance: LeagueBetBalance | null;
+  readonly firstBetFloorCents: number;
   readonly league: {
     readonly id: string;
     readonly name: string;
@@ -191,6 +195,8 @@ export async function getLeagueBetData(
             weekStart: balance.week.weekStart.toISOString(),
           }
         : null,
+      firstBetFloorCents:
+        balance?.week.floorCents ?? DEFAULT_BANKROLL_FLOOR_CENTS,
       league: {
         ...league,
         providerLabel: getProviderBadgeLabel(league.provider),

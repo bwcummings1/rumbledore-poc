@@ -4,6 +4,7 @@ import { cron, NonRetriableError } from "inngest";
 import { z } from "zod";
 import {
   extractArenaStandingSwingSignals,
+  findArenaSeasonIdsForWeekStarts,
   rebuildAllArenaStandings,
   rolloverBankrollWeek,
 } from "@/betting";
@@ -517,9 +518,20 @@ export async function runBankrollRollover({
     limit: data.limit,
     now,
   });
-  const arenaResults =
+  const arenaSeasonIds =
     rolloverResult.rolledOverWeeks.length > 0
-      ? await rebuildAllArenaStandings(deps.db, { computedAt: now })
+      ? await findArenaSeasonIdsForWeekStarts(deps.db, {
+          weekStarts: rolloverResult.rolledOverWeeks.map(
+            (week) => new Date(week.nextWeekStart),
+          ),
+        })
+      : [];
+  const arenaResults =
+    arenaSeasonIds.length > 0
+      ? await rebuildAllArenaStandings(deps.db, {
+          computedAt: now,
+          seasonIds: arenaSeasonIds,
+        })
       : [];
   const realtimeSignals =
     rolloverResult.rolledOverWeeks.length > 0

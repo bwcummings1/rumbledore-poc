@@ -15,7 +15,8 @@ import {
 import { stableContentHash } from "@/ingestion/hash";
 import {
   appendBankrollLedgerEntryInContext,
-  requireLockedBankrollBalanceInContext,
+  requireOrOpenLockedBankrollBalanceInContext,
+  utcBankrollWeekWindow,
 } from "./bankroll";
 
 export const DEFAULT_ODDS_FRESHNESS_MS = 5 * 60 * 1000;
@@ -585,9 +586,12 @@ export async function placeBetSlip(
       return assertIdempotentPayloadMatches(existing, existingRequestHash);
     }
 
-    const balance = await requireLockedBankrollBalanceInContext(tx, {
+    const openingWindow = utcBankrollWeekWindow(now);
+    const balance = await requireOrOpenLockedBankrollBalanceInContext(tx, {
       bankrollWeekId: input.bankrollWeekId,
       leagueId: input.leagueId,
+      openingWeekEnd: openingWindow.weekEnd,
+      openingWeekStart: openingWindow.weekStart,
       userId: input.userId,
     });
     if (stakeCents > balance.balanceCents) {

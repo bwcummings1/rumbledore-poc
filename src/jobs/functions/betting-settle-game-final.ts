@@ -3,6 +3,7 @@ import { NonRetriableError } from "inngest";
 import { z } from "zod";
 import {
   extractArenaStandingSwingSignals,
+  findArenaSeasonIdsForWeekStarts,
   rebuildAllArenaStandings,
 } from "@/betting/arena";
 import { createBettingSettlementDependencies } from "@/betting/dependencies";
@@ -16,7 +17,7 @@ import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { bankrollLedger, betSlips } from "@/db/schema";
+import { bankrollLedger, bankrollWeeks, betSlips } from "@/db/schema";
 import { createPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
   type ArenaLeaderboardUpdatedPayload,
@@ -77,6 +78,7 @@ interface SettlementNotificationDetail {
   slipId: string;
   stakeCents: number;
   userId: string;
+  weekStart: Date;
 }
 
 const gameFinalDataSchema = z.object({
@@ -149,8 +151,17 @@ async function loadSettlementNotificationDetails(
         kind: betSlips.kind,
         stakeCents: betSlips.stakeCents,
         userId: betSlips.userId,
+        weekStart: bankrollWeeks.weekStart,
       })
       .from(betSlips)
+      .innerJoin(
+        bankrollWeeks,
+        and(
+          eq(bankrollWeeks.id, betSlips.bankrollWeekId),
+          eq(bankrollWeeks.leagueId, betSlips.leagueId),
+          eq(bankrollWeeks.userId, betSlips.userId),
+        ),
+      )
       .where(
         and(
           eq(betSlips.leagueId, input.leagueId),
@@ -197,6 +208,7 @@ async function loadSettlementNotificationDetails(
         slipId: settlement.slipId,
         stakeCents,
         userId,
+        weekStart: slip.weekStart,
       });
     }
 
@@ -433,7 +445,12 @@ export async function runBettingSettleGameFinal({
 
   if (result.finalizedSlips > 0) {
     const details = await loadSettlementNotificationDetails(deps.db, result);
-    const arenaResults = await rebuildAllArenaStandings(deps.db);
+    const arenaSeasonIds = await findArenaSeasonIdsForWeekStarts(deps.db, {
+      weekStarts: details.map((detail) => detail.weekStart),
+    });
+    const arenaResults = await rebuildAllArenaStandings(deps.db, {
+      seasonIds: arenaSeasonIds,
+    });
     const realtimeUpdates = await publishSettlementRealtimeSignals({
       arenaResults,
       at: new Date().toISOString(),
