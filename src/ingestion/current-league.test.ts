@@ -8,6 +8,7 @@ import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   dataCoverage,
+  dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
   fantasyRosterEntries,
@@ -339,8 +340,14 @@ async function selectIngestedRows(leagueId: string) {
       .select()
       .from(leagueSeasonSettings)
       .where(eq(leagueSeasonSettings.leagueId, leagueId));
+    const integrityChecks = await tx
+      .select()
+      .from(dataIntegrityChecks)
+      .where(eq(dataIntegrityChecks.leagueId, leagueId))
+      .orderBy(asc(dataIntegrityChecks.createdAt));
     return {
       coverage,
+      integrityChecks,
       league,
       matchups,
       members,
@@ -836,6 +843,32 @@ describe("syncCurrentLeague", () => {
       status: "final",
       winner: "home",
     });
+    const finalizedRegressionChecks = rows.integrityChecks.filter(
+      (row) => row.checkKey === "finalized_state_regression",
+    );
+    expect(finalizedRegressionChecks).toHaveLength(1);
+    expect(finalizedRegressionChecks[0]).toMatchObject({
+      season: 2026,
+      status: "fail",
+    });
+    expect(finalizedRegressionChecks[0]?.detail).toMatchObject({
+      entity: "fantasy_matchup",
+      incoming: {
+        awayScore: 59,
+        homeScore: 64,
+        status: "scheduled",
+      },
+      leagueProviderId: providerLeagueId,
+      persisted: {
+        awayScore: 99,
+        homeScore: 121,
+        status: "final",
+      },
+      provider: "espn",
+      providerMatchupId: "1",
+      reason: "provider attempted to downgrade a finalized matchup",
+      scoringPeriod: 1,
+    });
 
     const calculations = await withLeagueContext(
       handle.db,
@@ -847,6 +880,170 @@ describe("syncCurrentLeague", () => {
           .where(eq(statsCalculations.leagueId, first.value.league.id)),
     );
     expect(calculations).toHaveLength(2);
+
+    const repeatedStale = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(staleFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(repeatedStale.ok).toBe(true);
+    if (!repeatedStale.ok) throw repeatedStale.error;
+    expect(repeatedStale.value.matchups).toEqual({
+      total: 84,
+      changed: 0,
+      unchanged: 84,
+    });
+    const repeatedRows = await selectIngestedRows(first.value.league.id);
+    expect(
+      repeatedRows.integrityChecks.filter(
+        (row) => row.checkKey === "finalized_state_regression",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("allows finalized matchup score corrections to update and publish", async () => {
+    const providerLeagueId = `${marker}-95050-finalized-correction`;
+
+    const first = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(leagueFixtureFor(providerLeagueId)),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+
+    const finalizedFixture = leagueFixtureFor(providerLeagueId);
+    finalizedFixture.schedule[0].winner = "HOME";
+    finalizedFixture.schedule[0].home.totalPoints = 121;
+    finalizedFixture.schedule[0].away.totalPoints = 99;
+    const finalized = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(finalizedFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(finalized.ok).toBe(true);
+    if (!finalized.ok) throw finalized.error;
+    expect(finalized.value.matchups).toEqual({
+      total: 84,
+      changed: 1,
+      unchanged: 83,
+    });
+
+    const correctedFixture = leagueFixtureFor(providerLeagueId);
+    correctedFixture.schedule[0].winner = "HOME";
+    correctedFixture.schedule[0].home.totalPoints = 122.5;
+    correctedFixture.schedule[0].away.totalPoints = 98.5;
+    const realtime = new RecordingRealtimePublisher();
+    const now = new Date("2026-06-12T12:02:00.000Z");
+    const corrected = await syncCurrentLeague({
+      db: handle.db,
+      now: () => now,
+      provider: providerFor(correctedFixture),
+      realtime,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(corrected.ok).toBe(true);
+    if (!corrected.ok) throw corrected.error;
+    expect(corrected.value.matchups).toEqual({
+      total: 84,
+      changed: 1,
+      unchanged: 83,
+    });
+    expect(corrected.value.changedFinalMatchups).toEqual([
+      {
+        contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        id: expect.any(String),
+      },
+    ]);
+
+    const rows = await selectIngestedRows(first.value.league.id);
+    const matchup = rows.matchups.find(
+      (row) => row.providerMatchupId === "1" && row.scoringPeriod === 1,
+    );
+    expect(matchup).toMatchObject({
+      awayScore: 98.5,
+      homeScore: 122.5,
+      status: "final",
+      winner: "home",
+    });
+    if (!matchup) throw new Error("expected corrected matchup row");
+    expect(corrected.value.changedFinalMatchups[0]?.id).toBe(matchup.id);
+    expect(corrected.value.changedFinalMatchups[0]?.contentHash).toBe(
+      matchup.contentHash,
+    );
+    expect(
+      rows.integrityChecks.filter(
+        (row) => row.checkKey === "finalized_state_regression",
+      ),
+    ).toHaveLength(0);
+    expect(realtime.scoresUpdated).toEqual([
+      {
+        at: now.toISOString(),
+        leagueId: first.value.league.id,
+        matchupIds: [matchup.id],
+        scoringPeriod: 1,
+        type: REALTIME_EVENTS.scoresUpdated,
+        v: 1,
+      },
+    ]);
+  });
+
+  it("preserves completed league seasons when a provider rereads them as active", async () => {
+    const providerLeagueId = `${marker}-95050-complete-preserve`;
+    const completeFixture = leagueFixtureFor(providerLeagueId);
+    completeFixture.status.isActive = false;
+    completeFixture.status.isExpired = true;
+
+    const first = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(completeFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+    expect(first.value.league).toMatchObject({ changed: 1, unchanged: 0 });
+
+    const rereadFixture = leagueFixtureFor(providerLeagueId);
+    const second = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(rereadFixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw second.error;
+    expect(second.value.league).toMatchObject({ changed: 0, unchanged: 1 });
+
+    const rows = await selectIngestedRows(first.value.league.id);
+    expect(rows.league).toMatchObject({
+      providerLeagueId,
+      status: "complete",
+    });
+    const finalizedRegressionChecks = rows.integrityChecks.filter(
+      (row) => row.checkKey === "finalized_state_regression",
+    );
+    expect(finalizedRegressionChecks).toHaveLength(1);
+    expect(finalizedRegressionChecks[0]).toMatchObject({
+      season: 2026,
+      status: "fail",
+    });
+    expect(finalizedRegressionChecks[0]?.detail).toMatchObject({
+      entity: "league",
+      incoming: {
+        status: "preseason",
+      },
+      leagueProviderId: providerLeagueId,
+      persisted: {
+        status: "complete",
+      },
+      provider: "espn",
+      reason: "provider attempted to downgrade a completed season",
+    });
   });
 
   it("runs targeted stats recompute only when changed matchup rows are finalized", async () => {

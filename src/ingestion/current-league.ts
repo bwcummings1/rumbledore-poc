@@ -1,10 +1,11 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "@/core/logging";
 import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   dataCoverage,
+  dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
   fantasyRosterEntries,
@@ -49,7 +50,13 @@ export interface EntitySyncStats {
   unchanged: number;
 }
 
+export interface ChangedFinalMatchup {
+  contentHash: string;
+  id: string;
+}
+
 export interface CurrentLeagueSyncResult {
+  changedFinalMatchups: ChangedFinalMatchup[];
   league: {
     id: string;
     provider: NormalizedLeague["provider"];
@@ -114,6 +121,28 @@ interface MatchupUpsertResult {
   stats: EntitySyncStats;
 }
 
+type MatchupUpsertRow = {
+  awayScore: number;
+  awayTeamProviderId: string;
+  contentHash: string;
+  homeScore: number;
+  homeTeamProviderId: string;
+  kind: NormalizedMatchup["kind"] | "head_to_head";
+  leagueId: string;
+  leagueProviderId: string;
+  provider: NormalizedMatchup["provider"];
+  providerMatchupId: string;
+  scoringPeriod: number;
+  season: number;
+  status: NormalizedMatchup["status"];
+  winner: NormalizedMatchup["winner"];
+};
+
+type FinalizedStateRegressionNote = {
+  detail: Record<string, unknown> & { dedupeKey: string };
+  season: number;
+};
+
 function stats(total: number, changed: number): EntitySyncStats {
   return {
     total,
@@ -169,6 +198,38 @@ async function publishScoresUpdated<Session extends FantasyProviderSession>({
       matchupCount: matchupIds.length,
     });
   }
+}
+
+async function loadChangedFinalMatchups({
+  db,
+  leagueId,
+  matchupIds,
+}: {
+  db: Db;
+  leagueId: string;
+  matchupIds: readonly string[];
+}): Promise<ChangedFinalMatchup[]> {
+  if (matchupIds.length === 0) {
+    return [];
+  }
+
+  const rows = await withLeagueContext(db, leagueId, (tx) =>
+    tx
+      .select({
+        contentHash: fantasyMatchups.contentHash,
+        id: fantasyMatchups.id,
+      })
+      .from(fantasyMatchups)
+      .where(
+        and(
+          eq(fantasyMatchups.leagueId, leagueId),
+          eq(fantasyMatchups.status, "final"),
+          inArray(fantasyMatchups.id, [...matchupIds]),
+        ),
+      ),
+  );
+
+  return rows.sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function sortedUnique(values: readonly string[]): string[] {
@@ -301,6 +362,221 @@ function transactionHashPayload(transaction: NormalizedTransaction) {
   };
 }
 
+function finalizedRegressionDedupeKey(value: Record<string, unknown>): string {
+  return stableContentHash({
+    finalizedStateRegression: value,
+  });
+}
+
+function isCompleteLeagueStatus(status: NormalizedLeague["status"]): boolean {
+  switch (status) {
+    case "complete":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function matchupIdentityKey(
+  row: Pick<
+    MatchupUpsertRow,
+    | "leagueProviderId"
+    | "provider"
+    | "providerMatchupId"
+    | "scoringPeriod"
+    | "season"
+  >,
+): string {
+  return stableContentHash({
+    leagueProviderId: row.leagueProviderId,
+    provider: row.provider,
+    providerMatchupId: row.providerMatchupId,
+    scoringPeriod: row.scoringPeriod,
+    season: row.season,
+  });
+}
+
+async function recordFinalizedStateRegressionNotes(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  notes: readonly FinalizedStateRegressionNote[],
+): Promise<void> {
+  if (notes.length === 0) {
+    return;
+  }
+
+  const existing = await tx
+    .select({ detail: dataIntegrityChecks.detail })
+    .from(dataIntegrityChecks)
+    .where(
+      and(
+        eq(dataIntegrityChecks.leagueId, leagueId),
+        eq(dataIntegrityChecks.checkKey, "finalized_state_regression"),
+        eq(dataIntegrityChecks.status, "fail"),
+      ),
+    );
+  const existingKeys = new Set(
+    existing
+      .map((row) => row.detail.dedupeKey)
+      .filter((key): key is string => typeof key === "string"),
+  );
+  const newNotes = notes.filter(
+    (note) => !existingKeys.has(note.detail.dedupeKey),
+  );
+  if (newNotes.length === 0) {
+    return;
+  }
+
+  const rows: (typeof dataIntegrityChecks.$inferInsert)[] = newNotes.map(
+    (note) => ({
+      checkKey: "finalized_state_regression",
+      detail: note.detail,
+      leagueId,
+      season: note.season,
+      status: "fail",
+    }),
+  );
+  await tx.insert(dataIntegrityChecks).values(rows);
+}
+
+async function finalizedLeagueStatusRegressionNotes(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  league?: NormalizedLeague,
+): Promise<FinalizedStateRegressionNote[]> {
+  if (!league || isCompleteLeagueStatus(league.status)) {
+    return [];
+  }
+
+  const [persisted] = await tx
+    .select({
+      provider: leagues.provider,
+      providerLeagueId: leagues.providerLeagueId,
+      season: leagues.season,
+      status: leagues.status,
+    })
+    .from(leagues)
+    .where(eq(leagues.id, leagueId))
+    .limit(1);
+  if (!persisted || !isCompleteLeagueStatus(persisted.status)) {
+    return [];
+  }
+
+  const identity = {
+    entity: "league",
+    incomingStatus: league.status,
+    leagueProviderId: league.providerId,
+    persistedStatus: persisted.status,
+    provider: league.provider,
+    season: league.season,
+  };
+
+  return [
+    {
+      detail: {
+        dedupeKey: finalizedRegressionDedupeKey(identity),
+        entity: "league",
+        incoming: {
+          status: league.status,
+        },
+        leagueProviderId: league.providerId,
+        persisted: {
+          status: persisted.status,
+        },
+        provider: league.provider,
+        reason: "provider attempted to downgrade a completed season",
+      },
+      season: league.season,
+    },
+  ];
+}
+
+async function finalizedMatchupRegressionNotes(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  rows: readonly MatchupUpsertRow[],
+): Promise<FinalizedStateRegressionNote[]> {
+  const candidates = rows.filter((row) => row.status !== "final");
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const existingFinalMatchups = await tx
+    .select({
+      awayScore: fantasyMatchups.awayScore,
+      contentHash: fantasyMatchups.contentHash,
+      homeScore: fantasyMatchups.homeScore,
+      leagueProviderId: fantasyMatchups.leagueProviderId,
+      provider: fantasyMatchups.provider,
+      providerMatchupId: fantasyMatchups.providerMatchupId,
+      scoringPeriod: fantasyMatchups.scoringPeriod,
+      season: fantasyMatchups.season,
+      status: fantasyMatchups.status,
+      winner: fantasyMatchups.winner,
+    })
+    .from(fantasyMatchups)
+    .where(
+      and(
+        eq(fantasyMatchups.leagueId, leagueId),
+        eq(fantasyMatchups.status, "final"),
+      ),
+    );
+  if (existingFinalMatchups.length === 0) {
+    return [];
+  }
+
+  const existingByIdentity = new Map(
+    existingFinalMatchups.map((row) => [matchupIdentityKey(row), row]),
+  );
+
+  return candidates.flatMap((row) => {
+    const existing = existingByIdentity.get(matchupIdentityKey(row));
+    if (!existing || existing.contentHash === row.contentHash) {
+      return [];
+    }
+
+    const identity = {
+      entity: "fantasy_matchup",
+      incomingContentHash: row.contentHash,
+      incomingStatus: row.status,
+      leagueProviderId: row.leagueProviderId,
+      provider: row.provider,
+      providerMatchupId: row.providerMatchupId,
+      scoringPeriod: row.scoringPeriod,
+      season: row.season,
+    };
+
+    return [
+      {
+        detail: {
+          dedupeKey: finalizedRegressionDedupeKey(identity),
+          entity: "fantasy_matchup",
+          incoming: {
+            awayScore: row.awayScore,
+            contentHash: row.contentHash,
+            homeScore: row.homeScore,
+            status: row.status,
+            winner: row.winner,
+          },
+          leagueProviderId: row.leagueProviderId,
+          persisted: {
+            awayScore: existing.awayScore,
+            contentHash: existing.contentHash,
+            homeScore: existing.homeScore,
+            status: existing.status,
+            winner: existing.winner,
+          },
+          provider: row.provider,
+          providerMatchupId: row.providerMatchupId,
+          reason: "provider attempted to downgrade a finalized matchup",
+          scoringPeriod: row.scoringPeriod,
+        },
+        season: row.season,
+      },
+    ];
+  });
+}
+
 async function upsertLeague(
   db: Db,
   league: NormalizedLeague,
@@ -329,7 +605,13 @@ async function upsertLeague(
         season: sql`excluded.season`,
         size: sql`excluded.size`,
         sport: sql`excluded.sport`,
-        status: sql`excluded.status`,
+        status: sql`
+          case
+            when ${leagues.status} = 'complete' and excluded.status <> 'complete'
+              then ${leagues.status}
+            else excluded.status
+          end
+        `,
         updatedAt: sql`now()`,
       },
       where: sql`
@@ -340,7 +622,10 @@ async function upsertLeague(
         or ${leagues.scoringSettings} is distinct from excluded.scoring_settings
         or ${leagues.size} is distinct from excluded.size
         or ${leagues.currentScoringPeriod} is distinct from excluded.current_scoring_period
-        or ${leagues.status} is distinct from excluded.status
+        or (
+          not (${leagues.status} = 'complete' and excluded.status <> 'complete')
+          and ${leagues.status} is distinct from excluded.status
+        )
       `,
     })
     .returning({ id: leagues.id });
@@ -484,7 +769,7 @@ async function upsertMatchups(
     return { changedIds: [], scoringPeriods: [], stats: stats(0, 0) };
   }
 
-  const rows = matchups.map((matchup) => ({
+  const rows: MatchupUpsertRow[] = matchups.map((matchup) => ({
     awayScore: matchup.awayScore,
     awayTeamProviderId: matchup.awayTeamRef.providerId,
     contentHash: stableContentHash(matchupHashPayload(matchup)),
@@ -500,6 +785,11 @@ async function upsertMatchups(
     status: matchup.status,
     winner: matchup.winner,
   }));
+  const regressionNotes = await finalizedMatchupRegressionNotes(
+    tx,
+    leagueId,
+    rows,
+  );
 
   const changed = await tx
     .insert(fantasyMatchups)
@@ -532,6 +822,7 @@ async function upsertMatchups(
       id: fantasyMatchups.id,
       scoringPeriod: fantasyMatchups.scoringPeriod,
     });
+  await recordFinalizedStateRegressionNotes(tx, leagueId, regressionNotes);
 
   return {
     changedIds: changed.map((matchup) => matchup.id).sort(),
@@ -821,6 +1112,13 @@ export async function persistNormalizedLeagueRows({
       teams,
       transactions,
     });
+    const leagueStatusRegressionNotes =
+      await finalizedLeagueStatusRegressionNotes(tx, leagueId, league);
+    await recordFinalizedStateRegressionNotes(
+      tx,
+      leagueId,
+      leagueStatusRegressionNotes,
+    );
     const teamStats = await upsertTeams(tx, leagueId, teams);
     const memberStats = await upsertMembers(tx, leagueId, members);
     const matchupUpsert = await upsertMatchups(tx, leagueId, matchups);
@@ -1131,6 +1429,11 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     season: league.value.season,
   });
 
+  const changedFinalMatchups = await loadChangedFinalMatchups({
+    db,
+    leagueId: leagueWrite.id,
+    matchupIds: scoped.changedMatchupIds,
+  });
   await publishScoresUpdated({
     input,
     leagueId: leagueWrite.id,
@@ -1146,6 +1449,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   );
 
   return ok({
+    changedFinalMatchups,
     league: {
       id: leagueWrite.id,
       provider: league.value.provider,

@@ -262,6 +262,7 @@ async function seedDataCoverage(
 
 function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
   return {
+    changedFinalMatchups: [],
     league: {
       changed: 0,
       id: seed.leagueId,
@@ -388,9 +389,9 @@ describe("live ingestion jobs", () => {
     expect(result.planned.map((event) => event.data.leagueId).sort()).toEqual(
       [espn.leagueId, sleeper.leagueId].sort(),
     );
-    expect(
-      result.planned.find((event) => event.data.leagueId === invalid.leagueId),
-    ).toBeUndefined();
+    expect(result.planned.map((event) => event.data.leagueId)).not.toContain(
+      invalid.leagueId,
+    );
   });
 
   it("plans league.ingest events through the Inngest step API", async () => {
@@ -722,6 +723,64 @@ describe("live ingestion jobs", () => {
       provider: "espn",
       providerId: seeded.providerLeagueId,
       season: 2026,
+    });
+    expect(response).toMatchObject({
+      gameFinalEvents: [],
+      sentGameFinalCount: 0,
+    });
+  });
+
+  it("plans game.final events for changed finalized matchups through the worker step", async () => {
+    const seeded = await seedLiveLeague("worker-game-final");
+    const fixtureProvider = currentSyncProvider();
+    const changedMatchupId = randomUUID();
+    const sourceContentHash = "a".repeat(64);
+    const fn = createLeagueIngestFunction(() => ({
+      cipher,
+      db: handle.db,
+      providers: { espn: fixtureProvider.provider },
+      syncCurrent: async () =>
+        ok({
+          ...successfulSyncResult(seeded),
+          changedFinalMatchups: [
+            {
+              contentHash: sourceContentHash,
+              id: changedMatchupId,
+            },
+          ],
+        }),
+    }));
+    const testEngine = new InngestTestEngine({ function: fn });
+    const event = {
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: `${marker} league worker-game-final`,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+      },
+      name: JOB_EVENTS.leagueIngest,
+    };
+
+    const stepRun = await testEngine.executeStep("sync-current-league", {
+      events: [event],
+    });
+
+    const expectedGameFinalEvent = {
+      data: {
+        gameId: changedMatchupId,
+        leagueId: seeded.leagueId,
+        sourceContentHash,
+      },
+      id: `${JOB_EVENTS.gameFinal}:${seeded.leagueId}:${changedMatchupId}:${sourceContentHash}`,
+      name: JOB_EVENTS.gameFinal,
+    };
+    expect(stepRun.result).toMatchObject({
+      gameFinalEvents: [expectedGameFinalEvent],
+      ok: true,
+      sentGameFinalCount: 0,
     });
   });
 

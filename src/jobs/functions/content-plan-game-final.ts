@@ -27,6 +27,10 @@ const gameFinalDataSchema = z.object({
   gameId: z.uuid(),
   leagueId: z.uuid(),
   milestoneKeys: z.array(z.string().trim().min(1).max(120)).max(12).optional(),
+  sourceContentHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
 });
 
 function toNonRetriable(error: AppError): NonRetriableError {
@@ -90,7 +94,8 @@ export function createContentPlanGameFinalFunction(
       description:
         "Plans AI blogger recaps from finalized fantasy matchups and fans out content.generate events.",
       id: "content-plan-game-final",
-      idempotency: "event.data.leagueId + ':' + event.data.gameId",
+      idempotency:
+        "event.data.leagueId + ':' + event.data.gameId + ':' + event.data.sourceContentHash",
       name: "AI content game-final planner",
       triggers: [{ event: JOB_EVENTS.gameFinal }],
     },

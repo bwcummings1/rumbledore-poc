@@ -101,6 +101,7 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "schedule_coverage",
   "identity_sanity",
   "no_silent_empty",
+  "finalized_state_regression",
 ]);
 
 export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [

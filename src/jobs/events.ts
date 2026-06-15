@@ -159,6 +159,7 @@ export interface GameFinalData {
   leagueId: string;
   gameId: string;
   milestoneKeys?: string[];
+  sourceContentHash?: string;
 }
 
 export interface NewsRefreshData {

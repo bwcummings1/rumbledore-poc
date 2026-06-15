@@ -288,6 +288,13 @@
       "when": 1781501600000,
       "tag": "0040_platform_admins",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781505200000,
+      "tag": "0041_finalized_state_regression",
+      "breakpoints": true
     }
   ]
 }

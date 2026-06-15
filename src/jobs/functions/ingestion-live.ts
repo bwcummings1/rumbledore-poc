@@ -49,6 +49,7 @@ import {
 import { createRealtimePublisher, type RealtimePublisher } from "@/realtime";
 import { inngest } from "../client";
 import {
+  type GameFinalData,
   type IngestionTickData,
   JOB_EVENTS,
   type LeagueIngestData,
@@ -129,6 +130,12 @@ export interface PlannedLeagueIngestEvent {
   name: typeof JOB_EVENTS.leagueIngest;
 }
 
+export interface PlannedGameFinalEvent {
+  data: GameFinalData;
+  id: string;
+  name: typeof JOB_EVENTS.gameFinal;
+}
+
 export interface IngestionTickResponse {
   connectedRows: number;
   eventName:
@@ -146,7 +153,9 @@ export interface IngestionTickResponse {
 export interface LeagueIngestResponse extends CurrentLeagueSyncResult {
   dataClasses: ProviderDataClass[];
   eventName: typeof JOB_EVENTS.leagueIngest;
+  gameFinalEvents: PlannedGameFinalEvent[];
   ok: true;
+  sentGameFinalCount: number;
 }
 
 const storedEspnCredentialsSchema = z.object({
@@ -582,6 +591,25 @@ function plannedEventFor({
   };
 }
 
+function plannedGameFinalEventsFor(
+  sync: CurrentLeagueSyncResult,
+): PlannedGameFinalEvent[] {
+  return sync.changedFinalMatchups.map((matchup) => ({
+    data: {
+      gameId: matchup.id,
+      leagueId: sync.league.id,
+      sourceContentHash: matchup.contentHash,
+    },
+    id: [
+      JOB_EVENTS.gameFinal,
+      sync.league.id,
+      matchup.id,
+      matchup.contentHash,
+    ].join(":"),
+    name: JOB_EVENTS.gameFinal,
+  }));
+}
+
 async function getDefaultIngestionTickDependencies(): Promise<IngestionTickDependencies> {
   const [{ getEnv }, { getDb }] = await Promise.all([
     import("@/core/env"),
@@ -739,10 +767,14 @@ export async function runLeagueIngest({
     throwProviderError(sync.error);
   }
 
+  const gameFinalEvents = plannedGameFinalEventsFor(sync.value);
+
   return {
     dataClasses: data.dataClasses ?? [...PROVIDER_DATA_CLASSES],
     eventName: JOB_EVENTS.leagueIngest,
+    gameFinalEvents,
     ok: true,
+    sentGameFinalCount: 0,
     ...sync.value,
   };
 }
@@ -812,9 +844,19 @@ export function createLeagueIngestFunction(
     async ({ event, step }): Promise<LeagueIngestResponse> =>
       recordJobRun("league-ingest", async () => {
         const deps = await resolveDeps();
-        return step.run("sync-current-league", () =>
+        const result = await step.run("sync-current-league", () =>
           runLeagueIngest({ data: event.data, deps }),
         );
+        if (result.gameFinalEvents.length > 0) {
+          await step.sendEvent(
+            "send-game-final-events",
+            result.gameFinalEvents,
+          );
+        }
+        return {
+          ...result,
+          sentGameFinalCount: result.gameFinalEvents.length,
+        };
       }),
   );
 }

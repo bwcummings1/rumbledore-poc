@@ -9,7 +9,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Build the `ingestion.tick` cron orchestrator that fans out per-league ingest workers. (specs/19)
 - [x] Drive adaptive cadence from an injectable NFL game-state/calendar provider (live-window fast path vs off-hours). (specs/19)
 - [x] Make the poll policy a pluggable config seam, with cadence as data (cost-optimization deferred to research). (specs/19)
-- [ ] Harden incremental sync to never downgrade finalized matchups, idempotently. (specs/19)
+- [x] Harden incremental sync to never downgrade finalized matchups, idempotently. (specs/19)
 - [ ] Wire reconnect-on-expiry into the scheduler so expired auth pauses with a CTA, not a crash. (specs/19)
 - [ ] Support multi-league fan-out and automatic next-season rollover on the same auth. (specs/19)
 

@@ -86,6 +86,10 @@ const gameFinalDataSchema = z.object({
   gameId: z.uuid(),
   leagueId: z.uuid(),
   milestoneKeys: z.array(z.string().trim().min(1).max(120)).max(12).optional(),
+  sourceContentHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
 });
 
 function toNonRetriable(error: AppError): NonRetriableError {
