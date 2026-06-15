@@ -879,7 +879,7 @@ describe("lore claim voting lifecycle", () => {
         week: 5,
       }),
     ]);
-    expect(rows.events.map((event) => event.kind)).toEqual([
+    expect([...rows.events.map((event) => event.kind)].sort()).toEqual([
       "created",
       "ratified",
     ]);

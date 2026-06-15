@@ -441,18 +441,20 @@ export async function planCronContent({
   db,
   env,
   nflCalendar,
+  nflWeekState,
   now,
 }: {
   cadence: ContentPlanCronCadence;
   db: Db;
   env: EntitlementResolverEnv;
   nflCalendar?: NflCalendar;
+  nflWeekState?: NflWeekState;
   now?: () => Date;
 }): Promise<ContentPlanCronResult> {
   const resolvedNow = now?.() ?? new Date();
-  const nflWeekState = await (nflCalendar ?? defaultNflCalendar).weekState(
-    resolvedNow,
-  );
+  const resolvedNflWeekState =
+    nflWeekState ??
+    (await (nflCalendar ?? defaultNflCalendar).weekState(resolvedNow));
   const activeLeagues = await db
     .select({
       id: leagues.id,
@@ -477,14 +479,18 @@ export async function planCronContent({
 
     const hasRivalryWeek =
       cadence === "weekly-preview" &&
-      cadenceMatchesWeekState({ cadence, weekState: nflWeekState })
+      cadenceMatchesWeekState({ cadence, weekState: resolvedNflWeekState })
         ? await hasRivalrySignal({ db, leagueId: league.id })
         : false;
-    const triggerKey = cronTriggerKey(cadence, resolvedNow, nflWeekState);
+    const triggerKey = cronTriggerKey(
+      cadence,
+      resolvedNow,
+      resolvedNflWeekState,
+    );
     for (const candidate of scheduledCandidatesFor({
       cadence,
       hasRivalryWeek,
-      weekState: nflWeekState,
+      weekState: resolvedNflWeekState,
     })) {
       planned.push(
         toPlannedEvent({
@@ -497,7 +503,7 @@ export async function planCronContent({
     }
   }
 
-  return { cadence, nflWeekState, planned, skipped };
+  return { cadence, nflWeekState: resolvedNflWeekState, planned, skipped };
 }
 
 function gameFinalTriggerReasons({

@@ -321,13 +321,15 @@ describe("content planning", () => {
       (event) => event.data.leagueId === active.id,
     );
 
-    expect(firstForActive.map((event) => event.data.persona).sort()).toEqual([
-      "analyst",
-      "commissioner",
-    ]);
     expect(
-      firstForActive.map((event) => event.data.contentType).sort(),
-    ).toEqual(["matchup_preview", "matchup_preview"]);
+      firstForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
+    ).toEqual([
+      { contentType: "matchup_preview", persona: "commissioner" },
+      { contentType: "matchup_preview", persona: "analyst" },
+    ]);
     expect(firstForActive.map((event) => event.data.triggerKey)).toStrictEqual([
       "cron:weekly-preview:regular:7",
       "cron:weekly-preview:regular:7",
@@ -352,13 +354,15 @@ describe("content planning", () => {
     const wrapForActive = wrap.planned.filter(
       (event) => event.data.leagueId === active.id,
     );
-    expect(wrapForActive.map((event) => event.data.contentType).sort()).toEqual(
-      ["awards_superlatives", "power_rankings", "weekly_recap"],
-    );
-    expect(wrapForActive.map((event) => event.data.persona).sort()).toEqual([
-      "analyst",
-      "narrator",
-      "trash_talker",
+    expect(
+      wrapForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
+    ).toEqual([
+      { contentType: "weekly_recap", persona: "narrator" },
+      { contentType: "power_rankings", persona: "analyst" },
+      { contentType: "awards_superlatives", persona: "trash_talker" },
     ]);
 
     const midWeek = await planCronContent({
@@ -371,18 +375,15 @@ describe("content planning", () => {
       (event) => event.data.leagueId === active.id,
     );
     expect(
-      midWeekForActive.map((event) => event.data.contentType).sort(),
+      midWeekForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
     ).toEqual([
-      "awards_superlatives",
-      "instigation_column",
-      "power_rankings",
-      "season_arc",
-    ]);
-    expect(midWeekForActive.map((event) => event.data.persona).sort()).toEqual([
-      "analyst",
-      "beat_reporter",
-      "narrator",
-      "trash_talker",
+      { contentType: "power_rankings", persona: "analyst" },
+      { contentType: "awards_superlatives", persona: "beat_reporter" },
+      { contentType: "instigation_column", persona: "trash_talker" },
+      { contentType: "season_arc", persona: "narrator" },
     ]);
 
     await withLeagueContext(handle.db, active.id, async (tx) => {
@@ -416,8 +417,15 @@ describe("content planning", () => {
       (event) => event.data.leagueId === active.id,
     );
     expect(
-      rivalryForActive.map((event) => event.data.contentType).sort(),
-    ).toEqual(["matchup_preview", "matchup_preview", "rivalry_piece"]);
+      rivalryForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
+    ).toEqual([
+      { contentType: "matchup_preview", persona: "commissioner" },
+      { contentType: "matchup_preview", persona: "analyst" },
+      { contentType: "rivalry_piece", persona: "trash_talker" },
+    ]);
 
     const postOdds = await planCronContent({
       cadence: "post-odds-refresh",
@@ -429,11 +437,14 @@ describe("content planning", () => {
       (event) => event.data.leagueId === active.id,
     );
     expect(
-      postOddsForActive.map((event) => event.data.contentType).sort(),
-    ).toEqual(["arena_recap", "matchup_preview"]);
-    expect(postOddsForActive.map((event) => event.data.persona).sort()).toEqual(
-      ["betting_advisor", "betting_advisor"],
-    );
+      postOddsForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
+    ).toEqual([
+      { contentType: "matchup_preview", persona: "betting_advisor" },
+      { contentType: "arena_recap", persona: "betting_advisor" },
+    ]);
 
     const offseasonPostOdds = await planCronContent({
       cadence: "post-odds-refresh",
@@ -448,6 +459,118 @@ describe("content planning", () => {
         (event) => event.data.leagueId === active.id,
       ),
     ).toBe(false);
+  });
+
+  it("plans missed in-season weeks with distinct backfill keys", async () => {
+    const league = await seedLeague("cadence-backfill");
+    const missedWeekState = {
+      ...regularPostGamesState,
+      seasonWeek: 6,
+    } as const satisfies NflWeekState;
+    const currentWeek = await planCronContent({
+      cadence: "weekly-wrap",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: regularPostGamesState,
+      now: () => new Date("2026-10-13T12:00:00.000Z"),
+    });
+    const missedWeekFirst = await planCronContent({
+      cadence: "weekly-wrap",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflWeekState: missedWeekState,
+      now: () => new Date("2026-10-06T12:00:00.000Z"),
+    });
+    const missedWeekSecond = await runContentPlanCron({
+      cadence: "weekly-wrap",
+      deps: {
+        ...plannerDeps(),
+        nflWeekState: missedWeekState,
+        now: () => new Date("2026-10-07T12:00:00.000Z"),
+      },
+    });
+
+    const currentForLeague = currentWeek.planned.filter(
+      (event) => event.data.leagueId === league.id,
+    );
+    const missedFirstForLeague = missedWeekFirst.planned.filter(
+      (event) => event.data.leagueId === league.id,
+    );
+    const missedSecondForLeague = missedWeekSecond.planned.filter(
+      (event) => event.data.leagueId === league.id,
+    );
+
+    expect(
+      missedFirstForLeague.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
+    ).toEqual([
+      { contentType: "weekly_recap", persona: "narrator" },
+      { contentType: "power_rankings", persona: "analyst" },
+      { contentType: "awards_superlatives", persona: "trash_talker" },
+    ]);
+    expect(
+      missedFirstForLeague.map((event) => event.data.triggerKey),
+    ).toStrictEqual([
+      "cron:weekly-wrap:regular:6",
+      "cron:weekly-wrap:regular:6",
+      "cron:weekly-wrap:regular:6",
+    ]);
+    expect(
+      currentForLeague.map((event) => event.data.triggerKey),
+    ).toStrictEqual([
+      "cron:weekly-wrap:regular:7",
+      "cron:weekly-wrap:regular:7",
+      "cron:weekly-wrap:regular:7",
+    ]);
+    expect(missedFirstForLeague.map((event) => event.id)).toEqual(
+      missedSecondForLeague.map((event) => event.id),
+    );
+    expect(missedFirstForLeague.map((event) => event.id)).not.toEqual(
+      currentForLeague.map((event) => event.id),
+    );
+  });
+
+  it("plans scheduled cron content through the Inngest step API", async () => {
+    const league = await seedLeague("job-cron-wrap");
+    const fn = createContentPlanCronFunction(
+      {
+        cadence: "weekly-wrap",
+        functionId: `${marker}-weekly-wrap-cron`,
+        name: "Weekly wrap cron smoke",
+        schedule: "0 12 * * 2",
+      },
+      () => ({
+        ...plannerDeps(),
+        nflWeekState: regularPostGamesState,
+      }),
+    );
+    const testEngine = new InngestTestEngine({ function: fn });
+
+    const stepRun = await testEngine.executeStep("plan-content-generation", {
+      events: [{ data: {}, name: "inngest/scheduled.timer" }],
+    });
+
+    expect(stepRun.result).toMatchObject({
+      cadence: "weekly-wrap",
+      nflWeekState: regularPostGamesState,
+      ok: true,
+      sentCount: 0,
+    });
+    expect(stepRun.result).toMatchObject({
+      planned: expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contentType: "weekly_recap",
+            leagueId: league.id,
+            persona: "narrator",
+            triggerKey: "cron:weekly-wrap:regular:7",
+          }),
+          name: JOB_EVENTS.contentGenerate,
+        }),
+      ]),
+    });
   });
 
   it("runs mid-week instigation candidates as poll-backed lore claims", async () => {

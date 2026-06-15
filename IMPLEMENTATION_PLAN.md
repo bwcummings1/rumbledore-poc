@@ -28,7 +28,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 
 ### M. Weekly cadence orchestration (see specs/22)
 - [x] Add a mockable NFL calendar service that drives cadence by phase and game-state. (specs/22)
-- [ ] Plan the in-season weekly slate (recaps, rankings, previews) with stable natural keys and backfill. (specs/22)
+- [x] Plan the in-season weekly slate (recaps, rankings, previews) with stable natural keys and backfill. (specs/22)
 - [ ] Add a distinct offseason/quiet-week cadence. (specs/22)
 - [ ] Enrich reactive event-driven pieces (game final, swing, lore canonized, bet settled), entitlement-gated. (specs/22)
 
@@ -58,3 +58,4 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.
 - [ ] Season rollover advances the durable league root into the newly discovered season, but does not schedule historical backfill for any skipped seasons.
 - [ ] Flat `all_time_record` longest-streak rows still derive from per-season `season_statistics`; future record-chain/materialized UI work should use cross-season H2H-only streaks from the catalog.
+- [ ] Scheduled weekly recaps and reactive `game.final` recaps still use different trigger keys; add a targeted shared-idempotency pass when enriching reactive cadence.
