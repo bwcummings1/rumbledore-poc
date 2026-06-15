@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BrowserRealtimeChannel, BrowserRealtimeClient } from "./client";
 import {
   buildRealtimeGrantPath,
   openRealtimeRefreshSubscription,
+  useRealtimeRefresh,
 } from "./client";
 import type { RealtimeSubscriptionGrant } from "./grants";
 import {
@@ -13,6 +15,13 @@ import {
 
 const leagueId = "00000000-0000-4000-8000-000000000001";
 const fixtureValue = (...parts: string[]) => parts.join("-");
+const navigationMock = vi.hoisted(() => ({
+  refresh: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: navigationMock.refresh }),
+}));
 
 class FakeChannel implements BrowserRealtimeChannel {
   readonly callbacks = new Map<
@@ -21,6 +30,9 @@ class FakeChannel implements BrowserRealtimeChannel {
   >();
   readonly options: { config: { private: true } };
   readonly topic: string;
+  private statusCallback:
+    | ((status: string, error?: Error | undefined) => void)
+    | null = null;
   subscribed = false;
 
   constructor(topic: string, options: { config: { private: true } }) {
@@ -37,13 +49,20 @@ class FakeChannel implements BrowserRealtimeChannel {
     return this;
   }
 
-  subscribe(): BrowserRealtimeChannel {
+  subscribe(
+    callback?: (status: string, error?: Error | undefined) => void,
+  ): BrowserRealtimeChannel {
+    this.statusCallback = callback ?? null;
     this.subscribed = true;
     return this;
   }
 
   emit(event: string, payload: RealtimePayload) {
     this.callbacks.get(event)?.({ event, payload });
+  }
+
+  transition(status: string, error?: Error) {
+    this.statusCallback?.(status, error);
   }
 }
 
@@ -71,6 +90,55 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
   });
 }
+
+function supabaseGrant(
+  topic: RealtimeSubscriptionGrant["channels"][number]["topic"],
+  expiresAt = "2026-06-12T00:05:00.000Z",
+): RealtimeSubscriptionGrant {
+  return {
+    channels: [{ capabilities: ["broadcast:read"], private: true, topic }],
+    expiresAt,
+    issuedAt: "2026-06-12T00:00:00.000Z",
+    token: fixtureValue("client", "grant"),
+    transport: {
+      kind: "supabase",
+      publishableKey: fixtureValue("publishable", "key"),
+      url: "https://project.supabase.co",
+    },
+    ttlSeconds: 300,
+  };
+}
+
+async function flushAsyncWork() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+function RealtimeHarness({
+  createClient,
+  fetcher,
+  subscriptions,
+}: {
+  createClient: () => BrowserRealtimeClient;
+  fetcher: typeof fetch;
+  subscriptions: Parameters<typeof useRealtimeRefresh>[0]["subscriptions"];
+}) {
+  useRealtimeRefresh({
+    createClient,
+    fetcher,
+    leagueIds: [leagueId],
+    subscriptions,
+  });
+  return null;
+}
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  navigationMock.refresh.mockReset();
+});
 
 describe("realtime browser client", () => {
   it("builds token paths with sorted deduplicated league ids", () => {
@@ -124,18 +192,7 @@ describe("realtime browser client", () => {
       type: REALTIME_EVENTS.blogPublished,
       v: 1,
     } as const;
-    const grant: RealtimeSubscriptionGrant = {
-      channels: [{ capabilities: ["broadcast:read"], private: true, topic }],
-      expiresAt: "2026-06-12T00:05:00.000Z",
-      issuedAt: "2026-06-12T00:00:00.000Z",
-      token: fixtureValue("client", "grant"),
-      transport: {
-        kind: "supabase",
-        publishableKey: fixtureValue("publishable", "key"),
-        url: "https://project.supabase.co",
-      },
-      ttlSeconds: 300,
-    };
+    const grant = supabaseGrant(topic);
     const client = new FakeClient();
     const onRefresh = vi.fn();
     const fetcher = vi.fn(async () => jsonResponse(grant));
@@ -184,18 +241,7 @@ describe("realtime browser client", () => {
       type: REALTIME_EVENTS.arenaStandingsSwing,
       v: 1,
     };
-    const grant: RealtimeSubscriptionGrant = {
-      channels: [{ capabilities: ["broadcast:read"], private: true, topic }],
-      expiresAt: "2026-06-12T00:05:00.000Z",
-      issuedAt: "2026-06-12T00:00:00.000Z",
-      token: fixtureValue("client", "grant"),
-      transport: {
-        kind: "supabase",
-        publishableKey: fixtureValue("publishable", "key"),
-        url: "https://project.supabase.co",
-      },
-      ttlSeconds: 300,
-    };
+    const grant = supabaseGrant(topic);
     const client = new FakeClient();
     const onRefresh = vi.fn();
 
@@ -230,5 +276,120 @@ describe("realtime browser client", () => {
       payload: swingPayload,
       topic,
     });
+  });
+
+  it("refreshes the grant before the short-lived token expires", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-12T00:00:00.000Z"));
+
+    const topic = leagueRealtimeChannel(leagueId, "blog");
+    const grant = supabaseGrant(topic);
+    const client = new FakeClient();
+    const fetcher = vi.fn(async () => jsonResponse(grant));
+
+    render(
+      <RealtimeHarness
+        createClient={() => client}
+        fetcher={fetcher}
+        subscriptions={[{ events: [REALTIME_EVENTS.blogPublished], topic }]}
+      />,
+    );
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(client.channels).toHaveLength(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(269_999);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(client.channels).toHaveLength(2);
+    expect(client.removed).toEqual([client.channels[0]]);
+  });
+
+  it("reconnects after Supabase channel failures using fallback backoff", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-12T00:00:00.000Z"));
+
+    const topic = leagueRealtimeChannel(leagueId, "blog");
+    const grant = supabaseGrant(topic);
+    const client = new FakeClient();
+    const fetcher = vi.fn(async () => jsonResponse(grant));
+
+    render(
+      <RealtimeHarness
+        createClient={() => client}
+        fetcher={fetcher}
+        subscriptions={[{ events: [REALTIME_EVENTS.blogPublished], topic }]}
+      />,
+    );
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(client.channels).toHaveLength(1);
+
+    act(() => {
+      client.channels[0]?.transition("CHANNEL_ERROR", new Error("lost"));
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_999);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(client.channels).toHaveLength(2);
+    expect(client.removed).toEqual([client.channels[0]]);
+  });
+
+  it("retries token fetch failures using fallback backoff", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-12T00:00:00.000Z"));
+
+    const topic = leagueRealtimeChannel(leagueId, "blog");
+    const grant = supabaseGrant(topic);
+    const client = new FakeClient();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce(jsonResponse(grant));
+
+    render(
+      <RealtimeHarness
+        createClient={() => client}
+        fetcher={fetcher}
+        subscriptions={[{ events: [REALTIME_EVENTS.blogPublished], topic }]}
+      />,
+    );
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(client.channels).toHaveLength(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_999);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(client.channels).toHaveLength(1);
+    expect(client.channels[0]?.subscribed).toBe(true);
   });
 });

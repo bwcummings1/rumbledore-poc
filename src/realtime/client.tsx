@@ -259,9 +259,13 @@ function useCoalescedRefresh() {
 }
 
 export function useRealtimeRefresh({
+  createClient,
+  fetcher,
   leagueIds = EMPTY_LEAGUE_IDS,
   subscriptions,
 }: {
+  createClient?: CreateBrowserRealtimeClient;
+  fetcher?: typeof fetch;
   leagueIds?: readonly string[];
   subscriptions: readonly RealtimeRefreshSubscription[];
 }) {
@@ -279,12 +283,24 @@ export function useRealtimeRefresh({
       }
     };
 
+    const scheduleReconnect = () => {
+      if (closed) {
+        return;
+      }
+      clearRefreshTimer();
+      refreshTimer = window.setTimeout(() => {
+        void connect();
+      }, RECONNECT_FALLBACK_MS);
+    };
+
     const connect = async () => {
       try {
         handle?.unsubscribe();
         handle = await openRealtimeRefreshSubscription({
+          createClient,
+          fetcher,
           leagueIds,
-          onError: () => undefined,
+          onError: scheduleReconnect,
           onRefresh: refresh,
           subscriptions,
         });
@@ -307,10 +323,7 @@ export function useRealtimeRefresh({
         }
       } catch {
         if (!closed) {
-          clearRefreshTimer();
-          refreshTimer = window.setTimeout(() => {
-            void connect();
-          }, RECONNECT_FALLBACK_MS);
+          scheduleReconnect();
         }
       }
     };
@@ -322,7 +335,7 @@ export function useRealtimeRefresh({
       clearRefreshTimer();
       handle?.unsubscribe();
     };
-  }, [leagueIds, refresh, subscriptions]);
+  }, [createClient, fetcher, leagueIds, refresh, subscriptions]);
 }
 
 function leagueSubscriptions(
