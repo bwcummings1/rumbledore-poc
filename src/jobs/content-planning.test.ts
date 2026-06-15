@@ -9,6 +9,7 @@ import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  aiGenerationRuns,
   contentItems,
   fantasyMatchups,
   fantasyMembers,
@@ -59,10 +60,13 @@ import { functions } from "./index";
 const marker = `contentplan-${randomUUID()}`;
 let handle: DbHandle;
 
-function entitlementEnv(devOverride: boolean): EntitlementResolverEnv {
+function entitlementEnv(
+  devOverride: boolean,
+  caps: EntitlementResolverEnv["entitlements"]["caps"] = DEFAULT_ENTITLEMENT_CAPS,
+): EntitlementResolverEnv {
   return {
     entitlements: {
-      caps: DEFAULT_ENTITLEMENT_CAPS,
+      caps,
       devOverride,
       gateArenaAdvanced: false,
     },
@@ -80,6 +84,31 @@ async function grantPremiumLeague(leagueId: string) {
   await handle.db.insert(leagueEntitlements).values({
     leagueId,
     tier: "premium",
+  });
+}
+
+async function seedAiGenerationRuns({
+  count,
+  createdAt,
+  leagueId,
+  tag,
+}: {
+  count: number;
+  createdAt: Date;
+  leagueId: string;
+  tag: string;
+}) {
+  await withLeagueContext(handle.db, leagueId, async (tx) => {
+    for (let index = 0; index < count; index += 1) {
+      await tx.insert(aiGenerationRuns).values({
+        createdAt,
+        leagueId,
+        persona: "narrator",
+        status: "published",
+        triggerKey: `${tag}:${index}`,
+        updatedAt: createdAt,
+      });
+    }
   });
 }
 
@@ -810,6 +839,98 @@ describe("content planning", () => {
       },
       skippedReason: "entitlement:TIER_REQUIRED:requires_premium",
     });
+  });
+
+  it("skips premium cadence planning when the weekly AI post cap is reached", async () => {
+    const now = new Date("2026-06-17T12:00:00.000Z");
+    const capped = await seedLeague("cadence-cap");
+    await grantPremiumLeague(capped.id);
+    await seedAiGenerationRuns({
+      count: 1,
+      createdAt: now,
+      leagueId: capped.id,
+      tag: "cadence-cap",
+    });
+
+    const env = entitlementEnv(false, {
+      ...DEFAULT_ENTITLEMENT_CAPS,
+      aiPostsPerWeek: 1,
+    });
+
+    const cron = await planCronContent({
+      cadence: "weekly-preview",
+      db: handle.db,
+      env,
+      now: () => now,
+    });
+    expect(
+      cron.planned.some((event) => event.data.leagueId === capped.id),
+    ).toBe(false);
+    expect(cron.skipped).toContainEqual(
+      expect.objectContaining({
+        leagueId: capped.id,
+        reason: "CAP_EXCEEDED",
+        requiredTier: "premium",
+        tier: "premium",
+      }),
+    );
+
+    await expect(
+      planTriggeredContent({
+        data: { leagueId: capped.id, transactionId: "tx-capped" },
+        db: handle.db,
+        env,
+        eventName: JOB_EVENTS.transaction,
+        now: () => now,
+      }),
+    ).resolves.toMatchObject({
+      planned: [],
+      skippedEntitlement: {
+        leagueId: capped.id,
+        reason: "CAP_EXCEEDED",
+        requiredTier: "premium",
+        tier: "premium",
+      },
+      skippedReason: "entitlement:CAP_EXCEEDED:requires_premium",
+    });
+  });
+
+  it("uses league cap overrides before skipping cadence planning", async () => {
+    const now = new Date("2026-06-18T12:00:00.000Z");
+    const overridden = await seedLeague("cadence-cap-override");
+    await handle.db.insert(leagueEntitlements).values({
+      capsOverride: { aiPostsPerWeek: 2 },
+      leagueId: overridden.id,
+      tier: "premium",
+    });
+    await seedAiGenerationRuns({
+      count: 1,
+      createdAt: now,
+      leagueId: overridden.id,
+      tag: "cadence-cap-override",
+    });
+
+    const env = entitlementEnv(false, {
+      ...DEFAULT_ENTITLEMENT_CAPS,
+      aiPostsPerWeek: 1,
+    });
+    const cron = await planCronContent({
+      cadence: "weekly-preview",
+      db: handle.db,
+      env,
+      now: () => now,
+    });
+
+    expect(
+      cron.planned.filter((event) => event.data.leagueId === overridden.id),
+    ).toHaveLength(2);
+    expect(
+      cron.skipped.some(
+        (skipped) =>
+          skipped.leagueId === overridden.id &&
+          skipped.reason === "CAP_EXCEEDED",
+      ),
+    ).toBe(false);
   });
 
   it("plans event-driven content through the Inngest step API", async () => {

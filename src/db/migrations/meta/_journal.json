@@ -281,6 +281,13 @@
       "when": 1781498000000,
       "tag": "0039_ai_generation_blocked_entitlement",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781501600000,
+      "tag": "0040_platform_admins",
+      "breakpoints": true
     }
   ]
 }

@@ -4,12 +4,13 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
-import { leagues, members, users } from "@/db/schema";
+import { leagues, members, platformAdmins, users } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
   listLeagueMembershipsForUser,
   requireLeagueRole,
   requireLeagueRoleForUser,
+  requirePlatformAdmin,
   requireSession,
 } from "./guards";
 
@@ -20,6 +21,7 @@ let memberUserId: string;
 let stewardUserId: string;
 let adminUserId: string;
 let outsiderUserId: string;
+let platformAdminUserId: string;
 let leagueId: string;
 let otherLeagueId: string;
 
@@ -66,13 +68,19 @@ beforeAll(async () => {
   }
   await migrateSerialized(handle);
 
-  [memberUserId, stewardUserId, adminUserId, outsiderUserId] =
-    await Promise.all([
-      seedUser("member"),
-      seedUser("steward"),
-      seedUser("admin"),
-      seedUser("outsider"),
-    ]);
+  [
+    memberUserId,
+    stewardUserId,
+    adminUserId,
+    outsiderUserId,
+    platformAdminUserId,
+  ] = await Promise.all([
+    seedUser("member"),
+    seedUser("steward"),
+    seedUser("admin"),
+    seedUser("outsider"),
+    seedUser("platform-admin"),
+  ]);
   [leagueId, otherLeagueId] = await Promise.all([
     seedLeague("a"),
     seedLeague("b"),
@@ -88,6 +96,10 @@ beforeAll(async () => {
       userId: adminUserId,
     },
   ]);
+  await handle.db.insert(platformAdmins).values({
+    reason: "guard test",
+    userId: platformAdminUserId,
+  });
 });
 
 afterAll(async () => {
@@ -196,5 +208,34 @@ describe("auth guards", () => {
     if (result.ok) return;
     expect(result.error.status).toBe(400);
     expect(result.error.code).toBe("INVALID_LEAGUE_ID");
+  });
+
+  it("authorizes platform admins through the global admin table", async () => {
+    const result = await requirePlatformAdmin({
+      db: handle.db,
+      getSession: sessionFor(platformAdminUserId),
+      headers: new Headers(),
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        session: { user: { id: platformAdminUserId } },
+        userId: platformAdminUserId,
+      },
+    });
+  });
+
+  it("does not treat league admins or commissioners as platform admins", async () => {
+    const result = await requirePlatformAdmin({
+      db: handle.db,
+      getSession: sessionFor(adminUserId),
+      headers: new Headers(),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.status).toBe(403);
+    expect(result.error.code).toBe("PLATFORM_ADMIN_FORBIDDEN");
   });
 });

@@ -468,6 +468,21 @@ export const users = pgTable(
   (table) => [uniqueIndex("users_email_unique").on(table.email)],
 );
 
+export const platformAdmins = pgTable(
+  "platform_admins",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    grantedBy: uuid("granted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reason: text("reason"),
+    ...timestamps,
+  },
+  (table) => [index("platform_admins_granted_by_idx").on(table.grantedBy)],
+);
+
 export const leagues = pgTable(
   "leagues",
   {
@@ -3059,6 +3074,8 @@ export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;
 export type NewAiGenerationRun = typeof aiGenerationRuns.$inferInsert;
 export type AiMemory = typeof aiMemory.$inferSelect;
 export type NewAiMemory = typeof aiMemory.$inferInsert;
+export type PlatformAdmin = typeof platformAdmins.$inferSelect;
+export type NewPlatformAdmin = typeof platformAdmins.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type Member = typeof members.$inferSelect;

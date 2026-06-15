@@ -1,8 +1,9 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { AiContentType, AiPersona } from "@/ai";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  aiGenerationRuns,
   fantasyMatchups,
   fantasyTeams,
   headToHeadRecords,
@@ -92,6 +93,7 @@ export interface ContentPlanTriggerResult {
 }
 
 const ACTIVE_LEAGUE_STATUSES = ["preseason", "in_season"] as const;
+const CAP_COUNTED_GENERATION_STATUSES = ["running", "published"] as const;
 const BLOWOUT_MARGIN = 25;
 const RIVALRY_MEETINGS_THRESHOLD = 5;
 interface ContentCandidate {
@@ -178,6 +180,50 @@ interface GameFinalTeam {
   wins: number;
 }
 
+function startOfUtcWeek(date: Date): Date {
+  const start = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+  const daysSinceMonday = (start.getUTCDay() + 6) % 7;
+  start.setUTCDate(start.getUTCDate() - daysSinceMonday);
+  return start;
+}
+
+function endOfUtcWeek(date: Date): Date {
+  const end = new Date(startOfUtcWeek(date));
+  end.setUTCDate(end.getUTCDate() + 7);
+  return end;
+}
+
+async function countThisWeekAiGenerationRuns({
+  db,
+  leagueId,
+  now,
+}: {
+  db: Db;
+  leagueId: string;
+  now: Date;
+}): Promise<number> {
+  const weekStart = startOfUtcWeek(now);
+  const weekEnd = endOfUtcWeek(now);
+
+  return withLeagueContext(db, leagueId, async (tx) => {
+    const [row] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(aiGenerationRuns)
+      .where(
+        and(
+          eq(aiGenerationRuns.leagueId, leagueId),
+          inArray(aiGenerationRuns.status, CAP_COUNTED_GENERATION_STATUSES),
+          gte(aiGenerationRuns.createdAt, weekStart),
+          lt(aiGenerationRuns.createdAt, weekEnd),
+        ),
+      );
+
+    return row?.count ?? 0;
+  });
+}
+
 async function resolveCadenceEntitlement({
   db,
   env,
@@ -189,15 +235,35 @@ async function resolveCadenceEntitlement({
   leagueId: string;
   now?: () => Date;
 }): Promise<SkippedContentGenerationLeague | null> {
+  const resolvedAt = now?.() ?? new Date();
   const resolution = await resolveEntitlement({
     capability: "ai.cadence.schedule",
     db,
     env,
     leagueId,
-    now,
+    now: () => resolvedAt,
   });
 
   if (resolution.allowed) {
+    if (resolution.reason === "DEV_OVERRIDE") {
+      return null;
+    }
+
+    const generatedThisWeek = await countThisWeekAiGenerationRuns({
+      db,
+      leagueId,
+      now: resolvedAt,
+    });
+    if (generatedThisWeek >= resolution.caps.aiPostsPerWeek) {
+      return {
+        capability: "ai.cadence.schedule",
+        leagueId,
+        reason: "CAP_EXCEEDED",
+        requiredTier: resolution.requiredTier,
+        tier: resolution.tier,
+      };
+    }
+
     return null;
   }
 

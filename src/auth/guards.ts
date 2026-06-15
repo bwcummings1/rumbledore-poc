@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
-import { type Member, members } from "@/db/schema";
+import { type Member, members, platformAdmins } from "@/db/schema";
 
 export type LeagueRole = Member["role"];
 
@@ -19,6 +19,8 @@ export interface LeagueRoleAccess extends AuthenticatedSession {
   role: LeagueRole;
 }
 
+export type PlatformAdminAccess = AuthenticatedSession;
+
 export type GetAuthSession = (headers: Headers) => Promise<AuthSession | null>;
 
 export interface SessionGuardInput {
@@ -30,6 +32,10 @@ export interface LeagueRoleGuardInput extends SessionGuardInput {
   db: Db;
   leagueId: string;
   minRole?: LeagueRole;
+}
+
+export interface PlatformAdminGuardInput extends SessionGuardInput {
+  db: Db;
 }
 
 const UUID_RE =
@@ -62,6 +68,14 @@ function forbiddenLeagueError(): AppError {
   return new AppError({
     code: "LEAGUE_FORBIDDEN",
     message: "League access requires membership",
+    status: 403,
+  });
+}
+
+function forbiddenPlatformAdminError(): AppError {
+  return new AppError({
+    code: "PLATFORM_ADMIN_FORBIDDEN",
+    message: "Platform administrator access is required",
     status: 403,
   });
 }
@@ -146,6 +160,29 @@ export async function requireLeagueRole({
   }
 
   return ok({ ...access.value, session: session.value.session });
+}
+
+export async function requirePlatformAdmin({
+  db,
+  getSession,
+  headers,
+}: PlatformAdminGuardInput): Promise<Result<PlatformAdminAccess, AppError>> {
+  const session = await requireSession({ getSession, headers });
+  if (!session.ok) {
+    return session;
+  }
+
+  const [admin] = await db
+    .select({ userId: platformAdmins.userId })
+    .from(platformAdmins)
+    .where(eq(platformAdmins.userId, session.value.userId))
+    .limit(1);
+
+  if (!admin) {
+    return err(forbiddenPlatformAdminError());
+  }
+
+  return ok(session.value);
 }
 
 export async function listLeagueMembershipsForUser(

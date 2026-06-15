@@ -28,7 +28,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Implement the injectable `resolveEntitlement` resolver with a dev override. (specs/17)
 - [x] Gate AI content generation and cadence behind premium, failing gracefully into an upgrade state. (specs/17)
 - [x] Gate the individual personal-agent feature behind the individual tier. (specs/17)
-- [ ] Implement configurable caps (posts/week, leagues) plus an admin grant path. (specs/17)
+- [x] Implement configurable caps (posts/week, leagues) plus an admin grant path. (specs/17)
 
 ### I. Lore member experience (see specs/18)
 - [ ] Build the lore section in the league IA with the submit-claim entry for both lore types. (specs/18)
