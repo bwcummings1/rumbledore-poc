@@ -20,7 +20,9 @@ import {
   type CentralNewsSourceItem,
   getCentralNewsHubData,
   getLeagueFeedData,
+  RosteredPlayerRefExtractor,
   refreshCentralNews,
+  TavilyCentralNewsSource,
 } from "@/news";
 
 const marker = `tailortest-${randomUUID()}`;
@@ -30,6 +32,10 @@ let handle: DbHandle;
 let leagueAId: string;
 let leagueBId: string;
 let userId: string;
+
+function fakeKey() {
+  return ["fixture", "key"].join("-");
+}
 
 class StaticCentralNewsSource implements CentralNewsSource {
   constructor(private readonly items: CentralNewsSourceItem[]) {}
@@ -119,6 +125,7 @@ beforeAll(async () => {
       contentHash: `${marker}-roster-a-hash`,
       leagueId: leagueAId,
       leagueProviderId: leagueA.providerLeagueId,
+      metadata: { playerName: "Star Runner" },
       provider: "espn",
       providerPlayerId: playerAId,
       providerTeamId: "1",
@@ -144,6 +151,7 @@ beforeAll(async () => {
       contentHash: `${marker}-roster-b-hash`,
       leagueId: leagueBId,
       leagueProviderId: leagueB.providerLeagueId,
+      metadata: { playerName: "Deep Threat" },
       provider: "espn",
       providerPlayerId: playerBId,
       providerTeamId: "2",
@@ -322,5 +330,91 @@ describe("central news tailoring hand-off", () => {
       userId,
     });
     expect(unmatchedHub.forYourLeague).toBeNull();
+  });
+
+  it("tailors real-source articles by extracting rostered player names", async () => {
+    const sourceUrl = `https://news.example.com/${marker}/real-source-star-runner`;
+    const source = new TavilyCentralNewsSource({
+      apiKey: fakeKey(),
+      client: {
+        search: async (query: string) => ({
+          images: [],
+          query,
+          requestId: `${marker}-real-source-player`,
+          responseTime: 0.1,
+          results: [
+            {
+              content:
+                "Star Runner missed practice and may alter the fantasy outlook.",
+              publishedDate: "2026-06-11T18:00:00.000Z",
+              rawContent:
+                "Star Runner missed practice and may alter the fantasy outlook for Sunday's slate.",
+              score: 0.91,
+              title: "Star Runner practice report",
+              url: sourceUrl,
+            },
+          ],
+        }),
+      },
+      playerRefExtractor: new RosteredPlayerRefExtractor(handle.db),
+    });
+
+    const result = await refreshCentralNews({
+      deps: {
+        db: handle.db,
+        now: () => new Date("2026-06-11T18:05:00.000Z"),
+        source,
+      },
+      input: { limit: 5, topic: "fantasy injuries" },
+    });
+
+    expect(result).toMatchObject({
+      inserted: 1,
+      tailoredReferences: 1,
+    });
+
+    const [centralRow] = await handle.db
+      .select({
+        id: contentItems.id,
+        metadata: contentItems.metadata,
+      })
+      .from(contentItems)
+      .where(eq(contentItems.sourceUrl, sourceUrl));
+    expect(centralRow?.metadata).toMatchObject({
+      playerRefs: [
+        {
+          label: "Star Runner",
+          provider: "espn",
+          providerId: playerAId,
+        },
+      ],
+    });
+    if (!centralRow) {
+      throw new Error("central row was not inserted");
+    }
+
+    const leagueAReferences = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      (tx) =>
+        tx
+          .select({
+            contentItemId: leagueFeedReferences.contentItemId,
+            matchedEntities: leagueFeedReferences.matchedEntities,
+          })
+          .from(leagueFeedReferences)
+          .where(eq(leagueFeedReferences.contentItemId, centralRow.id)),
+    );
+    expect(leagueAReferences).toHaveLength(1);
+    expect(leagueAReferences[0]?.matchedEntities).toEqual(
+      expect.arrayContaining([
+        {
+          label: "Star Runner",
+          provider: "espn",
+          providerId: playerAId,
+          type: "player",
+        },
+      ]),
+    );
   });
 });

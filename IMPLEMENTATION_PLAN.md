@@ -52,7 +52,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 6. [x] Fix candidate-limited publication section/tag filters — correctness/LOW: verified central News and league Press scan beyond the first candidate page when section/tag filters are active.
 7. [x] Split class-specific provider fetches for scheduler data classes — performance/MED: live ingest now passes due classes/current period into sync and avoids broad provider calls for narrow polls.
 8. [x] Confirm and wire `league.connected` fan-out from onboarding — robustness/LOW: imports now enqueue the live-ingest trigger after durable league/member setup, and `league.connected` force-fanout is covered.
-9. [ ] Normalize provider-player refs in real central-news adapters — source-quality/MED: league tailoring is materially weaker when real feeds cannot match roster entities.
+9. [x] Normalize provider-player refs in real central-news adapters — source-quality/MED: real Tavily/RSS sources now extract rostered player names through a DB-backed provider-ID dictionary before tailoring.
 10. [ ] Add account-wide server push disable/cleanup — robustness/LOW: sign-out currently only unsubscribes the browser, leaving stale server rows until delivery cleanup.
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
@@ -64,7 +64,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] **[realtime/LOW] Realtime declares `odds.updated` and `central.news.updated` payloads without publisher helpers** — add typed publish methods when specs/21 or odds freshness fan-out needs them.
 - [ ] **[maintainability/LOW] Real RSS central-news parsing is intentionally lightweight** — replace the regex extractor with a dedicated parser before broad real-feed rollout.
 - [ ] **[maintainability/LOW] Central News editorial ranking scans all central rows in app memory** — add indexed/queryable publication section and rank fields before high-volume rollout.
-- [ ] **[source-quality/MED] Real central-news adapters do not emit normalized provider-player refs yet** — add entity extraction/provider-ID mapping before expecting broad real-feed tailoring.
+- [x] **[source-quality/MED] Real central-news adapters do not emit normalized provider-player refs yet** — real Tavily/RSS sources now emit provider-player refs via conservative roster-name extraction.
 - [ ] **[pwa/LOW] Sign-out unsubscribes the browser PushSubscription, but server push rows remain active until delivery cleanup** — add an account-wide disable endpoint if stale push rows become noisy.
 
 ## Discoveries / bugs (loop appends here)

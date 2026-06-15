@@ -56,6 +56,14 @@ export {
   MockRssCentralNewsSource,
   MockWebGroundingCentralNewsSource,
 } from "./mocks";
+export {
+  type CentralNewsPlayerDictionaryEntry,
+  type CentralNewsPlayerRefExtractionInput,
+  type CentralNewsPlayerRefExtractor,
+  createDictionaryPlayerRefExtractor,
+  EMPTY_PLAYER_REF_EXTRACTOR,
+  RosteredPlayerRefExtractor,
+} from "./player-refs";
 export { RssCentralNewsSource, TavilyCentralNewsSource } from "./real";
 export {
   CENTRAL_PUBLICATION_SECTIONS,

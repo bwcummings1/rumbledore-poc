@@ -5,17 +5,24 @@ import type {
   CentralNewsSource,
   CentralNewsSourceItem,
 } from "./interfaces";
+import {
+  type CentralNewsPlayerRefExtractionInput,
+  type CentralNewsPlayerRefExtractor,
+  EMPTY_PLAYER_REF_EXTRACTOR,
+} from "./player-refs";
 
 type TavilySearchClient = Pick<TavilyClient, "search">;
 
 export interface TavilyCentralNewsSourceOptions {
   apiKey: string;
   client?: TavilySearchClient;
+  playerRefExtractor?: CentralNewsPlayerRefExtractor;
 }
 
 export interface RssCentralNewsSourceOptions {
   feedUrls: readonly string[];
   fetcher?: RssFetcher;
+  playerRefExtractor?: CentralNewsPlayerRefExtractor;
 }
 
 type RssFetcherResponse = Pick<Response, "ok" | "status" | "text">;
@@ -112,11 +119,21 @@ function blocksFor(xml: string): string[] {
   );
 }
 
+async function playerRefsFor(
+  extractor: CentralNewsPlayerRefExtractor,
+  input: CentralNewsPlayerRefExtractionInput,
+) {
+  return extractor.extract(input);
+}
+
 export class TavilyCentralNewsSource implements CentralNewsSource {
   private readonly client: TavilySearchClient;
+  private readonly playerRefExtractor: CentralNewsPlayerRefExtractor;
 
   constructor(options: TavilyCentralNewsSourceOptions) {
     this.client = options.client ?? tavily({ apiKey: options.apiKey });
+    this.playerRefExtractor =
+      options.playerRefExtractor ?? EMPTY_PLAYER_REF_EXTRACTOR;
   }
 
   async fetch(input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
@@ -130,33 +147,52 @@ export class TavilyCentralNewsSource implements CentralNewsSource {
       topic: "news",
     });
 
-    return response.results.map((result, index) => ({
-      body: result.rawContent ?? result.content,
-      canonicalUrl: result.url,
-      id: stableId([
-        response.requestId,
-        result.url,
-        result.title,
-        String(index),
-      ]),
-      publishedAt: parsePublishedAt(result.publishedDate, input.now),
-      source: sourceFromUrl(result.url),
-      sourceUrl: result.url,
-      sourceType: "web",
-      summary: result.content,
-      title: result.title,
-      topics: ["nfl", "fantasy"],
-    }));
+    return Promise.all(
+      response.results.map(async (result, index) => {
+        const body = result.rawContent ?? result.content;
+        const summary = result.content;
+        const title = result.title;
+        const topics = ["nfl", "fantasy"];
+        const playerRefs = await playerRefsFor(this.playerRefExtractor, {
+          body,
+          summary,
+          title,
+          topics,
+        });
+
+        return {
+          body,
+          canonicalUrl: result.url,
+          id: stableId([
+            response.requestId,
+            result.url,
+            result.title,
+            String(index),
+          ]),
+          ...(playerRefs.length > 0 ? { playerRefs } : {}),
+          publishedAt: parsePublishedAt(result.publishedDate, input.now),
+          source: sourceFromUrl(result.url),
+          sourceUrl: result.url,
+          sourceType: "web",
+          summary,
+          title,
+          topics,
+        };
+      }),
+    );
   }
 }
 
 export class RssCentralNewsSource implements CentralNewsSource {
   private readonly feedUrls: readonly string[];
   private readonly fetcher: RssFetcher;
+  private readonly playerRefExtractor: CentralNewsPlayerRefExtractor;
 
   constructor(options: RssCentralNewsSourceOptions) {
     this.feedUrls = options.feedUrls;
     this.fetcher = options.fetcher ?? fetch;
+    this.playerRefExtractor =
+      options.playerRefExtractor ?? EMPTY_PLAYER_REF_EXTRACTOR;
   }
 
   async fetch(input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
@@ -171,36 +207,47 @@ export class RssCentralNewsSource implements CentralNewsSource {
 
         const xml = await response.text();
         const source = rssSourceName(xml, feedUrl);
-        return blocksFor(xml)
-          .slice(0, input.limit)
-          .map((block, index): CentralNewsSourceItem => {
-            const sourceUrl =
-              tagValue(block, ["link"]) || atomLinkValue(block) || feedUrl;
-            const summary = tagValue(block, [
-              "description",
-              "summary",
-              "content",
-            ]);
-            const body =
-              tagValue(block, ["encoded", "content"]) || summary || "";
-            return {
-              body,
-              canonicalUrl: sourceUrl,
-              id:
-                tagValue(block, ["guid", "id"]) ||
-                stableId([feedUrl, sourceUrl, String(index)]),
-              publishedAt: parsePublishedAt(
-                tagValue(block, ["pubDate", "published", "updated"]),
-                input.now,
-              ),
-              source,
-              sourceType: "rss",
-              sourceUrl,
-              summary,
-              title: tagValue(block, ["title"]),
-              topics: ["rss", ...categoriesFrom(block)],
-            };
-          });
+        return Promise.all(
+          blocksFor(xml)
+            .slice(0, input.limit)
+            .map(async (block, index): Promise<CentralNewsSourceItem> => {
+              const sourceUrl =
+                tagValue(block, ["link"]) || atomLinkValue(block) || feedUrl;
+              const summary = tagValue(block, [
+                "description",
+                "summary",
+                "content",
+              ]);
+              const body =
+                tagValue(block, ["encoded", "content"]) || summary || "";
+              const title = tagValue(block, ["title"]);
+              const topics = ["rss", ...categoriesFrom(block)];
+              const playerRefs = await playerRefsFor(this.playerRefExtractor, {
+                body,
+                summary,
+                title,
+                topics,
+              });
+              return {
+                body,
+                canonicalUrl: sourceUrl,
+                id:
+                  tagValue(block, ["guid", "id"]) ||
+                  stableId([feedUrl, sourceUrl, String(index)]),
+                publishedAt: parsePublishedAt(
+                  tagValue(block, ["pubDate", "published", "updated"]),
+                  input.now,
+                ),
+                source,
+                sourceType: "rss",
+                sourceUrl,
+                summary,
+                title,
+                topics,
+                ...(playerRefs.length > 0 ? { playerRefs } : {}),
+              };
+            }),
+        );
       }),
     );
 
