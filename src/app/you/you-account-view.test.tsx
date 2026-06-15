@@ -1,7 +1,22 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { YouAccountData } from "./you-account-view";
 import { YouAccountView } from "./you-account-view";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    refresh: vi.fn(),
+    replace: vi.fn(),
+  }),
+}));
+
+vi.mock("@/lib/auth-client", () => ({
+  signOut: vi.fn(),
+}));
+
+vi.mock("@/components/pwa/session-cleanup", () => ({
+  clearPwaSessionState: vi.fn(),
+}));
 
 const data: YouAccountData = {
   connections: [
@@ -92,6 +107,7 @@ test("you account view renders identity, providers, and installed leagues", () =
       .getByRole("link", { name: "Open NHS Alumni Annual" })
       .getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001");
+  expect(screen.getByRole("button", { name: "Sign out" })).toBeDefined();
   expect(screen.getByText("Watching 1 of 1 leagues")).toBeDefined();
   expect(
     screen.getByText("Week 2: Fixture Team vs Rival Team (104.50-91.25)"),

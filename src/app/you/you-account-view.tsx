@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LeagueSwitcherViewItem } from "@/navigation";
 import type { FantasyProviderId } from "@/providers";
+import { SignOutButton } from "./sign-out-button";
 
 export interface YouProviderConnection {
   readonly connectionFlow:
@@ -171,20 +172,23 @@ function PersonalAgentPanel({
 export function YouAccountView({ data }: { data: YouAccountData }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-3">
-        <div className="flex items-center gap-2 text-primary">
-          <User className="size-5" aria-hidden="true" />
-          <p className="text-sm font-medium">You</p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-3">
+          <div className="flex items-center gap-2 text-primary">
+            <User className="size-5" aria-hidden="true" />
+            <p className="text-sm font-medium">You</p>
+          </div>
+          <div className="max-w-2xl">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+              {data.user.displayName}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {data.user.email} ·{" "}
+              {data.user.emailVerified ? "verified" : "not verified"}
+            </p>
+          </div>
         </div>
-        <div className="max-w-2xl">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            {data.user.displayName}
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {data.user.email} ·{" "}
-            {data.user.emailVerified ? "verified" : "not verified"}
-          </p>
-        </div>
+        <SignOutButton />
       </header>
 
       <section className="grid gap-3 lg:grid-cols-3">

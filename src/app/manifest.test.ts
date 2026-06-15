@@ -49,4 +49,26 @@ describe("service worker", () => {
     }
     expect(sw).toContain('"/offline"');
   });
+
+  it("keeps runtime caches RLS-safe", () => {
+    const sw = readFileSync(path.join(publicDir, "sw.js"), "utf8");
+    expect(sw).toContain('const VERSION = "v2"');
+    expect(sw).toContain('url.pathname.startsWith("/api/")');
+    expect(sw).toContain('request.method !== "GET"');
+    expect(sw).toContain("url.origin !== self.location.origin");
+    expect(sw).toContain('request.headers.has("Authorization")');
+    expect(sw).toContain('response.headers.get("Cache-Control")');
+    expect(sw).toContain('response.headers.has("Vary")');
+    expect(sw).toContain('cacheControl.includes("private")');
+    expect(sw).toContain('cacheControl.includes("no-store")');
+    expect(sw).toContain('request.credentials === "omit"');
+  });
+
+  it("supports sign-out page-cache clearing without deleting shell caches", () => {
+    const sw = readFileSync(path.join(publicDir, "sw.js"), "utf8");
+    expect(sw).toContain('const PAGES_CACHE_PREFIX = "rumbledore-pages-"');
+    expect(sw).toContain('const SIGN_OUT_MESSAGE = "RUMBLEDORE_SIGN_OUT"');
+    expect(sw).toContain("event.data?.type !== SIGN_OUT_MESSAGE");
+    expect(sw).toContain("deleteCachesWithPrefix(PAGES_CACHE_PREFIX)");
+  });
 });

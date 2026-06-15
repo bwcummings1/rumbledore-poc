@@ -3,11 +3,13 @@
  * Bump VERSION when the caching strategy changes; content changes to this file
  * already trigger the browser's byte-diff update flow.
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `rumbledore-shell-${VERSION}`;
 const PAGES_CACHE = `rumbledore-pages-${VERSION}`;
 const ASSETS_CACHE = `rumbledore-assets-${VERSION}`;
+const PAGES_CACHE_PREFIX = "rumbledore-pages-";
 const OFFLINE_URL = "/offline";
+const SIGN_OUT_MESSAGE = "RUMBLEDORE_SIGN_OUT";
 const PRECACHE = [
   OFFLINE_URL,
   "/manifest.webmanifest",
@@ -40,13 +42,60 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+async function deleteCachesWithPrefix(prefix) {
+  const keys = await caches.keys();
+  await Promise.all(
+    keys
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => caches.delete(key)),
+  );
+}
+
+function isStaticAssetPath(pathname) {
+  return (
+    pathname.startsWith("/_next/static/") || pathname.startsWith("/icons/")
+  );
+}
+
+function shouldBypassRuntimeCache(request, url) {
+  return (
+    request.method !== "GET" ||
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith("/api/") ||
+    request.headers.has("Authorization")
+  );
+}
+
+function responseForbidsRuntimeCache(response) {
+  const cacheControl = (
+    response.headers.get("Cache-Control") ?? ""
+  ).toLowerCase();
+  return (
+    response.headers.has("Vary") ||
+    cacheControl.includes("private") ||
+    cacheControl.includes("no-store")
+  );
+}
+
+function canStorePageFallback(request, response) {
+  return (
+    response.ok &&
+    request.credentials === "omit" &&
+    !responseForbidsRuntimeCache(response)
+  );
+}
+
+function canStoreStaticAsset(response) {
+  return response.ok && !responseForbidsRuntimeCache(response);
+}
+
 /** Navigations: fresh when online, cached page → offline shell when not. */
 async function networkFirstPage(request) {
   const cache = await caches.open(PAGES_CACHE);
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      cache.put(request, response.clone());
+    if (canStorePageFallback(request, response)) {
+      await cache.put(request, response.clone());
     }
     return response;
   } catch {
@@ -63,32 +112,33 @@ async function cacheFirst(request) {
     return cached;
   }
   const response = await fetch(request);
-  if (response.ok) {
+  if (canStoreStaticAsset(response)) {
     const cache = await caches.open(ASSETS_CACHE);
-    cache.put(request, response.clone());
+    await cache.put(request, response.clone());
   }
   return response;
 }
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;
-  if (request.method !== "GET") {
-    return;
-  }
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) {
+  if (shouldBypassRuntimeCache(request, url)) {
     return;
   }
   if (request.mode === "navigate") {
     event.respondWith(networkFirstPage(request));
     return;
   }
-  if (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.startsWith("/icons/")
-  ) {
+  if (isStaticAssetPath(url.pathname)) {
     event.respondWith(cacheFirst(request));
   }
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== SIGN_OUT_MESSAGE) {
+    return;
+  }
+  event.waitUntil(deleteCachesWithPrefix(PAGES_CACHE_PREFIX));
 });
 
 function safeNotificationPayload(event) {

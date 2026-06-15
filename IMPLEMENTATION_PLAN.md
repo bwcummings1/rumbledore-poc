@@ -39,7 +39,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 
 ### O. Mobile PWA shell (see specs/24)
 - [x] Add the install affordance (Android prompt plus the documented iOS Share→Add flow) over the existing manifest. (specs/24)
-- [ ] Harden the service worker for RLS-cache-safety and sign-out cache clearing. (specs/24)
+- [x] Harden the service worker for RLS-cache-safety and sign-out cache clearing. (specs/24)
 - [ ] Implement share-link routing into the right scope or onboarding with the destination preserved. (specs/24)
 - [ ] Define and check a mobile perf budget (fast transitions, skeletons over spinners). (specs/24)
 
@@ -53,6 +53,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] **[maintainability/LOW] Real RSS central-news parsing is intentionally lightweight** — replace the regex extractor with a dedicated parser before broad real-feed rollout.
 - [ ] **[maintainability/LOW] Central News editorial ranking scans all central rows in app memory** — add indexed/queryable publication section and rank fields before high-volume rollout.
 - [ ] **[source-quality/MED] Real central-news adapters do not emit normalized provider-player refs yet** — add entity extraction/provider-ID mapping before expecting broad real-feed tailoring.
+- [ ] **[pwa/LOW] Sign-out unsubscribes the browser PushSubscription, but server push rows remain active until delivery cleanup** — add an account-wide disable endpoint if stale push rows become noisy.
 
 ## Discoveries / bugs (loop appends here)
 - [ ] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
