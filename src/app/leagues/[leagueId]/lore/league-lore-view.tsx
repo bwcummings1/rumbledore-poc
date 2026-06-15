@@ -1,11 +1,44 @@
-import { ArrowLeft, FilePlus2, Landmark, Vote } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock3,
+  FilePlus2,
+  Landmark,
+  ShieldCheck,
+  Vote,
+} from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { LoreSectionData } from "@/lore/member-ui";
+import type { LoreClaimCard, LoreSectionData } from "@/lore/member-ui";
 
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return "No close time set";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+  }).format(new Date(value));
+}
+
+function voteRead(claim: LoreClaimCard): string {
+  const vote = claim.vote;
+  if (!vote) {
+    return "No vote tally recorded.";
+  }
+  if (vote.passesAtClose) {
+    return "Passing if the vote closed now.";
+  }
+  if (vote.affirmNeeded > 0) {
+    return `Needs ${vote.affirmNeeded} more affirm ${vote.affirmNeeded === 1 ? "vote" : "votes"}.`;
+  }
+  return "Needs affirm to stay ahead of reject.";
 }
 
 export function LeagueLoreView({ data }: { data: LoreSectionData }) {
@@ -40,13 +73,22 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
             </p>
           </div>
 
-          <Link
-            href={submitHref}
-            className={cn(buttonVariants({ className: "w-full sm:w-auto" }))}
-          >
-            <FilePlus2 data-icon="inline-start" />
-            Submit claim
-          </Link>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Link
+              href={submitHref}
+              className={cn(buttonVariants({ className: "w-full sm:w-auto" }))}
+            >
+              <FilePlus2 data-icon="inline-start" />
+              Submit claim
+            </Link>
+            <Link
+              href={data.stewardReviewHref}
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              <ShieldCheck data-icon="inline-start" />
+              Steward review
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -71,17 +113,16 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
         </article>
       </section>
 
-      <section className="grid gap-4 rounded-card border border-dashed border-border bg-muted/20 p-4">
+      <section className="grid gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm font-semibold">
               <Vote className="size-4 text-primary" aria-hidden="true" />
-              Start the record
+              In the arena now
             </p>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Opinion claims open a league vote. Structured fact claims are
-              checked against imported weekly, season, and all-time records
-              before the league has to argue about them.
+              Open claims show the live threshold, the close window, and the
+              exact tally the league will be judged on.
             </p>
           </div>
           <Link
@@ -92,6 +133,72 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
             New claim
           </Link>
         </div>
+
+        {data.openVotes.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {data.openVotes.map((claim) => (
+              <article
+                key={claim.id}
+                className="rounded-card border border-border bg-card p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">
+                      {claim.author.isAi ? "AI-instigated" : "Member claim"}
+                    </p>
+                    <h2 className="mt-1 text-base font-semibold tracking-tight">
+                      <Link
+                        href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(claim.id)}`}
+                        className="hover:text-primary"
+                      >
+                        {claim.title}
+                      </Link>
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                    Vote
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                  {claim.bodyPreview}
+                </p>
+                {claim.vote ? (
+                  <div className="mt-4 grid gap-2 text-sm">
+                    <div className="grid grid-cols-3 gap-2 text-center font-mono tabular-nums">
+                      <span className="rounded-md bg-muted/40 px-2 py-1">
+                        {claim.vote.tally.affirm} affirm
+                      </span>
+                      <span className="rounded-md bg-muted/40 px-2 py-1">
+                        {claim.vote.tally.reject} reject
+                      </span>
+                      <span className="rounded-md bg-muted/40 px-2 py-1">
+                        {claim.vote.tally.abstain} abstain
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground">
+                      Quorum {claim.vote.tally.quorum} of{" "}
+                      {claim.vote.tally.activeMembers} active members.{" "}
+                      {voteRead(claim)}
+                    </p>
+                    <p className="flex items-center gap-2 text-muted-foreground">
+                      <Clock3 className="size-4" aria-hidden="true" />
+                      Closes {formatDateTime(claim.vote.voteClosesAt)}
+                    </p>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-card border border-dashed border-border bg-muted/20 p-4">
+            <p className="text-sm font-medium">Start the record</p>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Opinion claims open a league vote. Structured fact claims are
+              checked against imported weekly, season, and all-time records
+              before the league has to argue about them.
+            </p>
+          </div>
+        )}
       </section>
     </main>
   );

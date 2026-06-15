@@ -32,7 +32,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 
 ### I. Lore member experience (see specs/18)
 - [x] Build the lore section in the league IA with the submit-claim entry for both lore types. (specs/18)
-- [ ] Build the vote experience surfacing threshold, vote window, tally, and steward tiebreak. (specs/18)
+- [x] Build the vote experience surfacing threshold, vote window, tally, and steward tiebreak. (specs/18)
 - [ ] Build canon and branch/dispute browsing reusing the publication card/section patterns. (specs/18)
 - [ ] Build the challenge/branch flow and surface the cast's instigated claims and cited canon. (specs/18)
 
@@ -51,3 +51,4 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 - [ ] **[product/LOW] Invite auth return path does not preserve the claim URL** — unauthenticated invite previews send users to provider onboarding without an explicit return-to continuation back to the invite after sign-in/sign-up.
 - [ ] **[maintainability/LOW] Activation cast matching is text-search based** — generated league posts do not persist structured team/person subject ids, so activation uses title/summary/body/metadata search before falling back to the latest headline.
 - [ ] **[product/MED] Steward review UI lacks advanced identity correction forms** — the doorway now supports rerun, mark-reviewed, and confirming fuzzy links, but merge/split/rename/reassign-to-new-person remain API-backed without full in-app forms.
+- [ ] **[correctness/MED] Member-submitted lore votes are not scheduled for automatic close-out** — `lore.vote.close` exists, but `submitLoreClaim()`/the POST claim route do not enqueue it when an opinion claim opens a vote.

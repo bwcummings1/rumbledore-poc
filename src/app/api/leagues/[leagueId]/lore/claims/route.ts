@@ -1,20 +1,19 @@
-import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { requireLeagueRole } from "@/auth/guards";
 import { recordApiHandler } from "@/core/metrics";
 import { AppError, toAppError } from "@/core/result";
-import { getDb } from "@/db";
-import type { Db } from "@/db/client";
-import { members } from "@/db/schema";
 import {
   type LoreSubjectInput,
   type LoreVerificationAssertion,
   submitLoreClaim,
 } from "@/lore";
-import { getLoreClaimVerificationSummary } from "@/lore/member-experience";
+import {
+  getLoreClaimVerificationSummary,
+  getLoreSectionData,
+} from "@/lore/member-experience";
 import type { LoreClaimSubmitResponse } from "@/lore/member-ui";
 import { SEASON_LORE_METRICS, WEEKLY_LORE_METRICS } from "@/lore/member-ui";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
+import { authorizeLoreMember, getMemberIdForUser } from "../lore-route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,32 +86,6 @@ interface LoreClaimsRouteContext {
   params: Promise<{ leagueId: string }>;
 }
 
-async function getMemberIdForUser(
-  db: Db,
-  input: { leagueId: string; userId: string },
-): Promise<string> {
-  const [membership] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(
-      and(
-        eq(members.organizationId, input.leagueId),
-        eq(members.userId, input.userId),
-      ),
-    )
-    .limit(1);
-
-  if (!membership) {
-    throw new AppError({
-      code: "LORE_MEMBER_NOT_FOUND",
-      message: "Lore claims require league membership",
-      status: 403,
-    });
-  }
-
-  return membership.id;
-}
-
 function invalidLoreClaimRequestError(): AppError {
   return new AppError({
     code: "INVALID_LORE_CLAIM_REQUEST",
@@ -126,13 +99,7 @@ async function loreClaimsPost(
   context: LoreClaimsRouteContext,
 ) {
   const { leagueId } = await context.params;
-  const db = getDb();
-  const access = await requireLeagueRole({
-    db,
-    headers: request.headers,
-    leagueId,
-    minRole: "member",
-  });
+  const { access, db } = await authorizeLoreMember(request, leagueId);
   if (!access.ok) {
     return errorJson(access.error);
   }
@@ -197,6 +164,36 @@ async function loreClaimsPost(
     );
   }
 }
+
+async function loreClaimsGet(
+  request: Request,
+  context: LoreClaimsRouteContext,
+) {
+  const { leagueId } = await context.params;
+  const { access, db } = await authorizeLoreMember(request, leagueId);
+  if (!access.ok) {
+    return errorJson(access.error);
+  }
+
+  const result = await getLoreSectionData(db, { leagueId });
+  switch (result.status) {
+    case "ready":
+      return okJson(result.data);
+    case "not_found":
+      return errorJson(
+        new AppError({
+          code: "LORE_LEAGUE_NOT_FOUND",
+          message: "League lore could not be found",
+          status: 404,
+        }),
+      );
+  }
+}
+
+export const GET = recordApiHandler(
+  { method: "GET", route: "/api/leagues/[leagueId]/lore/claims" },
+  loreClaimsGet,
+);
 
 export const POST = recordApiHandler(
   { method: "POST", route: "/api/leagues/[leagueId]/lore/claims" },

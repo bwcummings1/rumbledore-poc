@@ -1,4 +1,14 @@
-import type { SeasonLoreMetric, WeeklyLoreMetric } from "./engine";
+import type {
+  LoreClaimKind,
+  LoreClaimOrigin,
+  LoreClaimRelation,
+  LoreClaimVerification,
+  LoreVoteChoice,
+  LoreVoteTally,
+  SeasonLoreMetric,
+  StewardLoreAction,
+  WeeklyLoreMetric,
+} from "./engine";
 
 export const WEEKLY_LORE_METRICS = [
   "points_for",
@@ -29,7 +39,29 @@ export const LORE_ASSERTION_SOURCES = [
   "all_time_record",
 ] as const;
 
+export const LORE_VOTE_CHOICES = [
+  "affirm",
+  "reject",
+  "abstain",
+] as const satisfies readonly LoreVoteChoice[];
+
+export const LORE_STEWARD_ACTIONS = [
+  "ratify",
+  "reject",
+  "extend",
+  "veto",
+] as const satisfies readonly StewardLoreAction[];
+
 export type LoreAssertionSource = (typeof LORE_ASSERTION_SOURCES)[number];
+
+export type LoreClaimStatus =
+  | "canon"
+  | "disputed"
+  | "pending"
+  | "rejected"
+  | "superseded"
+  | "vote"
+  | "withdrawn";
 
 export interface LoreFormPersonOption {
   readonly id: string;
@@ -63,8 +95,98 @@ export interface LoreSectionData {
     readonly id: string;
     readonly name: string;
   };
+  readonly openVotes: readonly LoreClaimCard[];
   readonly submitOptions: LoreSubmitOptions;
+  readonly stewardReviewHref: string;
 }
+
+export interface LoreClaimAuthorSummary {
+  readonly displayName: string;
+  readonly isAi: boolean;
+}
+
+export interface LoreVoteStatusSummary {
+  readonly affirmNeeded: number;
+  readonly currentChoice: LoreVoteChoice | null;
+  readonly isOpen: boolean;
+  readonly passesAtClose: boolean;
+  readonly quorumMet: boolean;
+  readonly tally: LoreVoteTally;
+  readonly voteClosesAt: string | null;
+  readonly voteOpensAt: string | null;
+}
+
+export interface LoreClaimCard {
+  readonly author: LoreClaimAuthorSummary;
+  readonly bodyPreview: string;
+  readonly branchOf: string | null;
+  readonly createdAt: string;
+  readonly id: string;
+  readonly kind: LoreClaimKind;
+  readonly origin: LoreClaimOrigin;
+  readonly ratifiedAt: string | null;
+  readonly ratifiedBy: "steward" | "verified" | "vote" | null;
+  readonly relation: LoreClaimRelation;
+  readonly status: LoreClaimStatus;
+  readonly title: string;
+  readonly verification: LoreClaimVerification;
+  readonly vote: LoreVoteStatusSummary | null;
+}
+
+export interface LoreClaimDetailData {
+  readonly claim: LoreClaimCard & {
+    readonly body: string;
+    readonly statement: string;
+    readonly threadRootId: string | null;
+    readonly updatedAt: string;
+  };
+  readonly isSteward: boolean;
+  readonly league: {
+    readonly id: string;
+    readonly name: string;
+  };
+  readonly stewardApiUrl: string;
+  readonly stewardReviewHref: string;
+  readonly verificationResult: LoreClaimVerificationSummary | null;
+  readonly voteApiUrl: string;
+}
+
+export interface LoreStewardReviewData {
+  readonly league: {
+    readonly id: string;
+    readonly name: string;
+  };
+  readonly openVotes: readonly LoreClaimCard[];
+}
+
+export type LoreVoteCastResponse = LoreClaimDetailData["claim"]["vote"] & {
+  readonly claimId: string;
+};
+
+export type LoreStewardActionResponse =
+  | {
+      readonly claim: LoreClaimCard;
+      readonly result: {
+        readonly claimId: string;
+        readonly ratifiedBy: "steward";
+        readonly status: "canonized";
+      };
+    }
+  | {
+      readonly claim: LoreClaimCard;
+      readonly result: {
+        readonly claimId: string;
+        readonly status: "rejected";
+      };
+    }
+  | {
+      readonly claim: LoreClaimCard;
+      readonly result: {
+        readonly claimId: string;
+        readonly status: "extended";
+        readonly voteClosesAt: string;
+      };
+    };
 
 export type LoreClaimSubmitResponse =
   | {

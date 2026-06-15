@@ -1,0 +1,63 @@
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+import { requireLeagueRole } from "@/auth/guards";
+import { getDb } from "@/db";
+import { getLoreStewardReviewData } from "@/lore/member-experience";
+import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import { LeagueSectionAccessState } from "../../league-section-access-state";
+import { LoreStewardReviewView } from "./lore-steward-review-view";
+
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Lore Steward Review | Rumbledore",
+  description: "Review and adjudicate open league lore votes.",
+};
+
+interface LoreStewardReviewPageProps {
+  params: Promise<{ leagueId: string }>;
+}
+
+export default async function LoreStewardReviewPage({
+  params,
+}: LoreStewardReviewPageProps) {
+  const { leagueId } = await params;
+  const db = getDb();
+  const access = await requireLeagueRole({
+    db,
+    headers: await headers(),
+    leagueId,
+    minRole: "data_steward",
+  });
+
+  if (!access.ok) {
+    if (access.error.code === "INVALID_LEAGUE_ID") {
+      notFound();
+    }
+    if (access.error.status === 401) {
+      return (
+        <LeagueSectionAccessState
+          title="Sign in required"
+          body="Sign in before opening lore steward review."
+        />
+      );
+    }
+    return (
+      <LeagueSectionAccessState
+        title="No lore steward access"
+        body="This page is available to league data stewards and commissioners."
+      />
+    );
+  }
+
+  await markLeagueOpened(db, { leagueId, userId: access.value.userId });
+
+  const result = await getLoreStewardReviewData(db, { leagueId });
+  switch (result.status) {
+    case "ready":
+      return <LoreStewardReviewView data={result.data} />;
+    case "not_found":
+      notFound();
+  }
+}

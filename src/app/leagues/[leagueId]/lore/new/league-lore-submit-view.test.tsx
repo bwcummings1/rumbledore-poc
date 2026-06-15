@@ -37,6 +37,7 @@ const data: LoreSectionData = {
     id: leagueId,
     name: "NHS Alumni Annual",
   },
+  openVotes: [],
   submitOptions: {
     people: [
       {
@@ -57,6 +58,7 @@ const data: LoreSectionData = {
       },
     ],
   },
+  stewardReviewHref: `/leagues/${leagueId}/lore/steward`,
 };
 
 afterEach(() => {
