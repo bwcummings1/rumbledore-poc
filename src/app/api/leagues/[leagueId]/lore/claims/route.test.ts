@@ -203,6 +203,50 @@ describe("POST /api/leagues/[leagueId]/lore/claims", () => {
     });
   });
 
+  it("passes branch challenge payloads through to the lore engine", async () => {
+    const parentClaimId = "00000000-0000-4000-8000-000000000007";
+    const voteClosesAt = new Date("2026-06-22T12:00:00.000Z");
+    mockAccess();
+    mockMembership();
+    mocks.submitLoreClaim.mockResolvedValue({
+      claimId,
+      kind: "opinion",
+      status: "vote",
+      threadRootId,
+      verification: "n_a",
+      voteClosesAt,
+    });
+    mocks.getLoreClaimVerificationSummary.mockResolvedValue(null);
+
+    const response = await POST(
+      request({
+        body: "The old canon needs to be overturned.",
+        branchOf: parentClaimId,
+        relation: "dispute",
+        title: "The trade was defensible",
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      claimId,
+      status: "vote",
+    });
+    expect(submitLoreClaim).toHaveBeenCalledWith({
+      deps: { db: mocks.db },
+      input: expect.objectContaining({
+        authorMemberId: memberId,
+        body: "The old canon needs to be overturned.",
+        branchOf: parentClaimId,
+        leagueId,
+        origin: "member",
+        relation: "dispute",
+        title: "The trade was defensible",
+      }),
+    });
+  });
+
   it("rejects malformed payloads before resolving membership", async () => {
     mockAccess();
 

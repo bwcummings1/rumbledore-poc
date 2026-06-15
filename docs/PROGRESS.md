@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-15 — **Phase 2 competition/onboarding/entitlements underway** after round-one build completion.
+Keep it current. Last updated: 2026-06-15 — **Phase 2 Scope checklist complete pending clean-tree sentinel** after round-one build completion.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Lore challenge/citation round-trip landed — claim pages now create response/addendum/dispute/re-litigation branches, AI-origin votes show cast bylines, and Press articles link canon citations back to lore claims.
 - 2026-06-15: Lore canon browsing landed — the Lore front now tiers ratified canon with publication Story Cards and subject filters, while claim pages render full branch/dispute lineage with superseded/upheld annotations.
 - 2026-06-15: Lore vote experience landed — open claims now expose live tally/quorum/window state, members can recast votes through guarded APIs, and stewards can ratify/reject/extend quorum-short votes from a lore review surface.
 - 2026-06-15: Lore IA submit surface landed — league navigation now includes Lore, Records/Press cross-link to the canon ledger, and members can submit opinion or structured data-verifiable lore claims through a guarded API route.

@@ -70,6 +70,7 @@ const data: LoreClaimDetailData = {
     id: leagueId,
     name: "NHS Alumni Annual",
   },
+  claimSubmitApiUrl: `/api/leagues/${leagueId}/lore/claims`,
   stewardApiUrl: `/api/leagues/${leagueId}/lore/claims/${claimId}/steward`,
   stewardReviewHref: `/leagues/${leagueId}/lore/steward`,
   thread: [],
@@ -207,5 +208,80 @@ describe("LeagueLoreClaimView", () => {
     expect(
       screen.getAllByText("Actually, the Watson trade was justified").length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("opens a challenge branch from canon and marks the parent disputed", async () => {
+    const branchId = "00000000-0000-4000-8000-000000000012";
+    mocks.postJson.mockResolvedValue({
+      claimId: branchId,
+      kind: "opinion",
+      status: "vote",
+      threadRootId: claimId,
+      verification: "n_a",
+      voteClosesAt: "2026-06-22T12:00:00.000Z",
+    });
+
+    render(
+      <LeagueLoreClaimView
+        data={{
+          ...data,
+          claim: {
+            ...data.claim,
+            ratifiedAt: "2026-06-15T12:00:00.000Z",
+            ratifiedBy: "vote",
+            status: "canon",
+            vote: null,
+          },
+          isSteward: false,
+          thread: [
+            {
+              ...data.claim,
+              ratifiedAt: "2026-06-15T12:00:00.000Z",
+              ratifiedBy: "vote",
+              status: "canon",
+              vote: null,
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Branch type"), {
+      target: { value: "dispute" },
+    });
+    fireEvent.change(screen.getByLabelText("Branch title"), {
+      target: { value: "The collapse record needs context" },
+    });
+    fireEvent.change(screen.getByLabelText("Branch statement"), {
+      target: { value: "This was a matchup trap, not a historical choke." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /open challenge/i }));
+
+    await waitFor(() => expect(postJson).toHaveBeenCalledTimes(1));
+    expect(postJson).toHaveBeenCalledWith(data.claimSubmitApiUrl, {
+      body: "This was a matchup trap, not a historical choke.",
+      branchOf: claimId,
+      relation: "dispute",
+      title: "The collapse record needs context",
+    });
+    expect(
+      await screen.findByText(
+        "Challenge opened. This canon is now marked under challenge.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Open branch" }).getAttribute("href"),
+    ).toBe(`/leagues/${leagueId}/lore/${branchId}`);
+    expect(screen.getByText("Canon under challenge")).toBeDefined();
+  });
+
+  it("does not offer challenge relations for non-canon claims", () => {
+    render(<LeagueLoreClaimView data={{ ...data, isSteward: false }} />);
+
+    const branchType = screen.getByLabelText("Branch type");
+    expect(branchType.textContent).toContain("Response");
+    expect(branchType.textContent).toContain("Addendum");
+    expect(branchType.textContent).not.toContain("Challenge");
+    expect(branchType.textContent).not.toContain("Re-litigation");
   });
 });

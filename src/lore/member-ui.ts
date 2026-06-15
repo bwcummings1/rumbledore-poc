@@ -159,6 +159,7 @@ export interface LoreClaimDetailData {
     readonly id: string;
     readonly name: string;
   };
+  readonly claimSubmitApiUrl: string;
   readonly stewardApiUrl: string;
   readonly stewardReviewHref: string;
   readonly thread: readonly LoreClaimCard[];

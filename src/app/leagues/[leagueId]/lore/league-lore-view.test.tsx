@@ -179,6 +179,8 @@ test("league lore view renders open vote cards with tally threshold", () => {
   );
 
   expect(screen.getByText("Biggest choker of the decade")).toBeDefined();
+  expect(screen.getByText("Trash Talker")).toBeDefined();
+  expect(screen.getByText("AI cast")).toBeDefined();
   expect(screen.getByText("3 affirm")).toBeDefined();
   expect(screen.getByText("1 reject")).toBeDefined();
   expect(screen.getByText("1 abstain")).toBeDefined();

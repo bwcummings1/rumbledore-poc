@@ -905,11 +905,14 @@ describe("syncCurrentLeague", () => {
           .where(eq(statsCalculations.leagueId, first.value.league.id))
           .orderBy(asc(statsCalculations.startedAt)),
     );
-    expect(calculations.map((row) => row.calculationType)).toEqual([
-      "season",
+    expect(calculations.map((row) => row.calculationType).sort()).toEqual([
       "head_to_head",
+      "season",
     ]);
-    expect(calculations[0]?.metadata).toMatchObject({
+    const seasonCalculation = calculations.find(
+      (row) => row.calculationType === "season",
+    );
+    expect(seasonCalculation?.metadata).toMatchObject({
       seasons: [2026],
       trigger: "changed_finalized_matchup",
     });

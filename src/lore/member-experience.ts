@@ -221,6 +221,7 @@ export async function getLoreClaimDetailData(
       },
       isSteward: input.isSteward,
       league,
+      claimSubmitApiUrl: `/api/leagues/${encodeURIComponent(input.leagueId)}/lore/claims`,
       stewardApiUrl: `/api/leagues/${encodeURIComponent(input.leagueId)}/lore/claims/${encodeURIComponent(input.claimId)}/steward`,
       stewardReviewHref: `/leagues/${encodeURIComponent(input.leagueId)}/lore/steward`,
       thread: scoped.thread,

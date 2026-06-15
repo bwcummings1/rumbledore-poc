@@ -8,6 +8,15 @@ const data: LeaguePressArticleData = {
     body: "## Turning point\n\nThe rivalry tilted toward Fixture Team 01.\n\n> Fixture Team 02 still has a counterpunch waiting.\n\n- A waiver panic\n- A title-game grudge",
     byline: "Narrator",
     bylineDetail: "Story-driven recaps that connect results to league history.",
+    canonCitations: [
+      {
+        claimId: "00000000-0000-4000-8000-000000000201",
+        href: "/leagues/00000000-0000-4000-8000-000000000001/lore/00000000-0000-4000-8000-000000000201",
+        provenance: "vote",
+        ratifiedAt: "2026-06-10T12:00:00.000Z",
+        title: "Snow Bowl Collapse",
+      },
+    ],
     dek: "A fixture rivalry recap from the league narrator.",
     headline: "Narrator: Fixture rivalry week",
     heroImageUrl: "",
@@ -78,6 +87,15 @@ test("league blog post view renders a full publication article", () => {
   ).toBe(
     "/leagues/00000000-0000-4000-8000-000000000001/press?tag=Fixture+Team+01",
   );
+  expect(screen.getByText("Cited canon")).toBeDefined();
+  expect(
+    screen
+      .getByRole("link", { name: /snow bowl collapse/i })
+      .getAttribute("href"),
+  ).toBe(
+    "/leagues/00000000-0000-4000-8000-000000000001/lore/00000000-0000-4000-8000-000000000201",
+  );
+  expect(screen.getByText(/canon - league decided/i)).toBeDefined();
   expect(
     screen.getByRole("link", { name: /the press/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press");

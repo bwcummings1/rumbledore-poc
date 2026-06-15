@@ -1,12 +1,13 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { type AiPersona, DEFAULT_PERSONA_CARDS } from "@/ai/personas";
 import type { PublicationStory } from "@/components/publication/story";
 import type { Db } from "@/db/client";
-import { withLeagueContext } from "@/db/rls";
+import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   contentItems,
   leagueFeedReferences,
   leagues,
+  loreClaims,
   type Member,
   members,
 } from "@/db/schema";
@@ -14,6 +15,7 @@ import type { FantasyProviderId } from "@/providers";
 import {
   articleDek,
   articleHeroImageUrl,
+  articleLoreCitationIds,
   articleTags,
   sharedArticleTagCount,
 } from "./article-metadata";
@@ -30,6 +32,14 @@ const RELATED_CANDIDATE_LIMIT = 50;
 const RELATED_LIMIT = 4;
 
 export type PublicationArticleStory = PublicationStory;
+
+export interface PublicationArticleCanonCitation {
+  claimId: string;
+  href: string;
+  provenance: "steward" | "verified" | "vote";
+  ratifiedAt: string | null;
+  title: string;
+}
 
 export interface PublicationArticleViewData {
   scope: "central" | "league";
@@ -54,6 +64,7 @@ export interface PublicationArticleViewData {
     tags: string[];
     heroImageUrl: string;
     sourceUrl: string;
+    canonCitations: PublicationArticleCanonCitation[];
   };
   relatedStories: PublicationArticleStory[];
 }
@@ -193,6 +204,49 @@ function selectRelatedStories(
     }));
 }
 
+async function loadCanonCitationsInContext(
+  tx: LeagueScopedTx,
+  input: { claimIds: readonly string[]; leagueId: string },
+): Promise<PublicationArticleCanonCitation[]> {
+  const claimIds = [...new Set(input.claimIds)];
+  if (claimIds.length === 0) {
+    return [];
+  }
+
+  const rows = await tx
+    .select({
+      id: loreClaims.id,
+      ratifiedAt: loreClaims.ratifiedAt,
+      ratifiedBy: loreClaims.ratifiedBy,
+      title: loreClaims.title,
+    })
+    .from(loreClaims)
+    .where(
+      and(
+        eq(loreClaims.leagueId, input.leagueId),
+        inArray(loreClaims.id, claimIds),
+        eq(loreClaims.status, "canon"),
+      ),
+    );
+  const byId = new Map(rows.map((row) => [row.id, row]));
+
+  return claimIds.flatMap((claimId) => {
+    const row = byId.get(claimId);
+    if (!row) {
+      return [];
+    }
+    return [
+      {
+        claimId,
+        href: `/leagues/${input.leagueId}/lore/${claimId}`,
+        provenance: row.ratifiedBy ?? "vote",
+        ratifiedAt: row.ratifiedAt?.toISOString() ?? null,
+        title: row.title,
+      },
+    ];
+  });
+}
+
 export async function getCentralNewsArticleData(
   db: Db,
   input: { articleId: string },
@@ -293,6 +347,7 @@ export async function getCentralNewsArticleData(
         },
         sourceUrl: sourceUrlFor(row.metadata, row.sourceUrl),
         tags,
+        canonCitations: [],
       },
       backHref: "/news",
       backLabel: "News front",
@@ -390,6 +445,10 @@ export async function getLeaguePressArticleData(
       title: articleRow.title,
     });
     const tags = articleTags(articleRow.metadata);
+    const canonCitations = await loadCanonCitationsInContext(tx, {
+      claimIds: articleLoreCitationIds(articleRow.metadata),
+      leagueId: input.leagueId,
+    });
 
     const leagueRows = await tx
       .select({
@@ -529,6 +588,7 @@ export async function getLeaguePressArticleData(
         },
         sourceUrl: "",
         tags,
+        canonCitations,
       },
       relatedStories: selectRelatedStories(
         [...leagueCandidates, ...centralCandidates],

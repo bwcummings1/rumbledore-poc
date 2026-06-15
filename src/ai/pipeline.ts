@@ -1597,12 +1597,14 @@ async function markBlockedByEntitlement({
 }
 
 async function publishDraft({
+  context,
   deps,
   draft,
   embedding,
   input,
   promptPrefixHash,
 }: {
+  context: LeagueBlogContext;
   deps: AiGenerationDependencies;
   draft: BlogDraft;
   embedding: number[];
@@ -1628,6 +1630,7 @@ async function publishDraft({
           kind: "blog",
           leagueId: input.leagueId,
           metadata: blogDraftMetadata({
+            context,
             draft,
             persona: input.persona,
             triggerKey: input.triggerKey,
@@ -1963,6 +1966,7 @@ export async function generateLeagueBlogPost({
   }
 
   return publishDraft({
+    context,
     deps,
     draft,
     embedding,

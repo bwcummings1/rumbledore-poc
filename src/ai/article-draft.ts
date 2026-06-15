@@ -13,6 +13,7 @@ import type {
   BlogDraft,
   BlogDraftBodyBlock,
   LeagueBlogContext,
+  LeagueContextCanonLore,
 } from "./interfaces";
 import type { AiPersona } from "./personas";
 
@@ -250,19 +251,72 @@ export function blogDraftText(draft: BlogDraft): string {
   ].join("\n\n");
 }
 
+function includesDraftText(text: string, value: string): boolean {
+  const normalized = value.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalized.length > 0 && text.includes(normalized);
+}
+
+function canonCitationMetadata(claim: LeagueContextCanonLore) {
+  return {
+    claimId: claim.id,
+    ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
+    ratifiedBy: claim.ratifiedBy,
+    statement: claim.statement,
+    title: claim.title,
+  };
+}
+
+function canonCitationsForDraft({
+  context,
+  draft,
+}: {
+  context: LeagueBlogContext;
+  draft: BlogDraft;
+}) {
+  const text = blogDraftText(draft).replace(/\s+/g, " ").toLowerCase();
+  const cited = new Map<string, LeagueContextCanonLore>();
+
+  for (const claim of context.authenticity.lore.canon) {
+    if (
+      includesDraftText(text, claim.title) ||
+      includesDraftText(text, claim.statement)
+    ) {
+      cited.set(claim.id, claim);
+    }
+  }
+
+  const triggerClaim = context.trigger.loreClaim;
+  if (triggerClaim?.status === "canon") {
+    const claim = context.authenticity.lore.canon.find(
+      (candidate) => candidate.id === triggerClaim.id,
+    );
+    if (claim) {
+      cited.set(claim.id, claim);
+    }
+  }
+
+  return [...cited.values()].map(canonCitationMetadata);
+}
+
 export function blogDraftMetadata({
+  context,
   draft,
   persona,
   triggerKey,
 }: {
+  context?: LeagueBlogContext;
   draft: BlogDraft;
   persona: AiPersona;
   triggerKey: string;
 }): Record<string, unknown> {
+  const canonCitations = context
+    ? canonCitationsForDraft({ context, draft })
+    : [];
   return {
     article: {
       bodyBlocks: draft.bodyBlocks,
       bylinePersona: persona,
+      canonCitations,
       contentType: draft.contentType,
       format: "rumbledore.article.v1",
       headline: draft.title,
@@ -270,6 +324,7 @@ export function blogDraftMetadata({
     },
     bodyBlocks: draft.bodyBlocks,
     byline: persona,
+    canonCitations,
     content_type: draft.contentType,
     contentType: draft.contentType,
     dek: draft.dek,

@@ -34,7 +34,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [x] Build the lore section in the league IA with the submit-claim entry for both lore types. (specs/18)
 - [x] Build the vote experience surfacing threshold, vote window, tally, and steward tiebreak. (specs/18)
 - [x] Build canon and branch/dispute browsing reusing the publication card/section patterns. (specs/18)
-- [ ] Build the challenge/branch flow and surface the cast's instigated claims and cited canon. (specs/18)
+- [x] Build the challenge/branch flow and surface the cast's instigated claims and cited canon. (specs/18)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
 Carried forward from Phase 1 — **re-verify each before acting** ("don't assume not implemented"); some may already be fixed by the Phase 1 harden pass.
@@ -52,3 +52,4 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 - [ ] **[maintainability/LOW] Activation cast matching is text-search based** — generated league posts do not persist structured team/person subject ids, so activation uses title/summary/body/metadata search before falling back to the latest headline.
 - [ ] **[product/MED] Steward review UI lacks advanced identity correction forms** — the doorway now supports rerun, mark-reviewed, and confirming fuzzy links, but merge/split/rename/reassign-to-new-person remain API-backed without full in-app forms.
 - [ ] **[correctness/MED] Member-submitted lore votes are not scheduled for automatic close-out** — `lore.vote.close` exists, but `submitLoreClaim()`/the POST claim route do not enqueue it when an opinion claim opens a vote.
+- [ ] **[product/LOW] AI canon citation metadata is inferred from exact title/statement matches** — paraphrased canon can be asserted in a generated article without a `canonCitations` link unless the trigger claim is the canonized claim.

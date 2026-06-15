@@ -1010,7 +1010,7 @@ describe("generateLeagueBlogPost", () => {
 
     const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
       tx
-        .select({ body: contentItems.body })
+        .select({ body: contentItems.body, metadata: contentItems.metadata })
         .from(contentItems)
         .where(
           and(
@@ -1021,6 +1021,13 @@ describe("generateLeagueBlogPost", () => {
         .limit(1),
     );
     expect(post?.body).toContain("Canon Alpha owns the Snow Bowl collapse");
+    expect(post?.metadata).toMatchObject({
+      canonCitations: [
+        expect.objectContaining({
+          title: "Snow Bowl Collapse",
+        }),
+      ],
+    });
     expect(post?.body).toContain(
       "Canon Alpha and Canon Beta have met 11 times",
     );

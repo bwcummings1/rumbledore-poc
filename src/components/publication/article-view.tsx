@@ -1,4 +1,10 @@
-import { ArrowLeft, ExternalLink, Newspaper, Tag } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  Landmark,
+  Newspaper,
+  Tag,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -83,6 +89,20 @@ export function parseArticleBodyBlocks(
 function tagHref(baseHref: string, tag: string): string {
   const params = new URLSearchParams({ tag });
   return `${baseHref}?${params.toString()}`;
+}
+
+function canonCitationProvenanceLabel(
+  citation: PublicationArticleViewData["article"]["canonCitations"][number],
+): string {
+  const provenance =
+    citation.provenance === "verified"
+      ? "verified"
+      : citation.provenance === "steward"
+        ? "steward ratified"
+        : "league decided";
+  return citation.ratifiedAt
+    ? `Canon - ${provenance} - ${formatPublishedAt(citation.ratifiedAt)}`
+    : `Canon - ${provenance}`;
 }
 
 function renderBodyBlock(block: BodyBlock, index: number) {
@@ -233,6 +253,42 @@ export function PublicationArticleView({
           </p>
         )}
       </article>
+
+      {data.article.canonCitations.length > 0 ? (
+        <aside
+          aria-label="Cited canon"
+          className="grid max-w-3xl gap-3 rounded-card border border-border bg-card p-4"
+        >
+          <div>
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <Landmark className="size-4 text-primary" aria-hidden="true" />
+              Cited canon
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Settled league lore referenced by this article.
+            </p>
+          </div>
+          <div className="grid gap-2">
+            {data.article.canonCitations.map((citation) => (
+              <article
+                key={citation.claimId}
+                className="rounded-control border border-border bg-muted/20 px-3 py-2"
+              >
+                <Link
+                  href={citation.href}
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-primary underline-offset-4 hover:underline"
+                >
+                  <Landmark className="size-4" aria-hidden="true" />
+                  {citation.title}
+                </Link>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {canonCitationProvenanceLabel(citation)}
+                </p>
+              </article>
+            ))}
+          </div>
+        </aside>
+      ) : null}
 
       {data.article.tags.length > 0 ? (
         <nav

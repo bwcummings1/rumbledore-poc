@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { contentItems, leagues, members, users } from "@/db/schema";
+import { contentItems, leagues, loreClaims, members, users } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
   getCentralNewsArticleData,
@@ -23,6 +23,8 @@ let centralArticleId: string;
 let centralRelatedId: string;
 let leagueArticleId: string;
 let leagueBArticleId: string;
+let canonCitationId: string;
+let pendingCitationId: string;
 
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
@@ -88,6 +90,45 @@ beforeAll(async () => {
     userId,
   });
 
+  await withLeagueContext(handle.db, leagueAId, async (tx) => {
+    const citationRows = await tx
+      .insert(loreClaims)
+      .values([
+        {
+          authorPersona: "commissioner",
+          body: "The league voted the Snow Bowl collapse into canon.",
+          kind: "opinion",
+          leagueId: leagueAId,
+          origin: "ai",
+          ratifiedAt: new Date("2026-06-10T12:00:00.000Z"),
+          ratifiedBy: "vote",
+          statement: "The league voted the Snow Bowl collapse into canon.",
+          status: "canon",
+          title: "Snow Bowl Collapse",
+        },
+        {
+          authorPersona: "trash_talker",
+          body: "This pending claim must not render as settled canon.",
+          kind: "opinion",
+          leagueId: leagueAId,
+          origin: "ai",
+          statement: "This pending claim must not render as settled canon.",
+          status: "vote",
+          title: "Pending Choker Debate",
+        },
+      ])
+      .returning({ status: loreClaims.status, id: loreClaims.id });
+
+    canonCitationId =
+      citationRows.find((row) => row.status === "canon")?.id ?? "";
+    pendingCitationId =
+      citationRows.find((row) => row.status === "vote")?.id ?? "";
+  });
+
+  if (!canonCitationId || !pendingCitationId) {
+    throw new Error("lore citation claims were not inserted");
+  }
+
   const centralRows = await handle.db
     .insert(contentItems)
     .values([
@@ -149,6 +190,10 @@ beforeAll(async () => {
           kind: "blog",
           leagueId: leagueAId,
           metadata: {
+            canonCitations: [
+              { claimId: canonCitationId },
+              { claimId: pendingCitationId },
+            ],
             dek: "A league-specific rivalry dek.",
             section: "recaps",
             tags: ["Fixture Team 01", "Rivalry Week"],
@@ -273,6 +318,18 @@ describe("publication articles", () => {
       section: { label: "Recaps" },
       tags: ["Fixture Team 01", "Rivalry Week"],
     });
+    expect(result.data.article.canonCitations).toEqual([
+      {
+        claimId: canonCitationId,
+        href: `/leagues/${leagueAId}/lore/${canonCitationId}`,
+        provenance: "vote",
+        ratifiedAt: "2026-06-10T12:00:00.000Z",
+        title: "Snow Bowl Collapse",
+      },
+    ]);
+    expect(
+      result.data.article.canonCitations.map((citation) => citation.claimId),
+    ).not.toContain(pendingCitationId);
     expect(result.data.relatedStories.map((story) => story.headline)).toContain(
       "Analyst checks the rivalry math",
     );

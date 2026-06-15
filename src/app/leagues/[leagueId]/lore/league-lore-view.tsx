@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   BookOpenText,
+  Bot,
   Clock3,
   FilePlus2,
   Landmark,
@@ -343,8 +344,16 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase text-muted-foreground">
-                      {claim.author.isAi ? "AI-instigated" : "Member claim"}
+                    <p className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+                      <span>{claim.author.displayName}</span>
+                      {claim.author.isAi ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-highlight/40 bg-highlight/10 px-2 py-0.5 text-highlight">
+                          <Bot className="size-3" aria-hidden="true" />
+                          AI cast
+                        </span>
+                      ) : (
+                        <span>Member claim</span>
+                      )}
                     </p>
                     <h2 className="mt-1 text-base font-semibold tracking-tight">
                       <Link

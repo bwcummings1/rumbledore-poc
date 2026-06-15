@@ -5,6 +5,7 @@ import {
   Bot,
   Check,
   Clock3,
+  FilePlus2,
   GitBranch,
   Landmark,
   Scale,
@@ -12,14 +13,19 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { LoreVoteChoice, StewardLoreAction } from "@/lore";
+import type {
+  LoreClaimRelation,
+  LoreVoteChoice,
+  StewardLoreAction,
+} from "@/lore";
 import type {
   LoreClaimCard,
   LoreClaimDetailData,
+  LoreClaimSubmitResponse,
   LoreStewardActionResponse,
   LoreVoteCastResponse,
   LoreVoteStatusSummary,
@@ -126,6 +132,82 @@ function relationLabel(relation: LoreClaimCard["relation"]): string {
 
 function isChallenge(claim: LoreClaimCard): boolean {
   return claim.relation === "dispute" || claim.relation === "relitigation";
+}
+
+type BranchRelation = Extract<
+  LoreClaimRelation,
+  "addendum" | "dispute" | "relitigation" | "response"
+>;
+
+const ADDITIVE_BRANCH_OPTIONS: Array<{
+  description: string;
+  label: string;
+  relation: BranchRelation;
+}> = [
+  {
+    description: "A reply that keeps the current claim in place.",
+    label: "Response",
+    relation: "response",
+  },
+  {
+    description: "Extra context or correction that does not replace canon.",
+    label: "Addendum",
+    relation: "addendum",
+  },
+];
+
+const CHALLENGE_BRANCH_OPTIONS: Array<{
+  description: string;
+  label: string;
+  relation: BranchRelation;
+}> = [
+  {
+    description: "Open a vote that can supersede this canon if it passes.",
+    label: "Challenge (dispute)",
+    relation: "dispute",
+  },
+  {
+    description: "Reopen the league argument with a replacement claim.",
+    label: "Re-litigation",
+    relation: "relitigation",
+  },
+];
+
+function branchRelationOptions(status: LoreClaimCard["status"]) {
+  return status === "canon"
+    ? [...ADDITIVE_BRANCH_OPTIONS, ...CHALLENGE_BRANCH_OPTIONS]
+    : ADDITIVE_BRANCH_OPTIONS;
+}
+
+function branchSubmitLabel(relation: BranchRelation): string {
+  switch (relation) {
+    case "dispute":
+    case "relitigation":
+      return "Open challenge";
+    case "addendum":
+    case "response":
+      return "Add to this";
+  }
+}
+
+function branchSuccessMessage({
+  relation,
+  result,
+}: {
+  relation: BranchRelation;
+  result: LoreClaimSubmitResponse;
+}): string {
+  if (relation === "dispute" || relation === "relitigation") {
+    return "Challenge opened. This canon is now marked under challenge.";
+  }
+  switch (result.status) {
+    case "canonized":
+      return "Branch posted as verified canon.";
+    case "rejected":
+      return "Branch posted and refuted against imported records.";
+    case "vote":
+      return "Branch opened for a league vote.";
+  }
 }
 
 function voteRead(vote: LoreVoteStatusSummary): string {
@@ -352,6 +434,137 @@ function StewardControls({
   );
 }
 
+function BranchControls({
+  claim,
+  onSubmitted,
+  submitApiUrl,
+}: {
+  claim: LoreClaimCard;
+  onSubmitted: (
+    result: LoreClaimSubmitResponse,
+    relation: BranchRelation,
+  ) => void;
+  submitApiUrl: string;
+}) {
+  const options = branchRelationOptions(claim.status);
+  const [relation, setRelation] = useState<BranchRelation>(
+    options[0]?.relation ?? "response",
+  );
+  const selectedRelation = options.some(
+    (option) => option.relation === relation,
+  )
+    ? relation
+    : (options[0]?.relation ?? "response");
+  const selectedOption = options.find(
+    (option) => option.relation === selectedRelation,
+  );
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const disabled = busy || !title.trim() || !body.trim();
+
+  async function submitBranch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (disabled) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await postJson<LoreClaimSubmitResponse>(submitApiUrl, {
+        body: body.trim(),
+        branchOf: claim.id,
+        relation: selectedRelation,
+        title: title.trim(),
+      });
+      setTitle("");
+      setBody("");
+      setRelation("response");
+      onSubmitted(result, selectedRelation);
+    } catch (cause) {
+      setError(onboardingPanelError(cause).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="grid gap-4 rounded-card border border-border bg-card p-4">
+      <div>
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <GitBranch className="size-4 text-primary" aria-hidden="true" />
+          Branch this lore
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Add context to any claim, or challenge canon and let the league decide
+          whether the record changes.
+        </p>
+      </div>
+
+      <form className="grid gap-3" onSubmit={submitBranch}>
+        <label className="grid gap-2 text-sm font-medium" htmlFor="branch-type">
+          Branch type
+          <select
+            className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            id="branch-type"
+            onChange={(event) =>
+              setRelation(event.currentTarget.value as BranchRelation)
+            }
+            value={selectedRelation}
+          >
+            {options.map((option) => (
+              <option key={option.relation} value={option.relation}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedOption ? (
+          <p className="text-sm text-muted-foreground">
+            {selectedOption.description}
+          </p>
+        ) : null}
+        {error ? (
+          <p className="rounded-control border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <label
+          className="grid gap-2 text-sm font-medium"
+          htmlFor="branch-title"
+        >
+          Branch title
+          <input
+            className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-base outline-none transition-colors focus:border-primary"
+            id="branch-title"
+            maxLength={160}
+            onChange={(event) => setTitle(event.currentTarget.value)}
+            required
+            value={title}
+          />
+        </label>
+        <label className="grid gap-2 text-sm font-medium" htmlFor="branch-body">
+          Branch statement
+          <textarea
+            className="min-h-28 rounded-control border border-border bg-background px-3 py-2 text-base outline-none transition-colors focus:border-primary"
+            id="branch-body"
+            maxLength={4000}
+            onChange={(event) => setBody(event.currentTarget.value)}
+            required
+            value={body}
+          />
+        </label>
+        <Button type="submit" className="w-fit" disabled={disabled}>
+          <FilePlus2 data-icon="inline-start" />
+          {busy ? "Posting" : branchSubmitLabel(selectedRelation)}
+        </Button>
+      </form>
+    </section>
+  );
+}
+
 export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
   const loreHref = `/leagues/${encodeURIComponent(data.league.id)}/lore`;
   const [claim, setClaim] = useState(data.claim);
@@ -359,12 +572,17 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
   const [busyChoice, setBusyChoice] = useState<LoreVoteChoice | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [branchResult, setBranchResult] = useState<{
+    claimId: string;
+    message: string;
+  } | null>(null);
   const threadTree = buildThreadTree(data.thread);
 
   async function castVote(choice: LoreVoteChoice) {
     setBusyChoice(choice);
     setError(null);
     setMessage(null);
+    setBranchResult(null);
     try {
       const response = await postJson<LoreVoteCastResponse>(data.voteApiUrl, {
         choice,
@@ -382,6 +600,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
   async function stewardAction(action: StewardLoreAction, reason: string) {
     setError(null);
     setMessage(null);
+    setBranchResult(null);
     try {
       const response = await postJson<LoreStewardActionResponse>(
         data.stewardApiUrl,
@@ -393,6 +612,24 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
     } catch (cause) {
       setError(onboardingPanelError(cause).message);
     }
+  }
+
+  function branchSubmitted(
+    result: LoreClaimSubmitResponse,
+    relation: BranchRelation,
+  ) {
+    setError(null);
+    setMessage(null);
+    if (
+      (relation === "dispute" || relation === "relitigation") &&
+      claim.status === "canon"
+    ) {
+      setClaim((current) => ({ ...current, status: "disputed" }));
+    }
+    setBranchResult({
+      claimId: result.claimId,
+      message: branchSuccessMessage({ relation, result }),
+    });
   }
 
   return (
@@ -464,6 +701,17 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
       {message ? (
         <div className="rounded-card border border-positive/40 bg-positive/10 px-3 py-2 text-sm text-positive">
           {message}
+        </div>
+      ) : null}
+      {branchResult ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-card border border-positive/40 bg-positive/10 px-3 py-2 text-sm text-positive">
+          <span>{branchResult.message}</span>
+          <Link
+            href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(branchResult.claimId)}`}
+            className="font-semibold underline-offset-4 hover:underline"
+          >
+            Open branch
+          </Link>
         </div>
       ) : null}
       {error ? (
@@ -552,6 +800,12 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
           </p>
         </section>
       ) : null}
+
+      <BranchControls
+        claim={claim}
+        onSubmitted={branchSubmitted}
+        submitApiUrl={data.claimSubmitApiUrl}
+      />
 
       <section className="grid gap-4">
         <div>

@@ -6,6 +6,14 @@ const HERO_KEYS = [
   "imageUrl",
   "thumbnailUrl",
 ] as const;
+const LORE_CITATION_KEYS = [
+  "canonCitations",
+  "citedCanonClaimIds",
+  "loreCitations",
+  "loreClaimIds",
+] as const;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -29,6 +37,35 @@ function stringArrayValue(value: unknown): string[] {
   return value.flatMap((item) => {
     const text = cleanText(item);
     return text ? [text] : [];
+  });
+}
+
+function loreClaimIdValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return UUID_RE.test(text) ? text : null;
+  }
+
+  const record = asRecord(value);
+  for (const key of ["claimId", "id", "loreClaimId"] as const) {
+    const text = cleanText(record[key]);
+    if (UUID_RE.test(text)) {
+      return text;
+    }
+  }
+
+  return null;
+}
+
+function loreClaimIdsValue(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    const id = loreClaimIdValue(value);
+    return id ? [id] : [];
+  }
+
+  return value.flatMap((item) => {
+    const id = loreClaimIdValue(item);
+    return id ? [id] : [];
   });
 }
 
@@ -78,6 +115,32 @@ export function articleTags(metadata: unknown): string[] {
   }
 
   return tags;
+}
+
+export function articleLoreCitationIds(metadata: unknown): string[] {
+  const record = asRecord(metadata);
+  const ids: string[] = [];
+  const seen = new Set<string>();
+
+  function add(values: readonly string[]) {
+    for (const id of values) {
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+
+  for (const key of LORE_CITATION_KEYS) {
+    add(loreClaimIdsValue(record[key]));
+  }
+
+  const trigger = asRecord(record.trigger);
+  add(loreClaimIdsValue(trigger.loreClaim));
+  add(loreClaimIdsValue(trigger.loreClaimId));
+
+  return ids;
 }
 
 export function normalizeArticleTag(value: string | null | undefined): string {
