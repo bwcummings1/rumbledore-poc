@@ -55,7 +55,17 @@ while :; do
   if [ -f .loop/SCOPE_DONE ]; then PHASE=harden; PROMPT=PROMPT_harden.md; harden_i=$((harden_i+1)); else PHASE=scope; PROMPT=PROMPT_build.md; fi
   [ "$MODE" = "plan" ] && { PHASE=plan; PROMPT=PROMPT_plan.md; }
   echo "======== iter $i ($PHASE/$(cur_agent)$([ "$PHASE" = harden ] && echo " ${harden_i}/${HARDEN_MAX}")) @ $ts ========"
-  run_agent "$PROMPT" 2>&1 | tee "$LOGDIR/iter-${PHASE}-$(cur_agent)-${ts}.log"
+  LOGFILE="$LOGDIR/iter-${PHASE}-$(cur_agent)-${ts}.log"
+  run_agent "$PROMPT" 2>&1 | tee "$LOGFILE"
+  # Credit-exhaustion guard: a usage-limited agent instant-fails (top-level CLI ERROR, tiny log).
+  # Require BOTH the CLI error line AND a near-empty iteration so the phrase merely APPEARING in
+  # content the agent read/wrote can't false-trigger. Stop CLEANLY (STALLED, never COMPLETE) so it
+  # can't spin to the hard cap and masquerade as a finished build.
+  if grep -qE '^(ERROR:|\[ERROR\]).*(hit your usage limit|usage limit reached|insufficient_quota|quota.*exceeded)' "$LOGFILE" \
+     && [ "$(wc -c <"$LOGFILE")" -lt 8000 ]; then
+    echo "AGENT OUT OF CREDITS -> stalling (switch account, rm .loop/STALLED, relaunch)."
+    printf 'stalled: agent usage limit at %s\n' "$(date)" > .loop/STALLED; break
+  fi
   git push origin "$BRANCH" 2>&1 | tail -2 || true
   # End the harden phase once its budget is spent.
   if [ "$PHASE" = harden ] && [ "$harden_i" -ge "$HARDEN_MAX" ] && [ ! -f .loop/COMPLETE ]; then
