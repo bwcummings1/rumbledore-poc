@@ -2728,6 +2728,7 @@ export const onboardingDiscoveredLeagues = pgTable(
     season: integer("season").notNull(),
     sport: fantasySport("sport").notNull().default("unknown"),
     name: text("name").notNull(),
+    providerTeamId: text("provider_team_id"),
     teamName: text("team_name"),
     size: integer("size"),
     lastDiscoveredAt: timestamp("last_discovered_at", {

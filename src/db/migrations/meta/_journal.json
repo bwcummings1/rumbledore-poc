@@ -253,6 +253,13 @@
       "when": 1781480000000,
       "tag": "0035_enable_betting_advisor",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781483600000,
+      "tag": "0036_onboarding_provider_team_id",
+      "breakpoints": true
     }
   ]
 }

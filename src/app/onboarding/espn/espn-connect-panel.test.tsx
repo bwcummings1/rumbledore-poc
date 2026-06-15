@@ -77,6 +77,18 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
       importBodies.push(JSON.parse(init?.body?.toString() ?? "{}"));
       return jsonResponse({
         leagueId: "league-95050",
+        leaguemateInvites: {
+          importedMembers: 12,
+          inviteTargets: 11,
+          targets: [
+            {
+              displayName: "Fixture Manager Two",
+              providerMemberId: "member-02",
+              suggestedChannel: "share",
+              teamNames: ["Fixture Team 02"],
+            },
+          ],
+        },
         sync: {
           matchups: { total: 84 },
           members: { total: 16 },
@@ -111,6 +123,13 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
     ]);
   });
   expect(await screen.findByText("Imported")).toBeDefined();
+  expect(
+    await screen.findByText("We found your 11 leaguemates."),
+  ).toBeDefined();
+  const inviteLink = screen.getByRole("link", {
+    name: /invite roster/i,
+  }) as HTMLAnchorElement;
+  expect(inviteLink.getAttribute("href")).toBe("/leagues/league-95050/members");
   const homeLink = screen.getByRole("link", {
     name: /open home/i,
   }) as HTMLAnchorElement;

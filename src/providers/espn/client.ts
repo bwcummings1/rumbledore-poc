@@ -224,6 +224,7 @@ const fanLeagueGroupSchema = z
 const fanEntrySchema = z
   .object({
     abbrev: z.string().optional(),
+    entryId: numericValue.optional(),
     entryMetadata: z
       .object({
         teamName: z.string().optional(),
@@ -342,6 +343,11 @@ function normalizeFanLeagues(fan: EspnFanApiResponse): ProviderLeagueRef[] {
         season,
         sport: "ffl",
         name: group.groupName ?? entry.name ?? `ESPN Fantasy League ${groupId}`,
+        ...(entry.entryId === undefined
+          ? {}
+          : {
+              providerTeamId: String(toInteger(entry.entryId) ?? entry.entryId),
+            }),
         size: toInteger(group.groupSize),
         teamName: entry.entryMetadata?.teamName,
       });

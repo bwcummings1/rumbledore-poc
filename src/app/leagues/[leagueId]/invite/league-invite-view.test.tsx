@@ -24,6 +24,7 @@ const initialSummary = {
       fantasyMemberId: "member-row-2",
       providerMemberId: "provider-member-2",
       providerTeamIds: ["2"],
+      suggestedChannel: "share" as const,
       teamNames: ["Fixture Team 02"],
     },
   ],
@@ -65,6 +66,7 @@ test("invite view creates share links and records email sends", async () => {
   ).toBeDefined();
   expect(screen.getByText("Fixture Manager Two")).toBeDefined();
   expect(screen.getByText("Fixture Team 02")).toBeDefined();
+  expect(screen.getByText("Suggested: link")).toBeDefined();
 
   fireEvent.click(screen.getByRole("button", { name: "Link" }));
 

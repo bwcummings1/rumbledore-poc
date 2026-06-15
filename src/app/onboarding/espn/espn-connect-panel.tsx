@@ -28,6 +28,10 @@ import {
   onboardingPanelError,
   postJson,
 } from "../client-http";
+import {
+  type ImportLeaguemateSummary,
+  LeaguemateDetectionCallout,
+} from "../leaguemate-detection-callout";
 import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
 
 interface DiscoveredLeague {
@@ -64,6 +68,7 @@ interface BrowserStartResult {
 
 interface ImportResult {
   leagueId: string;
+  leaguemateInvites?: ImportLeaguemateSummary;
   sync: {
     teams: { total: number };
     members: { total: number };
@@ -540,6 +545,10 @@ export function EspnConnectPanel() {
                   ) : null}
                 </div>
               </div>
+              <LeaguemateDetectionCallout
+                leagueId={importStats?.leagueId ?? league.leagueId ?? ""}
+                summary={importStats?.leaguemateInvites}
+              />
             </article>
           );
         })}

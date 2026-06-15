@@ -242,6 +242,7 @@ describe("Yahoo provider", () => {
       {
         provider: "yahoo",
         providerId: "461.l.95050",
+        providerTeamId: "1",
         season: 2026,
         sport: "ffl",
         name: "Yahoo Fixture League",
@@ -251,6 +252,7 @@ describe("Yahoo provider", () => {
       {
         provider: "yahoo",
         providerId: "449.l.95050",
+        providerTeamId: "1",
         season: 2025,
         sport: "ffl",
         name: "Yahoo Fixture League 2025",

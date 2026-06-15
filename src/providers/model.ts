@@ -68,6 +68,7 @@ export interface SeasonScopedProviderEntityRef extends ProviderEntityRef {
 export interface ProviderLeagueRef extends SeasonScopedProviderEntityRef {
   name: string;
   sport: FantasySport;
+  providerTeamId?: string;
   teamName?: string;
   size?: number;
 }

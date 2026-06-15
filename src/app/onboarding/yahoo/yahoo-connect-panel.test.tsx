@@ -91,6 +91,18 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
       importBodies.push(parseRequestBody(init));
       return jsonResponse({
         leagueId: "league-yahoo",
+        leaguemateInvites: {
+          importedMembers: 4,
+          inviteTargets: 3,
+          targets: [
+            {
+              displayName: "Yahoo Bravo",
+              providerMemberId: "YAHOO-MANAGER-2",
+              suggestedChannel: "share",
+              teamNames: ["Yahoo Bravo Team"],
+            },
+          ],
+        },
         sync: {
           matchups: { total: 2 },
           members: { total: 4 },
@@ -124,6 +136,11 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
     ]);
   });
   expect(await screen.findByText("Imported")).toBeDefined();
+  expect(await screen.findByText("We found your 3 leaguemates.")).toBeDefined();
+  const inviteLink = screen.getByRole("link", {
+    name: /invite roster/i,
+  }) as HTMLAnchorElement;
+  expect(inviteLink.getAttribute("href")).toBe("/leagues/league-yahoo/members");
   const homeLink = screen.getByRole("link", {
     name: /open home/i,
   }) as HTMLAnchorElement;

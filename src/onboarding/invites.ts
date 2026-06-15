@@ -12,6 +12,7 @@ import {
   leagueMemberIdentityClaims,
   leagues,
   members,
+  onboardingDiscoveredLeagues,
   providerCredentials,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
@@ -25,6 +26,7 @@ export interface LeagueInviteTarget {
   provider: FantasyProviderId;
   providerMemberId: string;
   providerTeamIds: string[];
+  suggestedChannel: LeaguemateInviteChannel;
   teamNames: string[];
 }
 
@@ -104,6 +106,11 @@ type IdentityClaimRow = Pick<
   typeof leagueMemberIdentityClaims.$inferSelect,
   "providerMemberId" | "userId"
 >;
+
+interface LoadedInviteTargets {
+  importedMembers: number;
+  targets: LeagueInviteTarget[];
+}
 
 const INVITE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const UUID_RE =
@@ -331,12 +338,13 @@ function toInviteTarget(
     provider: member.provider,
     providerMemberId: member.providerMemberId,
     providerTeamIds: sortedUnique(teamRefs.map((team) => team.providerTeamId)),
+    suggestedChannel: "share",
     teamNames: sortedUnique(teamRefs.map((team) => team.name)),
   };
 }
 
 async function authorizeLeagueMember(
-  deps: LeagueInviteDependencies,
+  deps: Pick<LeagueInviteDependencies, "db">,
   input: { leagueId: string; userId: string; userRole?: LeagueRole },
 ): Promise<Result<LeagueRole, AppError>> {
   if (input.userRole) {
@@ -367,9 +375,9 @@ async function loadLeague(db: Db, leagueId: string): Promise<LeagueRow | null> {
 }
 
 async function loadTargets(
-  deps: LeagueInviteDependencies,
+  deps: Pick<LeagueInviteDependencies, "db">,
   input: { league: LeagueRow; userId: string },
-): Promise<LeagueInviteTarget[]> {
+): Promise<LoadedInviteTargets> {
   const selfCredentials = await deps.db
     .select({
       provider: providerCredentials.provider,
@@ -384,6 +392,27 @@ async function loadTargets(
     );
   const selfProviderMemberIds = new Set(
     selfCredentials.map((credential) => credential.subjectProviderId),
+  );
+  const discoveredSelfTeams = await deps.db
+    .select({ providerTeamId: onboardingDiscoveredLeagues.providerTeamId })
+    .from(onboardingDiscoveredLeagues)
+    .where(
+      and(
+        eq(onboardingDiscoveredLeagues.userId, input.userId),
+        eq(onboardingDiscoveredLeagues.provider, input.league.provider),
+        eq(
+          onboardingDiscoveredLeagues.providerLeagueId,
+          input.league.providerLeagueId,
+        ),
+        eq(onboardingDiscoveredLeagues.season, input.league.season),
+      ),
+    );
+  const selfProviderTeamIds = new Set(
+    discoveredSelfTeams
+      .map((team) => team.providerTeamId)
+      .filter((providerTeamId): providerTeamId is string =>
+        Boolean(providerTeamId),
+      ),
   );
 
   const scoped = await withLeagueContext(
@@ -448,19 +477,31 @@ async function loadTargets(
       selfProviderMemberIds.add(claim.providerMemberId);
     }
   }
+  for (const team of scoped.teams) {
+    if (selfProviderTeamIds.has(team.providerTeamId)) {
+      for (const ownerMemberId of team.ownerMemberIds) {
+        selfProviderMemberIds.add(ownerMemberId);
+      }
+    }
+  }
 
   const claimedProviderMemberIds = new Set(
     scoped.identityClaims.map((claim) => claim.providerMemberId),
   );
   const teamsByOwner = teamRefsByOwner(scoped.teams);
-  return scoped.members
+  const targets = scoped.members
     .filter((member) => !selfProviderMemberIds.has(member.providerMemberId))
     .filter((member) => !claimedProviderMemberIds.has(member.providerMemberId))
     .map((member) => toInviteTarget(member, teamsByOwner));
+
+  return {
+    importedMembers: scoped.members.length,
+    targets,
+  };
 }
 
 export async function listLeaguemateInviteTargets(
-  deps: LeagueInviteDependencies,
+  deps: Pick<LeagueInviteDependencies, "db">,
   input: { leagueId: string; userId: string; userRole?: LeagueRole },
 ): Promise<Result<LeagueInviteSummary, LeagueInviteError>> {
   const authorized = await authorizeLeagueMember(deps, input);
@@ -473,74 +514,19 @@ export async function listLeaguemateInviteTargets(
     return err(notFoundError());
   }
 
-  const allTargets = await loadTargets(deps, {
+  const loadedTargets = await loadTargets(deps, {
     league,
     userId: input.userId,
   });
 
   return ok({
     league,
-    targets: allTargets,
+    targets: loadedTargets.targets,
     totals: {
-      importedMembers:
-        allTargets.length +
-        (await countSelfMembers(deps, {
-          league,
-          userId: input.userId,
-        })),
-      inviteTargets: allTargets.length,
+      importedMembers: loadedTargets.importedMembers,
+      inviteTargets: loadedTargets.targets.length,
     },
   });
-}
-
-async function countSelfMembers(
-  deps: LeagueInviteDependencies,
-  input: { league: LeagueRow; userId: string },
-): Promise<number> {
-  const selfCredentials = await deps.db
-    .select({ subjectProviderId: providerCredentials.subjectProviderId })
-    .from(providerCredentials)
-    .where(
-      and(
-        eq(providerCredentials.userId, input.userId),
-        eq(providerCredentials.provider, input.league.provider),
-      ),
-    );
-  const selfIds = new Set(
-    selfCredentials.map((credential) => credential.subjectProviderId),
-  );
-
-  const rows = await withLeagueContext(deps.db, input.league.id, async (tx) => {
-    const fantasyMemberRows = await tx
-      .select({ providerMemberId: fantasyMembers.providerMemberId })
-      .from(fantasyMembers)
-      .where(
-        and(
-          eq(fantasyMembers.leagueId, input.league.id),
-          eq(fantasyMembers.season, input.league.season),
-          eq(fantasyMembers.provider, input.league.provider),
-        ),
-      );
-
-    const claimRows = await tx
-      .select({ providerMemberId: leagueMemberIdentityClaims.providerMemberId })
-      .from(leagueMemberIdentityClaims)
-      .where(
-        and(
-          eq(leagueMemberIdentityClaims.leagueId, input.league.id),
-          eq(leagueMemberIdentityClaims.userId, input.userId),
-          eq(leagueMemberIdentityClaims.provider, input.league.provider),
-        ),
-      );
-
-    for (const claim of claimRows) {
-      selfIds.add(claim.providerMemberId);
-    }
-
-    return fantasyMemberRows;
-  });
-
-  return rows.filter((row) => selfIds.has(row.providerMemberId)).length;
 }
 
 async function deliverInvite(
@@ -603,12 +589,13 @@ export async function createLeaguemateInvite(
     return err(notFoundError());
   }
 
-  const target = (
-    await loadTargets(deps, {
-      league,
-      userId: input.userId,
-    })
-  ).find((candidate) => candidate.providerMemberId === input.providerMemberId);
+  const loadedTargets = await loadTargets(deps, {
+    league,
+    userId: input.userId,
+  });
+  const target = loadedTargets.targets.find(
+    (candidate) => candidate.providerMemberId === input.providerMemberId,
+  );
   if (!target) {
     return err(invalidTargetError());
   }

@@ -164,6 +164,7 @@ describe("ESPN onboarding service", () => {
       {
         provider: "espn",
         providerId: providerLeagueId,
+        providerTeamId: "9",
         season: 2026,
         sport: "ffl",
         name: `${marker} league ${providerLeagueId}`,
@@ -304,6 +305,14 @@ describe("ESPN onboarding service", () => {
       total: 84,
       changed: 84,
       unchanged: 0,
+    });
+    expect(imported.value.leaguemateInvites).toMatchObject({
+      importedMembers: 16,
+      inviteTargets: 15,
+    });
+    expect(imported.value.leaguemateInvites.targets[0]).toMatchObject({
+      displayName: "Fixture Manager 01",
+      suggestedChannel: "share",
     });
 
     const [membership] = await handle.db

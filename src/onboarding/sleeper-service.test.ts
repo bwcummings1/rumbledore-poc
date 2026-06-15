@@ -281,6 +281,14 @@ describe("Sleeper onboarding service", () => {
       changed: 4,
       unchanged: 0,
     });
+    expect(imported.value.leaguemateInvites).toMatchObject({
+      importedMembers: 4,
+      inviteTargets: 4,
+    });
+    expect(imported.value.leaguemateInvites.targets[0]).toMatchObject({
+      displayName: "Alpha Manager",
+      suggestedChannel: "share",
+    });
     expect(requestedImports).toEqual([
       {
         credentialId: imported.value.credentialId,

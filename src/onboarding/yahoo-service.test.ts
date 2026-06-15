@@ -189,6 +189,7 @@ describe("Yahoo onboarding service", () => {
       {
         provider: "yahoo",
         providerId: currentLeagueKey,
+        providerTeamId: "1",
         season: 2026,
         sport: "ffl",
         name: "Yahoo Fixture League",
@@ -198,6 +199,7 @@ describe("Yahoo onboarding service", () => {
       {
         provider: "yahoo",
         providerId: previousLeagueKey,
+        providerTeamId: "1",
         season: 2025,
         sport: "ffl",
         name: "Yahoo Fixture League 2025",
@@ -270,6 +272,13 @@ describe("Yahoo onboarding service", () => {
       total: 2,
       changed: 2,
       unchanged: 0,
+    });
+    expect(imported.value.leaguemateInvites).toMatchObject({
+      importedMembers: 4,
+      inviteTargets: 3,
+    });
+    expect(imported.value.leaguemateInvites.targets[0]).toMatchObject({
+      suggestedChannel: "share",
     });
     expect(requestedImports).toEqual([
       {

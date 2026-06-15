@@ -186,7 +186,7 @@ describe("leaguemate invites", () => {
     });
 
     const listed = await listLeaguemateInviteTargets(
-      { db: handle.db, notifier: new RecordingInviteNotifier() },
+      { db: handle.db },
       {
         leagueId: league.id,
         userId: user.id,
@@ -209,6 +209,7 @@ describe("leaguemate invites", () => {
           target.providerMemberId === imported.invited.providerMemberId,
       ),
     ).toMatchObject({
+      suggestedChannel: "share",
       teamNames: ["Invite Team"],
     });
     expect(
@@ -566,7 +567,7 @@ describe("leaguemate invites", () => {
     const user = await seedUser("forbidden");
 
     const listed = await listLeaguemateInviteTargets(
-      { db: handle.db, notifier: new RecordingInviteNotifier() },
+      { db: handle.db },
       {
         leagueId: league.id,
         userId: user.id,

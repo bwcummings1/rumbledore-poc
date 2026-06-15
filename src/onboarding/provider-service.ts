@@ -22,6 +22,10 @@ import type { RealtimePublisher } from "@/realtime";
 import { recomputeLeagueStatistics } from "@/stats";
 import type { CredentialCipher } from "./credential-crypto";
 import {
+  type LeagueInviteTarget,
+  listLeaguemateInviteTargets,
+} from "./invites";
+import {
   type ProviderReconnectAction,
   reconnectActionForProvider,
 } from "./reconnect";
@@ -39,6 +43,7 @@ export interface DiscoveredLeague {
   season: number;
   sport: "ffl" | "unknown";
   name: string;
+  providerTeamId?: string;
   teamName?: string;
   size?: number;
 }
@@ -59,9 +64,21 @@ export interface DiscoveredLeagueImportCandidate extends DiscoveredLeague {
   reconnect?: ProviderReconnectAction;
 }
 
+export interface ProviderImportLeaguemateSummary {
+  importedMembers: number;
+  inviteTargets: number;
+  targets: Array<
+    Pick<
+      LeagueInviteTarget,
+      "displayName" | "providerMemberId" | "suggestedChannel" | "teamNames"
+    >
+  >;
+}
+
 export interface ProviderImportResult {
   credentialId: string;
   leagueId: string;
+  leaguemateInvites: ProviderImportLeaguemateSummary;
   sync: CurrentLeagueSyncResult;
 }
 
@@ -227,6 +244,7 @@ function toDiscoveredLeague(ref: ProviderLeagueRef): DiscoveredLeague {
     season: ref.season,
     sport: ref.sport,
     name: ref.name,
+    ...(ref.providerTeamId ? { providerTeamId: ref.providerTeamId } : {}),
     ...(ref.teamName ? { teamName: ref.teamName } : {}),
     ...(ref.size === undefined ? {} : { size: ref.size }),
   };
@@ -239,6 +257,7 @@ function toProviderRef(league: DiscoveredLeague): ProviderLeagueRef {
     season: league.season,
     sport: league.sport,
     name: league.name,
+    ...(league.providerTeamId ? { providerTeamId: league.providerTeamId } : {}),
     ...(league.teamName ? { teamName: league.teamName } : {}),
     ...(league.size === undefined ? {} : { size: league.size }),
   };
@@ -311,6 +330,7 @@ export async function persistConnectedCredential({
           name: league.name,
           provider: league.provider,
           providerLeagueId: league.providerId,
+          providerTeamId: league.providerTeamId ?? null,
           season: league.season,
           size: league.size ?? null,
           sport: league.sport,
@@ -328,6 +348,7 @@ export async function persistConnectedCredential({
             credentialId: sql`excluded.credential_id`,
             lastDiscoveredAt: sql`excluded.last_discovered_at`,
             name: sql`excluded.name`,
+            providerTeamId: sql`excluded.provider_team_id`,
             size: sql`excluded.size`,
             sport: sql`excluded.sport`,
             teamName: sql`excluded.team_name`,
@@ -401,6 +422,7 @@ async function listDiscoveredLeagueCandidates(
       name: onboardingDiscoveredLeagues.name,
       provider: onboardingDiscoveredLeagues.provider,
       providerLeagueId: onboardingDiscoveredLeagues.providerLeagueId,
+      providerTeamId: onboardingDiscoveredLeagues.providerTeamId,
       season: onboardingDiscoveredLeagues.season,
       size: onboardingDiscoveredLeagues.size,
       sport: onboardingDiscoveredLeagues.sport,
@@ -478,6 +500,7 @@ async function listDiscoveredLeagueCandidates(
         name: row.name,
         provider: row.provider,
         providerId: row.providerLeagueId,
+        ...(row.providerTeamId ? { providerTeamId: row.providerTeamId } : {}),
         season: row.season,
         sport: row.sport,
         ...(row.teamName ? { teamName: row.teamName } : {}),
@@ -655,6 +678,9 @@ export async function importDiscoveredLeague(
     providerId: discovered.providerLeagueId,
     season: discovered.season,
     sport: discovered.sport,
+    ...(discovered.providerTeamId
+      ? { providerTeamId: discovered.providerTeamId }
+      : {}),
     ...(discovered.teamName ? { teamName: discovered.teamName } : {}),
     ...(discovered.size === null ? {} : { size: discovered.size }),
   });
@@ -693,6 +719,18 @@ export async function importDiscoveredLeague(
       target: [members.organizationId, members.userId],
     });
 
+  const leaguemateInvites = await listLeaguemateInviteTargets(
+    { db: deps.db },
+    {
+      leagueId: sync.value.league.id,
+      userId: input.userId,
+      userRole: "commissioner",
+    },
+  );
+  if (!leaguemateInvites.ok) {
+    return leaguemateInvites;
+  }
+
   try {
     await deps.requestHistoricalImport?.({
       credentialId: discovered.credentialId,
@@ -719,6 +757,16 @@ export async function importDiscoveredLeague(
   return ok({
     credentialId: discovered.credentialId,
     leagueId: sync.value.league.id,
+    leaguemateInvites: {
+      importedMembers: leaguemateInvites.value.totals.importedMembers,
+      inviteTargets: leaguemateInvites.value.totals.inviteTargets,
+      targets: leaguemateInvites.value.targets.map((target) => ({
+        displayName: target.displayName,
+        providerMemberId: target.providerMemberId,
+        suggestedChannel: target.suggestedChannel,
+        teamNames: target.teamNames,
+      })),
+    },
     sync: sync.value,
   });
 }

@@ -78,6 +78,13 @@ test("mock ESPN connect imports the fixture league and opens standings", async (
 
   await page.getByRole("button", { name: "Import selected" }).click();
 
+  await expect(page.getByText("We found your 15 leaguemates.")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(
+    page.getByRole("link", { name: "Invite roster" }),
+  ).toHaveAttribute("href", /\/leagues\/[0-9a-f-]+\/members$/);
+
   const homeLink = page.getByRole("link", { name: "Open home" });
   await expect(homeLink).toBeVisible({ timeout: 30_000 });
   const homeHref = await homeLink.getAttribute("href");

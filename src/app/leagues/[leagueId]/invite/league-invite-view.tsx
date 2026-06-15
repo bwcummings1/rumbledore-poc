@@ -24,6 +24,7 @@ interface LeagueInviteTarget {
   fantasyMemberId: string;
   providerMemberId: string;
   providerTeamIds: string[];
+  suggestedChannel: "share" | "sms" | "email";
   teamNames: string[];
 }
 
@@ -66,6 +67,17 @@ function teamLabel(target: LeagueInviteTarget): string {
   return target.teamNames.length > 0
     ? target.teamNames.join(", ")
     : "No active team matched";
+}
+
+function suggestedChannelLabel(target: LeagueInviteTarget): string {
+  switch (target.suggestedChannel) {
+    case "email":
+      return "Suggested: email";
+    case "sms":
+      return "Suggested: SMS";
+    case "share":
+      return "Suggested: link";
+  }
 }
 
 export function LeagueInviteView({
@@ -199,6 +211,9 @@ export function LeagueInviteView({
                     </h3>
                     <p className="mt-1 truncate text-sm text-muted-foreground">
                       {teamLabel(target)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {suggestedChannelLabel(target)}
                     </p>
                   </div>
                   {share || email || sms ? (

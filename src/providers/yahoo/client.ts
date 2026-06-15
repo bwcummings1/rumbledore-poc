@@ -166,6 +166,7 @@ type YahooUserTeam = {
   leagueKey: string;
   leagueName?: string;
   leagueSize?: number;
+  providerTeamId?: string;
   season: number;
   teamName?: string;
 };
@@ -967,6 +968,8 @@ function userTeamsFromPayload(json: unknown): {
           leagueKey,
           leagueName: toStringValue(field(team, "league_name")),
           leagueSize: toInteger(field(team, "num_teams")),
+          providerTeamId:
+            toStringValue(field(team, "team_id")) ?? teamIdFromTeamKey(teamKey),
           season,
           teamName: toStringValue(field(team, "name")),
         });
@@ -991,6 +994,7 @@ function refsFromUserTeams(
       season: team.season,
       sport: "ffl",
       name: team.leagueName ?? `Yahoo League ${team.leagueKey}`,
+      ...(team.providerTeamId ? { providerTeamId: team.providerTeamId } : {}),
       ...(team.teamName ? { teamName: team.teamName } : {}),
       ...(team.leagueSize === undefined ? {} : { size: team.leagueSize }),
     });

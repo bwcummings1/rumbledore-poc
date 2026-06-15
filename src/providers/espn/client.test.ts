@@ -165,6 +165,7 @@ describe("ESPN Fan API discovery client", () => {
       {
         provider: "espn",
         providerId: "95050",
+        providerTeamId: "9",
         season: 2026,
         sport: "ffl",
         name: "NHS Alumni Annual",

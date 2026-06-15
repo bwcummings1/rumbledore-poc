@@ -690,16 +690,26 @@ function fantasyPoints(
   );
 }
 
+function rosterProviderId(roster: SleeperRoster): string {
+  return String(toInteger(roster.roster_id) ?? roster.roster_id);
+}
+
+function rosterOwnerMemberIds(roster: SleeperRoster): string[] {
+  return compactUnique([
+    toId(roster.owner_id),
+    ...(roster.co_owners ?? []).map(toId),
+  ]);
+}
+
 function normalizeTeam(
   roster: SleeperRoster,
   ref: ProviderLeagueRef,
   usersById: ReadonlyMap<string, SleeperLeagueUser>,
 ): NormalizedTeam {
-  const providerId = String(toInteger(roster.roster_id) ?? roster.roster_id);
-  const ownerId = toId(roster.owner_id);
+  const providerId = rosterProviderId(roster);
+  const ownerMemberIds = rosterOwnerMemberIds(roster);
+  const ownerId = ownerMemberIds[0];
   const owner = ownerId ? usersById.get(ownerId) : undefined;
-  const coOwnerIds = (roster.co_owners ?? []).map(toId);
-  const ownerMemberIds = compactUnique([ownerId, ...coOwnerIds]);
   const teamName =
     owner?.metadata?.team_name?.trim() ||
     owner?.display_name?.trim() ||
@@ -1164,7 +1174,19 @@ export class SleeperClient {
         if (ref.sport !== "ffl") {
           continue;
         }
-        leaguesByKey.set(`${ref.season}:${ref.providerId}`, ref);
+        const rosters = await this.fetchRosters(ref.providerId);
+        if (!rosters.ok) {
+          return rosters;
+        }
+        const selfRoster = rosters.value.find((roster) =>
+          rosterOwnerMemberIds(roster).includes(session.subjectProviderId),
+        );
+        leaguesByKey.set(`${ref.season}:${ref.providerId}`, {
+          ...ref,
+          ...(selfRoster
+            ? { providerTeamId: rosterProviderId(selfRoster) }
+            : {}),
+        });
       }
     }
 

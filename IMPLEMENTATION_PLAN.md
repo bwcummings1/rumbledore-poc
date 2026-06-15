@@ -17,7 +17,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 
 ### G. Onboarding completeness (see specs/16)
 - [x] Implement multi-league discovery: connect once, discover all the user's leagues across ESPN/Sleeper/Yahoo. (specs/16)
-- [ ] Implement leaguemate detection from imported members and the "we found your N leaguemates" surface. (specs/16)
+- [x] Implement leaguemate detection from imported members and the "we found your N leaguemates" surface. (specs/16)
 - [ ] Implement SMS and copy-link invites as the primary path, with email only where an address exists (mock delivery). (specs/16)
 - [ ] Implement the claim-your-team invitee flow mapping the user to an imported provider-member. (specs/16)
 - [ ] Implement the activation hook (their team and records waiting; the cast already wrote about them). (specs/16)
@@ -30,12 +30,17 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 - [ ] Gate the individual personal-agent feature behind the individual tier. (specs/17)
 - [ ] Implement configurable caps (posts/week, leagues) plus an admin grant path. (specs/17)
 
+### I. Lore member experience (see specs/18)
+- [ ] Build the lore section in the league IA with the submit-claim entry for both lore types. (specs/18)
+- [ ] Build the vote experience surfacing threshold, vote window, tally, and steward tiebreak. (specs/18)
+- [ ] Build canon and branch/dispute browsing reusing the publication card/section patterns. (specs/18)
+- [ ] Build the challenge/branch flow and surface the cast's instigated claims and cited canon. (specs/18)
+
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
 Carried forward from Phase 1 — **re-verify each before acting** ("don't assume not implemented"); some may already be fixed by the Phase 1 harden pass.
 - [ ] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`. (Phase 2 onboarding area.)
 - [ ] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads returning scheduled/in-progress. `src/ingestion/current-league.ts`.
 - [ ] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — `closeLoreVote()` will tally an open vote early if called directly; guard on the close time.
-- [ ] **[product/LOW] Lore mechanics are service-only** — no public API/UI for members to submit claims, branch disputes, vote, or browse branch trees.
 - [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` / `src/news/league-feed.ts` fetch a bounded candidate set before filtering, so sparse old beats can vanish as archives grow.
 - [ ] **[observability/LOW] Historical import progress is not published to realtime** — onboarding can't subscribe to a live history-build channel yet (relevant to the Phase 2 onboarding activation hook).
 - [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — `/leagues/[leagueId]/press/[postId]`; split routes or use a neutral slug.
