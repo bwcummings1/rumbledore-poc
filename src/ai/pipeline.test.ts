@@ -16,7 +16,7 @@ import {
   MockLlmClient,
   MockWebGrounding,
 } from "@/ai";
-import { parseEnv } from "@/core/env/schema";
+import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -36,12 +36,26 @@ import {
   persons,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import type { EntitlementResolverEnv } from "@/entitlements";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
 import { bodyBlocksToMarkdown } from "./article-draft";
 
 const marker = `aipipeline-${randomUUID()}`;
 let handle: DbHandle;
+
+function entitlementEnv(devOverride: boolean): EntitlementResolverEnv {
+  return {
+    entitlements: {
+      caps: DEFAULT_ENTITLEMENT_CAPS,
+      devOverride,
+      gateArenaAdvanced: false,
+    },
+  };
+}
+
+const openEntitlementEnv = entitlementEnv(true);
+const gatedEntitlementEnv = entitlementEnv(false);
 
 class DuplicateLlmClient implements LlmClient {
   readonly requests: LlmGenerateRequest[] = [];
@@ -170,6 +184,27 @@ class FailingWebGrounding implements WebGrounding {
   }
 }
 
+class RecordingWebGrounding implements WebGrounding {
+  private readonly delegate = new MockWebGrounding();
+  readonly requests: Parameters<WebGrounding["fetch"]>[0][] = [];
+
+  async fetch(
+    input: Parameters<WebGrounding["fetch"]>[0],
+  ): Promise<Awaited<ReturnType<WebGrounding["fetch"]>>> {
+    this.requests.push(input);
+    return this.delegate.fetch();
+  }
+}
+
+class RecordingEmbeddingProvider extends DeterministicEmbeddingProvider {
+  calls = 0;
+
+  override async embed(text: string): Promise<number[]> {
+    this.calls += 1;
+    return super.embed(text);
+  }
+}
+
 async function seedLeague(tag: string) {
   const [league] = await handle.db
     .insert(leagues)
@@ -254,6 +289,7 @@ describe("generateLeagueBlogPost", () => {
       db: handle.db,
       duplicateThreshold: 1.1,
       embeddings: new DeterministicEmbeddingProvider(),
+      entitlements: openEntitlementEnv,
       llm,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
       push,
@@ -439,6 +475,74 @@ describe("generateLeagueBlogPost", () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
+  it("blocks AI generation for free leagues before web, LLM, embedding, or publish work", async () => {
+    const league = await seedLeague("free-gate");
+    const llm = new MockLlmClient();
+    const web = new RecordingWebGrounding();
+    const embeddings = new RecordingEmbeddingProvider();
+    const push = new RecordingPushNotifier();
+    const realtime = new RecordingRealtimePublisher();
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings,
+        entitlements: gatedEntitlementEnv,
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push,
+        realtime,
+        web,
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "weekly:premium-required",
+      },
+    });
+
+    expect(result).toMatchObject({
+      promptPrefixHash: null,
+      reason: "TIER_REQUIRED",
+      requiredTier: "premium",
+      reused: false,
+      status: "blocked",
+      tier: "free",
+    });
+    expect(llm.requests).toHaveLength(0);
+    expect(web.requests).toHaveLength(0);
+    expect(embeddings.calls).toBe(0);
+    expect(push.notifications).toHaveLength(0);
+    expect(realtime.blogPublished).toHaveLength(0);
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      posts: await tx
+        .select()
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        ),
+      runs: await tx
+        .select()
+        .from(aiGenerationRuns)
+        .where(eq(aiGenerationRuns.leagueId, league.id)),
+    }));
+    expect(rows.posts).toHaveLength(0);
+    expect(rows.runs).toHaveLength(1);
+    expect(rows.runs[0]).toMatchObject({
+      contentItemId: null,
+      persona: "narrator",
+      skipReason: "entitlement:ai.cast.generate:TIER_REQUIRED:requires_premium",
+      status: "blocked_entitlement",
+      triggerKey: "weekly_recap:weekly:premium-required",
+    });
+  });
+
   it("publishes separate structured artifacts for different content types on the same trigger", async () => {
     const league = await seedLeague("templates");
     const llm = new MockLlmClient();
@@ -446,6 +550,7 @@ describe("generateLeagueBlogPost", () => {
       db: handle.db,
       duplicateThreshold: 1.1,
       embeddings: new DeterministicEmbeddingProvider(),
+      entitlements: openEntitlementEnv,
       llm,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
       push: new NoopPushNotifier(),
@@ -607,6 +712,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
         llm,
         now: () => computedAt,
         push: new NoopPushNotifier(),
@@ -784,6 +890,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -940,6 +1047,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1028,6 +1136,7 @@ describe("generateLeagueBlogPost", () => {
       deps: {
         db: handle.db,
         embeddings,
+        entitlements: openEntitlementEnv,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1117,6 +1226,7 @@ describe("generateLeagueBlogPost", () => {
       deps: {
         db: handle.db,
         embeddings,
+        entitlements: openEntitlementEnv,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1176,6 +1286,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1216,6 +1327,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
         llm: new MockLlmClient(),
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1246,6 +1358,7 @@ describe("generateLeagueBlogPost", () => {
           db: handle.db,
           duplicateThreshold: 1.1,
           embeddings: new DeterministicEmbeddingProvider(),
+          entitlements: openEntitlementEnv,
           llm: new BlobLlmClient(),
           now: () => new Date("2026-06-11T12:00:00.000Z"),
           push: new NoopPushNotifier(),
@@ -1286,6 +1399,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),

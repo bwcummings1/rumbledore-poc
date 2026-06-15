@@ -48,6 +48,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - DB tests: call `migrateSerialized()` (`src/db/test-support.ts`), never `migrate()` directly — parallel vitest processes race on unapplied migrations.
 - DB tests: after an expected constraint/RLS error, do not keep using that same transaction (Postgres marks it aborted); assert expected failures in their own `withLeagueContext()`/transaction.
 - DB code/tests: do not `Promise.all` queries on the same Drizzle transaction/`withLeagueContext`; one transaction is one pg client, so run queries sequentially inside it.
+- Manual migration SQL files must also be listed in `src/db/migrations/meta/_journal.json`; otherwise `migrateSerialized()`/Drizzle migrator will not apply them.
 - Never call `getEnv()`/`getAuth()` at module scope in route files — `next build` evaluates them with NODE_ENV=production; resolve per-request.
 - DB-backed App Router pages with static-looking paths must opt into request-time rendering (`export const dynamic = "force-dynamic"`) before calling `getDb()` in the page.
 - Content/feed: `content_item.league_id NULL` is central/open content; league home/feed queries still explicitly filter `league_id = current` inside `withLeagueContext()`, and league feeds include central news only via `league_feed_reference`. DB-level dedup for central rows needs a partial unique index (`WHERE league_id IS NULL`) because normal unique indexes treat NULLs as distinct.

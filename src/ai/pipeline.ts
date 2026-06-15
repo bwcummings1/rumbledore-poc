@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getArenaLeaderboardData } from "@/betting/arena";
+import { DEFAULT_ENTITLEMENT_CAPS } from "@/core/env/schema";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -23,6 +24,13 @@ import {
   persons,
   polls,
 } from "@/db/schema";
+import {
+  type EntitlementReason,
+  type EntitlementRequiredTier,
+  type EntitlementResolverEnv,
+  type EntitlementTier,
+  resolveEntitlement,
+} from "@/entitlements";
 import { NoopPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
   NoopRealtimePublisher,
@@ -85,6 +93,7 @@ export interface GenerateLeagueBlogPostInput {
 
 export interface AiGenerationDependencies {
   db: Db;
+  entitlements: EntitlementResolverEnv;
   llm: LlmClient;
   push: PushNotifier;
   realtime: RealtimePublisher;
@@ -115,6 +124,14 @@ export type GenerateLeagueBlogPostResult =
       reused: boolean;
       skipReason: string;
       promptPrefixHash: string | null;
+    }
+  | {
+      status: "blocked";
+      reused: boolean;
+      reason: EntitlementReason;
+      requiredTier: EntitlementRequiredTier;
+      tier: EntitlementTier;
+      promptPrefixHash: null;
     };
 
 interface PreparedGeneration {
@@ -1494,6 +1511,91 @@ async function markSkipped({
   };
 }
 
+function blockedEntitlementReason({
+  capability,
+  reason,
+  requiredTier,
+}: {
+  capability: string;
+  reason: EntitlementReason;
+  requiredTier: EntitlementRequiredTier;
+}): string {
+  return `entitlement:${capability}:${reason}:requires_${requiredTier}`;
+}
+
+async function markBlockedByEntitlement({
+  deps,
+  input,
+  reason,
+  requiredTier,
+  tier,
+}: {
+  deps: AiGenerationDependencies;
+  input: GenerateLeagueBlogPostInput;
+  reason: EntitlementReason;
+  requiredTier: EntitlementRequiredTier;
+  tier: EntitlementTier;
+}): Promise<GenerateLeagueBlogPostResult> {
+  const timestamp = now(deps);
+  const runTriggerKey = generationRunTriggerKey(input);
+  const skipReason = blockedEntitlementReason({
+    capability: "ai.cast.generate",
+    reason,
+    requiredTier,
+  });
+  let reused = false;
+
+  await withLeagueContext(deps.db, input.leagueId, async (tx) => {
+    const [existingRun] = await tx
+      .select({ id: aiGenerationRuns.id })
+      .from(aiGenerationRuns)
+      .where(
+        and(
+          eq(aiGenerationRuns.leagueId, input.leagueId),
+          eq(aiGenerationRuns.persona, input.persona),
+          eq(aiGenerationRuns.triggerKey, runTriggerKey),
+        ),
+      )
+      .limit(1);
+
+    reused = Boolean(existingRun);
+
+    if (existingRun) {
+      await tx
+        .update(aiGenerationRuns)
+        .set({
+          contentItemId: null,
+          errorMessage: null,
+          promptPrefixHash: null,
+          skipReason,
+          status: "blocked_entitlement",
+          updatedAt: timestamp,
+        })
+        .where(eq(aiGenerationRuns.id, existingRun.id));
+      return;
+    }
+
+    await tx.insert(aiGenerationRuns).values({
+      leagueId: input.leagueId,
+      persona: input.persona,
+      promptPrefixHash: null,
+      skipReason,
+      status: "blocked_entitlement",
+      triggerKey: runTriggerKey,
+      updatedAt: timestamp,
+    });
+  });
+
+  return {
+    promptPrefixHash: null,
+    reason,
+    requiredTier,
+    reused,
+    status: "blocked",
+    tier,
+  };
+}
+
 async function publishDraft({
   deps,
   draft,
@@ -1662,6 +1764,13 @@ export function createMockAiDependencies(db: Db): AiGenerationDependencies {
   return {
     db,
     embeddings: new DeterministicEmbeddingProvider(),
+    entitlements: {
+      entitlements: {
+        caps: DEFAULT_ENTITLEMENT_CAPS,
+        devOverride: true,
+        gateArenaAdvanced: false,
+      },
+    },
     llm: new MockLlmClient(),
     push: new NoopPushNotifier(),
     realtime: new NoopRealtimePublisher(),
@@ -1680,6 +1789,22 @@ export async function generateLeagueBlogPost({
   parseAiContentType(input.contentType);
   const duplicateThreshold =
     deps.duplicateThreshold ?? DEFAULT_DUPLICATE_THRESHOLD;
+  const entitlement = await resolveEntitlement({
+    capability: "ai.cast.generate",
+    db: deps.db,
+    env: deps.entitlements,
+    leagueId: input.leagueId,
+    now: deps.now,
+  });
+  if (!entitlement.allowed) {
+    return markBlockedByEntitlement({
+      deps,
+      input,
+      reason: entitlement.reason,
+      requiredTier: entitlement.requiredTier,
+      tier: entitlement.tier,
+    });
+  }
 
   const prepared = await withLeagueContext(deps.db, input.leagueId, (tx) =>
     prepareGeneration({ input, tx }),

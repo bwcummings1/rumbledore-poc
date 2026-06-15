@@ -16,13 +16,16 @@ import {
 
 export function createAiDependencies(
   db: Db,
-  env: Pick<Env, "push" | "realtime" | "services">,
+  env: Pick<Env, "entitlements" | "push" | "realtime" | "services">,
 ): AiGenerationDependencies {
   return {
     db,
     embeddings: env.services.voyage.mock
       ? new DeterministicEmbeddingProvider()
       : new VoyageEmbeddingProvider({ apiKey: env.services.voyage.apiKey }),
+    entitlements: {
+      entitlements: env.entitlements,
+    },
     llm: env.services.anthropic.mock
       ? new MockLlmClient()
       : new AnthropicLlmClient({ apiKey: env.services.anthropic.apiKey }),

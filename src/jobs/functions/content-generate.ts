@@ -10,6 +10,7 @@ import {
 import { createAiDependencies } from "@/ai/dependencies";
 import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
+import { resolveEntitlement } from "@/entitlements";
 import { seedInstigationForContentCandidate } from "@/instigator";
 import { inngest } from "../client";
 import { type ContentGenerateData, JOB_EVENTS } from "../events";
@@ -64,11 +65,29 @@ export async function runContentGenerate({
   deps: ContentGenerateDependencies;
 }): Promise<ContentGenerateResponse> {
   const data = parseContentGenerateData(rawData);
-  const result =
+  const shouldSeedInstigation =
     data.contentType === "instigation_column" &&
-    !data.triggerKey.startsWith("instigation:")
-      ? await seedInstigationForContentCandidate({ deps, input: data })
-      : await generateLeagueBlogPost({ deps, input: data });
+    !data.triggerKey.startsWith("instigation:");
+  if (shouldSeedInstigation) {
+    const entitlement = await resolveEntitlement({
+      capability: "ai.cast.generate",
+      db: deps.db,
+      env: deps.entitlements,
+      leagueId: data.leagueId,
+      now: deps.now,
+    });
+    if (!entitlement.allowed) {
+      return {
+        ok: true,
+        eventName: JOB_EVENTS.contentGenerate,
+        ...(await generateLeagueBlogPost({ deps, input: data })),
+      };
+    }
+  }
+
+  const result = shouldSeedInstigation
+    ? await seedInstigationForContentCandidate({ deps, input: data })
+    : await generateLeagueBlogPost({ deps, input: data });
 
   return {
     ok: true,

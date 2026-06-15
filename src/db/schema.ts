@@ -198,6 +198,7 @@ export const aiGenerationStatus = pgEnum("ai_generation_status", [
   "running",
   "published",
   "skipped",
+  "blocked_entitlement",
   "failed",
 ]);
 

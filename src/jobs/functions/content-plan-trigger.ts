@@ -2,6 +2,8 @@ import { NonRetriableError } from "inngest";
 import { z } from "zod";
 import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
+import type { Db } from "@/db/client";
+import type { EntitlementResolverEnv } from "@/entitlements";
 import { inngest } from "../client";
 import {
   type ContentPlanTriggerEventName,
@@ -14,6 +16,12 @@ export type ContentPlanTriggerResponse = ContentPlanTriggerResult & {
   ok: true;
   sentCount: number;
 };
+
+interface ContentPlanTriggerDependencies {
+  db: Db;
+  env: EntitlementResolverEnv;
+  now?: () => Date;
+}
 
 const idValue = z.string().trim().min(1).max(200);
 const keyValue = z.string().trim().min(1).max(1000);
@@ -72,15 +80,31 @@ function parseTriggerData(
   return parsed.data;
 }
 
+async function getDefaultContentPlanTriggerDependencies(): Promise<ContentPlanTriggerDependencies> {
+  const [{ getDb }, { getEnv }] = await Promise.all([
+    import("@/db"),
+    import("@/core/env"),
+  ]);
+  return { db: getDb(), env: getEnv() };
+}
+
 export async function runContentPlanTrigger({
   data: rawData,
+  deps,
   eventName,
 }: {
   data: unknown;
+  deps: ContentPlanTriggerDependencies;
   eventName: ContentPlanTriggerEventName;
 }): Promise<ContentPlanTriggerResponse> {
   const data = parseTriggerData(eventName, rawData);
-  const result = planTriggeredContent({ data, eventName });
+  const result = await planTriggeredContent({
+    data,
+    db: deps.db,
+    env: deps.env,
+    eventName,
+    now: deps.now,
+  });
 
   return {
     ok: true,
@@ -89,15 +113,20 @@ export async function runContentPlanTrigger({
   };
 }
 
-export function createContentPlanTriggerFunction({
-  eventName,
-  functionId,
-  name,
-}: {
-  eventName: ContentPlanTriggerEventName;
-  functionId: string;
-  name: string;
-}) {
+export function createContentPlanTriggerFunction(
+  {
+    eventName,
+    functionId,
+    name,
+  }: {
+    eventName: ContentPlanTriggerEventName;
+    functionId: string;
+    name: string;
+  },
+  resolveDeps: () =>
+    | ContentPlanTriggerDependencies
+    | Promise<ContentPlanTriggerDependencies> = getDefaultContentPlanTriggerDependencies,
+) {
   return inngest.createFunction(
     {
       description:
@@ -109,8 +138,9 @@ export function createContentPlanTriggerFunction({
     },
     async ({ event, step }): Promise<ContentPlanTriggerResponse> =>
       recordJobRun(functionId, async () => {
+        const deps = await resolveDeps();
         const plan = await step.run("plan-content-generation", () =>
-          runContentPlanTrigger({ data: event.data, eventName }),
+          runContentPlanTrigger({ data: event.data, deps, eventName }),
         );
 
         if (plan.planned.length > 0) {

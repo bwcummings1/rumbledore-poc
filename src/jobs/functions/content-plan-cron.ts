@@ -1,6 +1,7 @@
 import { cron } from "inngest";
 import { recordJobRun } from "@/core/metrics";
 import type { Db } from "@/db/client";
+import type { EntitlementResolverEnv } from "@/entitlements";
 import { inngest } from "../client";
 import {
   type ContentPlanCronCadence,
@@ -10,6 +11,8 @@ import {
 
 interface ContentPlanCronDependencies {
   db: Db;
+  env: EntitlementResolverEnv;
+  now?: () => Date;
 }
 
 export type ContentPlanCronResponse = ContentPlanCronResult & {
@@ -18,8 +21,11 @@ export type ContentPlanCronResponse = ContentPlanCronResult & {
 };
 
 async function getDefaultContentPlanCronDependencies(): Promise<ContentPlanCronDependencies> {
-  const { getDb } = await import("@/db");
-  return { db: getDb() };
+  const [{ getDb }, { getEnv }] = await Promise.all([
+    import("@/db"),
+    import("@/core/env"),
+  ]);
+  return { db: getDb(), env: getEnv() };
 }
 
 export async function runContentPlanCron({
@@ -32,6 +38,8 @@ export async function runContentPlanCron({
   const result = await planCronContent({
     cadence,
     db: deps.db,
+    env: deps.env,
+    now: deps.now,
   });
 
   return {

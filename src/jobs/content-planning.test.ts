@@ -5,7 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMockAiDependencies } from "@/ai";
-import { parseEnv } from "@/core/env/schema";
+import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -15,12 +15,14 @@ import {
   fantasyTeams,
   headToHeadRecords,
   instigations,
+  leagueEntitlements,
   leagues,
   loreClaims,
   persons,
   polls,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import type { EntitlementResolverEnv } from "@/entitlements";
 import {
   planCronContent,
   planGameFinalContent,
@@ -56,6 +58,30 @@ import { functions } from "./index";
 
 const marker = `contentplan-${randomUUID()}`;
 let handle: DbHandle;
+
+function entitlementEnv(devOverride: boolean): EntitlementResolverEnv {
+  return {
+    entitlements: {
+      caps: DEFAULT_ENTITLEMENT_CAPS,
+      devOverride,
+      gateArenaAdvanced: false,
+    },
+  };
+}
+
+const openEntitlementEnv = entitlementEnv(true);
+const gatedEntitlementEnv = entitlementEnv(false);
+
+function plannerDeps() {
+  return { db: handle.db, env: openEntitlementEnv };
+}
+
+async function grantPremiumLeague(leagueId: string) {
+  await handle.db.insert(leagueEntitlements).values({
+    leagueId,
+    tier: "premium",
+  });
+}
 
 interface SeededLeague {
   id: string;
@@ -219,10 +245,11 @@ describe("content planning", () => {
     const first = await planCronContent({
       cadence: "weekly-preview",
       db: handle.db,
+      env: openEntitlementEnv,
     });
     const second = await runContentPlanCron({
       cadence: "weekly-preview",
-      deps: { db: handle.db },
+      deps: plannerDeps(),
     });
     const firstForActive = first.planned.filter(
       (event) => event.data.leagueId === active.id,
@@ -256,6 +283,7 @@ describe("content planning", () => {
     const wrap = await planCronContent({
       cadence: "weekly-wrap",
       db: handle.db,
+      env: openEntitlementEnv,
     });
     const wrapForActive = wrap.planned.filter(
       (event) => event.data.leagueId === active.id,
@@ -273,6 +301,7 @@ describe("content planning", () => {
     const midWeek = await planCronContent({
       cadence: "mid-week",
       db: handle.db,
+      env: openEntitlementEnv,
     });
     const midWeekForActive = midWeek.planned.filter(
       (event) => event.data.leagueId === active.id,
@@ -309,6 +338,7 @@ describe("content planning", () => {
     const rivalryPreview = await planCronContent({
       cadence: "weekly-preview",
       db: handle.db,
+      env: openEntitlementEnv,
     });
     const rivalryForActive = rivalryPreview.planned.filter(
       (event) => event.data.leagueId === active.id,
@@ -320,6 +350,7 @@ describe("content planning", () => {
     const postOdds = await planCronContent({
       cadence: "post-odds-refresh",
       db: handle.db,
+      env: openEntitlementEnv,
     });
     const postOddsForActive = postOdds.planned.filter(
       (event) => event.data.leagueId === active.id,
@@ -337,6 +368,7 @@ describe("content planning", () => {
     const midWeek = await planCronContent({
       cadence: "mid-week",
       db: handle.db,
+      env: openEntitlementEnv,
     });
     const event = midWeek.planned.find(
       (candidate) =>
@@ -426,10 +458,12 @@ describe("content planning", () => {
     const first = await planGameFinalContent({
       data: { gameId, leagueId: league.id },
       db: handle.db,
+      env: openEntitlementEnv,
     });
     const second = await planGameFinalContent({
       data: { gameId, leagueId: league.id },
       db: handle.db,
+      env: openEntitlementEnv,
     });
 
     expect(first.game).toMatchObject({
@@ -462,6 +496,7 @@ describe("content planning", () => {
         milestoneKeys: ["highest_single_week_score"],
       },
       db: handle.db,
+      env: openEntitlementEnv,
     });
     expect(
       milestone.planned
@@ -506,7 +541,7 @@ describe("content planning", () => {
   it("plans game.final content through the Inngest step API", async () => {
     const league = await seedLeague("job-game-final");
     const gameId = await seedFinalMatchup({ league, tag: "job-game-final" });
-    const fn = createContentPlanGameFinalFunction(() => ({ db: handle.db }));
+    const fn = createContentPlanGameFinalFunction(() => plannerDeps());
     const testEngine = new InngestTestEngine({ function: fn });
     const event = {
       data: {
@@ -544,10 +579,14 @@ describe("content planning", () => {
   it("plans every event-driven content trigger with stable natural keys", async () => {
     const leagueId = randomUUID();
     expect(
-      planTriggeredContent({
-        data: { leagueId, transactionId: "tx-1" },
-        eventName: JOB_EVENTS.transaction,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: { leagueId, transactionId: "tx-1" },
+          eventName: JOB_EVENTS.transaction,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "transaction_reaction",
@@ -558,10 +597,14 @@ describe("content planning", () => {
     ]);
 
     expect(
-      planTriggeredContent({
-        data: { leagueId, waiverId: "waiver-1" },
-        eventName: JOB_EVENTS.waiver,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: { leagueId, waiverId: "waiver-1" },
+          eventName: JOB_EVENTS.waiver,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "transaction_reaction",
@@ -572,10 +615,14 @@ describe("content planning", () => {
     ]);
 
     expect(
-      planTriggeredContent({
-        data: { leagueId, recordKey: "all_time_score" },
-        eventName: JOB_EVENTS.recordBroken,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: { leagueId, recordKey: "all_time_score" },
+          eventName: JOB_EVENTS.recordBroken,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "milestone_record",
@@ -592,10 +639,14 @@ describe("content planning", () => {
     ]);
 
     expect(
-      planTriggeredContent({
-        data: { claimId: "claim-1", leagueId },
-        eventName: JOB_EVENTS.loreCanonized,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: { claimId: "claim-1", leagueId },
+          eventName: JOB_EVENTS.loreCanonized,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "verdict_column",
@@ -612,10 +663,14 @@ describe("content planning", () => {
     ]);
 
     expect(
-      planTriggeredContent({
-        data: { claimId: "claim-1", leagueId, sourcePollId: "poll-1" },
-        eventName: JOB_EVENTS.loreCanonized,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: { claimId: "claim-1", leagueId, sourcePollId: "poll-1" },
+          eventName: JOB_EVENTS.loreCanonized,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "verdict_column",
@@ -626,10 +681,14 @@ describe("content planning", () => {
     ]);
 
     expect(
-      planTriggeredContent({
-        data: { leagueId, pollId: "poll-1" },
-        eventName: JOB_EVENTS.pollClosed,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: { leagueId, pollId: "poll-1" },
+          eventName: JOB_EVENTS.pollClosed,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "verdict_column",
@@ -640,14 +699,18 @@ describe("content planning", () => {
     ]);
 
     expect(
-      planTriggeredContent({
-        data: {
-          leagueId,
-          seasonId: "season-1",
-          swingKey: "settlement:settle-1:league-1",
-        },
-        eventName: JOB_EVENTS.arenaStandingsSwing,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: {
+            leagueId,
+            seasonId: "season-1",
+            swingKey: "settlement:settle-1:league-1",
+          },
+          eventName: JOB_EVENTS.arenaStandingsSwing,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "arena_recap",
@@ -658,10 +721,18 @@ describe("content planning", () => {
     ]);
 
     expect(
-      planTriggeredContent({
-        data: { bettingEventId: "event-1", leagueId, settlementId: "settle-1" },
-        eventName: JOB_EVENTS.betSettled,
-      }).planned.map((event) => event.data),
+      (
+        await planTriggeredContent({
+          db: handle.db,
+          env: openEntitlementEnv,
+          data: {
+            bettingEventId: "event-1",
+            leagueId,
+            settlementId: "settle-1",
+          },
+          eventName: JOB_EVENTS.betSettled,
+        })
+      ).planned.map((event) => event.data),
     ).toEqual([
       {
         contentType: "awards_superlatives",
@@ -678,13 +749,79 @@ describe("content planning", () => {
     ]);
   });
 
+  it("skips cadence planning for free leagues and still plans for premium leagues", async () => {
+    const free = await seedLeague("cadence-free");
+    const premium = await seedLeague("cadence-premium");
+    await grantPremiumLeague(premium.id);
+
+    const cron = await planCronContent({
+      cadence: "weekly-preview",
+      db: handle.db,
+      env: gatedEntitlementEnv,
+    });
+
+    expect(cron.planned.some((event) => event.data.leagueId === free.id)).toBe(
+      false,
+    );
+    expect(cron.skipped).toContainEqual(
+      expect.objectContaining({
+        leagueId: free.id,
+        reason: "TIER_REQUIRED",
+        requiredTier: "premium",
+      }),
+    );
+    expect(
+      cron.planned.filter((event) => event.data.leagueId === premium.id),
+    ).toHaveLength(2);
+
+    const gameId = await seedFinalMatchup({
+      league: free,
+      tag: "cadence-free",
+    });
+    await expect(
+      planGameFinalContent({
+        data: { gameId, leagueId: free.id },
+        db: handle.db,
+        env: gatedEntitlementEnv,
+      }),
+    ).resolves.toMatchObject({
+      planned: [],
+      skippedEntitlement: {
+        leagueId: free.id,
+        reason: "TIER_REQUIRED",
+        requiredTier: "premium",
+      },
+      skippedReason: "entitlement:TIER_REQUIRED:requires_premium",
+    });
+
+    await expect(
+      planTriggeredContent({
+        data: { leagueId: free.id, transactionId: "tx-free" },
+        db: handle.db,
+        env: gatedEntitlementEnv,
+        eventName: JOB_EVENTS.transaction,
+      }),
+    ).resolves.toMatchObject({
+      planned: [],
+      skippedEntitlement: {
+        leagueId: free.id,
+        reason: "TIER_REQUIRED",
+        requiredTier: "premium",
+      },
+      skippedReason: "entitlement:TIER_REQUIRED:requires_premium",
+    });
+  });
+
   it("plans event-driven content through the Inngest step API", async () => {
     const leagueId = randomUUID();
-    const fn = createContentPlanTriggerFunction({
-      eventName: JOB_EVENTS.betSettled,
-      functionId: `${marker}-bet-settled-trigger`,
-      name: "Bet settled trigger smoke",
-    });
+    const fn = createContentPlanTriggerFunction(
+      {
+        eventName: JOB_EVENTS.betSettled,
+        functionId: `${marker}-bet-settled-trigger`,
+        name: "Bet settled trigger smoke",
+      },
+      () => plannerDeps(),
+    );
     const testEngine = new InngestTestEngine({ function: fn });
     const stepRun = await testEngine.executeStep("plan-content-generation", {
       events: [
@@ -724,7 +861,7 @@ describe("content planning", () => {
           gameId: "not-a-uuid",
           leagueId: randomUUID(),
         },
-        deps: { db: handle.db },
+        deps: plannerDeps(),
       }),
     ).rejects.toBeInstanceOf(NonRetriableError);
   });
@@ -736,6 +873,7 @@ describe("content planning", () => {
           leagueId: "not-a-uuid",
           transactionId: "tx-1",
         },
+        deps: plannerDeps(),
         eventName: JOB_EVENTS.transaction,
       }),
     ).rejects.toBeInstanceOf(NonRetriableError);

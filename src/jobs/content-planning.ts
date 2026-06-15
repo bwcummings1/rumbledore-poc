@@ -9,6 +9,13 @@ import {
   leagues,
 } from "@/db/schema";
 import {
+  type EntitlementReason,
+  type EntitlementRequiredTier,
+  type EntitlementResolverEnv,
+  type EntitlementTier,
+  resolveEntitlement,
+} from "@/entitlements";
+import {
   type ArenaStandingsSwingData,
   type BetSettledData,
   type ContentGenerateData,
@@ -50,9 +57,18 @@ export interface PlannedContentGenerateEvent {
   data: ContentGenerateData;
 }
 
+export interface SkippedContentGenerationLeague {
+  capability: "ai.cadence.schedule";
+  leagueId: string;
+  reason: EntitlementReason;
+  requiredTier: EntitlementRequiredTier;
+  tier: EntitlementTier;
+}
+
 export interface ContentPlanCronResult {
   cadence: ContentPlanCronCadence;
   planned: PlannedContentGenerateEvent[];
+  skipped: SkippedContentGenerationLeague[];
 }
 
 export interface ContentPlanGameFinalResult {
@@ -64,12 +80,14 @@ export interface ContentPlanGameFinalResult {
     triggerReasons: string[];
   } | null;
   planned: PlannedContentGenerateEvent[];
+  skippedEntitlement: SkippedContentGenerationLeague | null;
   skippedReason: string | null;
 }
 
 export interface ContentPlanTriggerResult {
   eventName: ContentPlanTriggerEventName;
   planned: PlannedContentGenerateEvent[];
+  skippedEntitlement: SkippedContentGenerationLeague | null;
   skippedReason: string | null;
 }
 
@@ -158,6 +176,44 @@ interface GameFinalTeam {
   pointsFor: number;
   providerTeamId: string;
   wins: number;
+}
+
+async function resolveCadenceEntitlement({
+  db,
+  env,
+  leagueId,
+  now,
+}: {
+  db: Db;
+  env: EntitlementResolverEnv;
+  leagueId: string;
+  now?: () => Date;
+}): Promise<SkippedContentGenerationLeague | null> {
+  const resolution = await resolveEntitlement({
+    capability: "ai.cadence.schedule",
+    db,
+    env,
+    leagueId,
+    now,
+  });
+
+  if (resolution.allowed) {
+    return null;
+  }
+
+  return {
+    capability: "ai.cadence.schedule",
+    leagueId,
+    reason: resolution.reason,
+    requiredTier: resolution.requiredTier,
+    tier: resolution.tier,
+  };
+}
+
+function entitlementSkippedReason(
+  skipped: SkippedContentGenerationLeague,
+): string {
+  return `entitlement:${skipped.reason}:requires_${skipped.requiredTier}`;
 }
 
 function contentGenerateEventId(data: ContentGenerateData): string {
@@ -269,9 +325,13 @@ async function hasRivalrySignal({
 export async function planCronContent({
   cadence,
   db,
+  env,
+  now,
 }: {
   cadence: ContentPlanCronCadence;
   db: Db;
+  env: EntitlementResolverEnv;
+  now?: () => Date;
 }): Promise<ContentPlanCronResult> {
   const activeLeagues = await db
     .select({
@@ -284,7 +344,19 @@ export async function planCronContent({
     .orderBy(asc(leagues.id));
 
   const planned: PlannedContentGenerateEvent[] = [];
+  const skipped: SkippedContentGenerationLeague[] = [];
   for (const league of activeLeagues) {
+    const skippedEntitlement = await resolveCadenceEntitlement({
+      db,
+      env,
+      leagueId: league.id,
+      now,
+    });
+    if (skippedEntitlement) {
+      skipped.push(skippedEntitlement);
+      continue;
+    }
+
     const hasRivalryWeek =
       cadence === "weekly-preview"
         ? await hasRivalrySignal({ db, leagueId: league.id })
@@ -305,7 +377,7 @@ export async function planCronContent({
     }
   }
 
-  return { cadence, planned };
+  return { cadence, planned, skipped };
 }
 
 function gameFinalTriggerReasons({
@@ -390,10 +462,29 @@ function milestoneContentEvents({
 export async function planGameFinalContent({
   data,
   db,
+  env,
+  now,
 }: {
   data: GameFinalData;
   db: Db;
+  env: EntitlementResolverEnv;
+  now?: () => Date;
 }): Promise<ContentPlanGameFinalResult> {
+  const skippedEntitlement = await resolveCadenceEntitlement({
+    db,
+    env,
+    leagueId: data.leagueId,
+    now,
+  });
+  if (skippedEntitlement) {
+    return {
+      game: null,
+      planned: [],
+      skippedEntitlement,
+      skippedReason: entitlementSkippedReason(skippedEntitlement),
+    };
+  }
+
   return withLeagueContext(db, data.leagueId, async (tx) => {
     const [matchup] = await tx
       .select({
@@ -421,6 +512,7 @@ export async function planGameFinalContent({
       return {
         game: null,
         planned: [],
+        skippedEntitlement: null,
         skippedReason: "game_not_found",
       };
     }
@@ -435,6 +527,7 @@ export async function planGameFinalContent({
           triggerReasons: [],
         },
         planned: [],
+        skippedEntitlement: null,
         skippedReason: "game_not_final",
       };
     }
@@ -490,12 +583,13 @@ export async function planGameFinalContent({
         triggerReasons,
       },
       planned,
+      skippedEntitlement: null,
       skippedReason: null,
     };
   });
 }
 
-export function planTriggeredContent({
+function planTriggeredContentEvents({
   data,
   eventName,
 }: {
@@ -508,14 +602,14 @@ export function planTriggeredContent({
     | TransactionData
     | WaiverData;
   eventName: ContentPlanTriggerEventName;
-}): ContentPlanTriggerResult {
+}): PlannedContentGenerateEvent[] {
   const triggerKey = contentTriggerKey(eventName, data);
   const candidates =
     eventName === JOB_EVENTS.loreCanonized &&
     (data as LoreCanonizedData).sourcePollId
       ? ([{ contentType: "verdict_column", persona: "commissioner" }] as const)
       : TRIGGER_CANDIDATES[eventName];
-  const planned = candidates.map((candidate) =>
+  return candidates.map((candidate) =>
     toPlannedEvent({
       contentType: candidate.contentType,
       leagueId: data.leagueId,
@@ -523,10 +617,49 @@ export function planTriggeredContent({
       triggerKey,
     }),
   );
+}
+
+export async function planTriggeredContent({
+  data,
+  db,
+  env,
+  eventName,
+  now,
+}: {
+  data:
+    | BetSettledData
+    | ArenaStandingsSwingData
+    | LoreCanonizedData
+    | PollClosedData
+    | RecordBrokenData
+    | TransactionData
+    | WaiverData;
+  db: Db;
+  env: EntitlementResolverEnv;
+  eventName: ContentPlanTriggerEventName;
+  now?: () => Date;
+}): Promise<ContentPlanTriggerResult> {
+  const skippedEntitlement = await resolveCadenceEntitlement({
+    db,
+    env,
+    leagueId: data.leagueId,
+    now,
+  });
+  if (skippedEntitlement) {
+    return {
+      eventName,
+      planned: [],
+      skippedEntitlement,
+      skippedReason: entitlementSkippedReason(skippedEntitlement),
+    };
+  }
+
+  const planned = planTriggeredContentEvents({ data, eventName });
 
   return {
     eventName,
     planned,
+    skippedEntitlement: null,
     skippedReason: null,
   };
 }

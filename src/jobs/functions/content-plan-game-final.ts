@@ -3,6 +3,7 @@ import { z } from "zod";
 import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
+import type { EntitlementResolverEnv } from "@/entitlements";
 import { inngest } from "../client";
 import {
   type ContentPlanGameFinalResult,
@@ -12,6 +13,8 @@ import { type GameFinalData, JOB_EVENTS } from "../events";
 
 interface ContentPlanGameFinalDependencies {
   db: Db;
+  env: EntitlementResolverEnv;
+  now?: () => Date;
 }
 
 export type ContentPlanGameFinalResponse = ContentPlanGameFinalResult & {
@@ -47,8 +50,11 @@ function parseGameFinalData(data: unknown): GameFinalData {
 }
 
 async function getDefaultContentPlanGameFinalDependencies(): Promise<ContentPlanGameFinalDependencies> {
-  const { getDb } = await import("@/db");
-  return { db: getDb() };
+  const [{ getDb }, { getEnv }] = await Promise.all([
+    import("@/db"),
+    import("@/core/env"),
+  ]);
+  return { db: getDb(), env: getEnv() };
 }
 
 export async function runContentPlanGameFinal({
@@ -62,6 +68,8 @@ export async function runContentPlanGameFinal({
   const result = await planGameFinalContent({
     data,
     db: deps.db,
+    env: deps.env,
+    now: deps.now,
   });
 
   return {
