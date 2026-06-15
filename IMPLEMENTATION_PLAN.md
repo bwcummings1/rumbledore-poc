@@ -18,7 +18,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 ### G. Onboarding completeness (see specs/16)
 - [x] Implement multi-league discovery: connect once, discover all the user's leagues across ESPN/Sleeper/Yahoo. (specs/16)
 - [x] Implement leaguemate detection from imported members and the "we found your N leaguemates" surface. (specs/16)
-- [ ] Implement SMS and copy-link invites as the primary path, with email only where an address exists (mock delivery). (specs/16)
+- [x] Implement SMS and copy-link invites as the primary path, with email only where an address exists (mock delivery). (specs/16)
 - [ ] Implement the claim-your-team invitee flow mapping the user to an imported provider-member. (specs/16)
 - [ ] Implement the activation hook (their team and records waiting; the cast already wrote about them). (specs/16)
 - [ ] Complete the data-steward cleaning doorway per specs/14 §E. (specs/16)

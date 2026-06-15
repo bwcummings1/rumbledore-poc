@@ -115,6 +115,8 @@ interface LoadedInviteTargets {
 const INVITE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PHONE_DIGITS = 7;
 
 function currentTime(deps: Pick<LeagueInviteDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
@@ -250,7 +252,7 @@ function normalizedDestination(
       return ok({ hash: "share", hint: null, value: null });
     case "email": {
       const value = destination?.trim().toLowerCase();
-      if (!value) {
+      if (!value || !EMAIL_RE.test(value)) {
         return err(invalidDestinationError());
       }
       const [local = "", domain = ""] = value.split("@");
@@ -265,10 +267,12 @@ function normalizedDestination(
       });
     }
     case "sms": {
-      const value = destination?.trim().replace(/[^\d+]/g, "");
-      if (!value) {
+      const rawValue = destination?.trim() ?? "";
+      const digits = rawValue.replace(/\D/g, "");
+      if (digits.length < MIN_PHONE_DIGITS) {
         return err(invalidDestinationError());
       }
+      const value = rawValue.startsWith("+") ? `+${digits}` : digits;
       return ok({
         hash: stableHash(`sms:${value}`),
         hint: `***${value.slice(-4)}`,

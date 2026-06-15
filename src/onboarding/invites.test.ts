@@ -32,6 +32,24 @@ function inviteTokenHash(token: string): string {
   return createHash("sha256").update(`league-invite:${token}`).digest("hex");
 }
 
+function isEmailInviteRow(row: { channel: string }): boolean {
+  switch (row.channel) {
+    case "email":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isSmsInviteRow(row: { channel: string }): boolean {
+  switch (row.channel) {
+    case "sms":
+      return true;
+    default:
+      return false;
+  }
+}
+
 async function seedUser(tag: string) {
   const [user] = await handle.db
     .insert(users)
@@ -316,43 +334,52 @@ describe("leaguemate invites", () => {
           providerMemberId: leagueInvites.providerMemberId,
           sentAt: leagueInvites.sentAt,
           status: leagueInvites.status,
+          targetHash: leagueInvites.targetHash,
           targetHint: leagueInvites.targetHint,
           tokenHash: leagueInvites.tokenHash,
         })
         .from(leagueInvites)
-        .where(
-          and(
-            eq(leagueInvites.leagueId, league.id),
-            eq(
-              leagueInvites.providerMemberId,
-              imported.invited.providerMemberId,
-            ),
-          ),
-        ),
+        .where(eq(leagueInvites.leagueId, league.id)),
     );
     expect(rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           channel: "share",
+          providerMemberId: imported.invited.providerMemberId,
           status: "pending",
+          targetHash: "share",
           targetHint: null,
           tokenHash: inviteTokenHash(sharedAgain.value.token),
         }),
         expect.objectContaining({
           channel: "email",
+          providerMemberId: imported.invited.providerMemberId,
           status: "sent",
           targetHint: "m***@example.com",
           tokenHash: inviteTokenHash(emailed.value.token),
         }),
+        expect.objectContaining({
+          channel: "sms",
+          providerMemberId: imported.noTeam.providerMemberId,
+          status: "sent",
+          targetHint: "***4567",
+          tokenHash: inviteTokenHash(sms.value.token),
+        }),
       ]),
     );
+    const emailRow = rows.find(isEmailInviteRow);
+    expect(emailRow?.targetHash).toHaveLength(64);
+    expect(emailRow?.targetHash).not.toContain("manager@example.com");
+    const smsRow = rows.find(isSmsInviteRow);
+    expect(smsRow?.targetHash).toHaveLength(64);
+    expect(smsRow?.targetHash).not.toContain("5551234567");
     const persistedTokenHashes = rows.map((row) => row.tokenHash);
     expect(persistedTokenHashes).not.toContain(shared.value.token);
     expect(persistedTokenHashes).not.toContain(sharedAgain.value.token);
     expect(persistedTokenHashes).not.toContain(emailed.value.token);
-    expect(rows.find((row) => row.channel === "email")?.sentAt).toBeInstanceOf(
-      Date,
-    );
+    expect(persistedTokenHashes).not.toContain(sms.value.token);
+    expect(emailRow?.sentAt).toBeInstanceOf(Date);
+    expect(smsRow?.sentAt).toBeInstanceOf(Date);
   });
 
   it("accepts a share invite by granting membership and recording identity", async () => {

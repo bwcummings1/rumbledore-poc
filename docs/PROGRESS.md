@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Primary roster invites landed — Members now bulk-copy roster invite links, keep SMS as the prominent contact-supplied path, and keep email behind an entered-address fallback with hashed/hinted destinations.
 - 2026-06-15: Leaguemate detection surface landed — imports now carry provider-aware "we found your N leaguemates" summaries, exclude the connector's known team slot, and link directly into roster invites.
 - 2026-06-15: Unified onboarding inventory landed — ESPN, Sleeper, and Yahoo discovered leagues now aggregate in one persisted "Your leagues" list with provider-aware import from any connect screen.
 - 2026-06-15: Arena recap narration landed — the AI cast now has a structured `arena_recap` content type, aggregate arena context in prompts, post-odds-refresh and standings-swing planning, and settlement-driven swing fanout.

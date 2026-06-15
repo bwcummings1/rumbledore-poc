@@ -72,11 +72,11 @@ function teamLabel(target: LeagueInviteTarget): string {
 function suggestedChannelLabel(target: LeagueInviteTarget): string {
   switch (target.suggestedChannel) {
     case "email":
-      return "Suggested: email";
+      return "Email address available";
     case "sms":
-      return "Suggested: SMS";
+      return "Start with SMS";
     case "share":
-      return "Suggested: link";
+      return "Start with a link";
   }
 }
 
@@ -87,20 +87,24 @@ export function LeagueInviteView({
 }) {
   const [error, setError] = useState<OnboardingPanelError | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [emailFallbackOpen, setEmailFallbackOpen] = useState<
+    Record<string, boolean>
+  >({});
   const [emailInputs, setEmailInputs] = useState<Record<string, string>>({});
   const [smsInputs, setSmsInputs] = useState<Record<string, string>>({});
   const [results, setResults] = useState<Record<string, CreatedInvite>>({});
+  const [rosterLinksCopied, setRosterLinksCopied] = useState(false);
   const apiUrl = `/api/leagues/${initialSummary.league.id}/invites`;
 
   const heading = useMemo(
     () =>
-      `Invite ${initialSummary.totals.inviteTargets} leaguemate${
+      `We found ${initialSummary.totals.inviteTargets} leaguemate${
         initialSummary.totals.inviteTargets > 1 ? "s" : ""
       }`,
     [initialSummary.totals.inviteTargets],
   );
 
-  async function createInvite({
+  async function requestInvite({
     channel,
     destination,
     target,
@@ -109,23 +113,35 @@ export function LeagueInviteView({
     destination?: string;
     target: LeagueInviteTarget;
   }) {
-    const key = resultKey(target, channel);
+    const invite = await postJson<CreatedInvite>(apiUrl, {
+      channel,
+      ...(destination ? { destination } : {}),
+      providerMemberId: target.providerMemberId,
+    });
+    setResults((current) => ({
+      ...current,
+      [resultKey(target, channel)]: invite,
+    }));
+    if (channel === "email") {
+      setEmailInputs((current) => ({ ...current, [targetKey(target)]: "" }));
+    }
+    if (channel === "sms") {
+      setSmsInputs((current) => ({ ...current, [targetKey(target)]: "" }));
+    }
+    return invite;
+  }
+
+  async function createInvite(input: {
+    channel: CreatedInvite["channel"];
+    destination?: string;
+    target: LeagueInviteTarget;
+  }) {
+    const key = resultKey(input.target, input.channel);
     setBusyKey(key);
     setError(null);
+    setRosterLinksCopied(false);
     try {
-      const invite = await postJson<CreatedInvite>(apiUrl, {
-        channel,
-        ...(destination ? { destination } : {}),
-        providerMemberId: target.providerMemberId,
-      });
-      setResults((current) => ({ ...current, [key]: invite }));
-      if (channel === "email") {
-        setEmailInputs((current) => ({ ...current, [targetKey(target)]: "" }));
-      }
-      if (channel === "sms") {
-        setSmsInputs((current) => ({ ...current, [targetKey(target)]: "" }));
-      }
-      return invite;
+      return await requestInvite(input);
     } catch (cause) {
       setError(onboardingPanelError(cause));
       return null;
@@ -142,6 +158,28 @@ export function LeagueInviteView({
     const invite = await createInvite({ channel: "share", target });
     if (invite) {
       await copyInvite(invite.inviteUrl);
+    }
+  }
+
+  async function copyRosterLinks() {
+    const busy = "roster:share";
+    setBusyKey(busy);
+    setError(null);
+    setRosterLinksCopied(false);
+    try {
+      const lines: string[] = [];
+      for (const target of initialSummary.targets) {
+        const existing = results[resultKey(target, "share")];
+        const invite =
+          existing ?? (await requestInvite({ channel: "share", target }));
+        lines.push(`${target.displayName}: ${invite.inviteUrl}`);
+      }
+      await copyInvite(lines.join("\n"));
+      setRosterLinksCopied(true);
+    } catch (cause) {
+      setError(onboardingPanelError(cause));
+    } finally {
+      setBusyKey(null);
     }
   }
 
@@ -181,8 +219,26 @@ export function LeagueInviteView({
           </div>
           <Users className="mt-1 size-6 shrink-0 text-primary" aria-hidden />
         </div>
-        <div className="rounded-control border border-border bg-muted/30 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2">
           <h2 className="text-base font-semibold">{heading}</h2>
+          {initialSummary.targets.length > 1 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {rosterLinksCopied ? (
+                <p className="text-xs font-medium text-positive">
+                  Roster links copied.
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void copyRosterLinks()}
+                disabled={busyKey !== null}
+              >
+                <Copy data-icon="inline-start" />
+                Copy roster links
+              </Button>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -199,6 +255,8 @@ export function LeagueInviteView({
             const share = results[resultKey(target, "share")];
             const email = results[resultKey(target, "email")];
             const sms = results[resultKey(target, "sms")];
+            const showEmailFallback =
+              emailFallbackOpen[key] || target.suggestedChannel === "email";
             return (
               <article
                 key={key}
@@ -233,7 +291,7 @@ export function LeagueInviteView({
                       disabled={busyKey !== null}
                     >
                       <Link2 data-icon="inline-start" />
-                      Link
+                      Copy link
                     </Button>
                     {share ? (
                       <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-control border border-border bg-background">
@@ -290,39 +348,56 @@ export function LeagueInviteView({
                     </p>
                   ) : null}
 
-                  <form
-                    onSubmit={(event) => void sendEmail(event, target)}
-                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
-                  >
-                    <label className="grid gap-1 text-sm font-medium">
-                      Email
-                      <input
-                        type="email"
-                        value={emailInputs[key] ?? ""}
-                        onChange={(event) =>
-                          setEmailInputs((current) => ({
-                            ...current,
-                            [key]: event.target.value,
-                          }))
-                        }
-                        className="min-h-11 rounded-control border border-input bg-background px-3 text-base outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
-                        placeholder="manager@example.com"
-                      />
-                    </label>
+                  <div className="rounded-control border border-dashed border-border bg-muted/20 px-3 py-2">
                     <Button
-                      type="submit"
-                      className="self-end"
-                      disabled={busyKey !== null}
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        setEmailFallbackOpen((current) => ({
+                          ...current,
+                          [key]: !showEmailFallback,
+                        }))
+                      }
                     >
                       <Mail data-icon="inline-start" />
-                      Send email
+                      Email address
                     </Button>
-                  </form>
-                  {email ? (
-                    <p className="text-xs text-muted-foreground">
-                      Email recorded for {email.targetHint}.
-                    </p>
-                  ) : null}
+                    {showEmailFallback ? (
+                      <form
+                        onSubmit={(event) => void sendEmail(event, target)}
+                        className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                      >
+                        <label className="grid gap-1 text-sm font-medium">
+                          Email
+                          <input
+                            type="email"
+                            value={emailInputs[key] ?? ""}
+                            onChange={(event) =>
+                              setEmailInputs((current) => ({
+                                ...current,
+                                [key]: event.target.value,
+                              }))
+                            }
+                            className="min-h-11 rounded-control border border-input bg-background px-3 text-base outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
+                            placeholder="manager@example.com"
+                          />
+                        </label>
+                        <Button
+                          type="submit"
+                          className="self-end"
+                          disabled={busyKey !== null}
+                        >
+                          <Mail data-icon="inline-start" />
+                          Send email
+                        </Button>
+                      </form>
+                    ) : null}
+                    {email ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Email recorded for {email.targetHint}.
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </article>
             );
