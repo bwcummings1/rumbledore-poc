@@ -38,8 +38,8 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
 Carried forward from Phase 1 — **re-verify each before acting** ("don't assume not implemented"); some may already be fixed by the Phase 1 harden pass.
-- [ ] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`. (Phase 2 onboarding area.)
-- [ ] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads returning scheduled/in-progress. `src/ingestion/current-league.ts`.
+- [x] **[security/MED] Invite tokens stored plaintext at rest** — store `sha256(token)`, look up by hash. `src/db/schema.ts` (league_invites) + `src/onboarding/invites.ts`. (Verified already fixed by `token_hash`, migration `0033_hash_invite_tokens.sql`, and invite tests.)
+- [x] **[correctness/MED] Current sync can downgrade finalized matchups** — preserve `final` over transient provider re-reads returning scheduled/in-progress. `src/ingestion/current-league.ts`. (Verified already fixed by matchup upsert guard and regression tests.)
 - [ ] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — `closeLoreVote()` will tally an open vote early if called directly; guard on the close time.
 - [ ] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — `src/news/hub.ts` / `src/news/league-feed.ts` fetch a bounded candidate set before filtering, so sparse old beats can vanish as archives grow.
 - [ ] **[observability/LOW] Historical import progress is not published to realtime** — onboarding can't subscribe to a live history-build channel yet (relevant to the Phase 2 onboarding activation hook).
@@ -51,5 +51,18 @@ Carried forward from Phase 1 — **re-verify each before acting** ("don't assume
 - [ ] **[product/LOW] Invite auth return path does not preserve the claim URL** — unauthenticated invite previews send users to provider onboarding without an explicit return-to continuation back to the invite after sign-in/sign-up.
 - [ ] **[maintainability/LOW] Activation cast matching is text-search based** — generated league posts do not persist structured team/person subject ids, so activation uses title/summary/body/metadata search before falling back to the latest headline.
 - [ ] **[product/MED] Steward review UI lacks advanced identity correction forms** — the doorway now supports rerun, mark-reviewed, and confirming fuzzy links, but merge/split/rename/reassign-to-new-person remain API-backed without full in-app forms.
-- [ ] **[correctness/MED] Member-submitted lore votes are not scheduled for automatic close-out** — `lore.vote.close` exists, but `submitLoreClaim()`/the POST claim route do not enqueue it when an opinion claim opens a vote.
+- [x] **[correctness/MED] Member-submitted lore votes are not scheduled for automatic close-out** — `lore.vote.close` exists, but `submitLoreClaim()`/the POST claim route do not enqueue it when an opinion claim opens a vote. Fixed by scheduling `lore.vote.close` from the submit route when Inngest is configured.
 - [ ] **[product/LOW] AI canon citation metadata is inferred from exact title/statement matches** — paraphrased canon can be asserted in a generated article without a `canonCitations` link unless the trigger claim is the canonized claim.
+- [ ] **[correctness/MED] Lore vote extensions do not enqueue replacement close events** — if a steward extends a vote after its original close event was scheduled, the extended window needs a fresh `lore.vote.close` event.
+
+## Harden shortlist
+1. [x] **Invite tokens stored plaintext at rest** — security/isolation risk: leaked invite rows are reusable bearer tokens, so hashing materially reduces credential blast radius. Verified already fixed.
+2. [x] **Current sync can downgrade finalized matchups** — correctness risk: transient provider states can corrupt settled/final league history and downstream records. Verified already fixed.
+3. [x] **Member-submitted lore votes are not scheduled for automatic close-out** — functionality risk: votes can remain pending indefinitely without manual intervention.
+4. [ ] **Bankroll rollover has no production scheduler** — functionality risk: weekly betting balances and arena standings can stale without an automated rollover path.
+5. [ ] **First bet requires an existing open bankroll week** — functionality/product risk: the intended first-bet flow can fail for leagues without pre-created weeks.
+6. [ ] **Lore vote close can run before `vote_closes_at`** — correctness risk: direct callers can finalize votes before their announced window ends.
+7. [ ] **Publication section/tag filters are candidate-limited in memory** — correctness/scale risk: sparse sections can disappear as archives grow.
+8. [ ] **Invite auth return path does not preserve the claim URL** — robustness risk: unauthenticated invitees can lose the claim context after auth.
+9. [ ] **Historical import progress is not published to realtime** — robustness/UX risk: long onboarding history builds lack live progress feedback.
+10. [ ] **AI canon citation metadata is inferred from exact title/statement matches** — correctness/provenance risk: paraphrased canon can miss citation links.

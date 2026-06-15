@@ -1,9 +1,13 @@
 import { z } from "zod";
+import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
 import { AppError, toAppError } from "@/core/result";
+import { inngest } from "@/jobs/client";
+import { JOB_EVENTS } from "@/jobs/events";
 import {
   type LoreSubjectInput,
   type LoreVerificationAssertion,
+  type SubmitLoreClaimResult,
   submitLoreClaim,
 } from "@/lore";
 import {
@@ -94,6 +98,25 @@ function invalidLoreClaimRequestError(): AppError {
   });
 }
 
+async function scheduleLoreVoteClose(
+  leagueId: string,
+  result: SubmitLoreClaimResult,
+) {
+  if (result.status !== "vote" || getEnv().jobs.inngest.mode === "mock") {
+    return;
+  }
+
+  await inngest.send({
+    data: {
+      claimId: result.claimId,
+      leagueId,
+    },
+    id: `${JOB_EVENTS.loreVoteClose}:${leagueId}:${result.claimId}`,
+    name: JOB_EVENTS.loreVoteClose,
+    ts: result.voteClosesAt.getTime(),
+  });
+}
+
 async function loreClaimsPost(
   request: Request,
   context: LoreClaimsRouteContext,
@@ -137,6 +160,7 @@ async function loreClaimsPost(
         title: parsed.data.title,
       },
     });
+    await scheduleLoreVoteClose(leagueId, result);
     const verificationResult = await getLoreClaimVerificationSummary(db, {
       claimId: result.claimId,
       leagueId,

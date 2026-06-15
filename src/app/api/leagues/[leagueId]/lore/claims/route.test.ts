@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { requireLeagueRole } from "@/auth/guards";
 import { AppError } from "@/core/result";
 import { submitLoreClaim } from "@/lore";
@@ -7,13 +7,23 @@ import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({
   db: { select: vi.fn() },
+  getEnv: vi.fn(),
   getLoreClaimVerificationSummary: vi.fn(),
+  inngestSend: vi.fn(),
   requireLeagueRole: vi.fn(),
   submitLoreClaim: vi.fn(),
 }));
 
+vi.mock("@/core/env", () => ({
+  getEnv: mocks.getEnv,
+}));
+
 vi.mock("@/db", () => ({
   getDb: () => mocks.db,
+}));
+
+vi.mock("@/jobs/client", () => ({
+  inngest: { send: mocks.inngestSend },
 }));
 
 vi.mock("@/auth/guards", () => ({
@@ -78,6 +88,10 @@ function mockMembership() {
   mocks.db.select.mockReturnValue({ from });
 }
 
+beforeEach(() => {
+  mocks.getEnv.mockReturnValue({ jobs: { inngest: { mode: "mock" } } });
+});
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -131,6 +145,40 @@ describe("POST /api/leagues/[leagueId]/lore/claims", () => {
         subjects: [{ personId, subjectType: "person" }],
         title: "Worst trade ever",
       }),
+    });
+    expect(mocks.inngestSend).not.toHaveBeenCalled();
+  });
+
+  it("schedules automatic close-out for vote claims when Inngest is configured", async () => {
+    const voteClosesAt = new Date("2026-06-22T12:00:00.000Z");
+    mocks.getEnv.mockReturnValue({ jobs: { inngest: { mode: "dev" } } });
+    mocks.inngestSend.mockResolvedValue({ ids: ["lore-close"], status: 200 });
+    mockAccess();
+    mockMembership();
+    mocks.submitLoreClaim.mockResolvedValue({
+      claimId,
+      kind: "opinion",
+      status: "vote",
+      threadRootId,
+      verification: "n_a",
+      voteClosesAt,
+    });
+    mocks.getLoreClaimVerificationSummary.mockResolvedValue(null);
+
+    const response = await POST(
+      request({
+        body: "This trade lives in shame.",
+        title: "Worst trade ever",
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.inngestSend).toHaveBeenCalledWith({
+      data: { claimId, leagueId },
+      id: `lore.vote.close:${leagueId}:${claimId}`,
+      name: "lore.vote.close",
+      ts: voteClosesAt.getTime(),
     });
   });
 
