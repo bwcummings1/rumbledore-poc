@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-15: Pluggable ingestion poll policy landed — cadence now lives in a validated data config with env/global and explicit override seams, while `ingestion.tick` consumes the injectable policy interface.
 - 2026-06-15: Adaptive ingestion cadence landed — `ingestion.tick` now consults an injectable game-state provider and `data_coverage` freshness to fast-path live matchup polling while skipping off-hours rows before their window.
 - 2026-06-15: Live ingestion heartbeat landed — `ingestion.tick` now cron-plans connected discovered leagues into provider-scoped `league.ingest` workers that reuse stored credentials and current sync.
 - 2026-06-15: First-bet bankroll opening landed — bet placement now atomically opens the current rolling-minimum week when no active week exists, the Bet surface submits first slips against the floor, and settlement/rollover arena rebuilds now fan out only to affected arena seasons.

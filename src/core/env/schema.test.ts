@@ -32,6 +32,7 @@ describe("parseEnv", () => {
     expect(env.jobs.inngest).toEqual({ mode: "mock" });
     expect(env.push).toEqual({ mock: true, publicKey: DEV_PUSH_PUBLIC_KEY });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
+    expect(env.ingestion).toEqual({ pollPolicyConfig: undefined });
     expect(env.entitlements).toEqual({
       caps: DEFAULT_ENTITLEMENT_CAPS,
       devOverride: true,
@@ -342,6 +343,37 @@ describe("parseEnv", () => {
       devOverride: true,
       gateArenaAdvanced: true,
     });
+  });
+
+  it("configures the ingestion poll policy override from JSON", () => {
+    const env = parseEnv({
+      INGESTION_POLL_POLICY_JSON: JSON.stringify({
+        intervalsMs: {
+          live_window: { matchups: 5_000 },
+        },
+      }),
+    });
+
+    expect(env.ingestion.pollPolicyConfig).toEqual({
+      intervalsMs: {
+        live_window: { matchups: 5_000 },
+      },
+    });
+  });
+
+  it("rejects malformed ingestion poll policy JSON without echoing it", () => {
+    let message = "";
+    try {
+      parseEnv({
+        INGESTION_POLL_POLICY_JSON:
+          '{"intervalsMs":{"live_window":{"matchups":0}}}',
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("INGESTION_POLL_POLICY_JSON");
+    expect(message).not.toContain("matchups");
   });
 
   it("rejects invalid entitlement cap values", () => {

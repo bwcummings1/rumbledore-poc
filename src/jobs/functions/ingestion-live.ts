@@ -19,6 +19,14 @@ import {
   syncCurrentLeague,
 } from "@/ingestion";
 import {
+  createConfiguredPollPolicy,
+  type IngestionGameState,
+  LIVE_INGESTION_DATA_CLASSES,
+  type LiveIngestionDataClass,
+  type PollPolicy,
+  type PollPolicyConfigOverride,
+} from "@/ingestion/poll-policy";
+import {
   type CredentialCipher,
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
@@ -48,25 +56,6 @@ import {
 
 const DEFAULT_TICK_LIMIT = 500;
 const MAX_TICK_LIMIT = 2000;
-const MINUTE_MS = 60 * 1000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
-const WEEK_MS = 7 * DAY_MS;
-
-const LIVE_INGESTION_DATA_CLASSES = [
-  "league",
-  "teams",
-  "members",
-  "rosters",
-  "matchups",
-] as const satisfies readonly ProviderDataClass[];
-
-type LiveIngestionDataClass = (typeof LIVE_INGESTION_DATA_CLASSES)[number];
-
-export type IngestionGameState =
-  | "live_window"
-  | "in_season_off_hours"
-  | "off_season";
 
 export interface IngestionGameStateInput {
   currentScoringPeriod: number;
@@ -83,33 +72,6 @@ export interface IngestionGameStateProvider {
     input: IngestionGameStateInput,
   ): IngestionGameState | Promise<IngestionGameState>;
 }
-
-const DEFAULT_CADENCE_MS: Record<
-  IngestionGameState,
-  Record<LiveIngestionDataClass, number>
-> = {
-  live_window: {
-    league: HOUR_MS,
-    teams: DAY_MS,
-    members: DAY_MS,
-    rosters: 5 * MINUTE_MS,
-    matchups: MINUTE_MS,
-  },
-  in_season_off_hours: {
-    league: DAY_MS,
-    teams: DAY_MS,
-    members: DAY_MS,
-    rosters: HOUR_MS,
-    matchups: HOUR_MS,
-  },
-  off_season: {
-    league: WEEK_MS,
-    teams: WEEK_MS,
-    members: WEEK_MS,
-    rosters: WEEK_MS,
-    matchups: DAY_MS,
-  },
-};
 
 const defaultGameStateProvider: IngestionGameStateProvider = {
   stateForLeague(input) {
@@ -146,7 +108,10 @@ type SyncCurrentLeagueFn = (
 export interface IngestionTickDependencies {
   db: Db;
   gameStateProvider?: IngestionGameStateProvider;
+  globalPollPolicyConfig?: PollPolicyConfigOverride;
   now?: () => Date;
+  pollPolicy?: PollPolicy;
+  pollPolicyConfigOverride?: PollPolicyConfigOverride;
 }
 
 export interface LeagueIngestDependencies {
@@ -493,6 +458,11 @@ async function listConnectedLeagueTargets({
 
 type CoverageByDataClass = Partial<Record<LiveIngestionDataClass, Date>>;
 
+interface DueDataClassPlan {
+  dataClass: LiveIngestionDataClass;
+  intervalMs: number;
+}
+
 async function loadCoverageByDataClass({
   db,
   row,
@@ -531,60 +501,58 @@ function dueDataClassesFor({
   force,
   gameState,
   now,
+  pollPolicy,
 }: {
   coverage: CoverageByDataClass;
   force: boolean;
   gameState: IngestionGameState;
   now: Date;
-}): LiveIngestionDataClass[] {
-  if (force) {
-    return [...LIVE_INGESTION_DATA_CLASSES];
-  }
-
-  const cadence = DEFAULT_CADENCE_MS[gameState];
-  return LIVE_INGESTION_DATA_CLASSES.filter((dataClass) => {
-    const observedAt = coverage[dataClass];
-    if (!observedAt) {
-      return true;
-    }
-    return now.getTime() - observedAt.getTime() >= cadence[dataClass];
+  pollPolicy: PollPolicy;
+}): DueDataClassPlan[] {
+  return LIVE_INGESTION_DATA_CLASSES.flatMap((dataClass) => {
+    const decision = pollPolicy.due({
+      dataClass,
+      gameState,
+      lastSyncedAt: coverage[dataClass],
+      now,
+    });
+    return force || decision.due
+      ? [{ dataClass, intervalMs: decision.intervalMs }]
+      : [];
   });
 }
 
 function idempotencyWindowBucket({
-  dataClasses,
   gameState,
+  intervalMs,
   now,
 }: {
-  dataClasses: readonly LiveIngestionDataClass[];
   gameState: IngestionGameState;
+  intervalMs: number;
   now: Date;
 }): string {
-  const cadence = DEFAULT_CADENCE_MS[gameState];
-  const shortestIntervalMs = dataClasses.reduce(
-    (shortest, dataClass) => Math.min(shortest, cadence[dataClass]),
-    Number.POSITIVE_INFINITY,
-  );
-  const intervalMs = Number.isFinite(shortestIntervalMs)
-    ? shortestIntervalMs
-    : MINUTE_MS;
   return `${gameState}:${Math.floor(now.getTime() / intervalMs)}`;
 }
 
 function plannedEventFor({
-  dataClasses,
+  dueDataClasses,
   gameState,
   now,
   row,
 }: {
-  dataClasses: readonly LiveIngestionDataClass[];
+  dueDataClasses: readonly DueDataClassPlan[];
   gameState: IngestionGameState;
   now: Date;
   row: ConnectedLeagueRow;
 }): PlannedLeagueIngestEvent {
+  const dataClasses = dueDataClasses.map((plan) => plan.dataClass);
+  const shortestIntervalMs = dueDataClasses.reduce(
+    (shortest, plan) => Math.min(shortest, plan.intervalMs),
+    Number.POSITIVE_INFINITY,
+  );
   const data: LeagueIngestData = {
     credentialId: row.credentialId,
-    dataClasses: [...dataClasses],
+    dataClasses,
     leagueId: row.leagueId,
     name: row.name,
     provider: row.provider,
@@ -602,15 +570,28 @@ function plannedEventFor({
       row.providerLeagueId,
       row.season,
       dataClasses.join(","),
-      idempotencyWindowBucket({ dataClasses, gameState, now }),
+      idempotencyWindowBucket({
+        gameState,
+        intervalMs: Number.isFinite(shortestIntervalMs)
+          ? shortestIntervalMs
+          : 60 * 1000,
+        now,
+      }),
     ].join(":"),
     name: JOB_EVENTS.leagueIngest,
   };
 }
 
 async function getDefaultIngestionTickDependencies(): Promise<IngestionTickDependencies> {
-  const { getDb } = await import("@/db");
-  return { db: getDb() };
+  const [{ getEnv }, { getDb }] = await Promise.all([
+    import("@/core/env"),
+    import("@/db"),
+  ]);
+  const env = getEnv();
+  return {
+    db: getDb(),
+    globalPollPolicyConfig: env.ingestion.pollPolicyConfig,
+  };
 }
 
 async function getDefaultLeagueIngestDependencies(): Promise<LeagueIngestDependencies> {
@@ -646,6 +627,12 @@ export async function runIngestionTick({
   const data = parseIngestionTickData(rawData);
   const now = data.now ? new Date(data.now) : (deps.now?.() ?? new Date());
   const gameStateProvider = deps.gameStateProvider ?? defaultGameStateProvider;
+  const pollPolicy =
+    deps.pollPolicy ??
+    createConfiguredPollPolicy({
+      callSiteConfig: deps.pollPolicyConfigOverride,
+      globalConfig: deps.globalPollPolicyConfig,
+    });
   const forceDue = eventName === JOB_EVENTS.leagueConnected;
   const rows = await listConnectedLeagueTargets({
     db: deps.db,
@@ -684,6 +671,7 @@ export async function runIngestionTick({
       force: forceDue,
       gameState,
       now,
+      pollPolicy,
     });
     if (dueDataClasses.length === 0) {
       skippedNotDue += 1;
@@ -692,7 +680,7 @@ export async function runIngestionTick({
 
     planned.push(
       plannedEventFor({
-        dataClasses: dueDataClasses,
+        dueDataClasses,
         gameState,
         now,
         row,

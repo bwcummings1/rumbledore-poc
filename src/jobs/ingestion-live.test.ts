@@ -20,6 +20,7 @@ import type {
   CurrentLeagueSyncInput,
   CurrentLeagueSyncResult,
 } from "@/ingestion";
+import type { PollPolicy } from "@/ingestion/poll-policy";
 import {
   type CredentialCipher,
   createCredentialCipher,
@@ -518,6 +519,141 @@ describe("live ingestion jobs", () => {
     expect(result.planned[0]?.id).toContain(
       "rosters,matchups:in_season_off_hours:",
     );
+  });
+
+  it("uses explicit poll policy config without changing scheduler code", async () => {
+    const seeded = await seedLiveLeague("cadence-config");
+    const now = new Date("2026-09-13T18:00:06Z");
+    await seedDataCoverage(seeded, {
+      matchups: new Date("2026-09-13T18:00:00Z"),
+      rosters: new Date("2026-09-13T18:00:00Z"),
+    });
+
+    const defaultPolicy = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: {
+          stateForLeague: () => "live_window",
+        },
+      },
+    });
+    const configuredPolicy = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: {
+          stateForLeague: () => "live_window",
+        },
+        pollPolicyConfigOverride: {
+          intervalsMs: {
+            live_window: { matchups: 5_000 },
+          },
+        },
+      },
+    });
+
+    expect(defaultPolicy).toMatchObject({
+      ok: true,
+      plannedCount: 0,
+      skippedNotDue: 1,
+    });
+    expect(configuredPolicy).toMatchObject({
+      ok: true,
+      plannedCount: 1,
+    });
+    expect(configuredPolicy.planned[0]?.data.dataClasses).toEqual(["matchups"]);
+  });
+
+  it("lets explicit poll config beat env/global poll config", async () => {
+    const seeded = await seedLiveLeague("cadence-order");
+    const now = new Date("2026-09-13T18:00:06Z");
+    await seedDataCoverage(seeded, {
+      matchups: new Date("2026-09-13T18:00:00Z"),
+    });
+    const commonDeps = {
+      db: handle.db,
+      gameStateProvider: {
+        stateForLeague: () => "live_window" as const,
+      },
+      globalPollPolicyConfig: {
+        intervalsMs: {
+          live_window: { matchups: 5_000 },
+        },
+      },
+    };
+
+    const globalDue = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: commonDeps,
+    });
+    const explicitOverride = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: {
+        ...commonDeps,
+        pollPolicyConfigOverride: {
+          intervalsMs: {
+            live_window: { matchups: 20_000 },
+          },
+        },
+      },
+    });
+
+    expect(globalDue).toMatchObject({ ok: true, plannedCount: 1 });
+    expect(globalDue.planned[0]?.data.dataClasses).toEqual(["matchups"]);
+    expect(explicitOverride).toMatchObject({
+      ok: true,
+      plannedCount: 0,
+      skippedNotDue: 1,
+    });
+  });
+
+  it("accepts an alternate poll policy implementation", async () => {
+    const seeded = await seedLiveLeague("cadence-policy");
+    const now = new Date("2026-09-13T18:00:01Z");
+    await seedDataCoverage(seeded, {
+      matchups: new Date("2026-09-13T18:00:00Z"),
+      rosters: new Date("2026-09-13T18:00:00Z"),
+    });
+    const policy: PollPolicy = {
+      due(input) {
+        return {
+          due: input.dataClass === "rosters",
+          intervalMs: 1_234,
+          nextDueAt: input.now,
+        };
+      },
+    };
+
+    const result = await runIngestionTick({
+      data: {
+        leagueIds: [seeded.leagueId],
+        now: now.toISOString(),
+      },
+      deps: {
+        db: handle.db,
+        gameStateProvider: {
+          stateForLeague: () => "live_window",
+        },
+        pollPolicy: policy,
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true, plannedCount: 1 });
+    expect(result.planned[0]?.data.dataClasses).toEqual(["rosters"]);
+    expect(result.planned[0]?.id).toContain("rosters:live_window:");
   });
 
   it("does not send fan-out events when no connected league is due", async () => {

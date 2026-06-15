@@ -14,6 +14,7 @@ export type {
   EntitlementsConfig,
   Env,
   GoogleOAuthConfig,
+  IngestionConfig,
   InngestConfig,
   PushConfig,
   ServiceConfig,

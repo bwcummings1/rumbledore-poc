@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  type PollPolicyConfigOverride,
+  parsePollPolicyConfigJson,
+} from "@/ingestion/poll-policy";
 
 // Dev defaults match docker-compose.yml (host ports 5440/6390 — 5432/6379 are taken on the shared box).
 export const LOCAL_DATABASE_URL =
@@ -83,6 +87,10 @@ export interface EntitlementsConfig {
   devOverride: boolean;
   gateArenaAdvanced: boolean;
   caps: EntitlementCapsConfig;
+}
+
+export interface IngestionConfig {
+  pollPolicyConfig: PollPolicyConfigOverride | undefined;
 }
 
 export const DEFAULT_ENTITLEMENT_CAPS = {
@@ -184,6 +192,7 @@ const baseSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_ENTITLEMENT_CAPS.individualLeaguesCovered),
+  INGESTION_POLL_POLICY_JSON: z.string().trim().min(1).optional(),
 
   ANTHROPIC_API_KEY: secret.optional(),
   THE_ODDS_API_KEY: secret.optional(),
@@ -236,6 +245,7 @@ export interface Env {
     inngest: InngestConfig;
   };
   entitlements: EntitlementsConfig;
+  ingestion: IngestionConfig;
   push: PushConfig;
   services: Record<PaidService, ServiceConfig>;
 }
@@ -376,6 +386,19 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     if (!("WEB_PUSH_SUBJECT" in present)) {
       problems.push(
         "✖ MOCK_PUSH=false requires WEB_PUSH_SUBJECT to be set\n  → at WEB_PUSH_SUBJECT",
+      );
+    }
+  }
+
+  let ingestionPollPolicyConfig: PollPolicyConfigOverride | undefined;
+  if ("INGESTION_POLL_POLICY_JSON" in present) {
+    try {
+      ingestionPollPolicyConfig = parsePollPolicyConfigJson(
+        present.INGESTION_POLL_POLICY_JSON,
+      );
+    } catch {
+      problems.push(
+        "✖ INGESTION_POLL_POLICY_JSON must be JSON with positive integer intervalsMs values keyed by game state and data class\n  → at INGESTION_POLL_POLICY_JSON",
       );
     }
   }
@@ -522,6 +545,9 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
           parsed.ENTITLEMENTS_MAX_PREMIUM_LEAGUES_PER_USER ??
           DEFAULT_ENTITLEMENT_CAPS.maxPremiumLeaguesPerUser,
       },
+    },
+    ingestion: {
+      pollPolicyConfig: ingestionPollPolicyConfig,
     },
     push: pushIsReal
       ? {
