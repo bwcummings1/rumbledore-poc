@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Schedule-backed NFL calendar landed** with ESPN public scoreboard parsing, fixture coverage, and heuristic offline fallback.
+Keep it current. Last updated: 2026-06-16 — **PWA cache hardening landed** with private/no-store league-page headers and shared-device cache-isolation coverage.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: PWA cache hardening landed — `/leagues/:path*` pages now declare `Cache-Control: private, no-store`, and a shared-device login-A → logout → login-B e2e guards against cached league-page leakage.
 - 2026-06-16: Invite token-at-rest hardening verified — `league_invites` persists only `token_hash`, preview/acceptance look up by SHA-256 hash, and a migration-backed regression test guards against plaintext token columns returning.
 - 2026-06-16: Schedule-backed NFL calendar landed — the default calendar now reads ESPN public scoreboard windows for week/phase/game-state, maps playoff tokens, keeps the heuristic fallback for outages, and live ingestion consumes the fixture-backed source in cadence tests.
 - 2026-06-16: Anthropic LLM judge publish gate landed — generation now scores validated drafts before publish, regenerates once or skips on low authenticity/persona/leakage, and selects a guarded real Anthropic judge only when Anthropic is unmocked.

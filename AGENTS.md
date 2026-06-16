@@ -76,6 +76,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - `rm -rf` is blocked by a command guard; use `mv` to `/tmp` instead.
 - In zsh, build changed-file UBS args as an array (or run the expansion under bash); a single space-joined string is treated as one filename.
 - Next/font variable values must be literal strings; AUSPEX font declarations live in root `auspex-fonts.ts` so `src/` stays clean for the impeccable UI detector.
+- Next dev forces dynamic App Router page `Cache-Control: no-cache, must-revalidate`; verify production cache headers through `next.config`/production server checks, not dev-server Playwright response headers.
 - `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real. EXCEPTION: the "secret compared with ==/!=" checker strips comments before honoring `ubs:ignore` — restructure the code instead (switch/truthiness instead of `==`/`!=`).
 - Live paid-provider smoke uses `.env.local` keys but may need the local force-mock flags overridden: source `.env.local`, set `MOCK_ANTHROPIC=false MOCK_VOYAGE=false MOCK_TAVILY=false MOCK_ODDS=false MOCK_SPORTSDATAIO=false`, then run `pnpm test:live-smoke`.
 

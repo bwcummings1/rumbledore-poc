@@ -14,7 +14,7 @@ One task = one sentence, no "and". **Spec of record: `specs/35`. Build toward `d
 - [x] Replace the heuristic NFL calendar with a real schedule-backed source behind the injectable interface, with the heuristic as fallback. (specs/35 §3)
 - [x] Hash invite tokens at rest (store sha256, look up by hash), migrating any existing rows. (specs/35 §6)
 - [ ] Add a startup/health assertion that the app's DB role lacks superuser/BYPASSRLS. (specs/35 §7)
-- [ ] Harden the PWA cache: set `private, no-store` on league pages and add a login-A→logout→login-B cache-isolation test. (specs/35 §8)
+- [x] Harden the PWA cache: set `private, no-store` on league pages and add a login-A→logout→login-B cache-isolation test. (specs/35 §8)
 - [ ] Wire production emitters for the transaction/waiver content triggers from the ingestion path. (specs/35 §4)
 - [ ] Add a dedicated test suite for `records-catalog.ts` over a seeded multi-season fixture. (specs/35 §9)
 - [ ] Cover the spend-guard rolling-24h TTL and provider-unavailable→mock fallback paths with tests. (specs/35 §11)

@@ -1,7 +1,11 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { LEAGUE_PAGE_CACHE_HEADER_RULE } from "./src/app/league-cache-headers";
 
 const nextConfig: NextConfig = {
+  async headers() {
+    return [LEAGUE_PAGE_CACHE_HEADER_RULE];
+  },
   // Stray lockfiles in $HOME make Next infer the wrong workspace root.
   turbopack: {
     root: path.join(__dirname),
