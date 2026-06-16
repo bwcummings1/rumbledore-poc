@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 5 AUSPEX data-display components landed** with responsive tables/cards, labels, meters, stat tiles, KV rows, avatars, and arena adoption.
+Keep it current. Last updated: 2026-06-16 — **Phase 5 AUSPEX navigation atoms landed** with breadcrumbs, tabs, pagination, wizard steps, a command palette, and route adoption.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX navigation atoms landed — shared breadcrumbs, tabs, pagination, wizard steps, and a Ctrl/Cmd-K command palette now ship with focused tests and real shell/news/press/onboarding/arena adoption.
 - 2026-06-16: AUSPEX feedback/overlay components landed — shared alerts, banners, toasts, dialogs, responsive sheets, tooltips, popovers, skeletons, and empty/gated states now ship with focused tests and route-safe adoption.
 - 2026-06-16: AUSPEX data-display components landed — table-to-mobile-card primitives, status/badge/tag/edge labels, KV rows, avatars/presence, meters/pips, and stat tiles now ship with focused tests and are adopted by the Arena leaderboard.
 - 2026-06-16: AUSPEX control library landed — shared Button, Field/Input/Search/Textarea/Select/Stepper/Switch/Segmented/Slider/Checkbox/Radio/Chip primitives now carry tokenized states, a11y wiring, and adoption in league switcher, push toggle, lore, and bet flows.

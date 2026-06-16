@@ -114,6 +114,8 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
 
   expect(currentLeague.checked).toBe(true);
   expect(oldLeagueCheckbox.checked).toBe(false);
+  expect(screen.getByLabelText("ESPN onboarding progress")).toBeDefined();
+  expect(screen.getByText("Step 3 of 4")).toBeDefined();
 
   fireEvent.click(screen.getByRole("button", { name: /import selected/i }));
 

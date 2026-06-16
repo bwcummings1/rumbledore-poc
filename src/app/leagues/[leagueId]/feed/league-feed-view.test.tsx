@@ -139,9 +139,14 @@ test("league press view renders league posts and relevant central stories", () =
     screen.getByRole("heading", { level: 1, name: "The Feed League A Press" }),
   ).toBeDefined();
   const sections = within(screen.getByLabelText("Press sections"));
-  expect(sections.getAllByRole("link").map((link) => link.textContent)).toEqual(
-    ["Front", "Recaps", "Power Rankings", "Trash Talk", "Records", "Previews"],
-  );
+  expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Front",
+    "Recaps",
+    "Power Rankings",
+    "Trash Talk",
+    "Records",
+    "Previews",
+  ]);
   const lead = within(screen.getByLabelText("Lead story"));
   expect(
     lead.getByRole("heading", { name: "Commissioner note for league A" }),

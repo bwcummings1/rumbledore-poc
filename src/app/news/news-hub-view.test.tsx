@@ -86,9 +86,13 @@ test("news hub view renders central stories with attribution and source links", 
     }),
   ).toBeDefined();
   const sections = within(screen.getByLabelText("News sections"));
-  expect(sections.getAllByRole("link").map((link) => link.textContent)).toEqual(
-    ["Front", "NFL", "Fantasy", "Injuries", "Rankings"],
-  );
+  expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Front",
+    "NFL",
+    "Fantasy",
+    "Injuries",
+    "Rankings",
+  ]);
   const lead = within(screen.getByLabelText("Lead story"));
   expect(
     lead.getByRole("heading", {

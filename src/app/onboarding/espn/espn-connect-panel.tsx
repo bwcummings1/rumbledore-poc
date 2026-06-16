@@ -18,6 +18,7 @@ import {
   useState,
 } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { type StepItem, Steps } from "@/components/ui/steps";
 import { cn } from "@/lib/utils";
 import { getProviderBadgeLabel } from "@/navigation";
 import type { ProviderReconnectAction } from "@/onboarding/reconnect";
@@ -149,6 +150,13 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
   );
 
   const remainingImportCount = discoveredLeagues.filter(canImportLeague).length;
+  const onboardingSteps = buildEspnOnboardingSteps({
+    connected: Boolean(connection) || discoveredLeagues.length > 0,
+    discovered: discoveredLeagues.length > 0,
+    imported:
+      Object.keys(imports).length > 0 ||
+      discoveredLeagues.some((league) => league.imported),
+  });
 
   const replaceDiscoveredLeagues = useCallback(
     (nextLeagues: DiscoveredLeagueCandidate[], preserveSelection: boolean) => {
@@ -368,6 +376,7 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
   return (
     <div className="grid gap-5">
       <ReturnToInviteLink returnTo={returnTo} />
+      <Steps aria-label="ESPN onboarding progress" steps={onboardingSteps} />
       <section className="rounded-card border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -577,4 +586,67 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
       </section>
     </div>
   );
+}
+
+function buildEspnOnboardingSteps({
+  connected,
+  discovered,
+  imported,
+}: {
+  readonly connected: boolean;
+  readonly discovered: boolean;
+  readonly imported: boolean;
+}): readonly StepItem[] {
+  const current =
+    connected && discovered && imported
+      ? "invite"
+      : connected && discovered
+        ? "claim"
+        : connected
+          ? "discover"
+          : "connect";
+
+  return [
+    {
+      description: "Authorize ESPN access.",
+      id: "connect",
+      label: "Connect",
+      status: stepStatus("connect", current),
+    },
+    {
+      description: "Find every fantasy league.",
+      id: "discover",
+      label: "Discover",
+      status: stepStatus("discover", current),
+    },
+    {
+      description: "Import or open your teams.",
+      id: "claim",
+      label: "Claim",
+      status: stepStatus("claim", current),
+    },
+    {
+      description: "Bring leaguemates in.",
+      id: "invite",
+      label: "Invite",
+      status: stepStatus("invite", current),
+    },
+  ];
+}
+
+function stepStatus(
+  step: "connect" | "discover" | "claim" | "invite",
+  current: "connect" | "discover" | "claim" | "invite",
+): StepItem["status"] {
+  const order = ["connect", "discover", "claim", "invite"] as const;
+  const stepIndex = order.indexOf(step);
+  const currentIndex = order.indexOf(current);
+
+  if (stepIndex < currentIndex) {
+    return "complete";
+  }
+  if (stepIndex === currentIndex) {
+    return "current";
+  }
+  return "upcoming";
 }

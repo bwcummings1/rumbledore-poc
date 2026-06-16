@@ -5,6 +5,7 @@ import {
   PublicationStoryCard,
 } from "@/components/publication/story-card";
 import { buttonVariants } from "@/components/ui/button";
+import { TabLinks } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { buildPublicationFront } from "@/news/front";
 import type { CentralNewsHubData } from "@/news/hub";
@@ -104,42 +105,21 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
               appears only as a narrow rail when a league is active.
             </p>
           </div>
-          <nav aria-label="News sections" className="flex flex-wrap gap-2">
-            <Link
-              href={newsHref("/news", rail?.league.id)}
-              aria-current={data.activeSection ? undefined : "page"}
-              className={cn(
-                buttonVariants({
-                  className: "w-fit",
-                  size: "sm",
-                  variant: data.activeSection ? "outline" : "default",
-                }),
-              )}
-            >
-              Front
-            </Link>
-            {data.sections.map((section) => (
-              <Link
-                key={section.id}
-                href={newsHref(`/news/${section.slug}`, rail?.league.id)}
-                aria-current={
-                  data.activeSection?.id === section.id ? "page" : undefined
-                }
-                className={cn(
-                  buttonVariants({
-                    className: "w-fit",
-                    size: "sm",
-                    variant:
-                      data.activeSection?.id === section.id
-                        ? "default"
-                        : "outline",
-                  }),
-                )}
-              >
-                {section.label}
-              </Link>
-            ))}
-          </nav>
+          <TabLinks
+            ariaLabel="News sections"
+            items={[
+              {
+                active: !data.activeSection,
+                href: newsHref("/news", rail?.league.id),
+                label: "Front",
+              },
+              ...data.sections.map((section) => ({
+                active: data.activeSection?.id === section.id,
+                href: newsHref(`/news/${section.slug}`, rail?.league.id),
+                label: section.label,
+              })),
+            ]}
+          />
         </div>
       </header>
 

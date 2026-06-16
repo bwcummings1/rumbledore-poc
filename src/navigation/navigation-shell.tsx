@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
+  Search,
   Ticket,
   Trophy,
   User,
@@ -23,10 +24,16 @@ import {
   useMemo,
   useState,
 } from "react";
+import { type BreadcrumbItem, Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
+import {
+  CommandPalette,
+  type CommandPaletteItem,
+} from "@/components/ui/command-palette";
 import { cn } from "@/lib/utils";
 import {
   getLeagueAvatarFallback,
+  LEAGUE_SWITCHER_CONNECT_LINKS,
   type LeagueSwitcherViewItem,
   sortLeagueSwitcherItems,
 } from "./league-switcher-model";
@@ -36,6 +43,9 @@ import {
   GLOBAL_NAVIGATION_SECTIONS,
   type GlobalSectionId,
   getLeagueNavigationSections,
+  getLeagueSectionHref,
+  getLeagueSwitchHref,
+  LEAGUE_NAVIGATION_SECTIONS,
   type NavigationIconName,
 } from "./scope";
 import { useActiveNavigationState } from "./use-active-navigation-state";
@@ -143,6 +153,7 @@ export function NavigationShellView({
   items,
 }: NavigationShellViewProps) {
   const [mobileSwitcherOpen, setMobileSwitcherOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [desktopSwitcherOpen, setDesktopSwitcherOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sortedItems = useMemo(() => sortLeagueSwitcherItems(items), [items]);
@@ -155,6 +166,10 @@ export function NavigationShellView({
     activeState.scope === "league"
       ? getLeagueNavigationSections(activeState.leagueId)
       : GLOBAL_NAVIGATION_SECTIONS;
+  const commandItems = useMemo(
+    () => buildCommandItems(activeState, sortedItems),
+    [activeState, sortedItems],
+  );
   const pathname = activeState.pathname;
 
   useEffect(() => {
@@ -179,15 +194,23 @@ export function NavigationShellView({
         onToggleSwitcher={() => setDesktopSwitcherOpen((value) => !value)}
       />
 
+      <DesktopTopBar
+        activeLeague={activeLeague}
+        activeState={activeState}
+        collapsed={sidebarCollapsed}
+        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+      />
+
       <MobileTopBar
         activeLeague={activeLeague}
         activeState={activeState}
+        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         onOpenSwitcher={() => setMobileSwitcherOpen(true)}
       />
 
       <div
         className={cn(
-          "min-h-dvh pt-14 pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-base ease-out md:pt-0 md:pb-0",
+          "min-h-dvh pt-14 pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-base ease-out md:pt-14 md:pb-0",
           sidebarCollapsed ? "md:pl-[4.5rem]" : "md:pl-72",
         )}
       >
@@ -206,6 +229,17 @@ export function NavigationShellView({
           onClose={() => setMobileSwitcherOpen(false)}
         />
       ) : null}
+
+      <CommandPalette
+        items={commandItems}
+        onOpenChange={setCommandPaletteOpen}
+        onSelect={(item) => {
+          if (item.href) {
+            window.location.assign(item.href);
+          }
+        }}
+        open={commandPaletteOpen}
+      />
     </div>
   );
 }
@@ -337,13 +371,54 @@ function DesktopSidebar({
   );
 }
 
+function DesktopTopBar({
+  activeLeague,
+  activeState,
+  collapsed,
+  onOpenCommandPalette,
+}: {
+  readonly activeLeague: LeagueSwitcherViewItem | null;
+  readonly activeState: ActiveNavigationState;
+  readonly collapsed: boolean;
+  readonly onOpenCommandPalette: () => void;
+}) {
+  return (
+    <header
+      className={cn(
+        "fixed top-0 right-0 z-20 hidden h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur md:flex",
+        collapsed ? "left-[4.5rem]" : "left-72",
+      )}
+      data-slot="desktop-top-bar"
+    >
+      <Breadcrumbs
+        className="flex-1"
+        items={buildBreadcrumbItems(activeState, activeLeague)}
+      />
+      <Button
+        aria-label="Open command palette"
+        onClick={onOpenCommandPalette}
+        type="button"
+        variant="steel"
+      >
+        <Search data-icon="inline-start" />
+        Search
+        <kbd className="kbd ml-1 rounded-control border border-border px-2 py-0.5 text-xs">
+          Ctrl K
+        </kbd>
+      </Button>
+    </header>
+  );
+}
+
 function MobileTopBar({
   activeLeague,
   activeState,
+  onOpenCommandPalette,
   onOpenSwitcher,
 }: {
   readonly activeLeague: LeagueSwitcherViewItem | null;
   readonly activeState: ActiveNavigationState;
+  readonly onOpenCommandPalette: () => void;
   readonly onOpenSwitcher: () => void;
 }) {
   return (
@@ -370,6 +445,15 @@ function MobileTopBar({
           ) : null}
         </span>
         <ChevronDown className="size-4 text-muted-foreground" />
+      </Button>
+      <Button
+        aria-label="Open command palette"
+        onClick={onOpenCommandPalette}
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+      >
+        <Search aria-hidden="true" />
       </Button>
     </header>
   );
@@ -572,4 +656,111 @@ function scopeDisplayName(
   }
 
   return "Your Leagues";
+}
+
+function buildBreadcrumbItems(
+  activeState: ActiveNavigationState,
+  activeLeague: LeagueSwitcherViewItem | null,
+): readonly BreadcrumbItem[] {
+  if (activeState.scope === "global") {
+    const section = GLOBAL_NAVIGATION_SECTIONS.find(
+      (candidate) => candidate.id === activeState.sectionId,
+    );
+    if (!section || section.id === "your-leagues") {
+      return [{ current: true, href: "/", label: "Your Leagues" }];
+    }
+
+    return [
+      { href: "/", label: "Your Leagues" },
+      { current: true, href: section.href, label: section.label },
+    ];
+  }
+
+  const leagueLabel = activeLeague?.name ?? "League";
+  const leagueHref = getLeagueSectionHref(activeState.leagueId, "home");
+  const section = LEAGUE_NAVIGATION_SECTIONS.find(
+    (candidate) => candidate.id === activeState.sectionId,
+  );
+
+  if (!section || section.id === "home") {
+    return [{ current: true, href: leagueHref, label: leagueLabel }];
+  }
+
+  return [
+    { href: leagueHref, label: leagueLabel },
+    {
+      current: true,
+      href: getLeagueSectionHref(activeState.leagueId, section.id),
+      label: section.label,
+    },
+  ];
+}
+
+function buildCommandItems(
+  activeState: ActiveNavigationState,
+  leagues: readonly LeagueSwitcherViewItem[],
+): readonly CommandPaletteItem[] {
+  const globalItems = GLOBAL_NAVIGATION_SECTIONS.map((section) => ({
+    group: "Global",
+    href:
+      activeState.scope === "league"
+        ? globalHrefForLeagueScope(
+            section.id,
+            activeState.leagueId,
+            section.href,
+          )
+        : section.href,
+    icon: iconFor(section.icon),
+    id: `global-${section.id}`,
+    keywords: [section.id],
+    label: section.label,
+  }));
+
+  const leagueSectionItems =
+    activeState.scope === "league"
+      ? getLeagueNavigationSections(activeState.leagueId).map((section) => ({
+          group: "League",
+          href: section.href,
+          icon: iconFor(section.icon),
+          id: `league-section-${section.id}`,
+          keywords: [section.id],
+          label: section.label,
+        }))
+      : [];
+
+  const leagueItems = leagues.map((league) => ({
+    description: league.providerLabel,
+    group: "Leagues",
+    href: getLeagueSwitchHref(league.leagueId, activeState),
+    icon: (
+      <span aria-hidden="true" className="font-mono text-xs">
+        {getLeagueAvatarFallback(league.name)}
+      </span>
+    ),
+    id: `league-${league.leagueId}`,
+    keywords: [league.provider, league.providerLabel],
+    label: league.name,
+  }));
+
+  const connectItems = LEAGUE_SWITCHER_CONNECT_LINKS.map((link) => ({
+    description: "Connect another league",
+    group: "Actions",
+    href: link.href,
+    icon: <Ticket aria-hidden="true" />,
+    id: `connect-${link.provider}`,
+    keywords: [link.provider, "connect", "onboarding"],
+    label: `Connect ${link.label}`,
+  }));
+
+  return [
+    ...globalItems,
+    ...leagueSectionItems,
+    ...leagueItems,
+    ...connectItems,
+  ];
+}
+
+function iconFor(icon: NavigationIconName): ReactNode {
+  const Icon = NAVIGATION_ICON_COMPONENTS[icon];
+  return <Icon aria-hidden="true" />;
 }

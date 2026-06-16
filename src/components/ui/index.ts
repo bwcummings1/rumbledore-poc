@@ -6,6 +6,8 @@ export type { BadgeProps } from "./badge";
 export { Badge, formatBadgeValue } from "./badge";
 export type { BannerProps } from "./banner";
 export { Banner, bannerVariants } from "./banner";
+export type { BreadcrumbItem, BreadcrumbsProps } from "./breadcrumbs";
+export { Breadcrumbs } from "./breadcrumbs";
 export { Button, buttonVariants } from "./button";
 export type { CapacityProps } from "./capacity";
 export { Capacity } from "./capacity";
@@ -13,6 +15,11 @@ export type { CheckboxProps } from "./checkbox";
 export { Checkbox } from "./checkbox";
 export type { ChipProps } from "./chip";
 export { Chip } from "./chip";
+export type {
+  CommandPaletteItem,
+  CommandPaletteProps,
+} from "./command-palette";
+export { CommandPalette, filterCommandItems } from "./command-palette";
 export type { DataCardRow, DataCardTableProps } from "./data-card-table";
 export { DataCardTable } from "./data-card-table";
 export type { DialogProps } from "./dialog";
@@ -29,6 +36,8 @@ export type { KVItem, KVListProps, KVRowProps, KVTone } from "./kv";
 export { KVList, KVRow } from "./kv";
 export type { LadderPip, LadderProps } from "./ladder";
 export { Ladder } from "./ladder";
+export type { PaginationPage, PaginationProps } from "./pagination";
+export { Pagination, paginationRange } from "./pagination";
 export type { PopoverProps } from "./popover";
 export { Popover } from "./popover";
 export type { PresenceProps, PresenceStatus } from "./presence";
@@ -55,6 +64,8 @@ export type { StatusPillProps, StatusTone } from "./status-pill";
 export { StatusPill, statusPillVariants } from "./status-pill";
 export type { StepperProps } from "./stepper";
 export { Stepper } from "./stepper";
+export type { StepItem, StepStatus, StepsProps } from "./steps";
+export { Steps } from "./steps";
 export type { SwitchProps } from "./switch";
 export { Switch } from "./switch";
 export type {
@@ -65,6 +76,8 @@ export type {
   SortDirection,
 } from "./table";
 export { DataTable, nextSort, SignedValue } from "./table";
+export type { TabItem, TabLinkItem, TabLinksProps, TabsProps } from "./tabs";
+export { TabLinks, Tabs } from "./tabs";
 export type { TagProps } from "./tag";
 export { Tag } from "./tag";
 export type { TextareaProps } from "./textarea";

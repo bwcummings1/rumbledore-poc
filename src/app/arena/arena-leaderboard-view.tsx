@@ -26,6 +26,7 @@ import type { DataCardRow } from "@/components/ui/data-card-table";
 import { Edge, type EdgeTone } from "@/components/ui/edge";
 import { type KVItem, KVList, type KVTone } from "@/components/ui/kv";
 import { Ladder } from "@/components/ui/ladder";
+import { Pagination } from "@/components/ui/pagination";
 import { Presence } from "@/components/ui/presence";
 import { Progress } from "@/components/ui/progress";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -248,6 +249,21 @@ function SeasonStrip({
   seasons: ArenaSeasonSummary[];
 }) {
   if (seasons.length === 0) return null;
+  const selectedIndex = Math.max(
+    seasons.findIndex((season) => season.isSelected),
+    0,
+  );
+  const selectedSeason = seasons[selectedIndex] ?? seasons[0];
+  const pages = seasons.map((season, index) => ({
+    ariaLabel: `${season.name} ${seasonStatusLabel(season.status)}`,
+    href: arenaHref({
+      leagueId,
+      rivalLeagueId,
+      seasonId: season.id,
+    }),
+    label: season.name,
+    page: index + 1,
+  }));
 
   return (
     <section aria-label="Arena seasons" className="grid gap-2">
@@ -259,39 +275,28 @@ function SeasonStrip({
           value={seasons.length}
         />
       </div>
-      <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Seasons">
-        {seasons.map((season) => (
-          <Link
-            aria-current={season.isSelected ? "page" : undefined}
-            className={cn(
-              buttonVariants({
-                className:
-                  "min-w-36 shrink-0 justify-start px-3 text-left sm:min-w-44",
-                size: "sm",
-                variant: season.isSelected ? "default" : "outline",
-              }),
-            )}
-            href={arenaHref({
-              leagueId,
-              rivalLeagueId,
-              seasonId: season.id,
-            })}
-            key={season.id}
-          >
-            <span className="min-w-0">
-              <span className="block truncate">{season.name}</span>
-              <span className="mt-1 flex items-center gap-2 text-xs opacity-80">
-                <StatusPill tone={seasonStatusTone(season.status)}>
-                  {seasonStatusLabel(season.status)}
-                </StatusPill>
-                <span className="truncate">
-                  {formatDate(season.startsAt)}-{formatDate(season.endsAt)}
-                </span>
-              </span>
-            </span>
-          </Link>
-        ))}
-      </nav>
+      {selectedSeason ? (
+        <div className="cell flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">
+              {selectedSeason.name}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatDate(selectedSeason.startsAt)}-
+              {formatDate(selectedSeason.endsAt)}
+            </p>
+          </div>
+          <StatusPill tone={seasonStatusTone(selectedSeason.status)}>
+            {seasonStatusLabel(selectedSeason.status)}
+          </StatusPill>
+        </div>
+      ) : null}
+      <Pagination
+        aria-label="Seasons"
+        currentPage={selectedIndex + 1}
+        mobileSelectLabel="Jump to arena season"
+        pages={pages}
+      />
     </section>
   );
 }

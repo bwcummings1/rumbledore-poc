@@ -5,6 +5,7 @@ import {
   PublicationStoryCard,
 } from "@/components/publication/story-card";
 import { buttonVariants } from "@/components/ui/button";
+import { TabLinks } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { LeagueFeedData, LeagueFeedItem } from "@/news";
 import { buildPublicationFront } from "@/news/front";
@@ -120,42 +121,21 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
               {data.userRole.replace("_", " ")}
             </p>
           </div>
-          <nav aria-label="Press sections" className="flex flex-wrap gap-2">
-            <Link
-              href={`/leagues/${data.league.id}/press`}
-              aria-current={data.activeSection ? undefined : "page"}
-              className={cn(
-                buttonVariants({
-                  className: "w-fit",
-                  size: "sm",
-                  variant: data.activeSection ? "outline" : "default",
-                }),
-              )}
-            >
-              Front
-            </Link>
-            {data.sections.map((section) => (
-              <Link
-                key={section.id}
-                href={`/leagues/${data.league.id}/press/${section.slug}`}
-                aria-current={
-                  data.activeSection?.id === section.id ? "page" : undefined
-                }
-                className={cn(
-                  buttonVariants({
-                    className: "w-fit",
-                    size: "sm",
-                    variant:
-                      data.activeSection?.id === section.id
-                        ? "default"
-                        : "outline",
-                  }),
-                )}
-              >
-                {section.label}
-              </Link>
-            ))}
-          </nav>
+          <TabLinks
+            ariaLabel="Press sections"
+            items={[
+              {
+                active: !data.activeSection,
+                href: `/leagues/${data.league.id}/press`,
+                label: "Front",
+              },
+              ...data.sections.map((section) => ({
+                active: data.activeSection?.id === section.id,
+                href: `/leagues/${data.league.id}/press/${section.slug}`,
+                label: section.label,
+              })),
+            ]}
+          />
         </div>
       </header>
 
