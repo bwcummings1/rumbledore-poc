@@ -76,6 +76,12 @@ describe("reduced-motion theme tokens", () => {
     expect(globalsCss).toContain(
       "--duration-slow: var(--motion-duration-slow);",
     );
+    expect(globalsCss).toContain(
+      "--default-transition-duration: var(--motion-duration-fast);",
+    );
+    expect(globalsCss).toContain(
+      "--default-transition-timing-function: var(--motion-ease-out);",
+    );
   });
 });
 

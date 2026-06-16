@@ -141,7 +141,7 @@ function EmptyLeaguesLanding() {
 
 function ProviderBadge({ label }: { label: string }) {
   return (
-    <span className="inline-flex rounded-sm border border-border px-1.5 py-0.5 text-[0.75rem] leading-none text-muted-foreground">
+    <span className="inline-flex rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground">
       {label}
     </span>
   );
@@ -209,7 +209,7 @@ function MatchupPanel({ matchup }: { matchup: YourLeagueMatchup | null }) {
         </p>
         <span
           className={cn(
-            "rounded-sm border border-border px-1.5 py-0.5 text-[0.75rem] leading-none text-muted-foreground",
+            "rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground",
             matchup.status === "in_progress" &&
               "border-primary/40 text-primary",
           )}

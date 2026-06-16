@@ -187,7 +187,7 @@ export function NavigationShellView({
 
       <div
         className={cn(
-          "min-h-dvh pt-14 pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-200 ease-out md:pt-0 md:pb-0",
+          "min-h-dvh pt-14 pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-base ease-out md:pt-0 md:pb-0",
           sidebarCollapsed ? "md:pl-[4.5rem]" : "md:pl-72",
         )}
       >
@@ -364,7 +364,7 @@ function MobileTopBar({
             {scopeDisplayName(activeState, activeLeague)}
           </span>
           {activeLeague ? (
-            <span className="mt-0.5 inline-flex rounded-sm border border-border px-1.5 py-0.5 text-[0.75rem] leading-none text-muted-foreground">
+            <span className="mt-0.5 inline-flex rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground">
               {activeLeague.providerLabel}
             </span>
           ) : null}

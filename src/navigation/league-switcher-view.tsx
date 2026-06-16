@@ -205,7 +205,7 @@ function LeagueSwitcherRow({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{item.name}</span>
-        <span className="mt-1 inline-flex rounded-sm border border-border px-1.5 py-0.5 text-[0.75rem] leading-none text-muted-foreground">
+        <span className="mt-1 inline-flex rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground">
           {item.providerLabel}
         </span>
       </span>

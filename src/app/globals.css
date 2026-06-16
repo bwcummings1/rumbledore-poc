@@ -97,6 +97,8 @@ html {
   --duration-base: var(--motion-duration-base);
   --duration-slow: var(--motion-duration-slow);
   --ease-out: var(--motion-ease-out);
+  --default-transition-duration: var(--motion-duration-fast);
+  --default-transition-timing-function: var(--motion-ease-out);
 }
 
 /* Safe-area utilities (viewport-fit=cover draws edge-to-edge; DESIGN.md mobile-first).

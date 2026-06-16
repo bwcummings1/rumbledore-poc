@@ -178,7 +178,7 @@ function StandingsRow({ row }: { row: LeagueHomeStanding }) {
           <p className="truncate font-medium">
             {row.name}
             {row.isClaimedByUser ? (
-              <span className="ml-2 rounded-control border border-primary/40 px-1.5 py-0.5 align-middle text-[0.65rem] font-semibold text-primary">
+              <span className="ml-2 rounded-control border border-primary/40 px-1.5 py-0.5 align-middle text-xs font-semibold text-primary">
                 You
               </span>
             ) : null}
