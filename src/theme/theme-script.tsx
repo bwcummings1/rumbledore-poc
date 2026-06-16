@@ -13,7 +13,7 @@ import {
 import type { ThemeMode } from "./types";
 
 const MODE_THEME_IDS = {
-  dark: "neutral-dark",
+  dark: "auspex",
   light: "neutral-light",
 } as const satisfies Record<ThemeMode, RegisteredThemeId>;
 

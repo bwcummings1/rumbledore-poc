@@ -1,3 +1,4 @@
+import { auspexTheme } from "./themes/auspex";
 import { neutralDarkTheme } from "./themes/neutral-dark";
 import { neutralLightTheme } from "./themes/neutral-light";
 import { paletteATheme } from "./themes/palette-a";
@@ -8,7 +9,7 @@ import {
   type ThemeDefinition,
 } from "./types";
 
-export const DEFAULT_THEME_ID = neutralDarkTheme.id;
+export const DEFAULT_THEME_ID = auspexTheme.id;
 export const REDUCED_MOTION_DURATION_MS = 1;
 export const REDUCED_MOTION_DURATION_TOKENS = [
   "duration-fast",
@@ -37,6 +38,7 @@ export const REDUCED_MOTION_CSS_VARIABLE_NAMES = [
 ] as const satisfies readonly MotionTokenName[];
 
 export const REGISTERED_THEMES = [
+  auspexTheme,
   neutralDarkTheme,
   neutralLightTheme,
   paletteATheme,
@@ -67,7 +69,7 @@ export function coerceThemeId(
 }
 
 export function getDefaultTheme(): ThemeDefinition {
-  return neutralDarkTheme;
+  return auspexTheme;
 }
 
 export function getThemeCssVariables(
@@ -84,12 +86,22 @@ export function getThemeCssVariables(
   };
 }
 
+export function getThemeExtensionCssVariables(
+  theme: ThemeDefinition,
+): Record<string, string> {
+  return theme.extensionVariables ?? {};
+}
+
 export function createThemeCss(
   themes: readonly ThemeDefinition[] = REGISTERED_THEMES,
 ): string {
   return [
     "/* Rumbledore theme tokens: generated from src/theme/registry.ts. */",
-    ...themes.map(formatThemeBlock),
+    ...themes.flatMap((theme) =>
+      [formatThemeBlock(theme), formatThemeExtensionBlock(theme)].filter(
+        Boolean,
+      ),
+    ),
     formatReducedMotionBlock(),
   ].join("\n\n");
 }
@@ -108,6 +120,19 @@ function formatThemeBlock(theme: ThemeDefinition): string {
   ];
 
   return `${selector} {\n${lines.join("\n")}\n}`;
+}
+
+function formatThemeExtensionBlock(theme: ThemeDefinition): string {
+  const variables = getThemeExtensionCssVariables(theme);
+  const names = Object.keys(variables).sort();
+
+  if (names.length === 0) {
+    return "";
+  }
+
+  const lines = names.map((name) => `  --${name}: ${variables[name]};`);
+
+  return `[data-theme="${theme.id}"] {\n${lines.join("\n")}\n}`;
 }
 
 export function getReducedMotionCssVariables(): Record<string, string> {

@@ -114,6 +114,47 @@ export const MOTION_TOKEN_NAMES = [
   "motion-ease-out",
 ] as const;
 
+export const THEME_EXTENSION_TOKEN_NAMES = [
+  "void",
+  "void-2",
+  "void-3",
+  "hull",
+  "hull-2",
+  "hull-3",
+  "panel",
+  "panel-2",
+  "panel-solid",
+  "hair",
+  "hair-2",
+  "hair-3",
+  "line",
+  "line-2",
+  "ink",
+  "ink-2",
+  "ink-3",
+  "ink-4",
+  "lilac",
+  "lilac-hi",
+  "lilac-deep",
+  "amber",
+  "amber-deep",
+  "steel",
+  "steel-soft",
+  "jade",
+  "coral",
+  "coral-deep",
+  "glow-lilac",
+  "glow-amber",
+  "bevel",
+  "r-sm",
+  "r-md",
+  "r-lg",
+  "disp",
+  "head",
+  "mono",
+  "body",
+] as const;
+
 export const THEME_TOKEN_CATEGORIES = {
   colorPrimitives: COLOR_PRIMITIVE_TOKEN_NAMES,
   colorAliases: COLOR_ALIAS_TOKEN_NAMES,
@@ -142,6 +183,8 @@ export type SpaceTokenName = (typeof SPACE_TOKEN_NAMES)[number];
 export type RadiusTokenName = (typeof RADIUS_TOKEN_NAMES)[number];
 export type ElevationTokenName = (typeof ELEVATION_TOKEN_NAMES)[number];
 export type MotionTokenName = (typeof MOTION_TOKEN_NAMES)[number];
+export type ThemeExtensionTokenName =
+  (typeof THEME_EXTENSION_TOKEN_NAMES)[number];
 export type ThemeCssVariableName = (typeof THEME_CSS_VARIABLE_NAMES)[number];
 export type ThemeMode = "dark" | "light";
 
@@ -157,4 +200,5 @@ export interface ThemeDefinition {
   readonly radius: Record<RadiusTokenName, string>;
   readonly elevation: Record<ElevationTokenName, string>;
   readonly motion: Record<MotionTokenName, string>;
+  readonly extensionVariables?: Record<ThemeExtensionTokenName, string>;
 }

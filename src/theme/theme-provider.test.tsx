@@ -31,17 +31,15 @@ afterEach(() => {
 describe("ThemeProvider", () => {
   it("applies the initial theme to the document and exposes registered themes", async () => {
     render(
-      <ThemeProvider initialThemeId="neutral-dark">
+      <ThemeProvider initialThemeId="auspex">
         <ThemeProbe />
       </ThemeProvider>,
     );
 
-    expect(screen.getByTestId("theme-state").textContent).toBe(
-      "neutral-dark:dark:4",
-    );
+    expect(screen.getByTestId("theme-state").textContent).toBe("auspex:dark:5");
     await waitFor(() => {
       expect(document.documentElement.getAttribute("data-theme")).toBe(
-        "neutral-dark",
+        "auspex",
       );
     });
     expect(document.documentElement.classList.contains("dark")).toBe(true);
@@ -63,7 +61,7 @@ describe("ThemeProvider", () => {
       );
     });
     expect(screen.getByTestId("theme-state").textContent).toBe(
-      "neutral-light:light:4",
+      "neutral-light:light:5",
     );
     expect(document.documentElement.classList.contains("light")).toBe(true);
     expect(document.documentElement.classList.contains("dark")).toBe(false);
@@ -85,12 +83,10 @@ describe("ThemeProvider", () => {
 
     await waitFor(() => {
       expect(document.documentElement.getAttribute("data-theme")).toBe(
-        "neutral-dark",
+        "auspex",
       );
     });
-    expect(screen.getByTestId("theme-state").textContent).toBe(
-      "neutral-dark:dark:4",
-    );
+    expect(screen.getByTestId("theme-state").textContent).toBe("auspex:dark:5");
   });
 
   it("hydrates from the pre-painted document theme when it differs from the server prop", () => {
@@ -103,7 +99,7 @@ describe("ThemeProvider", () => {
     );
 
     expect(screen.getByTestId("theme-state").textContent).toBe(
-      "palette-a:dark:4",
+      "palette-a:dark:5",
     );
   });
 });
@@ -112,7 +108,7 @@ describe("theme preload script", () => {
   it("resolves a persisted registered theme before React hydrates", () => {
     expect(
       resolveThemePreloadState({
-        initialThemeId: "neutral-dark",
+        initialThemeId: "auspex",
         storedTheme: "neutral-light",
       }),
     ).toEqual({
@@ -125,7 +121,7 @@ describe("theme preload script", () => {
   it("can resolve a system preference to the matching registered mode theme", () => {
     expect(
       resolveThemePreloadState({
-        initialThemeId: "neutral-dark",
+        initialThemeId: "auspex",
         prefersLight: true,
         storedTheme: THEME_SYSTEM_STORAGE_VALUE,
       }),
@@ -141,6 +137,7 @@ describe("theme preload script", () => {
 
     expect(script).toContain('root.setAttribute("data-theme", themeId)');
     expect(script).toContain('"palette-b"');
+    expect(script).toContain('"auspex"');
     expect(script).toContain(THEME_STORAGE_KEY);
     expect(script).toContain(THEME_COOKIE_NAME);
   });

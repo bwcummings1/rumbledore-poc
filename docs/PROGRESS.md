@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 4 theming Scope completed** with token-contract enforcement across app/components/navigation.
+Keep it current. Last updated: 2026-06-16 — **Phase 5 AUSPEX theme registration landed** as the default active token set.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX theme registration landed — canonical AUSPEX raw tokens now populate the Phase 4 theme framework, `auspex` is the default active theme, neutral-dark remains selectable as fallback, and the contrast gate audits the new hex palette.
 - 2026-06-16: Component token migration landed — shared UI, app badges, and navigation shell literals now resolve through token utilities, default transitions route through motion tokens, and a token-contract test blocks raw component color/font/radius/duration literals.
 - 2026-06-16: Token accessibility gates landed — registered themes now run WCAG contrast checks over semantic foreground/background pairs, prove bad palettes fail, and verify reduced-motion CSS collapses all motion duration tokens.
 - 2026-06-16: ThemeProvider swap landed — registered neutral-light plus palette-a/palette-b slots now cascade through `data-theme`, with SSR cookie resolution, a pre-paint theme script, and persisted runtime switching.

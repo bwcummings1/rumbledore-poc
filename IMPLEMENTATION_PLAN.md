@@ -13,7 +13,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 ## Scope — Phase 5 (build in dependency order)
 
 ### S. Design foundations (see specs/28)
-- [ ] Register the AUSPEX theme in the design-token framework with the full ported token set. (specs/28)
+- [x] Register the AUSPEX theme in the design-token framework with the full ported token set. (specs/28)
 - [ ] Implement the typography system (Michroma/Saira/JetBrains Mono/Inter, scales, gradient-clip headings, LCD numerics, prose scale). (specs/28)
 - [ ] Implement the atmosphere layers (starfield/scanline/grain/vignette), perf-safe and reduced-motion-aware. (specs/28)
 - [ ] Implement the signature primitives: the AI orb, the Y2K bezel, and the glass panel/surface system. (specs/28)
@@ -59,4 +59,4 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [ ] (loop appends discovered bugs/improvements here during Phase 5)
 
 ## Discoveries / bugs (loop appends here)
-- (none yet this phase)
+- [ ] Spec/tuning follow-up: canonical `lilac-deep` computes below 4.5:1 on `hull`/`hull-2`, so keep it UI/fill-grade unless a later AUSPEX tuning pass adjusts the value.

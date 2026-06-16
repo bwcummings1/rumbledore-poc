@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { getThemeCssVariables, REGISTERED_THEMES } from "./registry";
+import {
+  getThemeCssVariables,
+  getThemeExtensionCssVariables,
+  REGISTERED_THEMES,
+} from "./registry";
+import { auspexTheme } from "./themes/auspex";
 import { neutralDarkTheme } from "./themes/neutral-dark";
 import type { ColorAliasTokenName, ThemeDefinition } from "./types";
 
@@ -18,6 +23,12 @@ type OklchColor = {
   readonly lightness: number;
   readonly chroma: number;
   readonly hueDegrees: number;
+};
+
+type LinearSrgbColor = {
+  readonly red: number;
+  readonly green: number;
+  readonly blue: number;
 };
 
 type ContrastViolation = {
@@ -135,6 +146,75 @@ describe("theme token contrast", () => {
   });
 });
 
+describe("AUSPEX audited contrast pairs", () => {
+  it("keeps ink and secondary ink readable on AUSPEX surfaces", () => {
+    for (const foreground of ["ink", "ink-2"] as const) {
+      for (const background of ["void", "hull", "hull-2"] as const) {
+        expect(
+          contrastByVariableName(foreground, background),
+          `${foreground} on ${background}`,
+        ).toBeGreaterThanOrEqual(BODY_TEXT_RATIO);
+      }
+    }
+  });
+
+  it("keeps tertiary ink large/UI-only and excludes decorative ink from text", () => {
+    const tertiaryRatio = contrastByVariableName("ink-3", "hull-2");
+
+    expect(tertiaryRatio).toBeGreaterThanOrEqual(UI_TEXT_RATIO);
+    expect(tertiaryRatio).toBeLessThan(BODY_TEXT_RATIO);
+    expect(contrastByVariableName("ink-4", "void")).toBeLessThan(UI_TEXT_RATIO);
+  });
+
+  it("keeps AUSPEX light accents readable as text on dark surfaces", () => {
+    for (const foreground of [
+      "lilac",
+      "lilac-hi",
+      "amber",
+      "amber-deep",
+      "steel",
+      "steel-soft",
+      "jade",
+      "coral",
+      "coral-deep",
+    ] as const) {
+      expect(
+        contrastByVariableName(foreground, "hull-2"),
+        `${foreground} on hull-2`,
+      ).toBeGreaterThanOrEqual(BODY_TEXT_RATIO);
+    }
+
+    expect(contrastByVariableName("lilac-deep", "void")).toBeGreaterThanOrEqual(
+      BODY_TEXT_RATIO,
+    );
+    for (const background of ["hull", "hull-2"] as const) {
+      const ratio = contrastByVariableName("lilac-deep", background);
+
+      expect(ratio, `lilac-deep on ${background}`).toBeGreaterThanOrEqual(
+        UI_TEXT_RATIO,
+      );
+      expect(ratio, `lilac-deep on ${background}`).toBeLessThan(
+        BODY_TEXT_RATIO,
+      );
+    }
+  });
+
+  it("uses void foreground on filled light accent controls", () => {
+    for (const background of [
+      "lilac",
+      "amber",
+      "steel-soft",
+      "jade",
+      "coral",
+    ] as const) {
+      expect(
+        contrastByVariableName("void", background),
+        `void on ${background}`,
+      ).toBeGreaterThanOrEqual(BODY_TEXT_RATIO);
+    }
+  });
+});
+
 function stateSignalPairs(
   foreground: "highlight" | "negative" | "positive" | "warning",
 ): readonly ContrastPair[] {
@@ -149,13 +229,13 @@ function stateSignalPairs(
 function findContrastViolations(
   theme: ThemeDefinition,
 ): readonly ContrastViolation[] {
-  const variables = getThemeCssVariables(theme);
+  const variables = getContrastVariables(theme);
 
   return CONTRAST_PAIRS.flatMap((pair) => {
-    const foreground = parseOklch(
+    const foreground = parseCssColor(
       resolveCssVariable(`var(--${pair.foreground})`, variables),
     );
-    const background = parseOklch(
+    const background = parseCssColor(
       resolveCssVariable(`var(--${pair.background})`, variables),
     );
     const ratio = contrastRatio(foreground, background);
@@ -191,6 +271,28 @@ function formatViolations(violations: readonly ContrastViolation[]): string {
     .join("\n");
 }
 
+function contrastByVariableName(
+  foregroundName: string,
+  backgroundName: string,
+): number {
+  const variables = getContrastVariables(auspexTheme);
+  const foreground = parseCssColor(
+    resolveCssVariable(`var(--${foregroundName})`, variables),
+  );
+  const background = parseCssColor(
+    resolveCssVariable(`var(--${backgroundName})`, variables),
+  );
+
+  return contrastRatio(foreground, background);
+}
+
+function getContrastVariables(theme: ThemeDefinition): Record<string, string> {
+  return {
+    ...getThemeExtensionCssVariables(theme),
+    ...getThemeCssVariables(theme),
+  };
+}
+
 function resolveCssVariable(
   value: string,
   variables: Record<string, string>,
@@ -220,6 +322,24 @@ function resolveCssVariable(
   );
 }
 
+function parseCssColor(value: string): LinearSrgbColor {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("#")) {
+    return parseHexColor(trimmed);
+  }
+
+  if (/^rgba?\(/u.test(trimmed)) {
+    return parseRgbColor(trimmed);
+  }
+
+  if (/^oklch\(/u.test(trimmed)) {
+    return oklchToLinearSrgb(parseOklch(trimmed));
+  }
+
+  throw new Error(`Expected resolved CSS color, received "${value}"`);
+}
+
 function parseOklch(value: string): OklchColor {
   const match =
     /^oklch\(\s*([0-9.]+%?)\s+([0-9.]+)\s+([0-9.]+)(?:deg)?(?:\s*\/\s*[0-9.]+%?)?\s*\)$/.exec(
@@ -241,7 +361,48 @@ function parseOklch(value: string): OklchColor {
   };
 }
 
-function contrastRatio(foreground: OklchColor, background: OklchColor): number {
+function parseHexColor(value: string): LinearSrgbColor {
+  const hex = value.slice(1);
+  const normalized =
+    hex.length === 3 || hex.length === 4
+      ? [...hex.slice(0, 3)].map((digit) => digit + digit).join("")
+      : hex.slice(0, 6);
+
+  if (!/^[0-9a-fA-F]{6}$/u.test(normalized)) {
+    throw new Error(`Unsupported hex color "${value}"`);
+  }
+
+  return {
+    red: srgbChannelToLinear(Number.parseInt(normalized.slice(0, 2), 16) / 255),
+    green: srgbChannelToLinear(
+      Number.parseInt(normalized.slice(2, 4), 16) / 255,
+    ),
+    blue: srgbChannelToLinear(
+      Number.parseInt(normalized.slice(4, 6), 16) / 255,
+    ),
+  };
+}
+
+function parseRgbColor(value: string): LinearSrgbColor {
+  const match = /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)/u.exec(
+    value,
+  );
+
+  if (!match) {
+    throw new Error(`Unsupported rgb color "${value}"`);
+  }
+
+  return {
+    red: srgbChannelToLinear(Number.parseFloat(match[1]) / 255),
+    green: srgbChannelToLinear(Number.parseFloat(match[2]) / 255),
+    blue: srgbChannelToLinear(Number.parseFloat(match[3]) / 255),
+  };
+}
+
+function contrastRatio(
+  foreground: LinearSrgbColor,
+  background: LinearSrgbColor,
+): number {
   const foregroundLuminance = relativeLuminance(foreground);
   const backgroundLuminance = relativeLuminance(background);
   const lighter = Math.max(foregroundLuminance, backgroundLuminance);
@@ -250,10 +411,8 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-function relativeLuminance(color: OklchColor): number {
-  const { red, green, blue } = oklchToLinearSrgb(color);
-
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+function relativeLuminance(color: LinearSrgbColor): number {
+  return 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue;
 }
 
 function oklchToLinearSrgb(color: OklchColor): {
@@ -278,6 +437,10 @@ function oklchToLinearSrgb(color: OklchColor): {
     green: clamp01(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
     blue: clamp01(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
   };
+}
+
+function srgbChannelToLinear(value: number): number {
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
 }
 
 function clamp01(value: number): number {
