@@ -10,7 +10,9 @@ html {
 
 @theme inline {
   --font-heading: var(--font-family-heading);
+  --font-display: var(--font-family-display);
   --font-sans: var(--font-family-sans);
+  --font-body: var(--font-family-body);
   --font-mono: var(--font-family-mono);
   --font-editorial: var(--font-family-editorial);
 
@@ -27,6 +29,8 @@ html {
   --text-xl--line-height: var(--type-line-xl);
   --text-2xl: var(--type-size-2xl);
   --text-2xl--line-height: var(--type-line-2xl);
+  --text-3xl: var(--type-size-3xl);
+  --text-3xl--line-height: var(--type-line-3xl);
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -116,6 +120,100 @@ html {
   padding-right: env(safe-area-inset-right);
 }
 
+@utility heading-auspex {
+  font-family: var(--font-family-heading);
+  letter-spacing: var(--heading-letter-spacing);
+  text-transform: uppercase;
+}
+
+@utility display-xl {
+  font-family: var(--font-family-display);
+  font-size: var(--type-size-3xl);
+  font-weight: 700;
+  letter-spacing: var(--display-letter-spacing);
+  line-height: var(--type-line-3xl);
+  text-transform: uppercase;
+}
+
+@utility display-l {
+  font-family: var(--font-family-display);
+  font-size: var(--type-size-2xl);
+  font-weight: 700;
+  letter-spacing: var(--display-letter-spacing);
+  line-height: var(--type-line-2xl);
+  text-transform: uppercase;
+}
+
+@utility eyebrow {
+  color: var(--muted-foreground);
+  font-family: var(--font-family-display);
+  font-size: var(--type-size-xs);
+  font-weight: 700;
+  letter-spacing: var(--eyebrow-letter-spacing);
+  line-height: var(--type-line-xs);
+  text-transform: uppercase;
+}
+
+@utility h-grad {
+  color: var(--foreground);
+}
+
+@utility num {
+  font-feature-settings:
+    "tnum" 1,
+    "zero" 1;
+  font-variant-numeric: var(--numeric-figure-spacing);
+}
+
+@utility metric {
+  font-family: var(--font-family-mono);
+  font-feature-settings:
+    "tnum" 1,
+    "zero" 1;
+  font-variant-numeric: var(--numeric-figure-spacing);
+}
+
+@utility lcd {
+  color: var(--warning);
+  font-family: var(--font-family-mono);
+  font-feature-settings:
+    "tnum" 1,
+    "zero" 1;
+  font-variant-numeric: var(--numeric-figure-spacing);
+  text-shadow: var(--lcd-value-shadow);
+}
+
+@utility lcd-live {
+  color: var(--highlight);
+  text-shadow: var(--lcd-live-shadow);
+}
+
+@utility kbd {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  display: inline-flex;
+  font-family: var(--font-family-mono);
+  font-feature-settings:
+    "tnum" 1,
+    "zero" 1;
+  font-size: var(--type-size-xs);
+  font-variant-numeric: var(--numeric-figure-spacing);
+  font-weight: 600;
+  line-height: var(--type-line-xs);
+  min-height: var(--space-6);
+  padding-inline: var(--space-2);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .h-grad {
+    -webkit-background-clip: text;
+    background-clip: text;
+    background-image: var(--heading-clip-fill);
+    color: transparent;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -128,5 +226,65 @@ html {
   }
   html {
     @apply font-sans;
+  }
+
+  .prose-auspex {
+    color: var(--foreground);
+    font-family: var(--font-family-body);
+    font-size: var(--prose-size);
+    line-height: var(--prose-line);
+    max-width: var(--prose-measure);
+  }
+
+  .prose-auspex :where(p) {
+    margin-block: 0 var(--prose-paragraph-spacing);
+  }
+
+  .prose-auspex :where(h1) {
+    font-family: var(--font-family-heading);
+    font-size: var(--type-size-3xl);
+    letter-spacing: var(--heading-letter-spacing);
+    line-height: var(--type-line-3xl);
+    margin-block: var(--space-8) var(--space-4);
+    text-transform: uppercase;
+  }
+
+  .prose-auspex :where(h2, h3) {
+    font-family: var(--font-family-display);
+    letter-spacing: var(--display-letter-spacing);
+    line-height: var(--type-line-xl);
+    margin-block: var(--space-6) var(--space-3);
+    text-transform: uppercase;
+  }
+
+  .prose-auspex :where(h2) {
+    font-size: var(--type-size-xl);
+  }
+
+  .prose-auspex :where(h3) {
+    font-size: var(--type-size-lg);
+  }
+
+  .prose-auspex :where(blockquote) {
+    color: var(--muted-foreground);
+    font-size: var(--prose-pullquote-size);
+    font-style: italic;
+    line-height: var(--type-line-lg);
+    margin-block: var(--space-6);
+  }
+
+  .prose-auspex :where(a) {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: var(--space-1);
+  }
+}
+
+@media (min-width: 768px) {
+  .prose-auspex {
+    font-size: var(--prose-size-wide);
+    line-height: var(--prose-line-wide);
   }
 }

@@ -56,7 +56,9 @@ export const COLOR_ALIAS_TOKEN_NAMES = [
 
 export const TYPE_TOKEN_NAMES = [
   "font-family-heading",
+  "font-family-display",
   "font-family-sans",
+  "font-family-body",
   "font-family-mono",
   "font-family-editorial",
   "type-size-xs",
@@ -71,7 +73,25 @@ export const TYPE_TOKEN_NAMES = [
   "type-line-xl",
   "type-size-2xl",
   "type-line-2xl",
+  "type-size-3xl",
+  "type-line-3xl",
+  "type-size-xl-mobile",
+  "type-size-2xl-mobile",
+  "type-size-3xl-mobile",
   "numeric-figure-spacing",
+  "heading-letter-spacing",
+  "display-letter-spacing",
+  "eyebrow-letter-spacing",
+  "heading-clip-fill",
+  "prose-size",
+  "prose-size-wide",
+  "prose-line",
+  "prose-line-wide",
+  "prose-measure",
+  "prose-paragraph-spacing",
+  "prose-pullquote-size",
+  "lcd-value-shadow",
+  "lcd-live-shadow",
 ] as const;
 
 export const SPACE_TOKEN_NAMES = [

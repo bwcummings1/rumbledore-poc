@@ -7,6 +7,7 @@ import {
   type MotionTokenName,
   THEME_CSS_VARIABLE_NAMES,
   type ThemeDefinition,
+  type TypeTokenName,
 } from "./types";
 
 export const DEFAULT_THEME_ID = auspexTheme.id;
@@ -44,6 +45,12 @@ export const REGISTERED_THEMES = [
   paletteATheme,
   paletteBTheme,
 ] as const;
+
+export const RESPONSIVE_TYPE_SIZE_OVERRIDES = {
+  "type-size-xl": "type-size-xl-mobile",
+  "type-size-2xl": "type-size-2xl-mobile",
+  "type-size-3xl": "type-size-3xl-mobile",
+} as const satisfies Partial<Record<TypeTokenName, TypeTokenName>>;
 
 export type RegisteredTheme = (typeof REGISTERED_THEMES)[number];
 export type RegisteredThemeId = RegisteredTheme["id"];
@@ -102,6 +109,7 @@ export function createThemeCss(
         Boolean,
       ),
     ),
+    formatResponsiveTypeBlock(),
     formatReducedMotionBlock(),
   ].join("\n\n");
 }
@@ -158,6 +166,19 @@ function formatReducedMotionBlock(): string {
     "  :root {",
     ...REDUCED_MOTION_CSS_VARIABLE_NAMES.map(
       (name) => `    --${name}: ${variables[name]};`,
+    ),
+    "  }",
+    "}",
+  ].join("\n");
+}
+
+function formatResponsiveTypeBlock(): string {
+  return [
+    "@media (max-width: 639px) {",
+    "  :root {",
+    ...Object.entries(RESPONSIVE_TYPE_SIZE_OVERRIDES).map(
+      ([tokenName, mobileTokenName]) =>
+        `    --${tokenName}: var(--${mobileTokenName});`,
     ),
     "  }",
     "}",

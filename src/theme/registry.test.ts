@@ -60,6 +60,12 @@ describe("theme registry", () => {
     expect(getThemeExtensionCssVariables(auspex).bevel).toContain(
       "inset 0 1px 0",
     );
+    expect(getThemeExtensionCssVariables(auspex).head).toContain(
+      "--font-michroma",
+    );
+    expect(getThemeExtensionCssVariables(auspex).disp).toContain(
+      "--font-saira",
+    );
     expect(getThemeExtensionCssVariables(neutralDark)).toEqual({});
   });
 
@@ -77,6 +83,16 @@ describe("theme registry", () => {
     expect(css).toContain("--panel: rgba(20,22,34,.62);");
     expect(css).toContain("--bevel: inset 0 1px 0");
     expect(css).toContain("--background: var(--void);");
+    expect(css).toContain("--font-family-heading: var(--head);");
+    expect(css).toContain("--font-family-display: var(--disp);");
+    expect(css).toContain("--font-family-body: var(--body);");
+    expect(css).toContain("--type-size-3xl: 3.25rem;");
+    expect(css).toContain("--prose-measure: 70ch;");
+    expect(css).toContain(
+      "--heading-clip-fill: linear-gradient(180deg, var(--foreground), var(--primary));",
+    );
+    expect(css).toContain("@media (max-width: 639px)");
+    expect(css).toContain("--type-size-3xl: var(--type-size-3xl-mobile);");
     expect(css).toContain("--primitive-color-ink-950: oklch(16% 0.01 250);");
     expect(css).toContain("--primitive-color-ink-950: oklch(98% 0.006 250);");
     expect(css).toContain("--duration-fast: 150ms;");
