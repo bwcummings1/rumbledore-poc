@@ -228,7 +228,7 @@ describe("bankroll rollover job", () => {
         }),
       ]),
     );
-  }, 10_000);
+  });
 
   it("does not close an elapsed week while slips are still pending", async () => {
     const opened = await openBankrollWeek(handle.db, {

@@ -41,52 +41,106 @@ function formatPublishedAt(value: string): string {
 function cardClassName(variant: PublicationStoryCardVariant): string {
   switch (variant) {
     case "hero":
-      return "rounded-card border border-border bg-card p-5 sm:p-6";
+      return "panel group/story relative grid gap-4 overflow-hidden p-4 transition motion-safe:hover:-translate-y-0.5 hover:border-[var(--hair-3)] hover:shadow-[0_0_30px_-18px_var(--glow-lilac),var(--glass-shadow),var(--bevel)] motion-reduce:transition-none sm:p-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,.92fr)] lg:items-stretch";
     case "secondary":
-      return "rounded-card border border-border bg-card p-4";
+      return "panel group/story grid gap-3 p-4 transition motion-safe:hover:-translate-y-0.5 hover:border-[var(--hair-3)] hover:shadow-raised motion-reduce:transition-none";
     case "rail":
-      return "rounded-card border border-border bg-card p-3";
+      return "cell group/story grid gap-2 p-3 transition-colors hover:border-[var(--hair-3)] hover:bg-elevated/60";
+    case "compact":
+      return "group/story grid gap-2 border-b border-[var(--hair)] py-3 last:border-b-0";
+    case "inFeed":
+      return "cell group/story grid gap-3 p-3 shadow-[0_0_22px_-18px_var(--glow-lilac),var(--bevel)] transition-colors hover:border-[var(--hair-3)] hover:bg-elevated/60";
     case "river":
-      return "rounded-card border border-border bg-card p-4";
+      return "panel group/story grid gap-3 p-4 transition motion-safe:hover:-translate-y-0.5 hover:border-[var(--hair-3)] hover:shadow-raised motion-reduce:transition-none";
   }
 }
 
 function headlineClassName(variant: PublicationStoryCardVariant): string {
   switch (variant) {
     case "hero":
-      return "text-2xl font-semibold leading-tight sm:text-3xl";
+      return "heading-auspex h-grad line-clamp-4 text-2xl leading-tight sm:text-3xl";
     case "secondary":
-      return "text-lg font-semibold leading-snug";
+      return "heading-auspex h-grad line-clamp-3 text-lg leading-snug";
     case "rail":
-      return "text-sm font-semibold leading-snug";
+      return "line-clamp-2 font-display text-sm font-semibold leading-snug text-foreground";
+    case "compact":
+      return "line-clamp-2 font-display text-sm font-semibold leading-snug text-foreground sm:text-base";
+    case "inFeed":
+      return "line-clamp-2 font-display text-base font-semibold leading-snug text-foreground";
     case "river":
-      return "text-base font-semibold leading-snug";
+      return "line-clamp-2 font-display text-base font-semibold leading-snug text-foreground";
   }
 }
 
 function dekClassName(variant: PublicationStoryCardVariant): string {
   switch (variant) {
     case "hero":
-      return "mt-3 line-clamp-4 text-base leading-7 text-muted-foreground";
+      return "line-clamp-4 text-base leading-7 text-muted-foreground";
     case "secondary":
-      return "mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground";
+      return "line-clamp-3 text-sm leading-6 text-muted-foreground";
     case "rail":
-      return "mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground";
+      return "line-clamp-2 text-xs leading-5 text-muted-foreground";
+    case "compact":
+      return "line-clamp-2 text-xs leading-5 text-muted-foreground";
+    case "inFeed":
+      return "line-clamp-2 text-sm leading-6 text-muted-foreground";
     case "river":
-      return "mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground";
+      return "line-clamp-3 text-sm leading-6 text-muted-foreground";
   }
 }
 
 function thumbnailClassName(variant: PublicationStoryCardVariant): string {
   switch (variant) {
     case "hero":
-      return "mb-4 aspect-[16/9] w-full rounded-control border border-border object-cover";
+      return "aspect-[16/9] w-full rounded-control border border-[var(--hair)] object-cover shadow-[var(--bevel)] lg:h-full";
     case "secondary":
     case "river":
-      return "mb-3 aspect-[16/9] w-full rounded-control border border-border object-cover";
+      return "aspect-[16/9] w-full rounded-control border border-[var(--hair)] object-cover shadow-[var(--bevel)]";
     case "rail":
-      return "mb-3 aspect-[5/3] w-full rounded-control border border-border object-cover";
+      return "aspect-[5/3] w-full rounded-control border border-[var(--hair)] object-cover shadow-[var(--bevel)]";
+    case "compact":
+      return "hidden";
+    case "inFeed":
+      return "aspect-[16/9] w-full rounded-control border border-[var(--hair)] object-cover shadow-[var(--bevel)] sm:hidden";
   }
+}
+
+function showsThumbnail(variant: PublicationStoryCardVariant): boolean {
+  return variant !== "compact";
+}
+
+function Byline({
+  origin,
+  value,
+  variant,
+}: {
+  origin: PublicationStory["origin"];
+  value: string;
+  variant: PublicationStoryCardVariant;
+}) {
+  const isCast = origin === "cast";
+  return (
+    <p
+      className={cn(
+        "flex min-w-0 items-center gap-2 text-muted-foreground",
+        variant === "hero" ? "text-sm" : "text-xs",
+      )}
+    >
+      {isCast ? (
+        <span
+          aria-hidden="true"
+          className={cn("orb", variant === "hero" ? "orb-sm" : "orb-xs")}
+          data-slot="story-card-orb"
+        />
+      ) : null}
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {value}
+      </span>
+      {isCast ? (
+        <span className="eyebrow min-w-fit text-primary">AI cast</span>
+      ) : null}
+    </p>
+  );
 }
 
 export function PublicationStoryCard({
@@ -102,9 +156,10 @@ export function PublicationStoryCard({
   return (
     <article
       className={cardClassName(variant)}
+      data-story-card-origin={story.origin ?? "source"}
       data-story-card-variant={variant}
     >
-      {story.thumbnailUrl ? (
+      {story.thumbnailUrl && showsThumbnail(variant) ? (
         <Image
           src={story.thumbnailUrl}
           alt={story.thumbnailAlt ?? ""}
@@ -114,60 +169,73 @@ export function PublicationStoryCard({
           className={thumbnailClassName(variant)}
         />
       ) : null}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="min-w-0 truncate text-xs font-medium text-primary">
-          {story.sectionTag}
-        </p>
-        <time
-          className="shrink-0 text-xs text-muted-foreground"
-          dateTime={story.publishedAt}
+      <div className="grid min-w-0 gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="eyebrow min-w-0 truncate text-primary">
+            {story.sectionTag}
+          </p>
+          <time
+            className="metric shrink-0 text-xs text-muted-foreground"
+            dateTime={story.publishedAt}
+          >
+            {formatPublishedAt(story.publishedAt)}
+          </time>
+        </div>
+        <h2 className={headlineClassName(variant)}>{story.headline}</h2>
+        <Byline origin={story.origin} value={story.byline} variant={variant} />
+        {story.dek ? (
+          <p className={dekClassName(variant)}>{story.dek}</p>
+        ) : null}
+        {story.relevanceReason ? (
+          <p className="border-l-2 border-primary/70 bg-primary/5 px-3 py-2 text-xs leading-5 text-muted-foreground">
+            {story.relevanceReason}
+          </p>
+        ) : null}
+        {story.thumbnailUrl && variant === "compact" ? (
+          <p className="sr-only">
+            Image available: {story.thumbnailAlt ?? story.headline}
+          </p>
+        ) : null}
+        <div
+          className={cn(
+            "flex flex-wrap gap-2",
+            variant === "compact" && "mt-1",
+          )}
         >
-          {formatPublishedAt(story.publishedAt)}
-        </time>
-      </div>
-      <h2 className={headlineClassName(variant)}>{story.headline}</h2>
-      <p className="mt-2 text-xs font-medium text-muted-foreground">
-        {story.byline}
-      </p>
-      {story.dek ? <p className={dekClassName(variant)}>{story.dek}</p> : null}
-      {story.relevanceReason ? (
-        <p className="mt-3 rounded-control border border-border bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          {story.relevanceReason}
-        </p>
-      ) : null}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {hasInternalHref ? (
-          <Link
-            href={story.href ?? ""}
-            className={cn(
-              buttonVariants({
-                className: "w-fit",
-                size: "sm",
-                variant: variant === "hero" ? "default" : "outline",
-              }),
-            )}
-          >
-            {story.hrefLabel ?? "Read story"}
-            <ArrowRight data-icon="inline-end" />
-          </Link>
-        ) : null}
-        {hasSourceUrl ? (
-          <a
-            href={story.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={cn(
-              buttonVariants({
-                className: "w-fit",
-                size: "sm",
-                variant: "outline",
-              }),
-            )}
-          >
-            Read source
-            <ExternalLink data-icon="inline-end" />
-          </a>
-        ) : null}
+          {hasInternalHref ? (
+            <Link
+              href={story.href ?? ""}
+              className={cn(
+                buttonVariants({
+                  className: "w-fit",
+                  size: "sm",
+                  variant: variant === "hero" ? "default" : "outline",
+                }),
+              )}
+            >
+              {story.hrefLabel ?? "Read story"}
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+          ) : null}
+          {hasSourceUrl ? (
+            <a
+              href={story.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                buttonVariants({
+                  className: "w-fit",
+                  size: "sm",
+                  variant: "outline",
+                }),
+              )}
+            >
+              Read source
+              <ExternalLink data-icon="inline-end" />
+              <span className="sr-only"> opens in new tab</span>
+            </a>
+          ) : null}
+        </div>
       </div>
     </article>
   );

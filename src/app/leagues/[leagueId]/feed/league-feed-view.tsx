@@ -39,6 +39,7 @@ function toStory({
         ? "Read post"
         : "Read story",
     id: `${item.scope}-${item.id}`,
+    origin: item.scope === "league" && item.kind === "blog" ? "cast" : "source",
     publishedAt: item.publishedAt,
     relevanceReason: item.relevanceReason,
     sectionTag: sectionTag(item),

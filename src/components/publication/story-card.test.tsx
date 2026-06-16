@@ -13,6 +13,7 @@ const story: PublicationStory = {
   href: "/leagues/league-1/press/post-1",
   hrefLabel: "Read post",
   id: "post-1",
+  origin: "cast",
   publishedAt: "2026-06-11T12:00:00.000Z",
   relevanceReason: "Fixture Team 01 rosters the affected starter.",
   sectionTag: "Power Rankings",
@@ -31,13 +32,23 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test.each<PublicationStoryCardVariant>(["hero", "secondary", "river", "rail"])(
+test.each<PublicationStoryCardVariant>([
+  "hero",
+  "secondary",
+  "river",
+  "rail",
+  "compact",
+  "inFeed",
+])(
   "publication story card %s variant keeps the shared story fields",
   (variant) => {
-    render(<PublicationStoryCard story={story} variant={variant} />);
+    const { container } = render(
+      <PublicationStoryCard story={story} variant={variant} />,
+    );
 
     const article = screen.getByRole("article");
     expect(article.getAttribute("data-story-card-variant")).toBe(variant);
+    expect(article.getAttribute("data-story-card-origin")).toBe("cast");
     expect(
       within(article).getByRole("heading", {
         name: "Fixture Team 01 turns a waiver wire note into a warning",
@@ -56,11 +67,20 @@ test.each<PublicationStoryCardVariant>(["hero", "secondary", "river", "rail"])(
       ),
     ).toBeDefined();
     expect(within(article).getByText("3 days ago")).toBeDefined();
+    if (variant === "compact") {
+      expect(
+        within(article).getByText("Image available: Fixture Team 01 sideline"),
+      ).toBeDefined();
+    } else {
+      expect(
+        within(article)
+          .getByAltText("Fixture Team 01 sideline")
+          .getAttribute("src"),
+      ).toContain("fixture-team-01.jpg");
+    }
     expect(
-      within(article)
-        .getByAltText("Fixture Team 01 sideline")
-        .getAttribute("src"),
-    ).toContain("fixture-team-01.jpg");
+      container.querySelector('[data-slot="story-card-orb"]'),
+    ).toBeTruthy();
     expect(
       within(article)
         .getByRole("link", { name: /read post/i })
@@ -73,3 +93,17 @@ test.each<PublicationStoryCardVariant>(["hero", "secondary", "river", "rail"])(
     ).toBe("https://news.example.com/post-1");
   },
 );
+
+test("publication story card omits the cast orb for source stories", () => {
+  const { container } = render(
+    <PublicationStoryCard
+      story={{ ...story, byline: "NFL Wire", origin: "source" }}
+      variant="river"
+    />,
+  );
+
+  const article = screen.getByRole("article");
+  expect(article.getAttribute("data-story-card-origin")).toBe("source");
+  expect(within(article).getByText("NFL Wire")).toBeDefined();
+  expect(container.querySelector('[data-slot="story-card-orb"]')).toBeNull();
+});

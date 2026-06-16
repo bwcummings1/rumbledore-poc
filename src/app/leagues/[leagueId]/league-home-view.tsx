@@ -96,6 +96,7 @@ function toPressTeaserStory({
     href: `/leagues/${leagueId}/press/${storyline.id}`,
     hrefLabel: "Read post",
     id: storyline.id,
+    origin: "cast",
     publishedAt: storyline.publishedAt,
     sectionTag: storyline.section.label,
     thumbnailAlt: storyline.title,

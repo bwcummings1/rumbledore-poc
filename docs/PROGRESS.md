@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX editorial reading register landed — PublicationStoryCard now supports hero/secondary/river/rail/compact/inFeed variants with cast-orb bylines, and article bodies share the `prose-auspex` long-form skin.
 - 2026-06-16: Realtime shell/PWA affordances landed — the WIRE ticker and notifications now consume scoped realtime events, league presence is surfaced in the switcher/chrome, and the boot, install, and offline states use AUSPEX treatment.
 - 2026-06-16: AUSPEX scope switcher landed — the unified MRU league switcher now promotes the Global Your Leagues row, uses provider-tagged scope rows with optional presence labels, supports keyboard row navigation, and opens as a focus-managed mobile Sheet.
 - 2026-06-16: Responsive AUSPEX app shell landed — desktop rail/topbar, tablet collapse persistence, mobile header/tabs, WIRE strip/sheet, notification/account chrome, live clock, skip link, and persisted motion controls now compose the existing two-scope IA.

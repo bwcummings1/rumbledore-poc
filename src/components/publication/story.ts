@@ -2,7 +2,11 @@ export type PublicationStoryCardVariant =
   | "hero"
   | "secondary"
   | "river"
-  | "rail";
+  | "rail"
+  | "compact"
+  | "inFeed";
+
+export type PublicationStoryOrigin = "cast" | "source";
 
 export interface PublicationStory {
   id: string;
@@ -15,6 +19,7 @@ export interface PublicationStory {
   thumbnailAlt?: string;
   href?: string;
   hrefLabel?: string;
+  origin?: PublicationStoryOrigin;
   sourceUrl?: string;
   relevanceReason?: string;
 }
