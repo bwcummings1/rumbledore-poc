@@ -27,7 +27,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 
 ### U. Data-viz & ephemera (see specs/34)
 - [x] Build the accessible, responsive, reduced-motion-aware chart library formalizing the 18 AUSPEX generators. (specs/34)
-- [ ] Add the new Rumbledore viz (bankroll equity curve, standings bump, playoff-odds cone, win-prob timeline, and the rest). (specs/34)
+- [x] Add the new Rumbledore viz (bankroll equity curve, standings bump, playoff-odds cone, win-prob timeline, and the rest). (specs/34)
 - [ ] Build the live/ephemeral spectacle moments (wire ticker, scoreboard strip, count-ups, stingers, orb states) behind a reduced-motion master switch. (specs/34)
 
 ### V. App shell & navigation (see specs/30)

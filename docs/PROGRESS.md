@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 5 AUSPEX chart library landed** with a typed, accessible, responsive, reduced-motion-aware SVG primitive for the 18 canonical generators.
+Keep it current. Last updated: 2026-06-16 — **Phase 5 Rumbledore-native viz catalog landed** with 13 typed AUSPEX chart specs/renderers layered onto the shared accessible chart primitive.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Rumbledore-native viz catalog landed — bankroll equity, standings bump, playoff-odds cone, win-probability timeline, odds drift, season arc, H2H flow, activity calendar, power ladder, leverage gauge, record chase, projection violin, and season dial now share the typed AUSPEX chart contract with table fallbacks and focused fixtures.
 - 2026-06-16: AUSPEX chart library landed — a typed shared SVG primitive now formalizes the 18 canonical generators with non-color encodings, focusable marks, table fallbacks, responsive reductions, state handling, and reduced-motion CSS.
 - 2026-06-16: AUSPEX navigation atoms landed — shared breadcrumbs, tabs, pagination, wizard steps, and a Ctrl/Cmd-K command palette now ship with focused tests and real shell/news/press/onboarding/arena adoption.
 - 2026-06-16: AUSPEX feedback/overlay components landed — shared alerts, banners, toasts, dialogs, responsive sheets, tooltips, popovers, skeletons, and empty/gated states now ship with focused tests and route-safe adoption.

@@ -153,6 +153,198 @@ const fixtures = [
     ],
     title: "Node graph chart",
   },
+  {
+    floor: 10_000,
+    kind: "bankroll-equity",
+    series: {
+      data: [
+        {
+          label: "Mon",
+          meta: "week open carryover",
+          secondaryValue: 10_000,
+          value: 10_250,
+        },
+        {
+          label: "Tue",
+          meta: "settlement win",
+          secondaryValue: 10_000,
+          tone: "positive",
+          value: 11_150,
+        },
+        {
+          label: "Sun",
+          meta: "reset to floor",
+          secondaryValue: 10_000,
+          tone: "negative",
+          value: 9_700,
+        },
+      ],
+      emphasized: true,
+      id: "bankroll",
+      label: "Bankroll",
+      tone: "value",
+    },
+    title: "Bankroll equity chart",
+  },
+  {
+    highlightedSeriesId: "you",
+    kind: "standings-bump",
+    series: [
+      {
+        data: [
+          { label: "W1", secondaryValue: 0, value: 5 },
+          { label: "W2", secondaryValue: -2, value: 3 },
+          { label: "W3", secondaryValue: -1, value: 2 },
+        ],
+        emphasized: true,
+        id: "you",
+        label: "You",
+        tone: "primary",
+      },
+      {
+        data: [
+          { label: "W1", secondaryValue: 0, value: 2 },
+          { label: "W2", secondaryValue: 2, value: 4 },
+          { label: "W3", secondaryValue: 1, value: 5 },
+        ],
+        dash: "dashed",
+        id: "rival",
+        label: "Rival",
+        tone: "secondary",
+      },
+    ],
+    title: "Standings bump chart",
+  },
+  {
+    data: [
+      { label: "Now", max: 62, min: 62, target: 55, value: 62 },
+      { label: "W9", max: 76, min: 45, target: 55, value: 61 },
+      { label: "W10", max: 88, min: 32, target: 55, value: 64 },
+    ],
+    kind: "playoff-odds-cone",
+    title: "Playoff odds cone chart",
+  },
+  {
+    kind: "win-probability-timeline",
+    series: {
+      data: [
+        { label: "Q1", value: 48 },
+        { label: "Q2", value: 58 },
+        { label: "Q3", value: 41 },
+        { label: "Final", meta: "FINAL", value: 82 },
+      ],
+      id: "wp",
+      label: "You",
+      tone: "primary",
+    },
+    swings: [
+      { label: "Q2", meta: "touchdown", tone: "positive", value: 14 },
+      { label: "Q3", meta: "turnover", tone: "negative", value: -19 },
+    ],
+    title: "Win probability timeline chart",
+  },
+  {
+    kind: "odds-movement",
+    lockedLabel: "Open",
+    series: {
+      data: [
+        { label: "Open", tone: "positive", value: 145 },
+        { label: "Mid", value: 130 },
+        { label: "Now", tone: "primary", value: 118 },
+      ],
+      id: "line",
+      label: "Spread",
+      tone: "secondary",
+    },
+    title: "Odds movement chart",
+  },
+  {
+    cells: [
+      { label: "W1", meta: "win", secondaryValue: 0, value: 1 },
+      { label: "W2", meta: "loss", secondaryValue: 0, value: -1 },
+      { label: "W3", meta: "tie", secondaryValue: 0, value: 0 },
+      { label: "W4", meta: "playoff", secondaryValue: 1, value: 1 },
+    ],
+    kind: "season-arc",
+    title: "Season arc chart",
+  },
+  {
+    kind: "head-to-head-flow",
+    meetings: [
+      { label: "2019", meta: "regular", value: 8 },
+      { label: "2020", meta: "playoff", value: -12 },
+      { label: "2021", meta: "title game", value: 3 },
+    ],
+    participantALabel: "Alpha",
+    participantBLabel: "Beta",
+    title: "Head to head flow chart",
+  },
+  {
+    cells: [
+      { label: "Mon", meta: "reads", value: 2, x: 0, y: 0 },
+      { label: "Tue", meta: "bets", value: 8, x: 1, y: 0 },
+      { label: "Wed", meta: "votes", value: 14, x: 2, y: 0 },
+    ],
+    kind: "activity-calendar",
+    title: "Activity calendar chart",
+  },
+  {
+    kind: "power-ranking-ladder",
+    rankings: [
+      { label: "Alpha", meta: "still rolling", secondaryValue: -1, value: 1 },
+      { label: "Beta", meta: "injury luck", secondaryValue: 2, value: 2 },
+      { label: "Gamma", meta: "steady", secondaryValue: 0, value: 3 },
+    ],
+    title: "Power ranking ladder chart",
+  },
+  {
+    factors: [
+      { label: "Playoff odds", value: 18 },
+      { label: "Bankroll swing", value: 220 },
+    ],
+    kind: "leverage-gauge",
+    metric: { label: "Leverage", max: 100, min: 0, value: 72 },
+    title: "Leverage gauge chart",
+  },
+  {
+    holderLabel: "Avery, 2021",
+    kind: "record-chase",
+    metric: { label: "Single week points", max: 180, target: 168, value: 154 },
+    title: "Record chase chart",
+  },
+  {
+    distribution: [
+      { label: "80", value: 2 },
+      { label: "95", value: 7 },
+      { label: "110", value: 10 },
+      { label: "125", value: 4 },
+    ],
+    kind: "projection-violin",
+    summary: { label: "Projection", max: 128, min: 84, value: 108 },
+    title: "Projection violin chart",
+  },
+  {
+    currentWeek: 9,
+    events: [
+      { label: "Record fell", meta: "record", tone: "value", value: 7, x: 7 },
+      { label: "Canon vote", meta: "lore", tone: "primary", value: 8, x: 8 },
+    ],
+    kind: "season-dial",
+    title: "Season dial chart",
+    totalWeeks: 17,
+    weeks: [
+      { label: "Week 1", meta: "regular", value: 1, x: 1 },
+      { label: "Week 9", meta: "current", tone: "primary", value: 9, x: 9 },
+      { label: "Week 15", meta: "playoffs", tone: "value", value: 15, x: 15 },
+      {
+        label: "Week 17",
+        meta: "championship",
+        tone: "value",
+        value: 17,
+        x: 17,
+      },
+    ],
+  },
 ] as const satisfies readonly AUSPEXChartSpec[];
 
 afterEach(() => {
@@ -160,7 +352,7 @@ afterEach(() => {
 });
 
 describe("Chart", () => {
-  test("formalizes all 18 AUSPEX generator kinds", () => {
+  test("formalizes every AUSPEX and Rumbledore-native chart kind", () => {
     expect(fixtures.map((fixture) => fixture.kind).sort()).toEqual(
       [...chartKinds].sort(),
     );

@@ -12,7 +12,10 @@ export { Button, buttonVariants } from "./button";
 export type { CapacityProps } from "./capacity";
 export { Capacity } from "./capacity";
 export type {
+  ActivityCalendarChartSpec,
+  ActivityRingsChartSpec,
   AUSPEXChartSpec,
+  BankrollEquityChartSpec,
   ChartDatum,
   ChartEdge,
   ChartGroup,
@@ -24,6 +27,28 @@ export type {
   ChartTable,
   ChartTableRow,
   ChartTone,
+  DonutChartSpec,
+  GaugeChartSpec,
+  GroupedChartSpec,
+  HeadToHeadFlowChartSpec,
+  HeatmapChartSpec,
+  LeverageGaugeChartSpec,
+  MultiLineChartSpec,
+  NodeGraphChartSpec,
+  OddsMovementChartSpec,
+  PlayoffOddsConeChartSpec,
+  PowerRankingLadderChartSpec,
+  ProjectionViolinChartSpec,
+  RadarChartSpec,
+  RangeChartSpec,
+  RecordChaseChartSpec,
+  ScatterChartSpec,
+  SeasonArcChartSpec,
+  SeasonDialChartSpec,
+  SingleSeriesChartSpec,
+  StandingsBumpChartSpec,
+  ValueListChartSpec,
+  WinProbabilityTimelineChartSpec,
 } from "./chart";
 export { Chart, chartKinds, chartTableForSpec } from "./chart";
 export type { CheckboxProps } from "./checkbox";
