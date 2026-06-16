@@ -661,6 +661,94 @@ html {
   }
 }
 
+@keyframes auspex-chart-draw {
+  from {
+    stroke-dashoffset: var(--chart-path-length, 1);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes auspex-chart-grow {
+  from {
+    opacity: 0.35;
+    transform: scaleY(0.08);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.auspex-chart {
+  container-type: inline-size;
+}
+
+.auspex-chart__svg {
+  display: block;
+}
+
+.auspex-chart__draw {
+  animation: auspex-chart-draw var(--motion-duration-draw-in)
+    var(--motion-ease-out) both;
+  stroke-dashoffset: var(--chart-path-length, 1);
+}
+
+.auspex-chart__grow {
+  animation: auspex-chart-grow var(--motion-duration-draw-in)
+    var(--motion-ease-out) both;
+  transform-box: fill-box;
+  transform-origin: bottom;
+}
+
+.auspex-chart__mark {
+  filter: drop-shadow(0 0 10px var(--glow-lilac));
+}
+
+.auspex-chart__mark:focus-visible,
+.auspex-chart__draw:focus-visible {
+  filter: drop-shadow(0 0 14px var(--glow-lilac));
+  outline: var(--focus-ring-width, 2px) solid var(--ring);
+  outline-offset: var(--focus-ring-offset, 2px);
+}
+
+.auspex-chart__label {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.auspex-chart__value {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-size-xl);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-shadow: var(--lcd-value-shadow);
+}
+
+.auspex-chart-table[open] .auspex-chart-table__data {
+  border-width: 0;
+  clip: auto;
+  clip-path: none;
+  block-size: auto;
+  inline-size: auto;
+  margin: 0;
+  margin-block-start: var(--space-3);
+  overflow: auto;
+  padding: 0;
+  position: static;
+  white-space: normal;
+}
+
+@container (max-width: 359px) {
+  .auspex-chart__minor,
+  .auspex-chart__secondary-series,
+  .auspex-chart__label {
+    display: none;
+  }
+}
+
 @media (max-width: 767px) {
   .panel {
     -webkit-backdrop-filter: none;
@@ -721,6 +809,14 @@ html {
     animation: none;
     transform: none;
     will-change: auto;
+  }
+
+  .auspex-chart__draw,
+  .auspex-chart__grow {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
   }
 
   :is(

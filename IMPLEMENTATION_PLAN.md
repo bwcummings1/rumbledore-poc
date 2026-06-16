@@ -26,7 +26,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Build the navigation atoms and command palette (breadcrumbs, tabs, pagination, steps, ⌘K + mobile equivalent). (specs/29)
 
 ### U. Data-viz & ephemera (see specs/34)
-- [ ] Build the accessible, responsive, reduced-motion-aware chart library formalizing the 18 AUSPEX generators. (specs/34)
+- [x] Build the accessible, responsive, reduced-motion-aware chart library formalizing the 18 AUSPEX generators. (specs/34)
 - [ ] Add the new Rumbledore viz (bankroll equity curve, standings bump, playoff-odds cone, win-prob timeline, and the rest). (specs/34)
 - [ ] Build the live/ephemeral spectacle moments (wire ticker, scoreboard strip, count-ups, stingers, orb states) behind a reduced-motion master switch. (specs/34)
 
@@ -62,3 +62,4 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [ ] Spec/tuning follow-up: canonical `lilac-deep` computes below 4.5:1 on `hull`/`hull-2`, so keep it UI/fill-grade unless a later AUSPEX tuning pass adjusts the value.
 - [ ] [a11y] Normalize legacy form controls from `focus:` border/ring styling to the tokenized `focus-visible` control primitive during the Spec 29 control restyle; the global ring covers keyboard fallback meanwhile.
 - [ ] [a11y] Audit shared button and icon-button touch targets during the Spec 29 control restyle; several visual variants are below 44px even when later layouts may provide larger hit areas.
+- [ ] Spec/reference follow-up: `docs/design/auspex-reference.html` is referenced by Spec 34 but absent from this checkout; continue using `docs/design/rumbledore-design-language.md` plus specs 28-34 unless the template is restored.

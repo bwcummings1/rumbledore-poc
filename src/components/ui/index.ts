@@ -11,6 +11,21 @@ export { Breadcrumbs } from "./breadcrumbs";
 export { Button, buttonVariants } from "./button";
 export type { CapacityProps } from "./capacity";
 export { Capacity } from "./capacity";
+export type {
+  AUSPEXChartSpec,
+  ChartDatum,
+  ChartEdge,
+  ChartGroup,
+  ChartKind,
+  ChartNode,
+  ChartProps,
+  ChartSeries,
+  ChartState,
+  ChartTable,
+  ChartTableRow,
+  ChartTone,
+} from "./chart";
+export { Chart, chartKinds, chartTableForSpec } from "./chart";
 export type { CheckboxProps } from "./checkbox";
 export { Checkbox } from "./checkbox";
 export type { ChipProps } from "./chip";
