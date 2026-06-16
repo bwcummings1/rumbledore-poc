@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -120,7 +121,7 @@ describe("NavigationShellView", () => {
     );
   });
 
-  it("opens the mobile scope switcher sheet with the unified league list", () => {
+  it("opens the mobile scope switcher sheet with the unified league list", async () => {
     render(
       <NavigationShellView
         activeState={deriveActiveNavigationState("/leagues/league-a")}
@@ -130,11 +131,16 @@ describe("NavigationShellView", () => {
       </NavigationShellView>,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open scope switcher" }),
-    );
+    const trigger = screen.getByRole("button", { name: "Open scope switcher" });
+    fireEvent.click(trigger);
 
-    const dialog = screen.getByRole("dialog", { name: "Scope switcher" });
+    const dialog = screen.getByRole("dialog", { name: /Switch leagues/i });
+    expect(dialog.getAttribute("data-slot")).toBe("sheet");
+    expect(
+      within(dialog).getByRole("button", { name: "Resize sheet" }),
+    ).toBeDefined();
+    const switcherLinks = within(dialog).getAllByRole("link");
+    expect(switcherLinks[0]?.getAttribute("href")).toBe("/");
     expect(
       within(dialog).getByRole("link", { name: /NHS Alumni Annual/i }),
     ).toBeDefined();
@@ -143,8 +149,21 @@ describe("NavigationShellView", () => {
     ).toBeDefined();
     expect(within(dialog).getByLabelText("Search leagues")).toBeDefined();
     expect(
-      within(dialog).getByRole("link", { name: "Your Leagues" }),
+      within(dialog).getByRole("link", {
+        name: /Your Leagues, Global scope/i,
+      }),
     ).toBeDefined();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Switch leagues/i }),
+      ).toBeNull();
+    });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(trigger);
+    });
   });
 
   it("keeps the desktop sidebar collapsible while preserving destinations", () => {

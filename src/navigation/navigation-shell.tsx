@@ -38,6 +38,7 @@ import {
   CommandPalette,
   type CommandPaletteItem,
 } from "@/components/ui/command-palette";
+import { Sheet } from "@/components/ui/sheet";
 import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import {
@@ -160,7 +161,8 @@ export function NavigationShell({
   const activeState = useActiveNavigationState();
   const [items, setItems] =
     useState<readonly LeagueSwitcherViewItem[]>(initialItems);
-  const showShell = shouldShowNavigationShell(activeState.pathname);
+  const pathname = activeState.pathname;
+  const showShell = shouldShowNavigationShell(pathname);
 
   useEffect(() => {
     setItems(initialItems);
@@ -190,7 +192,10 @@ export function NavigationShell({
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          console.error("Failed to load navigation leagues", error);
+          console.error(
+            `Failed to load navigation leagues for ${pathname}`,
+            error,
+          );
         }
       }
     }
@@ -200,7 +205,7 @@ export function NavigationShell({
     return () => {
       controller.abort();
     };
-  }, [showShell]);
+  }, [pathname, showShell]);
 
   if (!showShell) {
     return <>{children}</>;
@@ -267,6 +272,14 @@ export function NavigationShellView({
       new Set(shellNotifications.map((notification) => notification.id)),
     );
   }, [shellNotifications]);
+  const closeMobileSwitcher = useCallback(() => {
+    setMobileSwitcherOpen(false);
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>('[data-slot="mobile-scope-trigger"]')
+        ?.focus();
+    });
+  }, []);
 
   useEffect(() => {
     try {
@@ -384,7 +397,7 @@ export function NavigationShellView({
         <MobileSwitcherSheet
           activeState={activeState}
           items={sortedItems}
-          onClose={() => setMobileSwitcherOpen(false)}
+          onClose={closeMobileSwitcher}
         />
       ) : null}
 
@@ -655,6 +668,7 @@ function MobileTopBar({
         aria-label="Open scope switcher"
         aria-haspopup="dialog"
         className="min-w-0 flex-1 justify-start"
+        data-slot="mobile-scope-trigger"
         onClick={onOpenSwitcher}
         type="button"
         variant="ghost"
@@ -733,42 +747,28 @@ function MobileSwitcherSheet({
   readonly onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 md:hidden">
-      <button
-        aria-label="Close scope switcher"
-        className="absolute inset-0 bg-background/70"
-        onClick={onClose}
-        type="button"
+    <Sheet
+      closeLabel="Close scope switcher"
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      open={true}
+      title={
+        <span className="grid gap-1">
+          <span className="eyebrow">Scope</span>
+          <span>Switch leagues</span>
+        </span>
+      }
+    >
+      <LeagueSwitcherView
+        activeState={activeState}
+        className="border-0 bg-transparent p-0 shadow-none"
+        items={items}
+        showHeader={false}
       />
-      <div
-        aria-label="Scope switcher"
-        aria-modal="true"
-        className="absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-sheet border border-border bg-background p-3 pb-[calc(--spacing(3)+env(safe-area-inset-bottom))] shadow-xl"
-        data-slot="mobile-switcher-sheet"
-        role="dialog"
-      >
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase">
-              Scope
-            </p>
-            <h2 className="text-base font-semibold tracking-tight">
-              Switch leagues
-            </h2>
-          </div>
-          <Button
-            aria-label="Close scope switcher"
-            onClick={onClose}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <X />
-          </Button>
-        </div>
-        <LeagueSwitcherView activeState={activeState} items={items} />
-      </div>
-    </div>
+    </Sheet>
   );
 }
 

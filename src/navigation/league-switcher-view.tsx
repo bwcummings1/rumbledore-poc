@@ -1,10 +1,13 @@
 "use client";
 
-import { Check, ListFilter, Plus } from "lucide-react";
+import { Check, Home, ListFilter, Plus } from "lucide-react";
 import Link from "next/link";
+import type { KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Presence } from "@/components/ui/presence";
 import { SearchInput } from "@/components/ui/search-input";
+import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import {
   filterLeagueSwitcherItems,
@@ -25,6 +28,8 @@ export interface LeagueSwitcherProps {
 export interface LeagueSwitcherViewProps extends LeagueSwitcherProps {
   readonly activeState: ActiveNavigationState;
   readonly emptyMessage?: string;
+  readonly presenceByLeagueId?: Readonly<Record<string, number>>;
+  readonly showHeader?: boolean;
 }
 
 export function LeagueSwitcher({ className, items }: LeagueSwitcherProps) {
@@ -44,6 +49,8 @@ export function LeagueSwitcherView({
   className,
   emptyMessage = "No leagues match that search.",
   items,
+  presenceByLeagueId = {},
+  showHeader = true,
 }: LeagueSwitcherViewProps) {
   const [query, setQuery] = useState("");
   const [groupByProvider, setGroupByProvider] = useState(false);
@@ -60,31 +67,33 @@ export function LeagueSwitcherView({
   return (
     <section
       aria-label="League switcher"
-      className={cn(
-        "flex w-full flex-col gap-3 rounded-sheet border border-border bg-surface p-3 shadow-sm",
-        className,
-      )}
+      className={cn("panel flex w-full flex-col gap-3 p-3", className)}
       data-slot="league-switcher"
+      onKeyDown={handleSwitcherListKeyDown}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground uppercase">
-            League switcher
-          </p>
-          <h2 className="truncate text-base font-semibold tracking-tight">
-            All leagues
-          </h2>
+      {showHeader ? (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="eyebrow">Scope</p>
+            <h2 className="truncate font-display text-base font-semibold text-foreground">
+              Switch leagues
+            </h2>
+          </div>
+          <GroupToggle
+            groupByProvider={groupByProvider}
+            onToggle={() => setGroupByProvider((value) => !value)}
+          />
         </div>
-        <Button
-          aria-pressed={groupByProvider}
-          onClick={() => setGroupByProvider((value) => !value)}
-          type="button"
-          variant="outline"
-        >
-          <ListFilter data-icon="inline-start" />
-          Group
-        </Button>
-      </div>
+      ) : (
+        <div className="flex justify-end">
+          <GroupToggle
+            groupByProvider={groupByProvider}
+            onToggle={() => setGroupByProvider((value) => !value)}
+          />
+        </div>
+      )}
+
+      <GlobalScopeRow activeState={activeState} />
 
       <SearchInput
         aria-label="Search leagues"
@@ -95,8 +104,8 @@ export function LeagueSwitcherView({
       />
 
       <div className="flex flex-col gap-2">
-        {visibleItems.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+        {visibleItems.length === 0 && query.length > 0 ? (
+          <p className="cell border-dashed px-3 py-4 text-sm text-muted-foreground">
             {emptyMessage}
           </p>
         ) : groupByProvider ? (
@@ -106,14 +115,13 @@ export function LeagueSwitcherView({
               className="flex flex-col gap-1.5"
               key={group.provider}
             >
-              <h3 className="px-1 text-xs font-medium text-muted-foreground uppercase">
-                {group.providerLabel}
-              </h3>
+              <h3 className="eyebrow px-1">{group.providerLabel}</h3>
               {group.items.map((item) => (
                 <LeagueSwitcherRow
                   activeState={activeState}
                   item={item}
                   key={item.leagueId}
+                  onlineMemberCount={presenceByLeagueId[item.leagueId]}
                 />
               ))}
             </section>
@@ -124,27 +132,15 @@ export function LeagueSwitcherView({
               activeState={activeState}
               item={item}
               key={item.leagueId}
+              onlineMemberCount={presenceByLeagueId[item.leagueId]}
             />
           ))
         )}
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-border pt-3">
-        <Link
-          className={cn(
-            buttonVariants({
-              className: "w-full justify-start",
-              variant: "ghost",
-            }),
-          )}
-          href="/"
-        >
-          Your Leagues
-        </Link>
+      <div className="flex flex-col gap-2 border-t border-[var(--hair)] pt-3">
         <div>
-          <p className="mb-2 px-1 text-xs font-medium text-muted-foreground uppercase">
-            Connect another league
-          </p>
+          <p className="eyebrow mb-2 px-1">Connect another league</p>
           <div className="grid grid-cols-3 gap-2">
             {LEAGUE_SWITCHER_CONNECT_LINKS.map((link) => (
               <Link
@@ -169,26 +165,96 @@ export function LeagueSwitcherView({
   );
 }
 
+function GroupToggle({
+  groupByProvider,
+  onToggle,
+}: {
+  readonly groupByProvider: boolean;
+  readonly onToggle: () => void;
+}) {
+  return (
+    <Button
+      aria-pressed={groupByProvider}
+      onClick={onToggle}
+      type="button"
+      variant={groupByProvider ? "primary" : "outline"}
+    >
+      <ListFilter data-icon="inline-start" />
+      Group
+    </Button>
+  );
+}
+
+function GlobalScopeRow({
+  activeState,
+}: {
+  readonly activeState: ActiveNavigationState;
+}) {
+  const isActive =
+    activeState.scope === "global" && activeState.sectionId === "your-leagues";
+
+  return (
+    <Link
+      aria-current={isActive ? "page" : undefined}
+      aria-label="Your Leagues, Global scope"
+      className={cn(
+        switcherRowClasses,
+        "border-[var(--hair-2)] bg-primary/10",
+        isActive &&
+          "border-primary/50 shadow-[inset_3px_0_0_var(--primary),0_0_18px_var(--glow-lilac),var(--bevel)]",
+      )}
+      data-switcher-option="true"
+      href="/"
+    >
+      <span className="chip-glyph size-10 text-primary">
+        <Home aria-hidden="true" className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-sm font-semibold text-foreground">
+          Your Leagues
+        </span>
+        <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+          <Tag className="min-h-5 px-1.5 py-0 text-xs">Global scope</Tag>
+          <span className="truncate text-xs text-muted-foreground">
+            Cross-league lobby
+          </span>
+        </span>
+      </span>
+      {isActive ? (
+        <Check className="size-4 shrink-0 text-primary" aria-hidden="true" />
+      ) : null}
+    </Link>
+  );
+}
+
 function LeagueSwitcherRow({
   activeState,
   item,
+  onlineMemberCount,
 }: {
   readonly activeState: ActiveNavigationState;
   readonly item: LeagueSwitcherViewItem;
+  readonly onlineMemberCount?: number;
 }) {
   const isActive =
     activeState.scope === "league" && activeState.leagueId === item.leagueId;
+  const presenceLabel =
+    typeof onlineMemberCount === "number"
+      ? `${onlineMemberCount} member${onlineMemberCount === 1 ? "" : "s"} online`
+      : undefined;
 
   return (
     <Link
       aria-current={isActive ? "page" : undefined}
       className={cn(
-        "flex min-h-12 items-center gap-3 rounded-md border border-transparent px-2.5 py-2 text-left transition-colors hover:border-border hover:bg-elevated focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
-        isActive && "border-primary/40 bg-primary/10",
+        switcherRowClasses,
+        isActive &&
+          "border-primary/50 bg-primary/10 shadow-[inset_3px_0_0_var(--primary),0_0_18px_var(--glow-lilac),var(--bevel)]",
       )}
+      data-switcher-option="true"
       href={getLeagueSwitchHref(item.leagueId, activeState)}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-elevated text-xs font-semibold text-muted-foreground">
+      <span className="chip-glyph size-10 overflow-hidden text-xs font-semibold">
         {item.logo ? (
           <span
             aria-hidden="true"
@@ -200,9 +266,25 @@ function LeagueSwitcherRow({
         )}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{item.name}</span>
-        <span className="mt-1 inline-flex rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground">
-          {item.providerLabel}
+        <span className="block truncate font-display text-sm font-semibold text-foreground">
+          {item.name}
+        </span>
+        <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+          <Tag className="min-h-5 px-1.5 py-0 text-xs">
+            {item.providerLabel}
+          </Tag>
+          {presenceLabel ? (
+            <Presence
+              className="min-h-5"
+              label={presenceLabel}
+              status={
+                onlineMemberCount && onlineMemberCount > 0
+                  ? "online"
+                  : "offline"
+              }
+              withText
+            />
+          ) : null}
         </span>
       </span>
       {isActive ? (
@@ -210,4 +292,52 @@ function LeagueSwitcherRow({
       ) : null}
     </Link>
   );
+}
+
+const switcherRowClasses =
+  "cell flex min-h-14 items-center gap-3 px-3 py-2 text-left transition-[background-color,border-color,box-shadow,color] hover:border-[var(--hair-3)] hover:bg-primary/10 focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] focus-visible:outline-none";
+
+function handleSwitcherListKeyDown(event: KeyboardEvent<HTMLElement>) {
+  if (
+    event.key !== "ArrowDown" &&
+    event.key !== "ArrowUp" &&
+    event.key !== "Home" &&
+    event.key !== "End"
+  ) {
+    return;
+  }
+
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const root = target.closest('[data-slot="league-switcher"]');
+  if (!root) {
+    return;
+  }
+
+  const options = Array.from(
+    root.querySelectorAll<HTMLElement>('[data-switcher-option="true"]'),
+  );
+  if (options.length === 0) {
+    return;
+  }
+
+  const currentIndex = options.indexOf(target);
+  const fallbackIndex =
+    event.key === "ArrowUp" || event.key === "End" ? options.length - 1 : 0;
+  const nextIndex =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : currentIndex < 0
+          ? fallbackIndex
+          : event.key === "ArrowDown"
+            ? (currentIndex + 1) % options.length
+            : (currentIndex - 1 + options.length) % options.length;
+
+  event.preventDefault();
+  options[nextIndex]?.focus();
 }

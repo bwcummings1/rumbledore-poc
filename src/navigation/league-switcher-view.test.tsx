@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LeagueSwitcherViewItem } from "./league-switcher-model";
 import { LeagueSwitcherView } from "./league-switcher-view";
@@ -39,6 +45,11 @@ describe("LeagueSwitcherView", () => {
     render(<LeagueSwitcherView activeState={activeState} items={items} />);
 
     expect(screen.queryByRole("heading", { name: "ESPN" })).toBeNull();
+    const switcher = screen.getByLabelText("League switcher");
+    const links = within(switcher).getAllByRole("link");
+    expect(links[0]?.getAttribute("href")).toBe("/");
+    expect(links[0]?.textContent).toContain("Your Leagues");
+    expect(links[0]?.textContent).toContain("Global scope");
 
     const activeLeague = screen.getByRole("link", {
       name: /NHS Alumni Annual/i,
@@ -80,11 +91,13 @@ describe("LeagueSwitcherView", () => {
     expect(screen.getByRole("heading", { name: "Yahoo" })).toBeDefined();
   });
 
-  it("keeps global and provider connect affordances in the switcher footer", () => {
+  it("keeps global and provider connect affordances in the switcher", () => {
     render(<LeagueSwitcherView activeState={activeState} items={items} />);
 
     expect(
-      screen.getByRole("link", { name: "Your Leagues" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: /Your Leagues, Global scope/i })
+        .getAttribute("href"),
     ).toBe("/");
     expect(
       screen.getByRole("link", { name: /^ESPN$/i }).getAttribute("href"),
@@ -95,6 +108,48 @@ describe("LeagueSwitcherView", () => {
     expect(
       screen.getByRole("link", { name: /^Yahoo$/i }).getAttribute("href"),
     ).toBe("/onboarding/yahoo");
+  });
+
+  it("keeps the zero-league state focused on global and connect actions", () => {
+    render(
+      <LeagueSwitcherView
+        activeState={deriveActiveNavigationState("/")}
+        items={[]}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("link", { name: /Your Leagues, Global scope/i })
+        .getAttribute("href"),
+    ).toBe("/");
+    expect(screen.queryByText("No leagues match that search.")).toBeNull();
+    expect(screen.getByRole("link", { name: /^ESPN$/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /^Sleeper$/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /^Yahoo$/i })).toBeDefined();
+  });
+
+  it("supports keyboard row navigation and non-color-only presence labels", () => {
+    render(
+      <LeagueSwitcherView
+        activeState={activeState}
+        items={items}
+        presenceByLeagueId={{ "league-b": 3 }}
+      />,
+    );
+
+    const globalRow = screen.getByRole("link", {
+      name: /Your Leagues, Global scope/i,
+    });
+    const activeLeague = screen.getByRole("link", {
+      name: /NHS Alumni Annual/i,
+    });
+
+    globalRow.focus();
+    fireEvent.keyDown(globalRow, { key: "ArrowDown" });
+
+    expect(document.activeElement).toBe(activeLeague);
+    expect(screen.getByLabelText("3 members online")).toBeDefined();
   });
 });
 

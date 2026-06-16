@@ -32,7 +32,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 
 ### V. App shell & navigation (see specs/30)
 - [x] Build the responsive AUSPEX app shell (desktop rail+topbar+ticker, tablet adaptation, mobile bottom-tabs+header). (specs/30)
-- [ ] Build the scope-switcher (global↔league) and league switcher sheet, mobile-first. (specs/30)
+- [x] Build the scope-switcher (global↔league) and league switcher sheet, mobile-first. (specs/30)
 - [ ] Wire the WIRE ticker, notifications, and presence to realtime, plus the boot/splash and PWA install/offline affordances. (specs/30)
 
 ### W. Editorial / publication register (see specs/31)
