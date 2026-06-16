@@ -18,29 +18,25 @@ import type {
   ArenaMover,
   ArenaSeasonSummary,
 } from "@/betting";
+import { Avatar } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Capacity } from "@/components/ui/capacity";
+import type { DataCardRow } from "@/components/ui/data-card-table";
+import { Edge, type EdgeTone } from "@/components/ui/edge";
+import { type KVItem, KVList, type KVTone } from "@/components/ui/kv";
+import { Ladder } from "@/components/ui/ladder";
+import { Presence } from "@/components/ui/presence";
+import { Progress } from "@/components/ui/progress";
+import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import {
-  Avatar,
-  Badge,
-  Capacity,
   type CellTone,
-  type DataCardRow,
   DataTable,
   type DataTableColumn,
-  Edge,
-  type EdgeTone,
-  type KVItem,
-  KVList,
-  type KVTone,
-  Ladder,
-  Presence,
-  Progress,
   SignedValue,
-  StatTile,
-  StatusPill,
-  type StatusTone,
-  Tag,
-} from "@/components/ui";
-import { buttonVariants } from "@/components/ui/button";
+} from "@/components/ui/table";
+import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import { ArenaRealtimeRefresh } from "@/realtime/client";
 

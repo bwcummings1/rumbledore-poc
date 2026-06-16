@@ -22,7 +22,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 ### T. Component library (see specs/29)
 - [x] Restyle the button and input control set to AUSPEX with all states, responsive, and a11y. (specs/29)
 - [x] Build the data-display components (tables→mobile cards, pills/badges/tags/edges, key-value, avatars, meters/pips, stat tiles). (specs/29)
-- [ ] Build the feedback/overlay components (alerts, toasts, modals, drawers→mobile sheets, tooltips, popovers, skeletons, empty, banner). (specs/29)
+- [x] Build the feedback/overlay components (alerts, toasts, modals, drawers→mobile sheets, tooltips, popovers, skeletons, empty, banner). (specs/29)
 - [ ] Build the navigation atoms and command palette (breadcrumbs, tabs, pagination, steps, ⌘K + mobile equivalent). (specs/29)
 
 ### U. Data-viz & ephemera (see specs/34)

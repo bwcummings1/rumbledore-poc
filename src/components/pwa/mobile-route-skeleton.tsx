@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Skeleton as UiSkeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export type MobileRouteSkeletonVariant =
@@ -183,12 +184,9 @@ function SkeletonPanel({
   readonly className?: string;
 }) {
   return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "grid gap-4 rounded-card border border-border bg-card p-4",
-        className,
-      )}
+    <UiSkeleton
+      className={cn("grid gap-4 p-4", className)}
+      variant="card"
       data-slot="mobile-route-skeleton-panel"
     >
       {children ?? (
@@ -198,7 +196,7 @@ function SkeletonPanel({
           <SkeletonLine className="h-4 w-2/3" />
         </>
       )}
-    </div>
+    </UiSkeleton>
   );
 }
 
@@ -213,13 +211,10 @@ function SkeletonMetric() {
 
 function SkeletonLine({ className }: { readonly className?: string }) {
   return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "rounded-control bg-muted-foreground/15 motion-safe:animate-pulse",
-        className,
-      )}
+    <UiSkeleton
+      className={className}
       data-slot="mobile-route-skeleton-line"
+      variant="line"
     />
   );
 }

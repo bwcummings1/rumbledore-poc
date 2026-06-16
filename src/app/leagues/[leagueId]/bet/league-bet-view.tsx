@@ -20,6 +20,7 @@ import { Chip } from "@/components/ui/chip";
 import { Field } from "@/components/ui/field";
 import { Slider } from "@/components/ui/slider";
 import { Stepper } from "@/components/ui/stepper";
+import { Toaster } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 
 type EventGroup = {
@@ -943,128 +944,133 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-4">
-        <Link
-          href={`/leagues/${data.league.id}`}
-          className={cn(
-            buttonVariants({ className: "w-fit", variant: "ghost" }),
-          )}
-        >
-          <ArrowLeft data-icon="inline-start" />
-          League home
-        </Link>
-        <div className="grid gap-3">
-          <div className="flex items-center gap-2 text-primary">
-            <Ticket className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">Bet</p>
-          </div>
-          <div className="max-w-2xl">
-            <h1 className="text-xl font-semibold sm:text-2xl">
-              {data.league.name} betting desk
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Paper odds, fake bankroll, real bragging rights. Arena standings
-              roll up from these league-scoped slips.
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <section className="grid gap-3 lg:grid-cols-3">
-        <BankrollLoopCard balance={data.balance} balanceCents={balanceCents} />
-
-        <StagedSlipPanel
-          balanceCents={balanceCents}
-          onClear={() => {
-            setStagedSelections({});
-            setPlacementState({ message: null, status: "idle" });
-          }}
-          onPlaceSlip={placeSlip}
-          onRemoveSelection={(marketId) => {
-            setStagedSelections((current) => {
-              const next = { ...current };
-              delete next[marketId];
-              return next;
-            });
-            setPlacementState({ message: null, status: "idle" });
-          }}
-          onStakeChange={(value) => {
-            setStakeInput(value);
-            setPlacementState({ message: null, status: "idle" });
-          }}
-          placementState={placementState}
-          selections={stagedSelectionList}
-          stakeInput={stakeInput}
-        />
-
-        <div className="rounded-card border border-border bg-card p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-primary">Recent slips</p>
-              <h2 className="mt-1 text-lg font-semibold">
-                {data.recentSlips.length}
-              </h2>
+    <Toaster>
+      <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+        <header className="grid gap-4">
+          <Link
+            href={`/leagues/${data.league.id}`}
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "ghost" }),
+            )}
+          >
+            <ArrowLeft data-icon="inline-start" />
+            League home
+          </Link>
+          <div className="grid gap-3">
+            <div className="flex items-center gap-2 text-primary">
+              <Ticket className="size-5" aria-hidden="true" />
+              <p className="text-sm font-medium">Bet</p>
             </div>
-            <ReceiptText className="size-5 text-primary" aria-hidden="true" />
+            <div className="max-w-2xl">
+              <h1 className="text-xl font-semibold sm:text-2xl">
+                {data.league.name} betting desk
+              </h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Paper odds, fake bankroll, real bragging rights. Arena standings
+                roll up from these league-scoped slips.
+              </p>
+            </div>
           </div>
-          {data.recentSlips.length > 0 ? (
-            <div className="mt-3 grid gap-2">
-              {data.recentSlips.map((slip) => (
-                <div
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm"
-                  key={slip.id}
-                >
-                  <span className="min-w-0 truncate">
-                    {slip.kind} · {slip.status} ·{" "}
-                    {formatDateTime(slip.placedAt)}
-                  </span>
-                  <span className="font-mono tabular-nums">
-                    {formatCents(slip.stakeCents)}
-                  </span>
-                </div>
+        </header>
+
+        <section className="grid gap-3 lg:grid-cols-3">
+          <BankrollLoopCard
+            balance={data.balance}
+            balanceCents={balanceCents}
+          />
+
+          <StagedSlipPanel
+            balanceCents={balanceCents}
+            onClear={() => {
+              setStagedSelections({});
+              setPlacementState({ message: null, status: "idle" });
+            }}
+            onPlaceSlip={placeSlip}
+            onRemoveSelection={(marketId) => {
+              setStagedSelections((current) => {
+                const next = { ...current };
+                delete next[marketId];
+                return next;
+              });
+              setPlacementState({ message: null, status: "idle" });
+            }}
+            onStakeChange={(value) => {
+              setStakeInput(value);
+              setPlacementState({ message: null, status: "idle" });
+            }}
+            placementState={placementState}
+            selections={stagedSelectionList}
+            stakeInput={stakeInput}
+          />
+
+          <div className="rounded-card border border-border bg-card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-primary">Recent slips</p>
+                <h2 className="mt-1 text-lg font-semibold">
+                  {data.recentSlips.length}
+                </h2>
+              </div>
+              <ReceiptText className="size-5 text-primary" aria-hidden="true" />
+            </div>
+            {data.recentSlips.length > 0 ? (
+              <div className="mt-3 grid gap-2">
+                {data.recentSlips.map((slip) => (
+                  <div
+                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm"
+                    key={slip.id}
+                  >
+                    <span className="min-w-0 truncate">
+                      {slip.kind} · {slip.status} ·{" "}
+                      {formatDateTime(slip.placedAt)}
+                    </span>
+                    <span className="font-mono tabular-nums">
+                      {formatCents(slip.stakeCents)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                No slips have been placed in this league yet.
+              </p>
+            )}
+          </div>
+        </section>
+
+        {eventGroups.length > 0 ? (
+          <section aria-label="Open betting markets" className="grid gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Open markets</h2>
+              <Link
+                href={`/arena?leagueId=${encodeURIComponent(data.league.id)}`}
+                className={cn(
+                  buttonVariants({ className: "w-fit", variant: "outline" }),
+                )}
+              >
+                Arena
+              </Link>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {eventGroups.map((group) => (
+                <EventCard
+                  group={group}
+                  key={group.eventId}
+                  onToggleSelection={toggleSelection}
+                  stagedSelections={stagedSelections}
+                />
               ))}
             </div>
-          ) : (
+          </section>
+        ) : (
+          <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
+            <h2 className="text-base font-semibold">No open markets</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              No slips have been placed in this league yet.
+              The odds polling job has not published an open NFL board yet.
             </p>
-          )}
-        </div>
-      </section>
-
-      {eventGroups.length > 0 ? (
-        <section aria-label="Open betting markets" className="grid gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Open markets</h2>
-            <Link
-              href={`/arena?leagueId=${encodeURIComponent(data.league.id)}`}
-              className={cn(
-                buttonVariants({ className: "w-fit", variant: "outline" }),
-              )}
-            >
-              Arena
-            </Link>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-2">
-            {eventGroups.map((group) => (
-              <EventCard
-                group={group}
-                key={group.eventId}
-                onToggleSelection={toggleSelection}
-                stagedSelections={stagedSelections}
-              />
-            ))}
-          </div>
-        </section>
-      ) : (
-        <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold">No open markets</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The odds polling job has not published an open NFL board yet.
-          </p>
-        </section>
-      )}
-    </main>
+          </section>
+        )}
+      </main>
+    </Toaster>
   );
 }

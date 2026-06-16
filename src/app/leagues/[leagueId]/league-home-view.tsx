@@ -17,6 +17,7 @@ import {
 } from "@/components/publication/story-card";
 import { LeagueNotificationToggle } from "@/components/pwa/league-notification-toggle";
 import { buttonVariants } from "@/components/ui/button";
+import { EmptyState as UiEmptyState } from "@/components/ui/empty-state";
 import type {
   LeagueHomeData,
   LeagueHomeMatchup,
@@ -126,9 +127,10 @@ function SectionTitle({
 
 function EmptyState({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-control border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
-      {children}
-    </p>
+    <UiEmptyState
+      className="justify-items-start px-3 py-3 text-left"
+      title={children}
+    />
   );
 }
 

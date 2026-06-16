@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ProviderReconnectAction } from "@/onboarding/reconnect";
@@ -27,14 +28,15 @@ export function OnboardingErrorBanner({
   error: OnboardingPanelError;
 }) {
   return (
-    <div
-      role="alert"
-      className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    <Alert
+      actions={
+        error.reconnect ? (
+          <ReconnectActionLink action={error.reconnect} />
+        ) : null
+      }
+      tone="danger"
     >
-      <p>{error.message}</p>
-      {error.reconnect ? (
-        <ReconnectActionLink action={error.reconnect} />
-      ) : null}
-    </div>
+      {error.message}
+    </Alert>
   );
 }
