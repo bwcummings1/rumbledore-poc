@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { blogDraftMetadata, validateBlogDraft } from "./article-draft";
 import type { BlogDraft, LeagueBlogContext } from "./interfaces";
+import { DEFAULT_TONE_PROFILES, DEFAULT_TONE_VERSION } from "./personas";
 
 const leagueId = "00000000-0000-4000-8000-000000000001";
 const canonClaimId = "00000000-0000-4000-8000-000000000201";
@@ -89,6 +90,10 @@ function context(): LeagueBlogContext {
       promptTemplate: "Tell the story.",
       purpose: "League history",
       tone: "cinematic",
+      toneProfile: DEFAULT_TONE_PROFILES.narrator,
+      toneUpdatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      toneUpdatedBy: null,
+      toneVersion: DEFAULT_TONE_VERSION,
     },
     priorPosts: [],
     records: [],

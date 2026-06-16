@@ -122,6 +122,10 @@ function judgePersonaMarkers(request: LlmJudgeRequest): readonly string[] {
     persona.beat,
     persona.pointOfView,
     ...persona.performsWhen,
+    ...persona.toneProfile.beats,
+    ...persona.toneProfile.styleDirectives,
+    ...persona.toneProfile.diction,
+    ...persona.toneProfile.dosAndDonts,
   ]);
 }
 
@@ -531,6 +535,7 @@ function blocksForStructure(
 ): BlogDraftBodyBlock[] {
   const personaName = request.context.persona.name;
   const personaLine = `${personaName}'s beat: ${request.context.persona.beat} Point of view: ${request.context.persona.pointOfView}`;
+  const toneLine = `Tone profile v${request.context.persona.toneVersion}: beats ${request.context.persona.toneProfile.beats.join(", ")}; style ${request.context.persona.toneProfile.styleDirectives.join(", ")}; diction ${request.context.persona.toneProfile.diction.join(", ")}.`;
   const performsLine = `Performs when: ${request.context.persona.performsWhen.join("; ")}.`;
 
   switch (structure.type) {
@@ -538,6 +543,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s weekly recap`, type: "heading" },
         { text: `${structure.lead} ${personaLine}`, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         {
           items: [
             structure.topResult,
@@ -552,6 +558,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s power rankings`, type: "heading" },
         { text: personaLine, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         {
           items: structure.rankings.map(
             (entry) =>
@@ -566,6 +573,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s matchup preview`, type: "heading" },
         { text: personaLine, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         {
           items: structure.matchups.map(
             (entry) =>
@@ -582,6 +590,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s weekly awards`, type: "heading" },
         { text: personaLine, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         {
           items: structure.awards.map(
             (award) => `${award.award}: ${award.recipient}. ${award.fact}`,
@@ -593,7 +602,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s transaction reaction`, type: "heading" },
         {
-          text: `${structure.move} Grade: ${structure.grade}. Winner: ${structure.winner}. Loser: ${structure.loser}.`,
+          text: `${structure.move} Grade: ${structure.grade}. Winner: ${structure.winner}. Loser: ${structure.loser}. ${toneLine}`,
           type: "paragraph",
         },
         { text: structure.sourcesSay, type: "quote" },
@@ -602,6 +611,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s season arc`, type: "heading" },
         { text: `${structure.actSoFar} ${personaLine}`, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         { text: structure.turningPoint, type: "paragraph" },
         {
           items: [
@@ -615,6 +625,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s rivalry file`, type: "heading" },
         { text: `${structure.history} ${personaLine}`, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         {
           items: [structure.score, structure.stakes, structure.needle],
           type: "list",
@@ -624,7 +635,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s arena recap`, type: "heading" },
         {
-          text: `${structure.leaguePosition} ${structure.fieldLeader} ${personaLine}`,
+          text: `${structure.leaguePosition} ${structure.fieldLeader} ${personaLine} ${toneLine}`,
           type: "paragraph",
         },
         {
@@ -637,7 +648,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s record watch`, type: "heading" },
         {
-          text: `${structure.record}: ${structure.newHolder} follows ${structure.previousHolder}. ${personaLine}`,
+          text: `${structure.record}: ${structure.newHolder} follows ${structure.previousHolder}. ${personaLine} ${toneLine}`,
           type: "paragraph",
         },
         { text: structure.math, type: "paragraph" },
@@ -647,6 +658,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s settle-it column`, type: "heading" },
         { text: `${structure.provocation} ${personaLine}`, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         {
           items: structure.twoSides.map((side) => `Side: ${side}`),
           type: "list",
@@ -657,6 +669,7 @@ function blocksForStructure(
       return [
         { text: `${personaName}'s verdict`, type: "heading" },
         { text: `${structure.question} ${personaLine}`, type: "paragraph" },
+        { text: toneLine, type: "paragraph" },
         {
           items: [structure.vote, structure.ruling, structure.newCanon],
           type: "list",

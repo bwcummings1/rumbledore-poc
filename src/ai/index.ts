@@ -54,6 +54,11 @@ export {
   AI_PERSONAS,
   type AiPersona,
   DEFAULT_PERSONA_CARDS,
+  DEFAULT_TONE_PROFILES,
+  DEFAULT_TONE_VERSION,
+  normalizeToneProfile,
+  renderToneProfileInstructions,
+  type ToneProfile,
 } from "./personas";
 export {
   type AiGenerationDependencies,

@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { AppError } from "@/core/result";
 import type { LlmGenerateRequest } from "./interfaces";
 import { createLlmClient } from "./model-providers";
-import { AI_PERSONAS } from "./personas";
+import {
+  AI_PERSONAS,
+  DEFAULT_TONE_PROFILES,
+  DEFAULT_TONE_VERSION,
+} from "./personas";
 import {
   ANTHROPIC_BULK_MODEL,
   ANTHROPIC_FLAGSHIP_MODEL,
@@ -70,6 +74,10 @@ function requestFor(
         promptTemplate: "Frame the week.",
         purpose: "League framing",
         tone: "warm and direct",
+        toneProfile: DEFAULT_TONE_PROFILES[persona],
+        toneUpdatedAt: new Date("2026-06-11T00:00:00.000Z"),
+        toneUpdatedBy: null,
+        toneVersion: DEFAULT_TONE_VERSION,
       },
       priorPosts: [],
       records: [],

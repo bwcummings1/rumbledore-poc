@@ -1,6 +1,6 @@
 import type { LeaguePublicationSectionId } from "@/news/sections";
 import type { AiContentType, BlogContentStructure } from "./content-types";
-import type { AiPersona } from "./personas";
+import type { AiPersona, ToneProfile } from "./personas";
 
 export interface NewsItem {
   id: string;
@@ -268,6 +268,10 @@ export interface LeaguePersonaCard {
   enabled: boolean;
   minWords: number;
   maxWords: number;
+  toneProfile: ToneProfile;
+  toneVersion: number;
+  toneUpdatedAt: Date;
+  toneUpdatedBy: string | null;
 }
 
 export interface LeagueBlogContext {

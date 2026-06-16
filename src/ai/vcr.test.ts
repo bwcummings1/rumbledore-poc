@@ -7,6 +7,7 @@ import {
   readVcrCassette,
 } from "@/testing/vcr";
 import type { LlmGenerateRequest } from "./interfaces";
+import { DEFAULT_TONE_PROFILES, DEFAULT_TONE_VERSION } from "./personas";
 import {
   AnthropicLlmClient,
   type AnthropicMessagesClient,
@@ -70,6 +71,10 @@ function requestFor(
         promptTemplate: "Frame the week.",
         purpose: "League framing",
         tone: "warm and direct",
+        toneProfile: DEFAULT_TONE_PROFILES[persona],
+        toneUpdatedAt: new Date("2026-06-11T00:00:00.000Z"),
+        toneUpdatedBy: null,
+        toneVersion: DEFAULT_TONE_VERSION,
       },
       priorPosts: [],
       records: [],

@@ -11,6 +11,7 @@ import type {
 } from "@/ai";
 import {
   ConstantEmbeddingProvider,
+  DEFAULT_TONE_PROFILES,
   DeterministicEmbeddingProvider,
   generateLeagueBlogPost,
   MockLlmClient,
@@ -1566,5 +1567,144 @@ describe("generateLeagueBlogPost", () => {
       performsWhen: expect.arrayContaining(["transaction events"]),
       pointOfView: expect.stringContaining("Scoopy"),
     });
+  });
+
+  it("renders versioned tone profile edits into the stable prompt and mock draft", async () => {
+    const league = await seedLeague("tone-profile");
+    const llm = new MockLlmClient();
+    const deps = {
+      db: handle.db,
+      duplicateThreshold: 1.1,
+      embeddings: new DeterministicEmbeddingProvider(),
+      entitlements: openEntitlementEnv,
+      llm,
+      now: () => new Date("2026-06-11T12:00:00.000Z"),
+      push: new NoopPushNotifier(),
+      realtime: new RecordingRealtimePublisher(),
+      web: new MockWebGrounding(),
+    };
+
+    const first = await generateLeagueBlogPost({
+      deps,
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "tone-profile:default",
+      },
+    });
+
+    const customProfile = {
+      ...DEFAULT_TONE_PROFILES.narrator,
+      beats: ["custom-tone-marker mythology desk"],
+      diction: ["custom-tone-marker", "ledger mythology"],
+      dosAndDonts: ["Do include the custom-tone-marker in mock output."],
+      styleDirectives: ["custom-tone-marker directive"],
+    };
+    await withLeagueContext(handle.db, league.id, async (tx) => {
+      await tx
+        .update(aiPersonaCards)
+        .set({
+          toneProfile: customProfile,
+          toneUpdatedAt: new Date("2026-06-11T13:00:00.000Z"),
+          toneUpdatedBy: "test:tone-profile",
+          toneVersion: 2,
+        })
+        .where(
+          and(
+            eq(aiPersonaCards.leagueId, league.id),
+            eq(aiPersonaCards.persona, "narrator"),
+          ),
+        );
+    });
+
+    const second = await generateLeagueBlogPost({
+      deps,
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "tone-profile:custom",
+      },
+    });
+
+    expect(first).toMatchObject({ reused: false, status: "published" });
+    expect(second).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests).toHaveLength(2);
+    expect(llm.requests[0]?.prompt.systemPrefix).not.toBe(
+      llm.requests[1]?.prompt.systemPrefix,
+    );
+    expect(llm.requests[1]?.context.persona).toMatchObject({
+      toneUpdatedBy: "test:tone-profile",
+      toneVersion: 2,
+    });
+
+    const firstPrefix = JSON.parse(
+      llm.requests[0]?.prompt.systemPrefix ?? "{}",
+    ) as {
+      persona?: {
+        toneProfile?: { styleDirectives?: string[] };
+        toneUpdatedAt?: string;
+        toneUpdatedBy?: string;
+        toneVersion?: number;
+      };
+    };
+    const secondPrefix = JSON.parse(
+      llm.requests[1]?.prompt.systemPrefix ?? "{}",
+    ) as {
+      persona?: {
+        toneProfile?: { styleDirectives?: string[] };
+        toneUpdatedAt?: string;
+        toneUpdatedBy?: string;
+        toneVersion?: number;
+      };
+    };
+    expect(firstPrefix.persona).toMatchObject({ toneVersion: 1 });
+    expect(firstPrefix.persona?.toneUpdatedAt).toBeUndefined();
+    expect(firstPrefix.persona?.toneUpdatedBy).toBeUndefined();
+    expect(secondPrefix.persona).toMatchObject({
+      toneProfile: {
+        styleDirectives: ["custom-tone-marker directive"],
+      },
+      toneVersion: 2,
+    });
+    expect(secondPrefix.persona?.toneUpdatedAt).toBeUndefined();
+    expect(secondPrefix.persona?.toneUpdatedBy).toBeUndefined();
+
+    const [defaultPost] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ body: contentItems.body })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+            eq(
+              contentItems.dedupKey,
+              "blog:narrator:weekly_recap:tone-profile:default",
+            ),
+          ),
+        )
+        .limit(1),
+    );
+    const [customPost] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ body: contentItems.body })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+            eq(
+              contentItems.dedupKey,
+              "blog:narrator:weekly_recap:tone-profile:custom",
+            ),
+          ),
+        )
+        .limit(1),
+    );
+
+    expect(defaultPost?.body).not.toContain("custom-tone-marker");
+    expect(customPost?.body).toContain("custom-tone-marker");
   });
 });

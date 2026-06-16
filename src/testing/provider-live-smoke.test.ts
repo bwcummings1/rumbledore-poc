@@ -7,6 +7,7 @@ import {
 } from "@/ai/dependencies";
 import type { LlmGenerateRequest } from "@/ai/interfaces";
 import { MockLlmClient, MockWebGrounding } from "@/ai/mocks";
+import { DEFAULT_TONE_PROFILES, DEFAULT_TONE_VERSION } from "@/ai/personas";
 import {
   AnthropicLlmClient,
   anthropicModelForTier,
@@ -118,6 +119,10 @@ function requestFor(
         promptTemplate: "Frame the week.",
         purpose: "League framing",
         tone: "warm and direct",
+        toneProfile: DEFAULT_TONE_PROFILES[persona],
+        toneUpdatedAt: new Date("2026-06-11T00:00:00.000Z"),
+        toneUpdatedBy: null,
+        toneVersion: DEFAULT_TONE_VERSION,
       },
       priorPosts: [],
       records: [],

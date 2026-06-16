@@ -2310,6 +2310,12 @@ export const aiPersonaCards = pgTable(
     purpose: text("purpose").notNull(),
     tone: text("tone").notNull(),
     promptTemplate: text("prompt_template").notNull(),
+    toneProfile: jsonb("tone_profile").$type<unknown>().notNull(),
+    toneVersion: integer("tone_version").notNull().default(1),
+    toneUpdatedBy: text("tone_updated_by"),
+    toneUpdatedAt: timestamp("tone_updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     enabled: boolean("enabled").notNull().default(true),
     minWords: integer("min_words").notNull().default(80),
     maxWords: integer("max_words").notNull().default(220),

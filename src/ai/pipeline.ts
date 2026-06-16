@@ -81,7 +81,12 @@ import {
   MockLlmClient,
   MockWebGrounding,
 } from "./mocks";
-import { AI_PERSONAS, type AiPersona, DEFAULT_PERSONA_CARDS } from "./personas";
+import {
+  AI_PERSONAS,
+  type AiPersona,
+  DEFAULT_PERSONA_CARDS,
+  normalizeToneProfile,
+} from "./personas";
 
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.92;
 
@@ -750,6 +755,17 @@ function untrustedNewsBlock(newsItems: readonly NewsItem[]): string {
   return `<untrusted_news>${JSON.stringify(inertItems)}</untrusted_news>`;
 }
 
+type PersonaCardRow = Omit<LeaguePersonaCard, "toneProfile"> & {
+  toneProfile: unknown;
+};
+
+function personaCardFromRow(row: PersonaCardRow): LeaguePersonaCard {
+  return {
+    ...row,
+    toneProfile: normalizeToneProfile(row.toneProfile, row.persona),
+  };
+}
+
 export function buildPromptParts({
   contentType,
   context,
@@ -781,6 +797,8 @@ export function buildPromptParts({
       promptTemplate: context.persona.promptTemplate,
       purpose: context.persona.purpose,
       tone: context.persona.tone,
+      toneProfile: context.persona.toneProfile,
+      toneVersion: context.persona.toneVersion,
     },
     records: stableRecordFacts(context),
     teams: stableTeamFacts(context.teams),
@@ -833,6 +851,8 @@ async function ensurePersonaCard({
       promptTemplate: defaults.promptTemplate,
       purpose: defaults.purpose,
       tone: defaults.tone,
+      toneProfile: defaults.toneProfile,
+      toneVersion: defaults.toneVersion,
       triggerConfig: defaults.triggerConfig,
     })
     .onConflictDoNothing({
@@ -851,10 +871,14 @@ async function ensurePersonaCard({
       promptTemplate: aiPersonaCards.promptTemplate,
       purpose: aiPersonaCards.purpose,
       tone: aiPersonaCards.tone,
+      toneProfile: aiPersonaCards.toneProfile,
+      toneUpdatedAt: aiPersonaCards.toneUpdatedAt,
+      toneUpdatedBy: aiPersonaCards.toneUpdatedBy,
+      toneVersion: aiPersonaCards.toneVersion,
     });
 
   if (inserted) {
-    return inserted;
+    return personaCardFromRow(inserted);
   }
 
   const [row] = await tx
@@ -871,6 +895,10 @@ async function ensurePersonaCard({
       promptTemplate: aiPersonaCards.promptTemplate,
       purpose: aiPersonaCards.purpose,
       tone: aiPersonaCards.tone,
+      toneProfile: aiPersonaCards.toneProfile,
+      toneUpdatedAt: aiPersonaCards.toneUpdatedAt,
+      toneUpdatedBy: aiPersonaCards.toneUpdatedBy,
+      toneVersion: aiPersonaCards.toneVersion,
     })
     .from(aiPersonaCards)
     .where(
@@ -889,7 +917,7 @@ async function ensurePersonaCard({
     });
   }
 
-  return row;
+  return personaCardFromRow(row);
 }
 
 async function loadInstigationContext({

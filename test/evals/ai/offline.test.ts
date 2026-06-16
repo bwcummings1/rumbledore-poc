@@ -92,6 +92,10 @@ function personaCard(persona: AiPersona): LeaguePersonaCard {
     promptTemplate: defaults.promptTemplate,
     purpose: defaults.purpose,
     tone: defaults.tone,
+    toneProfile: defaults.toneProfile,
+    toneUpdatedAt: new Date("2026-06-11T00:00:00.000Z"),
+    toneUpdatedBy: null,
+    toneVersion: defaults.toneVersion,
   };
 }
 
