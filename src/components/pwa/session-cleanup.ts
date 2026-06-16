@@ -2,12 +2,17 @@
 
 export const PWA_PAGE_CACHE_PREFIX = "rumbledore-pages-";
 export const PWA_SIGN_OUT_MESSAGE = "RUMBLEDORE_SIGN_OUT";
+export const PUSH_ACCOUNT_CLEANUP_ENDPOINT = "/api/push/subscriptions/account";
 
 type CacheStorageSubset = Pick<CacheStorage, "delete" | "keys">;
 type ServiceWorkerContainerSubset = Pick<
   ServiceWorkerContainer,
   "controller" | "getRegistration" | "getRegistrations"
 >;
+type FetchLike = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
 
 function browserCaches(): CacheStorageSubset | null {
   return typeof caches === "undefined" ? null : caches;
@@ -18,6 +23,20 @@ function browserServiceWorker(): ServiceWorkerContainerSubset | null {
     return null;
   }
   return navigator.serviceWorker;
+}
+
+function browserFetch(): FetchLike | null {
+  return typeof fetch === "undefined" ? null : fetch.bind(globalThis);
+}
+
+async function browserPushRegistrations(
+  serviceWorker: ServiceWorkerContainerSubset,
+): Promise<readonly ServiceWorkerRegistration[]> {
+  return serviceWorker.getRegistrations
+    ? serviceWorker.getRegistrations()
+    : serviceWorker
+        .getRegistration()
+        .then((registration) => (registration ? [registration] : []));
 }
 
 export async function clearPwaPageCaches(
@@ -70,11 +89,7 @@ export async function unsubscribeBrowserPush(
     return;
   }
 
-  const registrations = serviceWorker.getRegistrations
-    ? await serviceWorker.getRegistrations()
-    : await serviceWorker
-        .getRegistration()
-        .then((registration) => (registration ? [registration] : []));
+  const registrations = await browserPushRegistrations(serviceWorker);
 
   await Promise.all(
     registrations.map(async (registration) => {
@@ -85,6 +100,40 @@ export async function unsubscribeBrowserPush(
   );
 }
 
+export async function collectBrowserPushEndpoints(
+  serviceWorker: ServiceWorkerContainerSubset | null = browserServiceWorker(),
+): Promise<string[]> {
+  if (!serviceWorker) {
+    return [];
+  }
+
+  const registrations = await browserPushRegistrations(serviceWorker);
+  const endpoints = new Set<string>();
+  for (const registration of registrations) {
+    const subscription =
+      (await registration.pushManager?.getSubscription()) ?? null;
+    if (subscription?.endpoint) {
+      endpoints.add(subscription.endpoint);
+    }
+  }
+  return [...endpoints].sort();
+}
+
+export async function disableServerPushSubscriptions(
+  endpoints: readonly string[],
+  fetchImpl: FetchLike | null = browserFetch(),
+): Promise<void> {
+  if (endpoints.length === 0 || !fetchImpl) {
+    return;
+  }
+
+  await fetchImpl(PUSH_ACCOUNT_CLEANUP_ENDPOINT, {
+    body: JSON.stringify({ endpoints }),
+    headers: { "Content-Type": "application/json" },
+    method: "DELETE",
+  });
+}
+
 async function swallowCleanupFailure(task: () => Promise<void>): Promise<void> {
   try {
     await task();
@@ -93,10 +142,30 @@ async function swallowCleanupFailure(task: () => Promise<void>): Promise<void> {
   }
 }
 
+async function swallowCleanupValue<T>(
+  task: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await task();
+  } catch {
+    return fallback;
+  }
+}
+
 export async function clearPwaSessionState(): Promise<void> {
+  const serviceWorker = browserServiceWorker();
+  const pushEndpoints = await swallowCleanupValue(
+    () => collectBrowserPushEndpoints(serviceWorker),
+    [],
+  );
+  await swallowCleanupFailure(() =>
+    disableServerPushSubscriptions(pushEndpoints),
+  );
+
   await Promise.all([
     swallowCleanupFailure(() => clearPwaPageCaches()),
-    swallowCleanupFailure(() => notifyServiceWorkerSignOut()),
-    swallowCleanupFailure(() => unsubscribeBrowserPush()),
+    swallowCleanupFailure(() => notifyServiceWorkerSignOut(serviceWorker)),
+    swallowCleanupFailure(() => unsubscribeBrowserPush(serviceWorker)),
   ]);
 }

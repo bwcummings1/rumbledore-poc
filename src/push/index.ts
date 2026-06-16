@@ -16,6 +16,7 @@ export {
 } from "./preferences";
 export {
   disablePushSubscription,
+  disablePushSubscriptionsForUser,
   getPushSubscriptionStatus,
   pushEndpointHash,
   upsertPushSubscription,

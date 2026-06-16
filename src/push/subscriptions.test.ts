@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -9,6 +9,7 @@ import { leagues, members, pushSubscriptions, users } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
   disablePushSubscription,
+  disablePushSubscriptionsForUser,
   getPushSubscriptionStatus,
   pushEndpointHash,
   upsertPushSubscription,
@@ -211,6 +212,102 @@ describe("push subscription mutations", () => {
     expect(rows).toEqual([
       {
         disabledAt: new Date("2026-06-12T13:00:00.000Z"),
+        status: "disabled",
+      },
+    ]);
+  });
+
+  it("disables matching browser endpoints across the user's member leagues", async () => {
+    const browserEndpoint = `${endpoint}/account-device`;
+    const otherDeviceEndpoint = `${endpoint}/other-device`;
+
+    for (const [targetLeagueId, targetEndpoint] of [
+      [leagueId, browserEndpoint],
+      [otherLeagueId, browserEndpoint],
+      [leagueId, otherDeviceEndpoint],
+    ] as const) {
+      const upserted = await upsertPushSubscription(
+        {
+          db: handle.db,
+          now: () => new Date("2026-06-12T14:00:00.000Z"),
+        },
+        {
+          leagueId: targetLeagueId,
+          subscription: subscription(targetEndpoint),
+          userAgent: "vitest",
+          userId,
+        },
+      );
+      expect(upserted.ok).toBe(true);
+    }
+
+    const result = await disablePushSubscriptionsForUser(
+      { db: handle.db, now: () => new Date("2026-06-12T14:30:00.000Z") },
+      { endpoints: [browserEndpoint], userId },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: { disabledCount: 2, leagueCount: 2 },
+    });
+
+    const leagueRows = await withLeagueContext(handle.db, leagueId, (tx) =>
+      tx
+        .select({
+          disabledAt: pushSubscriptions.disabledAt,
+          endpointHash: pushSubscriptions.endpointHash,
+          status: pushSubscriptions.status,
+        })
+        .from(pushSubscriptions)
+        .where(
+          and(
+            eq(pushSubscriptions.leagueId, leagueId),
+            inArray(pushSubscriptions.endpointHash, [
+              pushEndpointHash(browserEndpoint),
+              pushEndpointHash(otherDeviceEndpoint),
+            ]),
+          ),
+        ),
+    );
+    const leagueRowsByHash = new Map(
+      leagueRows.map((row) => [row.endpointHash, row]),
+    );
+    expect(leagueRowsByHash.get(pushEndpointHash(browserEndpoint))).toEqual({
+      disabledAt: new Date("2026-06-12T14:30:00.000Z"),
+      endpointHash: pushEndpointHash(browserEndpoint),
+      status: "disabled",
+    });
+    expect(leagueRowsByHash.get(pushEndpointHash(otherDeviceEndpoint))).toEqual(
+      {
+        disabledAt: null,
+        endpointHash: pushEndpointHash(otherDeviceEndpoint),
+        status: "active",
+      },
+    );
+
+    const otherLeagueRows = await withLeagueContext(
+      handle.db,
+      otherLeagueId,
+      (tx) =>
+        tx
+          .select({
+            disabledAt: pushSubscriptions.disabledAt,
+            status: pushSubscriptions.status,
+          })
+          .from(pushSubscriptions)
+          .where(
+            and(
+              eq(pushSubscriptions.leagueId, otherLeagueId),
+              eq(
+                pushSubscriptions.endpointHash,
+                pushEndpointHash(browserEndpoint),
+              ),
+            ),
+          ),
+    );
+    expect(otherLeagueRows).toEqual([
+      {
+        disabledAt: new Date("2026-06-12T14:30:00.000Z"),
         status: "disabled",
       },
     ]);

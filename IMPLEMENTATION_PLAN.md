@@ -53,7 +53,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed
 7. [x] Split class-specific provider fetches for scheduler data classes — performance/MED: live ingest now passes due classes/current period into sync and avoids broad provider calls for narrow polls.
 8. [x] Confirm and wire `league.connected` fan-out from onboarding — robustness/LOW: imports now enqueue the live-ingest trigger after durable league/member setup, and `league.connected` force-fanout is covered.
 9. [x] Normalize provider-player refs in real central-news adapters — source-quality/MED: real Tavily/RSS sources now extract rostered player names through a DB-backed provider-ID dictionary before tailoring.
-10. [ ] Add account-wide server push disable/cleanup — robustness/LOW: sign-out currently only unsubscribes the browser, leaving stale server rows until delivery cleanup.
+10. [x] Add account-wide server push disable/cleanup — robustness/LOW: sign-out now disables matching browser endpoint rows across the signed-in user's current league memberships before unsubscribing locally.
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
 Carried from Phase 2 — **re-verify each before acting** ("don't assume not implemented"); several may already be fixed by the Phase 2 harden pass.
@@ -65,7 +65,7 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] **[maintainability/LOW] Real RSS central-news parsing is intentionally lightweight** — replace the regex extractor with a dedicated parser before broad real-feed rollout.
 - [ ] **[maintainability/LOW] Central News editorial ranking scans all central rows in app memory** — add indexed/queryable publication section and rank fields before high-volume rollout.
 - [x] **[source-quality/MED] Real central-news adapters do not emit normalized provider-player refs yet** — real Tavily/RSS sources now emit provider-player refs via conservative roster-name extraction.
-- [ ] **[pwa/LOW] Sign-out unsubscribes the browser PushSubscription, but server push rows remain active until delivery cleanup** — add an account-wide disable endpoint if stale push rows become noisy.
+- [x] **[pwa/LOW] Sign-out unsubscribes the browser PushSubscription, but server push rows remain active until delivery cleanup** — sign-out now calls an authenticated account cleanup endpoint with browser push endpoints before local unsubscribe.
 
 ## Discoveries / bugs (loop appends here)
 - [x] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
@@ -76,3 +76,4 @@ Carried from Phase 2 — **re-verify each before acting** ("don't assume not imp
 - [ ] Flat `all_time_record` longest-streak rows still derive from per-season `season_statistics`; future record-chain/materialized UI work should use cross-season H2H-only streaks from the catalog.
 - [ ] PWA perf budget is currently a post-build structural/bundle gate; add a runtime Lighthouse or Playwright user-flow pass before production launch to measure FCP, CLS, and INP under throttling.
 - [x] Scheduled weekly recaps and reactive `game.final` recaps still use different trigger keys; add a targeted shared-idempotency pass when enriching reactive cadence.
+- [ ] Push delivery selects active `push_subscription` rows without re-checking auth-plane membership; membership removal should disable rows or delivery should join current `members` before fan-out.

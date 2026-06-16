@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
-import { requireLeagueRoleForUser } from "@/auth/guards";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import {
+  listLeagueMembershipsForUser,
+  requireLeagueRoleForUser,
+} from "@/auth/guards";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -25,6 +28,11 @@ export interface DisablePushSubscriptionInput {
   userId: string;
 }
 
+export interface DisablePushSubscriptionsForUserInput {
+  endpoints?: readonly string[];
+  userId: string;
+}
+
 export interface GetPushSubscriptionStatusInput {
   endpoint: string;
   leagueId: string;
@@ -34,6 +42,11 @@ export interface GetPushSubscriptionStatusInput {
 export interface PushSubscriptionMutationResult {
   id: string | null;
   status: "active" | "disabled";
+}
+
+export interface PushSubscriptionsCleanupResult {
+  disabledCount: number;
+  leagueCount: number;
 }
 
 const UUID_RE =
@@ -195,6 +208,67 @@ export async function disablePushSubscription(
   });
 
   return ok({ id: row?.id ?? null, status: "disabled" });
+}
+
+export async function disablePushSubscriptionsForUser(
+  deps: PushSubscriptionMutationDeps,
+  input: DisablePushSubscriptionsForUserInput,
+): Promise<Result<PushSubscriptionsCleanupResult, AppError>> {
+  const memberships = await listLeagueMembershipsForUser(deps.db, {
+    minRole: "member",
+    userId: input.userId,
+  });
+  if (!memberships.ok) {
+    return memberships;
+  }
+
+  const endpointHashes =
+    input.endpoints === undefined
+      ? null
+      : [
+          ...new Set(
+            input.endpoints.map((endpoint) => pushEndpointHash(endpoint)),
+          ),
+        ].sort();
+  if (endpointHashes?.length === 0) {
+    return ok({ disabledCount: 0, leagueCount: memberships.value.length });
+  }
+
+  const timestamp = mutationNow(deps);
+  let disabledCount = 0;
+
+  for (const membership of memberships.value) {
+    const filters = [
+      eq(pushSubscriptions.leagueId, membership.leagueId),
+      eq(pushSubscriptions.userId, input.userId),
+      eq(pushSubscriptions.status, "active"),
+      isNull(pushSubscriptions.disabledAt),
+    ];
+    if (endpointHashes !== null) {
+      filters.push(inArray(pushSubscriptions.endpointHash, endpointHashes));
+    }
+
+    const rows = await withLeagueContext(
+      deps.db,
+      membership.leagueId,
+      async (tx) =>
+        tx
+          .update(pushSubscriptions)
+          .set({
+            disabledAt: timestamp,
+            status: "disabled",
+            updatedAt: timestamp,
+          })
+          .where(and(...filters))
+          .returning({ id: pushSubscriptions.id }),
+    );
+    disabledCount += rows.length;
+  }
+
+  return ok({
+    disabledCount,
+    leagueCount: memberships.value.length,
+  });
 }
 
 export async function getPushSubscriptionStatus(
