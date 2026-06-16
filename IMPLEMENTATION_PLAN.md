@@ -17,7 +17,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Implement the typography system (Michroma/Saira/JetBrains Mono/Inter, scales, gradient-clip headings, LCD numerics, prose scale). (specs/28)
 - [x] Implement the atmosphere layers (starfield/scanline/grain/vignette), perf-safe and reduced-motion-aware. (specs/28)
 - [x] Implement the signature primitives: the AI orb, the Y2K bezel, and the glass panel/surface system. (specs/28)
-- [ ] Add motion/easing tokens plus the WCAG-AA contrast, focus, and reduced-motion accessibility foundation. (specs/28)
+- [x] Add motion/easing tokens plus the WCAG-AA contrast, focus, and reduced-motion accessibility foundation. (specs/28)
 
 ### T. Component library (see specs/29)
 - [ ] Restyle the button and input control set to AUSPEX with all states, responsive, and a11y. (specs/29)
@@ -60,3 +60,5 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 
 ## Discoveries / bugs (loop appends here)
 - [ ] Spec/tuning follow-up: canonical `lilac-deep` computes below 4.5:1 on `hull`/`hull-2`, so keep it UI/fill-grade unless a later AUSPEX tuning pass adjusts the value.
+- [ ] [a11y] Normalize legacy form controls from `focus:` border/ring styling to the tokenized `focus-visible` control primitive during the Spec 29 control restyle; the global ring covers keyboard fallback meanwhile.
+- [ ] [a11y] Audit shared button and icon-button touch targets during the Spec 29 control restyle; several visual variants are below 44px even when later layouts may provide larger hit areas.

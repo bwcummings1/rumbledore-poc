@@ -63,6 +63,10 @@ describe("AUSPEX atmosphere foundation", () => {
     expect(globalsCss).toContain("repeating-linear-gradient");
     expect(globalsCss).toContain("var(--void, var(--background))");
     expect(globalsCss).toContain("var(--hair-3, var(--border))");
+    expect(globalsCss).toContain("var(--motion-duration-atmosphere)");
+    expect(globalsCss).toContain(
+      "var(--motion-ease-linear) infinite alternate",
+    );
     expect(globalsCss).toContain("@keyframes auspex-starfield-drift");
   });
 

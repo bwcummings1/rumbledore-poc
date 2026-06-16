@@ -78,10 +78,38 @@ describe("reduced-motion theme tokens", () => {
     );
     expect(globalsCss).toContain("--duration-orb: var(--motion-duration-orb);");
     expect(globalsCss).toContain(
+      "--duration-atmosphere: var(--motion-duration-atmosphere);",
+    );
+    expect(globalsCss).toContain(
+      "--duration-count-up: var(--motion-duration-count-up);",
+    );
+    expect(globalsCss).toContain(
+      "--duration-draw-in: var(--motion-duration-draw-in);",
+    );
+    expect(globalsCss).toContain(
+      "--duration-staged-process: var(--motion-duration-staged-process);",
+    );
+    expect(globalsCss).toContain(
+      "--duration-hover-lift: var(--motion-duration-hover-lift);",
+    );
+    expect(globalsCss).toContain(
+      "--duration-focus-bloom: var(--motion-duration-focus-bloom);",
+    );
+    expect(globalsCss).toContain(
+      "--duration-marquee: var(--motion-duration-marquee);",
+    );
+    expect(globalsCss).toContain(
       "--default-transition-duration: var(--motion-duration-fast);",
     );
     expect(globalsCss).toContain(
       "--default-transition-timing-function: var(--motion-ease-out);",
+    );
+    expect(globalsCss).toContain("--ease-spring: var(--motion-ease-spring);");
+    expect(globalsCss).toContain("var(--motion-duration-focus-bloom)");
+    expect(globalsCss).toContain("var(--motion-ease-spring)");
+    expect(globalsCss).toContain("var(--motion-duration-atmosphere)");
+    expect(globalsCss).toContain(
+      "var(--motion-ease-linear) infinite alternate",
     );
   });
 });

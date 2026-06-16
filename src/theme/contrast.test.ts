@@ -212,6 +212,19 @@ describe("AUSPEX audited contrast pairs", () => {
         `void on ${background}`,
       ).toBeGreaterThanOrEqual(BODY_TEXT_RATIO);
     }
+
+    expect(contrastByVariableName("ink", "lilac-deep")).toBeLessThan(
+      BODY_TEXT_RATIO,
+    );
+  });
+
+  it("keeps the AUSPEX focus ring visible on every dark surface", () => {
+    for (const background of ["void", "hull", "hull-2"] as const) {
+      expect(
+        contrastByVariableName("ring", background),
+        `focus ring on ${background}`,
+      ).toBeGreaterThanOrEqual(UI_TEXT_RATIO);
+    }
   });
 });
 

@@ -66,6 +66,15 @@ describe("theme registry", () => {
     expect(getThemeExtensionCssVariables(auspex)["bezel-fill"]).toContain(
       "linear-gradient",
     );
+    expect(getThemeExtensionCssVariables(auspex)["focus-ring-width"]).toBe(
+      "2px",
+    );
+    expect(getThemeExtensionCssVariables(auspex)["focus-ring-offset"]).toBe(
+      "2px",
+    );
+    expect(
+      getThemeExtensionCssVariables(auspex)["focus-ring-shadow"],
+    ).toContain("--glow-lilac");
     expect(getThemeExtensionCssVariables(auspex)["glass-blur"]).toBe("18px");
     expect(getThemeExtensionCssVariables(auspex).head).toContain(
       "--font-michroma",
@@ -107,7 +116,18 @@ describe("theme registry", () => {
     expect(css).toContain("--primitive-color-ink-950: oklch(98% 0.006 250);");
     expect(css).toContain("--duration-fast: 150ms;");
     expect(css).toContain("--duration-orb: 18000ms;");
+    expect(css).toContain("--duration-atmosphere: 64000ms;");
+    expect(css).toContain("--duration-focus-bloom: 150ms;");
+    expect(css).toContain("--duration-marquee: 28000ms;");
     expect(css).toContain("--motion-duration-orb: var(--duration-orb);");
+    expect(css).toContain(
+      "--motion-duration-atmosphere: var(--duration-atmosphere);",
+    );
+    expect(css).toContain(
+      "--motion-duration-focus-bloom: var(--duration-focus-bloom);",
+    );
+    expect(css).toContain("--ease-spring: cubic-bezier(0.2, 0.9, 0.18, 1);");
+    expect(css).toContain("--motion-ease-spring: var(--ease-spring);");
     expect(css).toContain("--ease-linear: linear;");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });

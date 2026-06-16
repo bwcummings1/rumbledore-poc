@@ -101,7 +101,15 @@ html {
   --duration-base: var(--motion-duration-base);
   --duration-slow: var(--motion-duration-slow);
   --duration-orb: var(--motion-duration-orb);
+  --duration-atmosphere: var(--motion-duration-atmosphere);
+  --duration-count-up: var(--motion-duration-count-up);
+  --duration-draw-in: var(--motion-duration-draw-in);
+  --duration-staged-process: var(--motion-duration-staged-process);
+  --duration-hover-lift: var(--motion-duration-hover-lift);
+  --duration-focus-bloom: var(--motion-duration-focus-bloom);
+  --duration-marquee: var(--motion-duration-marquee);
   --ease-out: var(--motion-ease-out);
+  --ease-spring: var(--motion-ease-spring);
   --ease-linear: var(--motion-ease-linear);
   --default-transition-duration: var(--motion-duration-fast);
   --default-transition-timing-function: var(--motion-ease-out);
@@ -455,7 +463,8 @@ html {
   }
 
   .auspex-atmosphere__starfield {
-    animation: auspex-starfield-drift 64s linear infinite alternate;
+    animation: auspex-starfield-drift var(--motion-duration-atmosphere)
+      var(--motion-ease-linear) infinite alternate;
     background-image:
       radial-gradient(
         circle at 12% 18%,
@@ -592,6 +601,44 @@ html {
   }
 }
 
+:where(
+    a[href],
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [role="button"],
+    [role="link"],
+    [role="menuitem"],
+    [role="tab"],
+    [tabindex]:not([tabindex="-1"])
+  ) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:is(
+    a[href],
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [role="button"],
+    [role="link"],
+    [role="menuitem"],
+    [role="tab"],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+  box-shadow: var(--focus-ring-shadow, 0 0 0 4px var(--ring));
+  outline: var(--focus-ring-width, 2px) solid var(--ring);
+  outline-offset: var(--focus-ring-offset, 2px);
+  transition:
+    outline-color var(--motion-duration-focus-bloom) var(--motion-ease-out),
+    box-shadow var(--motion-duration-focus-bloom) var(--motion-ease-spring),
+    border-color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
 @media (min-width: 768px) {
   .prose-auspex {
     font-size: var(--prose-size-wide);
@@ -652,6 +699,20 @@ html {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    transition-duration: var(--motion-duration-fast);
+  }
+
+  [class*="animate-"],
+  [class*="animate-"]::before,
+  [class*="animate-"]::after {
+    animation-duration: var(--motion-duration-fast);
+    animation-iteration-count: 1;
+  }
+
   .orb::before {
     animation: none;
   }
@@ -660,5 +721,21 @@ html {
     animation: none;
     transform: none;
     will-change: auto;
+  }
+
+  :is(
+      a[href],
+      button,
+      input,
+      select,
+      textarea,
+      summary,
+      [role="button"],
+      [role="link"],
+      [role="menuitem"],
+      [role="tab"],
+      [tabindex]:not([tabindex="-1"])
+    ):focus-visible {
+    transition-duration: var(--motion-duration-focus-bloom);
   }
 }
