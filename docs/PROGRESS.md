@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **AUSPEX Arena surface landed** with a Central Arena HUD, rivalry duel, aggregate charts, richer movement rail, and route-shaped loading state.
+Keep it current. Last updated: 2026-06-16 — **AUSPEX Sportsbook surface landed** with grouped event panels, a Parlay Console sheet/drawer, bankroll LCD loop, read-only offline state, and route-shaped loading state.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX Sportsbook surface landed — `/leagues/[leagueId]/bet` now frames event-grouped markets, a locked-price Parlay Console with mobile sheet trigger, amber rolling-bankroll LCD loop, open/history slip ledger tabs, offline read-only treatment, and a sportsbook-shaped skeleton.
 - 2026-06-16: AUSPEX Arena surface landed — `/arena` now frames league-vs-league and individual competition with a Central Arena HUD, honest as-of state, rivalry duel metrics, aggregate rank/P&L/ROI charts, movement rail, route-specific skeletons, and `season` query compatibility.
 - 2026-06-16: AUSPEX League Home dashboard landed — league home now composes the matchup hero, local wire, scoreboard, sortable standings, Press rail, bankroll preview, records, teams, and responsive empty states without changing the scoped loader.
 - 2026-06-16: AUSPEX article page landed — publication articles now carry sticky reading progress, orb/source bylines, pull quotes, structured inline data blocks, canon/tags, and non-dead-end related/next reading paths.

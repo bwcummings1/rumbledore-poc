@@ -9,17 +9,25 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type {
   LeagueBetData,
   LeagueBetMarket,
   LeagueBetSelection,
 } from "@/betting";
+import { Banner } from "@/components/ui/banner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
+import { Progress } from "@/components/ui/progress";
+import { Sheet } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
+import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import { Stepper } from "@/components/ui/stepper";
+import { Tabs } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast";
 import { Toaster } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +112,10 @@ function formatSignedLine(value: number): string {
 
 function formatStakeInput(cents: number): string {
   return (cents / 100).toFixed(2);
+}
+
+function formatSelectionCount(count: number): string {
+  return `${count} selection${count === 1 ? "" : "s"}`;
 }
 
 function parseStakeCents(value: string): number | null {
@@ -279,11 +291,12 @@ function SelectionButton({
         .join(" ")}
       aria-pressed={isSelected}
       className={cn(
-        "grid min-h-14 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-control border px-3 py-2 text-left text-sm transition-colors",
+        "cell grid min-h-14 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left text-sm transition-[border-color,background-color,box-shadow,color]",
         isSelected
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-background hover:bg-muted",
-        disabled && "cursor-not-allowed opacity-55 hover:bg-background",
+          ? "border-primary bg-primary/15 text-foreground shadow-[0_0_16px_var(--glow-lilac),var(--bevel)]"
+          : "hover:border-primary/50 hover:bg-primary/10",
+        disabled &&
+          "cursor-not-allowed border-input opacity-55 hover:border-input hover:bg-[var(--panel)] hover:shadow-[var(--bevel)]",
       )}
       disabled={disabled}
       onClick={onSelect}
@@ -301,10 +314,12 @@ function SelectionButton({
 }
 
 function MarketRow({
+  isOffline,
   market,
   onToggleSelection,
   stagedSelection,
 }: {
+  isOffline: boolean;
   market: LeagueBetMarket;
   onToggleSelection: (
     market: LeagueBetMarket,
@@ -313,6 +328,7 @@ function MarketRow({
   stagedSelection: StagedSelection | undefined;
 }) {
   const isBettable = bettable(market);
+  const isDisabled = !isBettable || isOffline;
   return (
     <div className="grid gap-3 border-border border-t py-4 first:border-t-0 first:pt-0 last:pb-0">
       <div className="flex items-start justify-between gap-3">
@@ -325,21 +341,14 @@ function MarketRow({
             {formatDateTime(market.capturedAt)}
           </p>
         </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-control border px-2 py-1 text-xs font-medium",
-            isBettable
-              ? "border-primary/30 bg-primary/10 text-primary"
-              : "border-border bg-muted text-muted-foreground",
-          )}
-        >
-          {isBettable ? "Open" : "Locked"}
-        </span>
+        <StatusPill tone={isBettable && !isOffline ? "live" : "neutral"}>
+          {isOffline ? "Read-only" : isBettable ? "Open" : "Locked"}
+        </StatusPill>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {market.selections.map((selection) => (
           <SelectionButton
-            disabled={!isBettable}
+            disabled={isDisabled}
             isSelected={stagedSelection?.selection === selection.selection}
             key={`${market.snapshotId}-${selection.selection}`}
             market={market}
@@ -354,10 +363,12 @@ function MarketRow({
 
 function EventCard({
   group,
+  isOffline,
   onToggleSelection,
   stagedSelections,
 }: {
   group: EventGroup;
+  isOffline: boolean;
   onToggleSelection: (
     market: LeagueBetMarket,
     selection: LeagueBetSelection,
@@ -372,12 +383,12 @@ function EventCard({
   );
 
   return (
-    <article className="rounded-card border border-border bg-card p-4">
+    <article className="panel p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-primary">
+          <StatusPill tone={eventStatusTone(group.eventStatus)}>
             {group.eventStatus.replaceAll("_", " ")}
-          </p>
+          </StatusPill>
           <h2 className="mt-1 text-base font-semibold">
             {group.awayTeam} at {group.homeTeam}
           </h2>
@@ -393,6 +404,7 @@ function EventCard({
       <div className="grid gap-0">
         {standardMarkets.map((market) => (
           <MarketRow
+            isOffline={isOffline}
             key={market.marketId}
             market={market}
             onToggleSelection={onToggleSelection}
@@ -402,7 +414,7 @@ function EventCard({
       </div>
 
       {playerProps.length > 0 ? (
-        <details className="mt-4 rounded-control border border-border bg-muted/20 px-3 py-2">
+        <details className="mt-4 rounded-control border border-border bg-[var(--panel)] px-3 py-2">
           <summary className="cursor-pointer text-sm font-medium">
             More markets · {playerProps.length} player prop
             {playerProps.length === 1 ? "" : "s"}
@@ -410,6 +422,7 @@ function EventCard({
           <div className="mt-3 grid gap-0">
             {playerProps.map((market) => (
               <MarketRow
+                isOffline={isOffline}
                 key={market.marketId}
                 market={market}
                 onToggleSelection={onToggleSelection}
@@ -425,6 +438,8 @@ function EventCard({
 
 function StagedSlipPanel({
   balanceCents,
+  embedded = false,
+  isOffline,
   onClear,
   onPlaceSlip,
   onRemoveSelection,
@@ -434,6 +449,8 @@ function StagedSlipPanel({
   stakeInput,
 }: {
   balanceCents: number | null;
+  embedded?: boolean;
+  isOffline: boolean;
   onClear: () => void;
   onPlaceSlip: (stakeCents: number) => void;
   onRemoveSelection: (marketId: string) => void;
@@ -472,6 +489,7 @@ function StagedSlipPanel({
     stakeCents > 0 &&
     balanceCents !== null &&
     stakeCents <= balanceCents &&
+    !isOffline &&
     !isSubmittingPlacement(placementState);
 
   function submitSlip(event: FormEvent<HTMLFormElement>) {
@@ -483,12 +501,13 @@ function StagedSlipPanel({
 
   return (
     <form
-      className="rounded-card border border-border bg-card p-4"
+      aria-label="Parlay Console"
+      className={cn(embedded ? "grid gap-4" : "panel grid gap-4 p-4")}
       onSubmit={submitSlip}
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-primary">Picks in slip</p>
+          <p className="eyebrow text-primary">Parlay Console</p>
           <h2 className="mt-1 text-lg font-semibold">
             {kind} · {selections.length}
           </h2>
@@ -506,11 +525,11 @@ function StagedSlipPanel({
           <Ticket className="size-5 text-primary" aria-hidden="true" />
         )}
       </div>
-      <div aria-live="polite" className="mt-3 grid gap-2">
+      <div aria-live="polite" className="grid gap-2">
         {selections.length > 0 ? (
           selections.map((selection) => (
             <div
-              className="grid gap-1 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm"
+              className="cell grid gap-1 px-3 py-2 text-sm"
               key={`${selection.marketId}-${selection.selection}`}
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
@@ -538,7 +557,8 @@ function StagedSlipPanel({
                 {selection.marketLabel} · {selection.matchup}
               </p>
               <p className="text-xs text-muted-foreground">
-                Locked from {formatDateTime(selection.capturedAt)}
+                Locked at {formatAmericanOdds(selection.price)} from{" "}
+                {formatDateTime(selection.capturedAt)}
               </p>
             </div>
           ))
@@ -547,7 +567,12 @@ function StagedSlipPanel({
         )}
       </div>
 
-      <div className="mt-4 grid gap-3 border-border border-t pt-4">
+      <div className="grid gap-3 border-border border-t pt-4">
+        {isOffline ? (
+          <Banner title="Board offline" tone="warn">
+            Can't place while offline. Cached markets stay visible for review.
+          </Banner>
+        ) : null}
         <Field
           controlId="stake"
           error={stakeError ?? undefined}
@@ -607,7 +632,7 @@ function StagedSlipPanel({
             </Chip>
           ))}
         </div>
-        <div className="grid gap-2 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm">
+        <div className="cell grid gap-2 px-3 py-2 text-sm">
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Slip odds</span>
             <span className="font-mono font-semibold tabular-nums">
@@ -634,15 +659,17 @@ function StagedSlipPanel({
           </div>
         </div>
         {placementState.message ? (
-          <output
-            className={cn(
-              "text-sm",
-              placementState.status === "success"
-                ? "text-primary"
-                : "text-destructive",
-            )}
-          >
-            {placementState.message}
+          <output aria-live="polite">
+            <Banner
+              title={
+                placementState.status === "success"
+                  ? "Slip placed"
+                  : placementBannerTitle(placementState.message)
+              }
+              tone={placementState.status === "success" ? "ok" : "danger"}
+            >
+              {placementState.message}
+            </Banner>
           </output>
         ) : null}
         <Button
@@ -693,72 +720,242 @@ function BankrollLoopCard({
   balance: LeagueBetData["balance"];
   balanceCents: number | null;
 }) {
+  const displayBalance = balanceCents ?? balance?.balanceCents ?? 0;
+  const floorCents = balance?.floorCents ?? displayBalance;
+  const gaugeMax = Math.max(floorCents * 2, displayBalance, 1);
+  const closingBalanceCopy = Number.isFinite(balance?.closingBalanceCents)
+    ? `Closed at ${formatCents(balance?.closingBalanceCents as number)}.`
+    : null;
+
   return (
-    <div className="rounded-card border border-border bg-card p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-primary">
-            This week's bankroll
-          </p>
-          <h2 className="mt-1 text-lg font-semibold">
-            {balanceCents === null ? "No open week" : formatCents(balanceCents)}
-          </h2>
+    <section className="panel grid gap-4 p-4 sm:p-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)]">
+        <div className="grid gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow text-warning">Rolling bankroll</p>
+              <h2 className="mt-1 text-lg font-semibold">
+                This week's bankroll
+              </h2>
+            </div>
+            <WalletCards className="size-5 text-warning" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="lcd text-4xl font-bold sm:text-5xl">
+              {balanceCents === null
+                ? "No open week"
+                : formatCents(displayBalance)}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Floor {formatCents(floorCents)}
+              {balance ? (
+                <>
+                  {" "}
+                  · week {formatDateTime(balance.weekStart)} to{" "}
+                  {formatDateTime(balance.weekEnd)}
+                </>
+              ) : null}
+            </p>
+          </div>
+          <Progress
+            label="Bankroll versus weekly floor"
+            max={gaugeMax}
+            showValue={true}
+            tone="amber"
+            value={displayBalance}
+          />
         </div>
-        <WalletCards className="size-5 text-primary" aria-hidden="true" />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatTile
+            caption={
+              balance
+                ? `${balance.pendingSlipCount} pending slip${balance.pendingSlipCount === 1 ? "" : "s"}`
+                : "No active week yet"
+            }
+            label="Already at risk"
+            tone="amber"
+            value={formatCents(balance?.openExposureCents ?? 0)}
+          />
+          <StatTile
+            caption="Gross return if every open slip hits"
+            label="Open upside"
+            tone="lilac"
+            value={formatCents(balance?.openPotentialReturnCents ?? 0)}
+          />
+          <StatTile
+            caption="Current balance plus open potential return"
+            label="Best-case balance"
+            tone="amber"
+            value={formatCents(
+              displayBalance + (balance?.openPotentialReturnCents ?? 0),
+            )}
+          />
+        </div>
       </div>
       {balance ? (
-        <div className="mt-3 grid gap-3">
-          <p className="text-sm text-muted-foreground">
-            Floor {formatCents(balance.floorCents)} · week{" "}
-            {formatDateTime(balance.weekStart)} to{" "}
-            {formatDateTime(balance.weekEnd)}
+        <div className="grid gap-2 text-sm">
+          <p className="text-muted-foreground">
+            {bankrollOpeningCopy(balance)}
           </p>
-          <div className="grid gap-2 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Already at risk</span>
-              <span className="font-mono font-semibold tabular-nums">
-                {formatCents(balance.openExposureCents)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Open upside</span>
-              <span className="font-mono font-semibold tabular-nums">
-                {formatCents(balance.openPotentialReturnCents)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Best-case balance</span>
-              <span className="font-mono font-semibold tabular-nums">
-                {formatCents(
-                  (balanceCents ?? balance.balanceCents) +
-                    balance.openPotentialReturnCents,
-                )}
-              </span>
-            </div>
-          </div>
-          <div className="grid gap-2 text-sm">
-            <p className="text-muted-foreground">
-              {bankrollOpeningCopy(balance)}
+          <p className="text-muted-foreground">
+            Finish above the floor and that balance carries forward; finish at
+            or below the floor and next week opens at the floor.
+          </p>
+          {balance.resetCreditCents > 0 ? (
+            <p className="font-medium text-warning">
+              Reset credit: {formatCents(balance.resetCreditCents)}
             </p>
-            <p className="text-muted-foreground">
-              Finish above the floor and that balance carries forward; finish at
-              or below the floor and next week opens at the floor.
-            </p>
-            {balance.resetCreditCents > 0 ? (
-              <p className="font-medium text-primary">
-                Reset credit: {formatCents(balance.resetCreditCents)}
-              </p>
-            ) : null}
-          </div>
+          ) : null}
+          {closingBalanceCopy ? (
+            <p className="text-muted-foreground">{closingBalanceCopy}</p>
+          ) : null}
         </div>
       ) : (
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Your first placed slip opens this betting week at the{" "}
-          {formatCents(balanceCents ?? 0)} floor.
+          {formatCents(displayBalance)} floor.
         </p>
       )}
+    </section>
+  );
+}
+
+function RecentSlipsPanel({
+  recentSlips,
+}: {
+  recentSlips: readonly LeagueBetData["recentSlips"][number][];
+}) {
+  const openSlips = recentSlips.filter((slip) => slip.status === "pending");
+  const settledSlips = recentSlips.filter((slip) => slip.status !== "pending");
+
+  return (
+    <section
+      className="panel grid gap-4 p-4"
+      aria-label="Open bets and history"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="eyebrow text-primary">Slip ledger</p>
+          <h2 className="mt-1 text-lg font-semibold">Recent slips</h2>
+        </div>
+        <ReceiptText className="size-5 text-primary" aria-hidden="true" />
+      </div>
+      <Tabs
+        defaultValue="open"
+        items={[
+          {
+            label: `Open bets (${openSlips.length})`,
+            panel:
+              openSlips.length > 0 ? (
+                <SlipRows slips={openSlips} />
+              ) : (
+                <EmptyState title="No pending slips.">
+                  Selected prices appear in the Parlay Console before you place.
+                </EmptyState>
+              ),
+            value: "open",
+          },
+          {
+            label: `History (${settledSlips.length})`,
+            panel:
+              settledSlips.length > 0 ? (
+                <SlipRows slips={settledSlips} />
+              ) : (
+                <EmptyState title="No settled slips yet.">
+                  Settled outcomes will land here after final scoring.
+                </EmptyState>
+              ),
+            value: "history",
+          },
+        ]}
+        listLabel="Bet slip ledger"
+      />
+    </section>
+  );
+}
+
+function SlipRows({
+  slips,
+}: {
+  slips: readonly LeagueBetData["recentSlips"][number][];
+}) {
+  return (
+    <div className="grid gap-2">
+      {slips.map((slip) => (
+        <div
+          className="cell grid gap-3 px-3 py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto]"
+          key={slip.id}
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill tone={slipStatusTone(slip.status)}>
+                {slip.status.replaceAll("_", " ")}
+              </StatusPill>
+              <p className="min-w-0 truncate">
+                {slip.kind} · {slip.status} · {formatDateTime(slip.placedAt)}
+              </p>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Locked slip details stay fixed after placement.
+            </p>
+          </div>
+          <div className="grid gap-1 text-right max-sm:text-left">
+            <span className="font-mono font-semibold tabular-nums">
+              Stake {formatCents(slip.stakeCents)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Potential {formatCents(slip.potentialPayoutCents)}
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
+}
+
+function eventStatusTone(status: LeagueBetMarket["eventStatus"]): StatusTone {
+  switch (status) {
+    case "in_progress":
+      return "live";
+    case "scheduled":
+      return "info";
+    case "final":
+      return "success";
+    case "postponed":
+      return "warning";
+    case "canceled":
+      return "danger";
+  }
+}
+
+function slipStatusTone(
+  status: LeagueBetData["recentSlips"][number]["status"],
+): StatusTone {
+  switch (status) {
+    case "pending":
+      return "live";
+    case "won":
+      return "success";
+    case "lost":
+      return "danger";
+    case "partial_void":
+    case "push":
+    case "void":
+      return "warning";
+  }
+}
+
+function placementBannerTitle(message: string): string {
+  if (message.startsWith("Line moved")) {
+    return "Line moved";
+  }
+  if (message.startsWith("Stake exceeds")) {
+    return "Insufficient bankroll";
+  }
+  if (message.includes("no longer open")) {
+    return "Market closed";
+  }
+  return "Slip not placed";
 }
 
 function stakeValidationMessage({
@@ -836,7 +1033,16 @@ function parsePlaceSlipResponse(payload: unknown): PlaceSlipResponse {
 }
 
 export function LeagueBetView({ data }: { data: LeagueBetData }) {
+  return (
+    <Toaster>
+      <LeagueBetViewContent data={data} />
+    </Toaster>
+  );
+}
+
+function LeagueBetViewContent({ data }: { readonly data: LeagueBetData }) {
   const router = useRouter();
+  const { notify } = useToast();
   const [stagedSelections, setStagedSelections] = useState<
     Record<string, StagedSelection>
   >({});
@@ -848,6 +1054,7 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
     message: null,
     status: "idle",
   });
+  const [isOffline, setIsOffline] = useState(false);
   const balanceCents =
     balanceOverrideCents ??
     data.balance?.balanceCents ??
@@ -863,10 +1070,48 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
     [data.markets, stagedSelections],
   );
 
+  useEffect(() => {
+    function updateOnlineStatus() {
+      setIsOffline(
+        typeof navigator !== "undefined" && navigator.onLine === false,
+      );
+    }
+
+    updateOnlineStatus();
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
+
+  function clearSelections() {
+    setStagedSelections({});
+    setPlacementState({ message: null, status: "idle" });
+  }
+
+  function removeSelection(marketId: string) {
+    setStagedSelections((current) => {
+      const next = { ...current };
+      delete next[marketId];
+      return next;
+    });
+    setPlacementState({ message: null, status: "idle" });
+  }
+
+  function changeStake(value: string) {
+    setStakeInput(value);
+    setPlacementState({ message: null, status: "idle" });
+  }
+
   function toggleSelection(
     market: LeagueBetMarket,
     selection: LeagueBetSelection,
   ) {
+    if (isOffline) {
+      return;
+    }
     setPlacementState({ message: null, status: "idle" });
     setStagedSelections((current) => {
       const existing = current[market.marketId];
@@ -940,13 +1185,19 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
       message: "Slip placed. Odds are locked.",
       status: "success",
     });
+    notify({
+      description:
+        "The stake was debited once and the selected odds are locked.",
+      title: "Slip placed",
+      tone: "ok",
+    });
     router.refresh();
   }
 
   return (
-    <Toaster>
-      <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-        <header className="grid gap-4">
+    <main className="mx-auto grid min-h-dvh w-full max-w-7xl gap-6 px-4 py-5 pb-[calc(var(--space-20)+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-8">
+      <header className="panel grid gap-4 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href={`/leagues/${data.league.id}`}
             className={cn(
@@ -956,121 +1207,125 @@ export function LeagueBetView({ data }: { data: LeagueBetData }) {
             <ArrowLeft data-icon="inline-start" />
             League home
           </Link>
-          <div className="grid gap-3">
-            <div className="flex items-center gap-2 text-primary">
+          <StatusPill tone={isOffline ? "warning" : "live"}>
+            {isOffline ? "Offline" : "Board live"}
+          </StatusPill>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-primary">
               <Ticket className="size-5" aria-hidden="true" />
-              <p className="text-sm font-medium">Bet</p>
+              <p className="eyebrow">Sportsbook</p>
+              <StatusPill tone="neutral" variant="outline">
+                {data.league.providerLabel} · {data.league.season}
+              </StatusPill>
             </div>
-            <div className="max-w-2xl">
-              <h1 className="text-xl font-semibold sm:text-2xl">
-                {data.league.name} betting desk
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Paper odds, fake bankroll, real bragging rights. Arena standings
-                roll up from these league-scoped slips.
-              </p>
-            </div>
+            <h1 className="mt-2 text-xl font-semibold sm:text-2xl">
+              {data.league.name} betting desk
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Paper bankroll, licensed odds feeds, and league-scoped slips.
+              Arena standings roll up from these play-money outcomes.
+            </p>
           </div>
-        </header>
-
-        <section className="grid gap-3 lg:grid-cols-3">
-          <BankrollLoopCard
-            balance={data.balance}
-            balanceCents={balanceCents}
-          />
-
-          <StagedSlipPanel
-            balanceCents={balanceCents}
-            onClear={() => {
-              setStagedSelections({});
-              setPlacementState({ message: null, status: "idle" });
-            }}
-            onPlaceSlip={placeSlip}
-            onRemoveSelection={(marketId) => {
-              setStagedSelections((current) => {
-                const next = { ...current };
-                delete next[marketId];
-                return next;
-              });
-              setPlacementState({ message: null, status: "idle" });
-            }}
-            onStakeChange={(value) => {
-              setStakeInput(value);
-              setPlacementState({ message: null, status: "idle" });
-            }}
-            placementState={placementState}
-            selections={stagedSelectionList}
-            stakeInput={stakeInput}
-          />
-
-          <div className="rounded-card border border-border bg-card p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-primary">Recent slips</p>
-                <h2 className="mt-1 text-lg font-semibold">
-                  {data.recentSlips.length}
-                </h2>
-              </div>
-              <ReceiptText className="size-5 text-primary" aria-hidden="true" />
-            </div>
-            {data.recentSlips.length > 0 ? (
-              <div className="mt-3 grid gap-2">
-                {data.recentSlips.map((slip) => (
-                  <div
-                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm"
-                    key={slip.id}
-                  >
-                    <span className="min-w-0 truncate">
-                      {slip.kind} · {slip.status} ·{" "}
-                      {formatDateTime(slip.placedAt)}
-                    </span>
-                    <span className="font-mono tabular-nums">
-                      {formatCents(slip.stakeCents)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">
-                No slips have been placed in this league yet.
-              </p>
+          <Link
+            href={`/arena?leagueId=${encodeURIComponent(data.league.id)}`}
+            className={cn(
+              buttonVariants({ className: "w-fit", variant: "outline" }),
             )}
-          </div>
-        </section>
+          >
+            Arena standings
+          </Link>
+        </div>
+      </header>
 
-        {eventGroups.length > 0 ? (
-          <section aria-label="Open betting markets" className="grid gap-3">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Open markets</h2>
-              <Link
-                href={`/arena?leagueId=${encodeURIComponent(data.league.id)}`}
-                className={cn(
-                  buttonVariants({ className: "w-fit", variant: "outline" }),
-                )}
-              >
-                Arena
-              </Link>
+      {isOffline ? (
+        <Banner title="Offline mode" tone="warn">
+          Markets and bankroll can be reviewed from cached data, but placement
+          is disabled until the connection returns.
+        </Banner>
+      ) : null}
+
+      <BankrollLoopCard balance={data.balance} balanceCents={balanceCents} />
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+        <section aria-label="Open betting markets" className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow text-primary">Market board</p>
+              <h2 className="mt-1 text-lg font-semibold">Open markets</h2>
             </div>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <StatusPill tone="info">
+              {eventGroups.length} event{eventGroups.length === 1 ? "" : "s"}
+            </StatusPill>
+          </div>
+          {eventGroups.length > 0 ? (
+            <div className="grid gap-3 xl:grid-cols-2">
               {eventGroups.map((group) => (
                 <EventCard
                   group={group}
+                  isOffline={isOffline}
                   key={group.eventId}
                   onToggleSelection={toggleSelection}
                   stagedSelections={stagedSelections}
                 />
               ))}
             </div>
-          </section>
-        ) : (
-          <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-            <h2 className="text-base font-semibold">No open markets</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+          ) : (
+            <EmptyState title="No open markets">
               The odds polling job has not published an open NFL board yet.
-            </p>
-          </section>
-        )}
-      </main>
-    </Toaster>
+            </EmptyState>
+          )}
+        </section>
+
+        <aside
+          aria-label="Parlay Console"
+          className="hidden self-start lg:sticky lg:top-24 lg:block"
+        >
+          <StagedSlipPanel
+            balanceCents={balanceCents}
+            isOffline={isOffline}
+            onClear={clearSelections}
+            onPlaceSlip={placeSlip}
+            onRemoveSelection={removeSelection}
+            onStakeChange={changeStake}
+            placementState={placementState}
+            selections={stagedSelectionList}
+            stakeInput={stakeInput}
+          />
+        </aside>
+      </div>
+
+      <RecentSlipsPanel recentSlips={data.recentSlips} />
+
+      <Sheet
+        description="Selections stay locked to the snapshot you tapped."
+        title="Parlay Console"
+        trigger={
+          <Button
+            aria-label={`Open Parlay Console slip with ${formatSelectionCount(stagedSelectionList.length)}`}
+            className="fixed right-4 bottom-[calc(var(--space-16)+env(safe-area-inset-bottom))] z-30 shadow-overlay lg:hidden"
+            type="button"
+            variant="amber"
+          >
+            <Ticket data-icon="inline-start" />
+            Slip ({stagedSelectionList.length})
+          </Button>
+        }
+      >
+        <StagedSlipPanel
+          balanceCents={balanceCents}
+          embedded={true}
+          isOffline={isOffline}
+          onClear={clearSelections}
+          onPlaceSlip={placeSlip}
+          onRemoveSelection={removeSelection}
+          onStakeChange={changeStake}
+          placementState={placementState}
+          selections={stagedSelectionList}
+          stakeInput={stakeInput}
+        />
+      </Sheet>
+    </main>
   );
 }

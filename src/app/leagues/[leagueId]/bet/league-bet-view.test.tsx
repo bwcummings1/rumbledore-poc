@@ -140,6 +140,13 @@ test("league bet view renders bankroll, open markets, and recent slips", () => {
       name: "NHS Alumni Annual betting desk",
     }),
   ).toBeDefined();
+  expect(screen.getByText("Rolling bankroll")).toBeDefined();
+  expect(screen.getByText("Parlay Console")).toBeDefined();
+  expect(
+    screen.getByRole("button", {
+      name: "Open Parlay Console slip with 0 selections",
+    }),
+  ).toBeDefined();
   expect(screen.getAllByText("$11,250").length).toBeGreaterThan(0);
   expect(screen.getByText("Already at risk")).toBeDefined();
   expect(screen.getByText("$500")).toBeDefined();
@@ -170,6 +177,8 @@ test("league bet view renders bankroll, open markets, and recent slips", () => {
     screen.getByRole("button", { name: /New York \+110 locked price/i }),
   ).toBeDefined();
   expect(screen.getByText(/single · pending/i)).toBeDefined();
+  expect(screen.getByRole("tab", { name: "Open bets (1)" })).toBeDefined();
+  expect(screen.getByRole("tab", { name: "History (0)" })).toBeDefined();
   expect(
     screen.getByRole("link", { name: /arena/i }).getAttribute("href"),
   ).toBe("/arena?leagueId=00000000-0000-4000-8000-000000000001");
@@ -192,6 +201,11 @@ test("league bet view stages selected prices and replaces selections on the same
   fireEvent.click(chicagoMoneyline);
   expect(chicagoMoneyline.getAttribute("aria-pressed")).toBe("true");
   expect(screen.getByText("Single · 1")).toBeDefined();
+  expect(
+    screen.getByRole("button", {
+      name: "Open Parlay Console slip with 1 selection",
+    }),
+  ).toBeDefined();
   expect(screen.getByRole("button", { name: "Remove Chicago" })).toBeDefined();
 
   fireEvent.click(newYorkMoneyline);

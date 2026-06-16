@@ -9,6 +9,7 @@ export type MobileRouteSkeletonVariant =
   | "invite"
   | "list"
   | "publication"
+  | "sportsbook"
   | "table";
 
 export function MobileRouteSkeleton({
@@ -26,6 +27,7 @@ const SKELETON_VARIANTS = {
   invite: InviteSkeleton,
   list: ListSkeleton,
   publication: PublicationSkeleton,
+  sportsbook: SportsbookSkeleton,
   table: TableSkeleton,
 } satisfies Record<MobileRouteSkeletonVariant, () => ReactNode>;
 
@@ -175,6 +177,68 @@ function DashboardSkeleton() {
         <SkeletonPanel className="min-h-36" />
         <SkeletonPanel className="min-h-36" />
       </section>
+    </main>
+  );
+}
+
+function SportsbookSkeleton() {
+  return (
+    <main
+      aria-busy="true"
+      aria-label="Loading sportsbook"
+      className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-5 sm:px-6 lg:px-8"
+      data-slot="mobile-route-skeleton"
+      data-variant="sportsbook"
+    >
+      <section className="grid gap-4 rounded-card border border-border bg-card p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <SkeletonLine className="h-10 w-32" />
+          <SkeletonLine className="h-7 w-24 rounded-full" />
+        </div>
+        <SkeletonLine className="h-4 w-28" />
+        <SkeletonLine className="h-8 w-80 max-w-full" />
+        <SkeletonLine className="h-4 w-full max-w-2xl" />
+      </section>
+
+      <SkeletonPanel className="min-h-64">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)]">
+          <div className="grid gap-3">
+            <SkeletonLine className="h-4 w-32" />
+            <SkeletonLine className="h-14 w-56 max-w-full" />
+            <SkeletonLine className="h-3 w-full" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <UiSkeleton variant="stat-tile" />
+            <UiSkeleton variant="stat-tile" />
+            <UiSkeleton variant="stat-tile" />
+          </div>
+        </div>
+      </SkeletonPanel>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+        <section className="grid gap-3" aria-label="Market board loading">
+          {[0, 1, 2].map((event) => (
+            <SkeletonPanel className="min-h-72" key={event}>
+              <div className="flex items-center justify-between gap-3">
+                <SkeletonLine className="h-5 w-44" />
+                <SkeletonLine className="h-7 w-20 rounded-full" />
+              </div>
+              <div className="grid gap-3">
+                <SkeletonLine className="h-14 w-full" />
+                <SkeletonLine className="h-14 w-full" />
+                <SkeletonLine className="h-14 w-full" />
+              </div>
+            </SkeletonPanel>
+          ))}
+        </section>
+        <SkeletonPanel className="hidden min-h-96 lg:grid">
+          <SkeletonLine className="h-4 w-36" />
+          <SkeletonLine className="h-8 w-28" />
+          <SkeletonLine className="h-16 w-full" />
+          <SkeletonLine className="h-12 w-full" />
+          <SkeletonLine className="h-12 w-full" />
+        </SkeletonPanel>
+      </div>
     </main>
   );
 }
