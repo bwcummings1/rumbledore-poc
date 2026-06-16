@@ -10,6 +10,9 @@ import {
   MOTION_OFF_VALUE,
   MOTION_ON_VALUE,
   MOTION_STORAGE_KEY,
+  PERFORMANCE_ATTRIBUTE,
+  PERFORMANCE_CONSTRAINED_VALUE,
+  PERFORMANCE_FULL_VALUE,
   THEME_COOKIE_NAME,
   THEME_STORAGE_KEY,
   THEME_SYSTEM_STORAGE_VALUE,
@@ -89,6 +92,9 @@ export function createThemePreloadScript(
   const motionAttribute = ${JSON.stringify(MOTION_ATTRIBUTE)};
   const motionOffValue = ${JSON.stringify(MOTION_OFF_VALUE)};
   const motionOnValue = ${JSON.stringify(MOTION_ON_VALUE)};
+  const performanceAttribute = ${JSON.stringify(PERFORMANCE_ATTRIBUTE)};
+  const performanceFullValue = ${JSON.stringify(PERFORMANCE_FULL_VALUE)};
+  const performanceConstrainedValue = ${JSON.stringify(PERFORMANCE_CONSTRAINED_VALUE)};
 
   function readStoredTheme() {
     try {
@@ -142,7 +148,47 @@ export function createThemePreloadScript(
     return motionOnValue;
   }
 
+  function resolvePerformancePreference() {
+    try {
+      const nav = window.navigator || {};
+      const connection =
+        nav.connection || nav.mozConnection || nav.webkitConnection || null;
+      const effectiveType =
+        connection && typeof connection.effectiveType === "string"
+          ? connection.effectiveType
+          : "";
+      const saveData = Boolean(connection && connection.saveData === true);
+      const deviceMemory =
+        typeof nav.deviceMemory === "number" ? nav.deviceMemory : null;
+      const hardwareConcurrency =
+        typeof nav.hardwareConcurrency === "number"
+          ? nav.hardwareConcurrency
+          : null;
+      const compactViewport =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 767px)").matches;
+      const slowConnection =
+        saveData ||
+        effectiveType === "slow-2g" ||
+        effectiveType === "2g" ||
+        (compactViewport && effectiveType === "3g");
+      const lowMemory =
+        typeof deviceMemory === "number" && deviceMemory > 0 && deviceMemory <= 2;
+      const lowCpu =
+        typeof hardwareConcurrency === "number" &&
+        hardwareConcurrency > 0 &&
+        hardwareConcurrency <= 4;
+
+      if (slowConnection || (compactViewport && (lowMemory || lowCpu)) || (lowMemory && lowCpu)) {
+        return performanceConstrainedValue;
+      }
+    } catch {}
+
+    return performanceFullValue;
+  }
+
   root.setAttribute(motionAttribute, resolveMotionPreference());
+  root.setAttribute(performanceAttribute, resolvePerformancePreference());
 })();`;
 }
 

@@ -53,6 +53,7 @@ import {
   REALTIME_EVENTS,
   type RealtimeEventType,
 } from "@/realtime/interfaces";
+import { MOTION_OFF_VALUE, MOTION_STORAGE_KEY } from "@/theme/settings";
 import {
   getLeagueAvatarFallback,
   LEAGUE_SWITCHER_CONNECT_LINKS,
@@ -118,7 +119,6 @@ const NAVIGATION_ICON_COMPONENTS = {
 } satisfies Record<NavigationIconName, typeof Home>;
 
 const EMPTY_NAVIGATION_ITEMS: readonly LeagueSwitcherViewItem[] = [];
-const MOTION_STORAGE_KEY = "rumbledore:motion";
 const SHELL_REALTIME_MAX_ITEMS = 8;
 const SHELL_REALTIME_RECONNECT_MS = 60_000;
 const SHELL_REALTIME_TOKEN_REFRESH_SKEW_MS = 30_000;
@@ -2231,8 +2231,9 @@ function useShellMotionPreference(): readonly [
     try {
       const storedMotion = window.localStorage.getItem(MOTION_STORAGE_KEY);
       const resolvedMotionOff =
-        storedMotion === "off" ||
-        document.documentElement.getAttribute("data-motion") === "off";
+        storedMotion === MOTION_OFF_VALUE ||
+        document.documentElement.getAttribute("data-motion") ===
+          MOTION_OFF_VALUE;
       setMotionOffState(resolvedMotionOff);
       applyShellMotionPreference(resolvedMotionOff);
     } catch {
@@ -2246,7 +2247,7 @@ function useShellMotionPreference(): readonly [
     try {
       window.localStorage.setItem(
         MOTION_STORAGE_KEY,
-        nextMotionOff ? "off" : "auto",
+        nextMotionOff ? MOTION_OFF_VALUE : "auto",
       );
     } catch {
       // Local storage may be unavailable in private browsing.
@@ -2261,7 +2262,7 @@ function applyShellMotionPreference(motionOff: boolean): void {
     return;
   }
   if (motionOff) {
-    document.documentElement.setAttribute("data-motion", "off");
+    document.documentElement.setAttribute("data-motion", MOTION_OFF_VALUE);
     return;
   }
   document.documentElement.removeAttribute("data-motion");

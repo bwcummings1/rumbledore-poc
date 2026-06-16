@@ -6,3 +6,6 @@ export const MOTION_STORAGE_KEY = "rumbledore.motion";
 export const MOTION_ATTRIBUTE = "data-motion";
 export const MOTION_ON_VALUE = "on";
 export const MOTION_OFF_VALUE = "off";
+export const PERFORMANCE_ATTRIBUTE = "data-performance";
+export const PERFORMANCE_FULL_VALUE = "full";
+export const PERFORMANCE_CONSTRAINED_VALUE = "constrained";

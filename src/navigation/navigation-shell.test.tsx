@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { leagueRealtimeChannel, REALTIME_EVENTS } from "@/realtime/interfaces";
+import { MOTION_STORAGE_KEY } from "@/theme/settings";
 import type { LeagueSwitcherViewItem } from "./league-switcher-model";
 
 const realtimeMock = vi.hoisted(() => {
@@ -354,7 +355,7 @@ describe("NavigationShellView", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Reduced motion" }));
 
     expect(document.documentElement.getAttribute("data-motion")).toBe("off");
-    expect(window.localStorage.getItem("rumbledore:motion")).toBe("off");
+    expect(window.localStorage.getItem(MOTION_STORAGE_KEY)).toBe("off");
   });
 });
 

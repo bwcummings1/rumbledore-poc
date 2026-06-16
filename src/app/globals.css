@@ -969,6 +969,64 @@ html {
   display: none;
 }
 
+:root[data-performance="constrained"] .auspex-atmosphere {
+  background: linear-gradient(
+    180deg,
+    var(--void, var(--background)) 0,
+    var(--void-3, var(--background)) 100%
+  );
+}
+
+:root[data-performance="constrained"] .auspex-atmosphere__starfield,
+:root[data-performance="constrained"] .auspex-atmosphere__scanline,
+:root[data-performance="constrained"] .auspex-atmosphere__grain {
+  animation: none;
+  display: none;
+  transform: none;
+  will-change: auto;
+}
+
+:root[data-performance="constrained"] .auspex-atmosphere__vignette {
+  opacity: 0.56;
+}
+
+:root[data-performance="constrained"] .auspex-wire__track,
+:root[data-performance="constrained"] .orb::before,
+:root[data-performance="constrained"] .auspex-chart__draw,
+:root[data-performance="constrained"] .auspex-chart__grow,
+:root[data-performance="constrained"] .auspex-count-up,
+:root[data-performance="constrained"] .auspex-live-dot,
+:root[data-performance="constrained"] .auspex-stinger,
+:root[data-performance="constrained"] .auspex-canon-seal {
+  animation: none;
+  transform: none;
+  will-change: auto;
+}
+
+:root[data-performance="constrained"] .auspex-wire__viewport {
+  display: none;
+}
+
+:root[data-performance="constrained"] .auspex-wire__static-list {
+  display: grid;
+}
+
+:root[data-performance="constrained"] .auspex-chart__draw,
+:root[data-performance="constrained"] .auspex-chart__grow,
+:root[data-performance="constrained"] .auspex-live-dot,
+:root[data-performance="constrained"] .auspex-canon-seal {
+  opacity: 1;
+  stroke-dashoffset: 0;
+}
+
+:root[data-performance="constrained"] .auspex-vote-meter__fill {
+  transition: none;
+}
+
+:root[data-performance="constrained"] .auspex-stinger__sparks {
+  display: none;
+}
+
 @container (max-width: 359px) {
   .auspex-chart__minor,
   .auspex-chart__secondary-series,

@@ -134,6 +134,12 @@ describe("reduced-motion theme tokens", () => {
     expect(globalsCss).toContain(
       ':root[data-motion="off"] .auspex-vote-meter__fill',
     );
+    expect(globalsCss).toContain(
+      ':root[data-performance="constrained"] .auspex-wire__track',
+    );
+    expect(globalsCss).toContain(
+      ':root[data-performance="constrained"] .auspex-stinger__sparks',
+    );
   });
 });
 

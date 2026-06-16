@@ -10,6 +10,9 @@ import {
   MOTION_ATTRIBUTE,
   MOTION_OFF_VALUE,
   MOTION_STORAGE_KEY,
+  PERFORMANCE_ATTRIBUTE,
+  PERFORMANCE_CONSTRAINED_VALUE,
+  PERFORMANCE_FULL_VALUE,
   THEME_COOKIE_NAME,
   THEME_STORAGE_KEY,
   THEME_SYSTEM_STORAGE_VALUE,
@@ -25,6 +28,7 @@ afterEach(() => {
   // biome-ignore lint/suspicious/noDocumentCookie: test cleanup must reset the SSR theme cookie.
   document.cookie = `${THEME_COOKIE_NAME}=; Path=/; Max-Age=0`;
   document.documentElement.removeAttribute("data-theme");
+  document.documentElement.removeAttribute(PERFORMANCE_ATTRIBUTE);
   document.documentElement.classList.remove("dark", "light");
   document.documentElement.removeAttribute("style");
   window.localStorage.clear();
@@ -147,6 +151,13 @@ describe("theme preload script", () => {
     expect(script).toContain(`root.setAttribute(motionAttribute`);
     expect(script).toContain(MOTION_ATTRIBUTE);
     expect(script).toContain(MOTION_OFF_VALUE);
+    expect(script).toContain(PERFORMANCE_ATTRIBUTE);
+    expect(script).toContain(PERFORMANCE_CONSTRAINED_VALUE);
+    expect(script).toContain(PERFORMANCE_FULL_VALUE);
+    expect(script).toContain("saveData");
+    expect(script).toContain("deviceMemory");
+    expect(script).toContain("hardwareConcurrency");
+    expect(script).toContain("(max-width: 767px)");
   });
 });
 

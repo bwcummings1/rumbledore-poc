@@ -91,6 +91,25 @@ describe("AUSPEX atmosphere foundation", () => {
       extractBlock(globalsCss, "@media (prefers-reduced-motion: reduce)"),
     ).toContain("animation: none;");
   });
+
+  it("collapses decorative atmosphere layers under the constrained performance budget", () => {
+    const globalsCss = readGlobalsCss();
+
+    expect(globalsCss).toContain(
+      ':root[data-performance="constrained"] .auspex-atmosphere',
+    );
+    expect(globalsCss).toContain(
+      ':root[data-performance="constrained"] .auspex-atmosphere__starfield',
+    );
+    expect(globalsCss).toContain(
+      ':root[data-performance="constrained"] .auspex-atmosphere__scanline',
+    );
+    expect(globalsCss).toContain(
+      ':root[data-performance="constrained"] .auspex-atmosphere__grain',
+    );
+    expect(globalsCss).toContain("display: none;");
+    expect(globalsCss).toContain("will-change: auto;");
+  });
 });
 
 function readGlobalsCss(): string {
