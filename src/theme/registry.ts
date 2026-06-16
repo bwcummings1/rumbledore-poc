@@ -1,9 +1,17 @@
 import { neutralDarkTheme } from "./themes/neutral-dark";
+import { neutralLightTheme } from "./themes/neutral-light";
+import { paletteATheme } from "./themes/palette-a";
+import { paletteBTheme } from "./themes/palette-b";
 import { THEME_CSS_VARIABLE_NAMES, type ThemeDefinition } from "./types";
 
 export const DEFAULT_THEME_ID = neutralDarkTheme.id;
 
-export const REGISTERED_THEMES = [neutralDarkTheme] as const;
+export const REGISTERED_THEMES = [
+  neutralDarkTheme,
+  neutralLightTheme,
+  paletteATheme,
+  paletteBTheme,
+] as const;
 
 export type RegisteredTheme = (typeof REGISTERED_THEMES)[number];
 export type RegisteredThemeId = RegisteredTheme["id"];
@@ -14,6 +22,18 @@ const THEME_BY_ID = new Map<string, ThemeDefinition>(
 
 export function getThemeById(themeId: string): ThemeDefinition | null {
   return THEME_BY_ID.get(themeId) ?? null;
+}
+
+export function isRegisteredThemeId(
+  themeId: string | null | undefined,
+): themeId is RegisteredThemeId {
+  return typeof themeId === "string" && THEME_BY_ID.has(themeId);
+}
+
+export function coerceThemeId(
+  themeId: string | null | undefined,
+): RegisteredThemeId {
+  return isRegisteredThemeId(themeId) ? themeId : DEFAULT_THEME_ID;
 }
 
 export function getDefaultTheme(): ThemeDefinition {

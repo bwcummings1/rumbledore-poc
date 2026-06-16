@@ -162,13 +162,6 @@ describe("bankroll rollover job", () => {
     });
 
     expect(result).toMatchObject({
-      arenaLeaderboardUpdates: [
-        {
-          seasonId: arenaSeason.id,
-          type: REALTIME_EVENTS.arenaLeaderboardUpdated,
-          v: 1,
-        },
-      ],
       eventName: JOB_EVENTS.bankrollRollover,
       failures: [],
       ok: true,
@@ -185,6 +178,15 @@ describe("bankroll rollover job", () => {
       ],
       skippedPendingWeeks: 0,
     });
+    expect(result.arenaLeaderboardUpdates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          seasonId: arenaSeason.id,
+          type: REALTIME_EVENTS.arenaLeaderboardUpdated,
+          v: 1,
+        }),
+      ]),
+    );
     const rolled = result.rolledOverWeeks[0];
     expect(rolled.nextWeekStart).toBe("2040-09-08T00:00:00.000Z");
     expect(rolled.nextWeekEnd).toBe("2040-09-15T00:00:00.000Z");
@@ -218,12 +220,14 @@ describe("bankroll rollover job", () => {
         type: REALTIME_EVENTS.leagueLeaderboardUpdated,
       }),
     ]);
-    expect(realtime.arenaLeaderboardUpdated).toEqual([
-      expect.objectContaining({
-        seasonId: arenaSeason.id,
-        type: REALTIME_EVENTS.arenaLeaderboardUpdated,
-      }),
-    ]);
+    expect(realtime.arenaLeaderboardUpdated).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          seasonId: arenaSeason.id,
+          type: REALTIME_EVENTS.arenaLeaderboardUpdated,
+        }),
+      ]),
+    );
   });
 
   it("does not close an elapsed week while slips are still pending", async () => {

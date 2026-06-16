@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { cookies } from "next/headers";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { PWA_BACKGROUND_HEX } from "@/lib/pwa";
 import { NavigationShell } from "@/navigation/navigation-shell";
-import { DEFAULT_THEME_ID } from "@/theme/registry";
+import { coerceThemeId, getDefaultTheme, getThemeById } from "@/theme/registry";
+import { THEME_COOKIE_NAME } from "@/theme/settings";
+import { ThemeProvider } from "@/theme/theme-provider";
+import { ThemePreloadScript } from "@/theme/theme-script";
 import { ThemeTokenStyle } from "@/theme/theme-style";
 import "./globals.css";
 
@@ -38,22 +42,35 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialTheme = await getInitialTheme();
+
   return (
     <html
       lang="en"
-      data-theme={DEFAULT_THEME_ID}
-      className={`${geistSans.variable} ${geistMono.variable}`}
+      data-theme={initialTheme.id}
+      className={`${geistSans.variable} ${geistMono.variable} ${initialTheme.mode}`}
+      style={{ colorScheme: initialTheme.colorScheme }}
+      suppressHydrationWarning
     >
       <body>
+        <ThemePreloadScript initialThemeId={initialTheme.id} />
         <ThemeTokenStyle />
-        <NavigationShell>{children}</NavigationShell>
+        <ThemeProvider initialThemeId={initialTheme.id}>
+          <NavigationShell>{children}</NavigationShell>
+        </ThemeProvider>
         <ServiceWorkerRegistration />
       </body>
     </html>
   );
+}
+
+async function getInitialTheme() {
+  const cookieStore = await cookies();
+  const themeId = coerceThemeId(cookieStore.get(THEME_COOKIE_NAME)?.value);
+  return getThemeById(themeId) ?? getDefaultTheme();
 }

@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: ThemeProvider swap landed — registered neutral-light plus palette-a/palette-b slots now cascade through `data-theme`, with SSR cookie resolution, a pre-paint theme script, and persisted runtime switching.
 - 2026-06-16: Design-token system landed — the neutral-dark baseline now lives as typed primitives plus semantic aliases, generated into CSS vars and bridged through Tailwind utilities for type, spacing, radii, elevation, motion, and colors.
 - 2026-06-16: AI variant A/B eval harness landed — `pnpm eval:ai:variants` now scores deterministic model×tone variants across golden fixtures/content types, writes a machine-readable scorecard, names a winner, and disqualifies leaking variants.
 - 2026-06-16: Versioned prompt-template management landed — AI generation now renders ordered prompt sections with template id/version metadata, feeds rendered system/user instructions to real providers, and records template/tone/model provenance on generation runs.
