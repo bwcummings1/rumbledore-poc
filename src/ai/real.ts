@@ -234,6 +234,10 @@ function maxTokensFor(request: LlmGenerateRequest): number {
 }
 
 function anthropicSystemInstructions(request: LlmGenerateRequest): string {
+  if (request.prompt.systemInstructions) {
+    return request.prompt.systemInstructions;
+  }
+
   const template = contentTypePromptContract(request.contentType);
   return [
     "You generate one Rumbledore fantasy-football league blog post.",
@@ -256,6 +260,10 @@ function anthropicSystemInstructions(request: LlmGenerateRequest): string {
 }
 
 function userTask(request: LlmGenerateRequest): string {
+  if (request.prompt.userTask) {
+    return request.prompt.userTask;
+  }
+
   const template = contentTypePromptContract(request.contentType);
   const duplicateNudge = request.duplicateNudge
     ? `\nDuplicate-avoidance note: ${request.duplicateNudge}`

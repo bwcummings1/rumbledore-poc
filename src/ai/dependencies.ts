@@ -13,6 +13,7 @@ import type {
   EmbeddingProvider,
   LlmClient,
   LlmGenerateRequest,
+  LlmModelProviderKeyResolver,
   NewsItem,
   WebGrounding,
 } from "./interfaces";
@@ -48,6 +49,18 @@ export class GuardedLlmClient implements LlmClient {
     private readonly mock: LlmClient,
     private readonly guard: SpendGuard,
   ) {}
+
+  resolveModelProviderKey(
+    request: Pick<LlmGenerateRequest, "contentType" | "persona">,
+  ): string | null {
+    const realResolver = this.real as Partial<LlmModelProviderKeyResolver>;
+    const mockResolver = this.mock as Partial<LlmModelProviderKeyResolver>;
+    return (
+      realResolver.resolveModelProviderKey?.(request) ??
+      mockResolver.resolveModelProviderKey?.(request) ??
+      null
+    );
+  }
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
     try {

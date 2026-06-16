@@ -295,7 +295,12 @@ export interface LeagueBlogContext {
 }
 
 export interface PromptParts {
+  promptSectionNames?: string[];
+  promptTemplateId?: string;
+  promptTemplateVersion?: number;
   systemPrefix: string;
+  systemInstructions?: string;
+  userTask?: string;
   volatileContext: string;
   prompt: string;
 }
@@ -331,6 +336,12 @@ export interface LlmGenerateRequest {
 
 export interface LlmClient {
   generate(request: LlmGenerateRequest): Promise<BlogDraft>;
+}
+
+export interface LlmModelProviderKeyResolver {
+  resolveModelProviderKey(
+    request: Pick<LlmGenerateRequest, "contentType" | "persona">,
+  ): string | null;
 }
 
 export interface LlmJudgeRubric {

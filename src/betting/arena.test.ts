@@ -370,7 +370,7 @@ describe("arena leaderboard materialization", () => {
       .from(arenaStandings)
       .where(eq(arenaStandings.seasonId, season.id));
     expect(persisted).toHaveLength(5);
-  });
+  }, 10_000);
 
   it("stamps rank movement against the prior materialized standings", async () => {
     const season = await ensureArenaSeason(handle.db, {

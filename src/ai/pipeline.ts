@@ -43,11 +43,7 @@ import {
   blogDraftText,
   validateBlogDraft,
 } from "./article-draft";
-import {
-  type AiContentType,
-  contentTypePromptContract,
-  parseAiContentType,
-} from "./content-types";
+import { type AiContentType, parseAiContentType } from "./content-types";
 import type {
   BlogDraft,
   EmbeddingProvider,
@@ -72,6 +68,7 @@ import type {
   LeagueContextTrigger,
   LeaguePersonaCard,
   LlmClient,
+  LlmModelProviderKeyResolver,
   NewsItem,
   PromptParts,
   WebGrounding,
@@ -87,6 +84,12 @@ import {
   DEFAULT_PERSONA_CARDS,
   normalizeToneProfile,
 } from "./personas";
+import {
+  DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
+  DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
+  type PromptTemplate,
+  renderPromptTemplate,
+} from "./prompt-templates";
 
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.92;
 
@@ -145,6 +148,13 @@ interface PreparedGeneration {
   runId: string;
 }
 
+interface GenerationPromptProvenance {
+  modelProviderKey: string;
+  promptTemplateId: string;
+  promptTemplateVersion: number;
+  toneVersion: number;
+}
+
 function isAiPersona(value: string): value is AiPersona {
   return (AI_PERSONAS as readonly string[]).includes(value);
 }
@@ -162,6 +172,39 @@ export function parseAiPersona(value: string): AiPersona {
 
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function resolveLlmModelProviderKey({
+  contentType,
+  llm,
+  persona,
+}: {
+  contentType: AiContentType;
+  llm: LlmClient;
+  persona: AiPersona;
+}): string {
+  const resolver = llm as Partial<LlmModelProviderKeyResolver>;
+  return resolver.resolveModelProviderKey?.({ contentType, persona }) ?? "mock";
+}
+
+function promptProvenance({
+  context,
+  modelProviderKey,
+  prompt,
+}: {
+  context: LeagueBlogContext;
+  modelProviderKey: string;
+  prompt: PromptParts;
+}): GenerationPromptProvenance {
+  return {
+    modelProviderKey,
+    promptTemplateId:
+      prompt.promptTemplateId ?? DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
+    promptTemplateVersion:
+      prompt.promptTemplateVersion ??
+      DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
+    toneVersion: context.persona.toneVersion,
+  };
 }
 
 function generationRunTriggerKey(input: GenerateLeagueBlogPostInput): string {
@@ -771,15 +814,17 @@ export function buildPromptParts({
   context,
   duplicateNudge,
   newsItems,
+  template,
   triggerKey,
 }: {
   contentType: AiContentType;
   context: LeagueBlogContext;
   duplicateNudge?: string;
   newsItems: readonly NewsItem[];
+  template?: PromptTemplate;
   triggerKey: string;
 }): PromptParts {
-  const stablePrefix = {
+  const stablePrefix: Record<string, unknown> = {
     authenticity: stableAuthenticityFacts(context),
     league: {
       name: context.league.name,
@@ -803,11 +848,9 @@ export function buildPromptParts({
     records: stableRecordFacts(context),
     teams: stableTeamFacts(context.teams),
   };
-  const systemPrefix = JSON.stringify(stablePrefix);
-  const volatileContext = JSON.stringify({
+  const volatileContext: Record<string, unknown> = {
     arena: context.arena,
     currentScoringPeriod: context.league.currentScoringPeriod,
-    contentType: contentTypePromptContract(contentType),
     duplicateNudge: duplicateNudge ?? null,
     priorPosts: context.priorPosts.map((post) => ({
       publishedAt: post.publishedAt.toISOString(),
@@ -817,13 +860,17 @@ export function buildPromptParts({
     trigger: context.trigger,
     triggerKey,
     untrustedNews: untrustedNewsBlock(newsItems),
-  });
-
-  return {
-    prompt: `${systemPrefix}\n\n${volatileContext}`,
-    systemPrefix,
-    volatileContext,
   };
+
+  return renderPromptTemplate({
+    contentType,
+    context,
+    duplicateNudge,
+    stablePrefix,
+    template,
+    triggerKey,
+    volatileContext,
+  });
 }
 
 async function ensurePersonaCard({
@@ -1757,19 +1804,30 @@ async function markSkipped({
   deps,
   input,
   promptPrefixHash,
+  provenance,
   reason,
 }: {
   deps: AiGenerationDependencies;
   input: GenerateLeagueBlogPostInput;
   promptPrefixHash: string | null;
+  provenance?: GenerationPromptProvenance;
   reason: string;
 }): Promise<GenerateLeagueBlogPostResult> {
   const timestamp = now(deps);
   const runTriggerKey = generationRunTriggerKey(input);
+  const provenanceUpdate = provenance
+    ? {
+        modelProviderKey: provenance.modelProviderKey,
+        promptTemplateId: provenance.promptTemplateId,
+        promptTemplateVersion: provenance.promptTemplateVersion,
+        toneVersion: provenance.toneVersion,
+      }
+    : {};
   await withLeagueContext(deps.db, input.leagueId, async (tx) => {
     await tx
       .update(aiGenerationRuns)
       .set({
+        ...provenanceUpdate,
         promptPrefixHash,
         skipReason: reason,
         status: "skipped",
@@ -1884,6 +1942,7 @@ async function publishDraft({
   embedding,
   input,
   promptPrefixHash,
+  provenance,
 }: {
   context: LeagueBlogContext;
   deps: AiGenerationDependencies;
@@ -1891,6 +1950,7 @@ async function publishDraft({
   embedding: number[];
   input: GenerateLeagueBlogPostInput;
   promptPrefixHash: string;
+  provenance: GenerationPromptProvenance;
 }): Promise<GenerateLeagueBlogPostResult> {
   const timestamp = now(deps);
   const dedupKey = contentDedupKey(input);
@@ -1978,8 +2038,12 @@ async function publishDraft({
         .update(aiGenerationRuns)
         .set({
           contentItemId: item.id,
+          modelProviderKey: provenance.modelProviderKey,
           promptPrefixHash,
+          promptTemplateId: provenance.promptTemplateId,
+          promptTemplateVersion: provenance.promptTemplateVersion,
           status: "published",
+          toneVersion: provenance.toneVersion,
           updatedAt: timestamp,
         })
         .where(
@@ -2131,6 +2195,15 @@ export async function generateLeagueBlogPost({
     triggerKey: input.triggerKey,
   });
   const promptPrefixHash = hashText(prompt.systemPrefix);
+  const provenance = promptProvenance({
+    context,
+    modelProviderKey: resolveLlmModelProviderKey({
+      contentType: input.contentType,
+      llm: deps.llm,
+      persona: input.persona,
+    }),
+    prompt,
+  });
   const initialDraft = validateDraftOrGeneric({
     contentType: input.contentType,
     context,
@@ -2176,6 +2249,7 @@ export async function generateLeagueBlogPost({
       deps,
       input,
       promptPrefixHash,
+      provenance,
       reason: "generic_slop:missing_league_entity",
     });
   }
@@ -2216,6 +2290,7 @@ export async function generateLeagueBlogPost({
         deps,
         input,
         promptPrefixHash,
+        provenance,
         reason: "generic_slop:missing_league_entity",
       });
     }
@@ -2226,6 +2301,7 @@ export async function generateLeagueBlogPost({
         deps,
         input,
         promptPrefixHash,
+        provenance,
         reason: "generic_slop:missing_league_entity",
       });
     }
@@ -2242,6 +2318,7 @@ export async function generateLeagueBlogPost({
       deps,
       input,
       promptPrefixHash,
+      provenance,
       reason: `near_duplicate:${maxSimilarity.toFixed(4)}`,
     });
   }
@@ -2253,5 +2330,6 @@ export async function generateLeagueBlogPost({
     embedding,
     input,
     promptPrefixHash,
+    provenance,
   });
 }

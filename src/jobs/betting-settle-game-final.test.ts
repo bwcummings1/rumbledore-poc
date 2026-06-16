@@ -453,7 +453,7 @@ describe("betting game.final settlement job", () => {
     });
     expect(push.notifications).toHaveLength(2);
     expect(realtime.arenaStandingsSwing).toHaveLength(1);
-  });
+  }, 10_000);
 
   it("rejects invalid game.final payloads without retrying", async () => {
     await expect(

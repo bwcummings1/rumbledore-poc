@@ -681,6 +681,10 @@ function blocksForStructure(
 export class MockLlmClient implements LlmClient {
   readonly requests: LlmGenerateRequest[] = [];
 
+  resolveModelProviderKey(): string {
+    return "mock";
+  }
+
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
     this.requests.push(request);
     const team = primaryTeam(request.context.teams);

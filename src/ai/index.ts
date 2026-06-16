@@ -34,6 +34,7 @@ export type {
   LlmJudgeRequest,
   LlmJudgeRubric,
   LlmJudgeScore,
+  LlmModelProviderKeyResolver,
   NewsItem,
   PromptParts,
   WebGrounding,
@@ -70,3 +71,14 @@ export {
   generateLeagueBlogPost,
   parseAiPersona,
 } from "./pipeline";
+export {
+  DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE,
+  DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
+  DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
+  PROMPT_SECTION_KINDS,
+  type PromptSection,
+  type PromptSectionKind,
+  type PromptSectionPlacement,
+  type PromptTemplate,
+  renderPromptTemplate,
+} from "./prompt-templates";

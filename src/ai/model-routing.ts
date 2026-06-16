@@ -272,6 +272,12 @@ export class RoutedLlmClient implements UsageReportingLlmClient {
     );
   }
 
+  resolveModelProviderKey(
+    request: Pick<LlmGenerateRequest, "contentType" | "persona">,
+  ): ModelRouteProviderKey | null {
+    return this.resolve(request)?.providerKey ?? null;
+  }
+
   async generate(request: LlmGenerateRequest) {
     return (await this.generateWithUsage(request)).draft;
   }

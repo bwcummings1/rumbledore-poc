@@ -11,6 +11,8 @@ import type {
 } from "@/ai";
 import {
   ConstantEmbeddingProvider,
+  DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
+  DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
   DEFAULT_TONE_PROFILES,
   DeterministicEmbeddingProvider,
   generateLeagueBlogPost,
@@ -1706,5 +1708,36 @@ describe("generateLeagueBlogPost", () => {
 
     expect(defaultPost?.body).not.toContain("custom-tone-marker");
     expect(customPost?.body).toContain("custom-tone-marker");
+
+    const runs = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({
+          modelProviderKey: aiGenerationRuns.modelProviderKey,
+          promptTemplateId: aiGenerationRuns.promptTemplateId,
+          promptTemplateVersion: aiGenerationRuns.promptTemplateVersion,
+          toneVersion: aiGenerationRuns.toneVersion,
+          triggerKey: aiGenerationRuns.triggerKey,
+        })
+        .from(aiGenerationRuns)
+        .where(eq(aiGenerationRuns.leagueId, league.id)),
+    );
+    expect(runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelProviderKey: "mock",
+          promptTemplateId: DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
+          promptTemplateVersion: DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
+          toneVersion: 1,
+          triggerKey: "weekly_recap:tone-profile:default",
+        }),
+        expect.objectContaining({
+          modelProviderKey: "mock",
+          promptTemplateId: DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
+          promptTemplateVersion: DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
+          toneVersion: 2,
+          triggerKey: "weekly_recap:tone-profile:custom",
+        }),
+      ]),
+    );
   });
 });
