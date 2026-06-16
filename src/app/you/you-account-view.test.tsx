@@ -171,11 +171,16 @@ test("you account view renders the personal agent locked state", () => {
   );
 
   expect(
-    screen.getAllByText("Individual tier required").length,
-  ).toBeGreaterThan(0);
-  expect(
-    screen.getByText(
-      "Get your personal agent for cross-league briefings about your teams.",
-    ),
+    screen.getByRole("heading", { name: "Get your personal agent" }),
   ).toBeDefined();
+  expect(screen.getByText("Individual tier required")).toBeDefined();
+  expect(
+    screen.getByText(/cross-league briefings about your teams/i),
+  ).toBeDefined();
+  expect(
+    screen
+      .getByRole("link", { name: "Get personal agent" })
+      .getAttribute("href"),
+  ).toBe("#upgrade-options");
+  expect(screen.getByText("Premium league")).toBeDefined();
 });

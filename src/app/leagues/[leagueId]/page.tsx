@@ -1,42 +1,23 @@
-import { ShieldAlert } from "lucide-react";
 import { headers } from "next/headers";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
-import { buttonVariants } from "@/components/ui/button";
+import { getEnv } from "@/core/env";
 import { getDb } from "@/db";
+import { resolveEntitlement } from "@/entitlements";
 import { getLeagueHomeData } from "@/home/league-home";
-import { cn } from "@/lib/utils";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import {
   type LeagueDeepLinkSearchParams,
   redirectToLeagueDeepLinkOnboarding,
 } from "./league-deep-link-routing";
 import { LeagueHomeView } from "./league-home-view";
+import { LeagueSectionAccessState } from "./league-section-access-state";
 
 export const dynamic = "force-dynamic";
 
 interface LeagueHomePageProps {
   params: Promise<{ leagueId: string }>;
   searchParams?: Promise<LeagueDeepLinkSearchParams>;
-}
-
-function AccessState({ body, title }: { body: string; title: string }) {
-  return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-4 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))]">
-      <ShieldAlert className="size-6 text-highlight" aria-hidden="true" />
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
-      </div>
-      <Link
-        href="/onboarding/espn"
-        className={cn(buttonVariants({ className: "w-fit" }))}
-      >
-        Connect ESPN
-      </Link>
-    </main>
-  );
 }
 
 export default async function LeagueHomePage({
@@ -61,7 +42,7 @@ export default async function LeagueHomePage({
       redirectToLeagueDeepLinkOnboarding({ leagueId, searchParams: query });
     }
     return (
-      <AccessState
+      <LeagueSectionAccessState
         title="No league access"
         body="This account is not a member of that league."
       />
@@ -78,10 +59,22 @@ export default async function LeagueHomePage({
 
   switch (result.status) {
     case "ready":
-      return <LeagueHomeView data={result.data} />;
+      return (
+        <LeagueHomeView
+          castEntitlement={
+            await resolveEntitlement({
+              capability: "ai.cast.generate",
+              db,
+              env: { entitlements: getEnv().entitlements },
+              leagueId,
+            })
+          }
+          data={result.data}
+        />
+      );
     case "forbidden":
       return (
-        <AccessState
+        <LeagueSectionAccessState
           title="No league access"
           body="This account is not a member of that league."
         />

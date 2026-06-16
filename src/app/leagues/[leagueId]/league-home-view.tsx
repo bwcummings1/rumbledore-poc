@@ -22,6 +22,7 @@ import { LeagueNotificationToggle } from "@/components/pwa/league-notification-t
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { type KVItem, KVList } from "@/components/ui/kv";
+import { LockedFeatureCard } from "@/components/ui/locked-feature-card";
 import {
   CastOrbStatus,
   CountUpValue,
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/spectacle";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
+import type { EntitlementResolution } from "@/entitlements";
 import type {
   LeagueHomeActivation,
   LeagueHomeData,
@@ -716,8 +718,35 @@ function TeamsSection({ data }: { data: LeagueHomeData }) {
   );
 }
 
-function PressTeaserSection({ data }: { data: LeagueHomeData }) {
+function CastRailLockedPreview() {
+  return (
+    <div className="grid h-full gap-3 p-4">
+      <div className="cell grid gap-2 p-3">
+        <div className="flex items-center gap-2">
+          <span className="orb orb-sm muted" aria-hidden="true" />
+          <div className="h-3 w-32 rounded-full bg-primary/40" />
+        </div>
+        <div className="h-3 w-4/5 rounded-full bg-muted-foreground/30" />
+        <div className="h-3 w-2/3 rounded-full bg-warning/30" />
+      </div>
+      <div className="cell grid gap-2 p-3">
+        <div className="h-3 w-24 rounded-full bg-primary/30" />
+        <div className="h-3 w-3/4 rounded-full bg-muted-foreground/25" />
+      </div>
+    </div>
+  );
+}
+
+function PressTeaserSection({
+  castEntitlement,
+  data,
+}: {
+  castEntitlement?: EntitlementResolution;
+  data: LeagueHomeData;
+}) {
   const [lead, ...river] = data.storylines;
+  const castBlocked = castEntitlement && !castEntitlement.allowed;
+
   return (
     <section
       className="panel grid gap-4 p-4"
@@ -744,7 +773,23 @@ function PressTeaserSection({ data }: { data: LeagueHomeData }) {
           <ArrowRight data-icon="inline-end" />
         </Link>
       </div>
-      {lead ? (
+      {castBlocked ? (
+        <LockedFeatureCard
+          action={
+            <Link
+              href="/you#upgrade-options"
+              className={cn(buttonVariants({ variant: "amber" }))}
+            >
+              Review upgrade options
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+          }
+          feature="league-cast"
+          preview={<CastRailLockedPreview />}
+          previewLabel="A muted preview of the league cast rail is shown behind the locked message."
+          reasonCode={castEntitlement.reason}
+        />
+      ) : lead ? (
         <div className="grid gap-3">
           <PublicationStoryCard
             story={toPressTeaserStory({
@@ -775,12 +820,11 @@ function PressTeaserSection({ data }: { data: LeagueHomeData }) {
               <ArrowRight data-icon="inline-end" />
             </Link>
           }
-          title="Unlock the cast for your league"
-          variant="gated"
+          title="The Press is quiet"
         >
           <p>
-            Standings and records stay open. The cast rail lights up when league
-            AI publishing is entitled and scheduled.
+            Standings and records stay open. Cast headlines appear here after
+            the next entitled publishing run.
           </p>
         </EmptyState>
       )}
@@ -856,7 +900,13 @@ function UpcomingSection({ data }: { data: LeagueHomeData }) {
   );
 }
 
-export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
+export function LeagueHomeView({
+  castEntitlement,
+  data,
+}: {
+  castEntitlement?: EntitlementResolution;
+  data: LeagueHomeData;
+}) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <LeagueRealtimeRefresh leagueId={data.league.id} />
@@ -919,7 +969,7 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
           <RecordsSection data={data} />
         </div>
         <aside className="grid content-start gap-6">
-          <PressTeaserSection data={data} />
+          <PressTeaserSection castEntitlement={castEntitlement} data={data} />
           <BankrollPreviewSection leagueId={data.league.id} />
           <TeamsSection data={data} />
           <UpcomingSection data={data} />

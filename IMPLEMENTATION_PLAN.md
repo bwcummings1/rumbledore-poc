@@ -45,7 +45,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Compose the Arena (league-vs-league and individual leaderboards, seasons, head-to-head, rank movement). (specs/32)
 - [x] Compose the Sportsbook (market board, the bet-slip console/sheet, the rolling bankroll LCD). (specs/32)
 - [x] Compose Records & History, the Central News hub, and Settings/data-steward surfaces. (specs/32)
-- [ ] Compose the entitlement/upgrade and gated states (graceful, on-brand, never a broken page). (specs/32)
+- [x] Compose the entitlement/upgrade and gated states (graceful, on-brand, never a broken page). (specs/32)
 
 ### Y. AI cast, lore & onboarding surfaces (see specs/33)
 - [ ] Build the AI cast presence (orb identity, persona cards/bylines, the cast chat and insight cards). (specs/33)

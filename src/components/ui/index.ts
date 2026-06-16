@@ -76,6 +76,12 @@ export type { KVItem, KVListProps, KVRowProps, KVTone } from "./kv";
 export { KVList, KVRow } from "./kv";
 export type { LadderPip, LadderProps } from "./ladder";
 export { Ladder } from "./ladder";
+export type {
+  LockedFeatureCardProps,
+  LockedFeatureKind,
+  UpgradeSurfaceProps,
+} from "./locked-feature-card";
+export { LockedFeatureCard, UpgradeSurface } from "./locked-feature-card";
 export type { PaginationPage, PaginationProps } from "./pagination";
 export { Pagination, paginationRange } from "./pagination";
 export type { PopoverProps } from "./popover";

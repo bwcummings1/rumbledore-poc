@@ -6,7 +6,10 @@ import { InstallAffordance } from "@/components/pwa/install-affordance";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KVList } from "@/components/ui/kv";
-import { LockedFeatureCard } from "@/components/ui/locked-feature-card";
+import {
+  LockedFeatureCard,
+  UpgradeSurface,
+} from "@/components/ui/locked-feature-card";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
@@ -72,42 +75,37 @@ function flowLabel(flow: YouProviderConnection["connectionFlow"]): string {
   }
 }
 
-function personalAgentLockedCopy(
+function personalAgentActionLabel(
   reason: PersonalAgentBriefingResult["entitlement"]["reason"],
-): { body: string; label: string; title: string } {
+): string {
   switch (reason) {
     case "EXPIRED":
-      return {
-        body: "Individual access expired. Your leagues and records stay available.",
-        label: "Expired",
-        title: "Personal agent paused",
-      };
     case "SUSPENDED":
-      return {
-        body: "Individual access is suspended. Your leagues and records stay available.",
-        label: "Suspended",
-        title: "Personal agent paused",
-      };
+      return "Review access";
     case "CAP_EXCEEDED":
-      return {
-        body: "The individual coverage limit has been reached.",
-        label: "Weekly limit reached",
-        title: "Personal agent limit reached",
-      };
+      return "Review limits";
     case "TIER_REQUIRED":
-      return {
-        body: "Get your personal agent for cross-league briefings about your teams.",
-        label: "Individual tier required",
-        title: "Individual tier required",
-      };
+      return "Get personal agent";
     case "DEV_OVERRIDE":
     case "ENTITLED":
-      return {
-        body: "Personal agent access is available.",
-        label: "Personal agent",
-        title: "Personal agent",
-      };
+      return "Personal agent";
   }
+}
+
+function PersonalAgentLockedPreview() {
+  return (
+    <div className="grid h-full gap-3 p-4">
+      <div className="cell grid gap-2 p-3">
+        <p className="eyebrow text-primary">your week</p>
+        <div className="h-3 w-3/4 rounded-full bg-primary/40" />
+        <div className="h-3 w-1/2 rounded-full bg-warning/40" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="cell h-20 bg-primary/10" />
+        <div className="cell h-20 bg-warning/10" />
+      </div>
+    </div>
+  );
 }
 
 function ProviderConnectionCard({
@@ -167,25 +165,22 @@ function PersonalAgentPanel({
   personalAgent: PersonalAgentBriefingResult;
 }) {
   if (personalAgent.status === "blocked") {
-    const copy = personalAgentLockedCopy(personalAgent.entitlement.reason);
+    const reason = personalAgent.entitlement.reason;
     return (
       <LockedFeatureCard
         action={
           <Link
             className={cn(buttonVariants({ variant: "amber" }))}
-            href="/you"
+            href="#upgrade-options"
           >
-            Get personal agent
+            {personalAgentActionLabel(reason)}
             <ArrowRight data-icon="inline-end" />
           </Link>
         }
-        body={copy.body}
-        reason={
-          personalAgent.entitlement.reason === "DEV_OVERRIDE"
-            ? undefined
-            : copy.label
-        }
-        title={copy.title}
+        feature="personal-agent"
+        preview={<PersonalAgentLockedPreview />}
+        previewLabel="A muted preview of a cross-league personal briefing is shown behind the locked message."
+        reasonCode={reason === "DEV_OVERRIDE" ? "ENTITLED" : reason}
       />
     );
   }
@@ -418,6 +413,12 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
           </EmptyState>
         )}
       </section>
+
+      <UpgradeSurface id="upgrade-options">
+        Pricing and checkout are not wired here; this surface explains what the
+        server-side entitlement gates unlock when an admin grant or future
+        purchase flow flips access on.
+      </UpgradeSurface>
     </main>
   );
 }

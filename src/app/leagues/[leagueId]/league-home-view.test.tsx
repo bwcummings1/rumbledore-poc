@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import type { EntitlementResolution } from "@/entitlements";
 import type { LeagueHomeData } from "@/home/league-home";
 import { LEAGUE_PUBLICATION_SECTIONS } from "@/news/sections";
 import { LeagueHomeView } from "./league-home-view";
@@ -136,6 +137,20 @@ const data: LeagueHomeData = {
   userRole: "commissioner",
 };
 
+const blockedCastEntitlement: EntitlementResolution = {
+  allowed: false,
+  capability: "ai.cast.generate",
+  caps: {
+    aiPostsPerWeek: 25,
+    individualLeaguesCovered: 10,
+    maxPremiumLeaguesPerUser: null,
+  },
+  reason: "TIER_REQUIRED",
+  requiredTier: "premium",
+  scope: "league",
+  tier: "free",
+};
+
 test("league home view renders standings, teams, and current matchups", () => {
   render(<LeagueHomeView data={data} />);
 
@@ -230,4 +245,26 @@ test("league home view renders the claimed-team activation hook", () => {
   expect(
     screen.getByLabelText("Fixture Team 01 win probability"),
   ).toBeDefined();
+});
+
+test("league home view gates the cast rail without hiding the substrate", () => {
+  render(
+    <LeagueHomeView
+      castEntitlement={blockedCastEntitlement}
+      data={{ ...data, storylines: [] }}
+    />,
+  );
+
+  expect(
+    screen.getByRole("heading", { name: "Unlock the cast for your league" }),
+  ).toBeDefined();
+  expect(screen.getByText("Premium league")).toBeDefined();
+  expect(
+    screen
+      .getByRole("link", { name: "Review upgrade options" })
+      .getAttribute("href"),
+  ).toBe("/you#upgrade-options");
+  expect(screen.getByRole("heading", { name: "Standings" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Record book" })).toBeDefined();
+  expect(screen.getByText("Highest weekly score")).toBeDefined();
 });
