@@ -46,6 +46,54 @@ describe("createAiDependencies", () => {
     expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
   });
 
+  it("keeps Anthropic mocked when forced even if its key is present", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        ANTHROPIC_API_KEY: fakeKey(),
+        MOCK_ANTHROPIC: "true",
+        TAVILY_API_KEY: fakeKey(),
+        VOYAGE_API_KEY: fakeKey(),
+      }),
+    );
+
+    expect(deps.llm).toBeInstanceOf(MockLlmClient);
+    expect(deps.web).toBeInstanceOf(TavilyWebGrounding);
+    expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
+  });
+
+  it("keeps Tavily mocked when forced even if its key is present", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        ANTHROPIC_API_KEY: fakeKey(),
+        MOCK_TAVILY: "true",
+        TAVILY_API_KEY: fakeKey(),
+        VOYAGE_API_KEY: fakeKey(),
+      }),
+    );
+
+    expect(deps.llm).toBeInstanceOf(AnthropicLlmClient);
+    expect(deps.web).toBeInstanceOf(MockWebGrounding);
+    expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
+  });
+
+  it("keeps Voyage mocked when forced even if its key is present", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        ANTHROPIC_API_KEY: fakeKey(),
+        MOCK_VOYAGE: "true",
+        TAVILY_API_KEY: fakeKey(),
+        VOYAGE_API_KEY: fakeKey(),
+      }),
+    );
+
+    expect(deps.llm).toBeInstanceOf(AnthropicLlmClient);
+    expect(deps.web).toBeInstanceOf(TavilyWebGrounding);
+    expect(deps.embeddings).toBeInstanceOf(DeterministicEmbeddingProvider);
+  });
+
   it("selects the Supabase realtime publisher when publish credentials are present", () => {
     const deps = createAiDependencies(
       {} as Db,

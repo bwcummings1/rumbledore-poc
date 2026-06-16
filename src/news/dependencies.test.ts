@@ -37,6 +37,21 @@ describe("createNewsDependencies", () => {
     ]);
   });
 
+  it("keeps Tavily grounding mocked when forced even if its key is present", () => {
+    const deps = createNewsDependencies(
+      {} as Db,
+      parseEnv({
+        MOCK_TAVILY: "true",
+        TAVILY_API_KEY: fakeKey(),
+      }),
+    );
+
+    expect((deps.source as CompositeCentralNewsSource).sources).toEqual([
+      expect.any(MockWebGroundingCentralNewsSource),
+      expect.any(MockRssCentralNewsSource),
+    ]);
+  });
+
   it("selects configured RSS feeds alongside mocked grounding", () => {
     const deps = createNewsDependencies(
       {} as Db,

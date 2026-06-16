@@ -28,6 +28,15 @@ describe("createOddsDependencies", () => {
 
     expect(deps.provider).toBeInstanceOf(TheOddsApiProvider);
   });
+
+  it("keeps odds mocked when forced even if its key is present", () => {
+    const deps = createOddsDependencies(
+      {} as Db,
+      parseEnv({ MOCK_ODDS: "true", THE_ODDS_API_KEY: fakeKey() }),
+    );
+
+    expect(deps.provider).toBeInstanceOf(MockOddsProvider);
+  });
 });
 
 describe("createBettingSettlementDependencies", () => {
@@ -44,5 +53,17 @@ describe("createBettingSettlementDependencies", () => {
     );
 
     expect(deps.resultsProvider).toBeInstanceOf(SportsDataIoResultsProvider);
+  });
+
+  it("keeps SportsDataIO mocked when forced even if its key is present", () => {
+    const deps = createBettingSettlementDependencies(
+      {} as Db,
+      parseEnv({
+        MOCK_SPORTSDATAIO: "true",
+        SPORTSDATAIO_API_KEY: fakeKey(),
+      }),
+    );
+
+    expect(deps.resultsProvider).toBeInstanceOf(MockResultsProvider);
   });
 });

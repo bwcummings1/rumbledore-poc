@@ -16,6 +16,22 @@ function fixtureValue(...parts: string[]): string {
   return parts.join("-");
 }
 
+const paidServiceCases = [
+  {
+    keyVar: "ANTHROPIC_API_KEY",
+    mockVar: "MOCK_ANTHROPIC",
+    service: "anthropic",
+  },
+  { keyVar: "THE_ODDS_API_KEY", mockVar: "MOCK_ODDS", service: "odds" },
+  {
+    keyVar: "SPORTSDATAIO_API_KEY",
+    mockVar: "MOCK_SPORTSDATAIO",
+    service: "sportsdataio",
+  },
+  { keyVar: "TAVILY_API_KEY", mockVar: "MOCK_TAVILY", service: "tavily" },
+  { keyVar: "VOYAGE_API_KEY", mockVar: "MOCK_VOYAGE", service: "voyage" },
+] as const;
+
 describe("parseEnv", () => {
   it("runs with zero config: local URLs by default and all paid services mocked", () => {
     const env = parseEnv({});
@@ -53,6 +69,28 @@ describe("parseEnv", () => {
     });
     expect(env.services.tavily).toEqual({ mock: true });
   });
+
+  it.each(paidServiceCases)(
+    "resolves $service real when its key is set and mock flag is unset",
+    ({ keyVar, service }) => {
+      const value = fixtureValue(service, "fixture", "value");
+      const env = parseEnv({ [keyVar]: value });
+
+      expect(env.services[service]).toEqual({ mock: false, apiKey: value });
+    },
+  );
+
+  it.each(paidServiceCases)(
+    "keeps $service mocked when its mock flag is true even with a key",
+    ({ keyVar, mockVar, service }) => {
+      const env = parseEnv({
+        [keyVar]: fixtureValue(service, "fixture", "value"),
+        [mockVar]: "true",
+      });
+
+      expect(env.services[service]).toEqual({ mock: true });
+    },
+  );
 
   it("maps Tavily config into the central news grounding seam", () => {
     const key = fixtureValue("tavily", "news", "fixture");
@@ -115,6 +153,12 @@ describe("parseEnv", () => {
   it("MOCK_<X>=false without a key is a validation error naming the missing var", () => {
     expect(() => parseEnv({ MOCK_ODDS: "false" })).toThrow(
       /MOCK_ODDS=false requires THE_ODDS_API_KEY/,
+    );
+  });
+
+  it("MOCK_VOYAGE=false without a key is a validation error naming VOYAGE_API_KEY", () => {
+    expect(() => parseEnv({ MOCK_VOYAGE: "false" })).toThrow(
+      /MOCK_VOYAGE=false requires VOYAGE_API_KEY/,
     );
   });
 

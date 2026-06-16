@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 3 Scope complete** after mobile PWA perf-budget hardening landed.
+Keep it current. Last updated: 2026-06-16 — **Phase 4 Scope started** after clean provider mock→real selection verification landed.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Clean provider mock→real selection verification landed — env parsing and dependency factories now assert key-present real paths plus forced-mock paths for Anthropic, Odds, SportsDataIO, Tavily, and Voyage.
 - 2026-06-16: Mobile PWA perf budget landed — App Router skeleton loading states now cover the mobile shell route families, CI runs a post-build route JS budget check, and the budget locks FCP/repeat-start/transition/CLS/INP/tap-target targets.
 - 2026-06-15: Share-link deep routing landed — unauthenticated league-scope links now bounce through onboarding with a safe preserved destination, invite links return after provider connection, and matching league imports continue to the saved destination.
 - 2026-06-15: PWA cache-safety hardening landed — service worker runtime caches now skip API/cross-origin/auth/private/no-store/Vary responses, sign-out clears page caches, and browser push is unsubscribed before session exit.
