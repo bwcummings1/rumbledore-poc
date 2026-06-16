@@ -183,6 +183,19 @@ afterAll(async () => {
 });
 
 describe("leaguemate invites", () => {
+  it("persists invite tokens only as hashes", async () => {
+    const { rows } = await handle.pool.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'league_invites'
+        and column_name in ('token', 'token_hash')
+      order by column_name
+    `);
+
+    expect(rows.map((row) => row.column_name)).toEqual(["token_hash"]);
+  });
+
   it("lists non-self imported members with their team names", async () => {
     const league = await seedLeague();
     const user = await seedUser("list");
