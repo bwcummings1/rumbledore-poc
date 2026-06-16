@@ -1,79 +1,34 @@
-# IMPLEMENTATION_PLAN.md — Phase 3: Live & Connected
+# IMPLEMENTATION_PLAN.md — Phase 4: Reality & Tunability
 
 Disposable, loop-maintained backlog. The loop works `## Scope` until none unblocked + gates green (writes `.loop/SCOPE_DONE`), then auto-runs the value-ranked `## Icebox` ×10 (`PROMPT_harden.md`), then stops at the review checkpoint.
-One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` — embed the ethos in every task** (a fresh, living spectacle: the data flows, moments land in real time, the league's history is its mythology). Phases 1–2 are complete (git history + `docs/PROGRESS.md §8`). Full roadmap: `docs/ROADMAP.md`. Specs of record: `specs/19` (live ingestion), `specs/20` (realtime/notifications), `specs/21` (central news), `specs/22` (content cadence), `specs/23` (records/history), `specs/24` (mobile PWA). Many of these DEEPEN existing skeletons — search first, don't rebuild.
+One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases 1–3 are complete (git history + `docs/PROGRESS.md §8`). Full roadmap: `docs/ROADMAP.md`. Specs of record: `specs/25` (real integrations + cost safety), `specs/26` (model & tone tunability), `specs/27` (theming framework). Real API keys are live in `.env.local` (Anthropic/Odds/SportsDataIO/Tavily/Voyage). **AI here is for VALIDATION ONLY — prove the pipeline functions with real services; do NOT iterate tone/voice (that's the user's later fine-tuning). Keep spend bounded: cheap models, spend guard, fixture-first tests.**
 
-## Scope — Phase 3 (build in order; dependencies first)
+## Scope — Phase 4 (build in order)
 
-### J. Always-on ingestion & freshness (see specs/19)
-- [x] Build the `ingestion.tick` cron orchestrator that fans out per-league ingest workers. (specs/19)
-- [x] Drive adaptive cadence from an injectable NFL game-state/calendar provider (live-window fast path vs off-hours). (specs/19)
-- [x] Make the poll policy a pluggable config seam, with cadence as data (cost-optimization deferred to research). (specs/19)
-- [x] Harden incremental sync to never downgrade finalized matchups, idempotently. (specs/19)
-- [x] Wire reconnect-on-expiry into the scheduler so expired auth pauses with a CTA, not a crash. (specs/19)
-- [x] Support multi-league fan-out and automatic next-season rollover on the same auth. (specs/19)
+### P. Real integrations & cost safety (see specs/25)
+- [ ] Complete clean env-gated mock→real selection for Anthropic, Odds, SportsDataIO, Tavily, and Voyage. (specs/25)
+- [ ] Default all AI to cheap models (Haiku, voyage-4-lite) via a model-tier config. (specs/25)
+- [ ] Build the per-provider spend guard that caps usage and falls back to mock on breach. (specs/25)
+- [ ] Add secret-free usage logging/observability for provider calls. (specs/25)
+- [ ] Build the VCR fixture-first test harness with gated live-smoke validation per provider. (specs/25)
 
-### N. Records & history surfaces (see specs/23)
-- [x] Build the all-time records catalog aggregates (standings, highs/lows, streaks, blowouts) from history. (specs/23)
-- [x] Build symmetric head-to-head manager ledgers plus championship/playoff records. (specs/23)
-- [x] Deepen the league Records section and add per-manager and head-to-head pages. (specs/23)
-- [x] Materialize record aggregates with idempotent incremental refresh tied to ingestion. (specs/23)
-- [x] Add cast "record broken" and data-verifiable lore hooks sourced from records. (specs/23)
+### Q. Model & tone tunability framework (see specs/26)
+- [ ] Build the pluggable model-provider abstraction including a custom fine-tuned/self-hosted endpoint. (specs/26)
+- [ ] Add data-driven per-task model routing (cheap/flagship/custom). (specs/26)
+- [ ] Externalize persona tone/voice as versioned config records. (specs/26)
+- [ ] Add versioned, composable, diffable prompt templates. (specs/26)
+- [ ] Build the `eval:ai:variants` A/B harness that scores model×tone variants and names a winner. (specs/26)
 
-### K. Realtime & notifications (see specs/20)
-- [x] Broadcast score/standings, settlement, content, lore, and arena events on per-league RLS channels. (specs/20)
-- [x] Wire client subscription via short-lived league-scoped tokens with reconnect/backoff (mock + Supabase). (specs/20)
-- [x] Deliver Web Push end-to-end with per-league RLS scoping and VAPID config (mock until keys). (specs/20)
-- [x] Build the notification taxonomy plus an RLS-scoped preferences/opt-out enforced at fan-out. (specs/20)
-
-### M. Weekly cadence orchestration (see specs/22)
-- [x] Add a mockable NFL calendar service that drives cadence by phase and game-state. (specs/22)
-- [x] Plan the in-season weekly slate (recaps, rankings, previews) with stable natural keys and backfill. (specs/22)
-- [x] Add a distinct offseason/quiet-week cadence. (specs/22)
-- [x] Enrich reactive event-driven pieces (game final, swing, lore canonized, bet settled), entitlement-gated. (specs/22)
-
-### L. Central news / two-tier depth (see specs/21)
-- [x] Build the multi-source central news pipeline behind mocked adapters with provenance and dedup. (specs/21)
-- [x] Build the central Front/sections editorial layer ranked by freshness and importance. (specs/21)
-- [x] Wire the central→`league_feed_reference` tailoring hand-off into the existing rail. (specs/21)
-
-### O. Mobile PWA shell (see specs/24)
-- [x] Add the install affordance (Android prompt plus the documented iOS Share→Add flow) over the existing manifest. (specs/24)
-- [x] Harden the service worker for RLS-cache-safety and sign-out cache clearing. (specs/24)
-- [x] Implement share-link routing into the right scope or onboarding with the destination preserved. (specs/24)
-- [x] Define and check a mobile perf budget (fast transitions, skeletons over spinners). (specs/24)
-
-## Harden shortlist
-1. [x] Bankroll rollover production scheduler — correctness/MED: elapsed betting weeks must roll without manual intervention; verified existing `bankroll-rollover` Inngest function has event + hourly cron triggers.
-2. [x] Guard lore vote close time — correctness/LOW: premature close can incorrectly canonize or reject active lore votes before members have the promised window; verified existing `LORE_VOTE_STILL_OPEN` guard and regression test.
-3. [x] Persist paused freshness on pre-sync provider auth failures — correctness/LOW: reconnect CTAs should align with `data_coverage` state even when auth fails before sync work starts.
-4. [x] Add Yahoo refresh-token renewal before reconnect CTAs — correctness/LOW: live OAuth users should not be forced through reconnect when a stored refresh token can recover access.
-5. [x] Schedule historical backfill for skipped season rollover gaps — correctness/LOW: same-auth rollover should not leave missing seasons unimported.
-6. [x] Fix candidate-limited publication section/tag filters — correctness/LOW: verified central News and league Press scan beyond the first candidate page when section/tag filters are active.
-7. [x] Split class-specific provider fetches for scheduler data classes — performance/MED: live ingest now passes due classes/current period into sync and avoids broad provider calls for narrow polls.
-8. [x] Confirm and wire `league.connected` fan-out from onboarding — robustness/LOW: imports now enqueue the live-ingest trigger after durable league/member setup, and `league.connected` force-fanout is covered.
-9. [x] Normalize provider-player refs in real central-news adapters — source-quality/MED: real Tavily/RSS sources now extract rostered player names through a DB-backed provider-ID dictionary before tailoring.
-10. [x] Add account-wide server push disable/cleanup — robustness/LOW: sign-out now disables matching browser endpoint rows across the signed-in user's current league memberships before unsubscribing locally.
+### R. Theming framework (see specs/27)
+- [ ] Build the design-token system (primitives → semantic aliases → Tailwind/CSS vars). (specs/27)
+- [ ] Build the ThemeProvider and data-theme swap (SSR-safe, no FOUC) with palette-a/palette-b slots. (specs/27)
+- [ ] Add contrast and reduced-motion accessibility gates on the tokens. (specs/27)
+- [ ] Migrate components to tokens incrementally, keeping the impeccable gate green. (specs/27)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
-Carried from Phase 2 — **re-verify each before acting** ("don't assume not implemented"); several may already be fixed by the Phase 2 harden pass.
-- [x] **[correctness/MED] Bankroll rollover needs a production scheduler** — verified `rolloverBankrollWeek()` is invoked by the registered `bankroll-rollover` Inngest function via event trigger and hourly UTC cron.
-- [x] **[correctness/LOW] Lore vote close can run before `vote_closes_at`** — verified `closeLoreVote()` rejects `LORE_VOTE_STILL_OPEN` before `vote_closes_at` and keeps claims open.
-- [x] **[correctness/LOW] Publication section/tag filters are candidate-limited in memory** — verified `src/news/hub.ts` / `src/news/league-feed.ts` scan beyond the first candidate page for active section/tag filters.
-- [ ] **[maintainability/LOW] Press route param doubles as section slug and article id** — split routes or use a neutral slug.
-- [ ] **[realtime/LOW] Realtime declares `odds.updated` and `central.news.updated` payloads without publisher helpers** — add typed publish methods when specs/21 or odds freshness fan-out needs them.
-- [ ] **[maintainability/LOW] Real RSS central-news parsing is intentionally lightweight** — replace the regex extractor with a dedicated parser before broad real-feed rollout.
-- [ ] **[maintainability/LOW] Central News editorial ranking scans all central rows in app memory** — add indexed/queryable publication section and rank fields before high-volume rollout.
-- [x] **[source-quality/MED] Real central-news adapters do not emit normalized provider-player refs yet** — real Tavily/RSS sources now emit provider-player refs via conservative roster-name extraction.
-- [x] **[pwa/LOW] Sign-out unsubscribes the browser PushSubscription, but server push rows remain active until delivery cleanup** — sign-out now calls an authenticated account cleanup endpoint with browser push endpoints before local unsubscribe.
+Carried/forward — **re-verify each before acting.**
+- [ ] **[onboarding/DEFERRED] Real Browserbase cookie-capture is human-paired** — do NOT attempt autonomously; keep mocked. The live POC needs the user's device (Phase 4b).
+- [ ] (loop appends discovered bugs/improvements here during Phase 4)
 
 ## Discoveries / bugs (loop appends here)
-- [x] Scheduler emits due `dataClasses`, but `syncCurrentLeague()` still fetches the current league bundle as one unit; split class-specific provider calls before claiming polling-cost optimization.
-- [x] `league.connected` is wired as a force-due ingestion scheduler trigger, but onboarding appears to call `syncCurrentLeague()` directly instead of emitting `JOB_EVENTS.leagueConnected`; imports now enqueue the trigger after durable league/member setup.
-- [x] Yahoo live ingestion treats expired access tokens as `PROVIDER_AUTH_EXPIRED`; add refresh-token renewal before surfacing reconnect CTAs.
-- [x] Live ingest auth-expiry pauses via scheduler response, but pre-sync auth failures do not yet persist paused/error freshness into `data_coverage`.
-- [x] Season rollover advances the durable league root into the newly discovered season, but does not schedule historical backfill for any skipped seasons.
-- [ ] Flat `all_time_record` longest-streak rows still derive from per-season `season_statistics`; future record-chain/materialized UI work should use cross-season H2H-only streaks from the catalog.
-- [ ] PWA perf budget is currently a post-build structural/bundle gate; add a runtime Lighthouse or Playwright user-flow pass before production launch to measure FCP, CLS, and INP under throttling.
-- [x] Scheduled weekly recaps and reactive `game.final` recaps still use different trigger keys; add a targeted shared-idempotency pass when enriching reactive cadence.
-- [ ] Push delivery selects active `push_subscription` rows without re-checking auth-plane membership; membership removal should disable rows or delivery should join current `members` before fan-out.
+- (none yet this phase)
