@@ -20,8 +20,11 @@ One task = one sentence, no "and". **Spec of record: `specs/35`. Build toward `d
 - [x] Cover the spend-guard rolling-24h TTL and provider-unavailable→mock fallback paths with tests. (specs/35 §11)
 - [x] Reconcile `docs/PROGRESS.md` / `docs/HISTORY.md` (mark fixed bugs resolved; refresh build-state). (specs/35 §12)
 
+## Harden shortlist
+1. [x] **[a11y/correctness] LiveClock SSR hydration mismatch** — product-wide hydration errors can destabilize client rendering and obscure real regressions on every page.
+
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
-- [ ] **[a11y/correctness] LiveClock SSR hydration mismatch** — `src/navigation/navigation-shell.tsx:~2210` renders the live time server-side; server vs client differ by ~1s → a React hydration error on every page. Render the clock client-only (mount-gated) or suppress hydration on that node. (surfaced during the Phase-5 screenshot run)
+- [x] **[a11y/correctness] LiveClock SSR hydration mismatch** — `src/navigation/navigation-shell.tsx:~2210` renders the live time server-side; server vs client differ by ~1s → a React hydration error on every page. Render the clock client-only (mount-gated) or suppress hydration on that node. (surfaced during the Phase-5 screenshot run)
 - [ ] (loop appends discovered bugs/improvements here during this pass)
 
 ## Discoveries / bugs (loop appends here)

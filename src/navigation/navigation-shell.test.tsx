@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { leagueRealtimeChannel, REALTIME_EVENTS } from "@/realtime/interfaces";
 import { MOTION_STORAGE_KEY } from "@/theme/settings";
@@ -84,6 +85,9 @@ const items = [
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  document.documentElement.removeAttribute("data-motion");
+  window.localStorage.removeItem(MOTION_STORAGE_KEY);
   realtimeMock.state.lastRefresh = null;
   realtimeMock.openRealtimePresenceSubscription.mockClear();
   realtimeMock.openRealtimeRefreshSubscription.mockClear();
@@ -356,6 +360,43 @@ describe("NavigationShellView", () => {
 
     expect(document.documentElement.getAttribute("data-motion")).toBe("off");
     expect(window.localStorage.getItem(MOTION_STORAGE_KEY)).toBe("off");
+  });
+
+  it("server-renders the live clock with a deterministic hydration placeholder", () => {
+    const html = renderToString(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/arena")}
+        items={items}
+      >
+        <main>Arena</main>
+      </NavigationShellView>,
+    );
+
+    expect(html).toContain('data-slot="live-clock"');
+    expect(html).toContain("Local time loading");
+    expect(html).toContain("--:--:--");
+  });
+
+  it("starts the live clock on the client after mount", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 16, 12, 34, 56));
+
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/arena")}
+        items={items}
+      >
+        <main>Arena</main>
+      </NavigationShellView>,
+    );
+
+    expect(screen.getByLabelText("Local time 12:34:56")).toBeDefined();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getByLabelText("Local time 12:34:57")).toBeDefined();
   });
 });
 

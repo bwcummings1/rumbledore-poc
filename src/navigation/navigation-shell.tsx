@@ -2194,9 +2194,10 @@ function LiveClock({
   readonly className?: string;
   readonly motionOff: boolean;
 }) {
-  const [time, setTime] = useState(() => formatClock(new Date()));
+  const [time, setTime] = useState<string | null>(null);
 
   useEffect(() => {
+    setTime(formatClock(new Date()));
     if (motionOff) {
       return;
     }
@@ -2206,9 +2207,12 @@ function LiveClock({
     return () => window.clearInterval(interval);
   }, [motionOff]);
 
+  const renderedTime = time ?? "--:--:--";
+
   return (
     <output
-      aria-label={`Local time ${time}`}
+      aria-busy={time ? undefined : true}
+      aria-label={time ? `Local time ${time}` : "Local time loading"}
       className={cn(
         "lcd min-h-10 items-center gap-2 rounded-control border border-input bg-[var(--panel)] px-3 text-xs",
         className,
@@ -2216,7 +2220,7 @@ function LiveClock({
       data-slot="live-clock"
     >
       <Clock3 className="size-3.5" aria-hidden="true" />
-      {time}
+      {renderedTime}
     </output>
   );
 }
