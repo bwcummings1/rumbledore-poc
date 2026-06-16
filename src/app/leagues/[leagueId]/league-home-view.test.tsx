@@ -66,6 +66,7 @@ const data: LeagueHomeData = {
   storylines: [
     {
       authorPersona: "commissioner",
+      byline: "Commissioner",
       dek: "A commissioner standfirst for the dashboard teaser.",
       id: "storyline-1",
       publishedAt: "2026-06-11T00:00:00.000Z",

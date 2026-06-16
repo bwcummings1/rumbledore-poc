@@ -2,10 +2,18 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type AiPersona, DEFAULT_PERSONA_CARDS } from "@/ai/personas";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { contentItems, leagues, loreClaims, members, users } from "@/db/schema";
+import {
+  aiPersonaCards,
+  contentItems,
+  leagues,
+  loreClaims,
+  members,
+  users,
+} from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
   getCentralNewsArticleData,
@@ -25,6 +33,32 @@ let leagueArticleId: string;
 let leagueBArticleId: string;
 let canonCitationId: string;
 let pendingCitationId: string;
+
+function personaCardValue(input: {
+  leagueId: string;
+  name: string;
+  persona: AiPersona;
+  purpose: string;
+}) {
+  const defaults = DEFAULT_PERSONA_CARDS[input.persona];
+  return {
+    beat: defaults.beat,
+    enabled: defaults.enabled,
+    leagueId: input.leagueId,
+    maxWords: defaults.maxWords,
+    minWords: defaults.minWords,
+    name: input.name,
+    performsWhen: defaults.performsWhen,
+    persona: input.persona,
+    pointOfView: defaults.pointOfView,
+    promptTemplate: defaults.promptTemplate,
+    purpose: input.purpose,
+    tone: defaults.tone,
+    toneProfile: defaults.toneProfile,
+    toneVersion: defaults.toneVersion + 1,
+    triggerConfig: defaults.triggerConfig,
+  };
+}
 
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
@@ -179,6 +213,21 @@ beforeAll(async () => {
   }
 
   await withLeagueContext(handle.db, leagueAId, async (tx) => {
+    await tx.insert(aiPersonaCards).values([
+      personaCardValue({
+        leagueId: leagueAId,
+        name: "Rivalry Desk",
+        persona: "narrator",
+        purpose: "Custom rivalry voice for this league.",
+      }),
+      personaCardValue({
+        leagueId: leagueAId,
+        name: "Numbers Desk",
+        persona: "analyst",
+        purpose: "Custom analysis voice for this league.",
+      }),
+    ]);
+
     const rows = await tx
       .insert(contentItems)
       .values([
@@ -312,7 +361,8 @@ describe("publication articles", () => {
     }
 
     expect(result.data.article).toMatchObject({
-      byline: "Narrator",
+      byline: "Rivalry Desk",
+      bylineDetail: "Custom rivalry voice for this league.",
       dek: "A league-specific rivalry dek.",
       headline: "Narrator files the rivalry column",
       section: { label: "Recaps" },
@@ -332,6 +382,14 @@ describe("publication articles", () => {
     ).not.toContain(pendingCitationId);
     expect(result.data.relatedStories.map((story) => story.headline)).toContain(
       "Analyst checks the rivalry math",
+    );
+    expect(result.data.relatedStories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          byline: "Numbers Desk",
+          headline: "Analyst checks the rivalry math",
+        }),
+      ]),
     );
     expect(result.data.relatedStories.map((story) => story.headline)).toContain(
       "A-specific injury fallout",

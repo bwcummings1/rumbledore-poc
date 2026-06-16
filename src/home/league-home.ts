@@ -1,8 +1,14 @@
 import { and, asc, desc, eq, inArray, or, type SQL, sql } from "drizzle-orm";
 import type { AiPersona } from "@/ai";
+import {
+  buildPersonaBylineMap,
+  type PersonaBylineMap,
+  resolvePersonaByline,
+} from "@/ai/persona-display";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  aiPersonaCards,
   allTimeRecords,
   members as authMembers,
   contentItems,
@@ -81,6 +87,7 @@ export interface LeagueHomeStoryline {
   summary: string;
   dek: string;
   authorPersona: AiPersona | null;
+  byline: string;
   publishedAt: string;
   section: PublicationSection<LeaguePublicationSectionId>;
   thumbnailUrl: string;
@@ -384,9 +391,13 @@ function buildRecords(
     }));
 }
 
-function buildStorylines(rows: readonly StorylineRow[]): LeagueHomeStoryline[] {
+function buildStorylines(
+  rows: readonly StorylineRow[],
+  personaBylines: PersonaBylineMap,
+): LeagueHomeStoryline[] {
   return rows.map((row) => ({
     authorPersona: row.authorPersona,
+    byline: resolvePersonaByline(row.authorPersona, personaBylines).label,
     dek: articleDek(row.metadata, row.summary),
     id: row.id,
     publishedAt: row.publishedAt.toISOString(),
@@ -517,6 +528,7 @@ function buildActivation({
   activation,
   currentMatchups,
   latestStoryline,
+  personaBylines,
   personNamesById,
   recordRows,
   standings,
@@ -524,6 +536,7 @@ function buildActivation({
   activation: ScopedActivationRows | null;
   currentMatchups: readonly LeagueHomeMatchup[];
   latestStoryline: LeagueHomeStoryline | null;
+  personaBylines: PersonaBylineMap;
   personNamesById: ReadonlyMap<string, string>;
   recordRows: readonly RecordRow[];
   standings: readonly LeagueHomeStanding[];
@@ -552,6 +565,7 @@ function buildActivation({
   ).slice(0, 3);
   const matchedStorylines = buildStorylines(
     activation.matchedStoryline ? [activation.matchedStoryline] : [],
+    personaBylines,
   );
   const matchedStoryline = matchedStorylines[0] ?? null;
 
@@ -780,6 +794,17 @@ export async function getLeagueHomeData(
       .orderBy(desc(contentItems.publishedAt))
       .limit(3);
 
+    const personaBylines = buildPersonaBylineMap(
+      await tx
+        .select({
+          name: aiPersonaCards.name,
+          persona: aiPersonaCards.persona,
+          purpose: aiPersonaCards.purpose,
+        })
+        .from(aiPersonaCards)
+        .where(eq(aiPersonaCards.leagueId, input.leagueId)),
+    );
+
     let activation: ScopedActivationRows | null = null;
     if (identityClaim) {
       const providerTeamIds = sortedUnique(
@@ -878,6 +903,7 @@ export async function getLeagueHomeData(
       activation,
       matchups: matchupRows satisfies FantasyMatchupRow[],
       members: memberRows satisfies FantasyMemberRow[],
+      personaBylines,
       personNamesById: new Map(
         personRows.map((person) => [person.id, person.canonicalName]),
       ),
@@ -921,7 +947,7 @@ export async function getLeagueHomeData(
     membersByProviderId,
     claimedProviderTeamIds,
   );
-  const storylines = buildStorylines(scoped.storylines);
+  const storylines = buildStorylines(scoped.storylines, scoped.personaBylines);
 
   return {
     status: "ready",
@@ -930,6 +956,7 @@ export async function getLeagueHomeData(
         activation: scoped.activation,
         currentMatchups,
         latestStoryline: storylines[0] ?? null,
+        personaBylines: scoped.personaBylines,
         personNamesById: scoped.personNamesById,
         recordRows: scoped.records,
         standings,

@@ -10,32 +10,6 @@ import type { LeagueFeedData, LeagueFeedItem } from "@/news";
 import { buildPublicationFront } from "@/news/front";
 import { LeagueRealtimeRefresh } from "@/realtime/client";
 
-function personaLabel(persona: LeagueFeedItem["authorPersona"]): string {
-  switch (persona) {
-    case "commissioner":
-      return "Commissioner";
-    case "analyst":
-      return "Analyst";
-    case "narrator":
-      return "Narrator";
-    case "trash_talker":
-      return "Trash-Talker";
-    case "beat_reporter":
-      return "Beat Reporter";
-    case "betting_advisor":
-      return "Betting-Advisor";
-    case null:
-      return "League blog";
-  }
-}
-
-function sourceLabel(item: LeagueFeedItem): string {
-  if (item.scope === "league" && item.kind === "blog") {
-    return personaLabel(item.authorPersona);
-  }
-  return item.sourceLabel;
-}
-
 function sectionTag(item: LeagueFeedItem): string {
   return item.section.label;
 }
@@ -55,7 +29,7 @@ function toStory({
         : undefined;
 
   return {
-    byline: sourceLabel(item),
+    byline: item.sourceLabel,
     dek: item.dek ?? item.summary,
     headline: item.title,
     href,

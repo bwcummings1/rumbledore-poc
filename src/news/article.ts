@@ -1,9 +1,13 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import { type AiPersona, DEFAULT_PERSONA_CARDS } from "@/ai/personas";
+import {
+  buildPersonaBylineMap,
+  resolvePersonaByline,
+} from "@/ai/persona-display";
 import type { PublicationStory } from "@/components/publication/story";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
+  aiPersonaCards,
   contentItems,
   leagueFeedReferences,
   leagues,
@@ -99,21 +103,6 @@ interface RelatedCandidate extends PublicationArticleStory {
   relevanceScore?: number;
   sectionId: string;
   tags: string[];
-}
-
-function personaByline(persona: AiPersona | null): {
-  label: string;
-  detail: string;
-} {
-  if (!persona) {
-    return { detail: "League publication", label: "League blog" };
-  }
-
-  const defaults = DEFAULT_PERSONA_CARDS[persona];
-  return {
-    detail: defaults.purpose,
-    label: defaults.name,
-  };
 }
 
 function sourceLabel(value: string | null): string {
@@ -437,6 +426,17 @@ export async function getLeaguePressArticleData(
       return null;
     }
 
+    const personaBylines = buildPersonaBylineMap(
+      await tx
+        .select({
+          name: aiPersonaCards.name,
+          persona: aiPersonaCards.persona,
+          purpose: aiPersonaCards.purpose,
+        })
+        .from(aiPersonaCards)
+        .where(eq(aiPersonaCards.leagueId, input.leagueId)),
+    );
+
     const articleSection = resolveLeaguePublicationSection({
       authorPersona: articleRow.authorPersona,
       kind: "blog",
@@ -506,7 +506,10 @@ export async function getLeaguePressArticleData(
     const leagueCandidates: RelatedCandidate[] = leagueRows
       .filter((candidate) => candidate.id !== articleRow.id)
       .map((candidate) => {
-        const byline = personaByline(candidate.authorPersona);
+        const byline = resolvePersonaByline(
+          candidate.authorPersona,
+          personaBylines,
+        );
         const candidateSection = resolveLeaguePublicationSection({
           authorPersona: candidate.authorPersona,
           kind: "blog",
@@ -570,7 +573,10 @@ export async function getLeaguePressArticleData(
       },
     );
 
-    const byline = personaByline(articleRow.authorPersona);
+    const byline = resolvePersonaByline(
+      articleRow.authorPersona,
+      personaBylines,
+    );
     return {
       article: {
         body: articleRow.body,

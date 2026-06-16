@@ -81,25 +81,6 @@ function matchupStatusLabel(status: LeagueHomeMatchup["status"]): string {
   }
 }
 
-function personaLabel(persona: LeagueHomeStoryline["authorPersona"]): string {
-  switch (persona) {
-    case "commissioner":
-      return "Commissioner";
-    case "analyst":
-      return "Analyst";
-    case "narrator":
-      return "Narrator";
-    case "trash_talker":
-      return "Trash-Talker";
-    case "beat_reporter":
-      return "Beat Reporter";
-    case "betting_advisor":
-      return "Betting-Advisor";
-    case null:
-      return "League blog";
-  }
-}
-
 function toPressTeaserStory({
   leagueId,
   storyline,
@@ -108,7 +89,7 @@ function toPressTeaserStory({
   storyline: LeagueHomeStoryline;
 }): PublicationStory {
   return {
-    byline: personaLabel(storyline.authorPersona),
+    byline: storyline.byline,
     dek: storyline.dek,
     headline: storyline.title,
     href: `/leagues/${leagueId}/press/${storyline.id}`,

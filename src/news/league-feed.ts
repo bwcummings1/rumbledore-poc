@@ -1,9 +1,14 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import {
+  buildPersonaBylineMap,
+  resolvePersonaByline,
+} from "@/ai/persona-display";
 import type { AiPersona } from "@/ai/personas";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  aiPersonaCards,
   contentItems,
   type LeagueFeedMatchedEntity,
   leagueFeedReferences,
@@ -406,9 +411,21 @@ export async function getLeagueFeedData(
       centralOffset += page.length;
     }
 
+    const personaBylines = buildPersonaBylineMap(
+      await tx
+        .select({
+          name: aiPersonaCards.name,
+          persona: aiPersonaCards.persona,
+          purpose: aiPersonaCards.purpose,
+        })
+        .from(aiPersonaCards)
+        .where(eq(aiPersonaCards.leagueId, input.leagueId)),
+    );
+
     const leagueItems: LeagueFeedItem[] = leagueRows.map((row) => {
       const title = row.title;
       const summary = row.summary;
+      const byline = resolvePersonaByline(row.authorPersona, personaBylines);
 
       return {
         authorPersona: row.authorPersona,
@@ -429,7 +446,7 @@ export async function getLeagueFeedData(
           summary,
           title,
         }),
-        sourceLabel: row.kind === "blog" ? "League blog" : "League activity",
+        sourceLabel: row.kind === "blog" ? byline.label : "League activity",
         sourceUrl: "",
         summary,
         tags: articleTags(row.metadata),

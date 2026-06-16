@@ -25,6 +25,11 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 - [x] Add contrast and reduced-motion accessibility gates on the tokens. (specs/27)
 - [x] Migrate components to tokens incrementally, keeping the impeccable gate green. (specs/27)
 
+## Harden shortlist
+1. [x] [ai-tone/OBSERVED] Article byline surfaces still derive persona labels from `DEFAULT_PERSONA_CARDS` — correctness bug in the model/tone tunability work because edited persona metadata can persist while publication surfaces still show stale default identity.
+2. [ ] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation — robustness and cost-safety issue because a stalled real provider request can hang jobs past the spend-guard boundary.
+3. [blocked] [onboarding/DEFERRED] Real Browserbase cookie-capture is human-paired — highest product value for live onboarding, but explicitly requires the user's device and is not eligible for autonomous hardening.
+
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
 Carried/forward — **re-verify each before acting.**
 - [ ] **[onboarding/DEFERRED] Real Browserbase cookie-capture is human-paired** — do NOT attempt autonomously; keep mocked. The live POC needs the user's device (Phase 4b).
@@ -32,4 +37,4 @@ Carried/forward — **re-verify each before acting.**
 
 ## Discoveries / bugs (loop appends here)
 - [ ] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation; re-check when provider spend guards/usage wrappers land.
-- [ ] [ai-tone/OBSERVED] Article byline surfaces still derive persona labels from `DEFAULT_PERSONA_CARDS`; re-check when league-edited persona metadata is exposed in UI.
+- [x] [ai-tone/OBSERVED] Article byline surfaces still derive persona labels from `DEFAULT_PERSONA_CARDS`; fixed by resolving league Press/home/feed bylines from scoped persona-card metadata with default fallback.

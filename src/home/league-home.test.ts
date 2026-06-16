@@ -2,10 +2,12 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type AiPersona, DEFAULT_PERSONA_CARDS } from "@/ai/personas";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  aiPersonaCards,
   allTimeRecords,
   contentItems,
   dataIntegrityChecks,
@@ -42,6 +44,32 @@ let outsiderUserId: string;
 type MutableLeagueFixture = Omit<typeof leagueFixture, "id"> & {
   id: string | number;
 };
+
+function personaCardValue(input: {
+  leagueId: string;
+  name: string;
+  persona: AiPersona;
+  purpose: string;
+}) {
+  const defaults = DEFAULT_PERSONA_CARDS[input.persona];
+  return {
+    beat: defaults.beat,
+    enabled: defaults.enabled,
+    leagueId: input.leagueId,
+    maxWords: defaults.maxWords,
+    minWords: defaults.minWords,
+    name: input.name,
+    performsWhen: defaults.performsWhen,
+    persona: input.persona,
+    pointOfView: defaults.pointOfView,
+    promptTemplate: defaults.promptTemplate,
+    purpose: input.purpose,
+    tone: defaults.tone,
+    toneProfile: defaults.toneProfile,
+    toneVersion: defaults.toneVersion + 1,
+    triggerConfig: defaults.triggerConfig,
+  };
+}
 
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -189,6 +217,15 @@ describe("getLeagueHomeData", () => {
     if (!otherLeague) throw new Error("other league was not inserted");
 
     await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(aiPersonaCards).values(
+        personaCardValue({
+          leagueId,
+          name: "Commissioner's Desk",
+          persona: "commissioner",
+          purpose: "Custom commissioner voice.",
+        }),
+      );
+
       await tx.insert(contentItems).values({
         authorPersona: "commissioner",
         body: "Only the requested league should see this body.",
@@ -225,6 +262,7 @@ describe("getLeagueHomeData", () => {
     expect(result.data.storylines).toEqual([
       {
         authorPersona: "commissioner",
+        byline: "Commissioner's Desk",
         dek: "Only the requested league should see this summary.",
         id: expect.any(String),
         publishedAt: "2026-06-11T00:00:00.000Z",

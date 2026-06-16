@@ -2,10 +2,17 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type AiPersona, DEFAULT_PERSONA_CARDS } from "@/ai/personas";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { contentItems, leagues, members, users } from "@/db/schema";
+import {
+  aiPersonaCards,
+  contentItems,
+  leagues,
+  members,
+  users,
+} from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { getLeagueFeedData, upsertLeagueFeedReference } from "./league-feed";
 
@@ -17,6 +24,32 @@ let userId: string;
 let outsiderUserId: string;
 let centralRelevantId: string;
 let leagueScopedContentId: string;
+
+function personaCardValue(input: {
+  leagueId: string;
+  name: string;
+  persona: AiPersona;
+  purpose: string;
+}) {
+  const defaults = DEFAULT_PERSONA_CARDS[input.persona];
+  return {
+    beat: defaults.beat,
+    enabled: defaults.enabled,
+    leagueId: input.leagueId,
+    maxWords: defaults.maxWords,
+    minWords: defaults.minWords,
+    name: input.name,
+    performsWhen: defaults.performsWhen,
+    persona: input.persona,
+    pointOfView: defaults.pointOfView,
+    promptTemplate: defaults.promptTemplate,
+    purpose: input.purpose,
+    tone: defaults.tone,
+    toneProfile: defaults.toneProfile,
+    toneVersion: defaults.toneVersion + 1,
+    triggerConfig: defaults.triggerConfig,
+  };
+}
 
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
@@ -136,6 +169,15 @@ beforeAll(async () => {
   }
 
   await withLeagueContext(handle.db, leagueAId, async (tx) => {
+    await tx.insert(aiPersonaCards).values(
+      personaCardValue({
+        leagueId: leagueAId,
+        name: "League Office",
+        persona: "commissioner",
+        purpose: "Custom league office voice.",
+      }),
+    );
+
     const [row] = await tx
       .insert(contentItems)
       .values({
@@ -228,6 +270,11 @@ describe("league-tailored feed", () => {
       "Commissioner note for league A",
       "A-specific quarterback fallout",
     ]);
+    expect(result.data.items[0]).toMatchObject({
+      kind: "blog",
+      scope: "league",
+      sourceLabel: "League Office",
+    });
     expect(result.data.items[1]).toMatchObject({
       contentItemId: centralRelevantId,
       kind: "news",
