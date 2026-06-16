@@ -68,14 +68,18 @@ import type {
   LeagueContextTrigger,
   LeaguePersonaCard,
   LlmClient,
+  LlmJudge,
+  LlmJudgeScore,
   LlmModelProviderKeyResolver,
   NewsItem,
   PromptParts,
   WebGrounding,
 } from "./interfaces";
+import { assertLlmJudgeScorePasses, DEFAULT_LLM_JUDGE_RUBRIC } from "./judge";
 import {
   DeterministicEmbeddingProvider,
   MockLlmClient,
+  MockLlmJudge,
   MockWebGrounding,
 } from "./mocks";
 import {
@@ -104,6 +108,7 @@ export interface AiGenerationDependencies {
   db: Db;
   entitlements: EntitlementResolverEnv;
   llm: LlmClient;
+  judge: LlmJudge;
   push: PushNotifier;
   realtime: RealtimePublisher;
   web: WebGrounding;
@@ -777,6 +782,49 @@ function validateDraftOrGeneric({
   } catch (error) {
     if (error instanceof AppError && error.code === "AI_DRAFT_GENERIC") {
       return null;
+    }
+    throw error;
+  }
+}
+
+function llmJudgeSkipReason(score: LlmJudgeScore): string {
+  const reasons = [
+    score.authenticity < DEFAULT_LLM_JUDGE_RUBRIC.authenticityThreshold
+      ? `authenticity:${score.authenticity.toFixed(2)}`
+      : null,
+    score.personaMatch < DEFAULT_LLM_JUDGE_RUBRIC.personaMatchThreshold
+      ? `persona:${score.personaMatch.toFixed(2)}`
+      : null,
+    score.leakage ? "leakage" : null,
+  ].filter((reason): reason is string => Boolean(reason));
+  return `llm_judge:${reasons.join(",") || "failed"}`;
+}
+
+async function judgeDraftFailureReason({
+  context,
+  deps,
+  draft,
+  input,
+}: {
+  context: LeagueBlogContext;
+  deps: Pick<AiGenerationDependencies, "judge">;
+  draft: BlogDraft;
+  input: GenerateLeagueBlogPostInput;
+}): Promise<string | null> {
+  const score = await deps.judge.score({
+    leagueFacts: { context },
+    piece: draft,
+    rubric: DEFAULT_LLM_JUDGE_RUBRIC,
+  });
+  try {
+    assertLlmJudgeScorePasses({
+      label: `${input.leagueId}:${input.persona}:${input.contentType}:${input.triggerKey}`,
+      score,
+    });
+    return null;
+  } catch (error) {
+    if (error instanceof AppError && error.code === "AI_JUDGE_EVAL_FAILED") {
+      return llmJudgeSkipReason(score);
     }
     throw error;
   }
@@ -2119,6 +2167,7 @@ export function createMockAiDependencies(db: Db): AiGenerationDependencies {
         gateArenaAdvanced: false,
       },
     },
+    judge: new MockLlmJudge(),
     llm: new MockLlmClient(),
     push: new NoopPushNotifier(),
     realtime: new NoopRealtimePublisher(),
@@ -2320,6 +2369,85 @@ export async function generateLeagueBlogPost({
       promptPrefixHash,
       provenance,
       reason: `near_duplicate:${maxSimilarity.toFixed(4)}`,
+    });
+  }
+
+  let judgeFailureReason = await judgeDraftFailureReason({
+    context,
+    deps,
+    draft,
+    input,
+  });
+
+  if (judgeFailureReason && !alreadyRetried) {
+    const judgeNudge =
+      "The first draft failed the AI judge for league authenticity, persona fit, or leakage. Rewrite with concrete league-owned facts, clear persona markers, and no other-league references.";
+    const retryPrompt = buildPromptParts({
+      contentType: input.contentType,
+      context,
+      duplicateNudge: judgeNudge,
+      newsItems,
+      triggerKey: input.triggerKey,
+    });
+    const judgedDraft = validateDraftOrGeneric({
+      contentType: input.contentType,
+      context,
+      draft: await deps.llm.generate({
+        attempt: 2,
+        context,
+        contentType: input.contentType,
+        duplicateNudge: judgeNudge,
+        newsItems,
+        persona: input.persona,
+        prompt: retryPrompt,
+      }),
+    });
+    if (
+      !judgedDraft ||
+      !referencedLeagueEntity({ context, draft: judgedDraft })
+    ) {
+      return markSkipped({
+        deps,
+        input,
+        promptPrefixHash,
+        provenance,
+        reason: "generic_slop:missing_league_entity",
+      });
+    }
+
+    draft = judgedDraft;
+    alreadyRetried = true;
+    embedding = await deps.embeddings.embed(blogDraftText(draft));
+    nearestMemories = await loadNearestBlogMemories({
+      deps,
+      embedding,
+      input,
+    });
+    maxSimilarity = maxPriorSimilarity(embedding, nearestMemories);
+    if (maxSimilarity > duplicateThreshold) {
+      return markSkipped({
+        deps,
+        input,
+        promptPrefixHash,
+        provenance,
+        reason: `near_duplicate:${maxSimilarity.toFixed(4)}`,
+      });
+    }
+    judgeFailureReason = await judgeDraftFailureReason({
+      context,
+      deps,
+      draft,
+      input,
+    });
+  }
+
+  if (judgeFailureReason) {
+    return markSkipped({
+      deps,
+      input,
+      promptPrefixHash,
+      provenance,
+      reason: judgeFailureReason,
     });
   }
 

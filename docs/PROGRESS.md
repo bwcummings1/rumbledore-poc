@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **lore steward tiebreak hardening landed** with ratify/reject constrained to tie, quorum-short, or expired votes while commissioner overrides now use a distinct audited action.
+Keep it current. Last updated: 2026-06-16 — **Anthropic LLM judge publish gate landed** with mock-safe pipeline scoring, one bounded regeneration, and guarded real Anthropic judge selection only when unmocked.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Anthropic LLM judge publish gate landed — generation now scores validated drafts before publish, regenerates once or skips on low authenticity/persona/leakage, and selects a guarded real Anthropic judge only when Anthropic is unmocked.
 - 2026-06-16: ESPN postseason derivation confidence landed — live 95050 history validation confirmed recent `rankCalculatedFinal` title-game alignment, final standings now persist rank provenance, and low-confidence fallback finals/title-game misses surface as integrity failures.
 - 2026-06-16: Lore steward tiebreak hardening landed — steward ratify/reject now requires tie, quorum-short, or expired vote conditions, and open-vote commissioner overrides are a separate audited action.
 - 2026-06-16: Live ingestion calendar cadence hardening landed — ingestion tick now uses the NFL calendar default game-state provider so live game windows hit the 1-min matchup poll tier while off-hours stay relaxed.

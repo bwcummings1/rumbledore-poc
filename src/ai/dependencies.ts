@@ -13,6 +13,9 @@ import type {
   EmbeddingProvider,
   LlmClient,
   LlmGenerateRequest,
+  LlmJudge,
+  LlmJudgeRequest,
+  LlmJudgeScore,
   LlmModelProviderKeyResolver,
   NewsItem,
   WebGrounding,
@@ -20,6 +23,7 @@ import type {
 import {
   DeterministicEmbeddingProvider,
   MockLlmClient,
+  MockLlmJudge,
   MockWebGrounding,
 } from "./mocks";
 import { ANTHROPIC_BULK_MODEL, ANTHROPIC_FLAGSHIP_MODEL } from "./model-config";
@@ -27,9 +31,11 @@ import { createLlmClient } from "./model-providers";
 import { type ModelProviderRegistry, RoutedLlmClient } from "./model-routing";
 import type { AiGenerationDependencies } from "./pipeline";
 import {
+  AnthropicLlmJudge,
   type AnthropicUsageBreakdown,
   TavilyWebGrounding,
   type UsageReportingLlmClient,
+  type UsageReportingLlmJudge,
   VoyageEmbeddingProvider,
 } from "./real";
 
@@ -91,6 +97,48 @@ export class GuardedLlmClient implements LlmClient {
         error.code === "AI_LLM_PROVIDER_UNAVAILABLE"
       ) {
         return this.mock.generate(request);
+      }
+      throw error;
+    }
+  }
+}
+
+export class GuardedLlmJudge implements LlmJudge {
+  constructor(
+    readonly real: UsageReportingLlmJudge,
+    private readonly mock: LlmJudge,
+    private readonly guard: SpendGuard,
+  ) {}
+
+  async score(request: LlmJudgeRequest): Promise<LlmJudgeScore> {
+    try {
+      return await runGuardedProviderCall({
+        guard: this.guard,
+        mockCall: () => this.mock.score(request),
+        operation: "llm.judge",
+        provider: "anthropic",
+        realCall: async () => {
+          const result = await this.real.scoreWithUsage(request);
+          return {
+            usage: {
+              details: {
+                cacheCreationInputTokens: result.usage.cacheCreationInputTokens,
+                cacheReadInputTokens: result.usage.cacheReadInputTokens,
+                inputTokens: result.usage.inputTokens,
+                outputTokens: result.usage.outputTokens,
+              },
+              units: anthropicUsageUnits(result.usage),
+            },
+            value: result.score,
+          };
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        error.code === "AI_LLM_PROVIDER_UNAVAILABLE"
+      ) {
+        return this.mock.score(request);
       }
       throw error;
     }
@@ -195,6 +243,7 @@ export function createAiDependencies(
 ): AiGenerationDependencies {
   const spendGuard = options.spendGuard ?? createSpendGuard(env);
   const mockEmbeddings = new DeterministicEmbeddingProvider();
+  const mockJudge = new MockLlmJudge();
   const mockLlm = new MockLlmClient();
   const mockWeb = new MockWebGrounding();
   const realLlm = createConfiguredRealLlmClient(env);
@@ -214,6 +263,16 @@ export function createAiDependencies(
     entitlements: {
       entitlements: env.entitlements,
     },
+    judge: env.services.anthropic.mock
+      ? mockJudge
+      : new GuardedLlmJudge(
+          new AnthropicLlmJudge({
+            apiKey: env.services.anthropic.apiKey,
+            model: ANTHROPIC_BULK_MODEL,
+          }),
+          mockJudge,
+          spendGuard,
+        ),
     llm: realLlm ? new GuardedLlmClient(realLlm, mockLlm, spendGuard) : mockLlm,
     push: createPushNotifier(db, env),
     web: env.services.tavily.mock

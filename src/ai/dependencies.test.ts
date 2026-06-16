@@ -9,11 +9,13 @@ import {
   createAiDependencies,
   GuardedEmbeddingProvider,
   GuardedLlmClient,
+  GuardedLlmJudge,
   GuardedWebGrounding,
 } from "./dependencies";
 import {
   DeterministicEmbeddingProvider,
   MockLlmClient,
+  MockLlmJudge,
   MockWebGrounding,
 } from "./mocks";
 import { RoutedLlmClient } from "./model-routing";
@@ -22,6 +24,7 @@ import {
   ANTHROPIC_BULK_MODEL,
   ANTHROPIC_FLAGSHIP_MODEL,
   AnthropicLlmClient,
+  AnthropicLlmJudge,
   OpenAiCompatibleLlmClient,
   TavilyWebGrounding,
   VOYAGE_EMBEDDING_MODEL,
@@ -64,6 +67,7 @@ describe("createAiDependencies", () => {
     const deps = createAiDependencies({} as Db, parseEnv({}));
 
     expect(deps.llm).toBeInstanceOf(MockLlmClient);
+    expect(deps.judge).toBeInstanceOf(MockLlmJudge);
     expect(deps.web).toBeInstanceOf(MockWebGrounding);
     expect(deps.embeddings).toBeInstanceOf(DeterministicEmbeddingProvider);
     expect(deps.realtime).toBeInstanceOf(NoopRealtimePublisher);
@@ -84,6 +88,10 @@ describe("createAiDependencies", () => {
     expect((deps.llm as GuardedLlmClient).real).toBeInstanceOf(RoutedLlmClient);
     expect(resolvedRoute(deps.llm, "analyst")?.provider).toBeInstanceOf(
       AnthropicLlmClient,
+    );
+    expect(deps.judge).toBeInstanceOf(GuardedLlmJudge);
+    expect((deps.judge as GuardedLlmJudge).real).toBeInstanceOf(
+      AnthropicLlmJudge,
     );
     expect(deps.web).toBeInstanceOf(GuardedWebGrounding);
     expect((deps.web as GuardedWebGrounding).real).toBeInstanceOf(
@@ -149,6 +157,7 @@ describe("createAiDependencies", () => {
       OpenAiCompatibleLlmClient,
     );
     expect(resolvedRoute(deps.llm, "analyst")?.providerKey).toBe("custom");
+    expect(deps.judge).toBeInstanceOf(MockLlmJudge);
   });
 
   it("routes selected tasks to a configured custom model while keeping default tasks on bulk", () => {
@@ -246,6 +255,7 @@ describe("createAiDependencies", () => {
     );
 
     expect(deps.llm).toBeInstanceOf(MockLlmClient);
+    expect(deps.judge).toBeInstanceOf(MockLlmJudge);
     expect(deps.web).toBeInstanceOf(GuardedWebGrounding);
     expect((deps.web as GuardedWebGrounding).real).toBeInstanceOf(
       TavilyWebGrounding,

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { AppError } from "@/core/result";
-import type { LlmGenerateRequest } from "./interfaces";
+import type { LlmGenerateRequest, LlmJudgeRequest } from "./interfaces";
 import { createLlmClient } from "./model-providers";
 import {
   AI_PERSONAS,
@@ -12,6 +12,7 @@ import {
   ANTHROPIC_BULK_MODEL,
   ANTHROPIC_FLAGSHIP_MODEL,
   AnthropicLlmClient,
+  AnthropicLlmJudge,
   type AnthropicMessagesClient,
   anthropicModelForTier,
   OpenAiCompatibleLlmClient,
@@ -281,6 +282,133 @@ describe("AnthropicLlmClient", () => {
 
     await expect(llm.generate(requestFor("narrator"))).rejects.toMatchObject({
       code: "AI_LLM_RESPONSE_INVALID",
+    } satisfies Partial<AppError>);
+  });
+});
+
+function judgeRequestFor(
+  persona: LlmGenerateRequest["persona"],
+): LlmJudgeRequest {
+  const context = requestFor(persona).context;
+  return {
+    leagueFacts: {
+      context: {
+        ...context,
+        authenticity: {
+          ...context.authenticity,
+          entityTokens: ["Fixture Team", "Fixture Manager"],
+        },
+      },
+      otherLeagueEntityTokens: ["Other League Team"],
+    },
+    piece: {
+      body: "Fixture Team and Fixture Manager get a concrete local paragraph.",
+      bodyBlocks: [
+        { text: "Fixture Team report", type: "heading" },
+        {
+          text: "Fixture Team and Fixture Manager get a concrete local paragraph.",
+          type: "paragraph",
+        },
+      ],
+      citedCanonClaimIds: [],
+      contentType: "weekly_recap",
+      dek: "Fixture Team gets judged.",
+      section: "recaps",
+      structure: {
+        kicker: "Fixture Team closes it.",
+        lead: "Fixture Team leads.",
+        standingsShift: "Fixture Team shifts.",
+        topResult: "Fixture Team wins.",
+        type: "weekly_recap",
+        upsetOrBlowout: "Fixture Team owns the margin.",
+      },
+      summary: "Fixture Team gets judged.",
+      tags: ["Fixture Team"],
+      title: "Fixture Team report",
+    },
+    rubric: {
+      authenticityThreshold: 0.7,
+      personaMatchThreshold: 0.7,
+    },
+  };
+}
+
+describe("AnthropicLlmJudge", () => {
+  it("maps judge requests to structured Anthropic messages and returns a score", async () => {
+    const calls: unknown[] = [];
+    const client = {
+      messages: {
+        parse: async (params: unknown) => {
+          calls.push(params);
+          return {
+            parsed_output: {
+              authenticity: 0.9,
+              leakedTokens: [],
+              leakage: false,
+              matchedLeagueFacts: ["Fixture Team"],
+              matchedPersonaMarkers: ["League-official framing"],
+              notes: ["Concrete league fact and persona beat are present."],
+              personaMatch: 0.85,
+            },
+            usage: {
+              input_tokens: 80,
+              output_tokens: 20,
+            },
+          };
+        },
+      },
+    } as unknown as AnthropicMessagesClient;
+    const judge = new AnthropicLlmJudge({
+      apiKey: fakeKey(),
+      client,
+    });
+
+    await expect(judge.score(judgeRequestFor("commissioner"))).resolves.toEqual(
+      {
+        authenticity: 0.9,
+        leakedTokens: [],
+        leakage: false,
+        matchedLeagueFacts: ["Fixture Team"],
+        matchedPersonaMarkers: ["League-official framing"],
+        notes: ["Concrete league fact and persona beat are present."],
+        personaMatch: 0.85,
+      },
+    );
+    await expect(
+      judge.scoreWithUsage(judgeRequestFor("commissioner")),
+    ).resolves.toMatchObject({
+      usage: {
+        inputTokens: 80,
+        outputTokens: 20,
+      },
+    });
+
+    const first = calls[0] as Record<string, unknown>;
+    expect(first).toMatchObject({
+      max_tokens: 768,
+      metadata: { user_id: "00000000-0000-0000-0000-000000000001" },
+      model: ANTHROPIC_BULK_MODEL,
+      tool_choice: { type: "none" },
+    });
+    expect(JSON.stringify(first)).toContain("Other League Team");
+    expect(JSON.stringify(first)).toContain("Fixture Team");
+  });
+
+  it("rejects malformed structured judge output", async () => {
+    const client = {
+      messages: {
+        parse: async () => ({ parsed_output: { authenticity: 1 } }),
+      },
+    } as unknown as AnthropicMessagesClient;
+    const judge = new AnthropicLlmJudge({
+      apiKey: fakeKey(),
+      client,
+    });
+
+    await expect(
+      judge.score(judgeRequestFor("narrator")),
+    ).rejects.toMatchObject({
+      code: "AI_LLM_JUDGE_RESPONSE_INVALID",
     } satisfies Partial<AppError>);
   });
 });

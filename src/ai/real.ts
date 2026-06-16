@@ -4,6 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { type TavilyClient, tavily } from "@tavily/core";
 import { z } from "zod";
 import { AppError } from "@/core/result";
+import { blogDraftText } from "./article-draft";
 import {
   type AiContentType,
   type BlogContentStructure,
@@ -14,10 +15,14 @@ import type {
   EmbeddingProvider,
   LlmClient,
   LlmGenerateRequest,
+  LlmJudge,
+  LlmJudgeRequest,
+  LlmJudgeScore,
   NewsItem,
   WebGrounding,
 } from "./interfaces";
 import {
+  ANTHROPIC_BULK_MODEL,
   cheapAnthropicModelForPersona,
   VOYAGE_EMBEDDING_MODEL,
 } from "./model-config";
@@ -49,6 +54,16 @@ const bodyBlockSchema = z.discriminatedUnion("type", [
     type: z.literal("list"),
   }),
 ]);
+
+const llmJudgeScoreSchema = z.object({
+  authenticity: z.number().min(0).max(1),
+  leakedTokens: z.array(z.string().min(1)).max(16),
+  leakage: z.boolean(),
+  matchedLeagueFacts: z.array(z.string().min(1)).max(16),
+  matchedPersonaMarkers: z.array(z.string().min(1)).max(16),
+  notes: z.array(z.string().min(1)).max(8),
+  personaMatch: z.number().min(0).max(1),
+}) satisfies z.ZodType<LlmJudgeScore>;
 
 const structureSchemas = {
   arena_recap: z.object({
@@ -194,6 +209,13 @@ export interface AnthropicLlmClientOptions {
   modelForPersona?: (persona: AiPersona) => string;
 }
 
+export interface AnthropicLlmJudgeOptions {
+  apiKey: string;
+  baseURL?: string;
+  client?: AnthropicMessagesClient;
+  model?: string;
+}
+
 export interface LlmUsageBreakdown {
   cacheCreationInputTokens: number;
   cacheReadInputTokens: number;
@@ -213,6 +235,15 @@ export interface UsageReportingLlmClient extends LlmClient {
   generateWithUsage(request: LlmGenerateRequest): Promise<LlmGenerateResult>;
 }
 
+export interface LlmJudgeResult {
+  score: LlmJudgeScore;
+  usage: LlmUsageBreakdown;
+}
+
+export interface UsageReportingLlmJudge extends LlmJudge {
+  scoreWithUsage(request: LlmJudgeRequest): Promise<LlmJudgeResult>;
+}
+
 interface AnthropicResponseWithUsage {
   parsed_output?: unknown;
   usage?: {
@@ -227,6 +258,17 @@ type FetchLike = typeof fetch;
 
 function defaultModelForPersona(persona: AiPersona): string {
   return cheapAnthropicModelForPersona(persona);
+}
+
+function usageFromAnthropicResponse(
+  response: AnthropicResponseWithUsage,
+): LlmUsageBreakdown {
+  return {
+    cacheCreationInputTokens: response.usage?.cache_creation_input_tokens ?? 0,
+    cacheReadInputTokens: response.usage?.cache_read_input_tokens ?? 0,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+  };
 }
 
 function maxTokensFor(request: LlmGenerateRequest): number {
@@ -279,6 +321,93 @@ function userTask(request: LlmGenerateRequest): string {
     "The body field should contain the same article as markdown-style text.",
     duplicateNudge,
   ].join("\n");
+}
+
+function uniqueNonEmptyStrings(
+  values: readonly (string | null | undefined)[],
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.replace(/\s+/g, " ").trim();
+    if (!trimmed || trimmed.length < 3) {
+      continue;
+    }
+    const key = trimmed.toLocaleLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function judgeLeagueTokens(request: LlmJudgeRequest): string[] {
+  const context = request.leagueFacts.context;
+  return uniqueNonEmptyStrings([
+    ...context.authenticity.entityTokens,
+    ...context.teams.flatMap((team) => [team.name, ...team.managerNames]),
+    ...context.records.flatMap((record) => [record.holderName, record.label]),
+    ...context.authenticity.people.flatMap((person) => [
+      person.canonicalName,
+      ...person.ownerNames,
+    ]),
+    ...context.authenticity.rivalries.flatMap((rivalry) => [
+      rivalry.personAName,
+      rivalry.personBName,
+      `${rivalry.personAName} vs ${rivalry.personBName}`,
+      rivalry.currentStreakName,
+      rivalry.longestStreakName,
+    ]),
+    ...context.authenticity.canonLore.flatMap((claim) => [
+      claim.title,
+      claim.statement,
+    ]),
+  ]);
+}
+
+function judgePersonaMarkers(request: LlmJudgeRequest): string[] {
+  const persona = request.leagueFacts.context.persona;
+  return uniqueNonEmptyStrings([
+    persona.name,
+    persona.beat,
+    persona.pointOfView,
+    ...persona.performsWhen,
+    ...persona.toneProfile.beats,
+    ...persona.toneProfile.styleDirectives,
+    ...persona.toneProfile.diction,
+    ...persona.toneProfile.dosAndDonts,
+  ]);
+}
+
+function judgeSystemInstructions(): string {
+  return [
+    "You are a strict Rumbledore publication quality judge.",
+    "Return only JSON matching the judge score schema.",
+    "Score authenticity from 0 to 1 based on concrete use of this league's supplied facts.",
+    "Score personaMatch from 0 to 1 based on the supplied persona markers.",
+    "Set leakage true if the piece mentions any supplied other-league token.",
+    "Do not reward generic fantasy-football writing that could fit any league.",
+  ].join("\n");
+}
+
+function judgeUserTask(request: LlmJudgeRequest): string {
+  const context = request.leagueFacts.context;
+  return JSON.stringify({
+    draftText: blogDraftText(request.piece),
+    league: {
+      id: context.league.id,
+      name: context.league.name,
+      season: context.league.season,
+    },
+    leagueFactTokens: judgeLeagueTokens(request),
+    otherLeagueEntityTokens: uniqueNonEmptyStrings(
+      request.leagueFacts.otherLeagueEntityTokens ?? [],
+    ),
+    personaMarkers: judgePersonaMarkers(request),
+    rubric: request.rubric,
+  });
 }
 
 export class AnthropicLlmClient implements UsageReportingLlmClient {
@@ -353,13 +482,70 @@ export class AnthropicLlmClient implements UsageReportingLlmClient {
 
     return {
       draft: parsed.data,
-      usage: {
-        cacheCreationInputTokens:
-          response.usage?.cache_creation_input_tokens ?? 0,
-        cacheReadInputTokens: response.usage?.cache_read_input_tokens ?? 0,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-      },
+      usage: usageFromAnthropicResponse(response),
+    };
+  }
+}
+
+export class AnthropicLlmJudge implements UsageReportingLlmJudge {
+  private readonly client: AnthropicMessagesClient;
+  private readonly model: string;
+
+  constructor(options: AnthropicLlmJudgeOptions) {
+    this.client =
+      options.client ??
+      new Anthropic({
+        apiKey: options.apiKey,
+        ...(options.baseURL ? { baseURL: options.baseURL } : {}),
+      });
+    this.model = options.model ?? ANTHROPIC_BULK_MODEL;
+  }
+
+  async score(request: LlmJudgeRequest): Promise<LlmJudgeScore> {
+    return (await this.scoreWithUsage(request)).score;
+  }
+
+  async scoreWithUsage(request: LlmJudgeRequest): Promise<LlmJudgeResult> {
+    let response: AnthropicResponseWithUsage;
+    try {
+      response = await this.client.messages.parse({
+        max_tokens: 768,
+        messages: [
+          {
+            content: [{ text: judgeUserTask(request), type: "text" }],
+            role: "user",
+          },
+        ],
+        metadata: { user_id: request.leagueFacts.context.league.id },
+        model: this.model,
+        output_config: {
+          format: zodOutputFormat(llmJudgeScoreSchema),
+        },
+        system: [{ text: judgeSystemInstructions(), type: "text" }],
+        tool_choice: { type: "none" },
+      });
+    } catch (cause) {
+      throw new AppError({
+        cause,
+        code: "AI_LLM_JUDGE_FAILED",
+        message: "Anthropic judge scoring failed",
+        status: 502,
+      });
+    }
+
+    const parsed = llmJudgeScoreSchema.safeParse(response.parsed_output);
+    if (!parsed.success) {
+      throw new AppError({
+        cause: parsed.error,
+        code: "AI_LLM_JUDGE_RESPONSE_INVALID",
+        message: "Anthropic judge response did not include a valid score",
+        status: 502,
+      });
+    }
+
+    return {
+      score: parsed.data,
+      usage: usageFromAnthropicResponse(response),
     };
   }
 }

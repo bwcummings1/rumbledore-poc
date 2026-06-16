@@ -7,6 +7,9 @@ import type {
   EmbeddingProvider,
   LlmClient,
   LlmGenerateRequest,
+  LlmJudge,
+  LlmJudgeRequest,
+  LlmJudgeScore,
   WebGrounding,
 } from "@/ai";
 import {
@@ -17,6 +20,7 @@ import {
   DeterministicEmbeddingProvider,
   generateLeagueBlogPost,
   MockLlmClient,
+  MockLlmJudge,
   MockWebGrounding,
 } from "@/ai";
 import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
@@ -126,6 +130,59 @@ class GenericLlmClient implements LlmClient {
   }
 }
 
+function judgeBrokenWeeklyDraft(request: LlmGenerateRequest): BlogDraft {
+  const team = request.context.teams[0];
+  const teamName = team?.name ?? request.context.league.name;
+  const managerName = team?.managerNames[0] ?? "the local manager";
+  const bodyBlocks: BlogDraft["bodyBlocks"] = [
+    { text: `${teamName} holds the board`, type: "heading" },
+    {
+      text: `${teamName} and ${managerName} sit at ${team?.wins ?? 0}-${team?.losses ?? 0}-${team?.ties ?? 0} with ${team?.pointsFor ?? 0} points for.`,
+      type: "paragraph",
+    },
+  ];
+  return {
+    body: bodyBlocksToMarkdown(bodyBlocks),
+    bodyBlocks,
+    contentType: "weekly_recap",
+    dek: `${teamName} gets a local but voiceless recap.`,
+    section: "recaps",
+    structure: {
+      kicker: `${teamName} keeps the fixture grounded.`,
+      lead: `${teamName} and ${managerName} lead the local board.`,
+      standingsShift: `${teamName} owns the current standings note.`,
+      topResult: `${teamName} is the named result.`,
+      type: "weekly_recap",
+      upsetOrBlowout: `${teamName} gives the recap a concrete margin.`,
+    },
+    summary: `${teamName} is the concrete local fact.`,
+    tags: [teamName, managerName],
+    title: `${teamName} local recap`,
+  };
+}
+
+class JudgeRetryLlmClient implements LlmClient {
+  readonly requests: LlmGenerateRequest[] = [];
+  private readonly passing = new MockLlmClient();
+
+  async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
+    this.requests.push(request);
+    if (request.attempt === 1) {
+      return judgeBrokenWeeklyDraft(request);
+    }
+    return this.passing.generate(request);
+  }
+}
+
+class JudgeBrokenLlmClient implements LlmClient {
+  readonly requests: LlmGenerateRequest[] = [];
+
+  async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
+    this.requests.push(request);
+    return judgeBrokenWeeklyDraft(request);
+  }
+}
+
 class VectorDuplicateLlmClient implements LlmClient {
   readonly requests: LlmGenerateRequest[] = [];
 
@@ -208,6 +265,23 @@ class RecordingEmbeddingProvider extends DeterministicEmbeddingProvider {
   }
 }
 
+class PassingLlmJudge implements LlmJudge {
+  readonly requests: LlmJudgeRequest[] = [];
+
+  async score(request: LlmJudgeRequest): Promise<LlmJudgeScore> {
+    this.requests.push(request);
+    return {
+      authenticity: 1,
+      leakedTokens: [],
+      leakage: false,
+      matchedLeagueFacts: ["fixture league fact"],
+      matchedPersonaMarkers: ["fixture persona marker"],
+      notes: ["Test fixture judge passes."],
+      personaMatch: 1,
+    };
+  }
+}
+
 async function seedLeague(tag: string) {
   const [league] = await handle.db
     .insert(leagues)
@@ -286,6 +360,7 @@ describe("generateLeagueBlogPost", () => {
     const league = await seedLeague("alpha");
     await seedLeague("beta");
     const llm = new MockLlmClient();
+    const judge = new MockLlmJudge();
     const push = new RecordingPushNotifier();
     const realtime = new RecordingRealtimePublisher();
     const deps = {
@@ -293,6 +368,7 @@ describe("generateLeagueBlogPost", () => {
       duplicateThreshold: 1.1,
       embeddings: new DeterministicEmbeddingProvider(),
       entitlements: openEntitlementEnv,
+      judge,
       llm,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
       push,
@@ -341,6 +417,7 @@ describe("generateLeagueBlogPost", () => {
     });
     expect(third).toMatchObject({ reused: false, status: "published" });
     expect(llm.requests).toHaveLength(2);
+    expect(judge.requests).toHaveLength(2);
     expect(llm.requests[0]?.prompt.systemPrefix).toBe(
       llm.requests[1]?.prompt.systemPrefix,
     );
@@ -492,6 +569,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings,
         entitlements: gatedEntitlementEnv,
+        judge: new PassingLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push,
@@ -554,6 +632,7 @@ describe("generateLeagueBlogPost", () => {
       duplicateThreshold: 1.1,
       embeddings: new DeterministicEmbeddingProvider(),
       entitlements: openEntitlementEnv,
+      judge: new MockLlmJudge(),
       llm,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
       push: new NoopPushNotifier(),
@@ -716,6 +795,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
         entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
         llm,
         now: () => computedAt,
         push: new NoopPushNotifier(),
@@ -894,6 +974,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
         entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1061,6 +1142,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
         entitlements: openEntitlementEnv,
+        judge: new PassingLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1111,6 +1193,103 @@ describe("generateLeagueBlogPost", () => {
     });
   });
 
+  it("runs the LLM judge before publish and regenerates once on judge failure", async () => {
+    const league = await seedLeague("judge-retry");
+    const llm = new JudgeRetryLlmClient();
+    const judge = new MockLlmJudge();
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
+        judge,
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "weekly:judge-retry",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests.map((request) => request.attempt)).toEqual([1, 2]);
+    expect(llm.requests[1]?.duplicateNudge).toContain("failed the AI judge");
+    expect(judge.requests).toHaveLength(2);
+    expect(judge.requests[0]?.piece.title).toBe("judge-retry Team local recap");
+    expect(judge.requests[1]?.piece.title).toBe(
+      `Narrator: ${marker} judge-retry snapshot`,
+    );
+  });
+
+  it("skips a draft when the LLM judge rejects the retry", async () => {
+    const league = await seedLeague("judge-skip");
+    const llm = new JudgeBrokenLlmClient();
+    const judge = new MockLlmJudge();
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
+        judge,
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "weekly:judge-skip",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "skipped" });
+    expect(result.status === "skipped" ? result.skipReason : "").toMatch(
+      /^llm_judge:persona:/,
+    );
+    expect(llm.requests.map((request) => request.attempt)).toEqual([1, 2]);
+    expect(judge.requests).toHaveLength(2);
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
+      const posts = await tx
+        .select()
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+          ),
+        );
+      const [run] = await tx
+        .select()
+        .from(aiGenerationRuns)
+        .where(
+          and(
+            eq(aiGenerationRuns.leagueId, league.id),
+            eq(aiGenerationRuns.triggerKey, "weekly_recap:weekly:judge-skip"),
+          ),
+        );
+      return { posts, run };
+    });
+    expect(rows.posts).toHaveLength(0);
+    expect(rows.run).toMatchObject({
+      skipReason: expect.stringMatching(/^llm_judge:persona:/),
+      status: "skipped",
+    });
+  });
+
   it("regenerates once and skips near-duplicate drafts", async () => {
     const league = await seedLeague("duplicate");
     const llm = new DuplicateLlmClient();
@@ -1150,6 +1329,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         embeddings,
         entitlements: openEntitlementEnv,
+        judge: new PassingLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1240,6 +1420,7 @@ describe("generateLeagueBlogPost", () => {
         db: handle.db,
         embeddings,
         entitlements: openEntitlementEnv,
+        judge: new PassingLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1300,6 +1481,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
         entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1396,6 +1578,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
         entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1433,6 +1616,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
         entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
         llm: new MockLlmClient(),
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1464,6 +1648,7 @@ describe("generateLeagueBlogPost", () => {
           duplicateThreshold: 1.1,
           embeddings: new DeterministicEmbeddingProvider(),
           entitlements: openEntitlementEnv,
+          judge: new PassingLlmJudge(),
           llm: new BlobLlmClient(),
           now: () => new Date("2026-06-11T12:00:00.000Z"),
           push: new NoopPushNotifier(),
@@ -1505,6 +1690,7 @@ describe("generateLeagueBlogPost", () => {
         duplicateThreshold: 1.1,
         embeddings: new DeterministicEmbeddingProvider(),
         entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
         llm,
         now: () => new Date("2026-06-11T12:00:00.000Z"),
         push: new NoopPushNotifier(),
@@ -1579,6 +1765,7 @@ describe("generateLeagueBlogPost", () => {
       duplicateThreshold: 1.1,
       embeddings: new DeterministicEmbeddingProvider(),
       entitlements: openEntitlementEnv,
+      judge: new MockLlmJudge(),
       llm,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
       push: new NoopPushNotifier(),
