@@ -17,6 +17,7 @@ import {
 } from "@/app/onboarding/client-http";
 import { Banner } from "@/components/ui/banner";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KVList } from "@/components/ui/kv";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -412,26 +413,11 @@ export function DataStewardReviewView({
       </section>
 
       {pendingAction ? (
-        <div
-          aria-labelledby="steward-confirm-title"
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-background/70 px-4 backdrop-blur-sm"
-          role="dialog"
-        >
-          <div className="panel grid w-full max-w-md gap-4 p-4">
-            <div className="grid gap-2">
-              <p className="eyebrow text-warning">Confirm steward action</p>
-              <h2
-                className="font-display text-lg font-semibold"
-                id="steward-confirm-title"
-              >
-                Write audited correction
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {pendingActionBody(pendingAction)}
-              </p>
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
+        <Dialog
+          closeLabel="Cancel steward action"
+          description={pendingActionBody(pendingAction)}
+          footer={
+            <>
               <Button
                 type="button"
                 variant="ghost"
@@ -447,9 +433,18 @@ export function DataStewardReviewView({
               >
                 Confirm action
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setPendingAction(null);
+            }
+          }}
+          open={true}
+          title="Write audited correction"
+        >
+          <p className="eyebrow text-warning">Confirm steward action</p>
+        </Dialog>
       ) : null}
     </main>
   );

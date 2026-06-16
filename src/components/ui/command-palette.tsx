@@ -204,7 +204,7 @@ function CommandPalette({
             ) : (
               <DialogPrimitive.Close
                 aria-label="Close command palette"
-                className="inline-flex size-10 shrink-0 items-center justify-center rounded-control text-muted-foreground outline-none transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
+                className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted-foreground outline-none transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
               >
                 <X aria-hidden="true" className="size-4" />
               </DialogPrimitive.Close>

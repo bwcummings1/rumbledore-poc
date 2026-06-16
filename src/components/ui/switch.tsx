@@ -28,13 +28,18 @@ function Switch({
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy ?? (ariaLabel ? undefined : labelId)}
       className={cn(
-        "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-input bg-[var(--hull-3)] p-0.5 shadow-[var(--bevel)] outline-none transition-[background-color,border-color,box-shadow] data-[checked]:border-primary data-[checked]:bg-primary focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] data-[disabled]:opacity-50",
+        "group/switch relative inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
         className,
       )}
       data-slot="switch"
       {...props}
     >
-      <SwitchPrimitive.Thumb className="block size-5 rounded-full border border-[var(--line-2)] bg-foreground shadow-raised transition-transform data-[checked]:translate-x-4 motion-reduce:transition-none" />
+      <span
+        aria-hidden="true"
+        className="relative inline-flex h-6 w-10 items-center rounded-full border border-input bg-[var(--hull-3)] p-0.5 shadow-[var(--bevel)] transition-[background-color,border-color] group-data-[checked]/switch:border-primary group-data-[checked]/switch:bg-primary"
+      >
+        <SwitchPrimitive.Thumb className="block size-5 rounded-full border border-[var(--line-2)] bg-foreground shadow-raised transition-transform data-[checked]:translate-x-4 motion-reduce:transition-none" />
+      </span>
     </SwitchPrimitive.Root>
   );
 

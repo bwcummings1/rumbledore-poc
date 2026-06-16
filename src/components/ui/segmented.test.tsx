@@ -17,6 +17,8 @@ test("Segmented renders radio options and reports selection", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("radio", { name: "Week" }));
+  const option = screen.getByRole("radio", { name: "Week" });
+  expect(option.className).toContain("min-h-11");
+  fireEvent.click(option);
   expect(onValueChange).toHaveBeenCalledWith("week", expect.any(Object));
 });

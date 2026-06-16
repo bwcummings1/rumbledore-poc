@@ -30,20 +30,25 @@ function Checkbox({
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy ?? (ariaLabel ? undefined : labelId)}
       className={cn(
-        "inline-flex size-5 shrink-0 items-center justify-center rounded-control border border-input bg-[var(--panel-2)] text-primary-foreground shadow-[var(--bevel)] outline-none transition-[background-color,border-color,box-shadow,color] data-[checked]:border-primary data-[checked]:bg-primary data-[indeterminate]:border-primary data-[indeterminate]:bg-primary focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] data-[disabled]:opacity-50",
+        "group/checkbox inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent text-primary-foreground outline-none transition-[box-shadow,color] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
         className,
       )}
       data-slot="checkbox"
       indeterminate={indeterminate}
       {...props}
     >
-      <CheckboxPrimitive.Indicator keepMounted={true}>
-        {indeterminate ? (
-          <Minus aria-hidden="true" className="size-3.5" />
-        ) : (
-          <Check aria-hidden="true" className="size-3.5" />
-        )}
-      </CheckboxPrimitive.Indicator>
+      <span
+        aria-hidden="true"
+        className="inline-flex size-5 items-center justify-center rounded-control border border-input bg-[var(--panel-2)] shadow-[var(--bevel)] transition-[background-color,border-color] group-data-[checked]/checkbox:border-primary group-data-[checked]/checkbox:bg-primary group-data-[indeterminate]/checkbox:border-primary group-data-[indeterminate]/checkbox:bg-primary"
+      >
+        <CheckboxPrimitive.Indicator keepMounted={true}>
+          {indeterminate ? (
+            <Minus aria-hidden="true" className="size-3.5" />
+          ) : (
+            <Check aria-hidden="true" className="size-3.5" />
+          )}
+        </CheckboxPrimitive.Indicator>
+      </span>
     </CheckboxPrimitive.Root>
   );
 

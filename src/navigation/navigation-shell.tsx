@@ -30,6 +30,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -671,7 +672,7 @@ function DesktopTopBar({
       />
       <Button
         aria-label="Open command palette"
-        className="max-lg:size-10 max-lg:min-w-10 max-lg:px-0"
+        className="max-lg:size-11 max-lg:min-w-11 max-lg:px-0"
         onClick={onOpenCommandPalette}
         type="button"
         variant="steel"
@@ -1079,55 +1080,23 @@ function WireSheet({
   readonly open: boolean;
   readonly realtimeStatus: ShellRealtimeStatus;
 }) {
-  if (!open) {
-    return null;
-  }
-
   return (
-    <div className="fixed inset-0 z-50 md:hidden">
-      <button
-        aria-label="Close The Wire"
-        className="absolute inset-0 bg-background/70 backdrop-blur-sm motion-reduce:backdrop-blur-none"
-        onClick={() => onOpenChange(false)}
-        type="button"
-      />
-      <section
+    <Sheet
+      closeLabel="Close The Wire"
+      description="Recent league and arena signals, newest first."
+      onOpenChange={onOpenChange}
+      open={open}
+      title="The Wire"
+    >
+      <ShellWireTicker
         aria-label="The Wire"
-        aria-modal="true"
-        className="panel absolute inset-x-0 bottom-0 grid max-h-[85dvh] gap-3 overflow-y-auto rounded-b-none rounded-t-sheet border-x-0 border-b-0 p-3 pb-[calc(var(--space-3)+env(safe-area-inset-bottom))] shadow-overlay"
-        data-slot="wire-sheet"
-        role="dialog"
-      >
-        <header className="flex items-start justify-between gap-3">
-          <div>
-            <p className="eyebrow">Live strip</p>
-            <h2 className="font-display text-base font-semibold text-foreground">
-              The Wire
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Recent league and arena signals, newest first.
-            </p>
-          </div>
-          <Button
-            aria-label="Close The Wire"
-            onClick={() => onOpenChange(false)}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <X aria-hidden="true" />
-          </Button>
-        </header>
-        <ShellWireTicker
-          aria-label="The Wire"
-          expanded
-          items={items}
-          motion={motion}
-          status={wireStatusForRealtime(realtimeStatus, items)}
-          variant="live"
-        />
-      </section>
-    </div>
+        expanded
+        items={items}
+        motion={motion}
+        status={wireStatusForRealtime(realtimeStatus, items)}
+        variant="live"
+      />
+    </Sheet>
   );
 }
 
@@ -1270,14 +1239,14 @@ function ShellWireTickerItem({
 
   return (
     <li
-      className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-control border border-input bg-[var(--panel)] px-3 text-sm"
+      className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-control border border-input bg-[var(--panel)] px-3 text-sm"
       data-kind={kind}
       data-slot="wire-item"
       {...props}
     >
       {item.href ? (
         <a
-          className="inline-flex min-h-10 items-center gap-2 text-inherit focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+          className="inline-flex min-h-11 items-center gap-2 text-inherit focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
           href={item.href}
         >
           {content}
@@ -1301,14 +1270,29 @@ function NotificationsMenu({
   readonly unreadCount: number;
 }) {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      panelRef.current?.focus();
+    }
+  }, [open]);
+
+  function closePanel() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
 
   return (
     <div className="relative shrink-0">
       <Button
         aria-expanded={open}
+        aria-haspopup="dialog"
         aria-label="Open notifications"
         className="relative"
         onClick={() => setOpen((value) => !value)}
+        ref={triggerRef}
         size="icon"
         type="button"
         variant="ghost"
@@ -1324,19 +1308,24 @@ function NotificationsMenu({
       </Button>
       {open ? (
         <div
-          aria-label="Notifications"
+          aria-labelledby="notifications-panel-title"
           className="panel fixed inset-x-3 bottom-[calc(var(--space-3)+env(safe-area-inset-bottom))] z-50 grid max-h-[80dvh] gap-3 overflow-y-auto p-3 shadow-overlay md:absolute md:inset-x-auto md:right-0 md:bottom-auto md:top-12 md:w-80"
           data-slot="notifications-panel"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
-              setOpen(false);
+              closePanel();
             }
           }}
+          ref={panelRef}
           role="dialog"
+          tabIndex={-1}
         >
           <header className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="font-display text-sm font-semibold text-foreground">
+              <h2
+                className="font-display text-sm font-semibold text-foreground"
+                id="notifications-panel-title"
+              >
                 Notifications
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -1345,7 +1334,7 @@ function NotificationsMenu({
             </div>
             <Button
               aria-label="Close notifications"
-              onClick={() => setOpen(false)}
+              onClick={closePanel}
               size="icon-sm"
               type="button"
               variant="ghost"
@@ -1397,7 +1386,7 @@ function NotificationsMenu({
                         "border-primary/40 shadow-[inset_3px_0_0_var(--primary),var(--bevel)]",
                     )}
                     href={notification.href}
-                    onClick={() => setOpen(false)}
+                    onClick={closePanel}
                   >
                     <span className="flex items-start justify-between gap-3">
                       <span className="font-display font-semibold text-foreground">
@@ -1416,9 +1405,9 @@ function NotificationsMenu({
             </ul>
           )}
           <Link
-            className="inline-flex min-h-10 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
+            className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
             href="/you"
-            onClick={() => setOpen(false)}
+            onClick={closePanel}
           >
             <Settings className="size-4" aria-hidden="true" />
             Notification settings
@@ -1443,6 +1432,8 @@ function AccountMenu({
   readonly onMotionChange: (motionOff: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const connectedProviders = useMemo(() => {
     const providerLabels = new Map<string, string>();
     for (const item of items) {
@@ -1454,12 +1445,25 @@ function AccountMenu({
     }));
   }, [items]);
 
+  useEffect(() => {
+    if (open) {
+      panelRef.current?.focus();
+    }
+  }, [open]);
+
+  function closePanel() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
   return (
     <div className="relative shrink-0">
       <Button
         aria-expanded={open}
+        aria-haspopup="dialog"
         aria-label="Open account menu"
         onClick={() => setOpen((value) => !value)}
+        ref={triggerRef}
         size="icon"
         type="button"
         variant="ghost"
@@ -1468,19 +1472,24 @@ function AccountMenu({
       </Button>
       {open ? (
         <div
-          aria-label="Account"
+          aria-labelledby="account-panel-title"
           className="panel fixed inset-x-3 bottom-[calc(var(--space-3)+env(safe-area-inset-bottom))] z-50 grid max-h-[82dvh] gap-4 overflow-y-auto p-3 shadow-overlay md:absolute md:inset-x-auto md:right-0 md:bottom-auto md:top-12 md:w-80"
           data-slot="account-panel"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
-              setOpen(false);
+              closePanel();
             }
           }}
+          ref={panelRef}
           role="dialog"
+          tabIndex={-1}
         >
           <header className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="font-display text-sm font-semibold text-foreground">
+              <h2
+                className="font-display text-sm font-semibold text-foreground"
+                id="account-panel-title"
+              >
                 Account
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -1489,7 +1498,7 @@ function AccountMenu({
             </div>
             <Button
               aria-label="Close account menu"
-              onClick={() => setOpen(false)}
+              onClick={closePanel}
               size="icon-sm"
               type="button"
               variant="ghost"
@@ -1536,17 +1545,17 @@ function AccountMenu({
 
           <div className="grid gap-2 border-t border-[var(--hair)] pt-3">
             <Link
-              className="inline-flex min-h-10 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
+              className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
               href="/you"
-              onClick={() => setOpen(false)}
+              onClick={closePanel}
             >
               <Settings className="size-4" aria-hidden="true" />
               Account and settings
             </Link>
             <Link
-              className="inline-flex min-h-10 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
+              className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
               href="/you"
-              onClick={() => setOpen(false)}
+              onClick={closePanel}
             >
               <Smartphone className="size-4" aria-hidden="true" />
               Push, install, and providers
@@ -1574,11 +1583,8 @@ function MotionToggle({
     >
       <button
         aria-checked={motionOff}
-        aria-label="Disable motion"
-        className={cn(
-          "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-input bg-[var(--hull-3)] p-0.5 shadow-[var(--bevel)] outline-none transition-[background-color,border-color,box-shadow] focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)]",
-          motionOff && "border-primary bg-primary",
-        )}
+        aria-label="Reduced motion"
+        className="group/shell-switch relative inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]"
         onClick={() => onMotionChange(!motionOff)}
         role="switch"
         type="button"
@@ -1586,10 +1592,17 @@ function MotionToggle({
         <span
           aria-hidden="true"
           className={cn(
-            "block size-5 rounded-full border border-[var(--line-2)] bg-foreground shadow-raised transition-transform motion-reduce:transition-none",
-            motionOff && "translate-x-4",
+            "relative inline-flex h-6 w-10 items-center rounded-full border border-input bg-[var(--hull-3)] p-0.5 shadow-[var(--bevel)] transition-[background-color,border-color]",
+            motionOff && "border-primary bg-primary",
           )}
-        />
+        >
+          <span
+            className={cn(
+              "block size-5 rounded-full border border-[var(--line-2)] bg-foreground shadow-raised transition-transform motion-reduce:transition-none",
+              motionOff && "translate-x-4",
+            )}
+          />
+        </span>
       </button>
       <span className="font-display text-xs font-semibold text-muted-foreground uppercase">
         Motion

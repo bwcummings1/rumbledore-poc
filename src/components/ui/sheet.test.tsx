@@ -17,5 +17,8 @@ test("Sheet renders drawer dialog semantics and keyboard snap control", () => {
   fireEvent.keyDown(screen.getByRole("button", { name: "Resize Bet slip" }), {
     key: "ArrowUp",
   });
+  expect(
+    screen.getByRole("button", { name: "Resize Bet slip" }).className,
+  ).toContain("min-h-11");
   expect(sheet.getAttribute("data-snap")).toBe("full");
 });

@@ -41,12 +41,17 @@ function RadioGroup({ className, options, ...props }: RadioGroupProps) {
               <RadioPrimitive.Root
                 aria-describedby={descriptionId}
                 aria-labelledby={labelId}
-                className="inline-flex size-5 items-center justify-center rounded-full border border-input bg-[var(--panel)] outline-none transition-[border-color,box-shadow] data-[checked]:border-primary focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)]"
+                className="group/radio inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]"
                 data-slot="radio"
                 disabled={option.disabled}
                 value={option.value}
               >
-                <RadioPrimitive.Indicator className="size-2.5 rounded-full bg-primary shadow-[0_0_12px_var(--glow-lilac)]" />
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-5 items-center justify-center rounded-full border border-input bg-[var(--panel)] transition-[border-color] group-data-[checked]/radio:border-primary"
+                >
+                  <RadioPrimitive.Indicator className="size-2.5 rounded-full bg-primary shadow-[0_0_12px_var(--glow-lilac)]" />
+                </span>
               </RadioPrimitive.Root>
             </span>
             <span className="grid gap-1">

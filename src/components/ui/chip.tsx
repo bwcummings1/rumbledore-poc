@@ -25,7 +25,7 @@ function Chip({
       <button
         aria-pressed={props["aria-pressed"] ?? selected}
         className={cn(
-          "inline-flex min-h-9 items-center gap-2 rounded-full border border-input bg-[var(--panel)] px-3 text-sm font-medium text-muted-foreground shadow-[var(--bevel)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-[var(--hair-3)] hover:text-foreground focus-visible:border-primary focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex min-h-11 items-center gap-2 rounded-full border border-input bg-[var(--panel)] px-3 text-sm font-medium text-muted-foreground shadow-[var(--bevel)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-[var(--hair-3)] hover:text-foreground focus-visible:border-primary focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] disabled:pointer-events-none disabled:opacity-50",
           selected
             ? "border-primary bg-primary/15 text-foreground shadow-[0_0_18px_var(--glow-lilac),var(--bevel)]"
             : "",

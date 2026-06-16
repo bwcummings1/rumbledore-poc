@@ -29,6 +29,13 @@ test("Button supports block and loading states without firing clicks", () => {
   expect(onClick).not.toHaveBeenCalled();
 });
 
+test("Button sizes preserve a 44px minimum hit target", () => {
+  expect(buttonVariants({ size: "default" })).toContain("min-h-11");
+  expect(buttonVariants({ size: "sm" })).toContain("min-h-11");
+  expect(buttonVariants({ size: "xs" })).toContain("min-h-11");
+  expect(buttonVariants({ size: "icon-sm" })).toContain("min-w-11");
+});
+
 test("Button requires icon-only buttons to have an accessible name", () => {
   expect(() =>
     render(

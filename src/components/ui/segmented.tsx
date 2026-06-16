@@ -35,7 +35,7 @@ function Segmented({ className, options, ...props }: SegmentedProps) {
         return (
           <RadioPrimitive.Root
             aria-labelledby={labelId}
-            className="inline-flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-control px-3 text-center text-sm font-medium text-muted-foreground outline-none transition-[background-color,box-shadow,color] data-[checked]:bg-primary/15 data-[checked]:text-foreground data-[checked]:shadow-[var(--bevel)] focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+            className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-control px-3 text-center text-sm font-medium text-muted-foreground outline-none transition-[background-color,box-shadow,color] data-[checked]:bg-primary/15 data-[checked]:text-foreground data-[checked]:shadow-[var(--bevel)] focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
             data-slot="segmented-option"
             disabled={option.disabled}
             key={option.value}

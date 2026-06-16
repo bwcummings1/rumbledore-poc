@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
 import { Banner } from "@/components/ui/banner";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KVList } from "@/components/ui/kv";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -305,27 +306,11 @@ export function LoreStewardReviewView({
       )}
 
       {pendingAction ? (
-        <div
-          aria-labelledby="lore-steward-confirm-title"
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-background/70 px-4 backdrop-blur-sm"
-          role="dialog"
-        >
-          <div className="panel grid w-full max-w-md gap-4 p-4">
-            <div className="grid gap-2">
-              <p className="eyebrow text-warning">Confirm lore action</p>
-              <h2
-                className="font-display text-lg font-semibold"
-                id="lore-steward-confirm-title"
-              >
-                {pendingAction.action} "{pendingAction.claim.title}"
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                This writes an audited steward event using the reason entered on
-                the claim.
-              </p>
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
+        <Dialog
+          closeLabel="Cancel lore action"
+          description="This writes an audited steward event using the reason entered on the claim."
+          footer={
+            <>
               <Button
                 type="button"
                 variant="ghost"
@@ -341,9 +326,18 @@ export function LoreStewardReviewView({
               >
                 Confirm action
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setPendingAction(null);
+            }
+          }}
+          open={true}
+          title={`${pendingAction.action} "${pendingAction.claim.title}"`}
+        >
+          <p className="eyebrow text-warning">Confirm lore action</p>
+        </Dialog>
       ) : null}
     </main>
   );

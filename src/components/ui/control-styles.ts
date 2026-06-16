@@ -33,4 +33,4 @@ export const fieldErrorClasses =
   "flex items-start gap-2 rounded-control border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive";
 
 export const controlInsetButtonClasses =
-  "absolute top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-control text-muted-foreground transition-[background-color,color] hover:bg-primary/10 hover:text-foreground focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-50";
+  "absolute top-1/2 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-control text-muted-foreground transition-[background-color,color] hover:bg-primary/10 hover:text-foreground focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-50";

@@ -17,6 +17,9 @@ test("RadioGroup renders row options and reports selection", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("radio", { name: "False" }));
+  const control = screen.getByRole("radio", { name: "False" });
+  expect(control.className).toContain("min-h-11");
+  expect(control.className).toContain("min-w-11");
+  fireEvent.click(control);
   expect(onValueChange).toHaveBeenCalledWith("false", expect.any(Object));
 });

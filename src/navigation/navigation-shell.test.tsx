@@ -351,7 +351,7 @@ describe("NavigationShellView", () => {
       </NavigationShellView>,
     );
 
-    fireEvent.click(screen.getByRole("switch", { name: "Disable motion" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Reduced motion" }));
 
     expect(document.documentElement.getAttribute("data-motion")).toBe("off");
     expect(window.localStorage.getItem("rumbledore:motion")).toBe("off");

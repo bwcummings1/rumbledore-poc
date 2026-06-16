@@ -32,7 +32,7 @@ function Input({
       className={cn(
         fieldControlClasses({ tone }),
         leadingIcon ? "pl-10" : "",
-        hasTrailing ? "pr-10" : "",
+        hasTrailing ? "pr-12" : "",
         className,
       )}
       data-slot="input"

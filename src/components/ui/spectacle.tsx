@@ -400,14 +400,14 @@ function WireTickerItem({
 
   return (
     <li
-      className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-control border border-input bg-[var(--panel)] px-3 text-sm"
+      className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-control border border-input bg-[var(--panel)] px-3 text-sm"
       data-kind={kind}
       data-slot="wire-item"
       {...props}
     >
       {item.href ? (
         <a
-          className="inline-flex min-h-10 items-center gap-2 text-inherit focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+          className="inline-flex min-h-11 items-center gap-2 text-inherit focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
           href={item.href}
         >
           {content}

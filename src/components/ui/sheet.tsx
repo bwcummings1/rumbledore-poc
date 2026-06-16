@@ -86,7 +86,7 @@ function Sheet({
           <header className="sticky top-0 z-10 grid gap-3 border-b border-border bg-[var(--panel-solid)]/95 px-4 py-3">
             <button
               aria-label={`Resize ${textFromNode(title) ?? "sheet"}`}
-              className="mx-auto h-6 w-16 rounded-full text-muted-foreground outline-none focus-visible:shadow-[var(--focus-ring-shadow)] sm:hidden"
+              className="mx-auto flex min-h-11 w-16 items-center rounded-full text-muted-foreground outline-none focus-visible:shadow-[var(--focus-ring-shadow)] sm:hidden"
               data-slot="sheet-grabber"
               onKeyDown={(event) => handleGrabberKeyDown(event, setSnap)}
               type="button"
@@ -106,7 +106,7 @@ function Sheet({
               </div>
               <DialogPrimitive.Close
                 aria-label={closeLabel}
-                className="inline-flex size-10 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+                className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
               >
                 <X className="size-4" />
               </DialogPrimitive.Close>

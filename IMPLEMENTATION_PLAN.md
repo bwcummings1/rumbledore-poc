@@ -53,8 +53,12 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Build the lore mechanic UI (submit, vote with quorum, canon ledger, branch/dispute trees, challenge). (specs/33)
 - [x] Build the onboarding flows (provider connect, hosted-browser frame, discovery, leaguemate detection, invite, claim-your-team). (specs/33)
 
+## Harden shortlist
+1. [x] **[a11y]** Full keyboard/screen-reader/AA-contrast sweep across overhauled surfaces — highest value because inaccessible primary workflows are functional breakage for keyboard and assistive-tech users.
+2. [ ] **[perf]** Verify and throttle atmosphere/ephemera for mobile budgets — next because heavy motion/ambient layers can materially degrade mobile UX, but after direct usability defects.
+
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
-- [ ] **[a11y]** Run a full keyboard + screen-reader + AA-contrast sweep across every overhauled surface and fix gaps.
+- [x] **[a11y]** Run a full keyboard + screen-reader + AA-contrast sweep across every overhauled surface and fix gaps.
 - [ ] **[perf]** Verify the atmosphere/ephemera stay within the mobile perf budget; throttle/disable on low-end devices.
 - [ ] (loop appends discovered bugs/improvements here during Phase 5)
 
