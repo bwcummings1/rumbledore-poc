@@ -6,6 +6,6 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "node",
-    include: ["test/evals/ai/offline.test.ts"],
+    include: ["test/evals/ai/variants.test.ts"],
   },
 });

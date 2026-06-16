@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:live-smoke": "LIVE_SMOKE=1 vitest run src/testing/provider-live-smoke.test.ts",
     "eval:ai:offline": "MOCK_ANTHROPIC=true MOCK_TAVILY=true MOCK_VOYAGE=true vitest run --config vitest.ai-eval.config.ts",
+    "eval:ai:variants": "MOCK_ANTHROPIC=true MOCK_TAVILY=true MOCK_VOYAGE=true vitest run --config vitest.ai-variants.config.ts --reporter=verbose",
     "perf:pwa": "node scripts/check-mobile-pwa-budget.mjs",
     "test:watch": "vitest",
     "secret-scan": "node scripts/secret-scan.mjs",

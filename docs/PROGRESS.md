@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 4 prompt-template management landed** with versioned sectioned prompt rendering and generation-run provenance for template/tone/model tuples.
+Keep it current. Last updated: 2026-06-16 — **Phase 4 AI variant eval landed** with deterministic model×tone scorecards, winner selection, and leakage disqualification.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AI variant A/B eval harness landed — `pnpm eval:ai:variants` now scores deterministic model×tone variants across golden fixtures/content types, writes a machine-readable scorecard, names a winner, and disqualifies leaking variants.
 - 2026-06-16: Versioned prompt-template management landed — AI generation now renders ordered prompt sections with template id/version metadata, feeds rendered system/user instructions to real providers, and records template/tone/model provenance on generation runs.
 - 2026-06-16: Versioned AI tone-profile records landed — persona cards now persist editable tone profiles with version/attribution, render tone/guardrail framing from data, and deterministic mocks prove tone edits change prompts and drafts.
 - 2026-06-16: Data-driven AI model routing landed — generation now resolves bulk/flagship/custom providers per persona/content-type route config, supports exact task overrides, and falls back safely when optional custom routes are unavailable.
