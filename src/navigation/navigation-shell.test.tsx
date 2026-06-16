@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -6,8 +7,57 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { leagueRealtimeChannel, REALTIME_EVENTS } from "@/realtime/interfaces";
 import type { LeagueSwitcherViewItem } from "./league-switcher-model";
+
+const realtimeMock = vi.hoisted(() => {
+  const state = {
+    lastRefresh: null as null | ((event: unknown) => void),
+  };
+  return {
+    openRealtimePresenceSubscription: vi.fn(
+      async (options: {
+        leagueId: string;
+        onPresence: (snapshot: {
+          leagueId: string;
+          onlineCount: number;
+          status: "online";
+        }) => void;
+      }) => {
+        options.onPresence({
+          leagueId: options.leagueId,
+          onlineCount: 3,
+          status: "online",
+        });
+        return {
+          expiresAt: "2026-06-12T00:05:00.000Z",
+          unsubscribe: vi.fn(),
+        };
+      },
+    ),
+    openRealtimeRefreshSubscription: vi.fn(
+      async (options: { onRefresh: (event: unknown) => void }) => {
+        state.lastRefresh = options.onRefresh;
+        return {
+          expiresAt: "2026-06-12T00:05:00.000Z",
+          unsubscribe: vi.fn(),
+        };
+      },
+    ),
+    state,
+  };
+});
+
+vi.mock("@/realtime/client", () => {
+  return {
+    openRealtimePresenceSubscription:
+      realtimeMock.openRealtimePresenceSubscription,
+    openRealtimeRefreshSubscription:
+      realtimeMock.openRealtimeRefreshSubscription,
+  };
+});
+
 import {
   NavigationShellView,
   shouldShowNavigationShell,
@@ -33,6 +83,9 @@ const items = [
 
 afterEach(() => {
   cleanup();
+  realtimeMock.state.lastRefresh = null;
+  realtimeMock.openRealtimePresenceSubscription.mockClear();
+  realtimeMock.openRealtimeRefreshSubscription.mockClear();
 });
 
 describe("shouldShowNavigationShell", () => {
@@ -239,6 +292,53 @@ describe("NavigationShellView", () => {
       within(dialog).getByRole("button", { name: "Mark all read" }),
     );
     expect(within(dialog).getByText("All read")).toBeDefined();
+  });
+
+  it("renders realtime-fed wire items and notifications", async () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a/lore")}
+        items={items}
+      >
+        <main>League lore</main>
+      </NavigationShellView>,
+    );
+
+    await waitFor(() => {
+      expect(realtimeMock.openRealtimeRefreshSubscription).toHaveBeenCalled();
+    });
+
+    act(() => {
+      realtimeMock.state.lastRefresh?.({
+        event: REALTIME_EVENTS.loreVoteOpened,
+        payload: {
+          at: "2026-06-16T12:00:00.000Z",
+          claimId: "claim-1",
+          leagueId: "league-a",
+          type: REALTIME_EVENTS.loreVoteOpened,
+          v: 1,
+          voteClosesAt: "2026-06-17T12:00:00.000Z",
+        },
+        topic: leagueRealtimeChannel("league-a", "lore"),
+      });
+    });
+
+    expect(screen.getAllByText("Lore vote opened").length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByRole("link", { name: /Lore vote opened/i })[0]
+        ?.getAttribute("href"),
+    ).toBe("/leagues/league-a/lore/claim-1");
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Open notifications" })[0],
+    );
+    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    expect(
+      within(dialog)
+        .getByRole("link", { name: /Settle it: lore vote opened/i })
+        .getAttribute("href"),
+    ).toBe("/leagues/league-a/lore/claim-1");
   });
 
   it("persists the reduced-motion shell switch to the root data attribute", () => {

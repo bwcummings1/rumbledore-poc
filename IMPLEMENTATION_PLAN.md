@@ -33,7 +33,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 ### V. App shell & navigation (see specs/30)
 - [x] Build the responsive AUSPEX app shell (desktop rail+topbar+ticker, tablet adaptation, mobile bottom-tabs+header). (specs/30)
 - [x] Build the scope-switcher (global↔league) and league switcher sheet, mobile-first. (specs/30)
-- [ ] Wire the WIRE ticker, notifications, and presence to realtime, plus the boot/splash and PWA install/offline affordances. (specs/30)
+- [x] Wire the WIRE ticker, notifications, and presence to realtime, plus the boot/splash and PWA install/offline affordances. (specs/30)
 
 ### W. Editorial / publication register (see specs/31)
 - [ ] Build the AUSPEX reading register (the legible long-form skin) and the story-card variants. (specs/31)
@@ -63,3 +63,4 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [ ] [a11y] Normalize legacy form controls from `focus:` border/ring styling to the tokenized `focus-visible` control primitive during the Spec 29 control restyle; the global ring covers keyboard fallback meanwhile.
 - [ ] [a11y] Audit shared button and icon-button touch targets during the Spec 29 control restyle; several visual variants are below 44px even when later layouts may provide larger hit areas.
 - [ ] Spec/reference follow-up: `docs/design/auspex-reference.html` is referenced by Spec 34 but absent from this checkout; continue using `docs/design/rumbledore-design-language.md` plus specs 28-34 unless the template is restored.
+- [ ] [test] Split DB integration tests into a dedicated Vitest project/concurrency profile so the exact gate stays deterministic without a broad timeout budget.

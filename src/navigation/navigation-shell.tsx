@@ -38,9 +38,20 @@ import {
   CommandPalette,
   type CommandPaletteItem,
 } from "@/components/ui/command-palette";
+import { Presence } from "@/components/ui/presence";
 import { Sheet } from "@/components/ui/sheet";
 import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
+import type {
+  RealtimeRefreshEvent,
+  RealtimeRefreshHandle,
+  RealtimeRefreshSubscription,
+} from "@/realtime/client";
+import {
+  leagueRealtimeChannel,
+  REALTIME_EVENTS,
+  type RealtimeEventType,
+} from "@/realtime/interfaces";
 import {
   getLeagueAvatarFallback,
   LEAGUE_SWITCHER_CONNECT_LINKS,
@@ -107,9 +118,13 @@ const NAVIGATION_ICON_COMPONENTS = {
 
 const EMPTY_NAVIGATION_ITEMS: readonly LeagueSwitcherViewItem[] = [];
 const MOTION_STORAGE_KEY = "rumbledore:motion";
+const SHELL_REALTIME_MAX_ITEMS = 8;
+const SHELL_REALTIME_RECONNECT_MS = 60_000;
+const SHELL_REALTIME_TOKEN_REFRESH_SKEW_MS = 30_000;
 
-type ShellNotificationKind = "arena" | "blog" | "lore" | "scores";
+type ShellNotificationKind = "arena" | "blog" | "lore" | "odds" | "scores";
 type ShellMotionMode = "auto" | "off";
+type ShellRealtimeStatus = "connecting" | "live" | "offline" | "reconnecting";
 type ShellWireItemKind =
   | "bet"
   | "cast"
@@ -118,6 +133,7 @@ type ShellWireItemKind =
   | "score"
   | "swing"
   | "system";
+type ShellWireStatus = "empty" | "live" | "offline" | "reconnecting";
 
 interface ShellWireItem {
   readonly fresh?: boolean;
@@ -142,6 +158,13 @@ interface ShellNotification {
   readonly read?: boolean;
   readonly timestamp: string;
   readonly title: string;
+}
+
+interface ShellRealtimeState {
+  readonly notifications: readonly ShellNotification[];
+  readonly presenceByLeagueId: Readonly<Record<string, number>>;
+  readonly status: ShellRealtimeStatus;
+  readonly wireItems: readonly ShellWireItem[];
 }
 
 export interface NavigationShellProps {
@@ -233,6 +256,7 @@ export function NavigationShellView({
     ReadonlySet<string>
   >(() => new Set());
   const sortedItems = useMemo(() => sortLeagueSwitcherItems(items), [items]);
+  const shellRealtime = useShellRealtime(activeState);
   const activeLeague =
     activeState.scope === "league"
       ? (sortedItems.find((item) => item.leagueId === activeState.leagueId) ??
@@ -247,21 +271,31 @@ export function NavigationShellView({
     [activeState, sortedItems],
   );
   const motionMode: ShellMotionMode = motionOff ? "off" : "auto";
-  const wireItems = useMemo(
+  const fallbackWireItems = useMemo(
     () => buildWireItems(activeState, activeLeague),
     [activeState, activeLeague],
   );
+  const wireItems = useMemo(
+    () => mergeShellItems(shellRealtime.wireItems, fallbackWireItems),
+    [fallbackWireItems, shellRealtime.wireItems],
+  );
   const shellNotifications = useMemo(
     () =>
-      buildShellNotifications(activeState, activeLeague).map(
-        (notification) => ({
-          ...notification,
-          read:
-            notification.read === true ||
-            readNotificationIds.has(notification.id),
-        }),
-      ),
-    [activeState, activeLeague, readNotificationIds],
+      mergeShellItems(
+        shellRealtime.notifications,
+        buildShellNotifications(activeState, activeLeague),
+      ).map((notification) => ({
+        ...notification,
+        read:
+          notification.read === true ||
+          readNotificationIds.has(notification.id),
+      })),
+    [
+      activeState,
+      activeLeague,
+      readNotificationIds,
+      shellRealtime.notifications,
+    ],
   );
   const unreadNotificationCount = shellNotifications.filter(
     (notification) => !notification.read,
@@ -333,6 +367,7 @@ export function NavigationShellView({
       >
         Skip to content
       </a>
+      <ShellBootOverlay motion={motionMode} />
       <DesktopSidebar
         activeLeague={activeLeague}
         activeState={activeState}
@@ -342,6 +377,8 @@ export function NavigationShellView({
         items={sortedItems}
         onToggleCollapsed={toggleSidebarCollapsed}
         onToggleSwitcher={() => setDesktopSwitcherOpen((value) => !value)}
+        presenceByLeagueId={shellRealtime.presenceByLeagueId}
+        realtimeStatus={shellRealtime.status}
       />
 
       <DesktopTopBar
@@ -354,6 +391,7 @@ export function NavigationShellView({
         onMarkAllNotificationsRead={markAllNotificationsRead}
         onMotionChange={setMotionOff}
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        realtimeStatus={shellRealtime.status}
         unreadNotificationCount={unreadNotificationCount}
       />
 
@@ -367,6 +405,8 @@ export function NavigationShellView({
         onMotionChange={setMotionOff}
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         onOpenSwitcher={() => setMobileSwitcherOpen(true)}
+        presenceByLeagueId={shellRealtime.presenceByLeagueId}
+        realtimeStatus={shellRealtime.status}
         unreadNotificationCount={unreadNotificationCount}
       />
 
@@ -376,6 +416,7 @@ export function NavigationShellView({
         items={wireItems}
         motion={motionMode}
         onOpenWire={() => setWireSheetOpen(true)}
+        realtimeStatus={shellRealtime.status}
       />
 
       <div
@@ -398,6 +439,7 @@ export function NavigationShellView({
           activeState={activeState}
           items={sortedItems}
           onClose={closeMobileSwitcher}
+          presenceByLeagueId={shellRealtime.presenceByLeagueId}
         />
       ) : null}
 
@@ -406,6 +448,7 @@ export function NavigationShellView({
         motion={motionMode}
         onOpenChange={setWireSheetOpen}
         open={wireSheetOpen}
+        realtimeStatus={shellRealtime.status}
       />
 
       <CommandPalette
@@ -441,6 +484,8 @@ function DesktopSidebar({
   items,
   onToggleCollapsed,
   onToggleSwitcher,
+  presenceByLeagueId,
+  realtimeStatus,
 }: {
   readonly activeLeague: LeagueSwitcherViewItem | null;
   readonly activeState: ActiveNavigationState;
@@ -450,6 +495,8 @@ function DesktopSidebar({
   readonly items: readonly LeagueSwitcherViewItem[];
   readonly onToggleCollapsed: () => void;
   readonly onToggleSwitcher: () => void;
+  readonly presenceByLeagueId: Readonly<Record<string, number>>;
+  readonly realtimeStatus: ShellRealtimeStatus;
 }) {
   const sidebarWidth = collapsed ? "w-[4.5rem]" : "w-72";
 
@@ -534,6 +581,21 @@ function DesktopSidebar({
                         League switcher
                       </span>
                     )}
+                    {activeLeague ? (
+                      <Presence
+                        className="min-h-5"
+                        label={presenceLabelForLeague(
+                          activeLeague.leagueId,
+                          presenceByLeagueId,
+                          realtimeStatus,
+                        )}
+                        status={presenceStatusForLeague(
+                          activeLeague.leagueId,
+                          presenceByLeagueId,
+                          realtimeStatus,
+                        )}
+                      />
+                    ) : null}
                   </span>
                 </span>
                 <ChevronDown className="size-4 text-muted-foreground" />
@@ -548,7 +610,11 @@ function DesktopSidebar({
                 collapsed ? "left-20" : "left-[18.5rem]",
               )}
             >
-              <LeagueSwitcherView activeState={activeState} items={items} />
+              <LeagueSwitcherView
+                activeState={activeState}
+                items={items}
+                presenceByLeagueId={presenceByLeagueId}
+              />
             </div>
           ) : null}
         </div>
@@ -576,6 +642,7 @@ function DesktopTopBar({
   onMarkAllNotificationsRead,
   onMotionChange,
   onOpenCommandPalette,
+  realtimeStatus,
   unreadNotificationCount,
 }: {
   readonly activeLeague: LeagueSwitcherViewItem | null;
@@ -587,6 +654,7 @@ function DesktopTopBar({
   readonly onMarkAllNotificationsRead: () => void;
   readonly onMotionChange: (motionOff: boolean) => void;
   readonly onOpenCommandPalette: () => void;
+  readonly realtimeStatus: ShellRealtimeStatus;
   readonly unreadNotificationCount: number;
 }) {
   return (
@@ -617,6 +685,7 @@ function DesktopTopBar({
       <NotificationsMenu
         notifications={notifications}
         onMarkAllRead={onMarkAllNotificationsRead}
+        realtimeStatus={realtimeStatus}
         unreadCount={unreadNotificationCount}
       />
       <AccountMenu
@@ -646,6 +715,8 @@ function MobileTopBar({
   onMotionChange,
   onOpenCommandPalette,
   onOpenSwitcher,
+  presenceByLeagueId,
+  realtimeStatus,
   unreadNotificationCount,
 }: {
   readonly activeLeague: LeagueSwitcherViewItem | null;
@@ -657,6 +728,8 @@ function MobileTopBar({
   readonly onMotionChange: (motionOff: boolean) => void;
   readonly onOpenCommandPalette: () => void;
   readonly onOpenSwitcher: () => void;
+  readonly presenceByLeagueId: Readonly<Record<string, number>>;
+  readonly realtimeStatus: ShellRealtimeStatus;
   readonly unreadNotificationCount: number;
 }) {
   return (
@@ -679,8 +752,23 @@ function MobileTopBar({
             {scopeDisplayName(activeState, activeLeague)}
           </span>
           {activeLeague ? (
-            <span className="mt-0.5 inline-flex rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground">
-              {activeLeague.providerLabel}
+            <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+              <span className="inline-flex rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground">
+                {activeLeague.providerLabel}
+              </span>
+              <Presence
+                className="min-h-5"
+                label={presenceLabelForLeague(
+                  activeLeague.leagueId,
+                  presenceByLeagueId,
+                  realtimeStatus,
+                )}
+                status={presenceStatusForLeague(
+                  activeLeague.leagueId,
+                  presenceByLeagueId,
+                  realtimeStatus,
+                )}
+              />
             </span>
           ) : null}
         </span>
@@ -698,6 +786,7 @@ function MobileTopBar({
       <NotificationsMenu
         notifications={notifications}
         onMarkAllRead={onMarkAllNotificationsRead}
+        realtimeStatus={realtimeStatus}
         unreadCount={unreadNotificationCount}
       />
       <AccountMenu
@@ -741,10 +830,12 @@ function MobileSwitcherSheet({
   activeState,
   items,
   onClose,
+  presenceByLeagueId,
 }: {
   readonly activeState: ActiveNavigationState;
   readonly items: readonly LeagueSwitcherViewItem[];
   readonly onClose: () => void;
+  readonly presenceByLeagueId: Readonly<Record<string, number>>;
 }) {
   return (
     <Sheet
@@ -766,6 +857,7 @@ function MobileSwitcherSheet({
         activeState={activeState}
         className="border-0 bg-transparent p-0 shadow-none"
         items={items}
+        presenceByLeagueId={presenceByLeagueId}
         showHeader={false}
       />
     </Sheet>
@@ -920,14 +1012,16 @@ function ShellWire({
   items,
   motion,
   onOpenWire,
+  realtimeStatus,
 }: {
   readonly activeState: ActiveNavigationState;
   readonly collapsed: boolean;
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
   readonly onOpenWire: () => void;
+  readonly realtimeStatus: ShellRealtimeStatus;
 }) {
-  const status = items.length > 0 ? "live" : "empty";
+  const status = wireStatusForRealtime(realtimeStatus, items);
   const variant = wireVariantForScope(activeState.scope);
   const mobileItems = items.map(({ href: _href, ...item }) => item);
 
@@ -977,11 +1071,13 @@ function WireSheet({
   motion,
   onOpenChange,
   open,
+  realtimeStatus,
 }: {
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
   readonly onOpenChange: (open: boolean) => void;
   readonly open: boolean;
+  readonly realtimeStatus: ShellRealtimeStatus;
 }) {
   if (!open) {
     return null;
@@ -1027,7 +1123,7 @@ function WireSheet({
           expanded
           items={items}
           motion={motion}
-          status="live"
+          status={wireStatusForRealtime(realtimeStatus, items)}
           variant="live"
         />
       </section>
@@ -1049,9 +1145,11 @@ function ShellWireTicker({
   readonly expanded?: boolean;
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
-  readonly status: "empty" | "live";
+  readonly status: ShellWireStatus;
   readonly variant: "digest" | "live";
 }) {
+  const statusLabel = wireStatusLabel(status);
+
   return (
     <section
       aria-label={ariaLabel}
@@ -1073,7 +1171,7 @@ function ShellWireTicker({
           <ScrollText aria-hidden="true" className="size-4 text-primary" />
           <span className="eyebrow text-foreground">WIRE</span>
           <output
-            aria-label={status === "live" ? "live" : "quiet"}
+            aria-label={statusLabel}
             className={cn(
               "inline-flex items-center gap-1.5",
               motion === "off" && "motion-reduce:animate-none",
@@ -1087,20 +1185,25 @@ function ShellWireTicker({
                 "auspex-live-dot inline-flex size-2.5 shrink-0 rounded-full ring-2 ring-background",
                 status === "live"
                   ? "bg-primary shadow-[0_0_14px_var(--glow-lilac)]"
-                  : "bg-muted-foreground",
+                  : status === "reconnecting"
+                    ? "bg-warning"
+                    : "bg-muted-foreground",
               )}
               data-status={status === "live" ? "live" : "static"}
             />
-            <span className="sr-only">
-              {status === "live" ? "live" : "quiet"}
-            </span>
+            <span className="sr-only">{statusLabel}</span>
           </output>
         </div>
+        {status === "offline" || status === "reconnecting" ? (
+          <span className="metric text-xs text-muted-foreground">
+            {statusLabel}
+          </span>
+        ) : null}
       </div>
 
       {items.length === 0 ? (
         <p className="rounded-control border border-input bg-[var(--panel)] px-3 py-2 text-sm text-muted-foreground">
-          The wire is quiet.
+          {wireEmptyMessage(status)}
         </p>
       ) : (
         <>
@@ -1189,10 +1292,12 @@ function ShellWireTickerItem({
 function NotificationsMenu({
   notifications,
   onMarkAllRead,
+  realtimeStatus,
   unreadCount,
 }: {
   readonly notifications: readonly ShellNotification[];
   readonly onMarkAllRead: () => void;
+  readonly realtimeStatus: ShellRealtimeStatus;
   readonly unreadCount: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -1262,6 +1367,18 @@ function NotificationsMenu({
               Mark all read
             </Button>
           </div>
+          {realtimeStatus === "reconnecting" || realtimeStatus === "offline" ? (
+            <div
+              aria-live="polite"
+              className="cell flex min-h-11 items-center gap-2 border-warning/40 bg-warning/10 px-3 py-2 text-sm text-muted-foreground"
+            >
+              <Presence
+                label={realtimeStatusLabel(realtimeStatus)}
+                status={realtimeStatus === "offline" ? "offline" : "idle"}
+              />
+              <span>{realtimeStatusLabel(realtimeStatus)}</span>
+            </div>
+          ) : null}
           {notifications.length === 0 ? (
             <div className="cell grid gap-1 p-4 text-sm text-muted-foreground">
               <p className="font-display font-semibold text-foreground">
@@ -1480,6 +1597,583 @@ function MotionToggle({
     </div>
   );
 }
+
+function useShellRealtime(
+  activeState: ActiveNavigationState,
+): ShellRealtimeState {
+  const activeLeagueId =
+    activeState.scope === "league" ? activeState.leagueId : null;
+  const scopeKey = activeLeagueId ? `league:${activeLeagueId}` : "global";
+  const subscriptions = useMemo(
+    () => buildShellRealtimeSubscriptions(activeState.scope, activeLeagueId),
+    [activeState.scope, activeLeagueId],
+  );
+  const leagueIds = useMemo(
+    () => (activeLeagueId ? [activeLeagueId] : []),
+    [activeLeagueId],
+  );
+  const [state, setState] = useState<ShellRealtimeState>(() =>
+    emptyShellRealtimeState(),
+  );
+
+  useEffect(() => {
+    if (scopeKey.length > 0) {
+      setState(emptyShellRealtimeState());
+    }
+  }, [scopeKey]);
+
+  useEffect(() => {
+    const updateOnlineState = () => {
+      if (!window.navigator.onLine) {
+        setState((current) => ({ ...current, status: "offline" }));
+        return;
+      }
+      setState((current) =>
+        current.status === "offline"
+          ? { ...current, status: "reconnecting" }
+          : current,
+      );
+    };
+
+    updateOnlineState();
+    window.addEventListener("offline", updateOnlineState);
+    window.addEventListener("online", updateOnlineState);
+    return () => {
+      window.removeEventListener("offline", updateOnlineState);
+      window.removeEventListener("online", updateOnlineState);
+    };
+  }, []);
+
+  useEffect(() => {
+    let closed = false;
+    let handle: RealtimeRefreshHandle | null = null;
+    let reconnectTimer: number | null = null;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const setStatus = (status: ShellRealtimeStatus) => {
+      if (closed) {
+        return;
+      }
+      setState((current) =>
+        current.status === status ? current : { ...current, status },
+      );
+    };
+
+    const scheduleReconnect = () => {
+      if (closed) {
+        return;
+      }
+      setStatus(window.navigator.onLine ? "reconnecting" : "offline");
+      clearReconnectTimer();
+      reconnectTimer = window.setTimeout(() => {
+        void connect();
+      }, SHELL_REALTIME_RECONNECT_MS);
+    };
+
+    async function connect() {
+      if (subscriptions.length === 0) {
+        setStatus("offline");
+        return;
+      }
+
+      try {
+        handle?.unsubscribe();
+        const { openRealtimeRefreshSubscription } = await import(
+          "@/realtime/client"
+        );
+        handle = await openRealtimeRefreshSubscription({
+          leagueIds,
+          onError: scheduleReconnect,
+          onRefresh: (event) => {
+            if (closed) {
+              return;
+            }
+            const wireItem = shellWireItemFromRealtimeEvent(event);
+            const notification = shellNotificationFromRealtimeEvent(event);
+            setState((current) => ({
+              ...current,
+              notifications: notification
+                ? prependShellItem(current.notifications, notification)
+                : current.notifications,
+              status: "live",
+              wireItems: wireItem
+                ? prependShellItem(current.wireItems, wireItem)
+                : current.wireItems,
+            }));
+          },
+          subscriptions,
+        });
+        if (closed) {
+          handle.unsubscribe();
+          return;
+        }
+
+        clearReconnectTimer();
+        setStatus(handle.expiresAt ? "live" : "offline");
+        if (handle.expiresAt) {
+          const refreshInMs = Math.max(
+            SHELL_REALTIME_RECONNECT_MS,
+            new Date(handle.expiresAt).getTime() -
+              Date.now() -
+              SHELL_REALTIME_TOKEN_REFRESH_SKEW_MS,
+          );
+          reconnectTimer = window.setTimeout(() => {
+            void connect();
+          }, refreshInMs);
+        }
+      } catch {
+        scheduleReconnect();
+      }
+    }
+
+    void connect();
+
+    return () => {
+      closed = true;
+      clearReconnectTimer();
+      handle?.unsubscribe();
+    };
+  }, [leagueIds, subscriptions]);
+
+  useEffect(() => {
+    if (!activeLeagueId) {
+      return;
+    }
+
+    const leagueId = activeLeagueId;
+    let closed = false;
+    let handle: RealtimeRefreshHandle | null = null;
+    let reconnectTimer: number | null = null;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (closed) {
+        return;
+      }
+      clearReconnectTimer();
+      reconnectTimer = window.setTimeout(() => {
+        void connectPresence();
+      }, SHELL_REALTIME_RECONNECT_MS);
+    };
+
+    async function connectPresence() {
+      try {
+        handle?.unsubscribe();
+        const { openRealtimePresenceSubscription } = await import(
+          "@/realtime/client"
+        );
+        handle = await openRealtimePresenceSubscription({
+          leagueId,
+          onError: scheduleReconnect,
+          onPresence: (snapshot) => {
+            if (closed) {
+              return;
+            }
+            setState((current) => ({
+              ...current,
+              presenceByLeagueId: {
+                ...current.presenceByLeagueId,
+                [snapshot.leagueId]: snapshot.onlineCount,
+              },
+            }));
+          },
+        });
+        if (closed) {
+          handle.unsubscribe();
+          return;
+        }
+        clearReconnectTimer();
+        if (handle.expiresAt) {
+          const refreshInMs = Math.max(
+            SHELL_REALTIME_RECONNECT_MS,
+            new Date(handle.expiresAt).getTime() -
+              Date.now() -
+              SHELL_REALTIME_TOKEN_REFRESH_SKEW_MS,
+          );
+          reconnectTimer = window.setTimeout(() => {
+            void connectPresence();
+          }, refreshInMs);
+        }
+      } catch {
+        setState((current) => ({
+          ...current,
+          presenceByLeagueId: {
+            ...current.presenceByLeagueId,
+            [leagueId]: 0,
+          },
+        }));
+        scheduleReconnect();
+      }
+    }
+
+    void connectPresence();
+
+    return () => {
+      closed = true;
+      clearReconnectTimer();
+      handle?.unsubscribe();
+    };
+  }, [activeLeagueId]);
+
+  return state;
+}
+
+function emptyShellRealtimeState(): ShellRealtimeState {
+  return {
+    notifications: [],
+    presenceByLeagueId: {},
+    status: "connecting",
+    wireItems: [],
+  };
+}
+
+function buildShellRealtimeSubscriptions(
+  scope: ActiveNavigationState["scope"],
+  activeLeagueId: string | null,
+): RealtimeRefreshSubscription[] {
+  if (scope === "league" && activeLeagueId) {
+    const leagueId = activeLeagueId;
+    return [
+      realtimeSubscription(leagueRealtimeChannel(leagueId, "scores"), [
+        REALTIME_EVENTS.scoresUpdated,
+      ]),
+      realtimeSubscription(leagueRealtimeChannel(leagueId, "odds"), [
+        REALTIME_EVENTS.oddsUpdated,
+      ]),
+      realtimeSubscription(leagueRealtimeChannel(leagueId, "leaderboard"), [
+        REALTIME_EVENTS.leagueLeaderboardUpdated,
+      ]),
+      realtimeSubscription(leagueRealtimeChannel(leagueId, "blog"), [
+        REALTIME_EVENTS.blogPublished,
+      ]),
+      realtimeSubscription(leagueRealtimeChannel(leagueId, "lore"), [
+        REALTIME_EVENTS.loreVoteOpened,
+        REALTIME_EVENTS.loreCanonized,
+      ]),
+    ];
+  }
+
+  return [
+    realtimeSubscription("central:news", [REALTIME_EVENTS.centralNewsUpdated]),
+    realtimeSubscription("arena:leaderboard", [
+      REALTIME_EVENTS.arenaLeaderboardUpdated,
+      REALTIME_EVENTS.arenaStandingsSwing,
+    ]),
+  ];
+}
+
+function realtimeSubscription(
+  topic: RealtimeRefreshSubscription["topic"],
+  events: readonly RealtimeEventType[],
+): RealtimeRefreshSubscription {
+  return { events, topic };
+}
+
+function prependShellItem<T extends { readonly id: string }>(
+  items: readonly T[],
+  item: T,
+): readonly T[] {
+  return [item, ...items.filter((candidate) => candidate.id !== item.id)].slice(
+    0,
+    SHELL_REALTIME_MAX_ITEMS,
+  );
+}
+
+function mergeShellItems<T extends { readonly id: string }>(
+  liveItems: readonly T[],
+  fallbackItems: readonly T[],
+): readonly T[] {
+  const liveIds = new Set(liveItems.map((item) => item.id));
+  return [
+    ...liveItems,
+    ...fallbackItems.filter((item) => !liveIds.has(item.id)),
+  ];
+}
+
+function shellWireItemFromRealtimeEvent(
+  event: RealtimeRefreshEvent,
+): ShellWireItem | null {
+  const payload = event.payload;
+  if (!payload) {
+    return null;
+  }
+
+  if (payload.type === REALTIME_EVENTS.scoresUpdated) {
+    return {
+      fresh: true,
+      href: leagueHref(payload.leagueId),
+      id: `rt:${payload.type}:${payload.leagueId}:${payload.at}`,
+      kind: "score",
+      label: `${formatCount(payload.matchupIds.length, "matchup")} updated`,
+      meta:
+        payload.scoringPeriod === null
+          ? "SCORES"
+          : `WK ${payload.scoringPeriod}`,
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.oddsUpdated) {
+    return {
+      fresh: true,
+      href: leagueHref(payload.leagueId, "/bet"),
+      id: `rt:${payload.type}:${payload.leagueId}:${payload.at}`,
+      kind: "bet",
+      label: `${formatCount(payload.marketIds.length, "market")} moved`,
+      meta: "ODDS",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.leagueLeaderboardUpdated) {
+    return {
+      fresh: true,
+      href: leagueHref(payload.leagueId, "/bet"),
+      id: `rt:${payload.type}:${payload.leagueId}:${payload.at}`,
+      kind: "swing",
+      label: "Bankroll standings refreshed",
+      meta: "BANKROLL",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.blogPublished) {
+    return {
+      fresh: true,
+      href: leagueHref(payload.leagueId, `/press/${payload.contentItemId}`),
+      id: `rt:${payload.type}:${payload.leagueId}:${payload.contentItemId}`,
+      kind: "cast",
+      label: payload.title,
+      meta: "PRESS",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.loreVoteOpened) {
+    return {
+      fresh: true,
+      href: leagueHref(payload.leagueId, `/lore/${payload.claimId}`),
+      id: `rt:${payload.type}:${payload.leagueId}:${payload.claimId}`,
+      kind: "lore",
+      label: "Lore vote opened",
+      meta: "SETTLE IT",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.loreCanonized) {
+    return {
+      fresh: true,
+      href: leagueHref(payload.leagueId, `/lore/${payload.claimId}`),
+      id: `rt:${payload.type}:${payload.leagueId}:${payload.claimId}`,
+      kind: "lore",
+      label: "Canon updated",
+      meta: payload.ratifiedBy.toUpperCase(),
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.centralNewsUpdated) {
+    return {
+      fresh: true,
+      href: "/news",
+      id: `rt:${payload.type}:${payload.at}`,
+      kind: "cast",
+      label: `${formatCount(payload.contentItemIds.length, "story")} hit central news`,
+      meta: "NEWS",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.arenaLeaderboardUpdated) {
+    return {
+      fresh: true,
+      href: arenaHref(payload.seasonId),
+      id: `rt:${payload.type}:${payload.at}`,
+      kind: "swing",
+      label: "Arena leaderboard refreshed",
+      meta: "ARENA",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.arenaStandingsSwing) {
+    return {
+      fresh: true,
+      href: arenaHref(payload.seasonId),
+      id: `rt:${payload.type}:${payload.seasonId}:${payload.computedAt}`,
+      kind: "swing",
+      label:
+        payload.swings.length > 0
+          ? `${formatCount(payload.swings.length, "arena rank")} moved`
+          : "Arena standings settled",
+      meta: "ARENA",
+    };
+  }
+
+  return null;
+}
+
+function shellNotificationFromRealtimeEvent(
+  event: RealtimeRefreshEvent,
+): ShellNotification | null {
+  const payload = event.payload;
+  if (!payload) {
+    return null;
+  }
+
+  const timestamp = formatWireTimestamp(payload.at);
+
+  if (payload.type === REALTIME_EVENTS.scoresUpdated) {
+    return {
+      detail: `${formatCount(payload.matchupIds.length, "matchup")} changed on the live scoreboard.`,
+      href: leagueHref(payload.leagueId),
+      id: `notice:${payload.type}:${payload.leagueId}:${payload.at}`,
+      kind: "scores",
+      timestamp,
+      title: "Scoreboard updated",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.oddsUpdated) {
+    return {
+      detail: `${formatCount(payload.marketIds.length, "market")} has a fresh locked line available.`,
+      href: leagueHref(payload.leagueId, "/bet"),
+      id: `notice:${payload.type}:${payload.leagueId}:${payload.at}`,
+      kind: "odds",
+      timestamp,
+      title: "Odds board moved",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.leagueLeaderboardUpdated) {
+    return {
+      detail: "The rolling bankroll standings have a new materialized view.",
+      href: leagueHref(payload.leagueId, "/bet"),
+      id: `notice:${payload.type}:${payload.leagueId}:${payload.at}`,
+      kind: "arena",
+      timestamp,
+      title: "Bankroll standings refreshed",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.blogPublished) {
+    return {
+      detail: payload.title,
+      href: leagueHref(payload.leagueId, `/press/${payload.contentItemId}`),
+      id: `notice:${payload.type}:${payload.leagueId}:${payload.contentItemId}`,
+      kind: "blog",
+      timestamp,
+      title: "The Press published",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.loreVoteOpened) {
+    return {
+      detail: "A claim needs the league to settle it.",
+      href: leagueHref(payload.leagueId, `/lore/${payload.claimId}`),
+      id: `notice:${payload.type}:${payload.leagueId}:${payload.claimId}`,
+      kind: "lore",
+      timestamp,
+      title: "Settle it: lore vote opened",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.loreCanonized) {
+    return {
+      detail: `A claim became canon by ${payload.ratifiedBy}.`,
+      href: leagueHref(payload.leagueId, `/lore/${payload.claimId}`),
+      id: `notice:${payload.type}:${payload.leagueId}:${payload.claimId}`,
+      kind: "lore",
+      timestamp,
+      title: "Canon updated",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.centralNewsUpdated) {
+    return {
+      detail: `${formatCount(payload.contentItemIds.length, "story")} refreshed in central news.`,
+      href: "/news",
+      id: `notice:${payload.type}:${payload.at}`,
+      kind: "blog",
+      timestamp,
+      title: "Central news refreshed",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.arenaLeaderboardUpdated) {
+    return {
+      detail: "The inter-league board has fresh standings.",
+      href: arenaHref(payload.seasonId),
+      id: `notice:${payload.type}:${payload.at}`,
+      kind: "arena",
+      timestamp,
+      title: "Arena leaderboard refreshed",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.arenaStandingsSwing) {
+    return {
+      detail:
+        payload.swings.length > 0
+          ? `${formatCount(payload.swings.length, "rank movement")} landed across the arena.`
+          : "Arena standings settled without a rank change.",
+      href: arenaHref(payload.seasonId),
+      id: `notice:${payload.type}:${payload.seasonId}:${payload.computedAt}`,
+      kind: "arena",
+      timestamp,
+      title: "Arena movement landed",
+    };
+  }
+
+  return null;
+}
+
+function ShellBootOverlay({ motion }: { readonly motion: ShellMotionMode }) {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const prefersReducedMotion =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    if (motion === "off" || prefersReducedMotion) {
+      setVisible(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setVisible(false);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [motion]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-background/95 backdrop-blur-xl motion-reduce:hidden"
+      data-motion={motion}
+      data-slot="boot-shell"
+    >
+      <div className="panel grid w-[min(22rem,calc(100vw-var(--space-8)))] justify-items-center gap-4 p-6 text-center shadow-overlay">
+        <span className="orb think size-14" data-state="thinking" />
+        <div className="grid gap-1">
+          <p className="heading-auspex text-sm">Rumbledore</p>
+          <p className="lcd text-xs text-muted-foreground">
+            LINK ... WIRE ... READY
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LiveClock({
   className,
   motionOff,
@@ -1625,6 +2319,112 @@ function buildWireItems(
       meta: "ACCOUNT",
     },
   ];
+}
+
+function leagueHref(leagueId: string, suffix = ""): string {
+  return `/leagues/${encodeURIComponent(leagueId)}${suffix}`;
+}
+
+function arenaHref(seasonId: string | null): string {
+  return seasonId ? `/arena?season=${encodeURIComponent(seasonId)}` : "/arena";
+}
+
+function formatCount(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function formatWireTimestamp(value?: string): string {
+  const date = value ? new Date(value) : new Date();
+  if (!Number.isFinite(date.getTime())) {
+    return "live";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+  }).format(date);
+}
+
+function wireStatusForRealtime(
+  realtimeStatus: ShellRealtimeStatus,
+  items: readonly ShellWireItem[],
+): ShellWireStatus {
+  if (realtimeStatus === "offline") {
+    return "offline";
+  }
+  if (realtimeStatus === "connecting" || realtimeStatus === "reconnecting") {
+    return "reconnecting";
+  }
+  return items.length > 0 ? "live" : "empty";
+}
+
+function wireStatusLabel(status: ShellWireStatus): string {
+  switch (status) {
+    case "empty":
+      return "quiet";
+    case "live":
+      return "live";
+    case "offline":
+      return "offline";
+    case "reconnecting":
+      return "reconnecting";
+  }
+}
+
+function wireEmptyMessage(status: ShellWireStatus): string {
+  switch (status) {
+    case "offline":
+      return "The wire is offline.";
+    case "reconnecting":
+      return "Reconnecting to the wire.";
+    case "empty":
+    case "live":
+      return "The wire is quiet.";
+  }
+}
+
+function realtimeStatusLabel(status: ShellRealtimeStatus): string {
+  switch (status) {
+    case "connecting":
+      return "Connecting to realtime.";
+    case "live":
+      return "Realtime connected.";
+    case "offline":
+      return "Realtime offline.";
+    case "reconnecting":
+      return "Reconnecting to realtime.";
+  }
+}
+
+function presenceLabelForLeague(
+  leagueId: string,
+  presenceByLeagueId: Readonly<Record<string, number>>,
+  realtimeStatus: ShellRealtimeStatus,
+): string {
+  const count = presenceByLeagueId[leagueId];
+  if (typeof count === "number") {
+    return `${count} member${count === 1 ? "" : "s"} online`;
+  }
+  return realtimeStatusLabel(realtimeStatus);
+}
+
+function presenceStatusForLeague(
+  leagueId: string,
+  presenceByLeagueId: Readonly<Record<string, number>>,
+  realtimeStatus: ShellRealtimeStatus,
+): "idle" | "live" | "offline" | "online" {
+  const count = presenceByLeagueId[leagueId];
+  if (typeof count === "number") {
+    return count > 0 ? "online" : "offline";
+  }
+  if (realtimeStatus === "offline") {
+    return "offline";
+  }
+  if (realtimeStatus === "live") {
+    return "live";
+  }
+  return "idle";
 }
 
 function wireVariantForScope(

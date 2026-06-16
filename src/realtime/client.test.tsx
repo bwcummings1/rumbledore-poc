@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BrowserRealtimeChannel, BrowserRealtimeClient } from "./client";
 import {
   buildRealtimeGrantPath,
+  openRealtimePresenceSubscription,
   openRealtimeRefreshSubscription,
   useRealtimeRefresh,
 } from "./client";
@@ -28,12 +29,15 @@ class FakeChannel implements BrowserRealtimeChannel {
     string,
     (message: { event: string; payload?: RealtimePayload }) => void
   >();
+  readonly presenceCallbacks = new Map<string, () => void>();
   readonly options: { config: { private: true } };
+  private presenceEntries: Record<string, unknown[]> = {};
   readonly topic: string;
   private statusCallback:
     | ((status: string, error?: Error | undefined) => void)
     | null = null;
   subscribed = false;
+  trackedPayload: Record<string, unknown> | null = null;
 
   constructor(topic: string, options: { config: { private: true } }) {
     this.topic = topic;
@@ -41,12 +45,38 @@ class FakeChannel implements BrowserRealtimeChannel {
   }
 
   on(
-    _type: "broadcast",
+    type: "broadcast",
     filter: { event: string },
     callback: (message: { event: string; payload?: RealtimePayload }) => void,
+  ): BrowserRealtimeChannel;
+  on(
+    type: "presence",
+    filter: { event: string },
+    callback: () => void,
+  ): BrowserRealtimeChannel;
+  on(
+    type: "broadcast" | "presence",
+    filter: { event: string },
+    callback:
+      | ((message: { event: string; payload?: RealtimePayload }) => void)
+      | (() => void),
   ): BrowserRealtimeChannel {
-    this.callbacks.set(filter.event, callback);
+    if (type === "presence") {
+      this.presenceCallbacks.set(filter.event, callback as () => void);
+      return this;
+    }
+    this.callbacks.set(
+      filter.event,
+      callback as (message: {
+        event: string;
+        payload?: RealtimePayload;
+      }) => void,
+    );
     return this;
+  }
+
+  presenceState(): Record<string, unknown[]> {
+    return this.presenceEntries;
   }
 
   subscribe(
@@ -59,6 +89,15 @@ class FakeChannel implements BrowserRealtimeChannel {
 
   emit(event: string, payload: RealtimePayload) {
     this.callbacks.get(event)?.({ event, payload });
+  }
+
+  emitPresence(event: string, state: Record<string, unknown[]>) {
+    this.presenceEntries = state;
+    this.presenceCallbacks.get(event)?.();
+  }
+
+  track(payload: Record<string, unknown>) {
+    this.trackedPayload = payload;
   }
 
   transition(status: string, error?: Error) {
@@ -391,5 +430,46 @@ describe("realtime browser client", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(client.channels).toHaveLength(1);
     expect(client.channels[0]?.subscribed).toBe(true);
+  });
+
+  it("subscribes to league presence and reports online counts", async () => {
+    const topic = leagueRealtimeChannel(leagueId, "presence");
+    const grant = supabaseGrant(topic);
+    const client = new FakeClient();
+    const onPresence = vi.fn();
+
+    const handle = await openRealtimePresenceSubscription({
+      createClient: () => client,
+      fetcher: async () => jsonResponse(grant),
+      leagueId,
+      now: () => new Date("2026-06-12T00:00:00.000Z"),
+      onPresence,
+    });
+
+    expect(client.channels).toHaveLength(1);
+    expect(client.channels[0]?.topic).toBe(topic);
+
+    client.channels[0]?.transition("SUBSCRIBED");
+    expect(client.channels[0]?.trackedPayload).toEqual({
+      online_at: "2026-06-12T00:00:00.000Z",
+    });
+    expect(onPresence).toHaveBeenCalledWith({
+      leagueId,
+      onlineCount: 1,
+      status: "online",
+    });
+
+    client.channels[0]?.emitPresence("sync", {
+      memberA: [{ online_at: "now" }, { online_at: "also-now" }],
+      memberB: [{ online_at: "now" }],
+    });
+    expect(onPresence).toHaveBeenLastCalledWith({
+      leagueId,
+      onlineCount: 3,
+      status: "online",
+    });
+
+    handle.unsubscribe();
+    expect(client.removed).toEqual(client.channels);
   });
 });

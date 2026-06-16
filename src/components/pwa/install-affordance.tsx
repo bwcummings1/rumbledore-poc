@@ -133,11 +133,11 @@ export function InstallAffordance() {
   }
 
   return (
-    <div className="rounded-card border border-border bg-card p-4">
+    <div className="panel grid gap-4 p-4" data-slot="install-affordance">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-primary">Home screen</p>
-          <h2 className="mt-1 text-lg font-semibold tracking-tight">
+          <p className="eyebrow text-primary">Home screen</p>
+          <h2 className="mt-1 font-display text-lg font-semibold tracking-normal">
             Add Rumbledore
           </h2>
         </div>
@@ -159,14 +159,14 @@ export function InstallAffordance() {
             Install the PWA for a faster launch and an app-like league shell.
           </p>
           {status === "accepted" ? (
-            <output className="mt-2 text-sm text-primary">
+            <output aria-live="polite" className="mt-2 text-sm text-primary">
               Install started. Finish in the browser prompt.
             </output>
           ) : null}
         </>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
         {mode === "android" ? (
           <Button
             disabled={status === "prompting" || status === "accepted"}

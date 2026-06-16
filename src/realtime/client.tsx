@@ -44,15 +44,25 @@ type BroadcastMessage = {
   payload?: RealtimePayload;
 };
 
+type PresenceEvent = "join" | "leave" | "sync";
+type PresenceState = Record<string, unknown[]>;
+
 export interface BrowserRealtimeChannel {
   on(
     type: "broadcast",
     filter: { event: string },
     callback: (message: BroadcastMessage) => void,
   ): BrowserRealtimeChannel;
+  on(
+    type: "presence",
+    filter: { event: PresenceEvent },
+    callback: () => void,
+  ): BrowserRealtimeChannel;
+  presenceState?(): PresenceState;
   subscribe(
     callback?: (status: string, error?: Error) => void,
   ): BrowserRealtimeChannel;
+  track?(payload: Record<string, unknown>): Promise<unknown> | unknown;
 }
 
 export interface BrowserRealtimeClient {
@@ -83,6 +93,12 @@ export interface RealtimeRefreshHandle {
   unsubscribe(): void;
 }
 
+export interface RealtimePresenceSnapshot {
+  leagueId: string;
+  onlineCount: number;
+  status: "offline" | "online";
+}
+
 interface OpenRealtimeRefreshOptions {
   createClient?: CreateBrowserRealtimeClient;
   fetcher?: typeof fetch;
@@ -90,6 +106,15 @@ interface OpenRealtimeRefreshOptions {
   onError?: (error: unknown) => void;
   onRefresh: (event: RealtimeRefreshEvent) => void;
   subscriptions: readonly RealtimeRefreshSubscription[];
+}
+
+interface OpenRealtimePresenceOptions {
+  createClient?: CreateBrowserRealtimeClient;
+  fetcher?: typeof fetch;
+  leagueId: string;
+  now?: () => Date;
+  onError?: (error: unknown) => void;
+  onPresence: (snapshot: RealtimePresenceSnapshot) => void;
 }
 
 export function buildRealtimeGrantPath(leagueIds: readonly string[] = []) {
@@ -156,6 +181,17 @@ function noopHandle(expiresAt: string | null = null): RealtimeRefreshHandle {
       // No channels were opened.
     },
   };
+}
+
+function countPresenceEntries(state: PresenceState | undefined): number {
+  if (!state) {
+    return 0;
+  }
+
+  return Object.values(state).reduce(
+    (count, entries) => count + entries.length,
+    0,
+  );
 }
 
 export async function openRealtimeRefreshSubscription({
@@ -230,6 +266,91 @@ export async function openRealtimeRefreshSubscription({
       for (const channel of channels) {
         void client.removeChannel(channel);
       }
+    },
+  };
+}
+
+export async function openRealtimePresenceSubscription({
+  createClient: createBrowserClient = defaultCreateClient,
+  fetcher = fetch,
+  leagueId,
+  now = () => new Date(),
+  onError,
+  onPresence,
+}: OpenRealtimePresenceOptions): Promise<RealtimeRefreshHandle> {
+  const topic = leagueRealtimeChannel(leagueId, "presence");
+  const offline = () => {
+    onPresence({ leagueId, onlineCount: 0, status: "offline" });
+  };
+
+  const response = await fetcher(buildRealtimeGrantPath([leagueId]), {
+    cache: "no-store",
+    credentials: "same-origin", // ubs:ignore — Fetch credentials mode enum, not a secret.
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    offline();
+    return noopHandle();
+  }
+  if (!response.ok) {
+    throw new Error(`Realtime token request failed with ${response.status}`);
+  }
+
+  const body: unknown = await response.json();
+  if (!isRealtimeGrant(body)) {
+    throw new Error("Realtime token response was not a subscription grant");
+  }
+
+  const grant = body;
+  if (!isGranted(grant, { events: [], topic })) {
+    offline();
+    return noopHandle(grant.expiresAt);
+  }
+  if (grant.transport.kind === "mock") {
+    onPresence({ leagueId, onlineCount: 1, status: "online" });
+    return noopHandle(grant.expiresAt);
+  }
+
+  const client = createBrowserClient({
+    ...grant,
+    transport: grant.transport,
+  });
+  const channel = client.channel(topic, {
+    config: { private: true },
+  });
+  const syncPresence = () => {
+    const onlineCount = countPresenceEntries(channel.presenceState?.());
+    onPresence({
+      leagueId,
+      onlineCount: Math.max(onlineCount, 1),
+      status: "online",
+    });
+  };
+
+  channel
+    .on("presence", { event: "sync" }, syncPresence)
+    .on("presence", { event: "join" }, syncPresence)
+    .on("presence", { event: "leave" }, syncPresence)
+    .subscribe((status, error) => {
+      if (status === "SUBSCRIBED") {
+        void channel.track?.({ online_at: now().toISOString() });
+        syncPresence();
+        return;
+      }
+      if (
+        status === "CHANNEL_ERROR" ||
+        status === "TIMED_OUT" ||
+        status === "CLOSED"
+      ) {
+        offline();
+        onError?.(error ?? new Error(`Realtime presence channel ${status}`));
+      }
+    });
+
+  return {
+    expiresAt: grant.expiresAt,
+    unsubscribe() {
+      void client.removeChannel(channel);
     },
   };
 }
