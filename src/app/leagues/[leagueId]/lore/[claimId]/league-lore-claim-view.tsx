@@ -4,58 +4,33 @@ import {
   ArrowLeft,
   Bot,
   Check,
-  Clock3,
   FilePlus2,
   GitBranch,
   Landmark,
-  Scale,
   ShieldCheck,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
+import {
+  InstigatorProvocationCard,
+  InstigatorVerdictCard,
+} from "@/components/lore/instigator-ui";
+import { LoreVoteWidget } from "@/components/lore/lore-vote-widget";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type {
-  LoreClaimRelation,
-  LoreVoteChoice,
-  StewardLoreAction,
-} from "@/lore";
+import type { LoreClaimRelation, StewardLoreAction } from "@/lore";
 import type {
   LoreClaimCard,
   LoreClaimDetailData,
   LoreClaimSubmitResponse,
   LoreStewardActionResponse,
-  LoreVoteCastResponse,
-  LoreVoteStatusSummary,
 } from "@/lore/member-ui";
-
-const VOTE_CHOICES: Array<{
-  choice: LoreVoteChoice;
-  label: string;
-  tone: string;
-}> = [
-  {
-    choice: "affirm",
-    label: "Affirm",
-    tone: "border-positive/40 bg-positive/10 text-positive",
-  },
-  {
-    choice: "reject",
-    label: "Reject",
-    tone: "border-destructive/40 bg-destructive/10 text-destructive",
-  },
-  {
-    choice: "abstain",
-    label: "Abstain",
-    tone: "border-border bg-muted/30 text-muted-foreground",
-  },
-];
 
 function formatDateTime(value: string | null): string {
   if (!value) {
@@ -212,23 +187,6 @@ function branchSuccessMessage({
     case "vote":
       return "Branch opened for a league vote.";
   }
-}
-
-function voteRead(vote: LoreVoteStatusSummary): string {
-  if (vote.passesAtClose) {
-    return "Passing if the vote closed now.";
-  }
-  if (!vote.quorumMet) {
-    return `Needs ${vote.affirmNeeded} more affirm ${vote.affirmNeeded === 1 ? "vote" : "votes"} to clear quorum and lead reject.`;
-  }
-  return "Quorum is met, but affirm must lead reject.";
-}
-
-function isSelectedChoice(
-  currentChoice: LoreVoteChoice | null,
-  choice: LoreVoteChoice,
-): boolean {
-  return currentChoice ? [currentChoice].includes(choice) : false;
 }
 
 interface ThreadNode {
@@ -570,8 +528,6 @@ function BranchControls({
 export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
   const loreHref = `/leagues/${encodeURIComponent(data.league.id)}/lore`;
   const [claim, setClaim] = useState(data.claim);
-  const [vote, setVote] = useState(data.claim.vote);
-  const [busyChoice, setBusyChoice] = useState<LoreVoteChoice | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [branchResult, setBranchResult] = useState<{
@@ -579,25 +535,6 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
     message: string;
   } | null>(null);
   const threadTree = buildThreadTree(data.thread);
-
-  async function castVote(choice: LoreVoteChoice) {
-    setBusyChoice(choice);
-    setError(null);
-    setMessage(null);
-    setBranchResult(null);
-    try {
-      const response = await postJson<LoreVoteCastResponse>(data.voteApiUrl, {
-        choice,
-      });
-      setVote(response);
-      setClaim((current) => ({ ...current, vote: response }));
-      setMessage(`Vote recorded: ${choice}.`);
-    } catch (cause) {
-      setError(onboardingPanelError(cause).message);
-    } finally {
-      setBusyChoice(null);
-    }
-  }
 
   async function stewardAction(action: StewardLoreAction, reason: string) {
     setError(null);
@@ -609,7 +546,6 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
         { action, reason },
       );
       setClaim((current) => ({ ...current, ...response.claim }));
-      setVote(response.claim.vote);
       setMessage(`Steward action recorded: ${action}.`);
     } catch (cause) {
       setError(onboardingPanelError(cause).message);
@@ -722,68 +658,28 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
         </div>
       ) : null}
 
-      {vote ? (
-        <section className="grid gap-4 rounded-card border border-border bg-card p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                <Scale className="size-4 text-primary" aria-hidden="true" />
-                League vote
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {voteRead(vote)}
-              </p>
-            </div>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock3 className="size-4" aria-hidden="true" />
-              Closes {formatDateTime(vote.voteClosesAt)}
-            </p>
-          </div>
+      {claim.instigation && claim.status === "canon" ? (
+        <InstigatorVerdictCard claim={claim} leagueId={data.league.id} />
+      ) : null}
 
-          <div className="grid gap-2 sm:grid-cols-3">
-            {VOTE_CHOICES.map((item) => (
-              <button
-                key={item.choice}
-                type="button"
-                onClick={() => void castVote(item.choice)}
-                disabled={!vote.isOpen || Boolean(busyChoice)}
-                className={cn(
-                  "rounded-card border px-3 py-3 text-left transition disabled:opacity-50",
-                  isSelectedChoice(vote.currentChoice, item.choice)
-                    ? item.tone
-                    : "border-border bg-muted/20 hover:bg-muted/40",
-                )}
-              >
-                <span className="block text-sm font-semibold">
-                  {item.label}
-                </span>
-                <span className="mt-1 block font-mono text-2xl font-semibold tabular-nums">
-                  {vote.tally[item.choice]}
-                </span>
-                {isSelectedChoice(vote.currentChoice, item.choice) ? (
-                  <span className="mt-1 block text-xs">Your vote</span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-sm">
-            <p>
-              Threshold: affirm must beat reject and reach quorum of{" "}
-              <span className="font-mono tabular-nums">
-                {vote.tally.quorum}
-              </span>{" "}
-              out of{" "}
-              <span className="font-mono tabular-nums">
-                {vote.tally.activeMembers}
-              </span>{" "}
-              active members.
-            </p>
-            <p className="text-muted-foreground">
-              Abstains and non-voters do not count as reject.
-            </p>
-          </div>
-        </section>
+      {claim.instigation && claim.status === "vote" ? (
+        <InstigatorProvocationCard claim={claim} leagueId={data.league.id}>
+          {claim.instigation.poll ? (
+            <LoreVoteWidget mode="poll" poll={claim.instigation.poll} />
+          ) : claim.vote ? (
+            <LoreVoteWidget
+              mode="lore"
+              vote={claim.vote}
+              voteApiUrl={data.voteApiUrl}
+            />
+          ) : null}
+        </InstigatorProvocationCard>
+      ) : claim.vote ? (
+        <LoreVoteWidget
+          mode="lore"
+          vote={claim.vote}
+          voteApiUrl={data.voteApiUrl}
+        />
       ) : (
         <section className="rounded-card border border-border bg-card p-4">
           <p className="text-sm font-semibold">No open vote</p>

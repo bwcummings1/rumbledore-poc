@@ -1,3 +1,4 @@
+import type { AiPersona } from "@/ai/personas";
 import type {
   LoreClaimKind,
   LoreClaimOrigin,
@@ -106,6 +107,7 @@ export interface LoreSectionData {
 export interface LoreClaimAuthorSummary {
   readonly displayName: string;
   readonly isAi: boolean;
+  readonly persona?: AiPersona | null;
 }
 
 export interface LoreVoteStatusSummary {
@@ -117,6 +119,50 @@ export interface LoreVoteStatusSummary {
   readonly tally: LoreVoteTally;
   readonly voteClosesAt: string | null;
   readonly voteOpensAt: string | null;
+}
+
+export interface LoreInstigationGroundingRef {
+  readonly id: string;
+  readonly label: string | null;
+  readonly type: string;
+}
+
+export interface LorePollOptionSummary {
+  readonly current: boolean;
+  readonly index: number;
+  readonly label: string;
+  readonly votes: number;
+}
+
+export interface LorePollStatusSummary {
+  readonly activeMembers: number;
+  readonly closesAt: string;
+  readonly currentOptionIdx: number | null;
+  readonly id: string;
+  readonly isOpen: boolean;
+  readonly leadingOptionIdx: number | null;
+  readonly options: readonly LorePollOptionSummary[];
+  readonly question: string;
+  readonly result: Record<string, unknown> | null;
+  readonly status: "closed" | "open";
+  readonly totalVotes: number;
+  readonly voteApiUrl: string;
+  readonly winningOptionIdx: number | null;
+}
+
+export interface LoreInstigationSummary {
+  readonly groundingRefs: readonly LoreInstigationGroundingRef[];
+  readonly id: string;
+  readonly kind:
+    | "manufactured_rivalry"
+    | "settle_it_poll"
+    | "user_move_reaction"
+    | "villain_crown";
+  readonly options: readonly string[];
+  readonly persona: AiPersona;
+  readonly poll: LorePollStatusSummary | null;
+  readonly promptText: string;
+  readonly status: "open" | "polling" | "resolved" | "skipped";
 }
 
 export interface LoreClaimCard {
@@ -134,6 +180,7 @@ export interface LoreClaimCard {
   readonly subjects: readonly LoreSubjectSummary[];
   readonly title: string;
   readonly verification: LoreClaimVerification;
+  readonly instigation?: LoreInstigationSummary | null;
   readonly vote: LoreVoteStatusSummary | null;
 }
 
@@ -177,6 +224,10 @@ export interface LoreStewardReviewData {
 
 export type LoreVoteCastResponse = LoreClaimDetailData["claim"]["vote"] & {
   readonly claimId: string;
+};
+
+export type LorePollVoteCastResponse = LorePollStatusSummary & {
+  readonly pollId: string;
 };
 
 export type LoreStewardActionResponse =

@@ -1,8 +1,6 @@
 import {
   ArrowLeft,
   BookOpenText,
-  Bot,
-  Clock3,
   FilePlus2,
   Landmark,
   ShieldCheck,
@@ -10,43 +8,21 @@ import {
   Vote,
 } from "lucide-react";
 import Link from "next/link";
+import { CastAiBadge } from "@/components/cast/cast-presence";
+import { InstigatorProvocationCard } from "@/components/lore/instigator-ui";
+import { LoreVoteWidget } from "@/components/lore/lore-vote-widget";
 import {
   type PublicationStory,
   PublicationStoryCard,
 } from "@/components/publication/story-card";
 import { buttonVariants } from "@/components/ui/button";
+import { StatTile } from "@/components/ui/stat-tile";
 import { cn } from "@/lib/utils";
 import type { LoreClaimCard, LoreSectionData } from "@/lore/member-ui";
 import { buildPublicationFront } from "@/news/front";
 
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) {
-    return "No close time set";
-  }
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-  }).format(new Date(value));
-}
-
-function voteRead(claim: LoreClaimCard): string {
-  const vote = claim.vote;
-  if (!vote) {
-    return "No vote tally recorded.";
-  }
-  if (vote.passesAtClose) {
-    return "Passing if the vote closed now.";
-  }
-  if (vote.affirmNeeded > 0) {
-    return `Needs ${vote.affirmNeeded} more affirm ${vote.affirmNeeded === 1 ? "vote" : "votes"}.`;
-  }
-  return "Needs affirm to stay ahead of reject.";
 }
 
 function provenanceLabel(claim: LoreClaimCard): string {
@@ -108,6 +84,67 @@ function subjectHref(leagueId: string, subjectKey: string): string {
   return `/leagues/${encodeURIComponent(leagueId)}/lore?${params.toString()}`;
 }
 
+function loreVoteApiUrl(leagueId: string, claimId: string): string {
+  return `/api/leagues/${encodeURIComponent(leagueId)}/lore/claims/${encodeURIComponent(claimId)}/votes`;
+}
+
+function OpenVoteCard({
+  claim,
+  leagueId,
+}: {
+  readonly claim: LoreClaimCard;
+  readonly leagueId: string;
+}) {
+  const widget = claim.instigation?.poll ? (
+    <LoreVoteWidget mode="poll" poll={claim.instigation.poll} size="compact" />
+  ) : claim.vote ? (
+    <LoreVoteWidget
+      mode="lore"
+      size="compact"
+      vote={claim.vote}
+      voteApiUrl={loreVoteApiUrl(leagueId, claim.id)}
+    />
+  ) : null;
+
+  if (claim.instigation) {
+    return (
+      <InstigatorProvocationCard claim={claim} leagueId={leagueId}>
+        {widget}
+      </InstigatorProvocationCard>
+    );
+  }
+
+  return (
+    <article className="panel grid gap-3 p-4" data-slot="open-lore-vote-card">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="metric text-xs text-muted-foreground">
+              {claim.author.displayName}
+            </span>
+            {claim.author.isAi ? <CastAiBadge /> : null}
+          </p>
+          <h2 className="mt-1 font-display text-base font-semibold text-foreground">
+            <Link
+              href={`/leagues/${encodeURIComponent(leagueId)}/lore/${encodeURIComponent(claim.id)}`}
+              className="hover:text-primary focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+            >
+              {claim.title}
+            </Link>
+          </h2>
+        </div>
+        <span className="metric rounded-control border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary">
+          Vote
+        </span>
+      </div>
+      <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
+        {claim.bodyPreview}
+      </p>
+      {widget}
+    </article>
+  );
+}
+
 export function LeagueLoreView({ data }: { data: LoreSectionData }) {
   const submitHref = `/leagues/${encodeURIComponent(data.league.id)}/lore/new`;
   const canonFront = buildPublicationFront(data.canon);
@@ -164,24 +201,19 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
       </header>
 
       <section aria-label="Lore status" className="grid gap-3 sm:grid-cols-3">
-        <article className="rounded-card border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Canon entries</p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">
-            {formatCount(data.counts.canon)}
-          </p>
-        </article>
-        <article className="rounded-card border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Open votes</p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">
-            {formatCount(data.counts.openVotes)}
-          </p>
-        </article>
-        <article className="rounded-card border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Refuted facts</p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">
-            {formatCount(data.counts.refuted)}
-          </p>
-        </article>
+        <StatTile
+          label="Canon entries"
+          value={formatCount(data.counts.canon)}
+        />
+        <StatTile
+          label="Open votes"
+          tone="lilac"
+          value={formatCount(data.counts.openVotes)}
+        />
+        <StatTile
+          label="Refuted facts"
+          value={formatCount(data.counts.refuted)}
+        />
       </section>
 
       <section className="grid gap-4">
@@ -338,64 +370,11 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
         {data.openVotes.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {data.openVotes.map((claim) => (
-              <article
+              <OpenVoteCard
+                claim={claim}
                 key={claim.id}
-                className="rounded-card border border-border bg-card p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
-                      <span>{claim.author.displayName}</span>
-                      {claim.author.isAi ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-highlight/40 bg-highlight/10 px-2 py-0.5 text-highlight">
-                          <Bot className="size-3" aria-hidden="true" />
-                          AI cast
-                        </span>
-                      ) : (
-                        <span>Member claim</span>
-                      )}
-                    </p>
-                    <h2 className="mt-1 text-base font-semibold tracking-tight">
-                      <Link
-                        href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(claim.id)}`}
-                        className="hover:text-primary"
-                      >
-                        {claim.title}
-                      </Link>
-                    </h2>
-                  </div>
-                  <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                    Vote
-                  </span>
-                </div>
-                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-                  {claim.bodyPreview}
-                </p>
-                {claim.vote ? (
-                  <div className="mt-4 grid gap-2 text-sm">
-                    <div className="grid grid-cols-3 gap-2 text-center font-mono tabular-nums">
-                      <span className="rounded-md bg-muted/40 px-2 py-1">
-                        {claim.vote.tally.affirm} affirm
-                      </span>
-                      <span className="rounded-md bg-muted/40 px-2 py-1">
-                        {claim.vote.tally.reject} reject
-                      </span>
-                      <span className="rounded-md bg-muted/40 px-2 py-1">
-                        {claim.vote.tally.abstain} abstain
-                      </span>
-                    </div>
-                    <p className="text-muted-foreground">
-                      Quorum {claim.vote.tally.quorum} of{" "}
-                      {claim.vote.tally.activeMembers} active members.{" "}
-                      {voteRead(claim)}
-                    </p>
-                    <p className="flex items-center gap-2 text-muted-foreground">
-                      <Clock3 className="size-4" aria-hidden="true" />
-                      Closes {formatDateTime(claim.vote.voteClosesAt)}
-                    </p>
-                  </div>
-                ) : null}
-              </article>
+                leagueId={data.league.id}
+              />
             ))}
           </div>
         ) : (

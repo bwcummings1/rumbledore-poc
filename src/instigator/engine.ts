@@ -723,6 +723,7 @@ export async function castPollVote({
   return withLeagueContext(deps.db, input.leagueId, async (tx) => {
     const [poll] = await tx
       .select({
+        closesAt: polls.closesAt,
         options: polls.options,
         status: polls.status,
       })
@@ -741,6 +742,14 @@ export async function castPollVote({
     }
 
     if (poll.status !== "open") {
+      throw new AppError({
+        code: "POLL_CLOSED",
+        message: "Poll is already closed",
+        status: 409,
+      });
+    }
+
+    if (timestamp > poll.closesAt) {
       throw new AppError({
         code: "POLL_CLOSED",
         message: "Poll is already closed",

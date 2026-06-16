@@ -3,6 +3,7 @@ import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
+  instigations,
   type LoreClaim,
   leagues,
   loreClaims,
@@ -11,6 +12,8 @@ import {
   loreVotes,
   members,
   persons,
+  polls,
+  pollVotes,
   seasonStatistics,
   users,
   weeklyStatistics,
@@ -21,6 +24,9 @@ import type {
   LoreClaimCard,
   LoreClaimDetailData,
   LoreClaimVerificationSummary,
+  LoreInstigationGroundingRef,
+  LoreInstigationSummary,
+  LorePollStatusSummary,
   LoreSectionData,
   LoreStewardReviewData,
   LoreSubjectFilter,
@@ -46,7 +52,7 @@ export type LoreSectionResult =
 
 export async function getLoreSectionData(
   db: Db,
-  input: { leagueId: string; subject?: string | null },
+  input: { leagueId: string; memberId?: string; subject?: string | null },
 ): Promise<LoreSectionResult> {
   const [league] = await db
     .select({
@@ -76,6 +82,7 @@ export async function getLoreSectionData(
     const openVotes = await listOpenVoteCardsInContext(tx, {
       leagueId: input.leagueId,
       limit: OPEN_VOTE_LIMIT,
+      memberId: input.memberId,
     });
     const canon = await listCanonCardsInContext(tx, {
       leagueId: input.leagueId,
@@ -180,11 +187,17 @@ export async function getLoreClaimDetailData(
       claimIds: rows.map((row) => row.id),
       leagueId: input.leagueId,
     });
+    const instigationByClaimId = await getInstigationsForClaimsInContext(tx, {
+      claims: rows,
+      leagueId: input.leagueId,
+      memberId: input.memberId,
+    });
     const thread = rows.map((row) =>
       serializeClaimCard(
         row,
         voteStatusByClaimId.get(row.id) ?? null,
         subjectsByClaimId.get(row.id) ?? [],
+        instigationByClaimId.get(row.id) ?? null,
       ),
     );
     const claim = thread.find((item) => item.id === input.claimId);
@@ -306,6 +319,20 @@ export async function getLoreClaimVoteStatus(
   });
 }
 
+export async function getLorePollVoteStatus(
+  db: Db,
+  input: { leagueId: string; memberId?: string; pollId: string },
+): Promise<LorePollStatusSummary | null> {
+  return withLeagueContext(db, input.leagueId, async (tx) => {
+    const pollStatuses = await getPollStatusesInContext(tx, {
+      leagueId: input.leagueId,
+      memberId: input.memberId,
+      pollIds: [input.pollId],
+    });
+    return pollStatuses.get(input.pollId) ?? null;
+  });
+}
+
 export async function getLoreClaimCard(
   db: Db,
   input: { claimId: string; leagueId: string; memberId?: string },
@@ -333,11 +360,17 @@ export async function getLoreClaimCard(
       claimIds: [claimRow.id],
       leagueId: input.leagueId,
     });
+    const instigationByClaimId = await getInstigationsForClaimsInContext(tx, {
+      claims: [claimRow],
+      leagueId: input.leagueId,
+      memberId: input.memberId,
+    });
 
     return serializeClaimCard(
       claimRow,
       vote,
       subjectsByClaimId.get(claimRow.id) ?? [],
+      instigationByClaimId.get(claimRow.id) ?? null,
     );
   });
 }
@@ -394,6 +427,8 @@ type ClaimRow = Pick<
   | "ratifiedAt"
   | "ratifiedBy"
   | "relation"
+  | "sourceInstigationId"
+  | "sourcePollId"
   | "statement"
   | "status"
   | "threadRootId"
@@ -426,6 +461,8 @@ function claimSelectFields() {
     ratifiedAt: loreClaims.ratifiedAt,
     ratifiedBy: loreClaims.ratifiedBy,
     relation: loreClaims.relation,
+    sourceInstigationId: loreClaims.sourceInstigationId,
+    sourcePollId: loreClaims.sourcePollId,
     statement: loreClaims.statement,
     status: loreClaims.status,
     threadRootId: loreClaims.threadRootId,
@@ -546,12 +583,18 @@ async function hydrateClaimCardsInContext(
     claimIds: input.claimRows.map((claim) => claim.id),
     leagueId: input.leagueId,
   });
+  const instigationByClaimId = await getInstigationsForClaimsInContext(tx, {
+    claims: input.claimRows,
+    leagueId: input.leagueId,
+    memberId: input.memberId,
+  });
 
   return input.claimRows.map((claim) =>
     serializeClaimCard(
       claim,
       voteStatusByClaimId.get(claim.id) ?? null,
       subjectsByClaimId.get(claim.id) ?? [],
+      instigationByClaimId.get(claim.id) ?? null,
     ),
   );
 }
@@ -573,7 +616,7 @@ async function listCanonCardsInContext(
 
 async function listOpenVoteCardsInContext(
   tx: LeagueScopedTx,
-  input: { leagueId: string; limit: number },
+  input: { leagueId: string; limit: number; memberId?: string },
 ): Promise<LoreClaimCard[]> {
   const claimRows = await selectClaimRows(tx, input.leagueId, {
     limit: input.limit,
@@ -586,7 +629,207 @@ async function listOpenVoteCardsInContext(
   return hydrateClaimCardsInContext(tx, {
     claimRows,
     leagueId: input.leagueId,
+    memberId: input.memberId,
   });
+}
+
+function pollVoteApiUrl(leagueId: string, pollId: string): string {
+  return `/api/leagues/${encodeURIComponent(leagueId)}/polls/${encodeURIComponent(pollId)}/votes`;
+}
+
+function normalizeGroundingRefs(
+  refs: readonly Record<string, unknown>[],
+): LoreInstigationGroundingRef[] {
+  return refs
+    .map((ref) => {
+      const id = typeof ref.id === "string" ? ref.id.trim() : "";
+      const type = typeof ref.type === "string" ? ref.type.trim() : "record";
+      const label = typeof ref.label === "string" ? ref.label.trim() : null;
+      return id ? { id, label: label || null, type: type || "record" } : null;
+    })
+    .filter((ref): ref is LoreInstigationGroundingRef => ref !== null);
+}
+
+async function getPollStatusesInContext(
+  tx: LeagueScopedTx,
+  input: {
+    leagueId: string;
+    memberId?: string;
+    pollIds: readonly string[];
+  },
+): Promise<Map<string, LorePollStatusSummary>> {
+  const pollIds = [...new Set(input.pollIds)];
+  if (pollIds.length === 0) {
+    return new Map();
+  }
+
+  const activeMembers = await countActiveMembersInContext(tx, input.leagueId);
+  const pollRows = await tx
+    .select({
+      closesAt: polls.closesAt,
+      id: polls.id,
+      options: polls.options,
+      question: polls.question,
+      result: polls.result,
+      status: polls.status,
+      winningOptionIdx: polls.winningOptionIdx,
+    })
+    .from(polls)
+    .where(and(eq(polls.leagueId, input.leagueId), inArray(polls.id, pollIds)));
+  const voteRows = await tx
+    .select({
+      memberId: pollVotes.memberId,
+      optionIdx: pollVotes.optionIdx,
+      pollId: pollVotes.pollId,
+    })
+    .from(pollVotes)
+    .where(
+      and(
+        eq(pollVotes.leagueId, input.leagueId),
+        inArray(pollVotes.pollId, pollIds),
+      ),
+    );
+
+  const votesByPollId = new Map<string, typeof voteRows>();
+  for (const vote of voteRows) {
+    const votes = votesByPollId.get(vote.pollId) ?? [];
+    votes.push(vote);
+    votesByPollId.set(vote.pollId, votes);
+  }
+
+  const now = new Date();
+  return new Map(
+    pollRows.map((poll) => {
+      const votes = votesByPollId.get(poll.id) ?? [];
+      const currentOptionIdx =
+        input.memberId === undefined
+          ? null
+          : (votes.find((vote) => vote.memberId === input.memberId)
+              ?.optionIdx ?? null);
+      const counts = Array.from({ length: poll.options.length }, () => 0);
+      for (const vote of votes) {
+        if (vote.optionIdx >= 0 && vote.optionIdx < counts.length) {
+          counts[vote.optionIdx] += 1;
+        }
+      }
+      const leadingOptionIdx =
+        counts.length === 0 || counts.every((count) => count === 0)
+          ? null
+          : counts.reduce(
+              (leader, count, index) => {
+                const leaderCount =
+                  leader === null ? -1 : (counts[leader] ?? -1);
+                return count > leaderCount ? index : leader;
+              },
+              null as number | null,
+            );
+
+      return [
+        poll.id,
+        {
+          activeMembers,
+          closesAt: poll.closesAt.toISOString(),
+          currentOptionIdx,
+          id: poll.id,
+          isOpen: poll.status === "open" && now <= poll.closesAt,
+          leadingOptionIdx,
+          options: poll.options.map((label, index) => ({
+            current: currentOptionIdx === index,
+            index,
+            label,
+            votes: counts[index] ?? 0,
+          })),
+          question: poll.question,
+          result: poll.result,
+          status: poll.status,
+          totalVotes: votes.length,
+          voteApiUrl: pollVoteApiUrl(input.leagueId, poll.id),
+          winningOptionIdx: poll.winningOptionIdx,
+        } satisfies LorePollStatusSummary,
+      ];
+    }),
+  );
+}
+
+async function getInstigationsForClaimsInContext(
+  tx: LeagueScopedTx,
+  input: {
+    claims: readonly ClaimRow[];
+    leagueId: string;
+    memberId?: string;
+  },
+): Promise<Map<string, LoreInstigationSummary>> {
+  const instigationIds = [
+    ...new Set(
+      input.claims
+        .map((claim) => claim.sourceInstigationId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const pollIds = [
+    ...new Set(
+      input.claims
+        .map((claim) => claim.sourcePollId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  if (instigationIds.length === 0) {
+    return new Map();
+  }
+
+  const instigationRows = await tx
+    .select({
+      groundingRefs: instigations.groundingRefs,
+      id: instigations.id,
+      kind: instigations.kind,
+      options: instigations.options,
+      persona: instigations.persona,
+      promptText: instigations.promptText,
+      status: instigations.status,
+    })
+    .from(instigations)
+    .where(
+      and(
+        eq(instigations.leagueId, input.leagueId),
+        inArray(instigations.id, instigationIds),
+      ),
+    );
+  const instigationById = new Map(instigationRows.map((row) => [row.id, row]));
+  const pollById = await getPollStatusesInContext(tx, {
+    leagueId: input.leagueId,
+    memberId: input.memberId,
+    pollIds,
+  });
+
+  return new Map(
+    input.claims.flatMap((claim) => {
+      if (!claim.sourceInstigationId) {
+        return [];
+      }
+      const instigation = instigationById.get(claim.sourceInstigationId);
+      if (!instigation) {
+        return [];
+      }
+      return [
+        [
+          claim.id,
+          {
+            groundingRefs: normalizeGroundingRefs(instigation.groundingRefs),
+            id: instigation.id,
+            kind: instigation.kind,
+            options: instigation.options,
+            persona: instigation.persona,
+            poll: claim.sourcePollId
+              ? (pollById.get(claim.sourcePollId) ?? null)
+              : null,
+            promptText: instigation.promptText,
+            status: instigation.status,
+          } satisfies LoreInstigationSummary,
+        ],
+      ];
+    }),
+  );
 }
 
 type ParsedLoreSubjectKey =
@@ -1078,6 +1321,7 @@ function serializeClaimCard(
   claim: ClaimRow,
   vote: LoreVoteStatusSummary | null,
   subjects: readonly LoreSubjectSummary[],
+  instigation: LoreInstigationSummary | null,
 ): LoreClaimCard & SerializedClaimDetailFields {
   return {
     author: claimAuthor(claim),
@@ -1098,6 +1342,7 @@ function serializeClaimCard(
     title: claim.title,
     updatedAt: claim.updatedAt.toISOString(),
     verification: claim.verification,
+    instigation,
     vote,
   };
 }
@@ -1109,12 +1354,14 @@ function claimAuthor(claim: ClaimRow): LoreClaimAuthorSummary {
         ? claim.authorPersona.replaceAll("_", " ")
         : "AI cast",
       isAi: true,
+      persona: claim.authorPersona,
     };
   }
 
   return {
     displayName: claim.authorDisplayName ?? "League member",
     isAi: false,
+    persona: null,
   };
 }
 

@@ -107,7 +107,7 @@ describe("LeagueLoreClaimView", () => {
 
     render(<LeagueLoreClaimView data={data} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /affirm/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /affirm/i }));
 
     await waitFor(() => expect(postJson).toHaveBeenCalledTimes(1));
     expect(postJson).toHaveBeenCalledWith(data.voteApiUrl, {

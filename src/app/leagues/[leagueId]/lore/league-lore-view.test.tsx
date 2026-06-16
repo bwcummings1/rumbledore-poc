@@ -181,8 +181,8 @@ test("league lore view renders open vote cards with tally threshold", () => {
   expect(screen.getByText("Biggest choker of the decade")).toBeDefined();
   expect(screen.getByText("Trash Talker")).toBeDefined();
   expect(screen.getByText("AI cast")).toBeDefined();
-  expect(screen.getByText("3 affirm")).toBeDefined();
-  expect(screen.getByText("1 reject")).toBeDefined();
-  expect(screen.getByText("1 abstain")).toBeDefined();
-  expect(screen.getByText(/quorum 4 of 10/i)).toBeDefined();
+  expect(screen.getByRole("radio", { name: /affirm 3/i })).toBeDefined();
+  expect(screen.getByRole("radio", { name: /reject 1/i })).toBeDefined();
+  expect(screen.getByRole("radio", { name: /abstain 1/i })).toBeDefined();
+  expect(screen.getByText(/quorum tick at 4 of 10/i)).toBeDefined();
 });

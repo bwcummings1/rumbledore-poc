@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
+import { getLoreMemberIdForUser } from "@/lore/member-auth";
 import { getLoreSectionData } from "@/lore/member-experience";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import {
@@ -63,9 +64,14 @@ export default async function LeagueLorePage({
   }
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
+  const memberId = await getLoreMemberIdForUser(db, {
+    leagueId,
+    userId: access.value.userId,
+  });
 
   const result = await getLoreSectionData(db, {
     leagueId,
+    memberId,
     subject: activeSubject,
   });
 
