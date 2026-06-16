@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowRight,
@@ -9,24 +10,42 @@ import {
   Trophy,
   UserPlus,
   Users,
+  WalletCards,
 } from "lucide-react";
 import Link from "next/link";
+import { DEFAULT_BANKROLL_FLOOR_CENTS } from "@/betting/bankroll";
 import {
   type PublicationStory,
   PublicationStoryCard,
 } from "@/components/publication/story-card";
 import { LeagueNotificationToggle } from "@/components/pwa/league-notification-toggle";
 import { buttonVariants } from "@/components/ui/button";
-import { EmptyState as UiEmptyState } from "@/components/ui/empty-state";
+import { EmptyState } from "@/components/ui/empty-state";
+import { type KVItem, KVList } from "@/components/ui/kv";
+import {
+  CastOrbStatus,
+  CountUpValue,
+  type ScoreboardMatchup,
+  type ScoreboardStatus,
+  ScoreboardStrip,
+  type WireItem,
+  WireTicker,
+} from "@/components/ui/spectacle";
+import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import type {
+  LeagueHomeActivation,
   LeagueHomeData,
   LeagueHomeMatchup,
+  LeagueHomeMatchupSide,
+  LeagueHomeRecord,
   LeagueHomeStanding,
   LeagueHomeStoryline,
   LeagueHomeTeam,
 } from "@/home/league-home";
 import { cn } from "@/lib/utils";
 import { LeagueRealtimeRefresh } from "@/realtime/client";
+import { LeagueStandingsTable } from "./league-standings-table";
 
 function formatPoints(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -45,15 +64,20 @@ function formatRecordValue(
   return formatPoints(value);
 }
 
-function formatGamesBack(value: number): string {
-  if (value === 0) {
-    return "-";
-  }
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
 function formatWinPercentage(value: number): string {
   return `${Math.round(value * 1000) / 10}%`;
+}
+
+function formatCents(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value / 100);
+}
+
+function formatRole(value: LeagueHomeData["userRole"]): string {
+  return value.replaceAll("_", " ");
 }
 
 function leagueStatusLabel(status: LeagueHomeData["league"]["status"]): string {
@@ -69,6 +93,21 @@ function leagueStatusLabel(status: LeagueHomeData["league"]["status"]): string {
   }
 }
 
+function leagueStatusTone(
+  status: LeagueHomeData["league"]["status"],
+): StatusTone {
+  switch (status) {
+    case "in_season":
+      return "live";
+    case "complete":
+      return "success";
+    case "preseason":
+      return "warning";
+    case "unknown":
+      return "neutral";
+  }
+}
+
 function matchupStatusLabel(status: LeagueHomeMatchup["status"]): string {
   switch (status) {
     case "scheduled":
@@ -80,6 +119,65 @@ function matchupStatusLabel(status: LeagueHomeMatchup["status"]): string {
     case "unknown":
       return "Unknown";
   }
+}
+
+function matchupStatusTone(status: LeagueHomeMatchup["status"]): StatusTone {
+  switch (status) {
+    case "in_progress":
+      return "live";
+    case "final":
+      return "success";
+    case "scheduled":
+      return "warning";
+    case "unknown":
+      return "neutral";
+  }
+}
+
+function scoreboardStatus(
+  status: LeagueHomeMatchup["status"],
+): ScoreboardStatus {
+  switch (status) {
+    case "final":
+      return "final";
+    case "in_progress":
+      return "live";
+    case "scheduled":
+      return "upcoming";
+    case "unknown":
+      return "stale";
+  }
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function matchupHomeWinProbability(matchup: LeagueHomeMatchup): number {
+  if (matchup.status === "final") {
+    if (matchup.home.isWinner) return 100;
+    if (matchup.away.isWinner) return 0;
+    return 50;
+  }
+  const diff = matchup.home.score - matchup.away.score;
+  if (diff === 0) {
+    return 50;
+  }
+  return Math.round(clampPercent(50 + Math.max(-24, Math.min(24, diff)) * 1.6));
+}
+
+function teamStanding(
+  standings: readonly LeagueHomeStanding[],
+  providerTeamId: string,
+): LeagueHomeStanding | null {
+  return (
+    standings.find((standing) => standing.providerTeamId === providerTeamId) ??
+    null
+  );
+}
+
+function recordLine(row: Pick<LeagueHomeStanding, "losses" | "ties" | "wins">) {
+  return `${row.wins}-${row.losses}-${row.ties}`;
 }
 
 function toPressTeaserStory({
@@ -109,247 +207,315 @@ function SectionTitle({
   eyebrow,
   title,
 }: {
-  icon: typeof ListOrdered;
+  icon: LucideIcon;
   eyebrow?: string;
   title: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div>
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <div className="min-w-0">
         {eyebrow ? (
-          <p className="text-xs font-medium text-muted-foreground">{eyebrow}</p>
+          <p className="eyebrow truncate text-primary">{eyebrow}</p>
         ) : null}
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <h2 className="heading-auspex truncate text-lg leading-tight">
+          {title}
+        </h2>
       </div>
-      <Icon className="size-5 text-primary" aria-hidden="true" />
+      <span className="chip-glyph hidden size-9 shrink-0 items-center justify-center sm:inline-flex">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
     </div>
   );
 }
 
-function EmptyState({ children }: { children: React.ReactNode }) {
+function HeaderStats({ data }: { data: LeagueHomeData }) {
   return (
-    <UiEmptyState
-      className="justify-items-start px-3 py-3 text-left"
-      title={children}
-    />
-  );
-}
-
-function StatPill({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-control border border-border bg-card px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 font-mono text-base font-semibold tabular-nums">
-        {value}
-      </p>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <StatTile
+        label="Teams"
+        value={data.totals.teams}
+        caption={`${data.totals.members} managers`}
+      />
+      <StatTile
+        label="Matchups"
+        tone="lilac"
+        value={data.totals.matchups}
+        caption="stored rows"
+      />
+      <StatTile
+        label="Period"
+        value={data.currentScoringPeriod ?? "-"}
+        caption={`${data.league.season} season`}
+      />
+      <StatTile
+        label="Role"
+        value={formatRole(data.userRole)}
+        caption={data.league.scoringType}
+      />
     </div>
   );
 }
 
-function StandingsRow({ row }: { row: LeagueHomeStanding }) {
+function MatchupSideCell({
+  claimed,
+  side,
+  standing,
+}: {
+  claimed: boolean;
+  side: LeagueHomeMatchupSide;
+  standing: LeagueHomeStanding | null;
+}) {
+  const facts: readonly KVItem[] = [
+    {
+      label: "Record",
+      value: standing ? recordLine(standing) : "pending",
+    },
+    {
+      label: "PF",
+      value: standing ? formatPoints(standing.pointsFor) : "-",
+    },
+    {
+      label: "Managers",
+      value: standing?.managerNames.join(", ") ?? side.abbrev,
+    },
+  ];
+
   return (
-    <>
-      <div
-        className={cn(
-          "grid min-h-14 grid-cols-[2rem_minmax(0,1fr)_4.25rem_4.25rem] items-center gap-2 border-border border-t px-3 py-2 text-sm sm:grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_3.25rem]",
-          row.isClaimedByUser ? "bg-primary/10" : "",
-        )}
-      >
-        <div className="font-mono text-muted-foreground tabular-nums">
-          {row.rank}
-        </div>
+    <article
+      className={cn(
+        "cell grid min-w-0 gap-4 p-4",
+        claimed &&
+          "border-primary bg-primary/10 shadow-[0_0_18px_var(--glow-lilac),var(--bevel)]",
+      )}
+      data-claimed={claimed ? "true" : undefined}
+    >
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-medium">
-            {row.name}
-            {row.isClaimedByUser ? (
-              <span className="ml-2 rounded-control border border-primary/40 px-1.5 py-0.5 align-middle text-xs font-semibold text-primary">
-                You
-              </span>
-            ) : null}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {row.managerNames.join(", ")}
-          </p>
+          <p className="eyebrow text-muted-foreground">{side.abbrev}</p>
+          <h3 className="truncate font-display text-base font-semibold text-foreground">
+            {side.name}
+          </h3>
         </div>
-        <div className="text-right font-mono tabular-nums">
-          {row.wins}-{row.losses}-{row.ties}
-        </div>
-        <div className="text-right font-mono tabular-nums">
-          {formatPoints(row.pointsFor)}
-        </div>
-        <div className="hidden text-right font-mono text-muted-foreground tabular-nums sm:block">
-          {formatPoints(row.pointsAgainst)}
-        </div>
-        <div className="hidden text-right font-mono text-muted-foreground tabular-nums sm:block">
-          {formatGamesBack(row.gamesBack)}
-        </div>
+        {claimed ? (
+          <StatusPill tone="live" variant="soft">
+            You
+          </StatusPill>
+        ) : null}
       </div>
-      {row.playoffLineAfter ? (
-        <div className="border-border border-t px-3 py-1 text-center text-xs font-medium text-highlight">
-          Playoff line
-        </div>
-      ) : null}
-    </>
+      <CountUpValue
+        className="justify-self-start text-4xl font-bold leading-none sm:text-5xl"
+        label={`${side.name} score`}
+        tone={claimed ? "live" : side.isWinner ? "positive" : "default"}
+        value={formatPoints(side.score)}
+      />
+      <KVList items={facts} />
+    </article>
   );
 }
 
-function ActivationHookSection({ data }: { data: LeagueHomeData }) {
-  const activation = data.activation;
-  if (!activation) {
-    return null;
-  }
+function MatchupRange({ matchup }: { matchup: LeagueHomeMatchup }) {
+  const homeProbability = matchupHomeWinProbability(matchup);
+  return (
+    <div className="cell grid gap-3 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <StatusPill tone={matchupStatusTone(matchup.status)}>
+          {matchupStatusLabel(matchup.status)}
+        </StatusPill>
+        <span className="metric text-xs text-muted-foreground">
+          Week {matchup.scoringPeriod}
+        </span>
+      </div>
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>{matchup.away.abbrev}</span>
+          <span className="eyebrow text-foreground">win probability range</span>
+          <span>{matchup.home.abbrev}</span>
+        </div>
+        <div
+          aria-label={`${matchup.home.name} win probability`}
+          aria-valuemax={100}
+          aria-valuemin={0}
+          aria-valuenow={homeProbability}
+          className="h-3 overflow-hidden rounded-full bg-[var(--hair-2)]"
+          role="progressbar"
+        >
+          <span
+            className="block h-full rounded-full bg-primary shadow-[0_0_14px_var(--glow-lilac)]"
+            style={{ inlineSize: `${homeProbability}%` }}
+          />
+        </div>
+        <p className="metric text-center text-xs text-muted-foreground">
+          {matchup.home.abbrev} {homeProbability}%
+        </p>
+      </div>
+    </div>
+  );
+}
 
+function CastInsightStrip({
+  activation,
+  leagueId,
+}: {
+  activation: LeagueHomeActivation;
+  leagueId: string;
+}) {
   const story = activation.castTeaser.storyline
     ? toPressTeaserStory({
-        leagueId: data.league.id,
+        leagueId,
         storyline: activation.castTeaser.storyline,
       })
     : null;
+  const allTime = activation.allTime
+    ? `${activation.allTime.wins}-${activation.allTime.losses}-${
+        activation.allTime.ties
+      } · ${formatWinPercentage(activation.allTime.winPercentage)}`
+    : "History building";
 
   return (
-    <section className="-mx-4 grid gap-4 border-primary/30 border-y bg-primary/10 px-4 py-4 sm:-mx-6 sm:px-6">
+    <div className="cell grid gap-3 p-4 lg:col-span-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-primary">
-            Your team is waiting
-          </p>
-          <h2 className="mt-1 truncate text-xl font-semibold tracking-tight">
-            {activation.team.name}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Rank {activation.team.rank} · {activation.team.wins}-
-            {activation.team.losses}-{activation.team.ties} ·{" "}
-            {formatPoints(activation.team.pointsFor)} PF
-          </p>
-        </div>
-        <Clapperboard className="size-6 text-primary" aria-hidden="true" />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-control border border-primary/20 bg-background/70 px-3 py-2">
-          <p className="text-xs text-muted-foreground">Standings</p>
-          <p className="mt-1 font-mono text-base font-semibold tabular-nums">
-            #{activation.team.rank} · {activation.team.wins}-
-            {activation.team.losses}-{activation.team.ties}
-          </p>
-        </div>
-        <div className="rounded-control border border-primary/20 bg-background/70 px-3 py-2">
-          <p className="text-xs text-muted-foreground">Current matchup</p>
-          <p className="mt-1 truncate text-sm font-semibold">
-            {activation.currentMatchup
-              ? `${activation.currentMatchup.away.name} at ${activation.currentMatchup.home.name}`
-              : "No matchup on the board"}
-          </p>
-        </div>
-        <div className="rounded-control border border-primary/20 bg-background/70 px-3 py-2">
-          <p className="text-xs text-muted-foreground">All-time</p>
-          <p className="mt-1 font-mono text-base font-semibold tabular-nums">
-            {activation.allTime
-              ? `${activation.allTime.wins}-${activation.allTime.losses}-${activation.allTime.ties} · ${formatWinPercentage(
-                  activation.allTime.winPercentage,
-                )}`
-              : "History building"}
-          </p>
-        </div>
-      </div>
-
-      {activation.records.length > 0 ? (
-        <div className="grid gap-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Record-book hits
-          </p>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {activation.records.map((record) => (
-              <div
-                key={record.id}
-                className="rounded-control border border-primary/20 bg-background/70 px-3 py-2"
-              >
-                <p className="truncate text-xs font-semibold">{record.label}</p>
-                <p className="mt-1 font-mono text-sm tabular-nums">
-                  {formatRecordValue(record.recordType, record.value)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="grid gap-2">
-        <p className="text-sm font-medium">{activation.castTeaser.message}</p>
-        {story ? (
-          <PublicationStoryCard story={story} variant="rail" />
-        ) : (
-          <p className="rounded-control border border-dashed border-primary/30 bg-background/60 px-3 py-3 text-sm text-muted-foreground">
-            You're in the next one.
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function StandingsSection({ data }: { data: LeagueHomeData }) {
-  return (
-    <section className="rounded-card border border-border bg-card">
-      <div className="p-4">
-        <SectionTitle
-          icon={ListOrdered}
-          eyebrow={`${data.league.scoringType} standings`}
-          title="Standings"
-        />
-      </div>
-      <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.25rem_4.25rem] gap-2 px-3 pb-2 text-xs font-medium text-muted-foreground sm:grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_3.25rem]">
-        <span>#</span>
-        <span>Team</span>
-        <span className="text-right">W-L-T</span>
-        <span className="text-right">PF</span>
-        <span className="hidden text-right sm:block">PA</span>
-        <span className="hidden text-right sm:block">GB</span>
-      </div>
-      {data.standings.length > 0 ? (
-        data.standings.map((row) => <StandingsRow key={row.id} row={row} />)
-      ) : (
-        <div className="p-4 pt-0">
-          <EmptyState>No standings rows have been ingested yet.</EmptyState>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function MatchupCard({ matchup }: { matchup: LeagueHomeMatchup }) {
-  return (
-    <article className="rounded-card border border-border bg-card p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-medium text-muted-foreground">
-          Week {matchup.scoringPeriod}
-        </p>
-        <span className="rounded-control border border-border px-2 py-0.5 text-xs text-muted-foreground">
-          {matchupStatusLabel(matchup.status)}
-        </span>
-      </div>
-      {[matchup.away, matchup.home].map((side) => (
-        <div
-          key={`${matchup.id}-${side.teamId}`}
-          className="grid grid-cols-[minmax(0,1fr)_4.5rem] items-center gap-3 py-1"
-        >
+        <div className="flex min-w-0 items-center gap-3">
+          <CastOrbStatus
+            label="The cast is reading this matchup"
+            state={story ? "writing" : "idle"}
+          />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{side.name}</p>
-            <p className="text-xs text-muted-foreground">{side.abbrev}</p>
+            <p className="eyebrow text-primary">Cast read</p>
+            <p className="text-sm font-medium text-foreground">
+              {activation.castTeaser.message}
+            </p>
           </div>
-          <p
-            className={
-              side.isWinner
-                ? "text-right font-mono text-positive tabular-nums"
-                : "text-right font-mono tabular-nums"
-            }
-          >
-            {formatPoints(side.score)}
-          </p>
         </div>
-      ))}
-    </article>
+        <p className="metric text-sm text-muted-foreground">{allTime}</p>
+      </div>
+      {story ? (
+        <PublicationStoryCard story={story} variant="inFeed" />
+      ) : (
+        <p className="rounded-control border border-dashed border-primary/30 bg-primary/10 px-3 py-3 text-sm text-muted-foreground">
+          You're in the next dispatch.
+        </p>
+      )}
+    </div>
   );
+}
+
+function MatchupHeroSection({ data }: { data: LeagueHomeData }) {
+  const activation = data.activation;
+  if (!activation) {
+    return (
+      <section
+        aria-label="This-week matchup"
+        className="panel grid gap-4 p-4 sm:p-5"
+      >
+        <SectionTitle
+          icon={Clapperboard}
+          eyebrow="This week"
+          title="Your week is not locked yet"
+        />
+        <EmptyState
+          className="justify-items-start text-left"
+          icon={<Clapperboard className="size-4" />}
+          title="Your league is importing — history lands soon"
+        >
+          <p>
+            League data remains visible below. Once your team claim or import
+            completes, this hero locks onto your matchup and cast read.
+          </p>
+        </EmptyState>
+      </section>
+    );
+  }
+
+  const matchup = activation.currentMatchup;
+  if (!matchup) {
+    return (
+      <section
+        aria-label="This-week matchup"
+        className="panel grid gap-4 p-4 sm:p-5"
+      >
+        <SectionTitle
+          icon={Clapperboard}
+          eyebrow="Your team is waiting"
+          title={activation.team.name}
+        />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatTile
+            label="Standings"
+            tone="lilac"
+            value={`#${activation.team.rank}`}
+            caption={recordLine(activation.team)}
+          />
+          <StatTile
+            label="Points for"
+            value={formatPoints(activation.team.pointsFor)}
+            caption="current season"
+          />
+          <StatTile
+            label="All-time"
+            value={
+              activation.allTime
+                ? `${activation.allTime.wins}-${activation.allTime.losses}-${activation.allTime.ties}`
+                : "pending"
+            }
+            caption={
+              activation.allTime
+                ? formatWinPercentage(activation.allTime.winPercentage)
+                : "history building"
+            }
+          />
+        </div>
+        <CastInsightStrip activation={activation} leagueId={data.league.id} />
+      </section>
+    );
+  }
+
+  const awayStanding = teamStanding(data.standings, matchup.away.teamId);
+  const homeStanding = teamStanding(data.standings, matchup.home.teamId);
+
+  return (
+    <section
+      aria-label="This-week matchup"
+      className="panel grid gap-4 overflow-hidden p-4 sm:p-5"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <SectionTitle
+          icon={Clapperboard}
+          eyebrow="Your team is waiting"
+          title={`${matchup.away.name} at ${matchup.home.name}`}
+        />
+        <StatusPill tone={matchupStatusTone(matchup.status)}>
+          Week {matchup.scoringPeriod} · {matchupStatusLabel(matchup.status)}
+        </StatusPill>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_minmax(0,1fr)]">
+        <MatchupSideCell
+          claimed={matchup.away.teamId === activation.team.providerTeamId}
+          side={matchup.away}
+          standing={awayStanding}
+        />
+        <MatchupRange matchup={matchup} />
+        <MatchupSideCell
+          claimed={matchup.home.teamId === activation.team.providerTeamId}
+          side={matchup.home}
+          standing={homeStanding}
+        />
+        <CastInsightStrip activation={activation} leagueId={data.league.id} />
+      </div>
+    </section>
+  );
+}
+
+function toScoreboardMatchup(matchup: LeagueHomeMatchup): ScoreboardMatchup {
+  return {
+    awayLabel: matchup.away.abbrev,
+    awayScore: formatPoints(matchup.away.score),
+    homeLabel: matchup.home.abbrev,
+    homeScore: formatPoints(matchup.home.score),
+    id: matchup.id,
+    kickoffLabel: `Week ${matchup.scoringPeriod}`,
+    status: scoreboardStatus(matchup.status),
+    winProbability: matchupHomeWinProbability(matchup),
+  };
 }
 
 function ScoresSection({ data }: { data: LeagueHomeData }) {
@@ -361,32 +527,169 @@ function ScoresSection({ data }: { data: LeagueHomeData }) {
   return (
     <section className="grid gap-3">
       <SectionTitle icon={Activity} title={title} />
-      {data.currentMatchups.length > 0 ? (
+      <ScoreboardStrip
+        matchups={data.currentMatchups.map(toScoreboardMatchup)}
+        nextKickoffLabel="Matchups are still importing"
+      />
+    </section>
+  );
+}
+
+function buildWireItems(data: LeagueHomeData): WireItem[] {
+  const items: WireItem[] = [];
+  const matchup = data.activation?.currentMatchup ?? data.currentMatchups[0];
+  const storyline = data.storylines[0];
+  const record = data.records[0];
+
+  if (matchup) {
+    items.push({
+      fresh: matchup.status === "in_progress",
+      id: `matchup:${matchup.id}`,
+      kind: "score",
+      label: `${matchup.away.abbrev} ${formatPoints(matchup.away.score)} at ${
+        matchup.home.abbrev
+      } ${formatPoints(matchup.home.score)}`,
+      meta: `Week ${matchup.scoringPeriod} · ${matchupStatusLabel(
+        matchup.status,
+      )}`,
+    });
+  }
+
+  if (storyline) {
+    items.push({
+      fresh: true,
+      href: `/leagues/${data.league.id}/press/${storyline.id}`,
+      id: `story:${storyline.id}`,
+      kind: "cast",
+      label: storyline.title,
+      meta: storyline.byline,
+    });
+  }
+
+  if (record) {
+    items.push({
+      href: `/leagues/${data.league.id}/records`,
+      id: `record:${record.id}`,
+      kind: "record",
+      label: `${record.label}: ${formatRecordValue(
+        record.recordType,
+        record.value,
+      )}`,
+      meta: record.holderName ?? "record book",
+    });
+  }
+
+  return items;
+}
+
+function WireSection({ data }: { data: LeagueHomeData }) {
+  const items = buildWireItems(data);
+  return (
+    <WireTicker
+      aria-label="League wire"
+      items={items}
+      status={items.length > 0 ? "live" : "empty"}
+      variant="live"
+    />
+  );
+}
+
+function StandingsSection({ data }: { data: LeagueHomeData }) {
+  return (
+    <section className="panel grid gap-4 p-4">
+      <SectionTitle
+        icon={ListOrdered}
+        eyebrow={`${data.league.scoringType} standings`}
+        title="Standings"
+      />
+      <LeagueStandingsTable rows={data.standings} />
+    </section>
+  );
+}
+
+function RecordTile({ record }: { record: LeagueHomeRecord }) {
+  return (
+    <article className="cell grid gap-2 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-display text-sm font-semibold text-foreground">
+            {record.label}
+          </h3>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {record.holderName ?? "Unknown holder"}
+            {record.season ? ` · ${record.season}` : ""}
+            {record.scoringPeriod ? ` · Week ${record.scoringPeriod}` : ""}
+          </p>
+        </div>
+        <p className="lcd shrink-0 text-sm font-semibold">
+          {formatRecordValue(record.recordType, record.value)}
+        </p>
+      </div>
+      {record.previousRecordId ? (
+        <p className="text-xs text-muted-foreground">Previous mark archived</p>
+      ) : null}
+    </article>
+  );
+}
+
+function RecordsSection({ data }: { data: LeagueHomeData }) {
+  const featured = data.records.slice(0, 6);
+  return (
+    <section className="panel grid gap-4 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle icon={Trophy} title="Record book" />
+        <Link
+          href={`/leagues/${data.league.id}/records`}
+          className={cn(
+            buttonVariants({
+              className: "shrink-0",
+              size: "sm",
+              variant: "outline",
+            }),
+          )}
+        >
+          Open records
+          <ArrowRight data-icon="inline-end" />
+        </Link>
+      </div>
+      {featured.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          {data.currentMatchups.map((matchup) => (
-            <MatchupCard key={matchup.id} matchup={matchup} />
+          {featured.map((record) => (
+            <RecordTile key={record.id} record={record} />
           ))}
         </div>
       ) : (
-        <EmptyState>No current matchup rows have been ingested yet.</EmptyState>
+        <EmptyState title="No finalized matchup records have been calculated yet." />
       )}
     </section>
   );
 }
 
-function TeamCard({ team }: { team: LeagueHomeTeam }) {
+function TeamCell({ team }: { team: LeagueHomeTeam }) {
   return (
-    <article className="rounded-card border border-border bg-card p-3">
-      <div className="flex items-start gap-3">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-control border border-border bg-muted font-mono text-xs font-semibold">
-          {team.abbrev.slice(0, 3)}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{team.name}</p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {team.managerNames.join(", ")}
-          </p>
-        </div>
+    <article
+      className={cn(
+        "cell flex min-w-0 items-start gap-3 p-3",
+        team.isClaimedByUser &&
+          "border-primary bg-primary/10 shadow-[0_0_16px_var(--glow-lilac),var(--bevel)]",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className="chip-glyph flex size-9 shrink-0 items-center justify-center text-xs"
+      >
+        {team.abbrev.slice(0, 3)}
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold">
+          {team.name}
+          {team.isClaimedByUser ? (
+            <span className="ml-2 text-xs text-primary">You</span>
+          ) : null}
+        </p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {team.managerNames.join(", ")}
+        </p>
       </div>
     </article>
   );
@@ -394,68 +697,30 @@ function TeamCard({ team }: { team: LeagueHomeTeam }) {
 
 function TeamsSection({ data }: { data: LeagueHomeData }) {
   return (
-    <section className="grid gap-3">
+    <section className="panel grid gap-4 p-4">
       <SectionTitle
         icon={Users}
         eyebrow={`${data.totals.members} managers`}
         title="Teams"
       />
       {data.teams.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="grid max-h-[32rem] gap-3 overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-1">
           {data.teams.map((team) => (
-            <TeamCard key={team.id} team={team} />
+            <TeamCell key={team.id} team={team} />
           ))}
         </div>
       ) : (
-        <EmptyState>No teams have been ingested yet.</EmptyState>
-      )}
-    </section>
-  );
-}
-
-function RecordsSection({ data }: { data: LeagueHomeData }) {
-  const featured = data.records.slice(0, 6);
-  return (
-    <section className="grid gap-3">
-      <SectionTitle icon={Trophy} title="Record book" />
-      {featured.length > 0 ? (
-        <div className="grid gap-3">
-          {featured.map((record) => (
-            <article
-              key={record.id}
-              className="rounded-card border border-border bg-card p-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">{record.label}</p>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
-                    {record.holderName ?? "Unknown holder"}
-                    {record.season ? ` · ${record.season}` : ""}
-                    {record.scoringPeriod
-                      ? ` · Week ${record.scoringPeriod}`
-                      : ""}
-                  </p>
-                </div>
-                <p className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-                  {formatRecordValue(record.recordType, record.value)}
-                </p>
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <EmptyState>
-          No finalized matchup records have been calculated yet.
-        </EmptyState>
+        <EmptyState title="No teams have been ingested yet." />
       )}
     </section>
   );
 }
 
 function PressTeaserSection({ data }: { data: LeagueHomeData }) {
+  const [lead, ...river] = data.storylines;
   return (
     <section
-      className="grid gap-3"
+      className="panel grid gap-4 p-4"
       aria-label="From the Press"
       data-register="dashboard-press-teaser"
     >
@@ -479,37 +744,132 @@ function PressTeaserSection({ data }: { data: LeagueHomeData }) {
           <ArrowRight data-icon="inline-end" />
         </Link>
       </div>
-      {data.storylines.length > 0 ? (
+      {lead ? (
         <div className="grid gap-3">
-          {data.storylines.map((storyline) => (
+          <PublicationStoryCard
+            story={toPressTeaserStory({
+              leagueId: data.league.id,
+              storyline: lead,
+            })}
+            variant="inFeed"
+          />
+          {river.map((storyline) => (
             <PublicationStoryCard
               key={storyline.id}
               story={toPressTeaserStory({
                 leagueId: data.league.id,
                 storyline,
               })}
-              variant="rail"
+              variant="compact"
             />
           ))}
         </div>
       ) : (
-        <EmptyState>
-          No league posts or activity items have been published yet.
+        <EmptyState
+          action={
+            <Link
+              href={`/leagues/${data.league.id}/press`}
+              className={cn(buttonVariants({ className: "w-fit" }))}
+            >
+              Unlock the cast
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+          }
+          title="Unlock the cast for your league"
+          variant="gated"
+        >
+          <p>
+            Standings and records stay open. The cast rail lights up when league
+            AI publishing is entitled and scheduled.
+          </p>
         </EmptyState>
       )}
     </section>
   );
 }
 
+function BankrollPreviewSection({ leagueId }: { leagueId: string }) {
+  return (
+    <section className="panel grid gap-4 border-warning/40 bg-warning/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle
+          icon={WalletCards}
+          eyebrow="Paper bankroll"
+          title="Bankroll"
+        />
+        <StatusPill tone="warning">play-money</StatusPill>
+      </div>
+      <StatTile
+        caption="Weekly rolling floor before open slips."
+        label="Floor"
+        tone="amber"
+        value={formatCents(DEFAULT_BANKROLL_FLOOR_CENTS)}
+      />
+      <KVList
+        items={[
+          {
+            label: "Loop",
+            value: "finish above floor to carry; below floor resets",
+          },
+          {
+            label: "Desk",
+            value: (
+              <Link
+                href={`/leagues/${leagueId}/bet`}
+                className="font-medium text-warning underline-offset-4 hover:underline focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+              >
+                Open Bet
+              </Link>
+            ),
+            tone: "money",
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
+function UpcomingSection({ data }: { data: LeagueHomeData }) {
+  return (
+    <section className="panel grid gap-4 p-4">
+      <SectionTitle icon={CalendarDays} title="Upcoming" />
+      <KVList
+        items={[
+          {
+            label: "Pairings",
+            value:
+              data.currentMatchups.length > 0
+                ? `${data.currentMatchups.length} on the board`
+                : "none imported",
+          },
+          {
+            label: "Scoring period",
+            value: data.currentScoringPeriod ?? "-",
+          },
+          {
+            label: "Provider",
+            value: data.league.provider.toUpperCase(),
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
 export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+    <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <LeagueRealtimeRefresh leagueId={data.league.id} />
-      <header className="grid gap-4">
+      <header className="panel grid gap-5 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-primary">League home</p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill tone={leagueStatusTone(data.league.status)}>
+                {leagueStatusLabel(data.league.status)}
+              </StatusPill>
+              <span className="eyebrow text-primary">League home</span>
+            </div>
+            <h1 className="heading-auspex h-grad mt-3 text-2xl leading-tight sm:text-3xl">
               {data.league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -546,36 +906,23 @@ export function LeagueHomeView({ data }: { data: LeagueHomeData }) {
             </Link>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <StatPill label="Teams" value={data.totals.teams} />
-          <StatPill label="Matchups" value={data.totals.matchups} />
-          <StatPill label="Period" value={data.currentScoringPeriod ?? "-"} />
-          <StatPill label="Role" value={data.userRole.replace("_", " ")} />
-        </div>
+        <HeaderStats data={data} />
       </header>
 
-      <ActivationHookSection data={data} />
+      <MatchupHeroSection data={data} />
+      <WireSection data={data} />
+      <ScoresSection data={data} />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.75fr)]">
-        <div className="grid gap-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,.75fr)]">
+        <div className="grid content-start gap-6">
           <StandingsSection data={data} />
-          <ScoresSection data={data} />
+          <RecordsSection data={data} />
         </div>
         <aside className="grid content-start gap-6">
-          <RecordsSection data={data} />
-          <TeamsSection data={data} />
-          <section className="grid gap-3">
-            <SectionTitle icon={CalendarDays} title="Upcoming" />
-            {data.currentMatchups.length > 0 ? (
-              <p className="rounded-card border border-border bg-card px-3 py-3 text-sm text-muted-foreground">
-                {data.currentMatchups.length} scheduled pairing
-                {data.currentMatchups.length === 1 ? "" : "s"} are on the board.
-              </p>
-            ) : (
-              <EmptyState>No upcoming matchups are available.</EmptyState>
-            )}
-          </section>
           <PressTeaserSection data={data} />
+          <BankrollPreviewSection leagueId={data.league.id} />
+          <TeamsSection data={data} />
+          <UpcomingSection data={data} />
         </aside>
       </div>
     </main>

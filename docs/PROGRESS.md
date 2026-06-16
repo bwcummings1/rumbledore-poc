@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 5 realtime shell/PWA affordances landed** with live WIRE/notifications, league presence, boot splash, and AUSPEX install/offline surfaces.
+Keep it current. Last updated: 2026-06-16 — **AUSPEX League Home dashboard landed** with a matchup hero, sortable standings, cast headlines, bankroll preview, and league wire.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX League Home dashboard landed — league home now composes the matchup hero, local wire, scoreboard, sortable standings, Press rail, bankroll preview, records, teams, and responsive empty states without changing the scoped loader.
 - 2026-06-16: AUSPEX article page landed — publication articles now carry sticky reading progress, orb/source bylines, pull quotes, structured inline data blocks, canon/tags, and non-dead-end related/next reading paths.
 - 2026-06-16: AUSPEX publication fronts landed — Rumbledore News and The Press now share a mastheaded editorial grid with section-front context, responsive rail/river hierarchy, empty states, and publication-shaped loading skeletons.
 - 2026-06-16: AUSPEX editorial reading register landed — PublicationStoryCard now supports hero/secondary/river/rail/compact/inFeed variants with cast-orb bylines, and article bodies share the `prose-auspex` long-form skin.

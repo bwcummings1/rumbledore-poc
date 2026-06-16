@@ -41,7 +41,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Build the article page (persona/orb byline, dek, long-form body, pull quotes, related), responsive and accessible. (specs/31)
 
 ### X. Feature surfaces (see specs/32)
-- [ ] Compose the League Home dashboard in AUSPEX (matchup hero, standings ladder, cast headlines, bankroll, wire). (specs/32)
+- [x] Compose the League Home dashboard in AUSPEX (matchup hero, standings ladder, cast headlines, bankroll, wire). (specs/32)
 - [ ] Compose the Arena (league-vs-league and individual leaderboards, seasons, head-to-head, rank movement). (specs/32)
 - [ ] Compose the Sportsbook (market board, the bet-slip console/sheet, the rolling bankroll LCD). (specs/32)
 - [ ] Compose Records & History, the Central News hub, and Settings/data-steward surfaces. (specs/32)
@@ -59,6 +59,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [ ] (loop appends discovered bugs/improvements here during Phase 5)
 
 ## Discoveries / bugs (loop appends here)
+- [ ] [ui] LiveClock can hydrate with a server/client time mismatch in e2e; consider a client-only initial paint or suppressing the expected clock text mismatch.
 - [ ] Spec/tuning follow-up: canonical `lilac-deep` computes below 4.5:1 on `hull`/`hull-2`, so keep it UI/fill-grade unless a later AUSPEX tuning pass adjusts the value.
 - [ ] [a11y] Normalize legacy form controls from `focus:` border/ring styling to the tokenized `focus-visible` control primitive during the Spec 29 control restyle; the global ring covers keyboard fallback meanwhile.
 - [ ] [a11y] Audit shared button and icon-button touch targets during the Spec 29 control restyle; several visual variants are below 44px even when later layouts may provide larger hit areas.

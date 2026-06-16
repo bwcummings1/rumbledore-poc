@@ -157,15 +157,15 @@ test("league home view renders standings, teams, and current matchups", () => {
   const pressTeaser = screen.getByLabelText("From the Press");
   expect(
     pressTeaser
-      .querySelector('[data-story-card-variant="rail"]')
+      .querySelector('[data-story-card-variant="inFeed"]')
       ?.textContent?.includes("Commissioner: NHS Alumni Annual snapshot"),
   ).toBe(true);
   expect(pressTeaser.querySelector("[data-front-tier]")).toBeNull();
   expect(
-    screen.getByText("Commissioner: NHS Alumni Annual snapshot"),
-  ).toBeDefined();
+    screen.getAllByText("Commissioner: NHS Alumni Annual snapshot").length,
+  ).toBeGreaterThan(0);
   expect(screen.getByText("Previews")).toBeDefined();
-  expect(screen.getByText("Commissioner")).toBeDefined();
+  expect(screen.getAllByText("Commissioner").length).toBeGreaterThan(0);
   expect(
     screen.getByRole("link", { name: /read post/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press/storyline-1");
@@ -175,6 +175,12 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(
     screen.getByRole("link", { name: /invite/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/members");
+  expect(screen.getByLabelText("League wire")).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Bankroll" })).toBeDefined();
+  expect(screen.getByText("$10,000")).toBeDefined();
+  expect(
+    screen.getByText("Your league is importing — history lands soon"),
+  ).toBeDefined();
 });
 
 test("league home view renders the claimed-team activation hook", () => {
@@ -220,5 +226,8 @@ test("league home view renders the claimed-team activation hook", () => {
   expect(
     screen.getByText("The cast has been covering Fixture Team 01."),
   ).toBeDefined();
-  expect(screen.getByText("You")).toBeDefined();
+  expect(screen.getAllByText("You").length).toBeGreaterThan(0);
+  expect(
+    screen.getByLabelText("Fixture Team 01 win probability"),
+  ).toBeDefined();
 });
