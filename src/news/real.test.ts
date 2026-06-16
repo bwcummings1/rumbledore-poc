@@ -45,6 +45,7 @@ describe("TavilyCentralNewsSource", () => {
       options: {
         includeRawContent: "text",
         maxResults: 4,
+        timeout: 10,
         topic: "news",
       },
       query: "nfl fantasy injuries",
@@ -139,6 +140,34 @@ describe("TavilyCentralNewsSource", () => {
         ],
       },
     ]);
+  });
+
+  it("uses a configurable Tavily SDK timeout", async () => {
+    const calls: Array<{ options: unknown; query: string }> = [];
+    const source = new TavilyCentralNewsSource({
+      apiKey: fakeKey(),
+      client: {
+        search: async (query: string, options?: unknown) => {
+          calls.push({ options, query });
+          return {
+            images: [],
+            query,
+            requestId: "news-request-timeout",
+            responseTime: 0.1,
+            results: [],
+          };
+        },
+      },
+      timeoutSeconds: 2,
+    });
+
+    await source.fetch({
+      limit: 1,
+      now: new Date("2026-06-11T10:00:00.000Z"),
+      topic: "nfl",
+    });
+
+    expect(calls[0]?.options).toMatchObject({ timeout: 2 });
   });
 });
 

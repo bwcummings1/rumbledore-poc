@@ -27,7 +27,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 
 ## Harden shortlist
 1. [x] [ai-tone/OBSERVED] Article byline surfaces still derive persona labels from `DEFAULT_PERSONA_CARDS` — correctness bug in the model/tone tunability work because edited persona metadata can persist while publication surfaces still show stale default identity.
-2. [ ] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation — robustness and cost-safety issue because a stalled real provider request can hang jobs past the spend-guard boundary.
+2. [x] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation — fixed by passing an explicit bounded Tavily SDK timeout through AI web grounding and the related central-news Tavily source, with regression coverage.
 3. [blocked] [onboarding/DEFERRED] Real Browserbase cookie-capture is human-paired — highest product value for live onboarding, but explicitly requires the user's device and is not eligible for autonomous hardening.
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
@@ -36,5 +36,5 @@ Carried/forward — **re-verify each before acting.**
 - [ ] (loop appends discovered bugs/improvements here during Phase 4)
 
 ## Discoveries / bugs (loop appends here)
-- [ ] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation; re-check when provider spend guards/usage wrappers land.
+- [x] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation; fixed by adding explicit Tavily SDK timeouts to AI grounding and central-news search paths.
 - [x] [ai-tone/OBSERVED] Article byline surfaces still derive persona labels from `DEFAULT_PERSONA_CARDS`; fixed by resolving league Press/home/feed bylines from scoped persona-card metadata with default fallback.

@@ -520,6 +520,7 @@ describe("TavilyWebGrounding", () => {
     expect(calls[0]?.options).toMatchObject({
       includeRawContent: "text",
       maxResults: 3,
+      timeout: 10,
       topic: "news",
     });
     expect(items).toEqual([
@@ -552,6 +553,35 @@ describe("TavilyWebGrounding", () => {
         triggerKey: "weekly:fixture",
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("uses a configurable Tavily SDK timeout", async () => {
+    const calls: Array<{ options: unknown; query: string }> = [];
+    const web = new TavilyWebGrounding({
+      apiKey: fakeKey(),
+      client: {
+        search: async (query: string, options?: unknown) => {
+          calls.push({ options, query });
+          return {
+            images: [],
+            query,
+            requestId: "request-timeout",
+            responseTime: 0.1,
+            results: [],
+          };
+        },
+      },
+      timeoutSeconds: 2,
+    });
+
+    await web.fetch({
+      leagueId: "00000000-0000-0000-0000-000000000001",
+      leagueName: "Fixture",
+      persona: "commissioner",
+      triggerKey: "weekly:fixture",
+    });
+
+    expect(calls[0]?.options).toMatchObject({ timeout: 2 });
   });
 });
 

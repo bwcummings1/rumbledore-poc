@@ -560,7 +560,10 @@ export interface TavilyWebGroundingOptions {
   apiKey: string;
   client?: TavilySearchClient;
   maxResults?: number;
+  timeoutSeconds?: number;
 }
+
+const TAVILY_SEARCH_TIMEOUT_SECONDS = 10;
 
 const personaSearchTerms: Record<AiPersona, string> = {
   analyst: "start sit projections trends",
@@ -591,14 +594,17 @@ function sourceFromUrl(rawUrl: string): string {
 export class TavilyWebGrounding implements WebGrounding {
   private readonly client: TavilySearchClient;
   private readonly maxResults: number;
+  private readonly timeoutSeconds: number;
 
   constructor(options: TavilyWebGroundingOptions) {
     this.client = options.client ?? tavily({ apiKey: options.apiKey });
     this.maxResults = options.maxResults ?? 5;
+    this.timeoutSeconds =
+      options.timeoutSeconds ?? TAVILY_SEARCH_TIMEOUT_SECONDS;
   }
 
   async fetch(input: WebGroundingInput): Promise<NewsItem[]> {
-    // ubs:ignore — interface method name; outbound calls are bounded by Tavily SDK options.
+    // ubs:ignore - bounded Tavily SDK search.
     const query = `latest NFL fantasy football news ${personaSearchTerms[input.persona]}`;
     try {
       const response = await this.client.search(query, {
@@ -607,6 +613,7 @@ export class TavilyWebGrounding implements WebGrounding {
         includeImages: false,
         includeRawContent: "text",
         maxResults: this.maxResults,
+        timeout: this.timeoutSeconds,
         topic: "news",
       });
 

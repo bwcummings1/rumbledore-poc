@@ -17,6 +17,7 @@ export interface TavilyCentralNewsSourceOptions {
   apiKey: string;
   client?: TavilySearchClient;
   playerRefExtractor?: CentralNewsPlayerRefExtractor;
+  timeoutSeconds?: number;
 }
 
 export interface RssCentralNewsSourceOptions {
@@ -30,6 +31,8 @@ type RssFetcher = (
   input: string,
   init?: { signal?: AbortSignal },
 ) => Promise<RssFetcherResponse>;
+
+const TAVILY_SEARCH_TIMEOUT_SECONDS = 10;
 
 function stableId(fields: readonly string[]): string {
   return `tavily:${createHash("sha256").update(fields.join("\n")).digest("hex")}`;
@@ -129,21 +132,25 @@ async function playerRefsFor(
 export class TavilyCentralNewsSource implements CentralNewsSource {
   private readonly client: TavilySearchClient;
   private readonly playerRefExtractor: CentralNewsPlayerRefExtractor;
+  private readonly timeoutSeconds: number;
 
   constructor(options: TavilyCentralNewsSourceOptions) {
     this.client = options.client ?? tavily({ apiKey: options.apiKey });
     this.playerRefExtractor =
       options.playerRefExtractor ?? EMPTY_PLAYER_REF_EXTRACTOR;
+    this.timeoutSeconds =
+      options.timeoutSeconds ?? TAVILY_SEARCH_TIMEOUT_SECONDS;
   }
 
   async fetch(input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
-    // ubs:ignore — interface method name; outbound calls are bounded by Tavily SDK options.
+    // ubs:ignore - bounded Tavily SDK search.
     const response = await this.client.search(input.topic, {
       autoParameters: true,
       includeAnswer: false,
       includeImages: false,
       includeRawContent: "text",
       maxResults: input.limit,
+      timeout: this.timeoutSeconds,
       topic: "news",
     });
 
@@ -196,6 +203,7 @@ export class RssCentralNewsSource implements CentralNewsSource {
   }
 
   async fetch(input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
+    // ubs:ignore - RSS fetcher calls pass AbortSignal.timeout.
     const fetchedFeeds = await Promise.all(
       this.feedUrls.map(async (feedUrl) => {
         const response = await this.fetcher(feedUrl, {
