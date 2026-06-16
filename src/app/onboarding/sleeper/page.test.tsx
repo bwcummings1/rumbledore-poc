@@ -26,4 +26,7 @@ test("Sleeper onboarding page renders public connect controls", async () => {
     }),
   ).toBeDefined();
   expect(screen.getByRole("button", { name: /find leagues/i })).toBeDefined();
+  expect(
+    await screen.findByText(/no fantasy football leagues found yet/i),
+  ).toBeDefined();
 });

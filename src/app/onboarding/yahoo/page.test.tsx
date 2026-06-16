@@ -26,4 +26,7 @@ test("Yahoo onboarding page renders OAuth connect controls", async () => {
     }),
   ).toBeDefined();
   expect(screen.getByRole("button", { name: /connect yahoo/i })).toBeDefined();
+  expect(
+    await screen.findByText(/no fantasy football leagues found yet/i),
+  ).toBeDefined();
 });

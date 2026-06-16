@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDot } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { buttonVariants } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface InviteAcceptPanelProps {
@@ -101,26 +102,40 @@ export function InviteAcceptPanel({
 
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-wrap gap-2">
-        <Link href={onboardingUrl} className={cn(buttonVariants())}>
-          Connect fantasy account
-          <ArrowRight data-icon="inline-end" />
-        </Link>
-        <Link href="/" className={cn(buttonVariants({ variant: "outline" }))}>
-          Home
-        </Link>
-      </div>
+      <section className="panel grid gap-3 p-4">
+        <div className="grid gap-1">
+          <p className="eyebrow text-primary">Claim requires an account</p>
+          <h2 className="font-display text-base font-semibold text-foreground">
+            Sign in, then come back to this exact team.
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            The invite link stays attached to this league and team claim through
+            onboarding.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 max-sm:grid">
+          <Link href={onboardingUrl} className={cn(buttonVariants())}>
+            Connect fantasy account
+            <ArrowRight data-icon="inline-end" />
+          </Link>
+          <Link href="/" className={cn(buttonVariants({ variant: "outline" }))}>
+            Home
+          </Link>
+        </div>
+      </section>
     );
   }
 
   const hasOpenTargets = isOpenMode && claimTargets.length > 0;
 
   return (
-    <div className="grid gap-3">
+    <section className="panel grid gap-4 p-4">
       {isOpenMode ? (
         hasOpenTargets ? (
           <fieldset className="grid gap-2">
-            <legend className="text-sm font-medium">Choose your team</legend>
+            <legend className="font-display text-sm font-semibold text-foreground">
+              Choose your team
+            </legend>
             <div className="grid gap-2">
               {claimTargets.map((target) => {
                 const isSelected =
@@ -129,10 +144,10 @@ export function InviteAcceptPanel({
                   <label
                     key={target.providerMemberId}
                     className={cn(
-                      "grid cursor-pointer gap-1 rounded-control border px-3 py-2 text-sm transition-colors",
+                      "cell grid min-h-11 cursor-pointer gap-1 px-3 py-3 text-sm outline-none transition-[border-color,box-shadow]",
                       isSelected
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-card",
+                        ? "border-primary bg-primary/10 shadow-[0_0_18px_var(--glow-lilac),var(--bevel)]"
+                        : "",
                     )}
                   >
                     <span className="flex items-start gap-2">
@@ -144,10 +159,10 @@ export function InviteAcceptPanel({
                         onChange={(event) =>
                           setSelectedProviderMemberId(event.target.value)
                         }
-                        className="mt-1"
+                        className="mt-1 size-5 accent-primary"
                       />
                       <span className="min-w-0">
-                        <span className="block truncate font-medium">
+                        <span className="block truncate font-display text-sm font-semibold text-foreground">
                           {teamLabel(target)}
                         </span>
                         <span className="block truncate text-muted-foreground">
@@ -161,32 +176,42 @@ export function InviteAcceptPanel({
             </div>
           </fieldset>
         ) : (
-          <p className="rounded-card border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
-            Every imported team has already been claimed.
-          </p>
+          <Alert
+            tone="warn"
+            title="Every imported team has already been claimed."
+          >
+            Ask your commissioner for a fresh targeted invite if this looks
+            wrong.
+          </Alert>
         )
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        <button
-          className={cn(buttonVariants())}
+      <div className="flex flex-wrap gap-2 max-sm:grid">
+        <Button
           disabled={isAccepting || (isOpenMode && !hasOpenTargets)}
+          loading={isAccepting}
           onClick={() => void acceptInvite()}
           type="button"
         >
-          {isAccepting ? (
-            <Loader2 data-icon="inline-start" className="animate-spin" />
-          ) : null}
+          {isAccepting ? null : <CheckCircle2 data-icon="inline-start" />}
           {isOpenMode ? "Claim team" : "Accept invite"}
-        </button>
+        </Button>
         <Link href="/" className={cn(buttonVariants({ variant: "outline" }))}>
           Home
         </Link>
       </div>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <CircleDot aria-hidden="true" className="size-3.5 text-primary" />
+        Claiming maps your account to the imported provider member and opens the
+        league home with your team waiting.
+      </p>
       {error ? (
-        <p className="text-sm font-medium text-destructive" role="alert">
+        <p
+          className="rounded-control border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
-    </div>
+    </section>
   );
 }

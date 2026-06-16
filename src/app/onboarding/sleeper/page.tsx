@@ -11,13 +11,13 @@ export default async function SleeperOnboardingPage({
   const returnTo = returnToFromSearchParams(await searchParams);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-2">
-        <p className="text-sm font-medium text-primary">Sleeper connect</p>
-        <h1 className="text-2xl font-semibold tracking-tight">
+    <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-5 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+      <header className="panel grid gap-3 p-5">
+        <p className="eyebrow text-primary">Sleeper connect</p>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           Bring your Sleeper league into Rumbledore
         </h1>
-        <p className="max-w-xl text-base text-muted-foreground">
+        <p className="max-w-2xl text-base text-muted-foreground">
           Enter a public Sleeper username or user ID, choose discovered NFL
           leagues, and import the history you want active.
         </p>

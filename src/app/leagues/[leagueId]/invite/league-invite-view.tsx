@@ -19,7 +19,12 @@ import {
   onboardingPanelError,
   postJson,
 } from "@/app/onboarding/client-http";
+import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { StatusPill } from "@/components/ui/status-pill";
+import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 
 interface LeagueInviteTarget {
@@ -163,10 +168,10 @@ function DataStewardDoorwayCard({
   }
 
   return (
-    <section className="grid gap-4 rounded-card border border-border bg-card p-4">
+    <section className="panel grid gap-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-semibold">
+          <p className="flex items-center gap-2 font-display text-sm font-semibold text-foreground">
             <ShieldCheck className="size-4 shrink-0 text-primary" aria-hidden />
             Data steward doorway
           </p>
@@ -209,7 +214,7 @@ function DataStewardDoorwayCard({
               {doorway.stewardCandidates.map((candidate) => (
                 <div
                   key={candidate.memberId}
-                  className="grid gap-2 rounded-control border border-border bg-background px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                  className="cell grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">
@@ -220,9 +225,7 @@ function DataStewardDoorwayCard({
                     </p>
                   </div>
                   {candidate.isDataSteward ? (
-                    <span className="inline-flex h-8 items-center justify-center rounded-control border border-positive/30 px-2 text-xs font-medium text-positive">
-                      Data steward
-                    </span>
+                    <StatusPill tone="success">Data steward</StatusPill>
                   ) : (
                     <Button
                       type="button"
@@ -424,13 +427,11 @@ export function LeagueInviteView({
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-3">
+      <header className="panel grid gap-4 p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-primary">
-              Members / Settings
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+            <p className="eyebrow text-primary">Members / Settings</p>
+            <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {initialSummary.league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -438,10 +439,25 @@ export function LeagueInviteView({
               {initialSummary.league.season}
             </p>
           </div>
-          <Users className="mt-1 size-6 shrink-0 text-primary" aria-hidden />
+          <span
+            aria-hidden="true"
+            className="orb orb-md"
+            data-persona="beat_reporter"
+            data-state="speaking"
+          >
+            <Users className="size-3.5" />
+          </span>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2">
-          <h2 className="text-base font-semibold">{heading}</h2>
+        <div className="cell flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+          <div className="grid gap-1">
+            <h2 className="font-display text-base font-semibold text-foreground">
+              {heading}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Share links and SMS are primary. Email appears only as an
+              entered-address fallback.
+            </p>
+          </div>
           {initialSummary.targets.length > 0 ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
@@ -454,9 +470,7 @@ export function LeagueInviteView({
                 Copy claim link
               </Button>
               {rosterLinksCopied ? (
-                <p className="text-xs font-medium text-positive">
-                  Roster links copied.
-                </p>
+                <StatusPill tone="success">Roster links copied</StatusPill>
               ) : null}
               {initialSummary.targets.length > 1 ? (
                 <Button
@@ -473,11 +487,11 @@ export function LeagueInviteView({
           ) : null}
         </div>
         {openInvite ? (
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-control border border-border bg-background">
+          <div className="bezel grid min-w-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-control border border-border bg-[var(--panel-2)]">
             <input
               readOnly
               value={openInvite.inviteUrl}
-              className="min-h-10 min-w-0 bg-transparent px-3 text-sm outline-none"
+              className="min-h-10 min-w-0 bg-transparent px-3 font-mono text-sm outline-none"
               aria-label="League claim link"
             />
             <Button
@@ -493,11 +507,7 @@ export function LeagueInviteView({
         ) : null}
       </header>
 
-      {error ? (
-        <div className="rounded-card border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error.message}
-        </div>
-      ) : null}
+      {error ? <Alert tone="danger">{error.message}</Alert> : null}
 
       {stewardDoorwayState ? (
         <DataStewardDoorwayCard
@@ -517,21 +527,27 @@ export function LeagueInviteView({
             const showEmailFallback =
               emailFallbackOpen[key] || target.suggestedChannel === "email";
             return (
-              <article
-                key={key}
-                className="rounded-card border border-border bg-card p-4"
-              >
+              <article key={key} className="panel grid gap-4 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="truncate text-base font-semibold">
+                    <h3 className="truncate font-display text-base font-semibold text-foreground">
                       {target.displayName}
                     </h3>
                     <p className="mt-1 truncate text-sm text-muted-foreground">
                       {teamLabel(target)}
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {suggestedChannelLabel(target)}
-                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Tag>{suggestedChannelLabel(target)}</Tag>
+                      {share ? (
+                        <StatusPill tone="success">link-copied</StatusPill>
+                      ) : null}
+                      {sms ? (
+                        <StatusPill tone="success">sms-sent</StatusPill>
+                      ) : null}
+                      {email ? (
+                        <StatusPill tone="success">email-sent</StatusPill>
+                      ) : null}
+                    </div>
                   </div>
                   {share || email || sms ? (
                     <CheckCircle2
@@ -553,11 +569,11 @@ export function LeagueInviteView({
                       Copy link
                     </Button>
                     {share ? (
-                      <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-control border border-border bg-background">
+                      <div className="bezel grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-control border border-border bg-[var(--panel-2)]">
                         <input
                           readOnly
                           value={share.inviteUrl}
-                          className="min-h-10 min-w-0 bg-transparent px-3 text-sm outline-none"
+                          className="min-h-10 min-w-0 bg-transparent px-3 font-mono text-sm outline-none"
                           aria-label={`Invite link for ${target.displayName}`}
                         />
                         <Button
@@ -577,9 +593,11 @@ export function LeagueInviteView({
                     onSubmit={(event) => void sendSms(event, target)}
                     className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
                   >
-                    <label className="grid gap-1 text-sm font-medium">
-                      SMS
-                      <input
+                    <Field
+                      label="SMS"
+                      hint="Phone numbers are normalized and stored only as a hash plus hint."
+                    >
+                      <Input
                         type="tel"
                         value={smsInputs[key] ?? ""}
                         onChange={(event) =>
@@ -588,10 +606,9 @@ export function LeagueInviteView({
                             [key]: event.target.value,
                           }))
                         }
-                        className="min-h-11 rounded-control border border-input bg-background px-3 text-base outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
                         placeholder="+15551234567"
                       />
-                    </label>
+                    </Field>
                     <Button
                       type="submit"
                       className="self-end"
@@ -602,12 +619,15 @@ export function LeagueInviteView({
                     </Button>
                   </form>
                   {sms ? (
-                    <p className="text-xs text-muted-foreground">
+                    <output
+                      aria-live="polite"
+                      className="text-xs text-muted-foreground"
+                    >
                       SMS recorded for {sms.targetHint}.
-                    </p>
+                    </output>
                   ) : null}
 
-                  <div className="rounded-control border border-dashed border-border bg-muted/20 px-3 py-2">
+                  <div className="cell grid gap-2 border-dashed px-3 py-3">
                     <Button
                       type="button"
                       variant="ghost"
@@ -626,9 +646,11 @@ export function LeagueInviteView({
                         onSubmit={(event) => void sendEmail(event, target)}
                         className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
                       >
-                        <label className="grid gap-1 text-sm font-medium">
-                          Email
-                          <input
+                        <Field
+                          label="Email"
+                          hint="Use only a known or entered address. Providers rarely expose email."
+                        >
+                          <Input
                             type="email"
                             value={emailInputs[key] ?? ""}
                             onChange={(event) =>
@@ -637,10 +659,9 @@ export function LeagueInviteView({
                                 [key]: event.target.value,
                               }))
                             }
-                            className="min-h-11 rounded-control border border-input bg-background px-3 text-base outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
                             placeholder="manager@example.com"
                           />
-                        </label>
+                        </Field>
                         <Button
                           type="submit"
                           className="self-end"
@@ -652,9 +673,12 @@ export function LeagueInviteView({
                       </form>
                     ) : null}
                     {email ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
+                      <output
+                        aria-live="polite"
+                        className="mt-2 text-xs text-muted-foreground"
+                      >
                         Email recorded for {email.targetHint}.
-                      </p>
+                      </output>
                     ) : null}
                   </div>
                 </div>

@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  CheckCircle2,
-  ExternalLink,
-  House,
-  KeyRound,
-  ListChecks,
-  Plug,
-  RefreshCw,
-} from "lucide-react";
-import Link from "next/link";
+import { ExternalLink, KeyRound, Plug, RefreshCw } from "lucide-react";
 import {
   type FormEvent,
   useCallback,
@@ -17,11 +8,13 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusPill } from "@/components/ui/status-pill";
 import { type StepItem, Steps } from "@/components/ui/steps";
 import { cn } from "@/lib/utils";
-import { getProviderBadgeLabel } from "@/navigation";
-import type { ProviderReconnectAction } from "@/onboarding/reconnect";
 import type { FantasyProviderId } from "@/providers";
 import {
   getJson,
@@ -30,10 +23,15 @@ import {
   postJson,
 } from "../client-http";
 import {
-  type ImportLeaguemateSummary,
-  LeaguemateDetectionCallout,
-} from "../leaguemate-detection-callout";
-import { OnboardingErrorBanner, ReconnectActionLink } from "../reconnect-cta";
+  canImportLeague,
+  type DiscoveredLeagueCandidate,
+  type ImportResult,
+  leagueKey,
+  OnboardingLeagueInventory,
+  ProviderConnectPanelShell,
+  useOnlineStatus,
+} from "../onboarding-flow";
+import { OnboardingErrorBanner } from "../reconnect-cta";
 import { ReturnToInviteLink } from "../return-to-invite-link";
 import {
   continueToReturnTo,
@@ -51,17 +49,6 @@ interface DiscoveredLeague {
   size?: number;
 }
 
-interface DiscoveredLeagueCandidate extends DiscoveredLeague {
-  credentialId?: string;
-  connectionInvalidAt?: string;
-  connectionState?: "connected" | "invalid";
-  imported: boolean;
-  isRecommendedImport: boolean;
-  lastDiscoveredAt: string;
-  leagueId?: string;
-  reconnect?: ProviderReconnectAction;
-}
-
 interface ConnectResult {
   credentialId: string;
   discoveredLeagues: DiscoveredLeague[];
@@ -73,29 +60,7 @@ interface BrowserStartResult {
   expiresAt: string;
 }
 
-interface ImportResult {
-  leagueId: string;
-  leaguemateInvites?: ImportLeaguemateSummary;
-  sync: {
-    teams: { total: number };
-    members: { total: number };
-    matchups: { total: number };
-  };
-}
-
 const DISCOVERED_LEAGUES_URL = "/api/onboarding/discovered";
-
-function leagueKey(
-  league: Pick<DiscoveredLeague, "provider" | "providerId" | "season">,
-) {
-  return `${league.provider}:${league.providerId}:${league.season}`;
-}
-
-function canImportLeague(
-  league: Pick<DiscoveredLeagueCandidate, "imported" | "reconnect">,
-) {
-  return !league.imported && !league.reconnect;
-}
 
 function recommendedKeys(leagues: readonly DiscoveredLeagueCandidate[]) {
   return leagues
@@ -138,6 +103,9 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
   const [manualSwid, setManualSwid] = useState("");
   const [manualEspnS2, setManualEspnS2] = useState("");
   const [imports, setImports] = useState<Record<string, ImportResult>>({});
+  const [discoveryLoading, setDiscoveryLoading] = useState(true);
+  const [browserNow, setBrowserNow] = useState(() => Date.now());
+  const isOnline = useOnlineStatus();
   const isBusy = Boolean(busy);
 
   const selectedLeagues = useMemo(
@@ -150,6 +118,13 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
   );
 
   const remainingImportCount = discoveredLeagues.filter(canImportLeague).length;
+  const connectedProviders = useMemo(
+    () =>
+      Array.from(
+        new Set(discoveredLeagues.map((league) => league.provider)),
+      ) as FantasyProviderId[],
+    [discoveredLeagues],
+  );
   const onboardingSteps = buildEspnOnboardingSteps({
     connected: Boolean(connection) || discoveredLeagues.length > 0,
     discovered: discoveredLeagues.length > 0,
@@ -185,6 +160,9 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
     silent?: boolean;
   } = {}) {
     try {
+      if (!silent) {
+        setDiscoveryLoading(true);
+      }
       const leagues = await getJson<DiscoveredLeagueCandidate[]>(
         DISCOVERED_LEAGUES_URL,
       );
@@ -195,17 +173,25 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
         setError(onboardingPanelError(cause));
       }
       return null;
+    } finally {
+      if (!silent) {
+        setDiscoveryLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setDiscoveryLoading(true);
       const leagues = await getJson<DiscoveredLeagueCandidate[]>(
         DISCOVERED_LEAGUES_URL,
       ).catch(() => null);
       if (!cancelled && leagues) {
         replaceDiscoveredLeagues(leagues, false);
+      }
+      if (!cancelled) {
+        setDiscoveryLoading(false);
       }
     }
     void load();
@@ -213,6 +199,15 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
       cancelled = true;
     };
   }, [replaceDiscoveredLeagues]);
+
+  useEffect(() => {
+    if (!browser) {
+      return;
+    }
+
+    const interval = window.setInterval(() => setBrowserNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [browser]);
 
   async function run<T>(
     label: string,
@@ -374,79 +369,153 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
   }
 
   return (
-    <div className="grid gap-5">
+    <ProviderConnectPanelShell
+      connectedProviders={connectedProviders}
+      provider="espn"
+      returnTo={returnTo}
+    >
       <ReturnToInviteLink returnTo={returnTo} />
       <Steps aria-label="ESPN onboarding progress" steps={onboardingSteps} />
-      <section className="rounded-card border border-border bg-card p-4">
+      <section className="panel grid gap-4 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Hosted ESPN login</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Open a controlled browser session, then capture the ESPN session.
+            <p className="eyebrow text-primary">Primary connect</p>
+            <h2 className="mt-1 font-display text-base font-semibold text-foreground">
+              Hosted ESPN login
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Open a controlled browser session, log into ESPN there, then
+              capture only the session credentials server-side.
             </p>
           </div>
-          <Plug className="mt-1 size-5 text-primary" aria-hidden="true" />
+          <span
+            aria-hidden="true"
+            className={cn(
+              "orb orb-md",
+              isHostedBrowserBusy(busy) ? "think" : "",
+            )}
+            data-persona="commissioner"
+            data-state={
+              isHostedBrowserBusy(busy)
+                ? "think"
+                : connection
+                  ? "speaking"
+                  : "idle"
+            }
+          >
+            <Plug className="size-3.5" />
+          </span>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" onClick={startHostedBrowser} disabled={isBusy}>
+        <HostedBrowserStatus
+          browser={browser}
+          connection={connection}
+          isOnline={isOnline}
+          now={browserNow}
+          busy={busy}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={startHostedBrowser}
+            disabled={isBusy || !isOnline}
+          >
             <ExternalLink data-icon="inline-start" />
-            Connect ESPN
+            {browser ? "Restart session" : "Connect ESPN"}
           </Button>
           <Button
             type="button"
             variant="secondary"
             onClick={captureHostedBrowser}
-            disabled={isBusy || !browser}
+            disabled={
+              isBusy ||
+              !browser ||
+              !isOnline ||
+              isBrowserExpired(browser, browserNow)
+            }
           >
             <RefreshCw data-icon="inline-start" />
             Capture
           </Button>
         </div>
-        {browser ? (
-          <div className="mt-4 overflow-hidden rounded-card border border-border bg-background">
+        {isBrowserStarting(busy) ? (
+          <output aria-label="Starting hosted browser" aria-live="polite">
+            <Skeleton className="h-60" variant="card" />
+          </output>
+        ) : null}
+        {browser && !isBrowserExpired(browser, browserNow) ? (
+          <div
+            className={cn(
+              "bezel overflow-hidden rounded-card border border-border bg-[var(--panel-solid)] shadow-overlay",
+              isBrowserCapturing(busy) && "opacity-70",
+            )}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--hair)] px-3 py-2">
+              <p className="font-display text-sm font-semibold text-foreground">
+                Secure ESPN login - hosted by Rumbledore
+              </p>
+              <span className="lcd text-xs text-muted-foreground">
+                {browser.sessionId.slice(0, 8)} ·{" "}
+                {formatBrowserExpiry(browser, browserNow)}
+              </span>
+            </div>
             <iframe
               title="Hosted ESPN login"
               src={browser.liveViewUrl}
-              className="h-52 w-full"
+              className="h-[min(65dvh,34rem)] min-h-72 w-full bg-background"
             />
+            <p className="border-t border-[var(--hair)] px-3 py-2 text-xs text-muted-foreground">
+              Your ESPN password stays inside the hosted browser. Rumbledore
+              stores only validated session credentials after Capture.
+            </p>
           </div>
+        ) : null}
+        {browser && isBrowserExpired(browser, browserNow) ? (
+          <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+            <StatusPill tone="danger">session expired</StatusPill>
+            <p className="text-sm text-muted-foreground">
+              The hosted browser window lapsed. Start a new ESPN session to
+              continue.
+            </p>
+          </output>
         ) : null}
       </section>
 
-      <form
-        onSubmit={submitManual}
-        className="rounded-card border border-border bg-card p-4"
-      >
+      <form onSubmit={submitManual} className="panel grid gap-4 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Manual fallback</h2>
+            <p className="eyebrow text-warning">Fallback</p>
+            <h2 className="mt-1 font-display text-base font-semibold text-foreground">
+              Manual cookie fallback
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Paste SWID and espn_s2 only when the hosted flow is unavailable.
             </p>
           </div>
           <KeyRound className="mt-1 size-5 text-highlight" aria-hidden="true" />
         </div>
-        <div className="mt-4 grid gap-3">
-          <label className="grid gap-1 text-sm font-medium">
-            SWID
-            <input
+        <div className="grid gap-3">
+          <Field
+            hint="Brace-wrapped ESPN account identifier. It is validated server-side and never echoed."
+            label="SWID"
+          >
+            <Input
               value={manualSwid}
               onChange={(event) => setManualSwid(event.target.value)}
-              className="min-h-11 rounded-control border border-input bg-background px-3 text-base outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
               autoComplete="off"
               inputMode="text"
             />
-          </label>
-          <label className="grid gap-1 text-sm font-medium">
-            espn_s2
-            <input
+          </Field>
+          <Field
+            hint="Private ESPN session token. This field stays masked."
+            label="espn_s2"
+          >
+            <Input
               value={manualEspnS2}
               onChange={(event) => setManualEspnS2(event.target.value)}
-              className="min-h-11 rounded-control border border-input bg-background px-3 text-base outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
               autoComplete="off"
               type="password"
             />
-          </label>
+          </Field>
           <Button type="submit" disabled={isBusy}>
             <KeyRound data-icon="inline-start" />
             Validate cookies
@@ -456,136 +525,159 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
 
       {error ? <OnboardingErrorBanner error={error} /> : null}
 
-      <section className="grid gap-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Your leagues</h2>
-            <p className="text-sm text-muted-foreground">
-              {discoveredLeagues.length > 0
-                ? `${discoveredLeagues.length} league${
-                    discoveredLeagues.length === 1 ? "" : "s"
-                  } found across connected providers.`
-                : connection
-                  ? "No ESPN fantasy football leagues were found."
-                  : "Connect a provider to populate this import list."}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => void loadDiscoveredLeagues()}
-            disabled={isBusy}
-          >
-            <RefreshCw data-icon="inline-start" />
-            Refresh
-          </Button>
-        </div>
-
-        {discoveredLeagues.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-muted/35 px-3 py-2">
-            <p className="text-sm text-muted-foreground">
-              {selectedLeagues.length} selected · {remainingImportCount} not
-              imported
-            </p>
-            <Button
-              type="button"
-              onClick={importSelectedLeagues}
-              disabled={isBusy || selectedLeagues.length === 0}
-            >
-              <ListChecks data-icon="inline-start" />
-              Import selected
-            </Button>
-          </div>
-        ) : null}
-
-        {discoveredLeagues.map((league) => {
-          const key = leagueKey(league);
-          const importStats = imports[key];
-          const blockedByConnection = Boolean(league.reconnect);
-          const checked = selectedKeys.includes(key) && canImportLeague(league);
-          return (
-            <article
-              key={key}
-              className="rounded-card border border-border bg-card p-4"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <label className="flex min-w-0 flex-1 items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={isBusy || !canImportLeague(league)}
-                    onChange={(event) =>
-                      toggleLeague(league, event.target.checked)
-                    }
-                    className="mt-1 size-5 shrink-0 accent-primary"
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold">
-                      {league.name}
-                    </span>
-                    <span className="mt-1 block text-sm text-muted-foreground">
-                      {getProviderBadgeLabel(league.provider)} · {league.season}{" "}
-                      · {league.size ?? "unknown"} teams
-                      {league.teamName ? ` · ${league.teamName}` : ""}
-                    </span>
-                  </span>
-                </label>
-                {league.imported ? (
-                  <CheckCircle2
-                    className="mt-1 size-5 shrink-0 text-positive"
-                    aria-label="Imported"
-                  />
-                ) : null}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                  {league.imported
-                    ? "Imported"
-                    : blockedByConnection && league.reconnect
-                      ? league.reconnect.message
-                      : importStats
-                        ? `${importStats.sync.teams.total} teams · ${importStats.sync.members.total} members · ${importStats.sync.matchups.total} matchups`
-                        : league.isRecommendedImport
-                          ? "Selected by default"
-                          : `${getProviderBadgeLabel(league.provider)} league ${league.providerId}`}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {league.imported && league.leagueId ? (
-                    <Link
-                      href={`/leagues/${league.leagueId}`}
-                      className={cn(
-                        buttonVariants({ size: "sm", variant: "secondary" }),
-                      )}
-                    >
-                      <House data-icon="inline-start" />
-                      Open home
-                    </Link>
-                  ) : null}
-                  {blockedByConnection && league.reconnect ? (
-                    <ReconnectActionLink action={league.reconnect} />
-                  ) : !league.imported ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => importLeague(league)}
-                      disabled={isBusy || !canImportLeague(league)}
-                    >
-                      Import
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-              <LeaguemateDetectionCallout
-                leagueId={importStats?.leagueId ?? league.leagueId ?? ""}
-                summary={importStats?.leaguemateInvites}
-              />
-            </article>
-          );
-        })}
-      </section>
-    </div>
+      <OnboardingLeagueInventory
+        imports={imports}
+        isBusy={isBusy}
+        isOnline={isOnline}
+        leagues={discoveredLeagues}
+        loading={discoveryLoading}
+        onImportLeague={(league) => void importLeague(league)}
+        onImportSelected={() => void importSelectedLeagues()}
+        onRefresh={() => void loadDiscoveredLeagues()}
+        onToggleLeague={toggleLeague}
+        remainingImportCount={remainingImportCount}
+        selectedKeys={selectedKeys}
+        selectedLeagues={selectedLeagues}
+      />
+    </ProviderConnectPanelShell>
   );
+}
+
+function HostedBrowserStatus({
+  browser,
+  busy,
+  connection,
+  isOnline,
+  now,
+}: {
+  readonly browser: BrowserStartResult | null;
+  readonly busy: string | null;
+  readonly connection: ConnectResult | null;
+  readonly isOnline: boolean;
+  readonly now: number;
+}) {
+  if (!isOnline) {
+    return (
+      <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+        <StatusPill tone="warning">offline</StatusPill>
+        <p className="text-sm text-muted-foreground">
+          Reconnect to start or capture a hosted ESPN session.
+        </p>
+      </output>
+    );
+  }
+
+  if (connection) {
+    return (
+      <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+        <StatusPill tone="success">connected</StatusPill>
+        <p className="text-sm text-muted-foreground">
+          ESPN is connected. Discovery rows below now reflect connected provider
+          inventory.
+        </p>
+      </output>
+    );
+  }
+
+  if (isBrowserStarting(busy)) {
+    return (
+      <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+        <StatusPill tone="live">starting</StatusPill>
+        <p className="text-sm text-muted-foreground">
+          Opening a hosted ESPN login session.
+        </p>
+      </output>
+    );
+  }
+
+  if (isBrowserCapturing(busy)) {
+    return (
+      <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+        <StatusPill tone="live">capturing</StatusPill>
+        <p className="text-sm text-muted-foreground">
+          Validating the ESPN session and storing encrypted credentials.
+        </p>
+      </output>
+    );
+  }
+
+  if (browser && isBrowserExpired(browser, now)) {
+    return (
+      <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+        <StatusPill tone="danger">expired</StatusPill>
+        <p className="text-sm text-muted-foreground">
+          Session expired. Start again for a fresh hosted browser.
+        </p>
+      </output>
+    );
+  }
+
+  if (browser) {
+    return (
+      <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+        <StatusPill tone="live">session active</StatusPill>
+        <p className="text-sm text-muted-foreground">
+          Log into ESPN in the frame, then press Capture before{" "}
+          {formatBrowserExpiry(browser, now)}.
+        </p>
+      </output>
+    );
+  }
+
+  return (
+    <output aria-live="polite" className="cell grid gap-2 px-3 py-3">
+      <StatusPill tone="neutral">ready</StatusPill>
+      <p className="text-sm text-muted-foreground">
+        Start the hosted browser. No ESPN password or cookie is shown in this
+        app.
+      </p>
+    </output>
+  );
+}
+
+function isHostedBrowserBusy(busy: string | null): boolean {
+  switch (busy) {
+    case "browser-start":
+    case "browser-capture":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isBrowserStarting(busy: string | null): boolean {
+  switch (busy) {
+    case "browser-start":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isBrowserCapturing(busy: string | null): boolean {
+  switch (busy) {
+    case "browser-capture":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isBrowserExpired(browser: BrowserStartResult, now: number): boolean {
+  const expiresAt = new Date(browser.expiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+function formatBrowserExpiry(browser: BrowserStartResult, now: number): string {
+  const expiresAt = new Date(browser.expiresAt).getTime();
+  if (!Number.isFinite(expiresAt)) {
+    return "expiry pending";
+  }
+
+  const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1000));
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 }
 
 function buildEspnOnboardingSteps({
