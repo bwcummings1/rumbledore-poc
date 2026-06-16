@@ -234,6 +234,45 @@ describe("AnthropicLlmClient", () => {
       code: "AI_LLM_RESPONSE_INVALID",
     } satisfies Partial<AppError>);
   });
+
+  it("rejects structured output for the wrong requested content type", async () => {
+    const client = {
+      messages: {
+        parse: async () => ({
+          parsed_output: {
+            body: "Body from Claude.",
+            bodyBlocks: [
+              { text: "Wrong shape", type: "heading" },
+              { text: "Body from Claude.", type: "paragraph" },
+            ],
+            citedCanonClaimIds: [],
+            contentType: "weekly_recap",
+            dek: "Dek from Claude.",
+            section: "recaps",
+            structure: {
+              kicker: "Kicker.",
+              lead: "Lead.",
+              standingsShift: "Standings.",
+              topResult: "Top result.",
+              type: "weekly_recap",
+              upsetOrBlowout: "Upset.",
+            },
+            summary: "Summary from Claude.",
+            tags: ["Fixture Team", "Recap"],
+            title: "Wrong Content Type",
+          },
+        }),
+      },
+    } as unknown as AnthropicMessagesClient;
+    const llm = new AnthropicLlmClient({
+      apiKey: fakeKey(),
+      client,
+    });
+
+    await expect(llm.generate(requestFor("narrator"))).rejects.toMatchObject({
+      code: "AI_LLM_RESPONSE_INVALID",
+    } satisfies Partial<AppError>);
+  });
 });
 
 describe("TavilyWebGrounding", () => {

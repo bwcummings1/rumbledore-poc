@@ -4,7 +4,11 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { type TavilyClient, tavily } from "@tavily/core";
 import { z } from "zod";
 import { AppError } from "@/core/result";
-import { AI_CONTENT_TYPES, contentTypePromptContract } from "./content-types";
+import {
+  type AiContentType,
+  type BlogContentStructure,
+  contentTypePromptContract,
+} from "./content-types";
 import type {
   BlogDraft,
   EmbeddingProvider,
@@ -26,32 +30,134 @@ export {
   VOYAGE_EMBEDDING_MODEL,
 } from "./model-config";
 
-const blogDraftSchema = z.object({
+const bodyBlockSchema = z.discriminatedUnion("type", [
+  z.object({
+    text: z.string().trim().min(1),
+    type: z.literal("heading"),
+  }),
+  z.object({
+    text: z.string().trim().min(1),
+    type: z.literal("paragraph"),
+  }),
+  z.object({
+    text: z.string().trim().min(1),
+    type: z.literal("quote"),
+  }),
+  z.object({
+    items: z.array(z.string().trim().min(1)).min(1),
+    ordered: z.boolean().optional(),
+    type: z.literal("list"),
+  }),
+]);
+
+const structureSchemas = {
+  arena_recap: z.object({
+    biggestMovers: z.array(z.string().trim().min(1)).min(1),
+    fieldLeader: z.string().trim().min(1),
+    leaguePosition: z.string().trim().min(1),
+    needle: z.string().trim().min(1),
+    rivalWatch: z.string().trim().min(1),
+    type: z.literal("arena_recap"),
+  }),
+  awards_superlatives: z.object({
+    awards: z
+      .array(
+        z.object({
+          award: z.string().trim().min(1),
+          fact: z.string().trim().min(1),
+          recipient: z.string().trim().min(1),
+        }),
+      )
+      .min(3)
+      .max(5),
+    type: z.literal("awards_superlatives"),
+  }),
+  instigation_column: z.object({
+    provocation: z.string().trim().min(1),
+    settleItCta: z.string().trim().min(1),
+    stakes: z.string().trim().min(1),
+    twoSides: z.array(z.string().trim().min(1)).min(2),
+    type: z.literal("instigation_column"),
+  }),
+  matchup_preview: z.object({
+    matchups: z
+      .array(
+        z.object({
+          edge: z.string().trim().min(1),
+          keyNumber: z.string().trim().min(1),
+          opponent: z.string().trim().min(1),
+          prediction: z.string().trim().min(1),
+          team: z.string().trim().min(1),
+          xFactor: z.string().trim().min(1),
+        }),
+      )
+      .min(1),
+    type: z.literal("matchup_preview"),
+  }),
+  milestone_record: z.object({
+    legend: z.string().trim().min(1),
+    math: z.string().trim().min(1),
+    newHolder: z.string().trim().min(1),
+    previousHolder: z.string().trim().min(1),
+    record: z.string().trim().min(1),
+    type: z.literal("milestone_record"),
+  }),
+  power_rankings: z.object({
+    rankings: z
+      .array(
+        z.object({
+          delta: z.number(),
+          rank: z.number(),
+          rationale: z.string().trim().min(1),
+          record: z.string().trim().min(1),
+          team: z.string().trim().min(1),
+        }),
+      )
+      .min(1),
+    type: z.literal("power_rankings"),
+  }),
+  rivalry_piece: z.object({
+    history: z.string().trim().min(1),
+    needle: z.string().trim().min(1),
+    score: z.string().trim().min(1),
+    stakes: z.string().trim().min(1),
+    type: z.literal("rivalry_piece"),
+  }),
+  season_arc: z.object({
+    actSoFar: z.string().trim().min(1),
+    stakes: z.string().trim().min(1),
+    teamToBeat: z.string().trim().min(1),
+    turningPoint: z.string().trim().min(1),
+    type: z.literal("season_arc"),
+  }),
+  transaction_reaction: z.object({
+    grade: z.string().trim().min(1),
+    loser: z.string().trim().min(1),
+    move: z.string().trim().min(1),
+    sourcesSay: z.string().trim().min(1),
+    type: z.literal("transaction_reaction"),
+    winner: z.string().trim().min(1),
+  }),
+  verdict_column: z.object({
+    newCanon: z.string().trim().min(1),
+    question: z.string().trim().min(1),
+    ruling: z.string().trim().min(1),
+    type: z.literal("verdict_column"),
+    vote: z.string().trim().min(1),
+  }),
+  weekly_recap: z.object({
+    kicker: z.string().trim().min(1),
+    lead: z.string().trim().min(1),
+    standingsShift: z.string().trim().min(1),
+    topResult: z.string().trim().min(1),
+    type: z.literal("weekly_recap"),
+    upsetOrBlowout: z.string().trim().min(1),
+  }),
+} satisfies Record<AiContentType, z.ZodType<BlogContentStructure>>;
+
+const baseBlogDraftSchemaFields = {
   body: z.string().trim().min(1),
-  bodyBlocks: z
-    .array(
-      z.discriminatedUnion("type", [
-        z.object({
-          text: z.string().trim().min(1),
-          type: z.literal("heading"),
-        }),
-        z.object({
-          text: z.string().trim().min(1),
-          type: z.literal("paragraph"),
-        }),
-        z.object({
-          text: z.string().trim().min(1),
-          type: z.literal("quote"),
-        }),
-        z.object({
-          items: z.array(z.string().trim().min(1)).min(1),
-          ordered: z.boolean().optional(),
-          type: z.literal("list"),
-        }),
-      ]),
-    )
-    .min(2),
-  contentType: z.enum(AI_CONTENT_TYPES),
+  bodyBlocks: z.array(bodyBlockSchema).min(2),
   citedCanonClaimIds: z.array(z.string().min(1)).max(8),
   dek: z.string().trim().min(1),
   section: z.enum([
@@ -64,111 +170,17 @@ const blogDraftSchema = z.object({
   summary: z.string().trim().min(1),
   tags: z.array(z.string().trim().min(1)).min(1).max(8),
   title: z.string().trim().min(1),
-  structure: z.discriminatedUnion("type", [
-    z.object({
-      kicker: z.string().trim().min(1),
-      lead: z.string().trim().min(1),
-      standingsShift: z.string().trim().min(1),
-      topResult: z.string().trim().min(1),
-      type: z.literal("weekly_recap"),
-      upsetOrBlowout: z.string().trim().min(1),
-    }),
-    z.object({
-      rankings: z
-        .array(
-          z.object({
-            delta: z.number(),
-            rank: z.number(),
-            rationale: z.string().trim().min(1),
-            record: z.string().trim().min(1),
-            team: z.string().trim().min(1),
-          }),
-        )
-        .min(1),
-      type: z.literal("power_rankings"),
-    }),
-    z.object({
-      matchups: z
-        .array(
-          z.object({
-            edge: z.string().trim().min(1),
-            keyNumber: z.string().trim().min(1),
-            opponent: z.string().trim().min(1),
-            prediction: z.string().trim().min(1),
-            team: z.string().trim().min(1),
-            xFactor: z.string().trim().min(1),
-          }),
-        )
-        .min(1),
-      type: z.literal("matchup_preview"),
-    }),
-    z.object({
-      awards: z
-        .array(
-          z.object({
-            award: z.string().trim().min(1),
-            fact: z.string().trim().min(1),
-            recipient: z.string().trim().min(1),
-          }),
-        )
-        .min(3)
-        .max(5),
-      type: z.literal("awards_superlatives"),
-    }),
-    z.object({
-      grade: z.string().trim().min(1),
-      loser: z.string().trim().min(1),
-      move: z.string().trim().min(1),
-      sourcesSay: z.string().trim().min(1),
-      type: z.literal("transaction_reaction"),
-      winner: z.string().trim().min(1),
-    }),
-    z.object({
-      actSoFar: z.string().trim().min(1),
-      stakes: z.string().trim().min(1),
-      teamToBeat: z.string().trim().min(1),
-      turningPoint: z.string().trim().min(1),
-      type: z.literal("season_arc"),
-    }),
-    z.object({
-      history: z.string().trim().min(1),
-      needle: z.string().trim().min(1),
-      score: z.string().trim().min(1),
-      stakes: z.string().trim().min(1),
-      type: z.literal("rivalry_piece"),
-    }),
-    z.object({
-      biggestMovers: z.array(z.string().trim().min(1)).min(1),
-      fieldLeader: z.string().trim().min(1),
-      leaguePosition: z.string().trim().min(1),
-      needle: z.string().trim().min(1),
-      rivalWatch: z.string().trim().min(1),
-      type: z.literal("arena_recap"),
-    }),
-    z.object({
-      legend: z.string().trim().min(1),
-      math: z.string().trim().min(1),
-      newHolder: z.string().trim().min(1),
-      previousHolder: z.string().trim().min(1),
-      record: z.string().trim().min(1),
-      type: z.literal("milestone_record"),
-    }),
-    z.object({
-      provocation: z.string().trim().min(1),
-      settleItCta: z.string().trim().min(1),
-      stakes: z.string().trim().min(1),
-      twoSides: z.array(z.string().trim().min(1)).min(2),
-      type: z.literal("instigation_column"),
-    }),
-    z.object({
-      newCanon: z.string().trim().min(1),
-      question: z.string().trim().min(1),
-      ruling: z.string().trim().min(1),
-      type: z.literal("verdict_column"),
-      vote: z.string().trim().min(1),
-    }),
-  ]),
-}) satisfies z.ZodType<BlogDraft>;
+} as const;
+
+function blogDraftSchemaForContentType(
+  contentType: AiContentType,
+): z.ZodType<BlogDraft> {
+  return z.object({
+    ...baseBlogDraftSchemaFields,
+    contentType: z.literal(contentType),
+    structure: structureSchemas[contentType],
+  }) as z.ZodType<BlogDraft>;
+}
 
 export type AnthropicMessagesClient = Pick<
   InstanceType<typeof Anthropic>,
@@ -272,6 +284,7 @@ export class AnthropicLlmClient implements LlmClient {
   async generateWithUsage(
     request: LlmGenerateRequest,
   ): Promise<AnthropicGenerateResult> {
+    const responseSchema = blogDraftSchemaForContentType(request.contentType);
     let response: AnthropicResponseWithUsage;
     try {
       response = await this.client.messages.parse({
@@ -286,7 +299,7 @@ export class AnthropicLlmClient implements LlmClient {
         metadata: { user_id: request.context.league.id },
         model: this.modelForPersona(request.persona),
         output_config: {
-          format: zodOutputFormat(blogDraftSchema),
+          format: zodOutputFormat(responseSchema),
         },
         system: [
           {
@@ -310,7 +323,7 @@ export class AnthropicLlmClient implements LlmClient {
       });
     }
 
-    const parsed = blogDraftSchema.safeParse(response.parsed_output);
+    const parsed = responseSchema.safeParse(response.parsed_output);
     if (!parsed.success) {
       throw new AppError({
         cause: parsed.error,

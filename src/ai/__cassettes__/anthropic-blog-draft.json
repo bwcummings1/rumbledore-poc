@@ -1,0 +1,57 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "maxTokens": 720,
+        "metadata": {
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "method": "anthropic.messages.parse",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "response": {
+        "parsed_output": {
+          "body": "Filed from the replay desk.\n\nFixture Team has the edge because the imported facts say so.",
+          "bodyBlocks": [
+            {
+              "text": "Filed from the replay desk",
+              "type": "heading"
+            },
+            {
+              "text": "Fixture Team has the edge because the imported facts say so.",
+              "type": "paragraph"
+            }
+          ],
+          "citedCanonClaimIds": [],
+          "contentType": "matchup_preview",
+          "dek": "A replayed real-client draft proves the structured parser still fits the article contract.",
+          "section": "previews",
+          "structure": {
+            "matchups": [
+              {
+                "edge": "Fixture Team has the imported points-for edge.",
+                "keyNumber": "120 points for",
+                "opponent": "Fixture Opponent",
+                "prediction": "Fixture Team is a lean, not a lock.",
+                "team": "Fixture Team",
+                "xFactor": "Fixture Manager"
+              }
+            ],
+            "type": "matchup_preview"
+          },
+          "summary": "Fixture Team carries the replayed preview edge.",
+          "tags": ["Fixture Team", "Preview"],
+          "title": "Fixture Team Gets the Replay Edge"
+        },
+        "usage": {
+          "cache_creation_input_tokens": 34,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 822,
+          "output_tokens": 218
+        }
+      }
+    }
+  ],
+  "recordedAt": "2026-06-16T00:00:00.000Z",
+  "service": "anthropic"
+}

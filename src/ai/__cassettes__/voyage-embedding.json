@@ -1,0 +1,35 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "body": {
+          "input": "league post text",
+          "input_type": "document",
+          "model": "voyage-4-lite"
+        },
+        "method": "POST",
+        "url": {
+          "origin": "https://api.voyageai.com",
+          "pathname": "/v1/embeddings",
+          "query": []
+        }
+      },
+      "response": {
+        "body": {
+          "data": [
+            {
+              "embedding": [0.0125, -0.034, 0.056, 0.078]
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200,
+        "statusText": "OK"
+      }
+    }
+  ],
+  "recordedAt": "2026-06-16T00:00:00.000Z",
+  "service": "voyage"
+}

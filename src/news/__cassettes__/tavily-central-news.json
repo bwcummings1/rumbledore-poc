@@ -1,0 +1,36 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "tavily.search",
+        "options": {
+          "autoParameters": true,
+          "includeAnswer": false,
+          "includeImages": false,
+          "includeRawContent": "text",
+          "maxResults": 2,
+          "topic": "news"
+        },
+        "query": "nfl fantasy injuries"
+      },
+      "response": {
+        "images": [],
+        "query": "nfl fantasy injuries",
+        "requestId": "vcr-tavily-central-1",
+        "responseTime": 0.19,
+        "results": [
+          {
+            "content": "Replay central news summary.",
+            "publishedDate": "2026-06-15T14:30:00.000Z",
+            "rawContent": "Replay central news body with general fantasy-football context and no league-private facts.",
+            "score": 0.91,
+            "title": "Replay central fantasy update",
+            "url": "https://fantasy.example.com/news/replay-update"
+          }
+        ]
+      }
+    }
+  ],
+  "recordedAt": "2026-06-16T00:00:00.000Z",
+  "service": "tavily"
+}

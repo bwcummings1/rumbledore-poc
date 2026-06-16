@@ -10,7 +10,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 - [x] Default all AI to cheap models (Haiku, voyage-4-lite) via a model-tier config. (specs/25)
 - [x] Build the per-provider spend guard that caps usage and falls back to mock on breach. (specs/25)
 - [x] Add secret-free usage logging/observability for provider calls. (specs/25)
-- [ ] Build the VCR fixture-first test harness with gated live-smoke validation per provider. (specs/25)
+- [x] Build the VCR fixture-first test harness with gated live-smoke validation per provider. (specs/25)
 
 ### Q. Model & tone tunability framework (see specs/26)
 - [ ] Build the pluggable model-provider abstraction including a custom fine-tuned/self-hosted endpoint. (specs/26)

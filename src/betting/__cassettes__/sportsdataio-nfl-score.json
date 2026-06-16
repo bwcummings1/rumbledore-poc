@@ -1,0 +1,40 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "GET",
+        "url": {
+          "origin": "https://api.sportsdata.io",
+          "pathname": "/v3/nfl/scores/json/ScoresByDate/2025-SEP-04",
+          "query": []
+        }
+      },
+      "response": {
+        "body": [
+          {
+            "AwayScore": 20,
+            "AwayTeam": "DAL",
+            "GameKey": "20250904-DAL-PHI",
+            "HomeScore": 27,
+            "HomeTeam": "PHI",
+            "IsOver": true,
+            "PlayerGames": [
+              {
+                "PassingYards": 247,
+                "PlayerID": "100001"
+              }
+            ],
+            "Status": "Final"
+          }
+        ],
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200,
+        "statusText": "OK"
+      }
+    }
+  ],
+  "recordedAt": "2026-06-16T00:00:00.000Z",
+  "service": "sportsdataio"
+}

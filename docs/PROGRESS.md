@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 4 Scope started** after clean provider mock→real selection verification landed.
+Keep it current. Last updated: 2026-06-16 — **Phase 4 real-integration VCR/live-smoke harness landed** with all five paid providers smoke-checked behind spend guards.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Fixture-first paid-provider VCR harness landed — Anthropic, Tavily, Voyage, The Odds API, and SportsDataIO now replay scrubbed cassettes offline, live smoke is gated by `LIVE_SMOKE=1`, and Anthropic structured output now uses per-content schemas small enough for real Haiku validation.
 - 2026-06-16: Provider usage observability landed — guarded real provider calls now emit secret-free usage logs with token/request counts and expose provider usage totals through health metrics.
 - 2026-06-16: Per-provider spend guard landed — real Anthropic, Tavily, Voyage, Odds, and SportsDataIO paths now cap Redis-backed usage and demote to deterministic mocks on breach.
 - 2026-06-16: Cheap AI model-tier defaults landed — Anthropic now defaults every persona to Haiku with an opt-in mixed tier, and Voyage embedding model selection is env-overridable while defaulting to voyage-4-lite.

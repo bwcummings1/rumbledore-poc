@@ -1,0 +1,92 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "GET",
+        "url": {
+          "origin": "https://api.the-odds-api.com",
+          "pathname": "/v4/sports/americanfootball_nfl/odds",
+          "query": [
+            ["apiKey", "[REDACTED]"],
+            ["markets", "h2h,spreads,totals"],
+            ["oddsFormat", "american"],
+            ["regions", "us"]
+          ]
+        }
+      },
+      "response": {
+        "body": [
+          {
+            "away_team": "Dallas Cowboys",
+            "bookmakers": [
+              {
+                "key": "replay_book",
+                "last_update": "2026-09-10T10:06:00.000Z",
+                "markets": [
+                  {
+                    "key": "h2h",
+                    "last_update": "2026-09-10T10:01:00.000Z",
+                    "outcomes": [
+                      {
+                        "name": "Tampa Bay Buccaneers",
+                        "price": -145
+                      },
+                      {
+                        "name": "Dallas Cowboys",
+                        "price": 125
+                      }
+                    ]
+                  },
+                  {
+                    "key": "spreads",
+                    "last_update": "2026-09-10T10:02:00.000Z",
+                    "outcomes": [
+                      {
+                        "name": "Tampa Bay Buccaneers",
+                        "point": -3.5,
+                        "price": -110
+                      },
+                      {
+                        "name": "Dallas Cowboys",
+                        "point": 3.5,
+                        "price": -110
+                      }
+                    ]
+                  },
+                  {
+                    "key": "totals",
+                    "last_update": "2026-09-10T10:03:00.000Z",
+                    "outcomes": [
+                      {
+                        "name": "Over",
+                        "point": 46.5,
+                        "price": -105
+                      },
+                      {
+                        "name": "Under",
+                        "point": 46.5,
+                        "price": -115
+                      }
+                    ]
+                  }
+                ],
+                "title": "Replay Book"
+              }
+            ],
+            "commence_time": "2026-09-10T20:20:00.000Z",
+            "home_team": "Tampa Bay Buccaneers",
+            "id": "replay-event-1",
+            "sport_key": "americanfootball_nfl"
+          }
+        ],
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200,
+        "statusText": "OK"
+      }
+    }
+  ],
+  "recordedAt": "2026-06-16T00:00:00.000Z",
+  "service": "the-odds-api"
+}

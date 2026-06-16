@@ -1,0 +1,36 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "tavily.search",
+        "options": {
+          "autoParameters": true,
+          "includeAnswer": false,
+          "includeImages": false,
+          "includeRawContent": "text",
+          "maxResults": 2,
+          "topic": "news"
+        },
+        "query": "latest NFL fantasy football news start sit projections trends"
+      },
+      "response": {
+        "images": [],
+        "query": "latest NFL fantasy football news start sit projections trends",
+        "requestId": "vcr-tavily-ai-1",
+        "responseTime": 0.21,
+        "results": [
+          {
+            "content": "A replayed fantasy football injury note suitable for grounding.",
+            "publishedDate": "2026-06-15T15:00:00.000Z",
+            "rawContent": "A replayed fantasy football injury note suitable for grounding. It contains general NFL context and no league private data.",
+            "score": 0.93,
+            "title": "Replay fantasy injury note",
+            "url": "https://news.example.com/fantasy/injury-note"
+          }
+        ]
+      }
+    }
+  ],
+  "recordedAt": "2026-06-16T00:00:00.000Z",
+  "service": "tavily"
+}
