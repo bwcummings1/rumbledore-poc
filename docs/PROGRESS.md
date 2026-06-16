@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **PWA cache hardening landed** with private/no-store league-page headers and shared-device cache-isolation coverage.
+Keep it current. Last updated: 2026-06-16 — **Records catalog coverage landed** with direct seeded multi-season catalog tests for standings, H2H, streaks, championships, milestones, co-owner identities, and ties.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Records catalog coverage landed — `records-catalog.ts` now has a direct seeded multi-season fixture test suite covering standings reconciliation, deterministic tied record ordering, H2H mirror ledgers, cross-season streaks, championship summaries, keeper milestones, and co-owner identity separation.
 - 2026-06-16: Transaction/waiver content emitters landed — live ingestion now fetches supported provider transactions, persists changed rows idempotently, and fans out transaction/waiver Beat Reporter trigger events.
 - 2026-06-16: PWA cache hardening landed — `/leagues/:path*` pages now declare `Cache-Control: private, no-store`, and a shared-device login-A → logout → login-B e2e guards against cached league-page leakage.
 - 2026-06-16: DB role privilege health assertion landed — `/api/health` now reports current/session DB role privileges and production health fails if the app role is superuser or has BYPASSRLS.
