@@ -94,6 +94,8 @@ describe("LoreStewardReviewView", () => {
       target: { value: "Clear majority, short by one absent manager." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Ratify" }));
+    expect(screen.getByRole("dialog")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
     await waitFor(() => expect(postJson).toHaveBeenCalledTimes(1));
     expect(postJson).toHaveBeenCalledWith(

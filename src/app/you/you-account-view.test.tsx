@@ -99,9 +99,11 @@ test("you account view renders identity, providers, and installed leagues", () =
   expect(
     screen.getByRole("heading", { level: 1, name: "Fixture User" }),
   ).toBeDefined();
-  expect(screen.getByText("fixture@example.test · verified")).toBeDefined();
+  expect(screen.getByText("fixture@example.test")).toBeDefined();
+  expect(screen.getByText("Verified")).toBeDefined();
   expect(screen.getAllByText("Yahoo").length).toBeGreaterThan(1);
-  expect(screen.getByText("OAuth · validated Jun 14, 2026")).toBeDefined();
+  expect(screen.getByText("OAuth")).toBeDefined();
+  expect(screen.getByText("Jun 14, 2026")).toBeDefined();
   expect(
     screen
       .getByRole("link", { name: "Open NHS Alumni Annual" })
@@ -115,6 +117,32 @@ test("you account view renders identity, providers, and installed leagues", () =
   expect(
     screen.getByText("Press: Moon Crew Opens the Trap Door"),
   ).toBeDefined();
+});
+
+test("you account view renders provider reconnect CTAs", () => {
+  render(
+    <YouAccountView
+      data={{
+        ...data,
+        connections: [
+          {
+            ...data.connections[0],
+            invalidAt: "2026-06-15T00:00:00.000Z",
+            status: "invalid",
+          },
+        ],
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Your Yahoo authorization expired before imports could run.",
+    ),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: "Reconnect Yahoo" }).getAttribute("href"),
+  ).toBe("/onboarding/yahoo");
 });
 
 test("you account view renders the personal agent locked state", () => {
@@ -142,7 +170,9 @@ test("you account view renders the personal agent locked state", () => {
     />,
   );
 
-  expect(screen.getByText("Individual tier required")).toBeDefined();
+  expect(
+    screen.getAllByText("Individual tier required").length,
+  ).toBeGreaterThan(0);
   expect(
     screen.getByText(
       "Get your personal agent for cross-league briefings about your teams.",

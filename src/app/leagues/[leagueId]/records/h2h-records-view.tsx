@@ -1,6 +1,10 @@
 import { ArrowLeft, BookOpen, Swords } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { Edge } from "@/components/ui/edge";
+import { KVList } from "@/components/ui/kv";
+import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import {
   formatMeetingContext,
@@ -11,17 +15,7 @@ import type {
   HeadToHeadMeeting,
   HeadToHeadRecordsPageData,
 } from "./records-page-data";
-
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-card border border-border bg-card p-4">
-      <p className="text-xs uppercase text-muted-foreground">{label}</p>
-      <p className="mt-2 font-mono text-xl font-semibold tabular-nums">
-        {value}
-      </p>
-    </div>
-  );
-}
+import { H2HSeasonPairsTable } from "./records-tables";
 
 function winnerName(data: HeadToHeadRecordsPageData, row: HeadToHeadMeeting) {
   if (row.winnerPersonId === data.personA.id) {
@@ -52,25 +46,25 @@ function MeetingList({
       <div className="grid gap-3 sm:grid-cols-2">
         {rows.slice(0, 6).map((row) => (
           <article
-            className="rounded-card border border-border bg-card p-4"
+            className="cell grid gap-3 p-4"
             key={`${row.matchupId}-${row.season}-${row.scoringPeriod}`}
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium">{formatMeetingContext(row)}</p>
-              <p className="font-mono text-sm font-semibold tabular-nums">
+              <p className="metric text-sm font-semibold">
                 {formatNumber(row.combinedPoints)}
               </p>
             </div>
             <div className="mt-3 grid gap-1 text-sm">
               <p>
                 {data.personA.name}:{" "}
-                <span className="font-mono tabular-nums">
+                <span className="metric">
                   {formatNumber(row.personAPoints)}
                 </span>
               </p>
               <p>
                 {data.personB.name}:{" "}
-                <span className="font-mono tabular-nums">
+                <span className="metric">
                   {formatNumber(row.personBPoints)}
                 </span>
               </p>
@@ -91,10 +85,11 @@ export function HeadToHeadRecordsView({
   data: HeadToHeadRecordsPageData;
 }) {
   const { pair } = data;
+  const margin = pair.personA.wins - pair.personB.wins;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-7 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-4">
+      <header className="panel grid gap-4 p-4">
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/leagues/${data.league.id}/records`}
@@ -118,15 +113,32 @@ export function HeadToHeadRecordsView({
         <div className="grid gap-3">
           <div className="flex items-center gap-2 text-primary">
             <Swords className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">Head-to-head</p>
+            <p className="eyebrow">Head-to-head</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            <h1 className="heading-auspex h-grad text-2xl leading-tight sm:text-3xl">
               {data.personA.name} vs {data.personB.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {pair.meetings} meetings across the imported league history.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <StatusPill tone="info">
+                {data.league.provider.toUpperCase()} {data.league.season}
+              </StatusPill>
+              <StatusPill tone="neutral">{pair.meetings} meetings</StatusPill>
+              <Edge
+                eyebrow="margin"
+                tone={
+                  margin === 0
+                    ? "neutral"
+                    : margin > 0
+                      ? "positive"
+                      : "negative"
+                }
+                value={Math.abs(margin)}
+              />
+            </div>
           </div>
         </div>
       </header>
@@ -148,8 +160,8 @@ export function HeadToHeadRecordsView({
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-card border border-border bg-card p-4">
-          <h2 className="text-base font-semibold tracking-tight">
+        <div className="panel grid gap-4 p-4">
+          <h2 className="font-display text-base font-semibold tracking-tight">
             {data.personA.name}
           </h2>
           <Link
@@ -158,29 +170,22 @@ export function HeadToHeadRecordsView({
           >
             Manager page
           </Link>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="text-muted-foreground">Total points</dt>
-              <dd className="font-mono font-semibold tabular-nums">
-                {formatNumber(pair.personA.points)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Average</dt>
-              <dd className="font-mono font-semibold tabular-nums">
-                {formatNumber(pair.personA.avgPoints)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Series high</dt>
-              <dd className="font-mono font-semibold tabular-nums">
-                {formatNumber(pair.personA.highestScore)}
-              </dd>
-            </div>
-          </dl>
+          <KVList
+            items={[
+              {
+                label: "Total points",
+                value: formatNumber(pair.personA.points),
+              },
+              { label: "Average", value: formatNumber(pair.personA.avgPoints) },
+              {
+                label: "Series high",
+                value: formatNumber(pair.personA.highestScore),
+              },
+            ]}
+          />
         </div>
-        <div className="rounded-card border border-border bg-card p-4">
-          <h2 className="text-base font-semibold tracking-tight">
+        <div className="panel grid gap-4 p-4">
+          <h2 className="font-display text-base font-semibold tracking-tight">
             {data.personB.name}
           </h2>
           <Link
@@ -189,26 +194,19 @@ export function HeadToHeadRecordsView({
           >
             Manager page
           </Link>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="text-muted-foreground">Total points</dt>
-              <dd className="font-mono font-semibold tabular-nums">
-                {formatNumber(pair.personB.points)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Average</dt>
-              <dd className="font-mono font-semibold tabular-nums">
-                {formatNumber(pair.personB.avgPoints)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Series high</dt>
-              <dd className="font-mono font-semibold tabular-nums">
-                {formatNumber(pair.personB.highestScore)}
-              </dd>
-            </div>
-          </dl>
+          <KVList
+            items={[
+              {
+                label: "Total points",
+                value: formatNumber(pair.personB.points),
+              },
+              { label: "Average", value: formatNumber(pair.personB.avgPoints) },
+              {
+                label: "Series high",
+                value: formatNumber(pair.personB.highestScore),
+              },
+            ]}
+          />
         </div>
       </section>
 
@@ -247,41 +245,11 @@ export function HeadToHeadRecordsView({
           <h2 className="text-lg font-semibold tracking-tight">
             Season ledgers
           </h2>
-          <div className="overflow-x-auto rounded-card border border-border">
-            <table className="w-full min-w-[42rem] text-left text-sm">
-              <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Season</th>
-                  <th className="px-3 py-2 font-medium">{data.personA.name}</th>
-                  <th className="px-3 py-2 font-medium">{data.personB.name}</th>
-                  <th className="px-3 py-2 font-medium">Ties</th>
-                  <th className="px-3 py-2 font-medium">Points</th>
-                  <th className="px-3 py-2 font-medium">Playoff</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.seasonPairs.map((row) => (
-                  <tr className="border-t border-border" key={row.season}>
-                    <td className="px-3 py-3 tabular-nums">{row.season}</td>
-                    <td className="px-3 py-3 tabular-nums">
-                      {row.personA.wins}-{row.personA.losses}
-                    </td>
-                    <td className="px-3 py-3 tabular-nums">
-                      {row.personB.wins}-{row.personB.losses}
-                    </td>
-                    <td className="px-3 py-3 tabular-nums">{row.ties}</td>
-                    <td className="px-3 py-3 tabular-nums">
-                      {formatNumber(row.personA.points)} /{" "}
-                      {formatNumber(row.personB.points)}
-                    </td>
-                    <td className="px-3 py-3 tabular-nums">
-                      {row.playoffMeetings} / {row.championshipMeetings}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <H2HSeasonPairsTable
+            personAName={data.personA.name}
+            personBName={data.personB.name}
+            rows={data.seasonPairs}
+          />
         </section>
       ) : null}
 

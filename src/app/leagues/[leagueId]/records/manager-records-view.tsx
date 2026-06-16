@@ -1,10 +1,13 @@
 import { ArrowLeft, BookOpen, Crown, Swords, Trophy } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { Edge } from "@/components/ui/edge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import {
   formatNumber,
-  formatPercent,
   formatRecordContext,
   formatRecordValue,
   formatWeekContext,
@@ -15,17 +18,7 @@ import type {
   ManagerRecordsPageData,
   ManagerWeeklyHighlight,
 } from "./records-page-data";
-
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-card border border-border bg-card p-4">
-      <p className="text-xs uppercase text-muted-foreground">{label}</p>
-      <p className="mt-2 font-mono text-xl font-semibold tabular-nums">
-        {value}
-      </p>
-    </div>
-  );
-}
+import { ManagerH2HLedgersTable, ManagerSeasonTable } from "./records-tables";
 
 function Section({
   children,
@@ -65,15 +58,12 @@ function HeldRecords({
     >
       <div className="grid gap-3 sm:grid-cols-2">
         {records.map((record) => (
-          <article
-            className="rounded-card border border-border bg-card p-4"
-            key={record.id}
-          >
+          <article className="cell grid gap-3 p-4" key={record.id}>
             <div className="mb-2 flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold tracking-tight">
+              <h3 className="font-display text-base font-semibold tracking-tight">
                 {record.label}
               </h3>
-              <p className="font-mono text-lg font-semibold tabular-nums">
+              <p className="lcd text-lg font-semibold">
                 {formatRecordValue(record)}
               </p>
             </div>
@@ -111,8 +101,10 @@ function WeeklyList({
   }
 
   return (
-    <div className="rounded-card border border-border bg-card p-4">
-      <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+    <div className="cell p-4">
+      <h3 className="font-display text-sm font-semibold tracking-tight">
+        {title}
+      </h3>
       <ol className="mt-3 grid gap-2">
         {rows.slice(0, 5).map((row) => (
           <li
@@ -127,132 +119,13 @@ function WeeklyList({
                 {formatWeekContext(row)}
               </p>
             </div>
-            <p className="font-mono text-sm tabular-nums text-muted-foreground">
+            <p className="metric text-sm text-muted-foreground">
               PA {formatNumber(row.pointsAgainst)}
             </p>
           </li>
         ))}
       </ol>
     </div>
-  );
-}
-
-function SeasonTable({ data }: { data: ManagerRecordsPageData }) {
-  if (data.seasonLines.length === 0) {
-    return null;
-  }
-
-  return (
-    <Section title="Season by season">
-      <div className="overflow-x-auto rounded-card border border-border">
-        <table className="w-full min-w-[46rem] text-left text-sm">
-          <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">Season</th>
-              <th className="px-3 py-2 font-medium">W-L-T</th>
-              <th className="px-3 py-2 font-medium">Win %</th>
-              <th className="px-3 py-2 font-medium">PF</th>
-              <th className="px-3 py-2 font-medium">PA</th>
-              <th className="px-3 py-2 font-medium">Luck</th>
-              <th className="px-3 py-2 font-medium">Finish</th>
-              <th className="px-3 py-2 font-medium">Streaks</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.seasonLines.map((row) => (
-              <tr className="border-t border-border" key={row.season}>
-                <td className="px-3 py-3 tabular-nums">{row.season}</td>
-                <td className="px-3 py-3 tabular-nums">
-                  {row.wins}-{row.losses}-{row.ties}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatPercent(row.winPercentage)}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatNumber(row.pointsFor)}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatNumber(row.pointsAgainst)}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatNumber(row.luck)}
-                </td>
-                <td className="px-3 py-3">
-                  {row.finalPlacement.replaceAll("_", " ")} #{row.finalRank}
-                </td>
-                <td className="px-3 py-3">
-                  W{row.longestWinStreak} / L{row.longestLossStreak}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Section>
-  );
-}
-
-function H2HLedgers({ data }: { data: ManagerRecordsPageData }) {
-  if (data.h2hLedgers.length === 0) {
-    return null;
-  }
-
-  return (
-    <Section
-      icon={<Swords className="size-4 text-primary" aria-hidden="true" />}
-      title="Head-to-head ledgers"
-    >
-      <div className="overflow-x-auto rounded-card border border-border">
-        <table className="w-full min-w-[48rem] text-left text-sm">
-          <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">Opponent</th>
-              <th className="px-3 py-2 font-medium">Series</th>
-              <th className="px-3 py-2 font-medium">Points</th>
-              <th className="px-3 py-2 font-medium">High</th>
-              <th className="px-3 py-2 font-medium">Playoff</th>
-              <th className="px-3 py-2 font-medium">Last</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.h2hLedgers.map((row) => (
-              <tr className="border-t border-border" key={row.opponentPersonId}>
-                <td className="px-3 py-3 font-medium">
-                  <Link
-                    className="underline-offset-4 hover:underline"
-                    href={h2hHref(
-                      data.league,
-                      data.manager.id,
-                      row.opponentPersonId,
-                    )}
-                  >
-                    {row.opponentName}
-                  </Link>
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {row.wins}-{row.losses}-{row.ties}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatNumber(row.pointsFor)} /{" "}
-                  {formatNumber(row.pointsAgainst)}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatNumber(row.highestScore)}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {row.playoffMeetings} / {row.championshipMeetings}
-                </td>
-                <td className="px-3 py-3">
-                  {row.lastSeason
-                    ? `${row.lastSeason} W${row.lastScoringPeriod ?? "?"}`
-                    : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Section>
   );
 }
 
@@ -267,7 +140,7 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-7 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-4">
+      <header className="panel grid gap-4 p-4">
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/leagues/${data.league.id}/records`}
@@ -289,29 +162,39 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
           </Link>
         </div>
         <div className="max-w-2xl">
-          <p className="text-sm font-medium text-primary">
-            Manager record book
-          </p>
-          <h1 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">
+          <p className="eyebrow text-primary">Manager record book</p>
+          <h1 className="heading-auspex h-grad mt-2 text-2xl leading-tight sm:text-3xl">
             {data.manager.name}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {ownerLine}
             {data.manager.seasonSpan ? ` - ${data.manager.seasonSpan}` : ""}
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatusPill tone="info">
+              {data.league.provider.toUpperCase()} {data.league.season}
+            </StatusPill>
+            <StatusPill tone="neutral">
+              {data.seasonLines.length} seasons
+            </StatusPill>
+            <StatusPill tone="neutral">
+              {data.heldRecords.length} records held
+            </StatusPill>
+          </div>
         </div>
       </header>
 
       {data.catalog.integrityBlocked ? (
-        <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold tracking-tight">
-            Records paused for data review
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+        <EmptyState
+          className="p-5"
+          title="Records paused for data review"
+          variant="gated"
+        >
+          <p>
             A steward-visible integrity check is unresolved, so trusted record
             reads are withheld until the imported history is reviewed.
           </p>
-        </section>
+        </EmptyState>
       ) : null}
 
       {!data.catalog.integrityBlocked && career ? (
@@ -320,8 +203,15 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
             label="Career"
             value={`${career.wins}-${career.losses}-${career.ties}`}
           />
-          <StatTile label="Win %" value={formatPercent(career.winPercentage)} />
-          <StatTile label="Points for" value={formatNumber(career.pointsFor)} />
+          <StatTile
+            label="Win %"
+            value={`${(career.winPercentage * 100).toFixed(1)}%`}
+          />
+          <StatTile
+            label="Points for"
+            tone="lilac"
+            value={formatNumber(career.pointsFor)}
+          />
           <StatTile label="Titles" value={`${career.championships}`} />
         </section>
       ) : null}
@@ -354,27 +244,38 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
               />
             </div>
             {data.placements.length > 0 ? (
-              <div className="rounded-card border border-border bg-card p-4">
-                <h3 className="text-sm font-semibold tracking-tight">
+              <div className="cell p-4">
+                <h3 className="font-display text-sm font-semibold tracking-tight">
                   Placement ledger
                 </h3>
                 <ol className="mt-3 grid gap-2">
                   {data.placements.map((placement) => (
                     <li
-                      className="flex items-center justify-between gap-3 text-sm"
+                      className="flex flex-wrap items-center justify-between gap-3 text-sm"
                       key={placement.season}
                     >
-                      <span>{placement.season}</span>
-                      <span className="text-muted-foreground">
-                        {placement.roles.join(", ")}
-                      </span>
+                      <span className="metric">{placement.season}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {placement.roles.map((role) => (
+                          <Edge
+                            eyebrow="finish"
+                            key={`${placement.season}-${role}`}
+                            tone="positive"
+                            value={role}
+                          />
+                        ))}
+                      </div>
                     </li>
                   ))}
                 </ol>
               </div>
             ) : null}
           </Section>
-          <SeasonTable data={data} />
+          {data.seasonLines.length > 0 ? (
+            <Section title="Season by season">
+              <ManagerSeasonTable rows={data.seasonLines} />
+            </Section>
+          ) : null}
           <Section title="Signature weeks">
             <div className="grid gap-3 lg:grid-cols-2">
               <WeeklyList
@@ -395,7 +296,20 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
               />
             </div>
           </Section>
-          <H2HLedgers data={data} />
+          {data.h2hLedgers.length > 0 ? (
+            <Section
+              icon={
+                <Swords className="size-4 text-primary" aria-hidden="true" />
+              }
+              title="Head-to-head ledgers"
+            >
+              <ManagerH2HLedgersTable
+                league={data.league}
+                managerId={data.manager.id}
+                rows={data.h2hLedgers}
+              />
+            </Section>
+          ) : null}
         </>
       ) : null}
     </main>

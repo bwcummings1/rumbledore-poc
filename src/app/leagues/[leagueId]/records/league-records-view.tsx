@@ -8,11 +8,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { Edge } from "@/components/ui/edge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { KVList } from "@/components/ui/kv";
+import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import type { HeadToHeadPairCatalogEntry } from "@/stats";
 import {
   formatNumber,
-  formatPercent,
   formatRecordContext,
   formatRecordValue,
   h2hHref,
@@ -22,6 +25,7 @@ import type {
   CurrentRecordBookEntry,
   RecordsPageData,
 } from "./records-page-data";
+import { AllTimeStandingsTable } from "./records-tables";
 
 function recordGroup(
   records: readonly CurrentRecordBookEntry[],
@@ -49,36 +53,55 @@ function RecordCard({
   record: CurrentRecordBookEntry;
 }) {
   return (
-    <article className="rounded-card border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <Trophy className="size-4 shrink-0 text-primary" aria-hidden="true" />
-        <p className="font-mono text-lg font-semibold tabular-nums">
+    <article
+      className="cell grid gap-4 p-4"
+      data-record-type={record.recordType}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span
+          aria-hidden="true"
+          className="chip-glyph flex size-10 shrink-0 items-center justify-center"
+        >
+          <Trophy className="size-4 text-primary" />
+        </span>
+        <p className="lcd shrink-0 text-xl font-bold">
           {formatRecordValue(record)}
         </p>
       </div>
-      <h3 className="text-base font-semibold tracking-tight">{record.label}</h3>
-      <p className="mt-2 text-sm text-muted-foreground">
-        {record.holderPersonId ? (
-          <Link
-            className="font-medium text-foreground underline-offset-4 hover:underline"
-            href={managerHref(data.league, record.holderPersonId)}
-          >
-            {record.holderName ?? "Unknown holder"}
-          </Link>
-        ) : (
-          "Unknown holder"
-        )}
-        {record.opponentName ? ` - vs ${record.opponentName}` : ""}
-        {record.season ? ` - ${record.season}` : ""}
-        {record.scoringPeriod ? ` - Week ${record.scoringPeriod}` : ""}
-      </p>
-      {record.previousRecordId ? (
-        <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
-          Previous: {record.previousHolderName ?? "Unknown holder"}
-          {record.previousValue !== null
-            ? ` at ${formatNumber(record.previousValue)}`
-            : ""}
+      <div className="grid gap-2">
+        <h3 className="font-display text-base font-semibold tracking-tight">
+          {record.label}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {record.holderPersonId ? (
+            <Link
+              className="font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+              href={managerHref(data.league, record.holderPersonId)}
+            >
+              {record.holderName ?? "Unknown holder"}
+            </Link>
+          ) : (
+            "Unknown holder"
+          )}
+          {record.opponentName ? ` · vs ${record.opponentName}` : ""}
+          {record.season ? ` · ${record.season}` : ""}
+          {record.scoringPeriod ? ` · Week ${record.scoringPeriod}` : ""}
         </p>
+      </div>
+      {record.previousRecordId ? (
+        <KVList
+          className="border-t border-[var(--hair)] pt-2"
+          items={[
+            {
+              label: "Previous",
+              value: `${record.previousHolderName ?? "Unknown holder"}${
+                record.previousValue !== null
+                  ? ` at ${formatNumber(record.previousValue)}`
+                  : ""
+              }`,
+            },
+          ]}
+        />
       ) : null}
     </article>
   );
@@ -87,14 +110,16 @@ function RecordCard({
 function Section({
   children,
   icon,
+  id,
   title,
 }: {
   children: React.ReactNode;
   icon?: React.ReactNode;
+  id?: string;
   title: string;
 }) {
   return (
-    <section className="grid gap-3">
+    <section className="scroll-mt-28 grid gap-3" id={id}>
       <div className="flex items-center gap-2">
         {icon}
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
@@ -113,67 +138,22 @@ function AllTimeStandings({ data }: { data: RecordsPageData }) {
   return (
     <Section
       icon={<Crown className="size-4 text-primary" aria-hidden="true" />}
+      id="all-time"
       title="All-time standings"
     >
-      <div className="overflow-x-auto rounded-card border border-border">
-        <table className="w-full min-w-[44rem] text-left text-sm">
-          <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">Rank</th>
-              <th className="px-3 py-2 font-medium">Manager</th>
-              <th className="px-3 py-2 font-medium">W-L-T</th>
-              <th className="px-3 py-2 font-medium">Win %</th>
-              <th className="px-3 py-2 font-medium">PF</th>
-              <th className="px-3 py-2 font-medium">Titles</th>
-              <th className="px-3 py-2 font-medium">Playoffs</th>
-              <th className="px-3 py-2 font-medium">Best season</th>
-            </tr>
-          </thead>
-          <tbody>
-            {standings.map((row) => (
-              <tr className="border-t border-border" key={row.personId}>
-                <td className="px-3 py-3 font-mono tabular-nums">{row.rank}</td>
-                <td className="px-3 py-3 font-medium">
-                  <Link
-                    className="underline-offset-4 hover:underline"
-                    href={managerHref(data.league, row.personId)}
-                  >
-                    {row.personName}
-                  </Link>
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {row.wins}-{row.losses}-{row.ties}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatPercent(row.winPercentage)}
-                </td>
-                <td className="px-3 py-3 tabular-nums">
-                  {formatNumber(row.pointsFor)}
-                </td>
-                <td className="px-3 py-3 tabular-nums">{row.championships}</td>
-                <td className="px-3 py-3 tabular-nums">
-                  {row.playoffAppearances}
-                </td>
-                <td className="px-3 py-3">
-                  {row.bestSeason
-                    ? `${row.bestSeason.season} (${row.bestSeason.wins}-${row.bestSeason.losses})`
-                    : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <AllTimeStandingsTable league={data.league} rows={standings} />
     </Section>
   );
 }
 
 function RecordSection({
   data,
+  id,
   records,
   title,
 }: {
   data: RecordsPageData;
+  id: string;
   records: readonly CurrentRecordBookEntry[];
   title: string;
 }) {
@@ -182,7 +162,7 @@ function RecordSection({
   }
 
   return (
-    <Section title={title}>
+    <Section id={id} title={title}>
       <div className="grid gap-3 sm:grid-cols-2">
         {records.map((record) => (
           <RecordCard data={data} key={record.id} record={record} />
@@ -204,8 +184,10 @@ function CompactList({
   }
 
   return (
-    <div className="rounded-card border border-border bg-card p-4">
-      <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+    <div className="cell p-4">
+      <h3 className="font-display text-sm font-semibold tracking-tight">
+        {title}
+      </h3>
       <ol className="mt-3 grid gap-2">
         {items.slice(0, 5).map((item) => (
           <li
@@ -229,7 +211,7 @@ function CompactList({
 function HighLowSection({ data }: { data: RecordsPageData }) {
   const { highLow } = data.catalog;
   return (
-    <Section title="Highs and lows">
+    <Section id="highs-lows" title="Highs and lows">
       <div className="grid gap-3 lg:grid-cols-3">
         <CompactList
           items={highLow.highestScores.map((row) => ({
@@ -279,7 +261,7 @@ function HighLowSection({ data }: { data: RecordsPageData }) {
 function StreaksAndBlowouts({ data }: { data: RecordsPageData }) {
   const { blowouts, streaks } = data.catalog;
   return (
-    <Section title="Streaks and margins">
+    <Section id="streaks-margins" title="Streaks and margins">
       <div className="grid gap-3 lg:grid-cols-2">
         <CompactList
           items={streaks.longestWins.map((row) => ({
@@ -344,10 +326,11 @@ function Championships({ data }: { data: RecordsPageData }) {
   return (
     <Section
       icon={<Crown className="size-4 text-primary" aria-hidden="true" />}
+      id="championships"
       title="Championship history"
     >
       <div className="grid gap-3 lg:grid-cols-2">
-        <div className="overflow-x-auto rounded-card border border-border">
+        <div className="overflow-x-auto rounded-card border border-border bg-[var(--panel)] shadow-[var(--bevel)]">
           <table className="w-full min-w-[32rem] text-left text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
@@ -406,7 +389,7 @@ function RivalryList({
   }
 
   return (
-    <div className="rounded-card border border-border bg-card p-4">
+    <div className="cell p-4">
       <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
       <ol className="mt-3 grid gap-2">
         {pairs.slice(0, 4).map((pair) => (
@@ -429,6 +412,12 @@ function RivalryList({
               {pair.meetings} meetings -{" "}
               {formatNumber(pair.personA.points + pair.personB.points)} points
             </p>
+            <Edge
+              className="mt-1 w-fit"
+              eyebrow="margin"
+              tone={rivalryScore(pair) === 0 ? "neutral" : "positive"}
+              value={rivalryScore(pair)}
+            />
           </li>
         ))}
       </ol>
@@ -445,6 +434,7 @@ function Rivalries({ data }: { data: RecordsPageData }) {
   return (
     <Section
       icon={<Swords className="size-4 text-primary" aria-hidden="true" />}
+      id="rivalries"
       title="Rivalries"
     >
       <div className="grid gap-3 lg:grid-cols-2">
@@ -494,8 +484,8 @@ function KeeperMilestones({ data }: { data: RecordsPageData }) {
   const keeper = data.catalog.milestones.keeper;
   if (keeper.status === "unavailable") {
     return (
-      <Section title="Draft and keeper milestones">
-        <div className="rounded-card border border-dashed border-border bg-muted/25 p-4">
+      <Section id="keeper-milestones" title="Draft and keeper milestones">
+        <div className="cell border-dashed p-4">
           <h3 className="text-sm font-semibold tracking-tight">
             Keeper milestones unavailable
           </h3>
@@ -511,14 +501,12 @@ function KeeperMilestones({ data }: { data: RecordsPageData }) {
   return (
     <Section
       icon={<Landmark className="size-4 text-primary" aria-hidden="true" />}
+      id="keeper-milestones"
       title="Draft and keeper milestones"
     >
       <div className="grid gap-3 sm:grid-cols-2">
         {keeper.entries.slice(0, 6).map((entry) => (
-          <article
-            className="rounded-card border border-border bg-card p-4"
-            key={entry.milestoneKey}
-          >
+          <article className="cell p-4" key={entry.milestoneKey}>
             <p className="text-xs uppercase text-muted-foreground">
               {entry.milestoneType.replaceAll("_", " ")}
             </p>
@@ -542,6 +530,18 @@ function KeeperMilestones({ data }: { data: RecordsPageData }) {
     </Section>
   );
 }
+
+const recordBookNav = [
+  { href: "#all-time", label: "All-time" },
+  { href: "#career-marks", label: "Career" },
+  { href: "#season-records", label: "Season" },
+  { href: "#single-week-records", label: "Weeks" },
+  { href: "#highs-lows", label: "High/low" },
+  { href: "#streaks-margins", label: "Streaks" },
+  { href: "#championships", label: "Titles" },
+  { href: "#rivalries", label: "Rivalries" },
+  { href: "#keeper-milestones", label: "Keeper" },
+] as const;
 
 export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
   const weeklyRecords = recordGroup(data.currentRecords, [
@@ -576,7 +576,7 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-7 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-4">
+      <header className="panel grid gap-4 p-4">
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/leagues/${data.league.id}`}
@@ -603,56 +603,84 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
             <p className="text-sm font-medium">Records</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            <h1 className="heading-auspex h-grad text-2xl leading-tight sm:text-3xl">
               {data.league.name} record book
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               The league history rolled into standings, marks, rivalries, and
               title lore for the cast to cite.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <StatusPill tone="info">
+                {data.league.provider.toUpperCase()} {data.league.season}
+              </StatusPill>
+              <StatusPill tone="neutral">
+                {data.managers.length} managers
+              </StatusPill>
+              <StatusPill tone="neutral">
+                {data.catalog.allTimeStandings.length} all-time rows
+              </StatusPill>
+            </div>
           </div>
         </div>
       </header>
 
       {data.catalog.integrityBlocked ? (
-        <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold tracking-tight">
-            Records paused for data review
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+        <EmptyState
+          className="p-5"
+          title="Records paused for data review"
+          variant="gated"
+        >
+          <p>
             A steward-visible integrity check is unresolved, so trusted record
             reads are withheld until the imported history is reviewed.
           </p>
-        </section>
+        </EmptyState>
       ) : null}
 
       {!data.catalog.integrityBlocked && !hasTrustedRecordData(data) ? (
-        <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold tracking-tight">
-            No records calculated yet
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+        <EmptyState className="p-5" title="No records calculated yet">
+          <p>
             Historical import and stats recompute will populate this page with
             the league's all-time marks.
           </p>
-        </section>
+        </EmptyState>
       ) : null}
 
       {!data.catalog.integrityBlocked && hasTrustedRecordData(data) ? (
         <>
+          <nav
+            aria-label="Record book sections"
+            className="panel sticky top-14 z-10 overflow-x-auto px-2 py-2 lg:top-16"
+          >
+            <div className="flex min-w-max gap-1">
+              {recordBookNav.map((item) => (
+                <Link
+                  className="inline-flex min-h-11 items-center rounded-control px-3 py-2 font-display text-sm text-muted-foreground hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+                  href={item.href}
+                  key={item.href}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </nav>
           <AllTimeStandings data={data} />
           <RecordSection
             data={data}
+            id="career-marks"
             records={careerRecords}
             title="Career marks"
           />
           <RecordSection
             data={data}
+            id="season-records"
             records={seasonRecords}
             title="Season records"
           />
           <RecordSection
             data={data}
+            id="single-week-records"
             records={weeklyRecords}
             title="Single-week records"
           />

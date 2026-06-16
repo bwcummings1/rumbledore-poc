@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **AUSPEX Sportsbook surface landed** with grouped event panels, a Parlay Console sheet/drawer, bankroll LCD loop, read-only offline state, and route-shaped loading state.
+Keep it current. Last updated: 2026-06-16 — **AUSPEX Records/News/Settings surface composition landed** with a structured record book, responsive manager/H2H tables, account provider reconnect rows, and confirmed steward queues.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX Records/News/Settings surface composition landed — Records gained anchored catalog navigation plus responsive sortable manager/H2H tables, Central News was verified on the existing editorial register, and You/data-steward/lore-steward surfaces now use provider reconnect rows, locked states, banners, and confirm-gated queues.
 - 2026-06-16: AUSPEX Sportsbook surface landed — `/leagues/[leagueId]/bet` now frames event-grouped markets, a locked-price Parlay Console with mobile sheet trigger, amber rolling-bankroll LCD loop, open/history slip ledger tabs, offline read-only treatment, and a sportsbook-shaped skeleton.
 - 2026-06-16: AUSPEX Arena surface landed — `/arena` now frames league-vs-league and individual competition with a Central Arena HUD, honest as-of state, rivalry duel metrics, aggregate rank/P&L/ROI charts, movement rail, route-specific skeletons, and `season` query compatibility.
 - 2026-06-16: AUSPEX League Home dashboard landed — league home now composes the matchup hero, local wire, scoreboard, sortable standings, Press rail, bankroll preview, records, teams, and responsive empty states without changing the scoped loader.

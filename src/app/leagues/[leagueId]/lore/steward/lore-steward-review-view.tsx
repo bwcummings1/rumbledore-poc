@@ -2,9 +2,14 @@
 
 import { ArrowLeft, Check, Clock3, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
+import { Banner } from "@/components/ui/banner";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { KVList } from "@/components/ui/kv";
+import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import type { StewardLoreAction } from "@/lore";
 import type {
@@ -38,6 +43,11 @@ function actionUrl(leagueId: string, claimId: string): string {
   return `/api/leagues/${leagueId}/lore/claims/${claimId}/steward`;
 }
 
+interface PendingLoreAction {
+  readonly action: StewardLoreAction;
+  readonly claim: LoreClaimCard;
+}
+
 export function LoreStewardReviewView({
   data,
 }: {
@@ -50,7 +60,24 @@ export function LoreStewardReviewView({
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingAction, setPendingAction] = useState<PendingLoreAction | null>(
+    null,
+  );
   const loreHref = `/leagues/${encodeURIComponent(data.league.id)}/lore`;
+  const actionDisabled = busy !== null || !isOnline;
+
+  useEffect(() => {
+    setIsOnline(globalThis.navigator?.onLine ?? true);
+    const markOnline = () => setIsOnline(true);
+    const markOffline = () => setIsOnline(false);
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
+    return () => {
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
+    };
+  }, []);
 
   async function applyAction(claim: LoreClaimCard, action: StewardLoreAction) {
     const reason = reasonByClaim[claim.id]?.trim() ?? "";
@@ -82,9 +109,18 @@ export function LoreStewardReviewView({
     }
   }
 
+  async function confirmPendingAction() {
+    const pending = pendingAction;
+    if (!pending) {
+      return;
+    }
+    setPendingAction(null);
+    await applyAction(pending.claim, pending.action);
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-4">
+      <header className="panel grid gap-4 p-4">
         <Link
           href={loreHref}
           className={cn(
@@ -96,10 +132,8 @@ export function LoreStewardReviewView({
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-primary">
-              Lore / Steward review
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+            <p className="eyebrow text-primary">Lore / Steward review</p>
+            <h1 className="heading-auspex h-grad mt-1 text-2xl leading-tight sm:text-3xl">
               {data.league.name}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
@@ -111,28 +145,44 @@ export function LoreStewardReviewView({
         </div>
       </header>
 
+      <section className="grid gap-3 sm:grid-cols-3">
+        <StatTile label="Open votes" value={`${claims.length}`} />
+        <StatTile
+          label="Tiebreaks"
+          tone={claims.some(needsTiebreak) ? "amber" : "default"}
+          value={`${claims.filter(needsTiebreak).length}`}
+        />
+        <StatTile
+          label="League"
+          value={data.league.name.length > 10 ? "active" : data.league.name}
+        />
+      </section>
+
+      {!isOnline ? (
+        <Banner title="Lore steward console offline" tone="warn">
+          Vote context stays visible. Ratify, reject, and extension actions are
+          disabled until the connection returns.
+        </Banner>
+      ) : null}
       {message ? (
-        <div className="rounded-card border border-positive/40 bg-positive/10 px-3 py-2 text-sm text-positive">
+        <Banner title="Steward action recorded" tone="ok">
           {message}
-        </div>
+        </Banner>
       ) : null}
       {error ? (
-        <div className="rounded-card border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <Banner title="Steward action failed" tone="danger">
           {error}
-        </div>
+        </Banner>
       ) : null}
 
       {claims.length > 0 ? (
         <section className="grid gap-3" aria-label="Open lore votes">
           {claims.map((claim) => (
-            <article
-              key={claim.id}
-              className="grid gap-4 rounded-card border border-border bg-card p-4"
-            >
+            <article key={claim.id} className="cell grid gap-4 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-semibold tracking-tight">
+                    <h2 className="font-display text-base font-semibold tracking-tight">
                       <Link
                         href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(claim.id)}`}
                         className="hover:text-primary"
@@ -141,9 +191,9 @@ export function LoreStewardReviewView({
                       </Link>
                     </h2>
                     {needsTiebreak(claim) ? (
-                      <span className="rounded-full border border-highlight/40 bg-highlight/10 px-2 py-1 text-xs font-medium text-highlight">
+                      <StatusPill tone="warning">
                         Quorum-short majority
-                      </span>
+                      </StatusPill>
                     ) : null}
                   </div>
                   <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
@@ -159,17 +209,21 @@ export function LoreStewardReviewView({
               {claim.vote ? (
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)] sm:items-start">
                   <div className="grid gap-2 text-sm">
-                    <div className="grid grid-cols-3 gap-2 text-center font-mono tabular-nums">
-                      <span className="rounded-md bg-muted/40 px-2 py-1">
-                        {claim.vote.tally.affirm} affirm
-                      </span>
-                      <span className="rounded-md bg-muted/40 px-2 py-1">
-                        {claim.vote.tally.reject} reject
-                      </span>
-                      <span className="rounded-md bg-muted/40 px-2 py-1">
-                        {claim.vote.tally.abstain} abstain
-                      </span>
-                    </div>
+                    <KVList
+                      items={[
+                        {
+                          label: "Affirm",
+                          tone: "positive",
+                          value: claim.vote.tally.affirm,
+                        },
+                        {
+                          label: "Reject",
+                          tone: "negative",
+                          value: claim.vote.tally.reject,
+                        },
+                        { label: "Abstain", value: claim.vote.tally.abstain },
+                      ]}
+                    />
                     <p className="text-muted-foreground">
                       Quorum {claim.vote.tally.quorum} of{" "}
                       {claim.vote.tally.activeMembers};{" "}
@@ -191,7 +245,7 @@ export function LoreStewardReviewView({
                             [claim.id]: event.currentTarget.value,
                           }))
                         }
-                        className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        className="min-h-20 rounded-control border border-input bg-[var(--panel-2)] px-3 py-2 text-sm outline-none focus-visible:shadow-[var(--focus-ring-shadow)]"
                         maxLength={500}
                       />
                     </label>
@@ -200,10 +254,12 @@ export function LoreStewardReviewView({
                         type="button"
                         variant="secondary"
                         disabled={
-                          busy !== null ||
+                          actionDisabled ||
                           !(reasonByClaim[claim.id] ?? "").trim()
                         }
-                        onClick={() => void applyAction(claim, "ratify")}
+                        onClick={() =>
+                          setPendingAction({ action: "ratify", claim })
+                        }
                       >
                         <Check data-icon="inline-start" />
                         Ratify
@@ -212,10 +268,12 @@ export function LoreStewardReviewView({
                         type="button"
                         variant="destructive"
                         disabled={
-                          busy !== null ||
+                          actionDisabled ||
                           !(reasonByClaim[claim.id] ?? "").trim()
                         }
-                        onClick={() => void applyAction(claim, "reject")}
+                        onClick={() =>
+                          setPendingAction({ action: "reject", claim })
+                        }
                       >
                         <X data-icon="inline-start" />
                         Reject
@@ -224,10 +282,12 @@ export function LoreStewardReviewView({
                         type="button"
                         variant="outline"
                         disabled={
-                          busy !== null ||
+                          actionDisabled ||
                           !(reasonByClaim[claim.id] ?? "").trim()
                         }
-                        onClick={() => void applyAction(claim, "extend")}
+                        onClick={() =>
+                          setPendingAction({ action: "extend", claim })
+                        }
                       >
                         Extend once
                       </Button>
@@ -239,10 +299,52 @@ export function LoreStewardReviewView({
           ))}
         </section>
       ) : (
-        <p className="rounded-card border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
+        <EmptyState title="No lore votes need review">
           No open lore votes need steward review.
-        </p>
+        </EmptyState>
       )}
+
+      {pendingAction ? (
+        <div
+          aria-labelledby="lore-steward-confirm-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-background/70 px-4 backdrop-blur-sm"
+          role="dialog"
+        >
+          <div className="panel grid w-full max-w-md gap-4 p-4">
+            <div className="grid gap-2">
+              <p className="eyebrow text-warning">Confirm lore action</p>
+              <h2
+                className="font-display text-lg font-semibold"
+                id="lore-steward-confirm-title"
+              >
+                {pendingAction.action} "{pendingAction.claim.title}"
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                This writes an audited steward event using the reason entered on
+                the claim.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setPendingAction(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void confirmPendingAction()}
+                loading={busy !== null}
+              >
+                Confirm action
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

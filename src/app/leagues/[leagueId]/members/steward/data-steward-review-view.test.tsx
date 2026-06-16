@@ -55,6 +55,8 @@ test("data steward review view posts review actions and updates local state", as
   expect(screen.getByText("Identity sanity")).toBeDefined();
 
   fireEvent.click(screen.getByRole("button", { name: "Confirm link" }));
+  expect(screen.getByRole("dialog")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
   await waitFor(() => {
     expect(
@@ -77,6 +79,8 @@ test("data steward review view posts review actions and updates local state", as
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Mark reviewed" }));
+  expect(screen.getByRole("dialog")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
   await waitFor(() => {
     expect(screen.getByText("reviewed")).toBeDefined();
@@ -94,6 +98,8 @@ test("data steward review view posts review actions and updates local state", as
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Rerun checks" }));
+  expect(screen.getByRole("dialog")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
   await waitFor(() => {
     expect(screen.getByText("Integrity checks were rerun.")).toBeDefined();

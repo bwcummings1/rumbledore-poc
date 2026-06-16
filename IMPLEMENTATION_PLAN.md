@@ -44,7 +44,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Compose the League Home dashboard in AUSPEX (matchup hero, standings ladder, cast headlines, bankroll, wire). (specs/32)
 - [x] Compose the Arena (league-vs-league and individual leaderboards, seasons, head-to-head, rank movement). (specs/32)
 - [x] Compose the Sportsbook (market board, the bet-slip console/sheet, the rolling bankroll LCD). (specs/32)
-- [ ] Compose Records & History, the Central News hub, and Settings/data-steward surfaces. (specs/32)
+- [x] Compose Records & History, the Central News hub, and Settings/data-steward surfaces. (specs/32)
 - [ ] Compose the entitlement/upgrade and gated states (graceful, on-brand, never a broken page). (specs/32)
 
 ### Y. AI cast, lore & onboarding surfaces (see specs/33)
@@ -66,3 +66,5 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [ ] Spec/reference follow-up: `docs/design/auspex-reference.html` is referenced by Spec 34 but absent from this checkout; continue using `docs/design/rumbledore-design-language.md` plus specs 28-34 unless the template is restored.
 - [ ] [test] Split DB integration tests into a dedicated Vitest project/concurrency profile so the exact gate stays deterministic without a broad timeout budget.
 - [ ] [ui/data] Expand the Sportsbook slip ledger with per-leg live status and settlement audit links once the betting view data contract can change.
+- [ ] [ui/data] Expand the data-steward console with full merge/split/rename correction panels once the summary payload includes candidate person/team detail.
+- [ ] [ui/offline] Add Central News per-front stale/offline banners once the hub loader exposes cache freshness metadata.

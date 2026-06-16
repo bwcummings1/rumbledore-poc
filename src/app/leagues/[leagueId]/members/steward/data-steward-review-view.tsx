@@ -9,13 +9,18 @@ import {
   UserCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type OnboardingPanelError,
   onboardingPanelError,
   postJson,
 } from "@/app/onboarding/client-http";
+import { Banner } from "@/components/ui/banner";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { KVList } from "@/components/ui/kv";
+import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import type {
   DataIntegrityReviewItem,
@@ -30,6 +35,11 @@ interface DataStewardReviewViewProps {
     name: string;
   };
 }
+
+type PendingStewardAction =
+  | { check: DataIntegrityReviewItem; kind: "mark_reviewed" }
+  | { kind: "rerun_integrity" }
+  | { kind: "suggestion"; suggestion: SuggestedIdentityLink };
 
 function checkLabel(key: DataIntegrityReviewItem["checkKey"]): string {
   switch (key) {
@@ -47,14 +57,16 @@ function checkLabel(key: DataIntegrityReviewItem["checkKey"]): string {
   return key.replaceAll("_", " ");
 }
 
-function statusClass(status: DataIntegrityReviewItem["status"]): string {
+function statusTone(
+  status: DataIntegrityReviewItem["status"],
+): "danger" | "success" | "warning" {
   switch (status) {
     case "fail":
-      return "border-destructive/40 bg-destructive/10 text-destructive";
+      return "danger";
     case "reviewed":
-      return "border-highlight/40 bg-highlight/10 text-highlight";
+      return "warning";
     case "pass":
-      return "border-positive/40 bg-positive/10 text-positive";
+      return "success";
   }
 }
 
@@ -76,6 +88,9 @@ export function DataStewardReviewView({
   );
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<OnboardingPanelError | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingAction, setPendingAction] =
+    useState<PendingStewardAction | null>(null);
   const [reran, setReran] = useState(false);
   const apiUrl = `/api/leagues/${league.id}/steward/integrity`;
 
@@ -83,6 +98,19 @@ export function DataStewardReviewView({
     () => checks.filter((check) => check.status === "fail"),
     [checks],
   );
+  const actionDisabled = busyKey !== null || !isOnline;
+
+  useEffect(() => {
+    setIsOnline(globalThis.navigator?.onLine ?? true);
+    const markOnline = () => setIsOnline(true);
+    const markOffline = () => setIsOnline(false);
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
+    return () => {
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
+    };
+  }, []);
 
   async function postAction(body: unknown, busy: string) {
     setBusyKey(busy);
@@ -152,15 +180,40 @@ export function DataStewardReviewView({
     setReran(ok);
   }
 
+  async function confirmPendingAction() {
+    const pending = pendingAction;
+    if (!pending) {
+      return;
+    }
+    setPendingAction(null);
+    if (pending.kind === "suggestion") {
+      await confirmSuggestion(pending.suggestion);
+      return;
+    }
+    if (pending.kind === "mark_reviewed") {
+      await markReviewed(pending.check);
+      return;
+    }
+    await rerunIntegrity();
+  }
+
+  function pendingActionBody(action: PendingStewardAction): string {
+    if (action.kind === "suggestion") {
+      return `Confirm team ${action.suggestion.providerTeamId} (${action.suggestion.season}) as a manual identity link.`;
+    }
+    if (action.kind === "mark_reviewed") {
+      return `Mark ${checkLabel(action.check.checkKey)} as reviewed for trusted record reads.`;
+    }
+    return "Rerun the integrity checks for this league.";
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-4">
+      <header className="panel grid gap-4 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-primary">
-              Members / Data review
-            </p>
-            <h1 className="mt-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">
+            <p className="eyebrow text-primary">Members / Data review</p>
+            <h1 className="heading-auspex h-grad mt-1 truncate text-2xl leading-tight sm:text-3xl">
               {league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -174,8 +227,8 @@ export function DataStewardReviewView({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void rerunIntegrity()}
-            disabled={busyKey !== null}
+            onClick={() => setPendingAction({ kind: "rerun_integrity" })}
+            disabled={actionDisabled}
           >
             <RefreshCcw data-icon="inline-start" />
             Rerun checks
@@ -190,15 +243,34 @@ export function DataStewardReviewView({
         </div>
       </header>
 
+      <section className="grid gap-3 sm:grid-cols-3">
+        <StatTile
+          label="Open flags"
+          tone={unresolvedChecks.length > 0 ? "amber" : "default"}
+          value={`${unresolvedChecks.length}`}
+        />
+        <StatTile
+          label="Identity suggestions"
+          value={`${suggestions.length}`}
+        />
+        <StatTile label="Recorded checks" value={`${checks.length}`} />
+      </section>
+
+      {!isOnline ? (
+        <Banner title="Steward console offline" tone="warn">
+          Review data stays visible. Correction actions are disabled until the
+          connection returns.
+        </Banner>
+      ) : null}
       {error ? (
-        <div className="rounded-card border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <Banner title="Steward action failed" tone="danger">
           {error.message}
-        </div>
+        </Banner>
       ) : null}
       {reran ? (
-        <div className="rounded-card border border-positive/40 bg-positive/10 px-3 py-2 text-sm text-positive">
+        <Banner title="Integrity checks were rerun" tone="ok">
           Integrity checks were rerun.
-        </div>
+        </Banner>
       ) : null}
 
       <section
@@ -222,25 +294,43 @@ export function DataStewardReviewView({
             {suggestions.map((suggestion) => (
               <article
                 key={suggestion.mappingId}
-                className="rounded-card border border-border bg-card p-4"
+                className="cell grid gap-3 p-4"
               >
-                <div className="grid gap-1 text-sm">
-                  <p className="font-semibold">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <p className="font-display text-sm font-semibold">
                     Team {suggestion.providerTeamId} · {suggestion.season}
                   </p>
-                  <p className="text-muted-foreground">
-                    Confidence {(suggestion.confidence * 100).toFixed(1)}%
-                  </p>
-                  <p className="break-all font-mono text-xs text-muted-foreground">
-                    Person {suggestion.personId}
-                  </p>
+                  <StatusPill tone="warning">
+                    {(suggestion.confidence * 100).toFixed(1)}%
+                  </StatusPill>
                 </div>
+                <KVList
+                  items={[
+                    {
+                      label: "Person",
+                      value: (
+                        <span className="break-all font-mono text-xs">
+                          {suggestion.personId}
+                        </span>
+                      ),
+                    },
+                    {
+                      label: "Team season",
+                      value: (
+                        <span className="break-all font-mono text-xs">
+                          {suggestion.teamSeasonId}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
                 <Button
                   type="button"
-                  className="mt-3"
                   variant="secondary"
-                  onClick={() => void confirmSuggestion(suggestion)}
-                  disabled={busyKey !== null}
+                  onClick={() =>
+                    setPendingAction({ kind: "suggestion", suggestion })
+                  }
+                  disabled={actionDisabled}
                 >
                   <Check data-icon="inline-start" />
                   Confirm link
@@ -249,9 +339,9 @@ export function DataStewardReviewView({
             ))}
           </div>
         ) : (
-          <p className="rounded-card border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
+          <EmptyState title="No ambiguous identities">
             No fuzzy identity links are waiting for steward confirmation.
-          </p>
+          </EmptyState>
         )}
       </section>
 
@@ -274,13 +364,10 @@ export function DataStewardReviewView({
         {checks.length > 0 ? (
           <div className="grid gap-3">
             {checks.map((check) => (
-              <article
-                key={check.id}
-                className="rounded-card border border-border bg-card p-4"
-              >
+              <article key={check.id} className="cell grid gap-3 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="text-base font-semibold">
+                    <h3 className="font-display text-base font-semibold">
                       {checkLabel(check.checkKey)}
                     </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -288,14 +375,9 @@ export function DataStewardReviewView({
                       {new Date(check.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  <span
-                    className={cn(
-                      "rounded-control border px-2 py-1 text-xs font-medium",
-                      statusClass(check.status),
-                    )}
-                  >
+                  <StatusPill tone={statusTone(check.status)}>
                     {check.status}
-                  </span>
+                  </StatusPill>
                 </div>
                 <p className="mt-3 max-h-24 overflow-auto break-words rounded-control border border-border bg-background px-3 py-2 font-mono text-xs text-muted-foreground">
                   {detailPreview(check.detail)}
@@ -305,8 +387,10 @@ export function DataStewardReviewView({
                     type="button"
                     className="mt-3"
                     variant="secondary"
-                    onClick={() => void markReviewed(check)}
-                    disabled={busyKey !== null}
+                    onClick={() =>
+                      setPendingAction({ kind: "mark_reviewed", check })
+                    }
+                    disabled={actionDisabled}
                   >
                     <Check data-icon="inline-start" />
                     Mark reviewed
@@ -316,16 +400,57 @@ export function DataStewardReviewView({
             ))}
           </div>
         ) : (
-          <p className="rounded-card border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
+          <EmptyState title="No integrity checks">
             No integrity checks have been recorded yet.
-          </p>
+          </EmptyState>
         )}
         {unresolvedChecks.length === 0 && checks.length > 0 ? (
-          <p className="rounded-control border border-positive/30 bg-positive/10 px-3 py-2 text-sm text-positive">
+          <Banner title="Trusted substrate clear" tone="ok">
             All recorded integrity checks are passing or reviewed.
-          </p>
+          </Banner>
         ) : null}
       </section>
+
+      {pendingAction ? (
+        <div
+          aria-labelledby="steward-confirm-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-background/70 px-4 backdrop-blur-sm"
+          role="dialog"
+        >
+          <div className="panel grid w-full max-w-md gap-4 p-4">
+            <div className="grid gap-2">
+              <p className="eyebrow text-warning">Confirm steward action</p>
+              <h2
+                className="font-display text-lg font-semibold"
+                id="steward-confirm-title"
+              >
+                Write audited correction
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {pendingActionBody(pendingAction)}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setPendingAction(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void confirmPendingAction()}
+                loading={busyKey !== null}
+              >
+                Confirm action
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

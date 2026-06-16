@@ -187,9 +187,8 @@ test("league records view renders structured record book sections", () => {
   expect(
     screen.getByRole("heading", { name: "Highest weekly score" }),
   ).toBeDefined();
-  expect(
-    screen.getByText("Previous: Fixture Manager 15 at 166.70"),
-  ).toBeDefined();
+  expect(screen.getByText("Previous")).toBeDefined();
+  expect(screen.getByText("Fixture Manager 15 at 166.70")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Rivalries" })).toBeDefined();
   expect(
     screen
