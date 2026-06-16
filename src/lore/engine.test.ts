@@ -129,7 +129,11 @@ function memberWithRole(league: SeededLeague, role: SeedRole): SeededMember {
   return member;
 }
 
-async function openClaim(league: SeededLeague, tag: string) {
+async function openClaim(
+  league: SeededLeague,
+  tag: string,
+  voteClosesAt = baseNow,
+) {
   return openOpinionClaim({
     deps: deps(),
     input: {
@@ -137,7 +141,7 @@ async function openClaim(league: SeededLeague, tag: string) {
       body: `${tag} is now league lore`,
       leagueId: league.id,
       title: `${tag} lore claim`,
-      voteClosesAt: baseNow,
+      voteClosesAt,
     },
   });
 }
@@ -1259,6 +1263,222 @@ describe("lore claim voting lifecycle", () => {
     expect(rows.events.map((event) => event.reason)).toContain(
       "steward:ratify",
     );
+  });
+
+  it("rejects a steward tiebreak on a clear-majority open vote", async () => {
+    const league = await seedLeague("steward-clear-open", [
+      "commissioner",
+      "data_steward",
+      "member",
+      "member",
+      "member",
+    ]);
+    const steward = memberWithRole(league, "data_steward");
+    const claim = await openClaim(
+      league,
+      "The runaway majority",
+      new Date("2026-06-21T12:00:00.000Z"),
+    );
+
+    for (const member of league.members.slice(0, 3)) {
+      await castLoreVote({
+        deps: deps(),
+        input: {
+          choice: "affirm",
+          claimId: claim.claimId,
+          leagueId: league.id,
+          voterMemberId: member.id,
+        },
+      });
+    }
+    await castLoreVote({
+      deps: deps(),
+      input: {
+        choice: "reject",
+        claimId: claim.claimId,
+        leagueId: league.id,
+        voterMemberId: league.members[3]?.id ?? "",
+      },
+    });
+
+    await expect(
+      stewardLoreClaim({
+        deps: deps(),
+        input: {
+          action: "reject",
+          actorMemberId: steward.id,
+          claimId: claim.claimId,
+          leagueId: league.id,
+          reason: "Trying to stop a clear open majority.",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "LORE_TIEBREAK_NOT_ELIGIBLE" });
+  });
+
+  it("lets a steward break a tied open vote", async () => {
+    const league = await seedLeague("steward-tie", [
+      "commissioner",
+      "data_steward",
+      "member",
+      "member",
+    ]);
+    const steward = memberWithRole(league, "data_steward");
+    const claim = await openClaim(
+      league,
+      "The tied debate",
+      new Date("2026-06-21T12:00:00.000Z"),
+    );
+
+    await castLoreVote({
+      deps: deps(),
+      input: {
+        choice: "affirm",
+        claimId: claim.claimId,
+        leagueId: league.id,
+        voterMemberId: league.members[0]?.id ?? "",
+      },
+    });
+    await castLoreVote({
+      deps: deps(),
+      input: {
+        choice: "reject",
+        claimId: claim.claimId,
+        leagueId: league.id,
+        voterMemberId: league.members[2]?.id ?? "",
+      },
+    });
+
+    const adjudicated = await stewardLoreClaim({
+      deps: deps(),
+      input: {
+        action: "reject",
+        actorMemberId: steward.id,
+        claimId: claim.claimId,
+        leagueId: league.id,
+        reason: "Tie broken against canon.",
+      },
+    });
+
+    expect(adjudicated).toEqual({
+      claimId: claim.claimId,
+      status: "rejected",
+    });
+    const rows = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx.select().from(loreEvents).where(eq(loreEvents.claimId, claim.claimId)),
+    );
+    expect(rows.map((event) => event.reason)).toContain("steward:reject");
+    expect(JSON.stringify(rows)).toContain('"adjudication":"tie"');
+  });
+
+  it("lets a steward adjudicate an expired open vote", async () => {
+    const league = await seedLeague("steward-expired", [
+      "commissioner",
+      "data_steward",
+      "member",
+      "member",
+      "member",
+    ]);
+    const steward = memberWithRole(league, "data_steward");
+    const claim = await openClaim(league, "The expired majority");
+
+    for (const member of league.members.slice(0, 3)) {
+      await castLoreVote({
+        deps: deps(),
+        input: {
+          choice: "affirm",
+          claimId: claim.claimId,
+          leagueId: league.id,
+          voterMemberId: member.id,
+        },
+      });
+    }
+    await castLoreVote({
+      deps: deps(),
+      input: {
+        choice: "reject",
+        claimId: claim.claimId,
+        leagueId: league.id,
+        voterMemberId: league.members[3]?.id ?? "",
+      },
+    });
+
+    const adjudicated = await stewardLoreClaim({
+      deps: deps(),
+      input: {
+        action: "ratify",
+        actorMemberId: steward.id,
+        claimId: claim.claimId,
+        leagueId: league.id,
+        reason: "The window expired before the job closed it.",
+      },
+    });
+
+    expect(adjudicated).toEqual({
+      claimId: claim.claimId,
+      ratifiedBy: "steward",
+      status: "canonized",
+    });
+    const rows = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx.select().from(loreEvents).where(eq(loreEvents.claimId, claim.claimId)),
+    );
+    expect(JSON.stringify(rows)).toContain('"adjudication":"expired"');
+  });
+
+  it("requires a commissioner for explicit open-vote overrides and audits them separately", async () => {
+    const league = await seedLeague("steward-override", [
+      "commissioner",
+      "data_steward",
+      "member",
+      "member",
+      "member",
+    ]);
+    const commissioner = memberWithRole(league, "commissioner");
+    const steward = memberWithRole(league, "data_steward");
+    const claim = await openClaim(
+      league,
+      "The commissioner override",
+      new Date("2026-06-21T12:00:00.000Z"),
+    );
+
+    await affirmClaim(league, claim.claimId);
+    await expect(
+      stewardLoreClaim({
+        deps: deps(),
+        input: {
+          action: "override",
+          actorMemberId: steward.id,
+          claimId: claim.claimId,
+          leagueId: league.id,
+          overrideDecision: "reject",
+          reason: "Data stewards cannot override clear majorities.",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "LORE_OVERRIDE_REQUIRES_COMMISSIONER" });
+
+    const overridden = await stewardLoreClaim({
+      deps: deps(),
+      input: {
+        action: "override",
+        actorMemberId: commissioner.id,
+        claimId: claim.claimId,
+        leagueId: league.id,
+        overrideDecision: "reject",
+        reason: "Commissioner override for a league-rules violation.",
+      },
+    });
+
+    expect(overridden).toEqual({
+      claimId: claim.claimId,
+      status: "rejected",
+    });
+    const rows = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx.select().from(loreEvents).where(eq(loreEvents.claimId, claim.claimId)),
+    );
+    expect(rows.map((event) => event.reason)).toContain("steward:override");
+    expect(rows.map((event) => event.reason)).toContain(
+      "steward:override:reject",
+    );
+    expect(JSON.stringify(rows)).toContain('"overrideDecision":"reject"');
   });
 
   it("allows a commissioner to extend an open vote once", async () => {

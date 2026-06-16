@@ -196,7 +196,12 @@ export type CloseLoreVoteResult =
       tally: LoreVoteTally | null;
     };
 
-export type StewardLoreAction = "ratify" | "reject" | "extend" | "veto";
+export type StewardLoreDecision = "ratify" | "reject";
+export type StewardLoreAction =
+  | StewardLoreDecision
+  | "extend"
+  | "override"
+  | "veto";
 
 export interface StewardLoreClaimInput {
   leagueId: string;
@@ -205,6 +210,7 @@ export interface StewardLoreClaimInput {
   action: StewardLoreAction;
   reason: string;
   extendUntil?: Date;
+  overrideDecision?: StewardLoreDecision;
 }
 
 export type StewardLoreClaimResult =
@@ -574,6 +580,72 @@ function buildTally({
 
 function shouldCanonize(tally: LoreVoteTally): boolean {
   return tally.affirm > tally.reject && tally.affirm >= tally.quorum;
+}
+
+async function loadLoreVoteTally({
+  claimId,
+  leagueId,
+  quorumRatio,
+  tx,
+}: {
+  claimId: string;
+  leagueId: string;
+  quorumRatio: number;
+  tx: LeagueScopedTx;
+}): Promise<LoreVoteTally> {
+  const activeMembers = (
+    await tx
+      .select({ id: members.id })
+      .from(members)
+      .where(eq(members.organizationId, leagueId))
+  ).length;
+  const votes = await tx
+    .select({ choice: loreVotes.choice })
+    .from(loreVotes)
+    .where(
+      and(eq(loreVotes.leagueId, leagueId), eq(loreVotes.claimId, claimId)),
+    );
+
+  return buildTally({ activeMembers, quorumRatio, votes });
+}
+
+type StewardTiebreakReason = "expired" | "quorum_short" | "tie";
+
+function stewardTiebreakReason({
+  claim,
+  tally,
+  timestamp,
+}: {
+  claim: Pick<LoreClaim, "voteClosesAt">;
+  tally: LoreVoteTally;
+  timestamp: Date;
+}): StewardTiebreakReason | null {
+  if (claim.voteClosesAt && timestamp >= claim.voteClosesAt) {
+    return "expired";
+  }
+  if (tally.affirm + tally.reject > 0 && tally.affirm === tally.reject) {
+    return "tie";
+  }
+  if (tally.affirm > tally.reject && tally.affirm < tally.quorum) {
+    return "quorum_short";
+  }
+  return null;
+}
+
+function overrideDecisionFor(
+  input: StewardLoreClaimInput,
+): StewardLoreDecision {
+  if (
+    input.overrideDecision === "ratify" ||
+    input.overrideDecision === "reject"
+  ) {
+    return input.overrideDecision;
+  }
+  throw new AppError({
+    code: "LORE_OVERRIDE_DECISION_REQUIRED",
+    message: "Lore override requires an explicit ratify or reject decision",
+    status: 400,
+  });
 }
 
 interface VerificationOutcome {
@@ -1946,22 +2018,12 @@ export async function closeLoreVote({
         });
       }
 
-      const activeMembers = (
-        await tx
-          .select({ id: members.id })
-          .from(members)
-          .where(eq(members.organizationId, input.leagueId))
-      ).length;
-      const votes = await tx
-        .select({ choice: loreVotes.choice })
-        .from(loreVotes)
-        .where(
-          and(
-            eq(loreVotes.leagueId, input.leagueId),
-            eq(loreVotes.claimId, input.claimId),
-          ),
-        );
-      const tally = buildTally({ activeMembers, quorumRatio, votes });
+      const tally = await loadLoreVoteTally({
+        claimId: input.claimId,
+        leagueId: input.leagueId,
+        quorumRatio,
+        tx,
+      });
       const beforeState = claimSnapshot(claim);
       const nextStatus = shouldCanonize(tally) ? "canon" : "rejected";
       const ratifiedAt = nextStatus === "canon" ? timestamp : null;
@@ -2079,7 +2141,7 @@ export async function stewardLoreClaim({
     deps.db,
     input.leagueId,
     async (tx): Promise<StewardLoreClaimResult> => {
-      await assertStewardMember({
+      const stewardMember = await assertStewardMember({
         leagueId: input.leagueId,
         memberId: input.actorMemberId,
         tx,
@@ -2282,6 +2344,16 @@ export async function stewardLoreClaim({
             voteClosesAt,
           };
         }
+        case "override":
+          if (stewardMember.role !== "commissioner") {
+            throw new AppError({
+              code: "LORE_OVERRIDE_REQUIRES_COMMISSIONER",
+              message: "Lore overrides require the league commissioner",
+              status: 403,
+            });
+          }
+          overrideDecisionFor(input);
+          break;
         case "ratify":
         case "reject":
           break;
@@ -2304,11 +2376,32 @@ export async function stewardLoreClaim({
           });
       }
 
+      const tally = await loadLoreVoteTally({
+        claimId: input.claimId,
+        leagueId: input.leagueId,
+        quorumRatio: DEFAULT_QUORUM_RATIO,
+        tx,
+      });
+      const tiebreakReason =
+        input.action === "override"
+          ? null
+          : stewardTiebreakReason({ claim, tally, timestamp });
+      if (input.action !== "override" && !tiebreakReason) {
+        throw new AppError({
+          code: "LORE_TIEBREAK_NOT_ELIGIBLE",
+          message:
+            "Lore steward tiebreak requires a tied, quorum-short, or expired vote",
+          status: 409,
+        });
+      }
+
+      const decision =
+        input.action === "override" ? overrideDecisionFor(input) : input.action;
       let nextStatus: "canon" | "rejected";
       let ratifiedAt: Date | null;
       let ratifiedBy: "steward" | null;
       let transitionKind: "ratified" | "rejected";
-      switch (input.action) {
+      switch (decision) {
         case "ratify":
           nextStatus = "canon";
           ratifiedAt = timestamp;
@@ -2321,13 +2414,15 @@ export async function stewardLoreClaim({
           ratifiedBy = null;
           transitionKind = "rejected";
           break;
-        default:
-          throw new AppError({
-            code: "LORE_STEWARD_ACTION_INVALID",
-            message: "Lore steward action is invalid",
-            status: 400,
-          });
       }
+      const auditReason =
+        input.action === "override"
+          ? "steward:override"
+          : `steward:${input.action}`;
+      const transitionReason =
+        input.action === "override"
+          ? `steward:override:${decision}`
+          : `steward:${input.action}`;
       const [updated] = await tx
         .update(loreClaims)
         .set({
@@ -2368,37 +2463,46 @@ export async function stewardLoreClaim({
           afterState: {
             ...claimSnapshot(updated),
             action: input.action,
+            adjudication:
+              input.action === "override" ? "override" : tiebreakReason,
+            ...(input.action === "override"
+              ? { overrideDecision: decision }
+              : {}),
             reason,
+            tally,
           },
           beforeState,
           claimId: input.claimId,
           kind: "steward_action",
           leagueId: input.leagueId,
-          reason: `steward:${input.action}`,
+          reason: auditReason,
         },
         {
           actorMemberId: input.actorMemberId,
           afterState: {
             ...claimSnapshot(updated),
+            adjudication:
+              input.action === "override" ? "override" : tiebreakReason,
             reason,
+            tally,
           },
           beforeState,
           claimId: input.claimId,
           kind: transitionKind,
           leagueId: input.leagueId,
-          reason: `steward:${input.action}`,
+          reason: transitionReason,
         },
       ]);
       await resolveChallengeInTx({
         challenge: updated,
         leagueId: input.leagueId,
         nextStatus,
-        reason: `steward:${input.action}`,
+        reason: transitionReason,
         timestamp,
         tx,
       });
 
-      switch (input.action) {
+      switch (decision) {
         case "ratify":
           return {
             claimId: input.claimId,

@@ -20,12 +20,38 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_LORE_STEWARD_BODY_BYTES = 2048;
+const stewardOverrideDecisionSchema = z.enum(["ratify", "reject"]);
 
-const stewardLoreActionSchema = z.object({
-  action: z.enum(LORE_STEWARD_ACTIONS),
-  extendUntil: z.string().datetime().optional(),
-  reason: z.string().trim().min(1).max(500),
-});
+const stewardLoreActionSchema = z
+  .object({
+    action: z.enum(LORE_STEWARD_ACTIONS),
+    extendUntil: z.string().datetime().optional(),
+    overrideDecision: stewardOverrideDecisionSchema.optional(),
+    reason: z.string().trim().min(1).max(500),
+  })
+  .superRefine((value, context) => {
+    if (value.action === "override" && !value.overrideDecision) {
+      context.addIssue({
+        code: "custom",
+        message: "Override actions require an explicit decision",
+        path: ["overrideDecision"],
+      });
+    }
+    if (value.action !== "override" && value.overrideDecision) {
+      context.addIssue({
+        code: "custom",
+        message: "Only override actions may include an override decision",
+        path: ["overrideDecision"],
+      });
+    }
+    if (value.action === "override" && value.extendUntil) {
+      context.addIssue({
+        code: "custom",
+        message: "Override actions cannot extend a vote",
+        path: ["extendUntil"],
+      });
+    }
+  });
 
 interface LoreStewardRouteContext {
   params: Promise<{ claimId: string; leagueId: string }>;
@@ -79,6 +105,9 @@ async function loreStewardPost(
         claimId,
         ...(parsed.data.extendUntil
           ? { extendUntil: new Date(parsed.data.extendUntil) }
+          : {}),
+        ...(parsed.data.overrideDecision
+          ? { overrideDecision: parsed.data.overrideDecision }
           : {}),
         leagueId,
         reason: parsed.data.reason,

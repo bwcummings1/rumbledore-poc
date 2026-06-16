@@ -50,6 +50,7 @@ export const LORE_STEWARD_ACTIONS = [
   "ratify",
   "reject",
   "extend",
+  "override",
   "veto",
 ] as const satisfies readonly StewardLoreAction[];
 

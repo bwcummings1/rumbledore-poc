@@ -188,11 +188,66 @@ describe("POST /api/leagues/[leagueId]/lore/claims/[claimId]/steward", () => {
     });
   });
 
+  it("passes explicit override decisions to the steward service", async () => {
+    mockAccess();
+    mockMembership();
+    mocks.stewardLoreClaim.mockResolvedValue({
+      claimId,
+      status: "rejected",
+    });
+    mocks.getLoreClaimCard.mockResolvedValue({
+      id: claimId,
+      status: "rejected",
+      title: "Worst collapse",
+    });
+
+    const response = await POST(
+      request({
+        action: "override",
+        overrideDecision: "reject",
+        reason: "Commissioner override for a league-rules violation.",
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(stewardLoreClaim).toHaveBeenCalledWith({
+      deps: { db: mocks.db, push: mocks.push, realtime: mocks.realtime },
+      input: {
+        action: "override",
+        actorMemberId: memberId,
+        claimId,
+        leagueId,
+        overrideDecision: "reject",
+        reason: "Commissioner override for a league-rules violation.",
+      },
+    });
+  });
+
   it("rejects malformed steward payloads before member lookup", async () => {
     mockAccess();
 
     const response = await POST(
       request({ action: "ratify", reason: "" }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_LORE_STEWARD_REQUEST" },
+    });
+    expect(mocks.db.select).not.toHaveBeenCalled();
+    expect(stewardLoreClaim).not.toHaveBeenCalled();
+  });
+
+  it("rejects ambiguous override payloads before member lookup", async () => {
+    mockAccess();
+
+    const response = await POST(
+      request({
+        action: "override",
+        reason: "Override without a concrete decision.",
+      }),
       routeContext(),
     );
 

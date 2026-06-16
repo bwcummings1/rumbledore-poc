@@ -19,6 +19,7 @@ export type {
   StewardLoreAction,
   StewardLoreClaimInput,
   StewardLoreClaimResult,
+  StewardLoreDecision,
   SubmitLoreClaimInput,
   SubmitLoreClaimResult,
   WeeklyLoreAssertion,
