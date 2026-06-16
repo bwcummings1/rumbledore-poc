@@ -2,9 +2,39 @@ import { neutralDarkTheme } from "./themes/neutral-dark";
 import { neutralLightTheme } from "./themes/neutral-light";
 import { paletteATheme } from "./themes/palette-a";
 import { paletteBTheme } from "./themes/palette-b";
-import { THEME_CSS_VARIABLE_NAMES, type ThemeDefinition } from "./types";
+import {
+  type MotionTokenName,
+  THEME_CSS_VARIABLE_NAMES,
+  type ThemeDefinition,
+} from "./types";
 
 export const DEFAULT_THEME_ID = neutralDarkTheme.id;
+export const REDUCED_MOTION_DURATION_MS = 1;
+export const REDUCED_MOTION_DURATION_TOKENS = [
+  "duration-fast",
+  "duration-base",
+  "duration-slow",
+] as const satisfies readonly MotionTokenName[];
+
+const REDUCED_MOTION_DURATION_ALIAS_TOKEN_NAMES = [
+  "motion-duration-fast",
+  "motion-duration-base",
+  "motion-duration-slow",
+] as const satisfies readonly MotionTokenName[];
+
+export const REDUCED_MOTION_DURATION_ALIAS_TOKENS = {
+  "motion-duration-fast": "duration-fast",
+  "motion-duration-base": "duration-base",
+  "motion-duration-slow": "duration-slow",
+} as const satisfies Record<
+  (typeof REDUCED_MOTION_DURATION_ALIAS_TOKEN_NAMES)[number],
+  (typeof REDUCED_MOTION_DURATION_TOKENS)[number]
+>;
+
+export const REDUCED_MOTION_CSS_VARIABLE_NAMES = [
+  ...REDUCED_MOTION_DURATION_TOKENS,
+  ...REDUCED_MOTION_DURATION_ALIAS_TOKEN_NAMES,
+] as const satisfies readonly MotionTokenName[];
 
 export const REGISTERED_THEMES = [
   neutralDarkTheme,
@@ -80,16 +110,30 @@ function formatThemeBlock(theme: ThemeDefinition): string {
   return `${selector} {\n${lines.join("\n")}\n}`;
 }
 
+export function getReducedMotionCssVariables(): Record<string, string> {
+  return {
+    ...Object.fromEntries(
+      REDUCED_MOTION_DURATION_TOKENS.map((name) => [
+        name,
+        `${REDUCED_MOTION_DURATION_MS}ms`,
+      ]),
+    ),
+    ...Object.fromEntries(
+      Object.entries(REDUCED_MOTION_DURATION_ALIAS_TOKENS).map(
+        ([alias, target]) => [alias, `var(--${target})`],
+      ),
+    ),
+  };
+}
+
 function formatReducedMotionBlock(): string {
+  const variables = getReducedMotionCssVariables();
   return [
     "@media (prefers-reduced-motion: reduce) {",
     "  :root {",
-    "    --duration-fast: 1ms;",
-    "    --duration-base: 1ms;",
-    "    --duration-slow: 1ms;",
-    "    --motion-duration-fast: var(--duration-fast);",
-    "    --motion-duration-base: var(--duration-base);",
-    "    --motion-duration-slow: var(--duration-slow);",
+    ...REDUCED_MOTION_CSS_VARIABLE_NAMES.map(
+      (name) => `    --${name}: ${variables[name]};`,
+    ),
     "  }",
     "}",
   ].join("\n");

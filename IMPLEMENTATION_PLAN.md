@@ -22,7 +22,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 ### R. Theming framework (see specs/27)
 - [x] Build the design-token system (primitives → semantic aliases → Tailwind/CSS vars). (specs/27)
 - [x] Build the ThemeProvider and data-theme swap (SSR-safe, no FOUC) with palette-a/palette-b slots. (specs/27)
-- [ ] Add contrast and reduced-motion accessibility gates on the tokens. (specs/27)
+- [x] Add contrast and reduced-motion accessibility gates on the tokens. (specs/27)
 - [ ] Migrate components to tokens incrementally, keeping the impeccable gate green. (specs/27)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)

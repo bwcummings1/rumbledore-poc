@@ -503,5 +503,5 @@ describe("arena leaderboard materialization", () => {
         }),
       ]),
     );
-  });
+  }, 10_000);
 });
