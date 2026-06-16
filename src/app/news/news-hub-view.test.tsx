@@ -76,15 +76,16 @@ afterEach(() => {
   cleanup();
 });
 
-test("news hub view renders central stories with attribution and source links", () => {
-  render(<NewsHubView data={data} />);
+test("news hub view renders the central publication front", () => {
+  const { container } = render(<NewsHubView data={data} />);
 
   expect(
     screen.getByRole("heading", {
       level: 1,
-      name: "NFL and fantasy headlines",
+      name: "Rumbledore News",
     }),
   ).toBeDefined();
+  expect(screen.getByText("CENTRAL WIRE")).toBeDefined();
   const sections = within(screen.getByLabelText("News sections"));
   expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
     "Front",
@@ -112,6 +113,15 @@ test("news hub view renders central stories with attribution and source links", 
   expect(
     within(screen.getByLabelText("Story river")).getAllByRole("article"),
   ).toHaveLength(2);
+  expect(container.querySelectorAll('[data-front-tier="lead"]')).toHaveLength(
+    1,
+  );
+  expect(
+    container.querySelectorAll('[data-front-tier="secondary"]'),
+  ).toHaveLength(1);
+  expect(container.querySelectorAll('[data-front-tier="river"]')).toHaveLength(
+    1,
+  );
   expect(screen.queryByLabelText("For your league")).toBeNull();
 });
 
@@ -194,7 +204,13 @@ test("news hub view renders a section front empty state", () => {
   );
 
   expect(
-    screen.getByRole("heading", { level: 1, name: "NFL stories" }),
+    screen.getByRole("heading", { level: 1, name: "Rumbledore News" }),
   ).toBeDefined();
+  expect(screen.getByText("NFL section")).toBeDefined();
   expect(screen.getByText("No NFL stories yet")).toBeDefined();
+  expect(
+    screen
+      .getByRole("link", { name: /open rumbledore news/i })
+      .getAttribute("href"),
+  ).toBe("/news");
 });

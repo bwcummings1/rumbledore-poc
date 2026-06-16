@@ -132,12 +132,13 @@ afterEach(() => {
   cleanup();
 });
 
-test("league press view renders league posts and relevant central stories", () => {
-  render(<LeagueFeedView data={data} />);
+test("league press view renders the league publication front", () => {
+  const { container } = render(<LeagueFeedView data={data} />);
 
   expect(
     screen.getByRole("heading", { level: 1, name: "The Feed League A Press" }),
   ).toBeDefined();
+  expect(screen.getByText("LEAGUE DISPATCH")).toBeDefined();
   const sections = within(screen.getByLabelText("Press sections"));
   expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
     "Front",
@@ -172,6 +173,18 @@ test("league press view renders league posts and relevant central stories", () =
   expect(
     within(screen.getByLabelText("Story river")).getAllByRole("article"),
   ).toHaveLength(2);
+  expect(container.querySelectorAll('[data-front-tier="lead"]')).toHaveLength(
+    1,
+  );
+  expect(
+    container.querySelectorAll('[data-front-tier="secondary"]'),
+  ).toHaveLength(1);
+  expect(container.querySelectorAll('[data-front-tier="river"]')).toHaveLength(
+    1,
+  );
+  expect(lead.getByRole("article").getAttribute("data-story-card-origin")).toBe(
+    "cast",
+  );
   expect(
     screen.getByRole("link", { name: /league home/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001");
@@ -200,8 +213,12 @@ test("league press view renders a section front empty state", () => {
   expect(
     screen.getByRole("heading", {
       level: 1,
-      name: "The Feed League A Press: Trash Talk",
+      name: "The Feed League A Press",
     }),
   ).toBeDefined();
+  expect(screen.getByText("Trash Talk section")).toBeDefined();
   expect(screen.getByText("No Trash Talk stories yet")).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: /open the press/i }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press");
 });

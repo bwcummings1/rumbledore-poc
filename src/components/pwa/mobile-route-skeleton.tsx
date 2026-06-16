@@ -7,6 +7,7 @@ export type MobileRouteSkeletonVariant =
   | "dashboard"
   | "invite"
   | "list"
+  | "publication"
   | "table";
 
 export function MobileRouteSkeleton({
@@ -22,6 +23,7 @@ const SKELETON_VARIANTS = {
   dashboard: DashboardSkeleton,
   invite: InviteSkeleton,
   list: ListSkeleton,
+  publication: PublicationSkeleton,
   table: TableSkeleton,
 } satisfies Record<MobileRouteSkeletonVariant, () => ReactNode>;
 
@@ -172,6 +174,60 @@ function TableSkeleton() {
           <SkeletonLine className="h-12 w-full" />
         </div>
       </SkeletonPanel>
+    </main>
+  );
+}
+
+function PublicationSkeleton() {
+  return (
+    <main
+      aria-busy="true"
+      aria-label="Loading publication"
+      className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-5 sm:px-6 lg:px-8"
+      data-slot="mobile-route-skeleton"
+      data-variant="publication"
+    >
+      <section className="grid gap-4 rounded-card border border-border bg-card p-4 sm:p-5">
+        <SkeletonLine className="h-4 w-32" />
+        <SkeletonLine className="h-9 w-full max-w-xl sm:h-11" />
+        <SkeletonLine className="h-5 w-full max-w-2xl" />
+        <div className="flex gap-2 overflow-hidden">
+          {[0, 1, 2, 3].map((item) => (
+            <SkeletonLine className="h-11 w-28 shrink-0" key={item} />
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,8fr)_minmax(18rem,4fr)]">
+        <SkeletonPanel className="min-h-80">
+          <SkeletonLine className="aspect-[16/9] w-full" />
+          <SkeletonLine className="h-4 w-24" />
+          <SkeletonLine className="h-8 w-full max-w-2xl" />
+          <SkeletonLine className="h-5 w-full max-w-xl" />
+          <SkeletonLine className="h-10 w-32" />
+        </SkeletonPanel>
+        <section className="grid gap-3" aria-hidden="true">
+          {[0, 1, 2].map((item) => (
+            <SkeletonPanel className="min-h-48" key={item}>
+              <SkeletonLine className="aspect-[16/9] w-full" />
+              <SkeletonLine className="h-4 w-20" />
+              <SkeletonLine className="h-6 w-full" />
+              <SkeletonLine className="h-4 w-4/5" />
+            </SkeletonPanel>
+          ))}
+        </section>
+      </section>
+
+      <section className="grid gap-3 border-t border-border pt-5 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2, 3, 4, 5].map((item) => (
+          <SkeletonPanel className="min-h-52" key={item}>
+            <SkeletonLine className="aspect-[16/9] w-full" />
+            <SkeletonLine className="h-4 w-20" />
+            <SkeletonLine className="h-6 w-full" />
+            <SkeletonLine className="h-4 w-3/4" />
+          </SkeletonPanel>
+        ))}
+      </section>
     </main>
   );
 }

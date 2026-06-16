@@ -1,12 +1,9 @@
-import { ArrowLeft, Newspaper } from "lucide-react";
-import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import {
+  PublicationFrontLayout,
+  PublicationMasthead,
   type PublicationStory,
-  PublicationStoryCard,
-} from "@/components/publication/story-card";
-import { buttonVariants } from "@/components/ui/button";
-import { TabLinks } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+} from "@/components/publication/front-view";
 import { buildPublicationFront } from "@/news/front";
 import type { CentralNewsHubData } from "@/news/hub";
 import { CentralNewsRealtimeRefresh } from "@/realtime/client";
@@ -59,12 +56,6 @@ function newsHref(path: string, leagueId: string | null | undefined): string {
 export function NewsHubView({ data }: { data: CentralNewsHubData }) {
   const front = buildPublicationFront(data.items);
   const rail = data.forYourLeague;
-  const heading = data.activeSection
-    ? `${data.activeSection.label} stories`
-    : "NFL and fantasy headlines";
-  const filteredHeading = data.activeTag
-    ? `${heading} tagged ${data.activeTag}`
-    : heading;
   const emptyTitle = data.activeSection
     ? `No ${data.activeSection.label} stories yet`
     : "No central stories yet";
@@ -74,135 +65,73 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
   const emptyBody = data.activeSection
     ? "This section has no published stories yet. The rest of Rumbledore News is still available."
     : "The news refresh job has not published any shared headlines.";
+  const sectionLabel = data.activeTag
+    ? `Tagged ${data.activeTag}`
+    : data.activeSection
+      ? `${data.activeSection.label} section`
+      : undefined;
+  const navItems = [
+    {
+      active: !data.activeSection,
+      href: newsHref("/news", rail?.league.id),
+      label: "Front",
+    },
+    ...data.sections.map((section) => ({
+      active: data.activeSection?.id === section.id,
+      href: newsHref(`/news/${section.slug}`, rail?.league.id),
+      label: section.label,
+    })),
+  ];
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+    <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <CentralNewsRealtimeRefresh />
-      <header className="grid gap-4">
-        <Link
-          href="/"
-          className={cn(
-            buttonVariants({ className: "w-fit", variant: "ghost" }),
-          )}
-        >
-          <ArrowLeft data-icon="inline-start" />
-          Home
-        </Link>
-        <div className="grid gap-3">
-          <div className="flex items-center gap-2 text-primary">
-            <Newspaper className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">Central news</p>
-          </div>
-          <div className="max-w-2xl">
-            <p className="text-sm font-medium text-muted-foreground">
-              {data.activeSection
-                ? "Rumbledore News section"
-                : "Rumbledore News"}
-            </p>
-            <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
-              {filteredHeading}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Shared central news from the sport's feed. League-specific context
-              appears only as a narrow rail when a league is active.
-            </p>
-          </div>
-          <TabLinks
-            ariaLabel="News sections"
-            items={[
-              {
-                active: !data.activeSection,
-                href: newsHref("/news", rail?.league.id),
-                label: "Front",
-              },
-              ...data.sections.map((section) => ({
-                active: data.activeSection?.id === section.id,
-                href: newsHref(`/news/${section.slug}`, rail?.league.id),
-                label: section.label,
-              })),
-            ]}
-          />
-        </div>
-      </header>
-
-      {rail ? (
-        <section aria-label="For your league" className="grid gap-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <p className="text-xs font-medium text-primary uppercase">
-                For your league
-              </p>
-              <h2 className="text-base font-semibold">
-                Central stories touching {rail.league.name}
-              </h2>
-            </div>
-            <Link
-              href={`/leagues/${rail.league.id}/press`}
-              className={cn(
-                buttonVariants({
-                  className: "w-fit",
-                  size: "sm",
-                  variant: "outline",
-                }),
-              )}
-            >
-              Read The Press
-            </Link>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {rail.items.map((item) => (
-              <PublicationStoryCard
-                key={item.id}
-                story={toRailStory(item)}
-                variant="rail"
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {front.lead ? (
-        <div className="grid gap-5">
-          <section aria-label="Lead story" data-front-tier="lead">
-            <PublicationStoryCard story={toStory(front.lead)} variant="hero" />
-          </section>
-          {front.secondaries.length > 0 ? (
-            <section
-              className="grid gap-3 md:grid-cols-3"
-              aria-label="Secondary stories"
-              data-front-tier="secondary"
-            >
-              {front.secondaries.map((item) => (
-                <PublicationStoryCard
-                  key={item.id}
-                  story={toStory(item)}
-                  variant="secondary"
-                />
-              ))}
-            </section>
-          ) : null}
-          {front.river.length > 0 ? (
-            <section
-              className="grid gap-3 sm:grid-cols-2"
-              aria-label="Story river"
-              data-front-tier="river"
-            >
-              {front.river.map((item) => (
-                <PublicationStoryCard
-                  key={item.id}
-                  story={toStory(item)}
-                  variant="river"
-                />
-              ))}
-            </section>
-          ) : null}
-        </div>
-      ) : (
-        <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold">{filteredEmptyTitle}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{emptyBody}</p>
-        </section>
-      )}
+      <PublicationMasthead
+        actions={[
+          {
+            href: "/",
+            icon: <ArrowLeft data-icon="inline-start" />,
+            label: "Home",
+          },
+        ]}
+        deck="Shared central news from the sport's feed. League-specific context appears only as a narrow rail when a league is active."
+        eyebrow={
+          data.activeSection ? "SECTION · RUMBLEDORE NEWS" : "CENTRAL WIRE"
+        }
+        navAriaLabel="News sections"
+        navItems={navItems}
+        sectionLabel={sectionLabel}
+        title="Rumbledore News"
+      />
+      <PublicationFrontLayout
+        compactOverflowLabel={
+          data.activeSection
+            ? `Older in ${data.activeSection.label}`
+            : "Older headlines"
+        }
+        empty={{
+          actionHref: data.activeSection
+            ? newsHref("/news", rail?.league.id)
+            : undefined,
+          actionLabel: "Open Rumbledore News",
+          body: emptyBody,
+          title: filteredEmptyTitle,
+        }}
+        lead={front.lead ? toStory(front.lead) : null}
+        rail={
+          rail
+            ? {
+                actionHref: `/leagues/${rail.league.id}/press`,
+                actionLabel: "Read The Press",
+                eyebrow: "For your league",
+                stories: rail.items.map(toRailStory),
+                title: `Central stories touching ${rail.league.name}`,
+              }
+            : null
+        }
+        river={front.river.map(toStory)}
+        secondaries={front.secondaries.map(toStory)}
+      />
     </main>
   );
 }

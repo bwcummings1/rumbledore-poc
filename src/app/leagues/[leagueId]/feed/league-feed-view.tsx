@@ -1,12 +1,9 @@
-import { ArrowLeft, Landmark, Newspaper, Rss } from "lucide-react";
-import Link from "next/link";
+import { ArrowLeft, Landmark, Newspaper } from "lucide-react";
 import {
+  PublicationFrontLayout,
+  PublicationMasthead,
   type PublicationStory,
-  PublicationStoryCard,
-} from "@/components/publication/story-card";
-import { buttonVariants } from "@/components/ui/button";
-import { TabLinks } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+} from "@/components/publication/front-view";
 import type { LeagueFeedData, LeagueFeedItem } from "@/news";
 import { buildPublicationFront } from "@/news/front";
 import { LeagueRealtimeRefresh } from "@/realtime/client";
@@ -51,12 +48,6 @@ function toStory({
 
 export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
   const front = buildPublicationFront(data.items);
-  const heading = data.activeSection
-    ? `The ${data.league.name} Press: ${data.activeSection.label}`
-    : `The ${data.league.name} Press`;
-  const filteredHeading = data.activeTag
-    ? `${heading} tagged ${data.activeTag}`
-    : heading;
   const emptyTitle = data.activeSection
     ? `No ${data.activeSection.label} stories yet`
     : "No Press items yet";
@@ -66,125 +57,83 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
   const emptyBody = data.activeSection
     ? "This beat has no league stories or matched central news yet. The full Press front is still available."
     : "League posts and matched central stories will appear here after the cast publishes.";
+  const sectionLabel = data.activeTag
+    ? `Tagged ${data.activeTag}`
+    : data.activeSection
+      ? `${data.activeSection.label} section`
+      : undefined;
+  const navItems = [
+    {
+      active: !data.activeSection,
+      href: `/leagues/${data.league.id}/press`,
+      label: "Front",
+    },
+    ...data.sections.map((section) => ({
+      active: data.activeSection?.id === section.id,
+      href: `/leagues/${data.league.id}/press/${section.slug}`,
+      label: section.label,
+    })),
+  ];
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+    <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <LeagueRealtimeRefresh
         channelKinds={["blog"]}
         leagueId={data.league.id}
       />
-      <header className="grid gap-4">
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/leagues/${data.league.id}`}
-            className={cn(
-              buttonVariants({ className: "w-fit", variant: "ghost" }),
-            )}
-          >
-            <ArrowLeft data-icon="inline-start" />
-            League home
-          </Link>
-          <Link
-            href={`/news?leagueId=${data.league.id}`}
-            className={cn(
-              buttonVariants({ className: "w-fit", variant: "outline" }),
-            )}
-          >
-            <Newspaper data-icon="inline-start" />
-            Central news
-          </Link>
-          <Link
-            href={`/leagues/${data.league.id}/lore`}
-            className={cn(
-              buttonVariants({ className: "w-fit", variant: "outline" }),
-            )}
-          >
-            <Landmark data-icon="inline-start" />
-            Lore
-          </Link>
-        </div>
-        <div className="grid gap-3">
-          <div className="flex items-center gap-2 text-primary">
-            <Rss className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">The Press</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              {data.activeSection
-                ? "League publication section"
-                : "League publication"}
-            </p>
-            <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
-              {filteredHeading}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {data.league.season} ESPN fantasy football ·{" "}
-              {data.userRole.replace("_", " ")}
-            </p>
-          </div>
-          <TabLinks
-            ariaLabel="Press sections"
-            items={[
-              {
-                active: !data.activeSection,
-                href: `/leagues/${data.league.id}/press`,
-                label: "Front",
-              },
-              ...data.sections.map((section) => ({
-                active: data.activeSection?.id === section.id,
-                href: `/leagues/${data.league.id}/press/${section.slug}`,
-                label: section.label,
-              })),
-            ]}
-          />
-        </div>
-      </header>
-
-      {front.lead ? (
-        <div className="grid gap-5">
-          <section aria-label="Lead story" data-front-tier="lead">
-            <PublicationStoryCard
-              story={toStory({ item: front.lead, leagueId: data.league.id })}
-              variant="hero"
-            />
-          </section>
-          {front.secondaries.length > 0 ? (
-            <section
-              className="grid gap-3 md:grid-cols-3"
-              aria-label="Secondary stories"
-              data-front-tier="secondary"
-            >
-              {front.secondaries.map((item) => (
-                <PublicationStoryCard
-                  key={`${item.scope}-${item.id}`}
-                  story={toStory({ item, leagueId: data.league.id })}
-                  variant="secondary"
-                />
-              ))}
-            </section>
-          ) : null}
-          {front.river.length > 0 ? (
-            <section
-              className="grid gap-3 sm:grid-cols-2"
-              aria-label="Story river"
-              data-front-tier="river"
-            >
-              {front.river.map((item) => (
-                <PublicationStoryCard
-                  key={`${item.scope}-${item.id}`}
-                  story={toStory({ item, leagueId: data.league.id })}
-                  variant="river"
-                />
-              ))}
-            </section>
-          ) : null}
-        </div>
-      ) : (
-        <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
-          <h2 className="text-base font-semibold">{filteredEmptyTitle}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{emptyBody}</p>
-        </section>
-      )}
+      <PublicationMasthead
+        actions={[
+          {
+            href: `/leagues/${data.league.id}`,
+            icon: <ArrowLeft data-icon="inline-start" />,
+            label: "League home",
+          },
+          {
+            href: `/news?leagueId=${data.league.id}`,
+            icon: <Newspaper data-icon="inline-start" />,
+            label: "Central news",
+          },
+          {
+            href: `/leagues/${data.league.id}/lore`,
+            icon: <Landmark data-icon="inline-start" />,
+            label: "Lore",
+          },
+        ]}
+        deck={`${data.league.season} ${data.league.provider.toUpperCase()} fantasy football. Filed by the cast for ${data.userRole.replace("_", " ")} readers.`}
+        eyebrow={
+          data.activeSection ? "SECTION · LEAGUE DISPATCH" : "LEAGUE DISPATCH"
+        }
+        navAriaLabel="Press sections"
+        navItems={navItems}
+        sectionLabel={sectionLabel}
+        title={`The ${data.league.name} Press`}
+      />
+      <PublicationFrontLayout
+        compactOverflowLabel={
+          data.activeSection
+            ? `Older in ${data.activeSection.label}`
+            : "Older dispatches"
+        }
+        empty={{
+          actionHref: data.activeSection
+            ? `/leagues/${data.league.id}/press`
+            : undefined,
+          actionLabel: "Open The Press",
+          body: emptyBody,
+          title: filteredEmptyTitle,
+        }}
+        lead={
+          front.lead
+            ? toStory({ item: front.lead, leagueId: data.league.id })
+            : null
+        }
+        river={front.river.map((item) =>
+          toStory({ item, leagueId: data.league.id }),
+        )}
+        secondaries={front.secondaries.map((item) =>
+          toStory({ item, leagueId: data.league.id }),
+        )}
+      />
     </main>
   );
 }
