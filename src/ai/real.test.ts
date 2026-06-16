@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { AppError } from "@/core/result";
 import type { LlmGenerateRequest } from "./interfaces";
+import { createLlmClient } from "./model-providers";
 import { AI_PERSONAS } from "./personas";
 import {
   ANTHROPIC_BULK_MODEL,
@@ -9,6 +10,7 @@ import {
   AnthropicLlmClient,
   type AnthropicMessagesClient,
   anthropicModelForTier,
+  OpenAiCompatibleLlmClient,
   TavilyWebGrounding,
   VoyageEmbeddingProvider,
 } from "./real";
@@ -267,6 +269,192 @@ describe("AnthropicLlmClient", () => {
     const llm = new AnthropicLlmClient({
       apiKey: fakeKey(),
       client,
+    });
+
+    await expect(llm.generate(requestFor("narrator"))).rejects.toMatchObject({
+      code: "AI_LLM_RESPONSE_INVALID",
+    } satisfies Partial<AppError>);
+  });
+});
+
+describe("model provider LLM factories", () => {
+  it("builds Anthropic-compatible clients with a custom endpoint", () => {
+    const llm = createLlmClient({
+      apiKey: fakeKey(),
+      baseUrl: "https://anthropic-compatible.example.invalid",
+      key: "custom",
+      kind: "anthropic_compatible",
+      model: "rumbledore-anthropic-compatible",
+    });
+
+    expect(llm).toBeInstanceOf(AnthropicLlmClient);
+  });
+
+  it("builds OpenAI-compatible clients with a custom endpoint", () => {
+    const llm = createLlmClient({
+      apiKey: fakeKey(),
+      baseUrl: "https://openai-compatible.example.invalid",
+      key: "custom",
+      kind: "openai_compatible",
+      model: "rumbledore-openai-compatible",
+    });
+
+    expect(llm).toBeInstanceOf(OpenAiCompatibleLlmClient);
+  });
+});
+
+describe("OpenAiCompatibleLlmClient", () => {
+  it("posts a JSON-schema chat completion request and returns a valid draft", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> =
+      [];
+    const fetcher: typeof fetch = async (input, init) => {
+      requests.push({ init, input });
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  body: "Body from tuned model.",
+                  bodyBlocks: [
+                    { text: "Filed from the endpoint", type: "heading" },
+                    { text: "Body from tuned model.", type: "paragraph" },
+                  ],
+                  citedCanonClaimIds: [],
+                  contentType: "matchup_preview",
+                  dek: "Dek from tuned model.",
+                  section: "previews",
+                  structure: {
+                    matchups: [
+                      {
+                        edge: "Fixture Team has the tuned edge.",
+                        keyNumber: "120 points for",
+                        opponent: "Fixture Opponent",
+                        prediction: "Fixture Team is the tuned lean.",
+                        team: "Fixture Team",
+                        xFactor: "Fixture Manager",
+                      },
+                    ],
+                    type: "matchup_preview",
+                  },
+                  summary: "Summary from tuned model.",
+                  tags: ["Fixture Team", "Tuned"],
+                  title: "Tuned Endpoint Title",
+                }),
+              },
+            },
+          ],
+          usage: {
+            completion_tokens: 45,
+            prompt_tokens: 120,
+            total_tokens: 165,
+          },
+        }),
+        { status: 200 },
+      );
+    };
+    const llm = new OpenAiCompatibleLlmClient({
+      apiKey: fakeKey(),
+      baseUrl: "https://models.example.invalid",
+      fetcher,
+      model: "rumbledore-tuned-fixture",
+    });
+
+    await expect(llm.generate(requestFor("trash_talker"))).resolves.toEqual({
+      body: "Body from tuned model.",
+      bodyBlocks: [
+        { text: "Filed from the endpoint", type: "heading" },
+        { text: "Body from tuned model.", type: "paragraph" },
+      ],
+      citedCanonClaimIds: [],
+      contentType: "matchup_preview",
+      dek: "Dek from tuned model.",
+      section: "previews",
+      structure: {
+        matchups: [
+          {
+            edge: "Fixture Team has the tuned edge.",
+            keyNumber: "120 points for",
+            opponent: "Fixture Opponent",
+            prediction: "Fixture Team is the tuned lean.",
+            team: "Fixture Team",
+            xFactor: "Fixture Manager",
+          },
+        ],
+        type: "matchup_preview",
+      },
+      summary: "Summary from tuned model.",
+      tags: ["Fixture Team", "Tuned"],
+      title: "Tuned Endpoint Title",
+    });
+    await expect(
+      llm.generateWithUsage(requestFor("trash_talker")),
+    ).resolves.toMatchObject({
+      usage: {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 120,
+        outputTokens: 45,
+      },
+    });
+
+    expect(requests[0]?.input).toBe(
+      "https://models.example.invalid/v1/chat/completions",
+    );
+    expect(requests[0]?.init?.headers).toMatchObject({
+      Authorization: `Bearer ${fakeKey()}`,
+      "Content-Type": "application/json",
+    });
+    await expect(new Response(requests[0]?.init?.body).json()).resolves.toEqual(
+      expect.objectContaining({
+        max_tokens: 720,
+        model: "rumbledore-tuned-fixture",
+        response_format: expect.objectContaining({
+          json_schema: expect.objectContaining({
+            name: "rumbledore_blog_draft",
+            strict: true,
+          }),
+          type: "json_schema",
+        }),
+        user: "00000000-0000-0000-0000-000000000001",
+      }),
+    );
+  });
+
+  it("supports explicit unauthenticated local endpoints", async () => {
+    const requests: RequestInit[] = [];
+    const llm = new OpenAiCompatibleLlmClient({
+      baseUrl: "http://127.0.0.1:8080/v1",
+      fetcher: async (_input, init) => {
+        requests.push(init ?? {});
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: { title: "Missing fields" } } }],
+          }),
+          { status: 200 },
+        );
+      },
+      model: "local-fixture",
+    });
+
+    await expect(llm.generate(requestFor("analyst"))).rejects.toMatchObject({
+      code: "AI_LLM_RESPONSE_INVALID",
+    } satisfies Partial<AppError>);
+    expect(requests[0]?.headers).not.toHaveProperty("Authorization");
+  });
+
+  it("rejects malformed OpenAI-compatible structured output", async () => {
+    const llm = new OpenAiCompatibleLlmClient({
+      apiKey: fakeKey(),
+      baseUrl: "https://models.example.invalid",
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: '{"title":"Missing fields"}' } }],
+          }),
+          { status: 200 },
+        ),
+      model: "rumbledore-tuned-fixture",
     });
 
     await expect(llm.generate(requestFor("narrator"))).rejects.toMatchObject({

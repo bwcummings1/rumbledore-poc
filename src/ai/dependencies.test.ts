@@ -20,6 +20,7 @@ import {
   ANTHROPIC_BULK_MODEL,
   ANTHROPIC_FLAGSHIP_MODEL,
   AnthropicLlmClient,
+  OpenAiCompatibleLlmClient,
   TavilyWebGrounding,
   VOYAGE_EMBEDDING_MODEL,
   VoyageEmbeddingProvider,
@@ -107,6 +108,24 @@ describe("createAiDependencies", () => {
     );
     expect(resolvedAnthropicModel(deps.llm, "analyst")).toBe(
       ANTHROPIC_BULK_MODEL,
+    );
+  });
+
+  it("selects a configured custom OpenAI-compatible LLM without requiring Anthropic", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        AI_CUSTOM_MODEL_API_KEY: fakeKey(),
+        AI_CUSTOM_MODEL_BASE_URL: "https://models.example.invalid",
+        AI_CUSTOM_MODEL_ID: "rumbledore-tuned-fixture",
+        AI_CUSTOM_MODEL_KIND: "openai_compatible",
+        AI_LLM_PROVIDER_KEY: "custom",
+      }),
+    );
+
+    expect(deps.llm).toBeInstanceOf(GuardedLlmClient);
+    expect((deps.llm as GuardedLlmClient).real).toBeInstanceOf(
+      OpenAiCompatibleLlmClient,
     );
   });
 

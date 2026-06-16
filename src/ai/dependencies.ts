@@ -20,12 +20,14 @@ import {
   MockLlmClient,
   MockWebGrounding,
 } from "./mocks";
+import { createLlmClient } from "./model-providers";
 import type { AiGenerationDependencies } from "./pipeline";
 import {
   AnthropicLlmClient,
   type AnthropicUsageBreakdown,
   anthropicModelForTier,
   TavilyWebGrounding,
+  type UsageReportingLlmClient,
   VoyageEmbeddingProvider,
 } from "./real";
 
@@ -41,7 +43,7 @@ function anthropicUsageUnits(usage: AnthropicUsageBreakdown): number {
 
 export class GuardedLlmClient implements LlmClient {
   constructor(
-    readonly real: AnthropicLlmClient,
+    readonly real: UsageReportingLlmClient,
     private readonly mock: LlmClient,
     private readonly guard: SpendGuard,
   ) {}
@@ -124,6 +126,23 @@ export interface AiDependencyFactoryOptions {
   spendGuard?: SpendGuard;
 }
 
+function createConfiguredRealLlmClient(
+  env: Pick<Env, "ai" | "services">,
+): UsageReportingLlmClient | null {
+  if (env.ai.llmProviderKey === "custom") {
+    return env.ai.customModelProvider
+      ? createLlmClient(env.ai.customModelProvider)
+      : null;
+  }
+
+  return env.services.anthropic.mock
+    ? null
+    : new AnthropicLlmClient({
+        apiKey: env.services.anthropic.apiKey,
+        modelForPersona: anthropicModelForTier(env.ai.anthropicModelTier),
+      });
+}
+
 export function createAiDependencies(
   db: Db,
   env: Pick<
@@ -142,6 +161,7 @@ export function createAiDependencies(
   const mockEmbeddings = new DeterministicEmbeddingProvider();
   const mockLlm = new MockLlmClient();
   const mockWeb = new MockWebGrounding();
+  const realLlm = createConfiguredRealLlmClient(env);
 
   return {
     db,
@@ -158,16 +178,7 @@ export function createAiDependencies(
     entitlements: {
       entitlements: env.entitlements,
     },
-    llm: env.services.anthropic.mock
-      ? mockLlm
-      : new GuardedLlmClient(
-          new AnthropicLlmClient({
-            apiKey: env.services.anthropic.apiKey,
-            modelForPersona: anthropicModelForTier(env.ai.anthropicModelTier),
-          }),
-          mockLlm,
-          spendGuard,
-        ),
+    llm: realLlm ? new GuardedLlmClient(realLlm, mockLlm, spendGuard) : mockLlm,
     push: createPushNotifier(db, env),
     web: env.services.tavily.mock
       ? mockWeb

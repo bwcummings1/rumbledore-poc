@@ -189,20 +189,28 @@ export type AnthropicMessagesClient = Pick<
 
 export interface AnthropicLlmClientOptions {
   apiKey: string;
+  baseURL?: string;
   client?: AnthropicMessagesClient;
   modelForPersona?: (persona: AiPersona) => string;
 }
 
-export interface AnthropicUsageBreakdown {
+export interface LlmUsageBreakdown {
   cacheCreationInputTokens: number;
   cacheReadInputTokens: number;
   inputTokens: number;
   outputTokens: number;
 }
 
-export interface AnthropicGenerateResult {
+export interface LlmGenerateResult {
   draft: BlogDraft;
-  usage: AnthropicUsageBreakdown;
+  usage: LlmUsageBreakdown;
+}
+
+export type AnthropicUsageBreakdown = LlmUsageBreakdown;
+export type AnthropicGenerateResult = LlmGenerateResult;
+
+export interface UsageReportingLlmClient extends LlmClient {
+  generateWithUsage(request: LlmGenerateRequest): Promise<LlmGenerateResult>;
 }
 
 interface AnthropicResponseWithUsage {
@@ -214,6 +222,8 @@ interface AnthropicResponseWithUsage {
     output_tokens?: number;
   };
 }
+
+type FetchLike = typeof fetch;
 
 function defaultModelForPersona(persona: AiPersona): string {
   return cheapAnthropicModelForPersona(persona);
@@ -268,12 +278,17 @@ function userTask(request: LlmGenerateRequest): string {
   ].join("\n");
 }
 
-export class AnthropicLlmClient implements LlmClient {
+export class AnthropicLlmClient implements UsageReportingLlmClient {
   private readonly client: AnthropicMessagesClient;
   private readonly modelForPersona: (persona: AiPersona) => string;
 
   constructor(options: AnthropicLlmClientOptions) {
-    this.client = options.client ?? new Anthropic({ apiKey: options.apiKey });
+    this.client =
+      options.client ??
+      new Anthropic({
+        apiKey: options.apiKey,
+        ...(options.baseURL ? { baseURL: options.baseURL } : {}),
+      });
     this.modelForPersona = options.modelForPersona ?? defaultModelForPersona;
   }
 
@@ -283,7 +298,7 @@ export class AnthropicLlmClient implements LlmClient {
 
   async generateWithUsage(
     request: LlmGenerateRequest,
-  ): Promise<AnthropicGenerateResult> {
+  ): Promise<LlmGenerateResult> {
     const responseSchema = blogDraftSchemaForContentType(request.contentType);
     let response: AnthropicResponseWithUsage;
     try {
@@ -342,6 +357,195 @@ export class AnthropicLlmClient implements LlmClient {
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
       },
+    };
+  }
+}
+
+interface OpenAiCompatibleUsage {
+  completion_tokens?: number;
+  prompt_tokens?: number;
+  total_tokens?: number;
+}
+
+interface OpenAiCompatibleResponse {
+  choices?: Array<{
+    message?: {
+      content?: unknown;
+    };
+  }>;
+  usage?: OpenAiCompatibleUsage;
+}
+
+export interface OpenAiCompatibleLlmClientOptions {
+  apiKey?: string;
+  baseUrl: string;
+  fetcher?: FetchLike;
+  model: string;
+}
+
+function openAiCompatibleChatCompletionsUrl(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, "");
+  return normalized.endsWith("/v1")
+    ? `${normalized}/chat/completions`
+    : `${normalized}/v1/chat/completions`;
+}
+
+function parseOpenAiCompatibleContent(content: unknown): unknown {
+  if (typeof content === "string") {
+    try {
+      return JSON.parse(content) as unknown;
+    } catch (cause) {
+      throw new AppError({
+        cause,
+        code: "AI_LLM_RESPONSE_INVALID",
+        message: "OpenAI-compatible response did not include valid JSON",
+        status: 502,
+      });
+    }
+  }
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => {
+        if (
+          part &&
+          typeof part === "object" &&
+          "text" in part &&
+          typeof part.text === "string"
+        ) {
+          return part.text;
+        }
+        return "";
+      })
+      .join("");
+    if (text) {
+      return parseOpenAiCompatibleContent(text);
+    }
+  }
+  return content;
+}
+
+function openAiCompatibleUsage(
+  usage: OpenAiCompatibleUsage | undefined,
+): LlmUsageBreakdown {
+  const outputTokens = usage?.completion_tokens ?? 0;
+  const totalTokens = usage?.total_tokens ?? 0;
+  return {
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+    inputTokens:
+      usage?.prompt_tokens ?? Math.max(totalTokens - outputTokens, 0),
+    outputTokens,
+  };
+}
+
+export class OpenAiCompatibleLlmClient implements UsageReportingLlmClient {
+  private readonly apiKey: string | undefined;
+  private readonly endpoint: string;
+  private readonly fetcher: FetchLike;
+  readonly model: string;
+
+  constructor(options: OpenAiCompatibleLlmClientOptions) {
+    this.apiKey = options.apiKey;
+    this.endpoint = openAiCompatibleChatCompletionsUrl(options.baseUrl);
+    this.fetcher = options.fetcher ?? fetch;
+    this.model = options.model;
+  }
+
+  async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
+    return (await this.generateWithUsage(request)).draft;
+  }
+
+  async generateWithUsage(
+    request: LlmGenerateRequest,
+  ): Promise<LlmGenerateResult> {
+    const responseSchema = blogDraftSchemaForContentType(request.contentType);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.apiKey) {
+      headers.Authorization = `Bearer ${this.apiKey}`;
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetcher(this.endpoint, {
+        body: JSON.stringify({
+          max_tokens: maxTokensFor(request),
+          messages: [
+            {
+              content: [
+                anthropicSystemInstructions(request),
+                "",
+                `Stable league context JSON:\n${request.prompt.systemPrefix}`,
+              ].join("\n"),
+              role: "system",
+            },
+            {
+              content: userTask(request),
+              role: "user",
+            },
+          ],
+          model: this.model,
+          response_format: {
+            json_schema: {
+              name: "rumbledore_blog_draft",
+              schema: z.toJSONSchema(responseSchema),
+              strict: true,
+            },
+            type: "json_schema",
+          },
+          user: request.context.league.id,
+        }),
+        headers,
+        method: "POST",
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (cause) {
+      throw new AppError({
+        cause,
+        code: "AI_LLM_GENERATION_FAILED",
+        message: "OpenAI-compatible generation failed",
+        status: 502,
+      });
+    }
+
+    if (!response.ok) {
+      throw new AppError({
+        code: "AI_LLM_GENERATION_FAILED",
+        details: { status: response.status },
+        message: "OpenAI-compatible generation failed",
+        status: 502,
+      });
+    }
+
+    let payload: OpenAiCompatibleResponse;
+    try {
+      payload = (await response.json()) as OpenAiCompatibleResponse;
+    } catch (cause) {
+      throw new AppError({
+        cause,
+        code: "AI_LLM_RESPONSE_INVALID",
+        message: "OpenAI-compatible response did not include JSON",
+        status: 502,
+      });
+    }
+
+    const parsed = responseSchema.safeParse(
+      parseOpenAiCompatibleContent(payload.choices?.[0]?.message?.content),
+    );
+    if (!parsed.success) {
+      throw new AppError({
+        cause: parsed.error,
+        code: "AI_LLM_RESPONSE_INVALID",
+        message:
+          "OpenAI-compatible response did not include a valid blog draft",
+        status: 502,
+      });
+    }
+
+    return {
+      draft: parsed.data,
+      usage: openAiCompatibleUsage(payload.usage),
     };
   }
 }
@@ -421,8 +625,6 @@ export class TavilyWebGrounding implements WebGrounding {
     }
   }
 }
-
-type FetchLike = typeof fetch;
 
 interface VoyageEmbeddingResponse {
   data?: Array<{

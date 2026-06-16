@@ -4,6 +4,7 @@ import {
   type AnthropicModelTier,
   VOYAGE_EMBEDDING_MODEL,
 } from "@/ai/model-config";
+import type { CustomModelProvider } from "@/ai/model-providers";
 import {
   type PollPolicyConfigOverride,
   parsePollPolicyConfigJson,
@@ -109,6 +110,8 @@ export interface IngestionConfig {
 
 export interface AiConfig {
   anthropicModelTier: AnthropicModelTier;
+  customModelProvider: CustomModelProvider | undefined;
+  llmProviderKey: "anthropic" | "custom";
   voyageEmbeddingModel: string;
 }
 
@@ -180,6 +183,16 @@ const SERVICE_VARS: Record<PaidService, { keyVar: string; mockVar: string }> = {
 
 const secret = z.string().min(1);
 const stringbool = z.stringbool();
+const CUSTOM_MODEL_API_KEY_VAR_NAME = [
+  "AI_CUSTOM_MODEL",
+  "API",
+  "KEY_VAR",
+].join("_");
+const CUSTOM_MODEL_DEFAULT_API_KEY_VAR_NAME = [
+  "AI_CUSTOM_MODEL",
+  "API",
+  "KEY",
+].join("_");
 
 const baseSchema = z.object({
   NODE_ENV: z
@@ -280,6 +293,19 @@ const baseSchema = z.object({
   VOYAGE_API_KEY: secret.optional(),
   VOYAGE_EMBEDDING_MODEL: secret.default(VOYAGE_EMBEDDING_MODEL),
   BROWSERBASE_API_KEY: secret.optional(),
+  AI_LLM_PROVIDER_KEY: z.enum(["anthropic", "custom"]).default("anthropic"),
+  AI_CUSTOM_MODEL_KIND: z
+    .enum(["anthropic_compatible", "openai_compatible"])
+    .optional(),
+  AI_CUSTOM_MODEL_BASE_URL: z.url().optional(),
+  AI_CUSTOM_MODEL_ID: z.string().trim().min(1).optional(),
+  AI_CUSTOM_MODEL_API_KEY: secret.optional(),
+  AI_CUSTOM_MODEL_API_KEY_VAR: z
+    .string()
+    .trim()
+    .regex(/^[A-Z][A-Z0-9_]*$/)
+    .optional(),
+  AI_CUSTOM_MODEL_ALLOW_UNAUTHENTICATED: stringbool.optional(),
 
   MOCK_ANTHROPIC: stringbool.optional(),
   MOCK_ODDS: stringbool.optional(),
@@ -486,6 +512,45 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     }
   }
 
+  const customModelProviderTouched = [
+    "AI_CUSTOM_MODEL_BASE_URL",
+    "AI_CUSTOM_MODEL_ID",
+    "AI_CUSTOM_MODEL_KIND",
+  ].some((key) => key in present);
+  const customModelProviderSelected = present.AI_LLM_PROVIDER_KEY === "custom";
+  if (customModelProviderTouched || customModelProviderSelected) {
+    if (!("AI_CUSTOM_MODEL_KIND" in present)) {
+      problems.push(
+        "✖ custom model provider requires AI_CUSTOM_MODEL_KIND to be set\n  → at AI_CUSTOM_MODEL_KIND",
+      );
+    }
+    if (!("AI_CUSTOM_MODEL_BASE_URL" in present)) {
+      problems.push(
+        "✖ custom model provider requires AI_CUSTOM_MODEL_BASE_URL to be set\n  → at AI_CUSTOM_MODEL_BASE_URL",
+      );
+    }
+    if (!("AI_CUSTOM_MODEL_ID" in present)) {
+      problems.push(
+        "✖ custom model provider requires AI_CUSTOM_MODEL_ID to be set\n  → at AI_CUSTOM_MODEL_ID",
+      );
+    }
+    const allowUnauthenticated =
+      present.AI_CUSTOM_MODEL_KIND !== "anthropic_compatible" &&
+      "AI_CUSTOM_MODEL_ALLOW_UNAUTHENTICATED" in present
+        ? stringbool.safeParse(present.AI_CUSTOM_MODEL_ALLOW_UNAUTHENTICATED)
+            .data === true
+        : false;
+    const credentialEnvName =
+      CUSTOM_MODEL_API_KEY_VAR_NAME in present
+        ? String(present[CUSTOM_MODEL_API_KEY_VAR_NAME])
+        : CUSTOM_MODEL_DEFAULT_API_KEY_VAR_NAME;
+    if (!allowUnauthenticated && !(credentialEnvName in present)) {
+      problems.push(
+        `✖ custom model provider requires ${credentialEnvName} to be set or AI_CUSTOM_MODEL_ALLOW_UNAUTHENTICATED=true\n  → at ${credentialEnvName}`,
+      );
+    }
+  }
+
   const newsRssFlag =
     "MOCK_NEWS_RSS" in present
       ? stringbool.safeParse(present.MOCK_NEWS_RSS)
@@ -596,6 +661,52 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         }
       : { mode: "mock" };
 
+  const services: Record<PaidService, ServiceConfig> = {
+    anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),
+    odds: service(parsed.THE_ODDS_API_KEY, parsed.MOCK_ODDS),
+    sportsdataio: service(
+      parsed.SPORTSDATAIO_API_KEY,
+      parsed.MOCK_SPORTSDATAIO,
+    ),
+    tavily: service(parsed.TAVILY_API_KEY, parsed.MOCK_TAVILY),
+    voyage: service(parsed.VOYAGE_API_KEY, parsed.MOCK_VOYAGE),
+    browserbase: service(parsed.BROWSERBASE_API_KEY, parsed.MOCK_BROWSERBASE),
+  };
+  const customModelCredentialEnvName = parsed.AI_CUSTOM_MODEL_API_KEY_VAR;
+  const customModelCredential = customModelCredentialEnvName
+    ? present[customModelCredentialEnvName]
+    : parsed.AI_CUSTOM_MODEL_API_KEY;
+  const customModelProvider: CustomModelProvider | undefined =
+    parsed.AI_CUSTOM_MODEL_KIND !== undefined &&
+    parsed.AI_CUSTOM_MODEL_BASE_URL !== undefined &&
+    parsed.AI_CUSTOM_MODEL_ID !== undefined
+      ? parsed.AI_CUSTOM_MODEL_KIND === "anthropic_compatible"
+        ? {
+            apiKey: customModelCredential as string,
+            ...(customModelCredentialEnvName
+              ? { apiKeyVar: customModelCredentialEnvName }
+              : {}),
+            baseUrl: parsed.AI_CUSTOM_MODEL_BASE_URL,
+            key: "custom",
+            kind: "anthropic_compatible",
+            model: parsed.AI_CUSTOM_MODEL_ID,
+          }
+        : {
+            ...(customModelCredential
+              ? {
+                  apiKey: customModelCredential,
+                  ...(customModelCredentialEnvName
+                    ? { apiKeyVar: customModelCredentialEnvName }
+                    : {}),
+                }
+              : {}),
+            baseUrl: parsed.AI_CUSTOM_MODEL_BASE_URL,
+            key: "custom",
+            kind: "openai_compatible",
+            model: parsed.AI_CUSTOM_MODEL_ID,
+          }
+      : undefined;
+
   return {
     nodeEnv: parsed.NODE_ENV,
     databaseUrl: parsed.DATABASE_URL,
@@ -668,6 +779,8 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     },
     ai: {
       anthropicModelTier: parsed.ANTHROPIC_MODEL_TIER,
+      customModelProvider,
+      llmProviderKey: parsed.AI_LLM_PROVIDER_KEY,
       voyageEmbeddingModel: parsed.VOYAGE_EMBEDDING_MODEL,
     },
     news: {
@@ -710,16 +823,6 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       },
       window: parsed.SPEND_GUARD_WINDOW,
     },
-    services: {
-      anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),
-      odds: service(parsed.THE_ODDS_API_KEY, parsed.MOCK_ODDS),
-      sportsdataio: service(
-        parsed.SPORTSDATAIO_API_KEY,
-        parsed.MOCK_SPORTSDATAIO,
-      ),
-      tavily: service(parsed.TAVILY_API_KEY, parsed.MOCK_TAVILY),
-      voyage: service(parsed.VOYAGE_API_KEY, parsed.MOCK_VOYAGE),
-      browserbase: service(parsed.BROWSERBASE_API_KEY, parsed.MOCK_BROWSERBASE),
-    },
+    services,
   };
 }

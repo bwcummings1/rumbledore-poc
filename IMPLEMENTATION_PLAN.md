@@ -13,7 +13,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 - [x] Build the VCR fixture-first test harness with gated live-smoke validation per provider. (specs/25)
 
 ### Q. Model & tone tunability framework (see specs/26)
-- [ ] Build the pluggable model-provider abstraction including a custom fine-tuned/self-hosted endpoint. (specs/26)
+- [x] Build the pluggable model-provider abstraction including a custom fine-tuned/self-hosted endpoint. (specs/26)
 - [ ] Add data-driven per-task model routing (cheap/flagship/custom). (specs/26)
 - [ ] Externalize persona tone/voice as versioned config records. (specs/26)
 - [ ] Add versioned, composable, diffable prompt templates. (specs/26)

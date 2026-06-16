@@ -53,6 +53,8 @@ describe("parseEnv", () => {
     expect(env.ingestion).toEqual({ pollPolicyConfig: undefined });
     expect(env.ai).toEqual({
       anthropicModelTier: "cheap",
+      customModelProvider: undefined,
+      llmProviderKey: "anthropic",
       voyageEmbeddingModel: VOYAGE_EMBEDDING_MODEL,
     });
     expect(env.news).toEqual({
@@ -193,6 +195,8 @@ describe("parseEnv", () => {
 
     expect(parseEnv({ ANTHROPIC_MODEL_TIER: "mixed" }).ai).toEqual({
       anthropicModelTier: "mixed",
+      customModelProvider: undefined,
+      llmProviderKey: "anthropic",
       voyageEmbeddingModel: VOYAGE_EMBEDDING_MODEL,
     });
   });
@@ -216,6 +220,103 @@ describe("parseEnv", () => {
       parseEnv({ VOYAGE_EMBEDDING_MODEL: "voyage-fixture-model" }).ai
         .voyageEmbeddingModel,
     ).toBe("voyage-fixture-model");
+  });
+
+  it("configures an OpenAI-compatible custom LLM provider", () => {
+    const customCredentialFixture = fixtureValue("custom", "auth", "fixture");
+    const env = parseEnv({
+      AI_CUSTOM_MODEL_API_KEY: customCredentialFixture, // ubs:ignore secret-scan:ignore — fake custom model credential fixture
+      AI_CUSTOM_MODEL_BASE_URL: "https://models.example.invalid",
+      AI_CUSTOM_MODEL_ID: "rumbledore-tuned-fixture",
+      AI_CUSTOM_MODEL_KIND: "openai_compatible",
+      AI_LLM_PROVIDER_KEY: "custom",
+    });
+
+    expect(env.ai.llmProviderKey).toBe("custom");
+    expect(env.ai.customModelProvider).toEqual({
+      apiKey: customCredentialFixture,
+      baseUrl: "https://models.example.invalid",
+      key: "custom",
+      kind: "openai_compatible",
+      model: "rumbledore-tuned-fixture",
+    });
+  });
+
+  it("configures a custom LLM provider with a named credential env var", () => {
+    const namedCredentialFixture = fixtureValue("named", "auth", "fixture");
+    const customProviderCredentialPointer = [
+      "AI_CUSTOM_MODEL",
+      "API",
+      "KEY_VAR",
+    ].join("_");
+    const tunedModelCredentialEnvName = [
+      "RUMBLEDORE",
+      "TUNED",
+      "MODEL",
+      "AUTH",
+    ].join("_");
+    const env = parseEnv({
+      [customProviderCredentialPointer]: tunedModelCredentialEnvName,
+      AI_CUSTOM_MODEL_BASE_URL: "https://models.example.invalid",
+      AI_CUSTOM_MODEL_ID: "rumbledore-tuned-fixture",
+      AI_CUSTOM_MODEL_KIND: "anthropic_compatible",
+      AI_LLM_PROVIDER_KEY: "custom",
+      [tunedModelCredentialEnvName]: namedCredentialFixture, // ubs:ignore secret-scan:ignore — fake custom model credential fixture
+    });
+
+    expect(env.ai.customModelProvider).toEqual({
+      apiKey: namedCredentialFixture,
+      apiKeyVar: tunedModelCredentialEnvName,
+      baseUrl: "https://models.example.invalid",
+      key: "custom",
+      kind: "anthropic_compatible",
+      model: "rumbledore-tuned-fixture",
+    });
+  });
+
+  it("allows explicitly unauthenticated OpenAI-compatible custom endpoints", () => {
+    const env = parseEnv({
+      AI_CUSTOM_MODEL_ALLOW_UNAUTHENTICATED: "true",
+      AI_CUSTOM_MODEL_BASE_URL: "http://127.0.0.1:8080",
+      AI_CUSTOM_MODEL_ID: "local-fixture-model",
+      AI_CUSTOM_MODEL_KIND: "openai_compatible",
+      AI_LLM_PROVIDER_KEY: "custom",
+    });
+
+    expect(env.ai.customModelProvider).toEqual({
+      baseUrl: "http://127.0.0.1:8080",
+      key: "custom",
+      kind: "openai_compatible",
+      model: "local-fixture-model",
+    });
+  });
+
+  it("rejects selected custom LLM providers with missing base URL, model, or key", () => {
+    let message = "";
+    try {
+      parseEnv({
+        AI_CUSTOM_MODEL_KIND: "openai_compatible",
+        AI_LLM_PROVIDER_KEY: "custom",
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("AI_CUSTOM_MODEL_BASE_URL");
+    expect(message).toContain("AI_CUSTOM_MODEL_ID");
+    expect(message).toContain("AI_CUSTOM_MODEL_API_KEY");
+  });
+
+  it("requires a key for Anthropic-compatible custom endpoints", () => {
+    expect(() =>
+      parseEnv({
+        AI_CUSTOM_MODEL_ALLOW_UNAUTHENTICATED: "true",
+        AI_CUSTOM_MODEL_BASE_URL: "https://models.example.invalid",
+        AI_CUSTOM_MODEL_ID: "anthropic-compatible-fixture",
+        AI_CUSTOM_MODEL_KIND: "anthropic_compatible",
+        AI_LLM_PROVIDER_KEY: "custom",
+      }),
+    ).toThrow(/AI_CUSTOM_MODEL_API_KEY/);
   });
 
   it("defaults and overrides spend guard caps", () => {
