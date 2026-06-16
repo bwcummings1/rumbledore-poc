@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **AUSPEX onboarding flows landed** with provider connect, hosted ESPN frame, unified discovery/import inventory, roster invites, and claim-your-team previews in the mobile-first onboarding register.
+Keep it current. Last updated: 2026-06-16 — **live ingestion calendar cadence hardening landed** with the ingestion scheduler now using the NFL calendar default game-state provider so live game windows hit the 1-min matchup poll tier while off-hours stay relaxed.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Live ingestion calendar cadence hardening landed — ingestion tick now uses the NFL calendar default game-state provider so live game windows hit the 1-min matchup poll tier while off-hours stay relaxed.
 - 2026-06-16: AUSPEX onboarding flows landed — provider connect, hosted ESPN frame, unified discovery/import inventory, roster invite path, and claim-your-team previews now use the shared mobile-first onboarding register.
 - 2026-06-16: AUSPEX lore mechanic UI landed — lore submit, canon ledger, shared quorum voting, claim verification, steward controls, and challenge/dispute lineage now use tokenized panels, exact result states, semantic meters, and nested-list lineage.
 - 2026-06-16: AUSPEX instigator and shared voting landed — lore now renders AI provocation/verdict cards, poll-backed cast instigations vote through `/api/leagues/[leagueId]/polls/[pollId]/votes`, and lore claims share one accessible vote widget.

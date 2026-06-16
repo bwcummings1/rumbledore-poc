@@ -62,6 +62,11 @@ import {
   yahooCredentialsSchema,
 } from "@/providers/yahoo/client";
 import { createRealtimePublisher, type RealtimePublisher } from "@/realtime";
+import {
+  defaultNflCalendar,
+  type NflCalendar,
+  type NflWeekState,
+} from "@/sports/nfl-calendar";
 import { inngest } from "../client";
 import {
   type GameFinalData,
@@ -94,13 +99,35 @@ export interface IngestionGameStateProvider {
   ): IngestionGameState | Promise<IngestionGameState>;
 }
 
-const defaultGameStateProvider: IngestionGameStateProvider = {
-  stateForLeague(input) {
-    return input.leagueStatus === "complete"
-      ? "off_season"
-      : "in_season_off_hours";
-  },
-};
+export function createNflCalendarGameStateProvider(
+  nflCalendar: NflCalendar = defaultNflCalendar,
+): IngestionGameStateProvider {
+  return {
+    async stateForLeague(input) {
+      if (input.leagueStatus === "complete") {
+        return "off_season";
+      }
+
+      return ingestionGameStateFromNflWeekState(
+        await nflCalendar.weekState(input.now),
+      );
+    },
+  };
+}
+
+function ingestionGameStateFromNflWeekState(
+  weekState: NflWeekState,
+): IngestionGameState {
+  if (weekState.phase === "offseason") {
+    return "off_season";
+  }
+
+  return weekState.gamePhase === "games_live"
+    ? "live_window"
+    : "in_season_off_hours";
+}
+
+const defaultGameStateProvider = createNflCalendarGameStateProvider();
 
 type LeagueIngestProvider = Pick<
   FantasyProvider<unknown, FantasyProviderSession>,

@@ -7,7 +7,7 @@ One task = one sentence, no "and". **Spec of record: `specs/35`. Build toward `d
 - Keep all paid services **mock-pinned** (`MOCK_*=true`); build + test real adapters dormant. Every fix ships a test. RLS/isolation + all quality gates stay green.
 
 ## Scope — Hardening (build in order; correctness/security first)
-- [ ] Wire the NFL calendar into the ingestion game-state provider so the 1-min live-window cadence fires during games. (specs/35 §1)
+- [x] Wire the NFL calendar into the ingestion game-state provider so the 1-min live-window cadence fires during games. (specs/35 §1)
 - [ ] Constrain the lore steward tiebreak to genuine tie/quorum-short/expired conditions, with a separate audited override. (specs/35 §5)
 - [ ] Validate and correct ESPN final-rank and championship derivation against real multi-season history, flagging low-confidence cases. (specs/35 §10)
 - [ ] Implement a real Anthropic-backed LLM-judge (dormant under mock) and wire it into the publish pipeline as a post-validate gate. (specs/35 §2)

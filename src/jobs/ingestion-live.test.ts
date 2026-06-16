@@ -760,6 +760,55 @@ describe("live ingestion jobs", () => {
     });
   });
 
+  it("uses the default NFL calendar to select live-window cadence during games", async () => {
+    const liveSeed = await seedLiveLeague("calendar-live");
+    const offHoursSeed = await seedLiveLeague("calendar-offhours-default");
+    const liveObservedAt = new Date("2026-09-13T18:00:00Z");
+    const offHoursObservedAt = new Date("2026-09-16T18:00:00Z");
+    await seedDataCoverage(liveSeed, {
+      league: liveObservedAt,
+      matchups: liveObservedAt,
+      members: liveObservedAt,
+      rosters: liveObservedAt,
+      teams: liveObservedAt,
+    });
+    await seedDataCoverage(offHoursSeed, {
+      league: offHoursObservedAt,
+      matchups: offHoursObservedAt,
+      members: offHoursObservedAt,
+      rosters: offHoursObservedAt,
+      teams: offHoursObservedAt,
+    });
+
+    const live = await runIngestionTick({
+      data: {
+        leagueIds: [liveSeed.leagueId],
+        now: "2026-09-13T18:02:00.000Z",
+      },
+      deps: { db: handle.db },
+    });
+    const offHours = await runIngestionTick({
+      data: {
+        leagueIds: [offHoursSeed.leagueId],
+        now: "2026-09-16T18:02:00.000Z",
+      },
+      deps: { db: handle.db },
+    });
+
+    expect(live).toMatchObject({
+      ok: true,
+      plannedCount: 1,
+      skippedNotDue: 0,
+    });
+    expect(live.planned[0]?.data.dataClasses).toEqual(["matchups"]);
+    expect(live.planned[0]?.id).toContain("matchups:live_window:");
+    expect(offHours).toMatchObject({
+      ok: true,
+      plannedCount: 0,
+      skippedNotDue: 1,
+    });
+  });
+
   it("uses off-hours cadence once the hourly matchup window is due", async () => {
     const seeded = await seedLiveLeague("cadence-offhours");
     const now = new Date("2026-09-13T19:01:00Z");
