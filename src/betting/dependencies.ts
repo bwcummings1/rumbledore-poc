@@ -1,5 +1,6 @@
 import type { Env } from "@/core/env/schema";
 import type { Logger } from "@/core/logging";
+import { AppError } from "@/core/result";
 import {
   createSpendGuard,
   logProviderUsage,
@@ -23,6 +24,17 @@ import { MockOddsProvider, MockResultsProvider } from "./mocks";
 import { SportsDataIoResultsProvider, TheOddsApiProvider } from "./real";
 import type { BettingSettlementDependencies } from "./settlement";
 
+function isBettingProviderUnavailableError(error: unknown): boolean {
+  if (!(error instanceof AppError)) {
+    return error instanceof Error;
+  }
+  return (
+    error.status >= 500 &&
+    (error.code === "ODDS_PROVIDER_HTTP_ERROR" ||
+      error.code === "RESULTS_PROVIDER_HTTP_ERROR")
+  );
+}
+
 export class GuardedOddsProvider implements OddsProvider {
   private delegate: OddsProvider | null = null;
   private demotedDelegate = false;
@@ -42,9 +54,15 @@ export class GuardedOddsProvider implements OddsProvider {
       await this.logDemotion(operation);
       return delegate.listEvents(input);
     }
-    const value = await delegate.listEvents(input);
-    await this.recordRealUsage(operation);
-    return value;
+    try {
+      const value = await delegate.listEvents(input);
+      await this.recordRealUsage(operation);
+      return value;
+    } catch (error) {
+      return this.fallbackAfterUnavailable(error, operation, () =>
+        this.mock.listEvents(input),
+      );
+    }
   }
 
   async getMarkets(input: OddsProviderEventInput): Promise<OddsMarket[]> {
@@ -54,9 +72,15 @@ export class GuardedOddsProvider implements OddsProvider {
       await this.logDemotion(operation);
       return delegate.getMarkets(input);
     }
-    const value = await delegate.getMarkets(input);
-    await this.recordRealUsage(operation);
-    return value;
+    try {
+      const value = await delegate.getMarkets(input);
+      await this.recordRealUsage(operation);
+      return value;
+    } catch (error) {
+      return this.fallbackAfterUnavailable(error, operation, () =>
+        this.mock.getMarkets(input),
+      );
+    }
   }
 
   async getOdds(input: OddsProviderEventInput): Promise<OddsQuote[]> {
@@ -66,9 +90,15 @@ export class GuardedOddsProvider implements OddsProvider {
       await this.logDemotion(operation);
       return delegate.getOdds(input);
     }
-    const value = await delegate.getOdds(input);
-    await this.recordRealUsage(operation);
-    return value;
+    try {
+      const value = await delegate.getOdds(input);
+      await this.recordRealUsage(operation);
+      return value;
+    } catch (error) {
+      return this.fallbackAfterUnavailable(error, operation, () =>
+        this.mock.getOdds(input),
+      );
+    }
   }
 
   private async selectDelegate(): Promise<OddsProvider> {
@@ -102,6 +132,25 @@ export class GuardedOddsProvider implements OddsProvider {
     });
   }
 
+  private async fallbackAfterUnavailable<T>(
+    error: unknown,
+    operation: string,
+    mockCall: () => Promise<T>,
+  ): Promise<T> {
+    if (!isBettingProviderUnavailableError(error)) {
+      throw error;
+    }
+    this.demotedDelegate = true;
+    this.delegate = this.mock;
+    await this.logDemotion(operation);
+    this.logger?.warn("provider_unavailable_mock_fallback", {
+      error,
+      operation,
+      provider: "odds",
+    });
+    return mockCall();
+  }
+
   private async logDemotion(operation: string): Promise<void> {
     if (!this.demotedDelegate) {
       return;
@@ -128,13 +177,16 @@ export class GuardedResultsProvider implements ResultsProvider {
     readonly real: ResultsProvider,
     private readonly mock: ResultsProvider,
     private readonly guard: SpendGuard,
+    private readonly logger?: Logger,
   ) {
     this.id = real.id;
   }
 
   async getEventResult(input: ResultsProviderInput): Promise<EventResult> {
     return runGuardedProviderCall({
+      fallbackOnError: isBettingProviderUnavailableError,
       guard: this.guard,
+      logger: this.logger,
       mockCall: () => this.mock.getEventResult(input),
       operation: "results.getEventResult",
       provider: "sportsdataio",

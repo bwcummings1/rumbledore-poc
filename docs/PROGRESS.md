@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Spend-guard fallback coverage landed — rolling-24h TTL expiry is now covered for memory and Redis counters, and guarded Anthropic, Tavily, Voyage, Odds, SportsDataIO, and central-news unavailable paths fall back to deterministic mocks under tests.
 - 2026-06-16: Records catalog coverage landed — `records-catalog.ts` now has a direct seeded multi-season fixture test suite covering standings reconciliation, deterministic tied record ordering, H2H mirror ledgers, cross-season streaks, championship summaries, keeper milestones, and co-owner identity separation.
 - 2026-06-16: Transaction/waiver content emitters landed — live ingestion now fetches supported provider transactions, persists changed rows idempotently, and fans out transaction/waiver Beat Reporter trigger events.
 - 2026-06-16: PWA cache hardening landed — `/leagues/:path*` pages now declare `Cache-Control: private, no-store`, and a shared-device login-A → logout → login-B e2e guards against cached league-page leakage.

@@ -17,7 +17,7 @@ One task = one sentence, no "and". **Spec of record: `specs/35`. Build toward `d
 - [x] Harden the PWA cache: set `private, no-store` on league pages and add a login-A→logout→login-B cache-isolation test. (specs/35 §8)
 - [x] Wire production emitters for the transaction/waiver content triggers from the ingestion path. (specs/35 §4)
 - [x] Add a dedicated test suite for `records-catalog.ts` over a seeded multi-season fixture. (specs/35 §9)
-- [ ] Cover the spend-guard rolling-24h TTL and provider-unavailable→mock fallback paths with tests. (specs/35 §11)
+- [x] Cover the spend-guard rolling-24h TTL and provider-unavailable→mock fallback paths with tests. (specs/35 §11)
 - [ ] Reconcile `docs/PROGRESS.md` / `docs/HISTORY.md` (mark fixed bugs resolved; refresh build-state). (specs/35 §12)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)

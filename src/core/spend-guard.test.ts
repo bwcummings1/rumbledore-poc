@@ -5,6 +5,7 @@ import {
   DEFAULT_SPEND_GUARD_CAPS,
   type SpendGuardConfig,
   type SpendGuardProvider,
+  type SpendGuardWindow,
 } from "./env/schema";
 import { createLogger } from "./logging";
 import { getMetricsSnapshot, resetMetricsForTests } from "./metrics";
@@ -29,6 +30,7 @@ function parseLogLine(line: string): Record<string, unknown> {
 
 function guardConfig(
   overrides: Partial<Record<SpendGuardProvider, number>> = {},
+  window: SpendGuardWindow = "total-run",
 ): SpendGuardConfig {
   return {
     providers: Object.fromEntries(
@@ -40,7 +42,7 @@ function guardConfig(
         },
       ]),
     ) as SpendGuardConfig["providers"],
-    window: "total-run",
+    window,
   };
 }
 
@@ -85,8 +87,10 @@ function parseRedisCommand(
 
 async function startRedisCounterServer(): Promise<{
   close: () => Promise<void>;
+  commands: string[][];
   url: string;
 }> {
+  const commands: string[][] = [];
   const counters = new Map<string, number>();
   const server = net.createServer((socket) => {
     let buffer = Buffer.alloc(0);
@@ -98,6 +102,7 @@ async function startRedisCounterServer(): Promise<{
           return;
         }
         buffer = buffer.subarray(parsed.nextOffset);
+        commands.push(parsed.args);
         const [command = "", key = "", amount = "0"] = parsed.args;
         switch (command.toUpperCase()) {
           case "GET": {
@@ -136,6 +141,7 @@ async function startRedisCounterServer(): Promise<{
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       }),
+    commands,
     url: `redis://127.0.0.1:${address.port}`,
   };
 }
@@ -151,6 +157,34 @@ afterEach(async () => {
 });
 
 describe("SpendGuard", () => {
+  it("expires rolling-24h memory counters after the fixed TTL", async () => {
+    let nowMs = Date.parse("2026-06-16T00:00:00.000Z");
+    const guard = new SpendGuard({
+      config: guardConfig({ tavily: 1 }, "rolling-24h"),
+      logger: testLogger(),
+      store: new MemorySpendCounterStore(() => new Date(nowMs)),
+    });
+
+    await guard.record("tavily", { units: 1 });
+    await expect(guard.check("tavily")).resolves.toBe("deny");
+
+    nowMs += 86_399_000;
+    await expect(guard.check("tavily")).resolves.toBe("deny");
+
+    nowMs += 1_000;
+    await expect(guard.check("tavily")).resolves.toBe("allow");
+    await expect(guard.snapshot("tavily")).resolves.toMatchObject({
+      cumulative: 0,
+      window: "rolling-24h",
+    });
+
+    await guard.record("tavily", { units: 1 });
+    await expect(guard.snapshot("tavily")).resolves.toMatchObject({
+      cumulative: 1,
+      window: "rolling-24h",
+    });
+  });
+
   it("records below-cap usage and returns cumulative state", async () => {
     const guard = new SpendGuard({
       config: guardConfig({ tavily: 10 }),
@@ -310,6 +344,26 @@ describe("SpendGuard", () => {
     await first.record("odds", { units: 1 });
 
     await expect(second.check("odds")).resolves.toBe("deny");
+  });
+
+  it("sets a 24h Redis expiry when a rolling counter is first created", async () => {
+    const server = await startRedisCounterServer();
+    redisServers.push(server);
+    const guard = new SpendGuard({
+      config: guardConfig({ odds: 10 }, "rolling-24h"),
+      logger: testLogger(),
+      store: new RedisSpendCounterStore(server.url),
+    });
+
+    await guard.record("odds", { units: 1 });
+    await guard.record("odds", { units: 1 });
+
+    const expireCommands = server.commands.filter(
+      ([command]) => command?.toUpperCase() === "EXPIRE",
+    );
+    expect(expireCommands).toEqual([
+      ["EXPIRE", "rumbledore:spend-guard:v1:rolling-24h:odds", "86400"],
+    ]);
   });
 
   it("falls back to process memory when the primary counter store fails", async () => {

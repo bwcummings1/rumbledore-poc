@@ -468,6 +468,7 @@ export function logProviderUsage({
 }
 
 export async function runGuardedProviderCall<T>({
+  fallbackOnError,
   guard,
   logger = defaultLogger,
   mockCall,
@@ -475,6 +476,7 @@ export async function runGuardedProviderCall<T>({
   provider,
   realCall,
 }: {
+  fallbackOnError?: (error: unknown) => boolean;
   guard: SpendGuard;
   logger?: Logger;
   mockCall: () => Promise<T>;
@@ -505,7 +507,37 @@ export async function runGuardedProviderCall<T>({
     return mockCall();
   }
 
-  const { usage, value } = await realCall();
+  let realResult: { usage: SpendGuardUsage; value: T };
+  try {
+    realResult = await realCall();
+  } catch (error) {
+    if (!fallbackOnError?.(error)) {
+      throw error;
+    }
+    const snapshot = await guard.snapshot(provider);
+    logProviderUsage({
+      cap: snapshot.cap,
+      cumulative: snapshot.cumulative,
+      demoted: true,
+      logger,
+      operation,
+      provider,
+      unit: snapshot.unit,
+      units: 0,
+      window: snapshot.window,
+    });
+    logger.warn("provider_unavailable_mock_fallback", {
+      cap: snapshot.cap,
+      cumulative: snapshot.cumulative,
+      error,
+      operation,
+      provider,
+      window: snapshot.window,
+    });
+    return mockCall();
+  }
+
+  const { usage, value } = realResult;
   const record = await guard.record(provider, usage);
   logProviderUsage({
     cap: record.cap,

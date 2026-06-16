@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
+import { createLogger } from "@/core/logging";
+import { AppError } from "@/core/result";
+import { MemorySpendCounterStore, SpendGuard } from "@/core/spend-guard";
 import type { Db } from "@/db/client";
 import { NoopPushNotifier, WebPushNotifier } from "@/push";
 import { NoopRealtimePublisher, SupabaseRealtimePublisher } from "@/realtime";
@@ -12,6 +15,17 @@ import {
   GuardedLlmJudge,
   GuardedWebGrounding,
 } from "./dependencies";
+import type {
+  BlogDraft,
+  EmbeddingProvider,
+  LlmClient,
+  LlmGenerateRequest,
+  LlmJudge,
+  LlmJudgeRequest,
+  LlmJudgeScore,
+  NewsItem,
+  WebGrounding,
+} from "./interfaces";
 import {
   DeterministicEmbeddingProvider,
   MockLlmClient,
@@ -27,6 +41,8 @@ import {
   AnthropicLlmJudge,
   OpenAiCompatibleLlmClient,
   TavilyWebGrounding,
+  type UsageReportingLlmClient,
+  type UsageReportingLlmJudge,
   VOYAGE_EMBEDDING_MODEL,
   VoyageEmbeddingProvider,
 } from "./real";
@@ -34,6 +50,57 @@ import {
 function fakeKey() {
   return ["fixture", "key"].join("-");
 }
+
+function spendGuard() {
+  return new SpendGuard({
+    config: parseEnv({}).spendGuard,
+    store: new MemorySpendCounterStore(),
+  });
+}
+
+function testLogger() {
+  return createLogger({ sink: () => undefined });
+}
+
+const fallbackDraft: BlogDraft = {
+  body: "Mock fallback body.",
+  bodyBlocks: [{ text: "Mock fallback body.", type: "paragraph" }],
+  contentType: "weekly_recap",
+  dek: "Mock fallback dek.",
+  section: "recaps",
+  structure: {
+    kicker: "Mock kicker.",
+    lead: "Mock lead.",
+    standingsShift: "Mock standings shift.",
+    topResult: "Mock top result.",
+    type: "weekly_recap",
+    upsetOrBlowout: "Mock margin.",
+  },
+  summary: "Mock fallback summary.",
+  tags: ["mock"],
+  title: "Mock fallback draft",
+};
+
+const fallbackJudgeScore: LlmJudgeScore = {
+  authenticity: 0.9,
+  leakage: false,
+  leakedTokens: [],
+  matchedLeagueFacts: ["Fixture Team"],
+  matchedPersonaMarkers: ["Commissioner"],
+  notes: ["mock fallback"],
+  personaMatch: 0.9,
+};
+
+const fallbackNews: NewsItem[] = [
+  {
+    id: "mock-news",
+    publishedAt: new Date("2026-06-16T00:00:00.000Z"),
+    source: "Mock Wire",
+    text: "Mock fallback news.",
+    title: "Mock news",
+    url: "https://news.example.invalid/mock",
+  },
+];
 
 function resolvedAnthropicModel(
   llm: unknown,
@@ -321,5 +388,103 @@ describe("createAiDependencies", () => {
     );
 
     expect(deps.push).toBeInstanceOf(WebPushNotifier);
+  });
+});
+
+describe("guarded AI provider fallbacks", () => {
+  it("falls back to the mock LLM when the configured real LLM is unavailable", async () => {
+    const real: UsageReportingLlmClient = {
+      generate: async () => fallbackDraft,
+      generateWithUsage: async () => {
+        throw new AppError({
+          code: "AI_LLM_PROVIDER_UNAVAILABLE",
+          message: "No configured model provider is available",
+          status: 503,
+        });
+      },
+    };
+    const mock: LlmClient = {
+      generate: async () => fallbackDraft,
+    };
+    const client = new GuardedLlmClient(real, mock, spendGuard(), testLogger());
+
+    await expect(client.generate({} as LlmGenerateRequest)).resolves.toBe(
+      fallbackDraft,
+    );
+  });
+
+  it("falls back to the mock judge when Anthropic judge scoring is unavailable", async () => {
+    const real: UsageReportingLlmJudge = {
+      score: async () => fallbackJudgeScore,
+      scoreWithUsage: async () => {
+        throw new AppError({
+          code: "AI_LLM_JUDGE_FAILED",
+          message: "Anthropic judge scoring failed",
+          status: 502,
+        });
+      },
+    };
+    const mock: LlmJudge = {
+      score: async () => fallbackJudgeScore,
+    };
+    const judge = new GuardedLlmJudge(real, mock, spendGuard(), testLogger());
+
+    await expect(judge.score({} as LlmJudgeRequest)).resolves.toBe(
+      fallbackJudgeScore,
+    );
+  });
+
+  it("falls back to mock web grounding when the real web provider is unavailable", async () => {
+    const real: WebGrounding = {
+      fetch: async () => {
+        // ubs:ignore — interface test double named fetch; it performs no network request.
+        throw new Error("Tavily unavailable");
+      },
+    };
+    const mock: WebGrounding = {
+      fetch: async () => fallbackNews,
+    };
+    const grounding = new GuardedWebGrounding(
+      real,
+      mock,
+      spendGuard(),
+      testLogger(),
+    );
+
+    await expect(
+      grounding.fetch({
+        leagueId: "00000000-0000-0000-0000-000000000001",
+        leagueName: "Fixture League",
+        persona: "analyst",
+        triggerKey: "weekly:fixture",
+      }),
+    ).resolves.toEqual(fallbackNews);
+  });
+
+  it("falls back to mock embeddings when the real embedding provider is unavailable", async () => {
+    const real: EmbeddingProvider = {
+      embed: async () => {
+        throw new AppError({
+          code: "AI_EMBEDDING_REQUEST_FAILED",
+          message: "Voyage embedding request failed",
+          status: 502,
+        });
+      },
+      model: "voyage-fixture",
+    };
+    const mock: EmbeddingProvider = {
+      embed: async () => [0.25, 0.75],
+      model: "mock-fixture",
+    };
+    const embeddings = new GuardedEmbeddingProvider(
+      real,
+      mock,
+      spendGuard(),
+      testLogger(),
+    );
+
+    await expect(embeddings.embed("fixture text")).resolves.toEqual([
+      0.25, 0.75,
+    ]);
   });
 });

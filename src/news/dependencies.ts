@@ -1,4 +1,5 @@
 import type { Env } from "@/core/env/schema";
+import type { Logger } from "@/core/logging";
 import {
   createSpendGuard,
   runGuardedProviderCall,
@@ -24,12 +25,15 @@ export class GuardedCentralNewsSource implements CentralNewsSource {
     readonly real: CentralNewsSource,
     private readonly mock: CentralNewsSource,
     private readonly guard: SpendGuard,
+    private readonly logger?: Logger,
   ) {}
 
   async fetch(input: CentralNewsFetchInput): Promise<CentralNewsSourceItem[]> {
     // ubs:ignore — interface method name; outbound calls are guarded before paid SDK use.
     return runGuardedProviderCall({
+      fallbackOnError: (error) => error instanceof Error,
       guard: this.guard,
+      logger: this.logger,
       mockCall: () => this.mock.fetch(input),
       operation: "centralNews.fetch",
       provider: "tavily",

@@ -1,4 +1,5 @@
 import type { Env } from "@/core/env/schema";
+import type { Logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import {
   createSpendGuard,
@@ -39,6 +40,16 @@ import {
   VoyageEmbeddingProvider,
 } from "./real";
 
+const LLM_MOCK_FALLBACK_CODES = new Set([
+  "AI_LLM_GENERATION_FAILED",
+  "AI_LLM_JUDGE_FAILED",
+  "AI_LLM_PROVIDER_UNAVAILABLE",
+]);
+
+function isAppErrorCode(error: unknown, codes: ReadonlySet<string>): boolean {
+  return error instanceof AppError && codes.has(error.code);
+}
+
 function anthropicUsageUnits(usage: AnthropicUsageBreakdown): number {
   return Math.max(
     1,
@@ -54,6 +65,7 @@ export class GuardedLlmClient implements LlmClient {
     readonly real: UsageReportingLlmClient,
     private readonly mock: LlmClient,
     private readonly guard: SpendGuard,
+    private readonly logger?: Logger,
   ) {}
 
   resolveModelProviderKey(
@@ -69,37 +81,30 @@ export class GuardedLlmClient implements LlmClient {
   }
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
-    try {
-      return await runGuardedProviderCall({
-        guard: this.guard,
-        mockCall: () => this.mock.generate(request),
-        operation: "llm.generate",
-        provider: "anthropic",
-        realCall: async () => {
-          const result = await this.real.generateWithUsage(request);
-          return {
-            usage: {
-              details: {
-                cacheCreationInputTokens: result.usage.cacheCreationInputTokens,
-                cacheReadInputTokens: result.usage.cacheReadInputTokens,
-                inputTokens: result.usage.inputTokens,
-                outputTokens: result.usage.outputTokens,
-              },
-              units: anthropicUsageUnits(result.usage),
+    return runGuardedProviderCall({
+      fallbackOnError: (error) =>
+        isAppErrorCode(error, LLM_MOCK_FALLBACK_CODES),
+      guard: this.guard,
+      logger: this.logger,
+      mockCall: () => this.mock.generate(request),
+      operation: "llm.generate",
+      provider: "anthropic",
+      realCall: async () => {
+        const result = await this.real.generateWithUsage(request);
+        return {
+          usage: {
+            details: {
+              cacheCreationInputTokens: result.usage.cacheCreationInputTokens,
+              cacheReadInputTokens: result.usage.cacheReadInputTokens,
+              inputTokens: result.usage.inputTokens,
+              outputTokens: result.usage.outputTokens,
             },
-            value: result.draft,
-          };
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof AppError &&
-        error.code === "AI_LLM_PROVIDER_UNAVAILABLE"
-      ) {
-        return this.mock.generate(request);
-      }
-      throw error;
-    }
+            units: anthropicUsageUnits(result.usage),
+          },
+          value: result.draft,
+        };
+      },
+    });
   }
 }
 
@@ -108,40 +113,34 @@ export class GuardedLlmJudge implements LlmJudge {
     readonly real: UsageReportingLlmJudge,
     private readonly mock: LlmJudge,
     private readonly guard: SpendGuard,
+    private readonly logger?: Logger,
   ) {}
 
   async score(request: LlmJudgeRequest): Promise<LlmJudgeScore> {
-    try {
-      return await runGuardedProviderCall({
-        guard: this.guard,
-        mockCall: () => this.mock.score(request),
-        operation: "llm.judge",
-        provider: "anthropic",
-        realCall: async () => {
-          const result = await this.real.scoreWithUsage(request);
-          return {
-            usage: {
-              details: {
-                cacheCreationInputTokens: result.usage.cacheCreationInputTokens,
-                cacheReadInputTokens: result.usage.cacheReadInputTokens,
-                inputTokens: result.usage.inputTokens,
-                outputTokens: result.usage.outputTokens,
-              },
-              units: anthropicUsageUnits(result.usage),
+    return runGuardedProviderCall({
+      fallbackOnError: (error) =>
+        isAppErrorCode(error, LLM_MOCK_FALLBACK_CODES),
+      guard: this.guard,
+      logger: this.logger,
+      mockCall: () => this.mock.score(request),
+      operation: "llm.judge",
+      provider: "anthropic",
+      realCall: async () => {
+        const result = await this.real.scoreWithUsage(request);
+        return {
+          usage: {
+            details: {
+              cacheCreationInputTokens: result.usage.cacheCreationInputTokens,
+              cacheReadInputTokens: result.usage.cacheReadInputTokens,
+              inputTokens: result.usage.inputTokens,
+              outputTokens: result.usage.outputTokens,
             },
-            value: result.score,
-          };
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof AppError &&
-        error.code === "AI_LLM_PROVIDER_UNAVAILABLE"
-      ) {
-        return this.mock.score(request);
-      }
-      throw error;
-    }
+            units: anthropicUsageUnits(result.usage),
+          },
+          value: result.score,
+        };
+      },
+    });
   }
 }
 
@@ -150,6 +149,7 @@ export class GuardedWebGrounding implements WebGrounding {
     readonly real: WebGrounding,
     private readonly mock: WebGrounding,
     private readonly guard: SpendGuard,
+    private readonly logger?: Logger,
   ) {}
 
   async fetch(
@@ -157,7 +157,9 @@ export class GuardedWebGrounding implements WebGrounding {
   ): Promise<NewsItem[]> {
     // ubs:ignore — interface method name; outbound calls are guarded before paid SDK use.
     return runGuardedProviderCall({
+      fallbackOnError: (error) => error instanceof Error,
       guard: this.guard,
+      logger: this.logger,
       mockCall: () => this.mock.fetch(input),
       operation: "web.fetch",
       provider: "tavily",
@@ -176,13 +178,18 @@ export class GuardedEmbeddingProvider implements EmbeddingProvider {
     readonly real: EmbeddingProvider,
     private readonly mock: EmbeddingProvider,
     private readonly guard: SpendGuard,
+    private readonly logger?: Logger,
   ) {
     this.model = real.model;
   }
 
   async embed(text: string): Promise<number[]> {
     return runGuardedProviderCall({
+      fallbackOnError: (error) =>
+        error instanceof AppError &&
+        error.code === "AI_EMBEDDING_REQUEST_FAILED",
       guard: this.guard,
+      logger: this.logger,
       mockCall: () => this.mock.embed(text),
       operation: "embeddings.embed",
       provider: "voyage",
