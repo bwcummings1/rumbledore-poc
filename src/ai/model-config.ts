@@ -7,12 +7,14 @@ export const VOYAGE_EMBEDDING_MODEL = "voyage-4-lite";
 export const ANTHROPIC_MODEL_TIERS = ["cheap", "mixed"] as const;
 export type AnthropicModelTier = (typeof ANTHROPIC_MODEL_TIERS)[number];
 
-const flagshipPersonas = new Set<AiPersona>([
+export const ANTHROPIC_FLAGSHIP_PERSONAS = [
   "commissioner",
   "narrator",
   "trash_talker",
   "beat_reporter",
-]);
+] as const satisfies readonly AiPersona[];
+
+const flagshipPersonas = new Set<AiPersona>(ANTHROPIC_FLAGSHIP_PERSONAS);
 
 export function cheapAnthropicModelForPersona(_persona: AiPersona): string {
   return ANTHROPIC_BULK_MODEL;

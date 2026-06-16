@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 4 model-provider seam landed** with custom Anthropic/OpenAI-compatible generation endpoints behind the existing AI pipeline contract.
+Keep it current. Last updated: 2026-06-16 — **Phase 4 data-driven AI model routing landed** with per-task bulk/flagship/custom generation routes behind the existing AI pipeline contract.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Data-driven AI model routing landed — generation now resolves bulk/flagship/custom providers per persona/content-type route config, supports exact task overrides, and falls back safely when optional custom routes are unavailable.
 - 2026-06-16: Pluggable AI model-provider seam landed — generation can now use the existing Anthropic path, an Anthropic-compatible custom endpoint, or an OpenAI-compatible custom endpoint selected by validated env config while preserving the pipeline's `LlmClient` contract.
 - 2026-06-16: Fixture-first paid-provider VCR harness landed — Anthropic, Tavily, Voyage, The Odds API, and SportsDataIO now replay scrubbed cassettes offline, live smoke is gated by `LIVE_SMOKE=1`, and Anthropic structured output now uses per-content schemas small enough for real Haiku validation.
 - 2026-06-16: Provider usage observability landed — guarded real provider calls now emit secret-free usage logs with token/request counts and expose provider usage totals through health metrics.

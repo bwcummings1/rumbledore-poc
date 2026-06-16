@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { VOYAGE_EMBEDDING_MODEL } from "@/ai/model-config";
+import { defaultModelRouteConfig } from "@/ai/model-routing";
 import {
   DEFAULT_ENTITLEMENT_CAPS,
   DEFAULT_SPEND_GUARD_CAPS,
@@ -55,6 +56,7 @@ describe("parseEnv", () => {
       anthropicModelTier: "cheap",
       customModelProvider: undefined,
       llmProviderKey: "anthropic",
+      modelRoute: defaultModelRouteConfig("cheap", "anthropic"),
       voyageEmbeddingModel: VOYAGE_EMBEDDING_MODEL,
     });
     expect(env.news).toEqual({
@@ -197,6 +199,7 @@ describe("parseEnv", () => {
       anthropicModelTier: "mixed",
       customModelProvider: undefined,
       llmProviderKey: "anthropic",
+      modelRoute: defaultModelRouteConfig("mixed", "anthropic"),
       voyageEmbeddingModel: VOYAGE_EMBEDDING_MODEL,
     });
   });
@@ -240,6 +243,43 @@ describe("parseEnv", () => {
       kind: "openai_compatible",
       model: "rumbledore-tuned-fixture",
     });
+    expect(env.ai.modelRoute).toEqual(
+      defaultModelRouteConfig("cheap", "custom"),
+    );
+  });
+
+  it("parses data-driven AI model routing overrides", () => {
+    const env = parseEnv({
+      AI_MODEL_ROUTE_JSON: JSON.stringify({
+        contentTypes: { weekly_recap: "flagship" },
+        default: "bulk",
+        overrides: { "trash_talker|awards_superlatives": "custom" },
+        personas: { narrator: "flagship" },
+      }),
+    });
+
+    expect(env.ai.modelRoute).toEqual({
+      contentTypeDefaults: { weekly_recap: "flagship" },
+      defaultProviderKey: "bulk",
+      overrides: { "trash_talker|awards_superlatives": "custom" },
+      personaDefaults: { narrator: "flagship" },
+    });
+  });
+
+  it("rejects invalid AI model routing JSON without echoing values", () => {
+    let message = "";
+    try {
+      parseEnv({
+        AI_MODEL_ROUTE_JSON: JSON.stringify({
+          default: "private-expensive-model",
+        }),
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("AI_MODEL_ROUTE_JSON");
+    expect(message).not.toContain("private-expensive-model");
   });
 
   it("configures a custom LLM provider with a named credential env var", () => {

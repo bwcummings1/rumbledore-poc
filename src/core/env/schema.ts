@@ -6,6 +6,11 @@ import {
 } from "@/ai/model-config";
 import type { CustomModelProvider } from "@/ai/model-providers";
 import {
+  defaultModelRouteConfig,
+  type ModelRouteConfig,
+  parseModelRouteConfigJson,
+} from "@/ai/model-routing";
+import {
   type PollPolicyConfigOverride,
   parsePollPolicyConfigJson,
 } from "@/ingestion/poll-policy";
@@ -112,6 +117,7 @@ export interface AiConfig {
   anthropicModelTier: AnthropicModelTier;
   customModelProvider: CustomModelProvider | undefined;
   llmProviderKey: "anthropic" | "custom";
+  modelRoute: ModelRouteConfig;
   voyageEmbeddingModel: string;
 }
 
@@ -306,6 +312,7 @@ const baseSchema = z.object({
     .regex(/^[A-Z][A-Z0-9_]*$/)
     .optional(),
   AI_CUSTOM_MODEL_ALLOW_UNAUTHENTICATED: stringbool.optional(),
+  AI_MODEL_ROUTE_JSON: z.string().trim().min(1).optional(),
 
   MOCK_ANTHROPIC: stringbool.optional(),
   MOCK_ODDS: stringbool.optional(),
@@ -512,6 +519,24 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     }
   }
 
+  let modelRouteConfig: ModelRouteConfig | undefined;
+  if ("AI_MODEL_ROUTE_JSON" in present) {
+    try {
+      const routeBase = defaultModelRouteConfig(
+        base.success ? base.data.ANTHROPIC_MODEL_TIER : "cheap",
+        base.success ? base.data.AI_LLM_PROVIDER_KEY : "anthropic",
+      );
+      modelRouteConfig = parseModelRouteConfigJson(
+        String(present.AI_MODEL_ROUTE_JSON),
+        routeBase,
+      );
+    } catch {
+      problems.push(
+        "✖ AI_MODEL_ROUTE_JSON must be JSON using known personas, content types, and bulk/flagship/custom provider keys\n  → at AI_MODEL_ROUTE_JSON",
+      );
+    }
+  }
+
   const customModelProviderTouched = [
     "AI_CUSTOM_MODEL_BASE_URL",
     "AI_CUSTOM_MODEL_ID",
@@ -706,6 +731,12 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
             model: parsed.AI_CUSTOM_MODEL_ID,
           }
       : undefined;
+  const modelRoute =
+    modelRouteConfig ??
+    defaultModelRouteConfig(
+      parsed.ANTHROPIC_MODEL_TIER,
+      parsed.AI_LLM_PROVIDER_KEY,
+    );
 
   return {
     nodeEnv: parsed.NODE_ENV,
@@ -781,6 +812,7 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       anthropicModelTier: parsed.ANTHROPIC_MODEL_TIER,
       customModelProvider,
       llmProviderKey: parsed.AI_LLM_PROVIDER_KEY,
+      modelRoute,
       voyageEmbeddingModel: parsed.VOYAGE_EMBEDDING_MODEL,
     },
     news: {

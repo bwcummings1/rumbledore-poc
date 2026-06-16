@@ -4,6 +4,7 @@ import { parseEnv } from "@/core/env/schema";
 import type { Db } from "@/db/client";
 import { NoopPushNotifier, WebPushNotifier } from "@/push";
 import { NoopRealtimePublisher, SupabaseRealtimePublisher } from "@/realtime";
+import type { AiContentType } from "./content-types";
 import {
   createAiDependencies,
   GuardedEmbeddingProvider,
@@ -15,6 +16,7 @@ import {
   MockLlmClient,
   MockWebGrounding,
 } from "./mocks";
+import { RoutedLlmClient } from "./model-routing";
 import type { AiPersona } from "./personas";
 import {
   ANTHROPIC_BULK_MODEL,
@@ -33,11 +35,28 @@ function fakeKey() {
 function resolvedAnthropicModel(
   llm: unknown,
   persona: AiPersona,
+  contentType: AiContentType = "weekly_recap",
 ): string | undefined {
-  const target = llm instanceof GuardedLlmClient ? llm.real : llm;
+  const target =
+    llm instanceof GuardedLlmClient && llm.real instanceof RoutedLlmClient
+      ? llm.real.resolve({ contentType, persona })?.provider
+      : llm instanceof GuardedLlmClient
+        ? llm.real
+        : llm;
   return (
     target as { modelForPersona?: (persona: AiPersona) => string }
   ).modelForPersona?.(persona);
+}
+
+function resolvedRoute(
+  llm: unknown,
+  persona: AiPersona,
+  contentType: AiContentType = "weekly_recap",
+) {
+  const target = llm instanceof GuardedLlmClient ? llm.real : llm;
+  return target instanceof RoutedLlmClient
+    ? target.resolve({ contentType, persona })
+    : null;
 }
 
 describe("createAiDependencies", () => {
@@ -62,7 +81,8 @@ describe("createAiDependencies", () => {
     );
 
     expect(deps.llm).toBeInstanceOf(GuardedLlmClient);
-    expect((deps.llm as GuardedLlmClient).real).toBeInstanceOf(
+    expect((deps.llm as GuardedLlmClient).real).toBeInstanceOf(RoutedLlmClient);
+    expect(resolvedRoute(deps.llm, "analyst")?.provider).toBeInstanceOf(
       AnthropicLlmClient,
     );
     expect(deps.web).toBeInstanceOf(GuardedWebGrounding);
@@ -124,9 +144,79 @@ describe("createAiDependencies", () => {
     );
 
     expect(deps.llm).toBeInstanceOf(GuardedLlmClient);
-    expect((deps.llm as GuardedLlmClient).real).toBeInstanceOf(
+    expect((deps.llm as GuardedLlmClient).real).toBeInstanceOf(RoutedLlmClient);
+    expect(resolvedRoute(deps.llm, "analyst")?.provider).toBeInstanceOf(
       OpenAiCompatibleLlmClient,
     );
+    expect(resolvedRoute(deps.llm, "analyst")?.providerKey).toBe("custom");
+  });
+
+  it("routes selected tasks to a configured custom model while keeping default tasks on bulk", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        AI_CUSTOM_MODEL_API_KEY: fakeKey(),
+        AI_CUSTOM_MODEL_BASE_URL: "https://models.example.invalid",
+        AI_CUSTOM_MODEL_ID: "rumbledore-tuned-fixture",
+        AI_CUSTOM_MODEL_KIND: "openai_compatible",
+        AI_MODEL_ROUTE_JSON: JSON.stringify({
+          default: "bulk",
+          overrides: { "trash_talker|awards_superlatives": "custom" },
+        }),
+        ANTHROPIC_API_KEY: fakeKey(),
+      }),
+    );
+
+    expect(resolvedAnthropicModel(deps.llm, "analyst", "power_rankings")).toBe(
+      ANTHROPIC_BULK_MODEL,
+    );
+    expect(
+      resolvedRoute(deps.llm, "trash_talker", "awards_superlatives")?.provider,
+    ).toBeInstanceOf(OpenAiCompatibleLlmClient);
+    expect(
+      resolvedRoute(deps.llm, "trash_talker", "awards_superlatives")
+        ?.providerKey,
+    ).toBe("custom");
+  });
+
+  it("falls back to the route default when a custom task route has no provider", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        AI_MODEL_ROUTE_JSON: JSON.stringify({
+          default: "flagship",
+          overrides: { "trash_talker|awards_superlatives": "custom" },
+        }),
+        ANTHROPIC_API_KEY: fakeKey(),
+      }),
+    );
+
+    const route = resolvedRoute(
+      deps.llm,
+      "trash_talker",
+      "awards_superlatives",
+    );
+
+    expect(route?.requestedProviderKey).toBe("custom");
+    expect(route?.providerKey).toBe("flagship");
+    expect(
+      resolvedAnthropicModel(deps.llm, "trash_talker", "awards_superlatives"),
+    ).toBe(ANTHROPIC_FLAGSHIP_MODEL);
+  });
+
+  it("does not route bulk tasks to an inactive custom provider", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        AI_CUSTOM_MODEL_API_KEY: fakeKey(),
+        AI_CUSTOM_MODEL_BASE_URL: "https://models.example.invalid",
+        AI_CUSTOM_MODEL_ID: "rumbledore-tuned-fixture",
+        AI_CUSTOM_MODEL_KIND: "openai_compatible",
+      }),
+    );
+
+    expect(deps.llm).toBeInstanceOf(GuardedLlmClient);
+    expect(resolvedRoute(deps.llm, "analyst", "power_rankings")).toBeNull();
   });
 
   it("passes the configured Voyage embedding model to the real provider", () => {

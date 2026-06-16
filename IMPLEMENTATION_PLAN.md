@@ -14,7 +14,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 
 ### Q. Model & tone tunability framework (see specs/26)
 - [x] Build the pluggable model-provider abstraction including a custom fine-tuned/self-hosted endpoint. (specs/26)
-- [ ] Add data-driven per-task model routing (cheap/flagship/custom). (specs/26)
+- [x] Add data-driven per-task model routing (cheap/flagship/custom). (specs/26)
 - [ ] Externalize persona tone/voice as versioned config records. (specs/26)
 - [ ] Add versioned, composable, diffable prompt templates. (specs/26)
 - [ ] Build the `eval:ai:variants` A/B harness that scores model×tone variants and names a winner. (specs/26)

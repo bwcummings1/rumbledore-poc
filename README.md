@@ -47,6 +47,7 @@ Optional real integrations:
 - `ANTHROPIC_API_KEY`, `THE_ODDS_API_KEY`, `SPORTSDATAIO_API_KEY`, `TAVILY_API_KEY`, `VOYAGE_API_KEY`, and `BROWSERBASE_API_KEY` are optional until their integrations are enabled.
 - `MOCK_ANTHROPIC`, `MOCK_ODDS`, `MOCK_SPORTSDATAIO`, `MOCK_TAVILY`, `MOCK_VOYAGE`, and `MOCK_BROWSERBASE` accept boolean strings: `true` forces mock mode, `false` requires the corresponding key, and empty uses the key when present.
 - `ANTHROPIC_MODEL_TIER` defaults to `cheap` so all personas use Haiku; set `mixed` to restore flagship personas. `VOYAGE_EMBEDDING_MODEL` defaults to `voyage-4-lite`.
+- `AI_MODEL_ROUTE_JSON` can route generation tasks by data, for example `{"default":"bulk","personas":{"narrator":"flagship"},"overrides":{"trash_talker|awards_superlatives":"custom"}}`. Route values are `bulk`, `flagship`, or `custom`; a missing custom provider falls back to the route default.
 
 ## Development Commands
 

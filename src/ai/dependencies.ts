@@ -1,4 +1,5 @@
 import type { Env } from "@/core/env/schema";
+import { AppError } from "@/core/result";
 import {
   createSpendGuard,
   runGuardedProviderCall,
@@ -20,12 +21,12 @@ import {
   MockLlmClient,
   MockWebGrounding,
 } from "./mocks";
+import { ANTHROPIC_BULK_MODEL, ANTHROPIC_FLAGSHIP_MODEL } from "./model-config";
 import { createLlmClient } from "./model-providers";
+import { type ModelProviderRegistry, RoutedLlmClient } from "./model-routing";
 import type { AiGenerationDependencies } from "./pipeline";
 import {
-  AnthropicLlmClient,
   type AnthropicUsageBreakdown,
-  anthropicModelForTier,
   TavilyWebGrounding,
   type UsageReportingLlmClient,
   VoyageEmbeddingProvider,
@@ -49,27 +50,37 @@ export class GuardedLlmClient implements LlmClient {
   ) {}
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
-    return runGuardedProviderCall({
-      guard: this.guard,
-      mockCall: () => this.mock.generate(request),
-      operation: "llm.generate",
-      provider: "anthropic",
-      realCall: async () => {
-        const result = await this.real.generateWithUsage(request);
-        return {
-          usage: {
-            details: {
-              cacheCreationInputTokens: result.usage.cacheCreationInputTokens,
-              cacheReadInputTokens: result.usage.cacheReadInputTokens,
-              inputTokens: result.usage.inputTokens,
-              outputTokens: result.usage.outputTokens,
+    try {
+      return await runGuardedProviderCall({
+        guard: this.guard,
+        mockCall: () => this.mock.generate(request),
+        operation: "llm.generate",
+        provider: "anthropic",
+        realCall: async () => {
+          const result = await this.real.generateWithUsage(request);
+          return {
+            usage: {
+              details: {
+                cacheCreationInputTokens: result.usage.cacheCreationInputTokens,
+                cacheReadInputTokens: result.usage.cacheReadInputTokens,
+                inputTokens: result.usage.inputTokens,
+                outputTokens: result.usage.outputTokens,
+              },
+              units: anthropicUsageUnits(result.usage),
             },
-            units: anthropicUsageUnits(result.usage),
-          },
-          value: result.draft,
-        };
-      },
-    });
+            value: result.draft,
+          };
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        error.code === "AI_LLM_PROVIDER_UNAVAILABLE"
+      ) {
+        return this.mock.generate(request);
+      }
+      throw error;
+    }
   }
 }
 
@@ -129,18 +140,30 @@ export interface AiDependencyFactoryOptions {
 function createConfiguredRealLlmClient(
   env: Pick<Env, "ai" | "services">,
 ): UsageReportingLlmClient | null {
-  if (env.ai.llmProviderKey === "custom") {
-    return env.ai.customModelProvider
-      ? createLlmClient(env.ai.customModelProvider)
-      : null;
+  const clients: ModelProviderRegistry<UsageReportingLlmClient> = {};
+
+  if (!env.services.anthropic.mock) {
+    clients.bulk = createLlmClient({
+      apiKey: env.services.anthropic.apiKey,
+      key: "bulk",
+      kind: "anthropic",
+      model: ANTHROPIC_BULK_MODEL,
+    });
+    clients.flagship = createLlmClient({
+      apiKey: env.services.anthropic.apiKey,
+      key: "flagship",
+      kind: "anthropic",
+      model: ANTHROPIC_FLAGSHIP_MODEL,
+    });
   }
 
-  return env.services.anthropic.mock
-    ? null
-    : new AnthropicLlmClient({
-        apiKey: env.services.anthropic.apiKey,
-        modelForPersona: anthropicModelForTier(env.ai.anthropicModelTier),
-      });
+  if (env.ai.customModelProvider) {
+    clients.custom = createLlmClient(env.ai.customModelProvider);
+  }
+
+  return Object.keys(clients).length > 0
+    ? new RoutedLlmClient(clients, env.ai.modelRoute)
+    : null;
 }
 
 export function createAiDependencies(
