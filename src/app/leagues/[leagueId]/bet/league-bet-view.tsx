@@ -2,7 +2,6 @@
 
 import {
   ArrowLeft,
-  Loader2,
   ReceiptText,
   Ticket,
   Trash2,
@@ -16,7 +15,11 @@ import type {
   LeagueBetMarket,
   LeagueBetSelection,
 } from "@/betting";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { Field } from "@/components/ui/field";
+import { Slider } from "@/components/ui/slider";
+import { Stepper } from "@/components/ui/stepper";
 import { cn } from "@/lib/utils";
 
 type EventGroup = {
@@ -445,6 +448,8 @@ function StagedSlipPanel({
         ? "Single"
         : "Parlay";
   const stakeCents = parseStakeCents(stakeInput);
+  const stakeDollars = stakeCents === null ? null : stakeCents / 100;
+  const maxStakeDollars = balanceCents === null ? 0 : balanceCents / 100;
   const combinedDecimalOdds = selections.reduce(
     (combined, selection) =>
       combined * decimalOddsFromAmerican(selection.price),
@@ -542,17 +547,44 @@ function StagedSlipPanel({
       </div>
 
       <div className="mt-4 grid gap-3 border-border border-t pt-4">
-        <label className="grid gap-2 text-sm font-medium" htmlFor="stake">
-          Stake amount
-          <input
-            className="min-h-11 rounded-control border border-border bg-background px-3 py-2 font-mono text-base tabular-nums outline-none transition-colors focus:border-primary"
-            id="stake"
-            inputMode="decimal"
-            onChange={(event) => onStakeChange(event.currentTarget.value)}
-            placeholder="25.00"
-            value={stakeInput}
+        <Field
+          controlId="stake"
+          error={stakeError ?? undefined}
+          label="Stake amount"
+        >
+          {({ controlProps }) => (
+            <Stepper
+              {...controlProps}
+              allowOutOfRange={true}
+              disabled={balanceCents === null}
+              format={{ currency: "USD", style: "currency" }}
+              max={maxStakeDollars}
+              min={0}
+              money={true}
+              onValueChange={(value) =>
+                onStakeChange(value === null ? "" : value.toFixed(2))
+              }
+              smallStep={0.25}
+              step={1}
+              value={stakeDollars}
+            />
+          )}
+        </Field>
+        {balanceCents !== null && balanceCents > 0 ? (
+          <Slider
+            aria-label="Stake amount slider"
+            max={maxStakeDollars}
+            min={0}
+            onValueChange={(value) =>
+              onStakeChange(
+                (Array.isArray(value) ? value[0] : value).toFixed(2),
+              )
+            }
+            step={1}
+            value={stakeDollars ?? 0}
+            valueLabel={(values) => formatCents(Math.round(values[0] * 100))}
           />
-        </label>
+        ) : null}
         <div className="grid grid-cols-3 gap-2">
           {[
             {
@@ -565,15 +597,13 @@ function StagedSlipPanel({
             },
             { label: "Max", value: balanceCents ?? 0 },
           ].map((chip) => (
-            <button
-              className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+            <Chip
               disabled={balanceCents === null || chip.value <= 0}
               key={chip.label}
               onClick={() => onStakeChange(formatStakeInput(chip.value))}
-              type="button"
             >
               {chip.label}
-            </button>
+            </Chip>
           ))}
         </div>
         <div className="grid gap-2 rounded-control border border-border bg-muted/25 px-3 py-2 text-sm">
@@ -602,11 +632,6 @@ function StagedSlipPanel({
             </span>
           </div>
         </div>
-        {stakeError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {stakeError}
-          </p>
-        ) : null}
         {placementState.message ? (
           <output
             className={cn(
@@ -619,18 +644,15 @@ function StagedSlipPanel({
             {placementState.message}
           </output>
         ) : null}
-        <button
-          className={cn(buttonVariants({ className: "w-full" }))}
+        <Button
+          block={true}
           disabled={!canSubmit}
+          loading={isSubmittingPlacement(placementState)}
           type="submit"
         >
-          {isSubmittingPlacement(placementState) ? (
-            <Loader2 className="animate-spin" data-icon="inline-start" />
-          ) : (
-            <Ticket data-icon="inline-start" />
-          )}
+          <Ticket data-icon="inline-start" />
           Place {selections.length <= 1 ? "single" : "parlay"}
-        </button>
+        </Button>
       </div>
     </form>
   );

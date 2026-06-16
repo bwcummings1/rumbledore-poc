@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, ListFilter, Plus, Search } from "lucide-react";
+import { Check, ListFilter, Plus } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { SearchInput } from "@/components/ui/search-input";
 import { cn } from "@/lib/utils";
 import {
   filterLeagueSwitcherItems,
@@ -85,18 +86,13 @@ export function LeagueSwitcherView({
         </Button>
       </div>
 
-      <label className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40">
-        <Search className="size-4 text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">Search leagues</span>
-        <input
-          aria-label="Search leagues"
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          onChange={(event) => setQuery(event.currentTarget.value)}
-          placeholder="Search leagues"
-          type="search"
-          value={query}
-        />
-      </label>
+      <SearchInput
+        aria-label="Search leagues"
+        onChange={(event) => setQuery(event.currentTarget.value)}
+        onClear={() => setQuery("")}
+        placeholder="Search leagues"
+        value={query}
+      />
 
       <div className="flex flex-col gap-2">
         {visibleItems.length === 0 ? (

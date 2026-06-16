@@ -16,6 +16,10 @@ import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
   LoreClaimRelation,
@@ -403,15 +407,18 @@ function StewardControls({
       <p className="text-sm text-muted-foreground">
         Commissioner and data-steward actions require an audited reason.
       </p>
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium">Reason</span>
-        <textarea
-          value={reason}
-          onChange={(event) => setReason(event.currentTarget.value)}
-          className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          maxLength={500}
-        />
-      </label>
+      <Field controlId="steward-reason" label="Reason">
+        {({ controlProps }) => (
+          <Textarea
+            {...controlProps}
+            className="min-h-20 text-sm"
+            maxLength={500}
+            onChange={(event) => setReason(event.currentTarget.value)}
+            showCount={true}
+            value={reason}
+          />
+        )}
+      </Field>
       <div className="flex flex-wrap gap-2">
         {actions.map((item) => (
           <Button
@@ -504,23 +511,19 @@ function BranchControls({
       </div>
 
       <form className="grid gap-3" onSubmit={submitBranch}>
-        <label className="grid gap-2 text-sm font-medium" htmlFor="branch-type">
-          Branch type
-          <select
-            className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-            id="branch-type"
-            onChange={(event) =>
-              setRelation(event.currentTarget.value as BranchRelation)
+        <Field controlId="branch-type" label="Branch type">
+          <Segmented
+            aria-label="Branch type"
+            onValueChange={(nextValue) =>
+              setRelation(nextValue as BranchRelation)
             }
+            options={options.map((option) => ({
+              label: option.label,
+              value: option.relation,
+            }))}
             value={selectedRelation}
-          >
-            {options.map((option) => (
-              <option key={option.relation} value={option.relation}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </Field>
         {selectedOption ? (
           <p className="text-sm text-muted-foreground">
             {selectedOption.description}
@@ -531,31 +534,30 @@ function BranchControls({
             {error}
           </p>
         ) : null}
-        <label
-          className="grid gap-2 text-sm font-medium"
-          htmlFor="branch-title"
-        >
-          Branch title
-          <input
-            className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-base outline-none transition-colors focus:border-primary"
-            id="branch-title"
-            maxLength={160}
-            onChange={(event) => setTitle(event.currentTarget.value)}
-            required
-            value={title}
-          />
-        </label>
-        <label className="grid gap-2 text-sm font-medium" htmlFor="branch-body">
-          Branch statement
-          <textarea
-            className="min-h-28 rounded-control border border-border bg-background px-3 py-2 text-base outline-none transition-colors focus:border-primary"
-            id="branch-body"
-            maxLength={4000}
-            onChange={(event) => setBody(event.currentTarget.value)}
-            required
-            value={body}
-          />
-        </label>
+        <Field controlId="branch-title" label="Branch title">
+          {({ controlProps }) => (
+            <Input
+              {...controlProps}
+              maxLength={160}
+              onChange={(event) => setTitle(event.currentTarget.value)}
+              required
+              value={title}
+            />
+          )}
+        </Field>
+        <Field controlId="branch-body" label="Branch statement">
+          {({ controlProps }) => (
+            <Textarea
+              {...controlProps}
+              className="min-h-28"
+              maxLength={4000}
+              onChange={(event) => setBody(event.currentTarget.value)}
+              required
+              showCount={true}
+              value={body}
+            />
+          )}
+        </Field>
         <Button type="submit" className="w-fit" disabled={disabled}>
           <FilePlus2 data-icon="inline-start" />
           {busy ? "Posting" : branchSubmitLabel(selectedRelation)}

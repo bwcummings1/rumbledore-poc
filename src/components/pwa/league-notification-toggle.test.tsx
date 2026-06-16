@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEV_PUSH_PUBLIC_KEY } from "@/core/env/schema";
 import { LeagueNotificationToggle } from "./league-notification-toggle";
@@ -50,6 +56,7 @@ function mockPushBrowser(
 }
 
 afterEach(() => {
+  cleanup();
   delete (window as { Notification?: unknown }).Notification;
   delete (window as { PushManager?: unknown }).PushManager;
   delete (navigator as { serviceWorker?: unknown }).serviceWorker;
@@ -83,13 +90,17 @@ describe("LeagueNotificationToggle", () => {
 
     render(<LeagueNotificationToggle leagueId={leagueId} />);
 
-    const button = await screen.findByRole("button", { name: "Notify me" });
-    fireEvent.click(button);
+    const toggle = await screen.findByRole("switch", {
+      name: /notifications/i,
+    });
+    fireEvent.click(toggle);
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Notifications on" }),
-      ).toBeDefined(),
+        screen
+          .getByRole("switch", { name: /notifications on/i })
+          .getAttribute("aria-checked"),
+      ).toBe("true"),
     );
     expect(pushManager.subscribe).toHaveBeenCalledWith({
       applicationServerKey: expect.any(ArrayBuffer),
@@ -142,7 +153,7 @@ describe("LeagueNotificationToggle", () => {
 
     render(<LeagueNotificationToggle leagueId={leagueId} />);
 
-    await screen.findByRole("button", { name: "Notify me" });
+    await screen.findByRole("switch", { name: /notifications/i });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/push/subscriptions/status",
       expect.objectContaining({

@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 5 AUSPEX atmosphere foundation landed** with static/mobile/reduced-motion-safe backdrop layers.
+Keep it current. Last updated: 2026-06-16 — **Phase 5 AUSPEX control library landed** with shared button and input primitives.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX control library landed — shared Button, Field/Input/Search/Textarea/Select/Stepper/Switch/Segmented/Slider/Checkbox/Radio/Chip primitives now carry tokenized states, a11y wiring, and adoption in league switcher, push toggle, lore, and bet flows.
 - 2026-06-16: AUSPEX motion and a11y foundation landed — named motion/easing tokens now cover atmosphere, orb, count-up, draw-in, staged process, hover-lift, focus bloom, and marquee flows, with audited focus contrast plus global reduced-motion-safe keyboard focus.
 - 2026-06-16: AUSPEX signature primitives landed — global foundation utilities now cover the conic AI orb with motion-safe states, Y2K bezel/chip chrome, and glass panel/cell surfaces with opaque fallbacks.
 - 2026-06-16: AUSPEX atmosphere foundation landed — the app now mounts one decorative starfield/scanline/grain/vignette layer tree behind content, with desktop-only drift plus tablet, mobile, and reduced-motion static fallbacks.

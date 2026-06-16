@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { postJson } from "@/app/onboarding/client-http";
@@ -88,15 +89,9 @@ describe("LeagueLoreSubmitView", () => {
     fireEvent.change(screen.getByLabelText("Statement"), {
       target: { value: "This trade lives in shame." },
     });
-    fireEvent.change(screen.getByLabelText("Person"), {
-      target: { value: personId },
-    });
-    fireEvent.change(screen.getByLabelText("Season"), {
-      target: { value: "2025" },
-    });
-    fireEvent.change(screen.getByLabelText("Week"), {
-      target: { value: "5" },
-    });
+    chooseOption("Person", "Fixture Manager");
+    chooseOption("Season", "2025");
+    chooseOption("Week", "Week 5");
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() => expect(postJson).toHaveBeenCalledTimes(1));
@@ -142,9 +137,7 @@ describe("LeagueLoreSubmitView", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: /assert a structured fact/i }),
     );
-    fireEvent.change(screen.getAllByLabelText("Week")[1], {
-      target: { value: "5" },
-    });
+    chooseOption("Week", "Week 5", 1);
     fireEvent.change(screen.getByLabelText("Asserted value"), {
       target: { value: "200.4" },
     });
@@ -172,3 +165,14 @@ describe("LeagueLoreSubmitView", () => {
     expect(await screen.findByText(/on the record/i)).toBeDefined();
   });
 });
+
+function chooseOption(label: string, option: string, index = 0) {
+  const combobox = screen.getAllByRole("combobox", { name: label })[index];
+  if (!combobox) {
+    throw new Error(`Combobox ${label} at index ${index} was not found`);
+  }
+  const optionElement = within(combobox).getByRole("option", {
+    name: option,
+  }) as HTMLOptionElement;
+  fireEvent.change(combobox, { target: { value: optionElement.value } });
+}

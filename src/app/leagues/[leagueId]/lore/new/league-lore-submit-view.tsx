@@ -5,6 +5,13 @@ import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
 import { buttonVariants } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { RadioGroup } from "@/components/ui/radio";
+import { Segmented } from "@/components/ui/segmented";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { SeasonLoreMetric, WeeklyLoreMetric } from "@/lore";
 import {
@@ -336,30 +343,32 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
               Write it like the league would say it.
             </p>
           </div>
-          <label className="grid gap-2 text-sm font-medium" htmlFor="title">
-            Title
-            <input
-              className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-base outline-none transition-colors focus:border-primary"
-              id="title"
-              maxLength={160}
-              onChange={(event) => setTitle(event.currentTarget.value)}
-              placeholder="The 2019 trade was the worst move in league history"
-              required
-              value={title}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium" htmlFor="body">
-            Statement
-            <textarea
-              className="min-h-36 rounded-control border border-border bg-background px-3 py-2 text-base outline-none transition-colors focus:border-primary"
-              id="body"
-              maxLength={4000}
-              onChange={(event) => setBody(event.currentTarget.value)}
-              placeholder="Make the case for the record."
-              required
-              value={body}
-            />
-          </label>
+          <Field controlId="title" label="Title">
+            {({ controlProps }) => (
+              <Input
+                {...controlProps}
+                maxLength={160}
+                onChange={(event) => setTitle(event.currentTarget.value)}
+                placeholder="The 2019 trade was the worst move in league history"
+                required
+                value={title}
+              />
+            )}
+          </Field>
+          <Field controlId="body" label="Statement">
+            {({ controlProps }) => (
+              <Textarea
+                {...controlProps}
+                className="min-h-36"
+                maxLength={4000}
+                onChange={(event) => setBody(event.currentTarget.value)}
+                placeholder="Make the case for the record."
+                required
+                showCount={true}
+                value={body}
+              />
+            )}
+          </Field>
         </section>
 
         <section className="grid gap-4 rounded-card border border-border bg-card p-4">
@@ -370,395 +379,308 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label
-              className="grid gap-2 text-sm font-medium"
-              htmlFor="subject-person"
-            >
-              Person
-              <select
-                className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                id="subject-person"
-                onChange={(event) =>
-                  setSubjectPersonId(event.currentTarget.value)
-                }
-                value={subjectPersonId}
-              >
-                <option value="">No person tag</option>
-                {data.submitOptions.people.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label
-              className="grid gap-2 text-sm font-medium"
-              htmlFor="subject-record"
-            >
-              Record
-              <select
-                className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm capitalize outline-none focus:border-primary"
-                id="subject-record"
-                onChange={(event) =>
-                  setSubjectRecordType(event.currentTarget.value)
-                }
-                value={subjectRecordType}
-              >
-                <option value="">No record tag</option>
-                {data.submitOptions.recordTypes.map((record) => (
-                  <option key={record.recordType} value={record.recordType}>
-                    {record.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label
-              className="grid gap-2 text-sm font-medium"
-              htmlFor="subject-season"
-            >
-              Season
-              <select
-                className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                id="subject-season"
-                onChange={(event) => {
-                  setSubjectSeason(event.currentTarget.value);
-                  setSubjectWeek("");
-                }}
-                value={subjectSeason}
-              >
-                <option value="">No season tag</option>
-                {data.submitOptions.seasons.map((season) => (
-                  <option
-                    key={season.season}
-                    value={optionValue(season.season)}
-                  >
-                    {season.season}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label
-              className="grid gap-2 text-sm font-medium"
-              htmlFor="subject-week"
-            >
-              Week
-              <select
-                className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                disabled={subjectWeekOptions.length === 0}
-                id="subject-week"
-                onChange={(event) => setSubjectWeek(event.currentTarget.value)}
-                value={subjectWeek}
-              >
-                <option value="">No week tag</option>
-                {subjectWeekOptions.map((week) => (
-                  <option key={week} value={optionValue(week)}>
-                    Week {week}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Field controlId="subject-person" label="Person">
+              {({ controlProps }) => (
+                <Select
+                  {...controlProps}
+                  onValueChange={setSubjectPersonId}
+                  options={[
+                    { label: "No person tag", value: "" },
+                    ...data.submitOptions.people.map((person) => ({
+                      label: person.name,
+                      value: person.id,
+                    })),
+                  ]}
+                  value={subjectPersonId}
+                />
+              )}
+            </Field>
+            <Field controlId="subject-record" label="Record">
+              {({ controlProps }) => (
+                <Select
+                  {...controlProps}
+                  onValueChange={setSubjectRecordType}
+                  options={[
+                    { label: "No record tag", value: "" },
+                    ...data.submitOptions.recordTypes.map((record) => ({
+                      label: record.label,
+                      value: record.recordType,
+                    })),
+                  ]}
+                  value={subjectRecordType}
+                />
+              )}
+            </Field>
+            <Field controlId="subject-season" label="Season">
+              {({ controlProps }) => (
+                <Select
+                  {...controlProps}
+                  onValueChange={(nextValue) => {
+                    setSubjectSeason(nextValue);
+                    setSubjectWeek("");
+                  }}
+                  options={[
+                    { label: "No season tag", value: "" },
+                    ...data.submitOptions.seasons.map((season) => ({
+                      label: String(season.season),
+                      value: optionValue(season.season),
+                    })),
+                  ]}
+                  value={subjectSeason}
+                />
+              )}
+            </Field>
+            <Field controlId="subject-week" label="Week">
+              {({ controlProps }) => (
+                <Select
+                  {...controlProps}
+                  disabled={subjectWeekOptions.length === 0}
+                  onValueChange={setSubjectWeek}
+                  options={[
+                    { label: "No week tag", value: "" },
+                    ...subjectWeekOptions.map((week) => ({
+                      label: `Week ${week}`,
+                      value: optionValue(week),
+                    })),
+                  ]}
+                  value={subjectWeek}
+                />
+              )}
+            </Field>
           </div>
         </section>
 
         <section className="grid gap-4 rounded-card border border-border bg-card p-4">
-          <label className="flex items-start gap-3 text-sm font-medium">
-            <input
-              checked={includeAssertion}
-              className="mt-1 size-4 accent-primary"
-              onChange={(event) =>
-                setIncludeAssertion(event.currentTarget.checked)
-              }
-              type="checkbox"
-            />
-            <span>
-              <span className="block">Assert a structured fact</span>
-              <span className="mt-1 block text-sm font-normal text-muted-foreground">
-                Leave this off for a pure opinion claim.
-              </span>
-            </span>
-          </label>
+          <Checkbox
+            checked={includeAssertion}
+            description="Leave this off for a pure opinion claim."
+            label="Assert a structured fact"
+            onCheckedChange={setIncludeAssertion}
+          />
 
           {includeAssertion ? (
             <div className="grid gap-4 border-border border-t pt-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <label
-                  className="grid gap-2 text-sm font-medium"
-                  htmlFor="assertion-source"
-                >
-                  Fact source
-                  <select
-                    className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                    id="assertion-source"
-                    onChange={(event) =>
-                      setAssertionSource(
-                        event.currentTarget.value as LoreAssertionSource,
-                      )
+                <Field controlId="assertion-source" label="Fact source">
+                  <Segmented
+                    aria-label="Fact source"
+                    onValueChange={(nextValue) =>
+                      setAssertionSource(nextValue as LoreAssertionSource)
                     }
+                    options={LORE_ASSERTION_SOURCES.map((source) => ({
+                      label: sourceLabel(source),
+                      value: source,
+                    }))}
                     value={assertionSource}
-                  >
-                    {LORE_ASSERTION_SOURCES.map((source) => (
-                      <option key={source} value={source}>
-                        {sourceLabel(source)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </Field>
 
                 {assertionSource !== "all_time_record" ? (
-                  <label
-                    className="grid gap-2 text-sm font-medium"
-                    htmlFor="assertion-person"
-                  >
-                    Person
-                    <select
-                      className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                      id="assertion-person"
-                      onChange={(event) =>
-                        setAssertionPersonId(event.currentTarget.value)
-                      }
-                      value={assertionPersonId}
-                    >
-                      <option value="">Pick person</option>
-                      {data.submitOptions.people.map((person) => (
-                        <option key={person.id} value={person.id}>
-                          {person.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Field controlId="assertion-person" label="Person">
+                    {({ controlProps }) => (
+                      <Select
+                        {...controlProps}
+                        onValueChange={setAssertionPersonId}
+                        options={[
+                          { label: "Pick person", value: "" },
+                          ...data.submitOptions.people.map((person) => ({
+                            label: person.name,
+                            value: person.id,
+                          })),
+                        ]}
+                        value={assertionPersonId}
+                      />
+                    )}
+                  </Field>
                 ) : (
-                  <label
-                    className="grid gap-2 text-sm font-medium"
-                    htmlFor="record-type"
-                  >
-                    Record type
-                    <select
-                      className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm capitalize outline-none focus:border-primary"
-                      id="record-type"
-                      onChange={(event) =>
-                        setRecordType(event.currentTarget.value)
-                      }
-                      value={recordType}
-                    >
-                      <option value="">Pick record</option>
-                      {data.submitOptions.recordTypes.map((record) => (
-                        <option
-                          key={record.recordType}
-                          value={record.recordType}
-                        >
-                          {record.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Field controlId="record-type" label="Record type">
+                    {({ controlProps }) => (
+                      <Select
+                        {...controlProps}
+                        onValueChange={setRecordType}
+                        options={[
+                          { label: "Pick record", value: "" },
+                          ...data.submitOptions.recordTypes.map((record) => ({
+                            label: record.label,
+                            value: record.recordType,
+                          })),
+                        ]}
+                        value={recordType}
+                      />
+                    )}
+                  </Field>
                 )}
 
                 {assertionSource !== "all_time_record" ? (
-                  <label
-                    className="grid gap-2 text-sm font-medium"
-                    htmlFor="assertion-season"
-                  >
-                    Season
-                    <select
-                      className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                      id="assertion-season"
-                      onChange={(event) => {
-                        setAssertionSeason(event.currentTarget.value);
-                        setAssertionWeek("");
-                      }}
-                      value={assertionSeason}
-                    >
-                      <option value="">Pick season</option>
-                      {data.submitOptions.seasons.map((season) => (
-                        <option
-                          key={season.season}
-                          value={optionValue(season.season)}
-                        >
-                          {season.season}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Field controlId="assertion-season" label="Season">
+                    {({ controlProps }) => (
+                      <Select
+                        {...controlProps}
+                        onValueChange={(nextValue) => {
+                          setAssertionSeason(nextValue);
+                          setAssertionWeek("");
+                        }}
+                        options={[
+                          { label: "Pick season", value: "" },
+                          ...data.submitOptions.seasons.map((season) => ({
+                            label: String(season.season),
+                            value: optionValue(season.season),
+                          })),
+                        ]}
+                        value={assertionSeason}
+                      />
+                    )}
+                  </Field>
                 ) : (
-                  <label
-                    className="grid gap-2 text-sm font-medium"
-                    htmlFor="record-holder"
-                  >
-                    Holder
-                    <select
-                      className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                      id="record-holder"
-                      onChange={(event) =>
-                        setRecordHolderPersonId(event.currentTarget.value)
-                      }
-                      value={recordHolderPersonId}
-                    >
-                      <option value="">Any holder</option>
-                      {data.submitOptions.people.map((person) => (
-                        <option key={person.id} value={person.id}>
-                          {person.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Field controlId="record-holder" label="Holder">
+                    {({ controlProps }) => (
+                      <Select
+                        {...controlProps}
+                        onValueChange={setRecordHolderPersonId}
+                        options={[
+                          { label: "Any holder", value: "" },
+                          ...data.submitOptions.people.map((person) => ({
+                            label: person.name,
+                            value: person.id,
+                          })),
+                        ]}
+                        value={recordHolderPersonId}
+                      />
+                    )}
+                  </Field>
                 )}
 
                 {assertionSource === "weekly_statistics" ? (
-                  <label
-                    className="grid gap-2 text-sm font-medium"
-                    htmlFor="assertion-week"
-                  >
-                    Week
-                    <select
-                      className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                      disabled={assertionWeekOptions.length === 0}
-                      id="assertion-week"
-                      onChange={(event) =>
-                        setAssertionWeek(event.currentTarget.value)
-                      }
-                      value={assertionWeek}
-                    >
-                      <option value="">Pick week</option>
-                      {assertionWeekOptions.map((week) => (
-                        <option key={week} value={optionValue(week)}>
-                          Week {week}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Field controlId="assertion-week" label="Week">
+                    {({ controlProps }) => (
+                      <Select
+                        {...controlProps}
+                        disabled={assertionWeekOptions.length === 0}
+                        onValueChange={setAssertionWeek}
+                        options={[
+                          { label: "Pick week", value: "" },
+                          ...assertionWeekOptions.map((week) => ({
+                            label: `Week ${week}`,
+                            value: optionValue(week),
+                          })),
+                        ]}
+                        value={assertionWeek}
+                      />
+                    )}
+                  </Field>
                 ) : null}
 
                 {assertionSource === "season_statistics" ? (
-                  <label
-                    className="grid gap-2 text-sm font-medium"
-                    htmlFor="season-metric"
-                  >
-                    Metric
-                    <select
-                      className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                      id="season-metric"
-                      onChange={(event) =>
-                        setSeasonMetric(
-                          event.currentTarget
-                            .value as (typeof SEASON_LORE_METRICS)[number],
-                        )
-                      }
-                      value={seasonMetric}
-                    >
-                      {SEASON_LORE_METRICS.map((metric) => (
-                        <option key={metric} value={metric}>
-                          {loreMetricLabel(metric)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Field controlId="season-metric" label="Metric">
+                    {({ controlProps }) => (
+                      <Select
+                        {...controlProps}
+                        onValueChange={(nextValue) =>
+                          setSeasonMetric(
+                            nextValue as (typeof SEASON_LORE_METRICS)[number],
+                          )
+                        }
+                        options={SEASON_LORE_METRICS.map((metric) => ({
+                          label: loreMetricLabel(metric),
+                          value: metric,
+                        }))}
+                        value={seasonMetric}
+                      />
+                    )}
+                  </Field>
                 ) : null}
 
                 {assertionSource === "weekly_statistics" ? (
-                  <label
-                    className="grid gap-2 text-sm font-medium"
-                    htmlFor="weekly-metric"
-                  >
-                    Metric
-                    <select
-                      className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                      id="weekly-metric"
-                      onChange={(event) =>
-                        setWeeklyMetric(
-                          event.currentTarget
-                            .value as (typeof WEEKLY_LORE_METRICS)[number],
-                        )
-                      }
-                      value={weeklyMetric}
-                    >
-                      {WEEKLY_LORE_METRICS.map((metric) => (
-                        <option key={metric} value={metric}>
-                          {loreMetricLabel(metric)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Field controlId="weekly-metric" label="Metric">
+                    {({ controlProps }) => (
+                      <Select
+                        {...controlProps}
+                        onValueChange={(nextValue) =>
+                          setWeeklyMetric(
+                            nextValue as (typeof WEEKLY_LORE_METRICS)[number],
+                          )
+                        }
+                        options={WEEKLY_LORE_METRICS.map((metric) => ({
+                          label: loreMetricLabel(metric),
+                          value: metric,
+                        }))}
+                        value={weeklyMetric}
+                      />
+                    )}
+                  </Field>
                 ) : null}
 
                 {assertionSource === "all_time_record" ? (
                   <>
-                    <label
-                      className="grid gap-2 text-sm font-medium"
-                      htmlFor="record-season"
-                    >
-                      Season
-                      <input
-                        className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                        id="record-season"
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setRecordSeason(event.currentTarget.value)
-                        }
-                        placeholder="Optional"
-                        value={recordSeason}
-                      />
-                    </label>
-                    <label
-                      className="grid gap-2 text-sm font-medium"
-                      htmlFor="record-week"
-                    >
-                      Week
-                      <input
-                        className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                        id="record-week"
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setRecordWeek(event.currentTarget.value)
-                        }
-                        placeholder="Optional"
-                        value={recordWeek}
-                      />
-                    </label>
+                    <Field controlId="record-season" label="Season">
+                      {({ controlProps }) => (
+                        <Input
+                          {...controlProps}
+                          inputMode="numeric"
+                          onChange={(event) =>
+                            setRecordSeason(event.currentTarget.value)
+                          }
+                          placeholder="Optional"
+                          tone="numeric"
+                          value={recordSeason}
+                        />
+                      )}
+                    </Field>
+                    <Field controlId="record-week" label="Week">
+                      {({ controlProps }) => (
+                        <Input
+                          {...controlProps}
+                          inputMode="numeric"
+                          onChange={(event) =>
+                            setRecordWeek(event.currentTarget.value)
+                          }
+                          placeholder="Optional"
+                          tone="numeric"
+                          value={recordWeek}
+                        />
+                      )}
+                    </Field>
                   </>
                 ) : null}
               </div>
 
               {assertionSource === "season_statistics" &&
               BOOLEAN_SEASON_METRICS.has(seasonMetric) ? (
-                <label
-                  className="grid gap-2 text-sm font-medium"
-                  htmlFor="asserted-boolean"
-                >
-                  Asserted value
-                  <select
-                    className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                    id="asserted-boolean"
-                    onChange={(event) =>
-                      setAssertedBoolean(event.currentTarget.value)
-                    }
+                <Field controlId="asserted-boolean" label="Asserted value">
+                  <RadioGroup
+                    onValueChange={setAssertedBoolean}
+                    options={[
+                      { label: "True", value: "true" },
+                      { label: "False", value: "false" },
+                    ]}
                     value={assertedBoolean}
-                  >
-                    <option value="true">True</option>
-                    <option value="false">False</option>
-                  </select>
-                </label>
-              ) : (
-                <label
-                  className="grid gap-2 text-sm font-medium"
-                  htmlFor="asserted-value"
-                >
-                  Asserted value
-                  <input
-                    className="min-h-11 rounded-control border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                    id="asserted-value"
-                    inputMode={
-                      assertionSource === "season_statistics" &&
-                      seasonMetric === "final_placement"
-                        ? "text"
-                        : "decimal"
-                    }
-                    onChange={(event) =>
-                      setAssertedValue(event.currentTarget.value)
-                    }
-                    placeholder="200.4"
-                    value={assertedValue}
                   />
-                </label>
+                </Field>
+              ) : (
+                <Field controlId="asserted-value" label="Asserted value">
+                  {({ controlProps }) => (
+                    <Input
+                      {...controlProps}
+                      inputMode={
+                        assertionSource === "season_statistics" &&
+                        seasonMetric === "final_placement"
+                          ? "text"
+                          : "decimal"
+                      }
+                      onChange={(event) =>
+                        setAssertedValue(event.currentTarget.value)
+                      }
+                      placeholder="200.4"
+                      tone={
+                        assertionSource === "season_statistics" &&
+                        seasonMetric === "final_placement"
+                          ? "default"
+                          : "numeric"
+                      }
+                      value={assertedValue}
+                    />
+                  )}
+                </Field>
               )}
             </div>
           ) : null}

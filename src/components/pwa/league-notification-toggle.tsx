@@ -1,8 +1,7 @@
 "use client";
 
-import { Bell, BellOff } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { registerServiceWorker } from "./service-worker-registration";
 
 type NotificationState =
@@ -214,27 +213,28 @@ export function LeagueNotificationToggle({
   const enabled = state === "enabled";
   const blocked = state === "blocked";
   const busy = state === "checking";
-  const label =
-    state === "enabled"
-      ? "Notifications on"
-      : state === "blocked"
-        ? "Blocked"
-        : state === "checking"
-          ? "Notifications"
-          : "Notify me";
-  const Icon = enabled || blocked ? BellOff : Bell;
+  const label = enabled ? "Notifications on" : "Notifications";
+  const description = blocked
+    ? "Blocked in browser settings"
+    : busy
+      ? "Checking permission"
+      : enabled
+        ? "League alerts are enabled"
+        : "Notify me";
 
   return (
-    <Button
-      aria-pressed={enabled}
+    <Switch
+      checked={enabled}
+      description={description}
       disabled={busy || blocked}
-      onClick={enabled ? disable : enable}
-      size="sm"
-      type="button"
-      variant={enabled ? "secondary" : "outline"}
-    >
-      <Icon data-icon="inline-start" />
-      {label}
-    </Button>
+      label={label}
+      onCheckedChange={(next) => {
+        if (next) {
+          void enable();
+        } else {
+          void disable();
+        }
+      }}
+    />
   );
 }

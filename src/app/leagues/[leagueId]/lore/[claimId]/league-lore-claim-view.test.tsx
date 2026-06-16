@@ -246,9 +246,7 @@ describe("LeagueLoreClaimView", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Branch type"), {
-      target: { value: "dispute" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: "Challenge (dispute)" }));
     fireEvent.change(screen.getByLabelText("Branch title"), {
       target: { value: "The collapse record needs context" },
     });
@@ -278,7 +276,9 @@ describe("LeagueLoreClaimView", () => {
   it("does not offer challenge relations for non-canon claims", () => {
     render(<LeagueLoreClaimView data={{ ...data, isSteward: false }} />);
 
-    const branchType = screen.getByLabelText("Branch type");
+    const branchType = screen.getByRole("radiogroup", {
+      name: "Branch type",
+    });
     expect(branchType.textContent).toContain("Response");
     expect(branchType.textContent).toContain("Addendum");
     expect(branchType.textContent).not.toContain("Challenge");
