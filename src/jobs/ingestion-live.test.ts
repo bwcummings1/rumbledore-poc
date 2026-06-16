@@ -34,10 +34,17 @@ import {
   type ProviderLeagueRef,
 } from "@/providers";
 import type { YahooCredentials } from "@/providers/yahoo/client";
+import espnWeekWindowFixture from "@/sports/__fixtures__/espn-nfl-scoreboard-2025-week2-window.json";
+import {
+  EspnScoreboardNflScheduleSource,
+  type NflScheduleFetch,
+  ScheduleBackedNflCalendar,
+} from "@/sports/nfl-calendar";
 import { JOB_EVENTS } from "./events";
 import {
   createIngestionTickFunction,
   createLeagueIngestFunction,
+  createNflCalendarGameStateProvider,
   createSeasonRolloverCheckFunction,
   type IngestionGameStateProvider,
   runIngestionTick,
@@ -68,6 +75,15 @@ const primaryLiveDataClasses = [
 ] as const satisfies readonly ProviderDataClass[];
 
 let handle: DbHandle;
+
+function jsonScheduleFetch(body: unknown): NflScheduleFetch {
+  return async () =>
+    new Response(JSON.stringify(body), {
+      headers: { "content-type": "application/json" },
+      status: 200,
+      statusText: "OK",
+    });
+}
 let cipher: CredentialCipher;
 
 interface SeededLiveLeague {
@@ -760,11 +776,18 @@ describe("live ingestion jobs", () => {
     });
   });
 
-  it("uses the default NFL calendar to select live-window cadence during games", async () => {
+  it("uses the schedule-backed NFL calendar to select live-window cadence during games", async () => {
     const liveSeed = await seedLiveLeague("calendar-live");
     const offHoursSeed = await seedLiveLeague("calendar-offhours-default");
-    const liveObservedAt = new Date("2026-09-13T18:00:00Z");
-    const offHoursObservedAt = new Date("2026-09-16T18:00:00Z");
+    const liveObservedAt = new Date("2025-09-16T03:00:00Z");
+    const offHoursObservedAt = new Date("2025-09-16T18:00:00Z");
+    const scheduleCalendar = new ScheduleBackedNflCalendar({
+      source: new EspnScoreboardNflScheduleSource({
+        fetcher: jsonScheduleFetch(espnWeekWindowFixture),
+      }),
+    });
+    const gameStateProvider =
+      createNflCalendarGameStateProvider(scheduleCalendar);
     await seedDataCoverage(liveSeed, {
       league: liveObservedAt,
       matchups: liveObservedAt,
@@ -783,16 +806,16 @@ describe("live ingestion jobs", () => {
     const live = await runIngestionTick({
       data: {
         leagueIds: [liveSeed.leagueId],
-        now: "2026-09-13T18:02:00.000Z",
+        now: "2025-09-16T03:02:00.000Z",
       },
-      deps: { db: handle.db },
+      deps: { db: handle.db, gameStateProvider },
     });
     const offHours = await runIngestionTick({
       data: {
         leagueIds: [offHoursSeed.leagueId],
-        now: "2026-09-16T18:02:00.000Z",
+        now: "2025-09-16T18:02:00.000Z",
       },
-      deps: { db: handle.db },
+      deps: { db: handle.db, gameStateProvider },
     });
 
     expect(live).toMatchObject({

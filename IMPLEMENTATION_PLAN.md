@@ -11,7 +11,7 @@ One task = one sentence, no "and". **Spec of record: `specs/35`. Build toward `d
 - [x] Constrain the lore steward tiebreak to genuine tie/quorum-short/expired conditions, with a separate audited override. (specs/35 §5)
 - [x] Validate and correct ESPN final-rank and championship derivation against real multi-season history, flagging low-confidence cases. (specs/35 §10)
 - [x] Implement a real Anthropic-backed LLM-judge (dormant under mock) and wire it into the publish pipeline as a post-validate gate. (specs/35 §2)
-- [ ] Replace the heuristic NFL calendar with a real schedule-backed source behind the injectable interface, with the heuristic as fallback. (specs/35 §3)
+- [x] Replace the heuristic NFL calendar with a real schedule-backed source behind the injectable interface, with the heuristic as fallback. (specs/35 §3)
 - [ ] Hash invite tokens at rest (store sha256, look up by hash), migrating any existing rows. (specs/35 §6)
 - [ ] Add a startup/health assertion that the app's DB role lacks superuser/BYPASSRLS. (specs/35 §7)
 - [ ] Harden the PWA cache: set `private, no-store` on league pages and add a login-A→logout→login-B cache-isolation test. (specs/35 §8)
