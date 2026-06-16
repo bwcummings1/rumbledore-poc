@@ -2,11 +2,13 @@
 import { describe, expect, it } from "vitest";
 import type { AppError } from "@/core/result";
 import type { LlmGenerateRequest } from "./interfaces";
+import { AI_PERSONAS } from "./personas";
 import {
   ANTHROPIC_BULK_MODEL,
   ANTHROPIC_FLAGSHIP_MODEL,
   AnthropicLlmClient,
   type AnthropicMessagesClient,
+  anthropicModelForTier,
   TavilyWebGrounding,
   VoyageEmbeddingProvider,
 } from "./real";
@@ -88,6 +90,18 @@ function requestFor(
 }
 
 describe("AnthropicLlmClient", () => {
+  it("resolves cheap and mixed Anthropic model tiers", () => {
+    const cheap = anthropicModelForTier("cheap");
+    const mixed = anthropicModelForTier("mixed");
+
+    for (const persona of AI_PERSONAS) {
+      expect(cheap(persona)).toBe(ANTHROPIC_BULK_MODEL);
+    }
+    expect(mixed("narrator")).toBe(ANTHROPIC_FLAGSHIP_MODEL);
+    expect(mixed("trash_talker")).toBe(ANTHROPIC_FLAGSHIP_MODEL);
+    expect(mixed("analyst")).toBe(ANTHROPIC_BULK_MODEL);
+  });
+
   it("maps generation requests to structured Anthropic messages with cached stable context", async () => {
     const calls: unknown[] = [];
     const client = {
@@ -164,9 +178,9 @@ describe("AnthropicLlmClient", () => {
     const first = calls[0] as Record<string, unknown>;
     const second = calls[1] as Record<string, unknown>;
     const third = calls[2] as Record<string, unknown>;
-    expect(first.model).toBe(ANTHROPIC_FLAGSHIP_MODEL);
+    expect(first.model).toBe(ANTHROPIC_BULK_MODEL);
     expect(second.model).toBe(ANTHROPIC_BULK_MODEL);
-    expect(third.model).toBe(ANTHROPIC_FLAGSHIP_MODEL);
+    expect(third.model).toBe(ANTHROPIC_BULK_MODEL);
     expect(first).toMatchObject({
       cache_control: { type: "ephemeral" },
       metadata: { user_id: "00000000-0000-0000-0000-000000000001" },

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { VOYAGE_EMBEDDING_MODEL } from "@/ai/model-config";
 import {
   DEFAULT_ENTITLEMENT_CAPS,
   DEV_AUTH_SECRET,
@@ -49,6 +50,10 @@ describe("parseEnv", () => {
     expect(env.push).toEqual({ mock: true, publicKey: DEV_PUSH_PUBLIC_KEY });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
     expect(env.ingestion).toEqual({ pollPolicyConfig: undefined });
+    expect(env.ai).toEqual({
+      anthropicModelTier: "cheap",
+      voyageEmbeddingModel: VOYAGE_EMBEDDING_MODEL,
+    });
     expect(env.news).toEqual({
       grounding: { mock: true },
       rss: { mock: true },
@@ -176,6 +181,36 @@ describe("parseEnv", () => {
       mock: false,
       apiKey: "voyage-key", // ubs:ignore — fake fixture value
     });
+  });
+
+  it("configures cheap AI model defaults and explicit mixed Anthropic routing", () => {
+    expect(parseEnv({}).ai.anthropicModelTier).toBe("cheap");
+
+    expect(parseEnv({ ANTHROPIC_MODEL_TIER: "mixed" }).ai).toEqual({
+      anthropicModelTier: "mixed",
+      voyageEmbeddingModel: VOYAGE_EMBEDDING_MODEL,
+    });
+  });
+
+  it("rejects invalid Anthropic model tiers without echoing arbitrary values", () => {
+    let message = "";
+    try {
+      parseEnv({ ANTHROPIC_MODEL_TIER: "fixture-private-tier" });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("ANTHROPIC_MODEL_TIER");
+    expect(message).not.toContain("fixture-private-tier");
+  });
+
+  it("defaults and overrides the Voyage embedding model", () => {
+    expect(parseEnv({}).ai.voyageEmbeddingModel).toBe(VOYAGE_EMBEDDING_MODEL);
+
+    expect(
+      parseEnv({ VOYAGE_EMBEDDING_MODEL: "voyage-fixture-model" }).ai
+        .voyageEmbeddingModel,
+    ).toBe("voyage-fixture-model");
   });
 
   it("goes real for realtime when Supabase publish and subscription credentials are set", () => {

@@ -13,11 +13,18 @@ import type {
   NewsItem,
   WebGrounding,
 } from "./interfaces";
+import {
+  cheapAnthropicModelForPersona,
+  VOYAGE_EMBEDDING_MODEL,
+} from "./model-config";
 import type { AiPersona } from "./personas";
 
-export const ANTHROPIC_FLAGSHIP_MODEL = "claude-opus-4-8";
-export const ANTHROPIC_BULK_MODEL = "claude-haiku-4-5-20251001";
-export const VOYAGE_EMBEDDING_MODEL = "voyage-4-lite";
+export {
+  ANTHROPIC_BULK_MODEL,
+  ANTHROPIC_FLAGSHIP_MODEL,
+  anthropicModelForTier,
+  VOYAGE_EMBEDDING_MODEL,
+} from "./model-config";
 
 const blogDraftSchema = z.object({
   body: z.string().trim().min(1),
@@ -174,17 +181,8 @@ export interface AnthropicLlmClientOptions {
   modelForPersona?: (persona: AiPersona) => string;
 }
 
-const flagshipPersonas = new Set<AiPersona>([
-  "commissioner",
-  "narrator",
-  "trash_talker",
-  "beat_reporter",
-]);
-
 function defaultModelForPersona(persona: AiPersona): string {
-  return flagshipPersonas.has(persona)
-    ? ANTHROPIC_FLAGSHIP_MODEL
-    : ANTHROPIC_BULK_MODEL;
+  return cheapAnthropicModelForPersona(persona);
 }
 
 function maxTokensFor(request: LlmGenerateRequest): number {

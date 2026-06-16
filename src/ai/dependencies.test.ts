@@ -10,14 +10,27 @@ import {
   MockLlmClient,
   MockWebGrounding,
 } from "./mocks";
+import type { AiPersona } from "./personas";
 import {
+  ANTHROPIC_BULK_MODEL,
+  ANTHROPIC_FLAGSHIP_MODEL,
   AnthropicLlmClient,
   TavilyWebGrounding,
+  VOYAGE_EMBEDDING_MODEL,
   VoyageEmbeddingProvider,
 } from "./real";
 
 function fakeKey() {
   return ["fixture", "key"].join("-");
+}
+
+function resolvedAnthropicModel(
+  llm: unknown,
+  persona: AiPersona,
+): string | undefined {
+  return (
+    llm as { modelForPersona?: (persona: AiPersona) => string }
+  ).modelForPersona?.(persona);
 }
 
 describe("createAiDependencies", () => {
@@ -44,6 +57,57 @@ describe("createAiDependencies", () => {
     expect(deps.llm).toBeInstanceOf(AnthropicLlmClient);
     expect(deps.web).toBeInstanceOf(TavilyWebGrounding);
     expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
+    expect((deps.embeddings as VoyageEmbeddingProvider).model).toBe(
+      VOYAGE_EMBEDDING_MODEL,
+    );
+  });
+
+  it("defaults real Anthropic routing to the cheap tier for all personas", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        ANTHROPIC_API_KEY: fakeKey(),
+      }),
+    );
+
+    expect(resolvedAnthropicModel(deps.llm, "narrator")).toBe(
+      ANTHROPIC_BULK_MODEL,
+    );
+    expect(resolvedAnthropicModel(deps.llm, "trash_talker")).toBe(
+      ANTHROPIC_BULK_MODEL,
+    );
+  });
+
+  it("restores mixed Anthropic routing when explicitly configured", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        ANTHROPIC_API_KEY: fakeKey(),
+        ANTHROPIC_MODEL_TIER: "mixed",
+      }),
+    );
+
+    expect(resolvedAnthropicModel(deps.llm, "narrator")).toBe(
+      ANTHROPIC_FLAGSHIP_MODEL,
+    );
+    expect(resolvedAnthropicModel(deps.llm, "analyst")).toBe(
+      ANTHROPIC_BULK_MODEL,
+    );
+  });
+
+  it("passes the configured Voyage embedding model to the real provider", () => {
+    const deps = createAiDependencies(
+      {} as Db,
+      parseEnv({
+        VOYAGE_API_KEY: fakeKey(),
+        VOYAGE_EMBEDDING_MODEL: "voyage-fixture-model",
+      }),
+    );
+
+    expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
+    expect((deps.embeddings as VoyageEmbeddingProvider).model).toBe(
+      "voyage-fixture-model",
+    );
   });
 
   it("keeps Anthropic mocked when forced even if its key is present", () => {

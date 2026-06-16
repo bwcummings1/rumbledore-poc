@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+  ANTHROPIC_MODEL_TIERS,
+  type AnthropicModelTier,
+  VOYAGE_EMBEDDING_MODEL,
+} from "@/ai/model-config";
+import {
   type PollPolicyConfigOverride,
   parsePollPolicyConfigJson,
 } from "@/ingestion/poll-policy";
@@ -100,6 +105,11 @@ export interface EntitlementsConfig {
 
 export interface IngestionConfig {
   pollPolicyConfig: PollPolicyConfigOverride | undefined;
+}
+
+export interface AiConfig {
+  anthropicModelTier: AnthropicModelTier;
+  voyageEmbeddingModel: string;
 }
 
 export const DEFAULT_ENTITLEMENT_CAPS = {
@@ -206,10 +216,12 @@ const baseSchema = z.object({
   MOCK_NEWS_RSS: stringbool.optional(),
 
   ANTHROPIC_API_KEY: secret.optional(),
+  ANTHROPIC_MODEL_TIER: z.enum(ANTHROPIC_MODEL_TIERS).default("cheap"),
   THE_ODDS_API_KEY: secret.optional(),
   SPORTSDATAIO_API_KEY: secret.optional(),
   TAVILY_API_KEY: secret.optional(),
   VOYAGE_API_KEY: secret.optional(),
+  VOYAGE_EMBEDDING_MODEL: secret.default(VOYAGE_EMBEDDING_MODEL),
   BROWSERBASE_API_KEY: secret.optional(),
 
   MOCK_ANTHROPIC: stringbool.optional(),
@@ -257,6 +269,7 @@ export interface Env {
   };
   entitlements: EntitlementsConfig;
   ingestion: IngestionConfig;
+  ai: AiConfig;
   news: NewsConfig;
   push: PushConfig;
   services: Record<PaidService, ServiceConfig>;
@@ -594,6 +607,10 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     },
     ingestion: {
       pollPolicyConfig: ingestionPollPolicyConfig,
+    },
+    ai: {
+      anthropicModelTier: parsed.ANTHROPIC_MODEL_TIER,
+      voyageEmbeddingModel: parsed.VOYAGE_EMBEDDING_MODEL,
     },
     news: {
       grounding: service(parsed.TAVILY_API_KEY, parsed.MOCK_TAVILY),

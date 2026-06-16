@@ -46,6 +46,7 @@ Optional real integrations:
 - `ESPN_TEST_LEAGUE_ID=95050` and `ESPN_TEST_SEASON=2026` are the known real fixture when ESPN credentials are present.
 - `ANTHROPIC_API_KEY`, `THE_ODDS_API_KEY`, `SPORTSDATAIO_API_KEY`, `TAVILY_API_KEY`, `VOYAGE_API_KEY`, and `BROWSERBASE_API_KEY` are optional until their integrations are enabled.
 - `MOCK_ANTHROPIC`, `MOCK_ODDS`, `MOCK_SPORTSDATAIO`, `MOCK_TAVILY`, `MOCK_VOYAGE`, and `MOCK_BROWSERBASE` accept boolean strings: `true` forces mock mode, `false` requires the corresponding key, and empty uses the key when present.
+- `ANTHROPIC_MODEL_TIER` defaults to `cheap` so all personas use Haiku; set `mixed` to restore flagship personas. `VOYAGE_EMBEDDING_MODEL` defaults to `voyage-4-lite`.
 
 ## Development Commands
 

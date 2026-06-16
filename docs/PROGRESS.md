@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Cheap AI model-tier defaults landed — Anthropic now defaults every persona to Haiku with an opt-in mixed tier, and Voyage embedding model selection is env-overridable while defaulting to voyage-4-lite.
 - 2026-06-16: Clean provider mock→real selection verification landed — env parsing and dependency factories now assert key-present real paths plus forced-mock paths for Anthropic, Odds, SportsDataIO, Tavily, and Voyage.
 - 2026-06-16: Mobile PWA perf budget landed — App Router skeleton loading states now cover the mobile shell route families, CI runs a post-build route JS budget check, and the budget locks FCP/repeat-start/transition/CLS/INP/tap-target targets.
 - 2026-06-15: Share-link deep routing landed — unauthenticated league-scope links now bounce through onboarding with a safe preserved destination, invite links return after provider connection, and matching league imports continue to the saved destination.
