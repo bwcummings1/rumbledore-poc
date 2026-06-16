@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX article page landed — publication articles now carry sticky reading progress, orb/source bylines, pull quotes, structured inline data blocks, canon/tags, and non-dead-end related/next reading paths.
 - 2026-06-16: AUSPEX publication fronts landed — Rumbledore News and The Press now share a mastheaded editorial grid with section-front context, responsive rail/river hierarchy, empty states, and publication-shaped loading skeletons.
 - 2026-06-16: AUSPEX editorial reading register landed — PublicationStoryCard now supports hero/secondary/river/rail/compact/inFeed variants with cast-orb bylines, and article bodies share the `prose-auspex` long-form skin.
 - 2026-06-16: Realtime shell/PWA affordances landed — the WIRE ticker and notifications now consume scoped realtime events, league presence is surfaced in the switcher/chrome, and the boot, install, and offline states use AUSPEX treatment.

@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  ArrowRight,
   ExternalLink,
   Landmark,
   Newspaper,
@@ -9,8 +10,12 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "@/lib/utils";
-import type { PublicationArticleViewData } from "@/news/article";
+import type {
+  PublicationArticleInlineDataBlock,
+  PublicationArticleViewData,
+} from "@/news/article";
 import { buttonVariants } from "../ui/button";
+import { ReadingProgress } from "./reading-progress";
 import { PublicationStoryCard } from "./story-card";
 
 type BodyBlock =
@@ -133,7 +138,11 @@ export function EditorialProse({
   );
 }
 
-function renderBodyBlock(block: BodyBlock, index: number) {
+function renderBodyBlock(
+  block: BodyBlock,
+  index: number,
+  options: { pullQuote: boolean; quoteCaption: string },
+) {
   switch (block.type) {
     case "heading":
       return (
@@ -148,11 +157,21 @@ function renderBodyBlock(block: BodyBlock, index: number) {
       return (
         <figure
           key={`${index}-${block.text}`}
-          className="my-2 border-l-2 border-primary/80 bg-primary/5 py-3 pl-4 pr-3"
+          className={cn(
+            "my-2 border-l-2 border-primary/80 bg-primary/5 py-3 pl-4 pr-3",
+            options.pullQuote &&
+              "relative -mx-1 rounded-control border border-primary/25 border-l-primary p-4 shadow-[0_0_22px_-18px_var(--glow-lilac),var(--bevel)] sm:-mx-4 sm:p-5",
+          )}
+          data-slot={options.pullQuote ? "article-pull-quote" : undefined}
         >
-          <blockquote className="font-display text-xl font-medium leading-8 text-foreground">
+          <blockquote className="font-display text-xl font-medium leading-8 text-foreground sm:text-2xl sm:leading-9">
             {block.text}
           </blockquote>
+          {options.pullQuote ? (
+            <figcaption className="metric mt-3 text-xs text-muted-foreground">
+              Pulled from {options.quoteCaption}
+            </figcaption>
+          ) : null}
         </figure>
       );
     case "list": {
@@ -176,6 +195,116 @@ function renderBodyBlock(block: BodyBlock, index: number) {
   }
 }
 
+function renderArticleBodyBlocks(
+  blocks: readonly BodyBlock[],
+  input: { quoteCaption: string },
+) {
+  let pullQuoteCount = 0;
+
+  return blocks.map((block, index) => {
+    const pullQuote = block.type === "quote" && pullQuoteCount < 2;
+    if (pullQuote) {
+      pullQuoteCount += 1;
+    }
+    return renderBodyBlock(block, index, {
+      pullQuote,
+      quoteCaption: input.quoteCaption,
+    });
+  });
+}
+
+function inlineDataToneClass(
+  tone: PublicationArticleInlineDataBlock["rows"][number]["tone"],
+): string {
+  switch (tone) {
+    case "negative":
+      return "text-negative";
+    case "positive":
+      return "text-positive";
+    case "value":
+      return "text-warning";
+    default:
+      return "text-foreground";
+  }
+}
+
+function ArticleInlineDataBlock({
+  block,
+}: {
+  block: PublicationArticleInlineDataBlock;
+}) {
+  return (
+    <figure
+      aria-label={block.title}
+      className="panel grid gap-4 p-4 sm:p-5"
+      data-inline-data-kind={block.kind}
+      data-slot="article-inline-data-block"
+    >
+      <header className="grid gap-1">
+        <p className="eyebrow text-primary">Filed data</p>
+        <h3 className="heading-auspex h-grad text-base">{block.title}</h3>
+      </header>
+      <figcaption className="text-sm leading-6 text-muted-foreground">
+        {block.caption}
+      </figcaption>
+      <div className="overflow-x-auto rounded-control border border-input bg-[var(--panel-2)] shadow-[var(--bevel)]">
+        <table
+          aria-label={block.title}
+          className="w-full min-w-[34rem] text-left text-sm"
+        >
+          <thead className="bg-elevated">
+            <tr>
+              <th
+                className="eyebrow border-border border-b px-3 py-2"
+                scope="col"
+              >
+                {block.kind === "ranked" ? "Rank" : "Beat"}
+              </th>
+              <th
+                className="eyebrow border-border border-b px-3 py-2"
+                scope="col"
+              >
+                Subject
+              </th>
+              <th
+                className="eyebrow border-border border-b px-3 py-2"
+                scope="col"
+              >
+                Readout
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, index) => (
+              <tr className="border-border border-t" key={row.id}>
+                <td className="metric px-3 py-3 align-top text-primary">
+                  {row.metric ?? index + 1}
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <p className="font-semibold text-foreground">{row.label}</p>
+                  {row.detail ? (
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {row.detail}
+                    </p>
+                  ) : null}
+                </td>
+                <td
+                  className={cn(
+                    "metric px-3 py-3 align-top text-xs",
+                    inlineDataToneClass(row.tone),
+                  )}
+                >
+                  {row.value}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </figure>
+  );
+}
+
 export function PublicationArticleView({
   data,
 }: {
@@ -187,6 +316,9 @@ export function PublicationArticleView({
   );
   const readMinutes = estimatedReadMinutes(data.article.body, data.article.dek);
   const isCastArticle = data.article.kind === "blog";
+  const bodyId = `article-body-${data.article.id}`;
+  const nextStory = data.relatedStories.find((story) => story.href);
+  const nextHref = nextStory?.href ?? data.article.section.href;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-8 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -210,6 +342,7 @@ export function PublicationArticleView({
           {data.publicationLabel}
         </Link>
       </div>
+      <ReadingProgress targetId={bodyId} />
 
       <article className="grid gap-6" data-slot="publication-article">
         <header className="panel mx-auto grid w-full max-w-[76ch] gap-5 p-4 sm:p-6">
@@ -296,11 +429,14 @@ export function PublicationArticleView({
 
         <section
           aria-label="Article body"
+          id={bodyId}
           className="panel mx-auto w-full max-w-[72ch] p-4 sm:p-6"
         >
           <EditorialProse>
             {bodyBlocks.length > 0 ? (
-              bodyBlocks.map(renderBodyBlock)
+              renderArticleBodyBlocks(bodyBlocks, {
+                quoteCaption: data.article.byline,
+              })
             ) : (
               <p className="cell border-dashed px-3 py-3 text-sm text-muted-foreground">
                 This article does not have body text yet.
@@ -308,6 +444,18 @@ export function PublicationArticleView({
             )}
           </EditorialProse>
         </section>
+
+        {data.article.inlineDataBlocks.length > 0 ? (
+          <section
+            aria-label="Article data blocks"
+            className="mx-auto grid w-full max-w-4xl gap-4"
+            data-slot="article-inline-data"
+          >
+            {data.article.inlineDataBlocks.map((block) => (
+              <ArticleInlineDataBlock block={block} key={block.id} />
+            ))}
+          </section>
+        ) : null}
 
         {data.article.canonCitations.length > 0 ? (
           <aside
@@ -367,14 +515,28 @@ export function PublicationArticleView({
         ) : null}
       </article>
 
-      {data.relatedStories.length > 0 ? (
-        <section className="grid gap-3" aria-label="Related stories">
+      <section className="grid gap-3" aria-label="Related stories">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="eyebrow text-primary">Keep reading</p>
             <h2 className="heading-auspex h-grad mt-1 text-base">
               Related stories
             </h2>
           </div>
+          <Link
+            href={nextHref}
+            className={cn(
+              buttonVariants({
+                className: "w-fit",
+                variant: "default",
+              }),
+            )}
+          >
+            Next in {data.article.section.label}
+            <ArrowRight data-icon="inline-end" />
+          </Link>
+        </div>
+        {data.relatedStories.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {data.relatedStories.map((story) => (
               <PublicationStoryCard
@@ -384,8 +546,12 @@ export function PublicationArticleView({
               />
             ))}
           </div>
-        </section>
-      ) : null}
+        ) : (
+          <div className="cell p-4 text-sm text-muted-foreground">
+            The section front is the next stop for this beat.
+          </div>
+        )}
+      </section>
     </main>
   );
 }

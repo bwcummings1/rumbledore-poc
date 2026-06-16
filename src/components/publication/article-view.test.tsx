@@ -27,6 +27,24 @@ const baseData: PublicationArticleViewData = {
     headline: "Fixture Team 01 turns panic into policy",
     heroImageUrl: "https://images.example.com/fixture-team-01.jpg",
     id: "post-1",
+    inlineDataBlocks: [
+      {
+        caption: "Ordered ranks from the article draft.",
+        id: "power-rankings",
+        kind: "ranked",
+        rows: [
+          {
+            detail: "The record supports the jump.",
+            id: "rank-1-fixture-team-01",
+            label: "Fixture Team 01",
+            metric: "#1",
+            tone: "positive",
+            value: "3-0 / +2",
+          },
+        ],
+        title: "Power ranking table",
+      },
+    ],
     kind: "blog",
     publishedAt: "2026-06-11T12:00:00.000Z",
     section: {
@@ -81,11 +99,22 @@ test("publication article view renders the AUSPEX editorial prose skin", () => {
   expect(
     container.querySelector('[data-slot="article-byline-orb"]'),
   ).toBeTruthy();
+  expect(
+    screen.getByRole("progressbar", { name: "Reading progress" }),
+  ).toBeDefined();
   expect(screen.getByText("Week turns")).toBeDefined();
   expect(
     screen.getByText("The waiver wire became a warning siren."),
   ).toBeDefined();
+  expect(
+    container.querySelector('[data-slot="article-pull-quote"]'),
+  ).toBeTruthy();
   expect(screen.getByText("Bench leverage arrived early")).toBeDefined();
+  expect(screen.getByLabelText("Article data blocks")).toBeDefined();
+  expect(
+    screen.getByRole("table", { name: "Power ranking table" }),
+  ).toBeDefined();
+  expect(screen.getByText("Fixture Team 01")).toBeDefined();
   expect(
     screen.getByRole("complementary", { name: "Cited canon" }),
   ).toBeDefined();
@@ -93,6 +122,9 @@ test("publication article view renders the AUSPEX editorial prose skin", () => {
     screen.getByRole("navigation", { name: "Article tags" }),
   ).toBeDefined();
   expect(screen.getByRole("region", { name: "Related stories" })).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: /next in recaps/i }).getAttribute("href"),
+  ).toBe("/leagues/league-1/press/post-2");
 });
 
 test("publication article view treats central news as source-authored", () => {
@@ -106,6 +138,7 @@ test("publication article view treats central news as source-authored", () => {
           bylineDetail: "Central NFL and fantasy desk",
           canonCitations: [],
           heroImageUrl: "",
+          inlineDataBlocks: [],
           kind: "news",
           sourceUrl: "https://news.example.com/story",
           tags: [],

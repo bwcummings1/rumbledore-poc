@@ -38,7 +38,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 ### W. Editorial / publication register (see specs/31)
 - [x] Build the AUSPEX reading register (the legible long-form skin) and the story-card variants. (specs/31)
 - [x] Build the publication Front and section fronts with editorial hierarchy, responsive. (specs/31)
-- [ ] Build the article page (persona/orb byline, dek, long-form body, pull quotes, related), responsive and accessible. (specs/31)
+- [x] Build the article page (persona/orb byline, dek, long-form body, pull quotes, related), responsive and accessible. (specs/31)
 
 ### X. Feature surfaces (see specs/32)
 - [ ] Compose the League Home dashboard in AUSPEX (matchup hero, standings ladder, cast headlines, bankroll, wire). (specs/32)

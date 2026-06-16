@@ -245,6 +245,13 @@ beforeAll(async () => {
             ],
             dek: "A league-specific rivalry dek.",
             section: "recaps",
+            structure: {
+              kicker: "The rivalry board keeps receipts.",
+              standingsShift: "Fixture Team 01 held the two seed.",
+              topResult: "Fixture Team 01 beat Fixture Team 02.",
+              type: "weekly_recap",
+              upsetOrBlowout: "The favorite survived by a field goal.",
+            },
             tags: ["Fixture Team 01", "Rivalry Week"],
           },
           publishedAt: new Date("2026-06-11T14:00:00.000Z"),
@@ -343,6 +350,7 @@ describe("publication articles", () => {
       sourceUrl: `https://news.example.com/${marker}/central-article`,
       tags: ["Fixture QB", "Injuries"],
     });
+    expect(result.data.article.inlineDataBlocks).toEqual([]);
     expect(result.data.relatedStories.map((story) => story.headline)).toContain(
       "Practice report follows the quarterback",
     );
@@ -368,6 +376,40 @@ describe("publication articles", () => {
       section: { label: "Recaps" },
       tags: ["Fixture Team 01", "Rivalry Week"],
     });
+    expect(result.data.article.inlineDataBlocks).toEqual([
+      {
+        caption: "Structured beats behind this weekly recap.",
+        id: "weekly-recap",
+        kind: "summary",
+        rows: [
+          {
+            detail: "",
+            id: "top-result",
+            label: "Top result",
+            value: "Fixture Team 01 beat Fixture Team 02.",
+          },
+          {
+            detail: "",
+            id: "upset-or-blowout",
+            label: "Upset or blowout",
+            value: "The favorite survived by a field goal.",
+          },
+          {
+            detail: "",
+            id: "standings-shift",
+            label: "Standings shift",
+            value: "Fixture Team 01 held the two seed.",
+          },
+          {
+            detail: "",
+            id: "kicker",
+            label: "Kicker",
+            value: "The rivalry board keeps receipts.",
+          },
+        ],
+        title: "Recap ledger",
+      },
+    ]);
     expect(result.data.article.canonCitations).toEqual([
       {
         claimId: canonCitationId,

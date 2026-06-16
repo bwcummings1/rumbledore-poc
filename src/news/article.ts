@@ -45,6 +45,23 @@ export interface PublicationArticleCanonCitation {
   title: string;
 }
 
+export interface PublicationArticleInlineDataRow {
+  detail: string;
+  id: string;
+  label: string;
+  metric?: string;
+  tone?: "negative" | "positive" | "value";
+  value: string;
+}
+
+export interface PublicationArticleInlineDataBlock {
+  caption: string;
+  id: string;
+  kind: "ranked" | "summary";
+  rows: PublicationArticleInlineDataRow[];
+  title: string;
+}
+
 export interface PublicationArticleViewData {
   scope: "central" | "league";
   publicationLabel: string;
@@ -66,6 +83,7 @@ export interface PublicationArticleViewData {
       href: string;
     };
     tags: string[];
+    inlineDataBlocks: PublicationArticleInlineDataBlock[];
     heroImageUrl: string;
     sourceUrl: string;
     canonCitations: PublicationArticleCanonCitation[];
@@ -107,6 +125,319 @@ interface RelatedCandidate extends PublicationArticleStory {
 
 function sourceLabel(value: string | null): string {
   return value?.trim() || "Central news";
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function metadataArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function metadataText(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function metadataNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function articleStructure(metadata: unknown): Record<string, unknown> {
+  const record = metadataRecord(metadata);
+  const direct = metadataRecord(record.structure);
+  if (metadataText(direct.type)) {
+    return direct;
+  }
+
+  const article = metadataRecord(record.article);
+  const nested = metadataRecord(article.structure);
+  return metadataText(nested.type) ? nested : {};
+}
+
+function summaryRow(
+  id: string,
+  label: string,
+  value: unknown,
+  detail: unknown = "",
+): PublicationArticleInlineDataRow[] {
+  const text = metadataText(value);
+  if (!text) {
+    return [];
+  }
+  return [
+    {
+      detail: metadataText(detail),
+      id,
+      label,
+      value: text,
+    },
+  ];
+}
+
+function summaryBlock(
+  input: Omit<PublicationArticleInlineDataBlock, "kind">,
+): PublicationArticleInlineDataBlock[] {
+  if (input.rows.length === 0) {
+    return [];
+  }
+  return [{ ...input, kind: "summary" }];
+}
+
+function articleInlineDataBlocks(
+  metadata: unknown,
+): PublicationArticleInlineDataBlock[] {
+  const structure = articleStructure(metadata);
+  const type = metadataText(structure.type);
+
+  switch (type) {
+    case "power_rankings": {
+      const rows = metadataArray(structure.rankings).flatMap(
+        (entry, index): PublicationArticleInlineDataRow[] => {
+          const row = metadataRecord(entry);
+          const team = metadataText(row.team);
+          if (!team) {
+            return [];
+          }
+
+          const rank = metadataNumber(row.rank) ?? index + 1;
+          const delta = metadataNumber(row.delta);
+          const deltaText =
+            delta === null || delta === 0
+              ? ""
+              : `${delta > 0 ? "+" : ""}${delta}`;
+
+          return [
+            {
+              detail: metadataText(row.rationale),
+              id: `rank-${rank}-${team}`,
+              label: team,
+              metric: `#${rank}`,
+              tone:
+                delta === null || delta === 0
+                  ? undefined
+                  : delta > 0
+                    ? "positive"
+                    : "negative",
+              value: [metadataText(row.record), deltaText]
+                .filter(Boolean)
+                .join(" / "),
+            },
+          ];
+        },
+      );
+
+      if (rows.length === 0) {
+        return [];
+      }
+      return [
+        {
+          caption:
+            "Ordered ranks from the article's structured power ranking draft.",
+          id: "power-rankings",
+          kind: "ranked",
+          rows,
+          title: "Power ranking table",
+        },
+      ];
+    }
+    case "weekly_recap":
+      return summaryBlock({
+        caption: "Structured beats behind this weekly recap.",
+        id: "weekly-recap",
+        rows: [
+          ...summaryRow("top-result", "Top result", structure.topResult),
+          ...summaryRow(
+            "upset-or-blowout",
+            "Upset or blowout",
+            structure.upsetOrBlowout,
+          ),
+          ...summaryRow(
+            "standings-shift",
+            "Standings shift",
+            structure.standingsShift,
+          ),
+          ...summaryRow("kicker", "Kicker", structure.kicker),
+        ],
+        title: "Recap ledger",
+      });
+    case "matchup_preview": {
+      const rows = metadataArray(structure.matchups).flatMap(
+        (entry, index): PublicationArticleInlineDataRow[] => {
+          const row = metadataRecord(entry);
+          const team = metadataText(row.team);
+          const opponent = metadataText(row.opponent);
+          if (!team && !opponent) {
+            return [];
+          }
+          return [
+            {
+              detail: [
+                metadataText(row.edge),
+                metadataText(row.xFactor)
+                  ? `X-factor: ${metadataText(row.xFactor)}`
+                  : "",
+                metadataText(row.keyNumber)
+                  ? `Key number: ${metadataText(row.keyNumber)}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" "),
+              id: `matchup-${index}`,
+              label: [team, opponent].filter(Boolean).join(" vs "),
+              value: metadataText(row.prediction) || "Preview filed",
+            },
+          ];
+        },
+      );
+      return summaryBlock({
+        caption: "Structured matchup notes carried by the article draft.",
+        id: "matchup-preview",
+        rows,
+        title: "Matchup board",
+      });
+    }
+    case "awards_superlatives": {
+      const rows = metadataArray(structure.awards).flatMap(
+        (entry, index): PublicationArticleInlineDataRow[] => {
+          const row = metadataRecord(entry);
+          const award = metadataText(row.award);
+          if (!award) {
+            return [];
+          }
+          return [
+            {
+              detail: metadataText(row.fact),
+              id: `award-${index}`,
+              label: award,
+              value: metadataText(row.recipient) || "Recipient pending",
+            },
+          ];
+        },
+      );
+      return summaryBlock({
+        caption: "Award rows from the structured superlatives draft.",
+        id: "awards-superlatives",
+        rows,
+        title: "Awards card",
+      });
+    }
+    case "transaction_reaction":
+      return summaryBlock({
+        caption: "Structured transaction verdict carried by the article draft.",
+        id: "transaction-reaction",
+        rows: [
+          ...summaryRow("move", "Move", structure.move),
+          ...summaryRow("grade", "Grade", structure.grade),
+          ...summaryRow("winner", "Winner", structure.winner),
+          ...summaryRow("loser", "Loser", structure.loser),
+          ...summaryRow("sources-say", "Sources say", structure.sourcesSay),
+        ],
+        title: "Transaction verdict",
+      });
+    case "season_arc":
+      return summaryBlock({
+        caption: "Season-arc facts from the structured article draft.",
+        id: "season-arc",
+        rows: [
+          ...summaryRow("act-so-far", "Act so far", structure.actSoFar),
+          ...summaryRow(
+            "turning-point",
+            "Turning point",
+            structure.turningPoint,
+          ),
+          ...summaryRow("team-to-beat", "Team to beat", structure.teamToBeat),
+          ...summaryRow("stakes", "Stakes", structure.stakes),
+        ],
+        title: "Season arc board",
+      });
+    case "rivalry_piece":
+      return summaryBlock({
+        caption: "Rivalry facts from the structured article draft.",
+        id: "rivalry-piece",
+        rows: [
+          ...summaryRow("history", "History", structure.history),
+          ...summaryRow("score", "Score", structure.score),
+          ...summaryRow("stakes", "Stakes", structure.stakes),
+          ...summaryRow("needle", "Needle", structure.needle),
+        ],
+        title: "Rivalry ledger",
+      });
+    case "arena_recap":
+      return summaryBlock({
+        caption: "Arena movement extracted from the structured recap.",
+        id: "arena-recap",
+        rows: [
+          ...summaryRow(
+            "league-position",
+            "League position",
+            structure.leaguePosition,
+          ),
+          ...summaryRow("field-leader", "Field leader", structure.fieldLeader),
+          ...summaryRow("rival-watch", "Rival watch", structure.rivalWatch),
+          ...summaryRow("needle", "Needle", structure.needle),
+          ...metadataArray(structure.biggestMovers).flatMap((value, index) =>
+            summaryRow(`mover-${index}`, "Mover", value),
+          ),
+        ],
+        title: "Arena movement",
+      });
+    case "milestone_record":
+      return summaryBlock({
+        caption: "Record math from the structured milestone draft.",
+        id: "milestone-record",
+        rows: [
+          ...summaryRow("record", "Record", structure.record),
+          ...summaryRow(
+            "previous-holder",
+            "Previous holder",
+            structure.previousHolder,
+          ),
+          ...summaryRow("new-holder", "New holder", structure.newHolder),
+          ...summaryRow("math", "Math", structure.math),
+          ...summaryRow("legend", "Legend", structure.legend),
+        ],
+        title: "Record ledger",
+      });
+    case "instigation_column":
+      return summaryBlock({
+        caption: "Debate inputs from the structured instigation draft.",
+        id: "instigation-column",
+        rows: [
+          ...summaryRow("provocation", "Provocation", structure.provocation),
+          ...metadataArray(structure.twoSides).flatMap((value, index) =>
+            summaryRow(`side-${index}`, "Side", value),
+          ),
+          ...summaryRow("settle-it", "Settle it", structure.settleItCta),
+          ...summaryRow("stakes", "Stakes", structure.stakes),
+        ],
+        title: "Instigation brief",
+      });
+    case "verdict_column":
+      return summaryBlock({
+        caption: "Verdict inputs from the structured article draft.",
+        id: "verdict-column",
+        rows: [
+          ...summaryRow("question", "Question", structure.question),
+          ...summaryRow("vote", "Vote", structure.vote),
+          ...summaryRow("ruling", "Ruling", structure.ruling),
+          ...summaryRow("new-canon", "New canon", structure.newCanon),
+        ],
+        title: "Verdict record",
+      });
+    default:
+      return [];
+  }
 }
 
 function cleanUrl(value: string | null | undefined): string {
@@ -330,6 +661,7 @@ export async function getCentralNewsArticleData(
         headline: row.title,
         heroImageUrl: articleHeroImageUrl(row.metadata),
         id: row.id,
+        inlineDataBlocks: articleInlineDataBlocks(row.metadata),
         kind: "news",
         publishedAt: row.publishedAt.toISOString(),
         section: {
@@ -590,6 +922,7 @@ export async function getLeaguePressArticleData(
         headline: articleRow.title,
         heroImageUrl: articleHeroImageUrl(articleRow.metadata),
         id: articleRow.id,
+        inlineDataBlocks: articleInlineDataBlocks(articleRow.metadata),
         kind: "blog" as const,
         publishedAt: articleRow.publishedAt.toISOString(),
         section: {
