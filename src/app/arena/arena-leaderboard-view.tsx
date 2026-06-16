@@ -4,6 +4,7 @@ import {
   ArrowUp,
   CalendarDays,
   Minus,
+  Radio,
   Swords,
   Trophy,
   Users,
@@ -22,13 +23,21 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Capacity } from "@/components/ui/capacity";
+import {
+  type AUSPEXChartSpec,
+  Chart,
+  type ChartDatum,
+  type ChartSeries,
+} from "@/components/ui/chart";
 import type { DataCardRow } from "@/components/ui/data-card-table";
 import { Edge, type EdgeTone } from "@/components/ui/edge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { type KVItem, KVList, type KVTone } from "@/components/ui/kv";
 import { Ladder } from "@/components/ui/ladder";
 import { Pagination } from "@/components/ui/pagination";
 import { Presence } from "@/components/ui/presence";
 import { Progress } from "@/components/ui/progress";
+import { CountUpValue, LivePulseDot } from "@/components/ui/spectacle";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import {
@@ -40,6 +49,9 @@ import {
 import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import { ArenaRealtimeRefresh } from "@/realtime/client";
+
+const ARENA_BANKROLL_FLOOR_CENTS = 100_000;
+const AS_OF_STALE_MS = 1000 * 60 * 60 * 24;
 
 function formatPaperMoney(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -83,6 +95,10 @@ function formatTimestamp(value: string): string {
     month: "short",
     timeZone: "UTC",
   }).format(new Date(value));
+}
+
+function formatSeasonWindow(startsAt: string, endsAt: string): string {
+  return `${formatDate(startsAt)}-${formatDate(endsAt)}`;
 }
 
 function arenaHref(input: {
@@ -148,6 +164,45 @@ function edgeTone(value: number): EdgeTone {
   return "neutral";
 }
 
+function chartTone(value: number): ChartDatum["tone"] {
+  if (value > 0) return "positive";
+  if (value < 0) return "negative";
+  return "secondary";
+}
+
+function chartSeriesTone(
+  index: number,
+  emphasized = false,
+): ChartSeries["tone"] {
+  if (emphasized) return "primary";
+  return index % 3 === 0 ? "secondary" : index % 3 === 1 ? "value" : "muted";
+}
+
+function asOfStatus(
+  computedAt: string | null,
+  season: ArenaLeaderboardData["season"],
+): { label: string; tone: StatusTone } {
+  if (!computedAt) {
+    return { label: "Not materialized", tone: "warning" };
+  }
+
+  if (season?.status === "complete") {
+    return {
+      label: `Final as of ${formatTimestamp(computedAt)}`,
+      tone: "success",
+    };
+  }
+
+  const computedMs = new Date(computedAt).getTime();
+  const isStale =
+    Number.isFinite(computedMs) && Date.now() - computedMs > AS_OF_STALE_MS;
+
+  return {
+    label: `${isStale ? "Stale as of" : "As of"} ${formatTimestamp(computedAt)}`,
+    tone: isStale ? "warning" : "live",
+  };
+}
+
 function comparisonCopy(headToHead: ArenaHeadToHead): string {
   if (headToHead.comparison === "tied") {
     return "Dead even on average paper P&L";
@@ -175,7 +230,129 @@ function MovementIcon({ value }: { value: number }) {
 }
 
 function currentBalanceDelta(row: ArenaLeaderboardRow): number {
-  return row.currentBalanceCents - 100_000;
+  return row.currentBalanceCents - ARENA_BANKROLL_FLOOR_CENTS;
+}
+
+function leaderboardBumpSpec(
+  rows: readonly ArenaLeaderboardRow[],
+  highlightedRowId: string | null,
+): AUSPEXChartSpec {
+  const topRows = rows.slice(0, 6);
+
+  return {
+    ariaLabel: "Arena rank movement from prior materialization to now",
+    caption:
+      "Rank lines compare the previous materialized rank to the current aggregate rank.",
+    highlightedSeriesId: highlightedRowId ?? undefined,
+    kind: "standings-bump",
+    series: topRows.map((row, index) => {
+      const previousRank = row.previousRank ?? row.rank;
+      const emphasized = row.id === highlightedRowId || index === 0;
+
+      return {
+        data: [
+          {
+            label: "Prior",
+            meta: `#${previousRank}`,
+            value: previousRank,
+          },
+          {
+            label: "Now",
+            meta: movementLabel(row.rankDelta),
+            secondaryValue: row.rankDelta,
+            tone: chartTone(row.rankDelta),
+            value: row.rank,
+          },
+        ],
+        emphasized,
+        id: row.id,
+        label: row.displayName,
+        tone: chartSeriesTone(index, emphasized),
+      };
+    }),
+    state: topRows.length > 0 ? "ready" : "empty",
+    statusNote: `${topRows.length} tracked`,
+    title: "Rank race",
+  };
+}
+
+function pnlDistributionSpec(
+  rows: readonly ArenaLeaderboardRow[],
+): AUSPEXChartSpec {
+  const sortedRows = [...rows].sort((a, b) => b.netPnlCents - a.netPnlCents);
+
+  return {
+    ariaLabel: "Arena net paper profit distribution by league",
+    caption:
+      "Only aggregate league paper P&L is shown here; raw slips stay inside each league.",
+    data: sortedRows.map((row) => ({
+      label: row.displayName,
+      meta: formatPaperMoney(row.netPnlCents),
+      tone: chartTone(row.netPnlCents),
+      value: Math.round(row.netPnlCents / 100),
+    })),
+    kind: "histogram",
+    state: sortedRows.length > 0 ? "ready" : "empty",
+    statusNote: "aggregate dollars",
+    title: "Net P&L spread",
+  };
+}
+
+function roiBarsSpec(rows: readonly ArenaLeaderboardRow[]): AUSPEXChartSpec {
+  const sortedRows = [...rows].sort((a, b) => b.roiBps - a.roiBps).slice(0, 8);
+
+  return {
+    ariaLabel: "Arena league ROI leaders",
+    caption:
+      "ROI keeps the league table deterministic after net paper P&L, balance, and win rate tie-breaks.",
+    data: sortedRows.map((row) => ({
+      label: row.displayName,
+      meta: formatPercentBps(row.roiBps),
+      tone: chartTone(row.roiBps),
+      value: row.roiBps / 100,
+    })),
+    kind: "hbars",
+    state: sortedRows.length > 0 ? "ready" : "empty",
+    statusNote: "basis points",
+    title: "ROI ladder",
+  };
+}
+
+function headToHeadBulletSpec(
+  headToHead: ArenaHeadToHead | null,
+): AUSPEXChartSpec {
+  const marginDollars = headToHead
+    ? Math.round(headToHead.marginCents / 100)
+    : 0;
+  const signedMargin =
+    headToHead?.comparison === "trailing" ? -marginDollars : marginDollars;
+  const domain = Math.max(Math.abs(signedMargin), 1);
+
+  return {
+    ariaLabel: "League head-to-head paper profit margin",
+    caption: headToHead
+      ? `${headToHead.anchor.displayName} versus ${headToHead.rival.displayName}; center is dead even.`
+      : "The duel chart appears after two leagues have standings.",
+    data: headToHead
+      ? [
+          {
+            label: "Margin",
+            max: domain,
+            meta: comparisonCopy(headToHead),
+            min: -domain,
+            target: 0,
+            tone: chartTone(signedMargin),
+            value: signedMargin,
+          },
+        ]
+      : [],
+    kind: "bullet",
+    state: headToHead ? "ready" : "empty",
+    statusNote: headToHead
+      ? formatPaperAmount(headToHead.marginCents)
+      : "waiting",
+    title: "Duel margin",
+  };
 }
 
 function leaderboardMobileRow(
@@ -282,8 +459,10 @@ function SeasonStrip({
               {selectedSeason.name}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {formatDate(selectedSeason.startsAt)}-
-              {formatDate(selectedSeason.endsAt)}
+              {formatSeasonWindow(
+                selectedSeason.startsAt,
+                selectedSeason.endsAt,
+              )}
             </p>
           </div>
           <StatusPill tone={seasonStatusTone(selectedSeason.status)}>
@@ -304,13 +483,16 @@ function SeasonStrip({
 function MovementSummary({ fallers, risers }: ArenaLeaderboardData["movers"]) {
   if (risers.length === 0 && fallers.length === 0) {
     return (
-      <section className="cell border-dashed p-4">
-        <h2 className="text-base font-semibold">No rank movement yet</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
+      <EmptyState
+        className="border-dashed"
+        title="No rank movement yet"
+        icon={<Radio className="size-4" />}
+      >
+        <p>
           The next standings rebuild will compare against this season's prior
           ranks.
         </p>
-      </section>
+      </EmptyState>
     );
   }
 
@@ -388,16 +570,16 @@ function RivalryPanel({
 }) {
   if (!headToHead) {
     return (
-      <section className="cell border-dashed p-4">
-        <div className="flex items-center gap-2">
-          <Swords className="size-4 text-primary" aria-hidden="true" />
-          <h2 className="text-base font-semibold">League rivalry waiting</h2>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
+      <EmptyState
+        className="border-dashed"
+        icon={<Swords className="size-4" />}
+        title="League rivalry waiting"
+      >
+        <p>
           At least two leagues need materialized arena standings before the
           head-to-head table can pick a rival.
         </p>
-      </section>
+      </EmptyState>
     );
   }
 
@@ -406,7 +588,7 @@ function RivalryPanel({
   );
 
   return (
-    <section className="panel p-4">
+    <section className="panel overflow-hidden p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-primary">
@@ -423,6 +605,48 @@ function RivalryPanel({
             headToHead.anchor.netPnlCents - headToHead.rival.netPnlCents,
           )}
           value={comparisonCopy(headToHead)}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <StatTile
+          caption="aggregate net vs. floor"
+          label="Focus P&L"
+          tone="amber"
+          value={
+            <CountUpValue
+              formatValue={(value) => formatPaperMoney(Number(value))}
+              label={`${headToHead.anchor.displayName} aggregate paper P&L`}
+              tone="value"
+              value={headToHead.anchor.netPnlCents}
+            />
+          }
+        />
+        <StatTile
+          caption="distance between leagues"
+          label="Duel margin"
+          tone="amber"
+          value={
+            <CountUpValue
+              formatValue={(value) => formatPaperAmount(Number(value))}
+              label="Head-to-head paper P&L margin"
+              tone="value"
+              value={headToHead.marginCents}
+            />
+          }
+        />
+        <StatTile
+          caption="aggregate net vs. floor"
+          label="Rival P&L"
+          tone="amber"
+          value={
+            <CountUpValue
+              formatValue={(value) => formatPaperMoney(Number(value))}
+              label={`${headToHead.rival.displayName} aggregate paper P&L`}
+              tone="value"
+              value={headToHead.rival.netPnlCents}
+            />
+          }
         />
       </div>
 
@@ -493,6 +717,38 @@ function RivalryPanel({
           ))}
         </nav>
       ) : null}
+    </section>
+  );
+}
+
+function ArenaAnalytics({
+  focusedLeagueId,
+  data,
+}: {
+  data: ArenaLeaderboardData;
+  focusedLeagueId: string | null;
+}) {
+  return (
+    <section aria-label="Arena charts" className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow">aggregate telemetry</p>
+          <h2 className="heading-auspex h-grad text-lg font-semibold">
+            Arena movement board
+          </h2>
+        </div>
+        <StatusPill tone="neutral">
+          charts expose aggregate ranks only
+        </StatusPill>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Chart
+          spec={leaderboardBumpSpec(data.leagueStandings, focusedLeagueId)}
+        />
+        <Chart spec={headToHeadBulletSpec(data.headToHead)} />
+        <Chart spec={pnlDistributionSpec(data.leagueStandings)} />
+        <Chart spec={roiBarsSpec(data.leagueStandings)} />
+      </div>
     </section>
   );
 }
@@ -693,11 +949,16 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
   const rivalLeagueId = data.headToHead?.rival.id ?? null;
   const topLeague = data.leagueStandings[0] ?? null;
   const topIndividual = data.individualStandings[0] ?? null;
+  const asOf = asOfStatus(data.computedAt, data.season);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+    <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <ArenaRealtimeRefresh />
-      <header className="grid gap-4">
+      <header className="panel relative overflow-hidden p-4 sm:p-5">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent"
+        />
         <Link
           href="/"
           className={cn(
@@ -707,33 +968,53 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
           <ArrowLeft data-icon="inline-start" />
           Home
         </Link>
-        <div className="grid gap-3">
-          <div className="flex items-center gap-2 text-primary">
-            <Users className="size-5" aria-hidden="true" />
-            <Tag>Central arena</Tag>
-          </div>
-          <div className="max-w-2xl">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              Paper betting standings
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-primary">
+              <Users className="size-5" aria-hidden="true" />
+              <Tag>Central arena</Tag>
+              <LivePulseDot
+                status={data.computedAt ? "live" : "static"}
+                withText
+              />
+            </div>
+            <h1 className="heading-auspex h-grad mt-3 text-2xl font-semibold sm:text-4xl">
+              CENTRAL ARENA
             </h1>
+            <p className="mt-2 max-w-3xl text-sm text-muted-foreground sm:text-base">
+              League-vs-league and individual paper standings, built from
+              aggregate bankroll ledgers without exposing another league's raw
+              slips.
+            </p>
             {data.season ? (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <span>
-                  {data.season.name} · {formatDate(data.season.startsAt)}-
-                  {formatDate(data.season.endsAt)}
+                  {data.season.name} ·{" "}
+                  {formatSeasonWindow(data.season.startsAt, data.season.endsAt)}
                 </span>
                 <StatusPill tone={seasonStatusTone(data.season.status)}>
                   {seasonStatusLabel(data.season.status)}
                 </StatusPill>
-                {data.computedAt
-                  ? `Updated ${formatTimestamp(data.computedAt)}`
-                  : ""}
+                <StatusPill tone={asOf.tone}>{asOf.label}</StatusPill>
               </div>
             ) : (
               <p className="mt-2 text-sm text-muted-foreground">
                 No arena season has been created yet.
               </p>
             )}
+          </div>
+          <div className="cell grid gap-2 p-3 text-sm lg:min-w-72">
+            <p className="eyebrow">rivalry frame</p>
+            <p className="font-display text-base font-semibold text-foreground">
+              {data.headToHead
+                ? `${data.headToHead.anchor.displayName} vs. ${data.headToHead.rival.displayName}`
+                : "Waiting for a second league"}
+            </p>
+            <p className="text-muted-foreground">
+              {data.headToHead
+                ? comparisonCopy(data.headToHead)
+                : "The first materialized rival unlocks the duel panel."}
+            </p>
           </div>
         </div>
       </header>
@@ -747,19 +1028,41 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
             caption="Materialized league rows"
             label="Leagues"
             tone="lilac"
-            value={data.leagueStandings.length}
+            value={
+              <CountUpValue
+                label="Materialized league rows"
+                tone="live"
+                value={data.leagueStandings.length}
+              />
+            }
           />
           <StatTile
             caption="Individual arena rows"
             label="Players"
-            value={data.individualStandings.length}
+            value={
+              <CountUpValue
+                label="Individual arena rows"
+                value={data.individualStandings.length}
+              />
+            }
           />
           <StatTile
             caption={topLeague?.displayName ?? "No leader yet"}
             delta={topLeague ? movementLabel(topLeague.rankDelta) : undefined}
             label="Top league"
             tone="amber"
-            value={topLeague ? formatPaperMoney(topLeague.netPnlCents) : "--"}
+            value={
+              topLeague ? (
+                <CountUpValue
+                  formatValue={(value) => formatPaperMoney(Number(value))}
+                  label="Top league net paper P&L"
+                  tone="value"
+                  value={topLeague.netPnlCents}
+                />
+              ) : (
+                "--"
+              )
+            }
           />
           <StatTile
             caption={topIndividual?.displayName ?? "No leader yet"}
@@ -770,7 +1073,15 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
             }
             label="Top player"
             value={
-              topIndividual ? formatPaperMoney(topIndividual.netPnlCents) : "--"
+              topIndividual ? (
+                <CountUpValue
+                  formatValue={(value) => formatPaperMoney(Number(value))}
+                  label="Top player net paper P&L"
+                  value={topIndividual.netPnlCents}
+                />
+              ) : (
+                "--"
+              )
             }
           />
         </section>
@@ -779,25 +1090,30 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
           rivalLeagueId={rivalLeagueId}
           seasons={data.seasons}
         />
-        <MovementSummary {...data.movers} />
         <RivalryPanel
           headToHead={data.headToHead}
           leagueOptions={data.leagueOptions}
           seasonId={data.season?.id ?? null}
         />
-        <LeaderboardSection
-          emptyText="No league standings have been materialized yet."
-          highlightedRowId={focusedLeagueId}
-          netLabel="Avg P&L"
-          rows={data.leagueStandings}
-          title="League leaderboard"
-        />
-        <LeaderboardSection
-          emptyText="No individual standings have been materialized yet."
-          netLabel="Net P&L"
-          rows={data.individualStandings}
-          title="Individual leaderboard"
-        />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="grid gap-6">
+            <LeaderboardSection
+              emptyText="No league standings have been materialized yet."
+              highlightedRowId={focusedLeagueId}
+              netLabel="Avg P&L"
+              rows={data.leagueStandings}
+              title="League leaderboard"
+            />
+            <LeaderboardSection
+              emptyText="No individual standings have been materialized yet."
+              netLabel="Net P&L"
+              rows={data.individualStandings}
+              title="Individual leaderboard"
+            />
+          </div>
+          <MovementSummary {...data.movers} />
+        </div>
+        <ArenaAnalytics data={data} focusedLeagueId={focusedLeagueId} />
       </div>
     </main>
   );

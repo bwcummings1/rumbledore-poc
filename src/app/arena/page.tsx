@@ -14,6 +14,7 @@ interface ArenaPageProps {
   searchParams?: Promise<{
     leagueId?: string | string[];
     rivalLeagueId?: string | string[];
+    season?: string | string[];
     seasonId?: string | string[];
   }>;
 }
@@ -27,7 +28,10 @@ export default async function ArenaPage({ searchParams }: ArenaPageProps) {
   const data = await getArenaLeaderboardData(getDb(), {
     leagueId: firstSearchValue(params?.leagueId) ?? undefined,
     rivalLeagueId: firstSearchValue(params?.rivalLeagueId) ?? undefined,
-    seasonId: firstSearchValue(params?.seasonId) ?? undefined,
+    seasonId:
+      firstSearchValue(params?.seasonId) ??
+      firstSearchValue(params?.season) ??
+      undefined,
   });
   return <ArenaLeaderboardView data={data} />;
 }

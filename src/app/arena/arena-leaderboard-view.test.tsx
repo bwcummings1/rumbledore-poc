@@ -177,9 +177,15 @@ test("arena leaderboard view renders league and individual standings", () => {
   expect(
     screen.getByRole("heading", {
       level: 1,
-      name: "Paper betting standings",
+      name: "CENTRAL ARENA",
     }),
   ).toBeDefined();
+  expect(
+    screen.getByText(
+      /built from aggregate bankroll ledgers without exposing another league's raw slips/i,
+    ),
+  ).toBeDefined();
+  expect(screen.getByText(/As of Sep 9/i)).toBeDefined();
   expect(
     screen.getByRole("heading", { name: "League leaderboard" }),
   ).toBeDefined();
@@ -191,7 +197,9 @@ test("arena leaderboard view renders league and individual standings", () => {
   expect(
     screen.getByRole("heading", { name: /Arena League B vs/ }),
   ).toBeDefined();
-  expect(screen.getByText("Arena League B leads by $100")).toBeDefined();
+  expect(
+    screen.getAllByText("Arena League B leads by $100").length,
+  ).toBeGreaterThanOrEqual(1);
   expect(screen.getAllByText("Arena Gamma").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("+$300").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("+300%").length).toBeGreaterThanOrEqual(2);
@@ -208,6 +216,18 @@ test("arena leaderboard view renders league and individual standings", () => {
   expect(screen.getByText("Biggest risers")).toBeDefined();
   expect(screen.getByText("Player · #3 to #1")).toBeDefined();
   expect(screen.getAllByText("Up 2").length).toBeGreaterThanOrEqual(1);
+  expect(
+    screen.getByRole("heading", { name: "Arena movement board" }),
+  ).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Rank race" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Duel margin" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Net P&L spread" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "ROI ladder" })).toBeDefined();
+  expect(
+    screen.getAllByLabelText(
+      "Arena rank movement from prior materialization to now",
+    ).length,
+  ).toBeGreaterThanOrEqual(1);
 });
 
 test("arena leaderboard view renders empty states", () => {

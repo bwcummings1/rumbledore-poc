@@ -42,7 +42,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 
 ### X. Feature surfaces (see specs/32)
 - [x] Compose the League Home dashboard in AUSPEX (matchup hero, standings ladder, cast headlines, bankroll, wire). (specs/32)
-- [ ] Compose the Arena (league-vs-league and individual leaderboards, seasons, head-to-head, rank movement). (specs/32)
+- [x] Compose the Arena (league-vs-league and individual leaderboards, seasons, head-to-head, rank movement). (specs/32)
 - [ ] Compose the Sportsbook (market board, the bet-slip console/sheet, the rolling bankroll LCD). (specs/32)
 - [ ] Compose Records & History, the Central News hub, and Settings/data-steward surfaces. (specs/32)
 - [ ] Compose the entitlement/upgrade and gated states (graceful, on-brand, never a broken page). (specs/32)
