@@ -76,6 +76,7 @@ describe("reduced-motion theme tokens", () => {
     expect(globalsCss).toContain(
       "--duration-slow: var(--motion-duration-slow);",
     );
+    expect(globalsCss).toContain("--duration-orb: var(--motion-duration-orb);");
     expect(globalsCss).toContain(
       "--default-transition-duration: var(--motion-duration-fast);",
     );

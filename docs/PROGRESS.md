@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX signature primitives landed — global foundation utilities now cover the conic AI orb with motion-safe states, Y2K bezel/chip chrome, and glass panel/cell surfaces with opaque fallbacks.
 - 2026-06-16: AUSPEX atmosphere foundation landed — the app now mounts one decorative starfield/scanline/grain/vignette layer tree behind content, with desktop-only drift plus tablet, mobile, and reduced-motion static fallbacks.
 - 2026-06-16: AUSPEX typography system landed — Michroma/Saira/JetBrains Mono/Inter now load through `next/font`, the theme contract exposes display/body/3xl/prose/numeric tokens, and global utilities cover gradient-clipped headings, LCD numerics, keyboard glyphs, and the reading register.
 - 2026-06-16: AUSPEX theme registration landed — canonical AUSPEX raw tokens now populate the Phase 4 theme framework, `auspex` is the default active theme, neutral-dark remains selectable as fallback, and the contrast gate audits the new hex palette.

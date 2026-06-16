@@ -16,18 +16,21 @@ export const REDUCED_MOTION_DURATION_TOKENS = [
   "duration-fast",
   "duration-base",
   "duration-slow",
+  "duration-orb",
 ] as const satisfies readonly MotionTokenName[];
 
 const REDUCED_MOTION_DURATION_ALIAS_TOKEN_NAMES = [
   "motion-duration-fast",
   "motion-duration-base",
   "motion-duration-slow",
+  "motion-duration-orb",
 ] as const satisfies readonly MotionTokenName[];
 
 export const REDUCED_MOTION_DURATION_ALIAS_TOKENS = {
   "motion-duration-fast": "duration-fast",
   "motion-duration-base": "duration-base",
   "motion-duration-slow": "duration-slow",
+  "motion-duration-orb": "duration-orb",
 } as const satisfies Record<
   (typeof REDUCED_MOTION_DURATION_ALIAS_TOKEN_NAMES)[number],
   (typeof REDUCED_MOTION_DURATION_TOKENS)[number]

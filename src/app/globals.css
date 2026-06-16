@@ -100,7 +100,9 @@ html {
   --duration-fast: var(--motion-duration-fast);
   --duration-base: var(--motion-duration-base);
   --duration-slow: var(--motion-duration-slow);
+  --duration-orb: var(--motion-duration-orb);
   --ease-out: var(--motion-ease-out);
+  --ease-linear: var(--motion-ease-linear);
   --default-transition-duration: var(--motion-duration-fast);
   --default-transition-timing-function: var(--motion-ease-out);
 }
@@ -203,6 +205,204 @@ html {
   line-height: var(--type-line-xs);
   min-height: var(--space-6);
   padding-inline: var(--space-2);
+}
+
+@utility orb {
+  --orb-size: var(--space-6);
+
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--elevated);
+  border: 1px solid var(--hair-2, var(--border));
+  border-radius: 50%;
+  box-shadow: var(--orb-shadow, var(--elevation-raised)), var(--bevel, none);
+  color: var(--primary-foreground);
+  display: inline-flex;
+  flex: 0 0 auto;
+  inline-size: var(--orb-size);
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  vertical-align: middle;
+}
+
+@utility orb-xs {
+  --orb-size: var(--space-4);
+}
+
+@utility orb-sm {
+  --orb-size: calc(var(--space-4) + var(--space-1));
+}
+
+@utility orb-md {
+  --orb-size: var(--space-8);
+}
+
+@utility orb-lg {
+  --orb-size: var(--space-12);
+}
+
+@utility orb-xl {
+  --orb-size: calc(var(--space-8) * 2);
+}
+
+@utility bezel {
+  border: 1px solid transparent;
+  border-radius: var(--radius-card);
+  box-shadow: var(--bevel, none);
+  isolation: isolate;
+  position: relative;
+}
+
+@utility chip-glyph {
+  align-items: center;
+  background: var(--elevated);
+  block-size: var(--space-8);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  box-shadow: var(--bevel, none);
+  color: var(--foreground);
+  display: inline-flex;
+  flex: 0 0 auto;
+  inline-size: var(--space-8);
+  justify-content: center;
+  position: relative;
+}
+
+@utility panel {
+  background: var(--panel, var(--surface));
+  background-clip: padding-box;
+  border: 1px solid var(--hair-2, var(--border));
+  border-radius: var(--radius-card);
+  box-shadow: var(--glass-shadow, var(--elevation-raised)), var(--bevel, none);
+  color: var(--foreground);
+}
+
+@utility cell {
+  background: var(--panel, var(--surface));
+  border: 1px solid var(--hair, var(--border));
+  border-radius: var(--radius-control);
+  box-shadow: var(--bevel, none);
+  color: var(--foreground);
+}
+
+.orb::before {
+  animation: auspex-orb-spin var(--motion-duration-orb)
+    var(--motion-ease-linear) infinite;
+  background: var(--orb-fill, var(--primary));
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.orb::after {
+  background: radial-gradient(
+    circle at 30% 24%,
+    var(--lilac-hi, var(--foreground)) 0,
+    transparent 42%
+  );
+  border-radius: inherit;
+  content: "";
+  inset: 12%;
+  opacity: 0.38;
+  position: absolute;
+}
+
+.orb > * {
+  position: relative;
+  z-index: 1;
+}
+
+.orb.think,
+.orb.is-thinking,
+.orb[data-state="think"] {
+  box-shadow:
+    var(--orb-shadow-think, var(--orb-shadow, var(--elevation-raised))),
+    var(--bevel, none);
+}
+
+.orb.think::before,
+.orb.is-thinking::before,
+.orb[data-state="think"]::before {
+  animation-duration: var(--motion-duration-slow);
+}
+
+.orb.muted,
+.orb.offline,
+.orb[data-state="muted"],
+.orb[data-state="offline"] {
+  box-shadow:
+    var(--bevel, none),
+    0 0 0 1px var(--hair-2, var(--border));
+  opacity: 0.68;
+}
+
+.orb.muted::before,
+.orb.offline::before,
+.orb[data-state="muted"]::before,
+.orb[data-state="offline"]::before {
+  animation: none;
+  filter: saturate(0.16) brightness(0.72);
+}
+
+.bezel::before,
+.chip-glyph::before {
+  background: var(--bezel-fill, var(--border));
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  padding: 1px;
+  pointer-events: none;
+  position: absolute;
+  -webkit-mask:
+    linear-gradient(var(--foreground) 0 0) content-box,
+    linear-gradient(var(--foreground) 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(var(--foreground) 0 0) content-box,
+    linear-gradient(var(--foreground) 0 0);
+  mask-composite: exclude;
+}
+
+.chip-glyph > svg {
+  block-size: var(--space-4);
+  inline-size: var(--space-4);
+}
+
+.cell + .cell {
+  border-block-start-color: var(--hair-2, var(--border));
+}
+
+@supports (
+    (backdrop-filter: blur(1px)) or
+    (-webkit-backdrop-filter: blur(1px))
+  ) {
+  .panel {
+    -webkit-backdrop-filter: blur(var(--glass-blur, 0));
+    backdrop-filter: blur(var(--glass-blur, 0));
+  }
+}
+
+@supports not (
+    (backdrop-filter: blur(1px)) or
+    (-webkit-backdrop-filter: blur(1px))
+  ) {
+  .panel {
+    background: var(--panel-solid, var(--surface));
+  }
+}
+
+@supports not ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+  .bezel,
+  .chip-glyph {
+    border-color: var(--bezel-fallback-ring, var(--border));
+  }
+
+  .bezel::before,
+  .chip-glyph::before {
+    content: none;
+  }
 }
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
@@ -408,7 +608,19 @@ html {
   }
 }
 
+@keyframes auspex-orb-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 @media (max-width: 767px) {
+  .panel {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--panel-solid, var(--surface));
+  }
+
   .auspex-atmosphere__starfield {
     animation: none;
     background-size:
@@ -440,6 +652,10 @@ html {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .orb::before {
+    animation: none;
+  }
+
   .auspex-atmosphere__starfield {
     animation: none;
     transform: none;

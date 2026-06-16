@@ -35,6 +35,17 @@ const auspexExtensionVariables = {
   "glow-amber": "rgba(226,178,102,.30)",
   bevel:
     "inset 0 1px 0 rgba(190,196,235,.10), inset 0 0 0 1px rgba(255,255,255,.012)",
+  "orb-fill":
+    "conic-gradient(from 210deg, var(--lilac) 0deg, var(--steel-soft) 74deg, var(--amber) 138deg, var(--jade) 202deg, var(--steel) 274deg, var(--lilac-hi) 328deg, var(--lilac) 360deg)",
+  "orb-shadow":
+    "0 0 0 1px var(--hair-2), 0 0 22px var(--glow-lilac), 0 10px 34px rgba(0,0,0,.34)",
+  "orb-shadow-think":
+    "0 0 0 1px var(--hair-3), 0 0 32px var(--glow-lilac), 0 0 18px var(--glow-amber), 0 16px 42px rgba(0,0,0,.40)",
+  "bezel-fill":
+    "linear-gradient(145deg, rgba(246,248,255,.72), rgba(166,206,230,.30) 32%, rgba(73,77,102,.42) 66%, rgba(231,233,243,.52))",
+  "bezel-fallback-ring": "var(--line-2)",
+  "glass-blur": "18px",
+  "glass-shadow": "0 1px 2px rgba(0,0,0,.30), 0 18px 46px rgba(0,0,0,.28)",
   "r-sm": "7px",
   "r-md": "11px",
   "r-lg": "14px",
@@ -173,11 +184,15 @@ export const auspexTheme = {
     "duration-fast": "150ms",
     "duration-base": "220ms",
     "duration-slow": "420ms",
+    "duration-orb": "18000ms",
     "motion-duration-fast": "var(--duration-fast)",
     "motion-duration-base": "var(--duration-base)",
     "motion-duration-slow": "var(--duration-slow)",
+    "motion-duration-orb": "var(--duration-orb)",
     "ease-out": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "ease-linear": "linear",
     "motion-ease-out": "var(--ease-out)",
+    "motion-ease-linear": "var(--ease-linear)",
   },
   extensionVariables: auspexExtensionVariables,
 } as const satisfies ThemeDefinition;

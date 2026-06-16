@@ -16,7 +16,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Register the AUSPEX theme in the design-token framework with the full ported token set. (specs/28)
 - [x] Implement the typography system (Michroma/Saira/JetBrains Mono/Inter, scales, gradient-clip headings, LCD numerics, prose scale). (specs/28)
 - [x] Implement the atmosphere layers (starfield/scanline/grain/vignette), perf-safe and reduced-motion-aware. (specs/28)
-- [ ] Implement the signature primitives: the AI orb, the Y2K bezel, and the glass panel/surface system. (specs/28)
+- [x] Implement the signature primitives: the AI orb, the Y2K bezel, and the glass panel/surface system. (specs/28)
 - [ ] Add motion/easing tokens plus the WCAG-AA contrast, focus, and reduced-motion accessibility foundation. (specs/28)
 
 ### T. Component library (see specs/29)

@@ -60,6 +60,13 @@ describe("theme registry", () => {
     expect(getThemeExtensionCssVariables(auspex).bevel).toContain(
       "inset 0 1px 0",
     );
+    expect(getThemeExtensionCssVariables(auspex)["orb-fill"]).toContain(
+      "conic-gradient",
+    );
+    expect(getThemeExtensionCssVariables(auspex)["bezel-fill"]).toContain(
+      "linear-gradient",
+    );
+    expect(getThemeExtensionCssVariables(auspex)["glass-blur"]).toBe("18px");
     expect(getThemeExtensionCssVariables(auspex).head).toContain(
       "--font-michroma",
     );
@@ -82,6 +89,9 @@ describe("theme registry", () => {
     expect(css).toContain("--void: #08090F;");
     expect(css).toContain("--panel: rgba(20,22,34,.62);");
     expect(css).toContain("--bevel: inset 0 1px 0");
+    expect(css).toContain("--orb-fill: conic-gradient");
+    expect(css).toContain("--bezel-fill: linear-gradient");
+    expect(css).toContain("--glass-blur: 18px;");
     expect(css).toContain("--background: var(--void);");
     expect(css).toContain("--font-family-heading: var(--head);");
     expect(css).toContain("--font-family-display: var(--disp);");
@@ -96,6 +106,9 @@ describe("theme registry", () => {
     expect(css).toContain("--primitive-color-ink-950: oklch(16% 0.01 250);");
     expect(css).toContain("--primitive-color-ink-950: oklch(98% 0.006 250);");
     expect(css).toContain("--duration-fast: 150ms;");
+    expect(css).toContain("--duration-orb: 18000ms;");
+    expect(css).toContain("--motion-duration-orb: var(--duration-orb);");
+    expect(css).toContain("--ease-linear: linear;");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
 });
