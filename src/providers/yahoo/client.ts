@@ -1241,6 +1241,13 @@ export class YahooClient {
     );
   }
 
+  async getTransactions(
+    session: YahooSession,
+    ref: ProviderLeagueRef,
+  ): Promise<ProviderResult<NormalizedTransaction[]>> {
+    return this.fetchTransactions(session, ref);
+  }
+
   async getHistory(
     session: YahooSession,
     ref: ProviderLeagueRef,
@@ -1551,5 +1558,6 @@ export function createYahooProvider(
     getRosters: (session, ref, scoringPeriod) =>
       client.getRosters(session, ref, scoringPeriod),
     getTeams: (session, ref) => client.getTeams(session, ref),
+    getTransactions: (session, ref) => client.getTransactions(session, ref),
   };
 }

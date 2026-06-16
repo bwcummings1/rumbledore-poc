@@ -73,7 +73,9 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Transaction/waiver content emitters landed — live ingestion now fetches supported provider transactions, persists changed rows idempotently, and fans out transaction/waiver Beat Reporter trigger events.
 - 2026-06-16: PWA cache hardening landed — `/leagues/:path*` pages now declare `Cache-Control: private, no-store`, and a shared-device login-A → logout → login-B e2e guards against cached league-page leakage.
+- 2026-06-16: DB role privilege health assertion landed — `/api/health` now reports current/session DB role privileges and production health fails if the app role is superuser or has BYPASSRLS.
 - 2026-06-16: Invite token-at-rest hardening verified — `league_invites` persists only `token_hash`, preview/acceptance look up by SHA-256 hash, and a migration-backed regression test guards against plaintext token columns returning.
 - 2026-06-16: Schedule-backed NFL calendar landed — the default calendar now reads ESPN public scoreboard windows for week/phase/game-state, maps playoff tokens, keeps the heuristic fallback for outages, and live ingestion consumes the fixture-backed source in cadence tests.
 - 2026-06-16: Anthropic LLM judge publish gate landed — generation now scores validated drafts before publish, regenerates once or skips on low authenticity/persona/leakage, and selects a guarded real Anthropic judge only when Anthropic is unmocked.

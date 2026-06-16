@@ -108,6 +108,7 @@ type OnboardingProvider = Pick<
   | "getMatchups"
   | "getMembers"
   | "getTeams"
+  | "getTransactions"
 > &
   Partial<Pick<FantasyProvider<unknown, FantasyProviderSession>, "getRosters">>;
 

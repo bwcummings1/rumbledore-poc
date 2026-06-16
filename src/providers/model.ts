@@ -376,6 +376,11 @@ export interface FantasyProvider<
     ref: ProviderLeagueRef,
     scoringPeriod?: number,
   ): Promise<ProviderResult<NormalizedMatchup[]>>;
+  getTransactions(
+    session: Session,
+    ref: ProviderLeagueRef,
+    scoringPeriod?: number,
+  ): Promise<ProviderResult<NormalizedTransaction[]>>;
   getHistory(
     session: Session,
     ref: ProviderLeagueRef,

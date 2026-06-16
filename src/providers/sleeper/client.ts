@@ -1355,6 +1355,36 @@ export class SleeperClient {
     return ok(normalized);
   }
 
+  async getTransactions(
+    _session: SleeperSession,
+    ref: ProviderLeagueRef,
+    scoringPeriod?: number,
+  ): Promise<ProviderResult<NormalizedTransaction[]>> {
+    const [league, state] = await Promise.all([
+      this.fetchLeague(ref.providerId),
+      this.fetchNflState(),
+    ]);
+    if (!league.ok) {
+      return league;
+    }
+    if (!state.ok) {
+      return state;
+    }
+
+    const period =
+      scoringPeriod ?? currentScoringPeriod(league.value, state.value);
+    if (period <= 0) {
+      return ok([]);
+    }
+
+    const transactions = await this.fetchTransactions(ref.providerId, period);
+    if (!transactions.ok) {
+      return transactions;
+    }
+
+    return ok(normalizeTransactions(transactions.value, ref));
+  }
+
   async getHistory(
     _session: SleeperSession,
     ref: ProviderLeagueRef,
@@ -1687,5 +1717,7 @@ export function createSleeperProvider(
     getRosters: (session, ref, scoringPeriod) =>
       client.getRosters(session, ref, scoringPeriod),
     getTeams: (session, ref) => client.getTeams(session, ref),
+    getTransactions: (session, ref, scoringPeriod) =>
+      client.getTransactions(session, ref, scoringPeriod),
   };
 }

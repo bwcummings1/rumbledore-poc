@@ -74,6 +74,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 ## Environment gotchas
 - `node` on PATH is a bun shim that breaks Next/tsc — run pnpm scripts with `PATH=/usr/bin:$PATH` (real Node v22).
 - `rm -rf` is blocked by a command guard; use `mv` to `/tmp` instead.
+- `/api/health` reports the local compose DB role as unsafe because the official Postgres `POSTGRES_USER` is a superuser; this is report-only outside production, while production health fails on superuser/BYPASSRLS.
 - In zsh, build changed-file UBS args as an array (or run the expansion under bash); a single space-joined string is treated as one filename.
 - Next/font variable values must be literal strings; AUSPEX font declarations live in root `auspex-fonts.ts` so `src/` stays clean for the impeccable UI detector.
 - Next dev forces dynamic App Router page `Cache-Control: no-cache, must-revalidate`; verify production cache headers through `next.config`/production server checks, not dev-server Playwright response headers.

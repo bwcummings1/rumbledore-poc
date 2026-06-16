@@ -47,7 +47,8 @@ export type CurrentLeagueProvider<Session extends FantasyProviderSession> =
     FantasyProvider<unknown, Session>,
     "capabilities" | "getLeague" | "getMatchups" | "getMembers" | "getTeams"
   > &
-    Partial<Pick<FantasyProvider<unknown, Session>, "getRosters">>;
+    Partial<Pick<FantasyProvider<unknown, Session>, "getRosters">> &
+    Pick<FantasyProvider<unknown, Session>, "getTransactions">;
 
 export interface EntitySyncStats {
   total: number;
@@ -60,8 +61,14 @@ export interface ChangedFinalMatchup {
   id: string;
 }
 
+export interface ChangedTransaction {
+  id: string;
+  type: NormalizedTransaction["type"];
+}
+
 export interface CurrentLeagueSyncResult {
   changedFinalMatchups: ChangedFinalMatchup[];
+  changedTransactions: ChangedTransaction[];
   recordBrokenHooks: RecordBrokenHook[];
   recordLoreClaims: RecordBrokenLoreHookResult[];
   league: {
@@ -76,6 +83,7 @@ export interface CurrentLeagueSyncResult {
   members: EntitySyncStats;
   matchups: EntitySyncStats;
   rosters: EntitySyncStats;
+  transactions: EntitySyncStats;
 }
 
 export interface PersistNormalizedLeagueRowsInput {
@@ -99,6 +107,7 @@ export interface PersistNormalizedLeagueRowsResult {
   matchupStats: EntitySyncStats;
   rosterStats: EntitySyncStats;
   transactionStats: EntitySyncStats;
+  changedTransactions: ChangedTransaction[];
   finalStandingStats: EntitySyncStats;
   leagueSeasonSettingsStats: EntitySyncStats;
 }
@@ -128,6 +137,11 @@ type LeagueUpsertResult = {
 interface MatchupUpsertResult {
   changedIds: string[];
   scoringPeriods: number[];
+  stats: EntitySyncStats;
+}
+
+interface TransactionUpsertResult {
+  changedTransactions: ChangedTransaction[];
   stats: EntitySyncStats;
 }
 
@@ -1033,9 +1047,9 @@ async function upsertTransactions(
   tx: LeagueScopedTx,
   leagueId: string,
   transactions: readonly NormalizedTransaction[],
-): Promise<EntitySyncStats> {
+): Promise<TransactionUpsertResult> {
   if (transactions.length === 0) {
-    return emptyStats();
+    return { changedTransactions: [], stats: emptyStats() };
   }
 
   const rows = transactions.map((transaction) => ({
@@ -1078,9 +1092,18 @@ async function upsertTransactions(
       },
       where: sql`${fantasyTransactions.contentHash} is distinct from excluded.content_hash`,
     })
-    .returning({ id: fantasyTransactions.id });
+    .returning({
+      id: fantasyTransactions.id,
+      type: fantasyTransactions.type,
+    });
 
-  return stats(rows.length, changed.length);
+  return {
+    changedTransactions: changed.map((row) => ({
+      id: row.id,
+      type: row.type as NormalizedTransaction["type"],
+    })),
+    stats: stats(rows.length, changed.length),
+  };
 }
 
 function resolveLeagueProviderId({
@@ -1167,6 +1190,7 @@ export async function persistNormalizedLeagueRows({
     );
 
     return {
+      changedTransactions: transactionStats.changedTransactions,
       changedMatchupIds: matchupUpsert.changedIds,
       changedMatchupScoringPeriods: matchupUpsert.scoringPeriods,
       finalStandingStats,
@@ -1175,7 +1199,7 @@ export async function persistNormalizedLeagueRows({
       memberStats,
       rosterStats,
       teamStats,
-      transactionStats,
+      transactionStats: transactionStats.stats,
     };
   });
 }
@@ -1395,9 +1419,10 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   const shouldFetchRosters =
     requestedDataClasses.has("rosters") ||
     requestedDataClasses.has("keeper_dynasty");
+  const shouldFetchTransactions = requestedDataClasses.has("transactions");
   const needsScoringPeriod =
     hasExplicitDataClasses &&
-    (shouldFetchMatchups || shouldFetchRosters) &&
+    (shouldFetchMatchups || shouldFetchRosters || shouldFetchTransactions) &&
     requestedScoringPeriod === undefined;
   const shouldFetchLeague =
     !hasExplicitDataClasses ||
@@ -1480,6 +1505,36 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     }
   }
 
+  let transactions: readonly NormalizedTransaction[] = [];
+  let transactionObservation: DataCoverageObservation | undefined;
+  if (shouldFetchTransactions) {
+    if (provider.capabilities.dataClasses.transactions !== "none") {
+      const transactionResult = await provider.getTransactions(
+        session,
+        ref,
+        currentScoringPeriod,
+      );
+      if (transactionResult.ok) {
+        transactions = transactionResult.value;
+        transactionObservation = {
+          details: { transactionCount: transactionResult.value.length },
+          itemCount: transactionResult.value.length,
+        };
+      } else {
+        transactionObservation = {
+          error: transactionResult.error,
+          itemCount: 0,
+        };
+      }
+    } else {
+      transactionObservation = {
+        details: { reason: "provider_capability_none" },
+        itemCount: 0,
+        status: "unavailable",
+      };
+    }
+  }
+
   const leagueWrite = leagueValue
     ? await upsertLeague(db, leagueValue)
     : { changed: 0, id: input.leagueId };
@@ -1495,6 +1550,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     members: members.value,
     rosters,
     teams: teams.value,
+    transactions,
   });
 
   const observations: DataCoverageObservationMap = {};
@@ -1520,6 +1576,10 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   if (shouldFetchMatchups) {
     observations.matchups = { itemCount: matchups.value.length };
     coverageDataClasses.add("matchups");
+  }
+  if (shouldFetchTransactions) {
+    observations.transactions = transactionObservation;
+    coverageDataClasses.add("transactions");
   }
   const edgeCaseObservations = leagueValue
     ? edgeCaseCoverageObservations({
@@ -1600,6 +1660,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
 
   return ok({
     changedFinalMatchups,
+    changedTransactions: scoped.changedTransactions,
     recordBrokenHooks: recompute.recordBrokenHooks,
     recordLoreClaims,
     league: {
@@ -1614,5 +1675,6 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     members: scoped.memberStats,
     matchups: scoped.matchupStats,
     rosters: scoped.rosterStats,
+    transactions: scoped.transactionStats,
   });
 }

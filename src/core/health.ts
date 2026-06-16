@@ -8,12 +8,26 @@ import { getMetricsSnapshot, type MetricsSnapshot } from "./metrics";
 export type HealthStatus = "ok" | "degraded";
 export type DependencyStatus = "ok" | "down";
 export type HealthCheckMode = "cloud" | "dev" | "mock" | "real" | "required";
+export type RuntimeEnvironment = "development" | "production" | "test";
+export type DatabaseRolePrivilegeEnforcement = "report-only" | "required";
 
-export interface HealthCheckResult {
+export interface HealthCheckResult<
+  TDetails extends Record<string, unknown> = Record<string, unknown>,
+> {
   status: DependencyStatus;
   latencyMs: number;
   mode: HealthCheckMode;
+  details?: TDetails;
   error?: string;
+}
+
+export interface DatabaseRolePrivilegeDetails extends Record<string, unknown> {
+  bypassRls: boolean;
+  enforcement: DatabaseRolePrivilegeEnforcement;
+  roleName: string;
+  safe: boolean;
+  sessionUser: string;
+  superuser: boolean;
 }
 
 export interface HealthPayload {
@@ -21,6 +35,7 @@ export interface HealthPayload {
   checkedAt: string;
   checks: {
     db: HealthCheckResult;
+    dbRole: HealthCheckResult<DatabaseRolePrivilegeDetails>;
     inngest: HealthCheckResult;
     redis: HealthCheckResult;
     realtime: HealthCheckResult;
@@ -34,6 +49,7 @@ export interface DatabaseProbe {
 
 export interface HealthCheckOptions {
   checkDb?: () => Promise<void>;
+  checkDbRole?: () => Promise<DatabaseRolePrivilegeDetails>;
   checkInngest?: () => Promise<void>;
   checkRedis?: () => Promise<void>;
   checkRealtime?: () => Promise<void>;
@@ -41,6 +57,7 @@ export interface HealthCheckOptions {
   fetchFn?: typeof fetch;
   httpTimeoutMs?: number;
   inngest?: InngestConfig;
+  nodeEnv?: RuntimeEnvironment;
   now?: () => Date;
   realtime?: RealtimeConfig;
   redisTimeoutMs?: number;
@@ -49,6 +66,98 @@ export interface HealthCheckOptions {
 
 export async function checkDatabase(db: DatabaseProbe): Promise<void> {
   await db.execute(sql`select 1`);
+}
+
+export class UnsafeDatabaseRoleError extends Error {
+  readonly details: DatabaseRolePrivilegeDetails;
+
+  constructor(details: DatabaseRolePrivilegeDetails) {
+    super(
+      `Database role "${details.roleName}" must not be superuser or BYPASSRLS (superuser=${details.superuser}, bypassRls=${details.bypassRls})`,
+    );
+    this.name = "UnsafeDatabaseRoleError";
+    this.details = details;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function rowsFromExecuteResult(result: unknown): unknown[] {
+  if (Array.isArray(result)) {
+    return result;
+  }
+  if (isRecord(result) && Array.isArray(result.rows)) {
+    return result.rows;
+  }
+  return [];
+}
+
+function requiredStringField(
+  row: Record<string, unknown>,
+  fieldName: string,
+): string {
+  const value = row[fieldName];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(
+      `Database role privilege probe returned invalid ${fieldName}`,
+    );
+  }
+  return value;
+}
+
+function normalizeDatabaseRolePrivilegeDetails(
+  row: unknown,
+  enforcement: DatabaseRolePrivilegeEnforcement,
+): DatabaseRolePrivilegeDetails {
+  if (!isRecord(row)) {
+    throw new Error("Database role privilege probe returned an invalid row");
+  }
+
+  const superuser = row.superuser === true;
+  const bypassRls = row.bypass_rls === true;
+
+  return {
+    bypassRls,
+    enforcement,
+    roleName: requiredStringField(row, "role_name"),
+    safe: !superuser && !bypassRls,
+    sessionUser: requiredStringField(row, "session_user_name"),
+    superuser,
+  };
+}
+
+export async function checkDatabaseRolePrivileges(
+  db: DatabaseProbe,
+  {
+    enforce = false,
+  }: {
+    enforce?: boolean;
+  } = {},
+): Promise<DatabaseRolePrivilegeDetails> {
+  const result = await db.execute(sql`
+    select
+      current_user::text as role_name,
+      session_user::text as session_user_name,
+      rolsuper as superuser,
+      rolbypassrls as bypass_rls
+    from pg_catalog.pg_roles
+    where rolname = current_user
+  `);
+  const [row] = rowsFromExecuteResult(result);
+  if (!row) {
+    throw new Error("Database role privilege probe returned no rows");
+  }
+
+  const details = normalizeDatabaseRolePrivilegeDetails(
+    row,
+    enforce ? "required" : "report-only",
+  );
+  if (!details.safe && enforce) {
+    throw new UnsafeDatabaseRoleError(details);
+  }
+  return details;
 }
 
 function redisCommand(parts: string[]): string {
@@ -232,26 +341,55 @@ function errorMessage(error: unknown, extraSecrets: string[]): string {
   return String(redactSecrets(message, { extraSecrets }));
 }
 
-async function measureCheck(
-  check: () => Promise<void>,
+function errorDetails(error: unknown): Record<string, unknown> | undefined {
+  if (error instanceof UnsafeDatabaseRoleError) {
+    return error.details;
+  }
+  if (isRecord(error) && isRecord(error.details)) {
+    return error.details;
+  }
+  return undefined;
+}
+
+async function measureCheck<TDetails extends Record<string, unknown>>(
+  check: () => Promise<TDetails | undefined>,
   mode: HealthCheckMode,
   extraSecrets: string[] = [],
-): Promise<HealthCheckResult> {
+): Promise<HealthCheckResult<TDetails>> {
   const startedAt = Date.now();
   try {
-    await check();
+    const details = await check();
     return {
+      ...(details ? { details } : {}),
       latencyMs: Date.now() - startedAt,
       mode,
       status: "ok",
     };
   } catch (error) {
+    const details = errorDetails(error) as TDetails | undefined;
     return {
       error: errorMessage(error, extraSecrets),
+      ...(details ? { details } : {}),
       latencyMs: Date.now() - startedAt,
       mode,
       status: "down",
     };
+  }
+}
+
+function withoutDetails(check: () => Promise<void>): () => Promise<undefined> {
+  return async () => {
+    await check();
+    return undefined;
+  };
+}
+
+function dependencyCheckPassed(result: HealthCheckResult): boolean {
+  switch (result.status) {
+    case "ok":
+      return true;
+    case "down":
+      return false;
   }
 }
 
@@ -302,6 +440,7 @@ function configuredSecrets({
 
 export async function runHealthCheck({
   checkDb,
+  checkDbRole,
   checkInngest: checkInngestOverride,
   checkRedis,
   checkRealtime: checkRealtimeOverride,
@@ -309,6 +448,7 @@ export async function runHealthCheck({
   fetchFn,
   httpTimeoutMs,
   inngest,
+  nodeEnv = "development",
   now = () => new Date(),
   realtime,
   redisTimeoutMs,
@@ -321,6 +461,16 @@ export async function runHealthCheck({
         throw new Error("Database health probe is not configured");
       }
       return checkDatabase(db);
+    });
+  const dbRoleCheck =
+    checkDbRole ??
+    (() => {
+      if (!db) {
+        throw new Error("Database role privilege probe is not configured");
+      }
+      return checkDatabaseRolePrivileges(db, {
+        enforce: nodeEnv === "production",
+      });
     });
   const redisCheck =
     checkRedis ??
@@ -338,23 +488,31 @@ export async function runHealthCheck({
     (() => checkInngest(inngest, { fetchFn, timeoutMs: httpTimeoutMs }));
   const extraSecrets = configuredSecrets({ inngest, realtime });
 
-  const [dbResult, redisResult, realtimeResult, inngestResult] =
+  const [dbResult, dbRoleResult, redisResult, realtimeResult, inngestResult] =
     await Promise.all([
-      measureCheck(dbCheck, "required", extraSecrets),
-      measureCheck(redisCheck, "required", extraSecrets),
-      measureCheck(realtimeCheck, realtimeMode(realtime), extraSecrets),
-      measureCheck(inngestCheck, inngestMode(inngest), extraSecrets),
+      measureCheck(withoutDetails(dbCheck), "required", extraSecrets),
+      measureCheck(dbRoleCheck, "required", extraSecrets),
+      measureCheck(withoutDetails(redisCheck), "required", extraSecrets),
+      measureCheck(
+        withoutDetails(realtimeCheck),
+        realtimeMode(realtime),
+        extraSecrets,
+      ),
+      measureCheck(
+        withoutDetails(inngestCheck),
+        inngestMode(inngest),
+        extraSecrets,
+      ),
     ]);
 
   const checks = {
     db: dbResult,
+    dbRole: dbRoleResult,
     inngest: inngestResult,
     redis: redisResult,
     realtime: realtimeResult,
   };
-  const healthy = Object.values(checks).every(
-    (result) => result.status === "ok",
-  );
+  const healthy = Object.values(checks).every(dependencyCheckPassed);
 
   return {
     checkedAt: now().toISOString(),

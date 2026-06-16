@@ -13,6 +13,7 @@ import {
   fantasyMembers,
   fantasyRosterEntries,
   fantasyTeams,
+  fantasyTransactions,
   leagueSeasonSettings,
   leagues,
   statsCalculations,
@@ -220,6 +221,44 @@ function rosterCapableProviderFor(
         },
       ]);
     },
+    async getTransactions() {
+      return ok([]);
+    },
+  };
+}
+
+function transactionCapableProviderFor(
+  providerLeagueId: string,
+  type: "add" | "drop" | "trade" | "waiver" = "waiver",
+) {
+  const provider = rosterCapableProviderFor(providerLeagueId);
+  return {
+    ...provider,
+    capabilities: {
+      ...provider.capabilities,
+      dataClasses: {
+        ...provider.capabilities.dataClasses,
+        transactions: "full" as const,
+      },
+      supportsTransactions: true,
+    },
+    async getTransactions() {
+      return ok([
+        {
+          details: { priority: 3, source: "current-sync-fixture" },
+          leagueProviderId: providerLeagueId,
+          playerRefs: [{ provider: "espn" as const, providerId: "player-1" }],
+          provider: "espn" as const,
+          providerId: `${providerLeagueId}-transaction-1`,
+          season: 2026,
+          teamRefs: [
+            { provider: "espn" as const, providerId: "1", season: 2026 },
+          ],
+          timestamp: new Date("2026-09-10T12:00:00.000Z"),
+          type,
+        },
+      ]);
+    },
   };
 }
 
@@ -331,6 +370,11 @@ async function selectIngestedRows(leagueId: string) {
       .from(fantasyRosterEntries)
       .where(eq(fantasyRosterEntries.leagueId, leagueId))
       .orderBy(asc(fantasyRosterEntries.providerPlayerId));
+    const transactions = await tx
+      .select()
+      .from(fantasyTransactions)
+      .where(eq(fantasyTransactions.leagueId, leagueId))
+      .orderBy(asc(fantasyTransactions.providerTransactionId));
     const [league] = await tx
       .select()
       .from(leagues)
@@ -354,6 +398,7 @@ async function selectIngestedRows(leagueId: string) {
       rosterEntries,
       settings,
       teams,
+      transactions,
     };
   });
 }
@@ -527,6 +572,67 @@ describe("syncCurrentLeague", () => {
     );
   });
 
+  it("persists current transactions and no-ops on an identical re-ingest", async () => {
+    const providerLeagueId = `${marker}-current-transactions`;
+    const provider = transactionCapableProviderFor(providerLeagueId, "waiver");
+
+    const first = await syncCurrentLeague({
+      dataClasses: ["league", "teams", "members", "transactions"],
+      db: handle.db,
+      provider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+    expect(first.value.transactions).toEqual({
+      changed: 1,
+      total: 1,
+      unchanged: 0,
+    });
+    expect(first.value.changedTransactions).toEqual([
+      { id: expect.any(String), type: "waiver" },
+    ]);
+
+    const firstRows = await selectIngestedRows(first.value.league.id);
+    expect(firstRows.transactions).toHaveLength(1);
+    expect(firstRows.transactions[0]).toMatchObject({
+      details: { priority: 3, source: "current-sync-fixture" },
+      providerTransactionId: `${providerLeagueId}-transaction-1`,
+      type: "waiver",
+    });
+    expect(firstRows.transactions[0]?.id).toBe(
+      first.value.changedTransactions[0]?.id,
+    );
+    const firstCoverage = new Map(
+      firstRows.coverage.map((row) => [row.dataClass, row]),
+    );
+    expect(firstCoverage.get("transactions")).toMatchObject({
+      capability: "full",
+      itemCount: 1,
+      status: "complete",
+    });
+
+    const second = await syncCurrentLeague({
+      dataClasses: ["league", "teams", "members", "transactions"],
+      db: handle.db,
+      provider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw second.error;
+    expect(second.value.league.id).toBe(first.value.league.id);
+    expect(second.value.transactions).toEqual({
+      changed: 0,
+      total: 1,
+      unchanged: 1,
+    });
+    expect(second.value.changedTransactions).toEqual([]);
+  });
+
   it("uses explicit data classes to avoid broad provider fetches", async () => {
     const providerLeagueId = `${marker}-narrow-current`;
     const fullProvider = rosterCapableProviderFor(providerLeagueId);
@@ -570,6 +676,10 @@ describe("syncCurrentLeague", () => {
       ) {
         calls.push(`matchups:${scoringPeriod ?? "all"}`);
         return baseProvider.getMatchups();
+      },
+      async getTransactions() {
+        calls.push("transactions");
+        return err(new ProviderBlockedError("espn"));
       },
     };
 

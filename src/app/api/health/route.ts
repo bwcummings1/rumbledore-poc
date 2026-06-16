@@ -12,6 +12,7 @@ async function healthGet() {
   const payload = await runHealthCheck({
     db: getDb(),
     inngest: env.jobs.inngest,
+    nodeEnv: env.nodeEnv,
     realtime: env.realtime,
     redisUrl: env.redisUrl,
   });

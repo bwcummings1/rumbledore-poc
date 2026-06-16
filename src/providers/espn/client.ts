@@ -15,6 +15,7 @@ import {
   type NormalizedPostseasonSettings,
   type NormalizedSeasonBundle,
   type NormalizedTeam,
+  type NormalizedTransaction,
   ProviderBlockedError,
   type ProviderLeagueRef,
   ProviderNotFoundError,
@@ -58,6 +59,7 @@ export type EspnProvider = Pick<
   | "getMatchups"
   | "getMembers"
   | "getTeams"
+  | "getTransactions"
   | "id"
   | "name"
 >;
@@ -1018,6 +1020,13 @@ export class EspnDiscoveryClient {
     return ok(matchups);
   }
 
+  async getTransactions(
+    _session: EspnSession,
+    _ref: ProviderLeagueRef,
+  ): Promise<ProviderResult<NormalizedTransaction[]>> {
+    return ok([]);
+  }
+
   async getHistory(
     session: EspnSession,
     ref: ProviderLeagueRef,
@@ -1293,5 +1302,6 @@ export function createEspnDiscoveryProvider(
       client.getMatchups(session, ref, scoringPeriod),
     getMembers: (session, ref) => client.getMembers(session, ref),
     getTeams: (session, ref) => client.getTeams(session, ref),
+    getTransactions: (session, ref) => client.getTransactions(session, ref),
   };
 }

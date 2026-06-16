@@ -12,6 +12,7 @@ export const LIVE_INGESTION_DATA_CLASSES = [
   "members",
   "rosters",
   "matchups",
+  "transactions",
 ] as const satisfies readonly ProviderDataClass[];
 
 export type LiveIngestionDataClass =
@@ -29,6 +30,7 @@ const intervalOverrideSchema = z
     members: z.number().int().positive().optional(),
     rosters: z.number().int().positive().optional(),
     matchups: z.number().int().positive().optional(),
+    transactions: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -82,6 +84,7 @@ export const DEFAULT_POLL_POLICY_CONFIG = {
       members: DAY_MS,
       rosters: 5 * MINUTE_MS,
       matchups: MINUTE_MS,
+      transactions: 15 * MINUTE_MS,
     },
     in_season_off_hours: {
       league: DAY_MS,
@@ -89,6 +92,7 @@ export const DEFAULT_POLL_POLICY_CONFIG = {
       members: DAY_MS,
       rosters: HOUR_MS,
       matchups: HOUR_MS,
+      transactions: HOUR_MS,
     },
     off_season: {
       league: WEEK_MS,
@@ -96,6 +100,7 @@ export const DEFAULT_POLL_POLICY_CONFIG = {
       members: WEEK_MS,
       rosters: WEEK_MS,
       matchups: DAY_MS,
+      transactions: DAY_MS,
     },
   },
 } as const satisfies PollPolicyConfig;

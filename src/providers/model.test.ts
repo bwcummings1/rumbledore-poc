@@ -139,6 +139,21 @@ const fixtureProvider: FantasyProvider<FixtureCredentials, FixtureSession> = {
       },
     ]);
   },
+  async getTransactions() {
+    return ok([
+      {
+        details: { source: "fixture" },
+        leagueProviderId: "95050",
+        playerRefs: [{ provider: "espn", providerId: "player-1" }],
+        provider: "espn",
+        providerId: "transaction-1",
+        season: 2026,
+        teamRefs: [{ provider: "espn", providerId: "1", season: 2026 }],
+        timestamp: new Date("2026-09-10T12:00:00.000Z"),
+        type: "waiver",
+      },
+    ]);
+  },
   async getHistory() {
     return ok([
       {
@@ -168,17 +183,19 @@ describe("FantasyProvider contract", () => {
     const discovered = await fixtureProvider.discoverLeagues(auth.value);
     expect(discovered).toEqual(ok([leagueRef]));
 
-    const [league, teams, members, matchups] = await Promise.all([
+    const [league, teams, members, matchups, transactions] = await Promise.all([
       fixtureProvider.getLeague(auth.value, leagueRef),
       fixtureProvider.getTeams(auth.value, leagueRef),
       fixtureProvider.getMembers(auth.value, leagueRef),
       fixtureProvider.getMatchups(auth.value, leagueRef),
+      fixtureProvider.getTransactions(auth.value, leagueRef),
     ]);
 
     expect(league.ok && league.value.scoringType).toBe("H2H_POINTS");
     expect(teams.ok && teams.value[0].ownerMemberIds).toEqual(["member-1"]);
     expect(members.ok && members.value[0].providerId).toBe("member-1");
     expect(matchups.ok && matchups.value[0].winner).toBe("home");
+    expect(transactions.ok && transactions.value[0].type).toBe("waiver");
   });
 
   it("uses typed provider errors with stable codes and statuses", () => {

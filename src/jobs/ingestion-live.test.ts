@@ -72,6 +72,7 @@ const primaryLiveDataClasses = [
   "members",
   "rosters",
   "matchups",
+  "transactions",
 ] as const satisfies readonly ProviderDataClass[];
 
 let handle: DbHandle;
@@ -314,6 +315,7 @@ async function dataCoverageRowsFor(leagueId: string) {
 function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
   return {
     changedFinalMatchups: [],
+    changedTransactions: [],
     league: {
       changed: 0,
       id: seed.leagueId,
@@ -328,6 +330,7 @@ function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
     recordLoreClaims: [],
     rosters: emptySyncStats,
     teams: emptySyncStats,
+    transactions: emptySyncStats,
   };
 }
 
@@ -363,6 +366,7 @@ function currentSyncProvider({
       getMatchups: async () => err(new ProviderBlockedError("espn")),
       getMembers: async () => err(new ProviderBlockedError("espn")),
       getTeams: async () => err(new ProviderBlockedError("espn")),
+      getTransactions: async () => err(new ProviderBlockedError("espn")),
     },
   };
 }
@@ -860,9 +864,10 @@ describe("live ingestion jobs", () => {
     expect(result.planned[0]?.data.dataClasses).toEqual([
       "rosters",
       "matchups",
+      "transactions",
     ]);
     expect(result.planned[0]?.id).toContain(
-      "rosters,matchups:in_season_off_hours:",
+      "rosters,matchups,transactions:in_season_off_hours:",
     );
   });
 
@@ -1130,6 +1135,7 @@ describe("live ingestion jobs", () => {
       getMatchups: async () => err(new ProviderBlockedError("yahoo")),
       getMembers: async () => err(new ProviderBlockedError("yahoo")),
       getTeams: async () => err(new ProviderBlockedError("yahoo")),
+      getTransactions: async () => err(new ProviderBlockedError("yahoo")),
     };
 
     const response = await runLeagueIngest({
@@ -1317,6 +1323,75 @@ describe("live ingestion jobs", () => {
         },
       ],
       sentRecordBrokenCount: 0,
+    });
+  });
+
+  it("plans transaction and waiver content triggers through the worker step", async () => {
+    const seeded = await seedLiveLeague("worker-transaction-triggers");
+    const fixtureProvider = currentSyncProvider();
+    const transactionId = randomUUID();
+    const waiverId = randomUUID();
+    const fn = createLeagueIngestFunction(() => ({
+      cipher,
+      db: handle.db,
+      providers: { espn: fixtureProvider.provider },
+      syncCurrent: async () =>
+        ok({
+          ...successfulSyncResult(seeded),
+          changedTransactions: [
+            {
+              id: transactionId,
+              type: "add",
+            },
+            {
+              id: waiverId,
+              type: "waiver",
+            },
+          ],
+        }),
+    }));
+    const testEngine = new InngestTestEngine({ function: fn });
+    const event = {
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: `${marker} league worker-transaction-triggers`,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+      },
+      name: JOB_EVENTS.leagueIngest,
+    };
+
+    const stepRun = await testEngine.executeStep("sync-current-league", {
+      events: [event],
+    });
+
+    expect(stepRun.result).toMatchObject({
+      ok: true,
+      sentTransactionCount: 0,
+      sentWaiverCount: 0,
+      transactionEvents: [
+        {
+          data: {
+            leagueId: seeded.leagueId,
+            transactionId,
+          },
+          id: `${JOB_EVENTS.transaction}:${seeded.leagueId}:${transactionId}`,
+          name: JOB_EVENTS.transaction,
+        },
+      ],
+      waiverEvents: [
+        {
+          data: {
+            leagueId: seeded.leagueId,
+            waiverId,
+          },
+          id: `${JOB_EVENTS.waiver}:${seeded.leagueId}:${waiverId}`,
+          name: JOB_EVENTS.waiver,
+        },
+      ],
     });
   });
 

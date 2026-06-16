@@ -76,6 +76,8 @@ import {
   type LeagueIngestData,
   type RecordBrokenData,
   type SeasonRolloverCheckData,
+  type TransactionData,
+  type WaiverData,
 } from "../events";
 
 const DEFAULT_TICK_LIMIT = 500;
@@ -137,6 +139,7 @@ type LeagueIngestProvider = Pick<
   | "getMatchups"
   | "getMembers"
   | "getTeams"
+  | "getTransactions"
 > &
   Partial<Pick<FantasyProvider<unknown, FantasyProviderSession>, "getRosters">>;
 
@@ -207,6 +210,18 @@ export interface PlannedRecordBrokenEvent {
   name: typeof JOB_EVENTS.recordBroken;
 }
 
+export interface PlannedTransactionEvent {
+  data: TransactionData;
+  id: string;
+  name: typeof JOB_EVENTS.transaction;
+}
+
+export interface PlannedWaiverEvent {
+  data: WaiverData;
+  id: string;
+  name: typeof JOB_EVENTS.waiver;
+}
+
 export interface PlannedHistoricalBackfillEvent {
   data: ImportRequestedData;
   id: string;
@@ -248,8 +263,12 @@ export interface LeagueIngestResponse extends CurrentLeagueSyncResult {
   gameFinalEvents: PlannedGameFinalEvent[];
   ok: true;
   recordBrokenEvents: PlannedRecordBrokenEvent[];
+  transactionEvents: PlannedTransactionEvent[];
+  waiverEvents: PlannedWaiverEvent[];
   sentGameFinalCount: number;
   sentRecordBrokenCount: number;
+  sentTransactionCount: number;
+  sentWaiverCount: number;
 }
 
 export interface SeasonRolloverFailure {
@@ -1355,6 +1374,36 @@ function plannedRecordBrokenEventsFor(
   }));
 }
 
+function plannedTransactionEventsFor(
+  sync: CurrentLeagueSyncResult,
+): PlannedTransactionEvent[] {
+  return sync.changedTransactions
+    .filter((transaction) => transaction.type !== "waiver")
+    .map((transaction) => ({
+      data: {
+        leagueId: sync.league.id,
+        transactionId: transaction.id,
+      },
+      id: `${JOB_EVENTS.transaction}:${sync.league.id}:${transaction.id}`,
+      name: JOB_EVENTS.transaction,
+    }));
+}
+
+function plannedWaiverEventsFor(
+  sync: CurrentLeagueSyncResult,
+): PlannedWaiverEvent[] {
+  return sync.changedTransactions
+    .filter((transaction) => transaction.type === "waiver")
+    .map((transaction) => ({
+      data: {
+        leagueId: sync.league.id,
+        waiverId: transaction.id,
+      },
+      id: `${JOB_EVENTS.waiver}:${sync.league.id}:${transaction.id}`,
+      name: JOB_EVENTS.waiver,
+    }));
+}
+
 async function getDefaultIngestionTickDependencies(): Promise<IngestionTickDependencies> {
   const [{ getEnv }, { getDb }] = await Promise.all([
     import("@/core/env"),
@@ -1597,6 +1646,8 @@ export async function runLeagueIngest({
 
   const gameFinalEvents = plannedGameFinalEventsFor(sync.value);
   const recordBrokenEvents = plannedRecordBrokenEventsFor(sync.value);
+  const transactionEvents = plannedTransactionEventsFor(sync.value);
+  const waiverEvents = plannedWaiverEventsFor(sync.value);
 
   return {
     dataClasses: data.dataClasses ?? [...PROVIDER_DATA_CLASSES],
@@ -1604,8 +1655,12 @@ export async function runLeagueIngest({
     gameFinalEvents,
     ok: true,
     recordBrokenEvents,
+    transactionEvents,
+    waiverEvents,
     sentGameFinalCount: 0,
     sentRecordBrokenCount: 0,
+    sentTransactionCount: 0,
+    sentWaiverCount: 0,
     ...sync.value,
   };
 }
@@ -1874,10 +1929,21 @@ export function createLeagueIngestFunction(
             result.recordBrokenEvents,
           );
         }
+        if (result.transactionEvents.length > 0) {
+          await step.sendEvent(
+            "send-transaction-events",
+            result.transactionEvents,
+          );
+        }
+        if (result.waiverEvents.length > 0) {
+          await step.sendEvent("send-waiver-events", result.waiverEvents);
+        }
         return {
           ...result,
           sentGameFinalCount: result.gameFinalEvents.length,
           sentRecordBrokenCount: result.recordBrokenEvents.length,
+          sentTransactionCount: result.transactionEvents.length,
+          sentWaiverCount: result.waiverEvents.length,
         };
       }),
   );

@@ -4,8 +4,10 @@ import type { AddressInfo } from "node:net";
 import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  checkDatabaseRolePrivileges,
   checkInngest,
   checkRealtime,
+  type DatabaseRolePrivilegeDetails,
   pingRedis,
   runHealthCheck,
 } from "./health";
@@ -15,6 +17,22 @@ let server: net.Server | undefined;
 
 function fixtureValue(...parts: string[]): string {
   return parts.join("-");
+}
+
+function dbRoleFixture(
+  overrides: Partial<DatabaseRolePrivilegeDetails> = {},
+): DatabaseRolePrivilegeDetails {
+  const superuser = overrides.superuser ?? false;
+  const bypassRls = overrides.bypassRls ?? false;
+  return {
+    bypassRls,
+    enforcement: "report-only",
+    roleName: "rumbledore_app",
+    safe: !superuser && !bypassRls,
+    sessionUser: "rumbledore_app",
+    superuser,
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -63,6 +81,7 @@ describe("health checks", () => {
 
     const payload = await runHealthCheck({
       checkDb: async () => undefined,
+      checkDbRole: async () => dbRoleFixture(),
       checkRedis: async () => undefined,
       now: () => new Date("2026-06-11T12:00:00.000Z"),
     });
@@ -71,6 +90,19 @@ describe("health checks", () => {
       checkedAt: "2026-06-11T12:00:00.000Z",
       checks: {
         db: { latencyMs: expect.any(Number), mode: "required", status: "ok" },
+        dbRole: {
+          details: {
+            bypassRls: false,
+            enforcement: "report-only",
+            roleName: "rumbledore_app",
+            safe: true,
+            sessionUser: "rumbledore_app",
+            superuser: false,
+          },
+          latencyMs: expect.any(Number),
+          mode: "required",
+          status: "ok",
+        },
         inngest: { latencyMs: expect.any(Number), mode: "mock", status: "ok" },
         redis: {
           latencyMs: expect.any(Number),
@@ -132,6 +164,7 @@ describe("health checks", () => {
   it("reports degraded with per-dependency errors when a check fails", async () => {
     const payload = await runHealthCheck({
       checkDb: async () => undefined,
+      checkDbRole: async () => dbRoleFixture(),
       checkRedis: async () => {
         throw new Error("redis unavailable");
       },
@@ -151,6 +184,7 @@ describe("health checks", () => {
     const serviceFixture = fixtureValue("service", "fixture");
     const payload = await runHealthCheck({
       checkDb: async () => undefined,
+      checkDbRole: async () => dbRoleFixture(),
       checkInngest: async () => undefined,
       checkRedis: async () => undefined,
       checkRealtime: async () => {
@@ -186,6 +220,87 @@ describe("health checks", () => {
     expect(JSON.stringify(payload)).not.toContain(serviceFixture);
     expect(JSON.stringify(payload)).not.toContain(jwtFixture);
     expect(JSON.stringify(payload)).not.toContain(eventFixture);
+  });
+
+  it("reports database role privileges from pg_roles", async () => {
+    const execute = vi.fn(async () => ({
+      rows: [
+        {
+          bypass_rls: false,
+          role_name: "app_role",
+          session_user_name: "app_login",
+          superuser: false,
+        },
+      ],
+    }));
+
+    await expect(checkDatabaseRolePrivileges({ execute })).resolves.toEqual({
+      bypassRls: false,
+      enforcement: "report-only",
+      roleName: "app_role",
+      safe: true,
+      sessionUser: "app_login",
+      superuser: false,
+    });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("reports unsafe database roles without degrading outside production", async () => {
+    const payload = await runHealthCheck({
+      checkDb: async () => undefined,
+      checkDbRole: async () =>
+        dbRoleFixture({
+          roleName: "local_owner",
+          safe: false,
+          superuser: true,
+        }),
+      checkRedis: async () => undefined,
+      nodeEnv: "development",
+    });
+
+    expect(payload.status).toBe("ok");
+    expect(payload.checks.dbRole).toMatchObject({
+      details: {
+        roleName: "local_owner",
+        safe: false,
+        superuser: true,
+      },
+      status: "ok",
+    });
+  });
+
+  it("degrades in production when the database role can bypass RLS", async () => {
+    const execute = vi.fn(async () => ({
+      rows: [
+        {
+          bypass_rls: true,
+          role_name: "unsafe_app",
+          session_user_name: "unsafe_app",
+          superuser: false,
+        },
+      ],
+    }));
+
+    const payload = await runHealthCheck({
+      checkDb: async () => undefined,
+      checkDbRole: () =>
+        checkDatabaseRolePrivileges({ execute }, { enforce: true }),
+      checkRedis: async () => undefined,
+      nodeEnv: "production",
+    });
+
+    expect(payload.status).toBe("degraded");
+    expect(payload.checks.dbRole).toMatchObject({
+      details: {
+        bypassRls: true,
+        enforcement: "required",
+        roleName: "unsafe_app",
+        safe: false,
+        superuser: false,
+      },
+      error: expect.stringContaining("BYPASSRLS"),
+      status: "down",
+    });
   });
 
   it("pings a Redis-compatible TCP endpoint with RESP PING", async () => {
