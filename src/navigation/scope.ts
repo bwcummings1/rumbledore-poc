@@ -151,6 +151,7 @@ const LEAGUE_SECTION_BY_SEGMENT: ReadonlyMap<string, LeagueSectionId> = new Map(
     ...LEAGUE_NAVIGATION_SECTIONS.map(
       (section) => [section.pathSegment, section.id] as const,
     ),
+    ["cast", "press"],
     ["feed", "press"],
     ["posts", "press"],
     ["invite", "members"],

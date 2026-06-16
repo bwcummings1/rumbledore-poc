@@ -336,6 +336,17 @@ html {
   animation-duration: var(--motion-duration-slow);
 }
 
+.orb[data-state="speaking"] {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--primary) 34%, transparent),
+    var(--orb-shadow, var(--elevation-raised)),
+    var(--bevel, none);
+}
+
+.orb[data-state="speaking"]::after {
+  opacity: 0.56;
+}
+
 .orb.muted,
 .orb.offline,
 .orb[data-state="muted"],
@@ -352,6 +363,66 @@ html {
 .orb[data-state="offline"]::before {
   animation: none;
   filter: saturate(0.16) brightness(0.72);
+}
+
+.orb[data-persona="commissioner"] {
+  --orb-fill: conic-gradient(
+    from 40deg,
+    var(--steel),
+    var(--lilac),
+    var(--steel-soft),
+    var(--lilac)
+  );
+}
+
+.orb[data-persona="analyst"] {
+  --orb-fill: conic-gradient(
+    from 30deg,
+    var(--steel),
+    var(--steel-soft),
+    var(--lilac),
+    var(--steel)
+  );
+}
+
+.orb[data-persona="narrator"] {
+  --orb-fill: conic-gradient(
+    from 50deg,
+    var(--lilac-deep),
+    var(--lilac-hi),
+    var(--steel),
+    var(--lilac-deep)
+  );
+}
+
+.orb[data-persona="trash_talker"] {
+  --orb-fill: conic-gradient(
+    from 20deg,
+    var(--coral),
+    var(--amber),
+    var(--lilac),
+    var(--coral)
+  );
+}
+
+.orb[data-persona="beat_reporter"] {
+  --orb-fill: conic-gradient(
+    from 80deg,
+    var(--amber),
+    var(--lilac-hi),
+    var(--steel),
+    var(--amber)
+  );
+}
+
+.orb[data-persona="betting_advisor"] {
+  --orb-fill: conic-gradient(
+    from 70deg,
+    var(--amber),
+    var(--steel-soft),
+    var(--lilac),
+    var(--amber)
+  );
 }
 
 .bezel::before,

@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowRight,
+  Bot,
   CalendarDays,
   Clapperboard,
   ListOrdered,
@@ -812,13 +813,24 @@ function PressTeaserSection({
       ) : (
         <EmptyState
           action={
-            <Link
-              href={`/leagues/${data.league.id}/press`}
-              className={cn(buttonVariants({ className: "w-fit" }))}
-            >
-              Unlock the cast
-              <ArrowRight data-icon="inline-end" />
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={`/leagues/${data.league.id}/cast`}
+                className={cn(
+                  buttonVariants({ className: "w-fit", variant: "outline" }),
+                )}
+              >
+                <Bot data-icon="inline-start" />
+                Cast roster
+              </Link>
+              <Link
+                href={`/leagues/${data.league.id}/press`}
+                className={cn(buttonVariants({ className: "w-fit" }))}
+              >
+                Unlock the cast
+                <ArrowRight data-icon="inline-end" />
+              </Link>
+            </div>
           }
           title="The Press is quiet"
         >
@@ -937,6 +949,15 @@ export function LeagueHomeView({
             >
               <UserPlus data-icon="inline-start" />
               Invite
+            </Link>
+            <Link
+              href={`/leagues/${data.league.id}/cast`}
+              className={cn(
+                buttonVariants({ className: "w-fit", variant: "outline" }),
+              )}
+            >
+              <Bot data-icon="inline-start" />
+              Cast
             </Link>
             <Link
               href={`/leagues/${data.league.id}/press`}

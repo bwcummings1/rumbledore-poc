@@ -48,7 +48,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Compose the entitlement/upgrade and gated states (graceful, on-brand, never a broken page). (specs/32)
 
 ### Y. AI cast, lore & onboarding surfaces (see specs/33)
-- [ ] Build the AI cast presence (orb identity, persona cards/bylines, the cast chat and insight cards). (specs/33)
+- [x] Build the AI cast presence (orb identity, persona cards/bylines, the cast chat and insight cards). (specs/33)
 - [ ] Build the instigator UI (seed-debate / poll / lore-claim / verdict) and the shared vote widget. (specs/33)
 - [ ] Build the lore mechanic UI (submit, vote with quorum, canon ledger, branch/dispute trees, challenge). (specs/33)
 - [ ] Build the onboarding flows (provider connect, hosted-browser frame, discovery, leaguemate detection, invite, claim-your-team). (specs/33)

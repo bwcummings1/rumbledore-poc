@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **AUSPEX entitlement/upgrade gated-state composition landed** with reason-aware locked cards, server-resolved Home cast gating, personal-agent upgrade anchors, and no-pricing tier explainer.
+Keep it current. Last updated: 2026-06-16 — **AUSPEX AI cast presence landed** with a league Cast surface, persona-tinted orb/byline primitives, read-only persona dossiers, persisted-content insight cards, and a collapsible cast thread.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: AUSPEX AI cast presence landed — `/leagues/[leagueId]/cast` now renders the six persona cards from league/default persona data, persona-tinted orb bylines, persisted-content insight cards, a collapsible cast thread, and league-home Cast entry points.
 - 2026-06-16: AUSPEX entitlement/upgrade gated-state composition landed — locked cards now map typed entitlement reasons to accessible preview-backed copy, League Home resolves the cast gate server-side without hiding the substrate, and `/you` includes a no-pricing FREE/PREMIUM/INDIVIDUAL tier explainer.
 - 2026-06-16: AUSPEX Records/News/Settings surface composition landed — Records gained anchored catalog navigation plus responsive sortable manager/H2H tables, Central News was verified on the existing editorial register, and You/data-steward/lore-steward surfaces now use provider reconnect rows, locked states, banners, and confirm-gated queues.
 - 2026-06-16: AUSPEX Sportsbook surface landed — `/leagues/[leagueId]/bet` now frames event-grouped markets, a locked-price Parlay Console with mobile sheet trigger, amber rolling-bankroll LCD loop, open/history slip ledger tabs, offline read-only treatment, and a sportsbook-shaped skeleton.

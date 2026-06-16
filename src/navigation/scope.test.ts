@@ -113,6 +113,11 @@ describe("deriveActiveNavigationState", () => {
       scope: "league",
       sectionId: "press",
     });
+    expect(deriveActiveNavigationState("/leagues/abc/cast")).toMatchObject({
+      leagueId: "abc",
+      scope: "league",
+      sectionId: "press",
+    });
     expect(deriveActiveNavigationState("/leagues/abc/bet")).toMatchObject({
       leagueId: "abc",
       scope: "league",
@@ -208,6 +213,12 @@ describe("league navigation hrefs", () => {
         deriveActiveNavigationState("/leagues/current/lore/new"),
       ),
     ).toBe("/leagues/next/lore");
+    expect(
+      getLeagueSwitchHref(
+        "next",
+        deriveActiveNavigationState("/leagues/current/cast"),
+      ),
+    ).toBe("/leagues/next/press");
     expect(
       getLeagueSwitchHref(
         "next",
