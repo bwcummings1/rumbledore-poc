@@ -1,3 +1,5 @@
+import type { SpendGuardProvider, SpendGuardUnit } from "./env/schema";
+
 type MetricKind = "api" | "job";
 
 export interface MetricBucketSnapshot {
@@ -22,6 +24,35 @@ export interface MetricsSnapshot {
     functions: Record<string, MetricBucketSnapshot>;
     total: MetricBucketSnapshot;
   };
+  providerUsage: {
+    providers: Partial<Record<SpendGuardProvider, ProviderUsageSnapshot>>;
+    total: ProviderUsageTotalSnapshot;
+  };
+}
+
+export interface ProviderUsageOperationSnapshot {
+  callCount: number;
+  demotionCount: number;
+  totalUnits: number;
+}
+
+export interface ProviderUsageSnapshot {
+  callCount: number;
+  cap: number;
+  demotionCount: number;
+  latestCumulative: number;
+  operations: Record<string, ProviderUsageOperationSnapshot>;
+  percentConsumed: number;
+  realCallCount: number;
+  totalUnits: number;
+  unit: SpendGuardUnit;
+}
+
+export interface ProviderUsageTotalSnapshot {
+  callCount: number;
+  demotionCount: number;
+  realCallCount: number;
+  totalUnits: number;
 }
 
 interface MetricRecord {
@@ -34,6 +65,19 @@ const MAX_SAMPLES_PER_BUCKET = 500;
 
 const apiBuckets = new Map<string, MetricRecord[]>();
 const jobBuckets = new Map<string, MetricRecord[]>();
+const providerUsageBuckets = new Map<
+  SpendGuardProvider,
+  ProviderUsageRecord[]
+>();
+
+interface ProviderUsageRecord {
+  cap: number;
+  cumulative: number;
+  demoted: boolean;
+  operation: string;
+  unit: SpendGuardUnit;
+  units: number;
+}
 
 function clampDuration(durationMs: number): number {
   return Math.max(0, Math.round(durationMs));
@@ -52,6 +96,18 @@ function appendSample(
   buckets.set(key, samples);
 }
 
+function appendProviderUsageSample(
+  provider: SpendGuardProvider,
+  record: ProviderUsageRecord,
+) {
+  const samples = providerUsageBuckets.get(provider) ?? [];
+  samples.push(record);
+  if (samples.length > MAX_SAMPLES_PER_BUCKET) {
+    samples.splice(0, samples.length - MAX_SAMPLES_PER_BUCKET);
+  }
+  providerUsageBuckets.set(provider, samples);
+}
+
 function percentile95(durations: number[]): number {
   if (durations.length === 0) {
     return 0;
@@ -59,6 +115,13 @@ function percentile95(durations: number[]): number {
   const sorted = [...durations].sort((a, b) => a - b);
   const index = Math.max(0, Math.ceil(sorted.length * 0.95) - 1);
   return sorted[index] ?? 0;
+}
+
+function percentConsumed(cumulative: number, cap: number): number {
+  if (cap <= 0) {
+    return 0;
+  }
+  return Math.round((cumulative / cap) * 10_000) / 100;
 }
 
 function snapshotBucket(samples: MetricRecord[]): MetricBucketSnapshot {
@@ -72,6 +135,46 @@ function snapshotBucket(samples: MetricRecord[]): MetricBucketSnapshot {
     errorCount: samples.length - successCount,
     p95DurationMs: percentile95(durations),
     successCount,
+  };
+}
+
+function snapshotProviderUsage(
+  samples: ProviderUsageRecord[],
+): ProviderUsageSnapshot {
+  const latest = samples[samples.length - 1];
+  const operations: Record<string, ProviderUsageOperationSnapshot> = {};
+  let demotionCount = 0;
+  let totalUnits = 0;
+  for (const sample of samples) {
+    totalUnits += sample.units;
+    if (sample.demoted) {
+      demotionCount += 1;
+    }
+    const operation = operations[sample.operation] ?? {
+      callCount: 0,
+      demotionCount: 0,
+      totalUnits: 0,
+    };
+    operation.callCount += 1;
+    operation.totalUnits += sample.units;
+    if (sample.demoted) {
+      operation.demotionCount += 1;
+    }
+    operations[sample.operation] = operation;
+  }
+
+  const cap = latest?.cap ?? 0;
+  const latestCumulative = latest?.cumulative ?? 0;
+  return {
+    callCount: samples.length,
+    cap,
+    demotionCount,
+    latestCumulative,
+    operations,
+    percentConsumed: percentConsumed(latestCumulative, cap),
+    realCallCount: samples.length - demotionCount,
+    totalUnits,
+    unit: latest?.unit ?? "requests",
   };
 }
 
@@ -89,6 +192,38 @@ function snapshotApiBucket(samples: MetricRecord[]): ApiMetricSnapshot {
 
 function flattenBuckets(buckets: Map<string, MetricRecord[]>): MetricRecord[] {
   return [...buckets.values()].flat();
+}
+
+function providerUsageSnapshots(): Partial<
+  Record<SpendGuardProvider, ProviderUsageSnapshot>
+> {
+  return Object.fromEntries(
+    [...providerUsageBuckets.entries()].map(([provider, samples]) => [
+      provider,
+      snapshotProviderUsage(samples),
+    ]),
+  ) as Partial<Record<SpendGuardProvider, ProviderUsageSnapshot>>;
+}
+
+function providerUsageTotal(
+  providers: Partial<Record<SpendGuardProvider, ProviderUsageSnapshot>>,
+): ProviderUsageTotalSnapshot {
+  const snapshots = Object.values(providers);
+  return {
+    callCount: snapshots.reduce((sum, snapshot) => sum + snapshot.callCount, 0),
+    demotionCount: snapshots.reduce(
+      (sum, snapshot) => sum + snapshot.demotionCount,
+      0,
+    ),
+    realCallCount: snapshots.reduce(
+      (sum, snapshot) => sum + snapshot.realCallCount,
+      0,
+    ),
+    totalUnits: snapshots.reduce(
+      (sum, snapshot) => sum + snapshot.totalUnits,
+      0,
+    ),
+  };
 }
 
 export function metricKey({
@@ -136,6 +271,34 @@ export function recordJobMetric({
   });
 }
 
+export function recordProviderUsage({
+  cap,
+  cumulative,
+  demoted,
+  operation,
+  provider,
+  unit,
+  units,
+}: {
+  cap: number;
+  cumulative: number;
+  demoted: boolean;
+  operation: string;
+  provider: SpendGuardProvider;
+  unit: SpendGuardUnit;
+  units: number;
+}): ProviderUsageSnapshot {
+  appendProviderUsageSample(provider, {
+    cap,
+    cumulative,
+    demoted,
+    operation,
+    unit,
+    units: Math.max(0, Math.round(units)),
+  });
+  return snapshotProviderUsage(providerUsageBuckets.get(provider) ?? []);
+}
+
 export function getMetricsSnapshot(
   now: () => Date = () => new Date(),
 ): MetricsSnapshot {
@@ -151,6 +314,7 @@ export function getMetricsSnapshot(
       snapshotBucket(samples),
     ]),
   );
+  const providers = providerUsageSnapshots();
 
   return {
     api: {
@@ -161,6 +325,10 @@ export function getMetricsSnapshot(
     jobs: {
       functions,
       total: snapshotBucket(flattenBuckets(jobBuckets)),
+    },
+    providerUsage: {
+      providers,
+      total: providerUsageTotal(providers),
     },
   };
 }
@@ -224,4 +392,5 @@ export function recordApiHandler<Args extends unknown[]>(
 export function resetMetricsForTests() {
   apiBuckets.clear();
   jobBuckets.clear();
+  providerUsageBuckets.clear();
 }

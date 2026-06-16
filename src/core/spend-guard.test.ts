@@ -1,12 +1,13 @@
 // @vitest-environment node
 import net from "node:net";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SPEND_GUARD_CAPS,
   type SpendGuardConfig,
   type SpendGuardProvider,
 } from "./env/schema";
 import { createLogger } from "./logging";
+import { getMetricsSnapshot, resetMetricsForTests } from "./metrics";
 import {
   MemorySpendCounterStore,
   RedisSpendCounterStore,
@@ -16,6 +17,14 @@ import {
 
 function testLogger() {
   return createLogger({ sink: () => undefined });
+}
+
+function parseLogLine(line: string): Record<string, unknown> {
+  try {
+    return JSON.parse(line) as Record<string, unknown>;
+  } catch (cause) {
+    throw new Error("Expected provider usage log to be valid JSON", { cause });
+  }
 }
 
 function guardConfig(
@@ -133,6 +142,10 @@ async function startRedisCounterServer(): Promise<{
 
 const redisServers: Array<{ close: () => Promise<void> }> = [];
 
+beforeEach(() => {
+  resetMetricsForTests();
+});
+
 afterEach(async () => {
   await Promise.all(redisServers.splice(0).map((server) => server.close()));
 });
@@ -161,6 +174,84 @@ describe("SpendGuard", () => {
     await expect(guard.snapshot("tavily")).resolves.toMatchObject({
       cap: 10,
       cumulative: 3,
+    });
+  });
+
+  it("emits a secret-free provider usage log and metrics snapshot", async () => {
+    const lines: string[] = [];
+    const privateValue = ["fixture", "provider", "private", "value"].join("-");
+    const logger = createLogger({
+      extraSecrets: [privateValue],
+      now: () => new Date("2026-06-16T00:00:00.000Z"),
+      sink: (line) => lines.push(line),
+    });
+    const guard = new SpendGuard({
+      config: guardConfig({ anthropic: 10 }),
+      logger,
+      store: new MemorySpendCounterStore(),
+    });
+
+    const result = await runGuardedProviderCall({
+      guard,
+      logger,
+      mockCall: vi.fn(async () => "mock"),
+      operation: "llm.generate",
+      provider: "anthropic",
+      realCall: vi.fn(async () => ({
+        usage: {
+          details: {
+            cacheCreationInputTokens: 1,
+            cacheReadInputTokens: 2,
+            inputTokens: 3,
+            outputTokens: 4,
+          },
+          units: 8,
+        },
+        value: "real",
+      })),
+    });
+
+    expect(result).toBe("real");
+    const serializedUsage = lines.find((line) =>
+      line.includes('"msg":"provider_usage"'),
+    );
+    expect(serializedUsage).toBeDefined();
+    expect(serializedUsage).not.toContain(privateValue);
+    expect(parseLogLine(serializedUsage ?? "{}")).toMatchObject({
+      cap: 10,
+      cumulative: 8,
+      demoted: false,
+      details: {
+        cacheCreationInputTokens: 1,
+        cacheReadInputTokens: 2,
+        inputTokens: 3,
+        outputTokens: 4,
+      },
+      level: "info",
+      msg: "provider_usage",
+      op: "llm.generate",
+      provider: "anthropic",
+      unit: "tokens",
+      units: 8,
+      window: "total-run",
+    });
+
+    expect(getMetricsSnapshot().providerUsage.providers.anthropic).toEqual({
+      callCount: 1,
+      cap: 10,
+      demotionCount: 0,
+      latestCumulative: 8,
+      operations: {
+        "llm.generate": {
+          callCount: 1,
+          demotionCount: 0,
+          totalUnits: 8,
+        },
+      },
+      percentConsumed: 80,
+      realCallCount: 1,
+      totalUnits: 8,
+      unit: "tokens",
     });
   });
 

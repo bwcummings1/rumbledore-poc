@@ -1,6 +1,9 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseEnv } from "@/core/env/schema";
+import { createLogger } from "@/core/logging";
+import { getMetricsSnapshot, resetMetricsForTests } from "@/core/metrics";
+import { MemorySpendCounterStore, SpendGuard } from "@/core/spend-guard";
 import type { Db } from "@/db/client";
 import {
   createBettingSettlementDependencies,
@@ -8,12 +11,17 @@ import {
   GuardedOddsProvider,
   GuardedResultsProvider,
 } from "./dependencies";
+import type { OddsProvider } from "./interfaces";
 import { MockOddsProvider, MockResultsProvider } from "./mocks";
 import { SportsDataIoResultsProvider, TheOddsApiProvider } from "./real";
 
 function fakeKey() {
   return ["fixture", "key"].join("-");
 }
+
+beforeEach(() => {
+  resetMetricsForTests();
+});
 
 describe("createOddsDependencies", () => {
   it("keeps odds mocked with zero paid configuration", () => {
@@ -41,6 +49,53 @@ describe("createOddsDependencies", () => {
     );
 
     expect(deps.provider).toBeInstanceOf(MockOddsProvider);
+  });
+
+  it("records one provider usage sample for the memoized real odds fetch", async () => {
+    const real: OddsProvider = {
+      getMarkets: vi.fn(async () => []),
+      getOdds: vi.fn(async () => []),
+      listEvents: vi.fn(async () => []),
+    };
+    const mock: OddsProvider = {
+      getMarkets: vi.fn(async () => []),
+      getOdds: vi.fn(async () => []),
+      listEvents: vi.fn(async () => []),
+    };
+    const env = parseEnv({ SPEND_GUARD_ODDS_REQUESTS: "10" });
+    const provider = new GuardedOddsProvider(
+      real,
+      mock,
+      new SpendGuard({
+        config: env.spendGuard,
+        logger: createLogger({ sink: () => undefined }),
+        store: new MemorySpendCounterStore(),
+      }),
+      createLogger({ sink: () => undefined }),
+    );
+
+    await provider.listEvents({ sport: "nfl" });
+    await provider.getMarkets({ providerEventId: "event-1", sport: "nfl" });
+
+    expect(real.listEvents).toHaveBeenCalledTimes(1);
+    expect(real.getMarkets).toHaveBeenCalledTimes(1);
+    expect(mock.listEvents).not.toHaveBeenCalled();
+    expect(getMetricsSnapshot().providerUsage.providers.odds).toMatchObject({
+      callCount: 1,
+      cap: 10,
+      demotionCount: 0,
+      latestCumulative: 1,
+      operations: {
+        "odds.listEvents": {
+          callCount: 1,
+          demotionCount: 0,
+          totalUnits: 1,
+        },
+      },
+      realCallCount: 1,
+      totalUnits: 1,
+      unit: "requests",
+    });
   });
 });
 

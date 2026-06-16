@@ -7,6 +7,7 @@ import {
   recordApiMetric,
   recordJobMetric,
   recordJobRun,
+  recordProviderUsage,
   resetMetricsForTests,
 } from "./metrics";
 
@@ -118,5 +119,70 @@ describe("metrics recorder", () => {
       errorCount: 1,
       successCount: 1,
     });
+  });
+
+  it("records provider usage totals without request details", () => {
+    const first = recordProviderUsage({
+      cap: 10,
+      cumulative: 3,
+      demoted: false,
+      operation: "web.fetch",
+      provider: "tavily",
+      unit: "requests",
+      units: 3,
+    });
+    const second = recordProviderUsage({
+      cap: 10,
+      cumulative: 10,
+      demoted: true,
+      operation: "web.fetch",
+      provider: "tavily",
+      unit: "requests",
+      units: 0,
+    });
+
+    expect(first).toMatchObject({
+      callCount: 1,
+      demotionCount: 0,
+      percentConsumed: 30,
+      realCallCount: 1,
+      totalUnits: 3,
+    });
+    expect(second).toMatchObject({
+      callCount: 2,
+      demotionCount: 1,
+      latestCumulative: 10,
+      percentConsumed: 100,
+      realCallCount: 1,
+      totalUnits: 3,
+    });
+
+    const snapshot = getMetricsSnapshot();
+    expect(snapshot.providerUsage.providers.tavily).toEqual({
+      callCount: 2,
+      cap: 10,
+      demotionCount: 1,
+      latestCumulative: 10,
+      operations: {
+        "web.fetch": {
+          callCount: 2,
+          demotionCount: 1,
+          totalUnits: 3,
+        },
+      },
+      percentConsumed: 100,
+      realCallCount: 1,
+      totalUnits: 3,
+      unit: "requests",
+    });
+    expect(snapshot.providerUsage.total).toEqual({
+      callCount: 2,
+      demotionCount: 1,
+      realCallCount: 1,
+      totalUnits: 3,
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("authorization");
+    expect(JSON.stringify(snapshot)).not.toContain("headers");
+    expect(JSON.stringify(snapshot)).not.toContain("cookie");
   });
 });

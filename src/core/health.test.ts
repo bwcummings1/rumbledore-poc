@@ -115,6 +115,15 @@ describe("health checks", () => {
             successCount: 0,
           },
         },
+        providerUsage: {
+          providers: {},
+          total: {
+            callCount: 0,
+            demotionCount: 0,
+            realCallCount: 0,
+            totalUnits: 0,
+          },
+        },
       },
       status: "ok",
     });

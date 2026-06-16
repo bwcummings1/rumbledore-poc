@@ -3,9 +3,11 @@ import tls from "node:tls";
 import type {
   SpendGuardConfig,
   SpendGuardProvider,
+  SpendGuardUnit,
   SpendGuardWindow,
 } from "./env/schema";
 import { logger as defaultLogger, type Logger } from "./logging";
+import { recordProviderUsage } from "./metrics";
 
 export type SpendGuardDecision = "allow" | "deny";
 
@@ -19,7 +21,9 @@ export interface SpendGuardRecordResult {
   cap: number;
   cumulative: number;
   provider: SpendGuardProvider;
+  unit: SpendGuardUnit;
   units: number;
+  window: SpendGuardWindow;
 }
 
 export interface SpendCounterStore {
@@ -331,7 +335,9 @@ export class SpendGuard {
       cap,
       cumulative,
       provider,
+      unit: this.unit(provider),
       units,
+      window: this.options.config.window,
     };
   }
 
@@ -339,18 +345,24 @@ export class SpendGuard {
     cap: number;
     cumulative: number;
     provider: SpendGuardProvider;
+    unit: SpendGuardUnit;
     window: SpendGuardWindow;
   }> {
     return {
       cap: this.cap(provider),
       cumulative: await this.read(provider),
       provider,
+      unit: this.unit(provider),
       window: this.options.config.window,
     };
   }
 
   private cap(provider: SpendGuardProvider): number {
     return this.options.config.providers[provider].cap;
+  }
+
+  private unit(provider: SpendGuardProvider): SpendGuardUnit {
+    return this.options.config.providers[provider].unit;
   }
 
   private async read(provider: SpendGuardProvider): Promise<number> {
@@ -402,6 +414,59 @@ export function createSpendGuard(env: EnvLike): SpendGuard {
   });
 }
 
+export function logProviderUsage({
+  cap,
+  capReached = false,
+  cumulative,
+  demoted,
+  details,
+  logger = defaultLogger,
+  operation,
+  provider,
+  unit,
+  units,
+  window,
+}: {
+  cap: number;
+  capReached?: boolean;
+  cumulative: number;
+  demoted: boolean;
+  details?: Record<string, number>;
+  logger?: Logger;
+  operation: string;
+  provider: SpendGuardProvider;
+  unit: SpendGuardUnit;
+  units: number;
+  window: SpendGuardWindow;
+}) {
+  const summary = recordProviderUsage({
+    cap,
+    cumulative,
+    demoted,
+    operation,
+    provider,
+    unit,
+    units,
+  });
+
+  logger.info("provider_usage", {
+    cap,
+    capReached,
+    callCount: summary.callCount,
+    cumulative,
+    demoted,
+    demotionCount: summary.demotionCount,
+    details,
+    op: operation,
+    percentConsumed: summary.percentConsumed,
+    provider,
+    realCallCount: summary.realCallCount,
+    unit,
+    units,
+    window,
+  });
+}
+
 export async function runGuardedProviderCall<T>({
   guard,
   logger = defaultLogger,
@@ -419,6 +484,17 @@ export async function runGuardedProviderCall<T>({
 }): Promise<T> {
   if ((await guard.check(provider)) === "deny") {
     const snapshot = await guard.snapshot(provider);
+    logProviderUsage({
+      cap: snapshot.cap,
+      cumulative: snapshot.cumulative,
+      demoted: true,
+      logger,
+      operation,
+      provider,
+      unit: snapshot.unit,
+      units: 0,
+      window: snapshot.window,
+    });
     logger.warn("provider_spend_guard_demoted", {
       cap: snapshot.cap,
       cumulative: snapshot.cumulative,
@@ -431,6 +507,19 @@ export async function runGuardedProviderCall<T>({
 
   const { usage, value } = await realCall();
   const record = await guard.record(provider, usage);
+  logProviderUsage({
+    cap: record.cap,
+    capReached: record.breached,
+    cumulative: record.cumulative,
+    demoted: false,
+    details: usage.details,
+    logger,
+    operation,
+    provider,
+    unit: record.unit,
+    units: record.units,
+    window: record.window,
+  });
   if (record.breached) {
     logger.warn("provider_spend_guard_cap_reached", {
       cap: record.cap,
@@ -438,7 +527,7 @@ export async function runGuardedProviderCall<T>({
       operation,
       provider,
       units: record.units,
-      window: (await guard.snapshot(provider)).window,
+      window: record.window,
     });
   }
   return value;

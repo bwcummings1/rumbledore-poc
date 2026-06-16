@@ -1,6 +1,8 @@
 import type { Env } from "@/core/env/schema";
+import type { Logger } from "@/core/logging";
 import {
   createSpendGuard,
+  logProviderUsage,
   runGuardedProviderCall,
   type SpendGuard,
 } from "@/core/spend-guard";
@@ -23,32 +25,49 @@ import type { BettingSettlementDependencies } from "./settlement";
 
 export class GuardedOddsProvider implements OddsProvider {
   private delegate: OddsProvider | null = null;
+  private demotedDelegate = false;
   private recordedRealUsage = false;
 
   constructor(
     readonly real: OddsProvider,
     private readonly mock: OddsProvider,
     private readonly guard: SpendGuard,
+    private readonly logger?: Logger,
   ) {}
 
   async listEvents(input: OddsProviderListInput): Promise<OddsEvent[]> {
+    const operation = "odds.listEvents";
     const delegate = await this.selectDelegate();
+    if (delegate !== this.real) {
+      await this.logDemotion(operation);
+      return delegate.listEvents(input);
+    }
     const value = await delegate.listEvents(input);
-    await this.recordRealUsage(delegate);
+    await this.recordRealUsage(operation);
     return value;
   }
 
   async getMarkets(input: OddsProviderEventInput): Promise<OddsMarket[]> {
+    const operation = "odds.getMarkets";
     const delegate = await this.selectDelegate();
+    if (delegate !== this.real) {
+      await this.logDemotion(operation);
+      return delegate.getMarkets(input);
+    }
     const value = await delegate.getMarkets(input);
-    await this.recordRealUsage(delegate);
+    await this.recordRealUsage(operation);
     return value;
   }
 
   async getOdds(input: OddsProviderEventInput): Promise<OddsQuote[]> {
+    const operation = "odds.getOdds";
     const delegate = await this.selectDelegate();
+    if (delegate !== this.real) {
+      await this.logDemotion(operation);
+      return delegate.getOdds(input);
+    }
     const value = await delegate.getOdds(input);
-    await this.recordRealUsage(delegate);
+    await this.recordRealUsage(operation);
     return value;
   }
 
@@ -57,18 +76,48 @@ export class GuardedOddsProvider implements OddsProvider {
       return this.delegate;
     }
 
-    this.delegate =
-      (await this.guard.check("odds")) === "deny" ? this.mock : this.real;
+    this.demotedDelegate = (await this.guard.check("odds")) === "deny";
+    this.delegate = this.demotedDelegate ? this.mock : this.real;
     return this.delegate;
   }
 
-  private async recordRealUsage(delegate: OddsProvider): Promise<void> {
-    if (delegate !== this.real || this.recordedRealUsage) {
+  private async recordRealUsage(operation: string): Promise<void> {
+    if (this.recordedRealUsage) {
       return;
     }
 
     this.recordedRealUsage = true;
-    await this.guard.record("odds", { units: 1 });
+    const record = await this.guard.record("odds", { units: 1 });
+    logProviderUsage({
+      cap: record.cap,
+      capReached: record.breached,
+      cumulative: record.cumulative,
+      demoted: false,
+      logger: this.logger,
+      operation,
+      provider: "odds",
+      unit: record.unit,
+      units: record.units,
+      window: record.window,
+    });
+  }
+
+  private async logDemotion(operation: string): Promise<void> {
+    if (!this.demotedDelegate) {
+      return;
+    }
+    const snapshot = await this.guard.snapshot("odds");
+    logProviderUsage({
+      cap: snapshot.cap,
+      cumulative: snapshot.cumulative,
+      demoted: true,
+      logger: this.logger,
+      operation,
+      provider: "odds",
+      unit: snapshot.unit,
+      units: 0,
+      window: snapshot.window,
+    });
   }
 }
 
