@@ -7,6 +7,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  MOTION_ATTRIBUTE,
+  MOTION_OFF_VALUE,
+  MOTION_STORAGE_KEY,
   THEME_COOKIE_NAME,
   THEME_STORAGE_KEY,
   THEME_SYSTEM_STORAGE_VALUE,
@@ -140,6 +143,10 @@ describe("theme preload script", () => {
     expect(script).toContain('"auspex"');
     expect(script).toContain(THEME_STORAGE_KEY);
     expect(script).toContain(THEME_COOKIE_NAME);
+    expect(script).toContain(MOTION_STORAGE_KEY);
+    expect(script).toContain(`root.setAttribute(motionAttribute`);
+    expect(script).toContain(MOTION_ATTRIBUTE);
+    expect(script).toContain(MOTION_OFF_VALUE);
   });
 });
 

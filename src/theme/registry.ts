@@ -134,6 +134,7 @@ export function createThemeCss(
       ),
     ),
     formatResponsiveTypeBlock(),
+    formatMotionOffBlock(),
     formatReducedMotionBlock(),
   ].join("\n\n");
 }
@@ -192,6 +193,17 @@ function formatReducedMotionBlock(): string {
       (name) => `    --${name}: ${variables[name]};`,
     ),
     "  }",
+    "}",
+  ].join("\n");
+}
+
+function formatMotionOffBlock(): string {
+  const variables = getReducedMotionCssVariables();
+  return [
+    ':root[data-motion="off"] {',
+    ...REDUCED_MOTION_CSS_VARIABLE_NAMES.map(
+      (name) => `  --${name}: ${variables[name]};`,
+    ),
     "}",
   ].join("\n");
 }

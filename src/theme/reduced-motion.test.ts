@@ -42,15 +42,26 @@ describe("reduced-motion theme tokens", () => {
   it("emits reduced-motion overrides after theme token blocks", () => {
     const css = createThemeCss();
     const mediaIndex = css.indexOf("@media (prefers-reduced-motion: reduce)");
+    const motionSwitchIndex = css.indexOf(':root[data-motion="off"]');
 
     expect(mediaIndex).toBeGreaterThan(
       css.lastIndexOf('[data-theme="palette-b"]'),
     );
+    expect(motionSwitchIndex).toBeGreaterThan(
+      css.lastIndexOf('[data-theme="palette-b"]'),
+    );
 
     const declarations = extractCssDeclarations(css.slice(mediaIndex));
+    const motionSwitchDeclarations = extractCssDeclarations(
+      css.slice(motionSwitchIndex, mediaIndex),
+    );
     for (const tokenName of REDUCED_MOTION_DURATION_TOKENS) {
       expect(
         parseCssDurationMs(declarations[`--${tokenName}`]),
+        tokenName,
+      ).toBeLessThanOrEqual(REDUCED_MOTION_DURATION_MS);
+      expect(
+        parseCssDurationMs(motionSwitchDeclarations[`--${tokenName}`]),
         tokenName,
       ).toBeLessThanOrEqual(REDUCED_MOTION_DURATION_MS);
     }
@@ -58,6 +69,9 @@ describe("reduced-motion theme tokens", () => {
       REDUCED_MOTION_DURATION_ALIAS_TOKENS,
     )) {
       expect(declarations[`--${aliasName}`]).toBe(`var(--${targetName})`);
+      expect(motionSwitchDeclarations[`--${aliasName}`]).toBe(
+        `var(--${targetName})`,
+      );
     }
   });
 
@@ -110,6 +124,15 @@ describe("reduced-motion theme tokens", () => {
     expect(globalsCss).toContain("var(--motion-duration-atmosphere)");
     expect(globalsCss).toContain(
       "var(--motion-ease-linear) infinite alternate",
+    );
+    expect(globalsCss).toContain(':root[data-motion="off"] .orb::before');
+    expect(globalsCss).toContain(
+      ':root[data-motion="off"] .auspex-wire__track',
+    );
+    expect(globalsCss).toContain(':root[data-motion="off"] .auspex-count-up');
+    expect(globalsCss).toContain(':root[data-motion="off"] .auspex-stinger');
+    expect(globalsCss).toContain(
+      ':root[data-motion="off"] .auspex-vote-meter__fill',
     );
   });
 });

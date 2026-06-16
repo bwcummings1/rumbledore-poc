@@ -6,6 +6,10 @@ import {
   type RegisteredThemeId,
 } from "./registry";
 import {
+  MOTION_ATTRIBUTE,
+  MOTION_OFF_VALUE,
+  MOTION_ON_VALUE,
+  MOTION_STORAGE_KEY,
   THEME_COOKIE_NAME,
   THEME_STORAGE_KEY,
   THEME_SYSTEM_STORAGE_VALUE,
@@ -81,6 +85,10 @@ export function createThemePreloadScript(
   const storageKey = ${JSON.stringify(THEME_STORAGE_KEY)};
   const cookieName = ${JSON.stringify(THEME_COOKIE_NAME)};
   const systemValue = ${JSON.stringify(THEME_SYSTEM_STORAGE_VALUE)};
+  const motionStorageKey = ${JSON.stringify(MOTION_STORAGE_KEY)};
+  const motionAttribute = ${JSON.stringify(MOTION_ATTRIBUTE)};
+  const motionOffValue = ${JSON.stringify(MOTION_OFF_VALUE)};
+  const motionOnValue = ${JSON.stringify(MOTION_ON_VALUE)};
 
   function readStoredTheme() {
     try {
@@ -118,6 +126,23 @@ export function createThemePreloadScript(
   root.classList.remove("dark", "light");
   root.classList.add(theme.mode);
   root.style.colorScheme = theme.colorScheme;
+
+  function resolveMotionPreference() {
+    const prefersReduced =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) return motionOffValue;
+
+    try {
+      return window.localStorage.getItem(motionStorageKey) === motionOffValue
+        ? motionOffValue
+        : motionOnValue;
+    } catch {}
+
+    return motionOnValue;
+  }
+
+  root.setAttribute(motionAttribute, resolveMotionPreference());
 })();`;
 }
 

@@ -2,3 +2,7 @@ export const THEME_STORAGE_KEY = "rumbledore.theme";
 export const THEME_COOKIE_NAME = "rumbledore_theme";
 export const THEME_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 export const THEME_SYSTEM_STORAGE_VALUE = "system";
+export const MOTION_STORAGE_KEY = "rumbledore.motion";
+export const MOTION_ATTRIBUTE = "data-motion";
+export const MOTION_ON_VALUE = "on";
+export const MOTION_OFF_VALUE = "off";

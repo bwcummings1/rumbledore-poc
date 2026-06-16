@@ -98,6 +98,45 @@ export type { SkeletonProps } from "./skeleton";
 export { Skeleton, skeletonVariants } from "./skeleton";
 export type { SliderProps } from "./slider";
 export { Slider } from "./slider";
+export type {
+  CanonizedMomentProps,
+  CastOrbStatusProps,
+  CountUpTone,
+  CountUpValueProps,
+  LivePulseDotProps,
+  LivePulseStatus,
+  ScoreboardMatchup,
+  ScoreboardStatus,
+  ScoreboardStripProps,
+  SpectacleConductorOptions,
+  SpectacleConductorState,
+  SpectacleEvent,
+  SpectacleEventKind,
+  SpectacleMotionMode,
+  SpectacleSeverity,
+  SpectacleStingerProps,
+  StingerKind,
+  VoteThresholdMeterProps,
+  WireItem,
+  WireItemKind,
+  WireStatus,
+  WireTickerProps,
+  WireVariant,
+} from "./spectacle";
+export {
+  CanonizedMoment,
+  CastOrbStatus,
+  CountUpValue,
+  completeSpectacleEvent,
+  createSpectacleConductorState,
+  enqueueSpectacleEvents,
+  LivePulseDot,
+  ScoreboardStrip,
+  SpectacleStinger,
+  shouldFireRecordBrokenStinger,
+  VoteThresholdMeter,
+  WireTicker,
+} from "./spectacle";
 export type { StatTileProps, StatTileTone } from "./stat-tile";
 export { StatTile } from "./stat-tile";
 export type { StatusPillProps, StatusTone } from "./status-pill";
