@@ -181,6 +181,28 @@ export interface AnthropicLlmClientOptions {
   modelForPersona?: (persona: AiPersona) => string;
 }
 
+export interface AnthropicUsageBreakdown {
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface AnthropicGenerateResult {
+  draft: BlogDraft;
+  usage: AnthropicUsageBreakdown;
+}
+
+interface AnthropicResponseWithUsage {
+  parsed_output?: unknown;
+  usage?: {
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+}
+
 function defaultModelForPersona(persona: AiPersona): string {
   return cheapAnthropicModelForPersona(persona);
 }
@@ -244,7 +266,13 @@ export class AnthropicLlmClient implements LlmClient {
   }
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
-    let response: { parsed_output?: unknown };
+    return (await this.generateWithUsage(request)).draft;
+  }
+
+  async generateWithUsage(
+    request: LlmGenerateRequest,
+  ): Promise<AnthropicGenerateResult> {
+    let response: AnthropicResponseWithUsage;
     try {
       response = await this.client.messages.parse({
         cache_control: { type: "ephemeral" },
@@ -292,7 +320,16 @@ export class AnthropicLlmClient implements LlmClient {
       });
     }
 
-    return parsed.data;
+    return {
+      draft: parsed.data,
+      usage: {
+        cacheCreationInputTokens:
+          response.usage?.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: response.usage?.cache_read_input_tokens ?? 0,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+      },
+    };
   }
 }
 

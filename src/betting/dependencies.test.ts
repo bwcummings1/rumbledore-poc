@@ -5,6 +5,8 @@ import type { Db } from "@/db/client";
 import {
   createBettingSettlementDependencies,
   createOddsDependencies,
+  GuardedOddsProvider,
+  GuardedResultsProvider,
 } from "./dependencies";
 import { MockOddsProvider, MockResultsProvider } from "./mocks";
 import { SportsDataIoResultsProvider, TheOddsApiProvider } from "./real";
@@ -26,7 +28,10 @@ describe("createOddsDependencies", () => {
       parseEnv({ THE_ODDS_API_KEY: fakeKey() }),
     );
 
-    expect(deps.provider).toBeInstanceOf(TheOddsApiProvider);
+    expect(deps.provider).toBeInstanceOf(GuardedOddsProvider);
+    expect((deps.provider as GuardedOddsProvider).real).toBeInstanceOf(
+      TheOddsApiProvider,
+    );
   });
 
   it("keeps odds mocked when forced even if its key is present", () => {
@@ -52,7 +57,10 @@ describe("createBettingSettlementDependencies", () => {
       parseEnv({ SPORTSDATAIO_API_KEY: fakeKey() }),
     );
 
-    expect(deps.resultsProvider).toBeInstanceOf(SportsDataIoResultsProvider);
+    expect(deps.resultsProvider).toBeInstanceOf(GuardedResultsProvider);
+    expect(
+      (deps.resultsProvider as GuardedResultsProvider).real,
+    ).toBeInstanceOf(SportsDataIoResultsProvider);
   });
 
   it("keeps SportsDataIO mocked when forced even if its key is present", () => {

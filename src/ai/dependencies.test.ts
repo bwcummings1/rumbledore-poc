@@ -4,7 +4,12 @@ import { parseEnv } from "@/core/env/schema";
 import type { Db } from "@/db/client";
 import { NoopPushNotifier, WebPushNotifier } from "@/push";
 import { NoopRealtimePublisher, SupabaseRealtimePublisher } from "@/realtime";
-import { createAiDependencies } from "./dependencies";
+import {
+  createAiDependencies,
+  GuardedEmbeddingProvider,
+  GuardedLlmClient,
+  GuardedWebGrounding,
+} from "./dependencies";
 import {
   DeterministicEmbeddingProvider,
   MockLlmClient,
@@ -28,8 +33,9 @@ function resolvedAnthropicModel(
   llm: unknown,
   persona: AiPersona,
 ): string | undefined {
+  const target = llm instanceof GuardedLlmClient ? llm.real : llm;
   return (
-    llm as { modelForPersona?: (persona: AiPersona) => string }
+    target as { modelForPersona?: (persona: AiPersona) => string }
   ).modelForPersona?.(persona);
 }
 
@@ -54,10 +60,19 @@ describe("createAiDependencies", () => {
       }),
     );
 
-    expect(deps.llm).toBeInstanceOf(AnthropicLlmClient);
-    expect(deps.web).toBeInstanceOf(TavilyWebGrounding);
-    expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
-    expect((deps.embeddings as VoyageEmbeddingProvider).model).toBe(
+    expect(deps.llm).toBeInstanceOf(GuardedLlmClient);
+    expect((deps.llm as GuardedLlmClient).real).toBeInstanceOf(
+      AnthropicLlmClient,
+    );
+    expect(deps.web).toBeInstanceOf(GuardedWebGrounding);
+    expect((deps.web as GuardedWebGrounding).real).toBeInstanceOf(
+      TavilyWebGrounding,
+    );
+    expect(deps.embeddings).toBeInstanceOf(GuardedEmbeddingProvider);
+    expect((deps.embeddings as GuardedEmbeddingProvider).real).toBeInstanceOf(
+      VoyageEmbeddingProvider,
+    );
+    expect((deps.embeddings as GuardedEmbeddingProvider).model).toBe(
       VOYAGE_EMBEDDING_MODEL,
     );
   });
@@ -104,8 +119,8 @@ describe("createAiDependencies", () => {
       }),
     );
 
-    expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
-    expect((deps.embeddings as VoyageEmbeddingProvider).model).toBe(
+    expect(deps.embeddings).toBeInstanceOf(GuardedEmbeddingProvider);
+    expect((deps.embeddings as GuardedEmbeddingProvider).model).toBe(
       "voyage-fixture-model",
     );
   });
@@ -122,8 +137,11 @@ describe("createAiDependencies", () => {
     );
 
     expect(deps.llm).toBeInstanceOf(MockLlmClient);
-    expect(deps.web).toBeInstanceOf(TavilyWebGrounding);
-    expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
+    expect(deps.web).toBeInstanceOf(GuardedWebGrounding);
+    expect((deps.web as GuardedWebGrounding).real).toBeInstanceOf(
+      TavilyWebGrounding,
+    );
+    expect(deps.embeddings).toBeInstanceOf(GuardedEmbeddingProvider);
   });
 
   it("keeps Tavily mocked when forced even if its key is present", () => {
@@ -137,9 +155,9 @@ describe("createAiDependencies", () => {
       }),
     );
 
-    expect(deps.llm).toBeInstanceOf(AnthropicLlmClient);
+    expect(deps.llm).toBeInstanceOf(GuardedLlmClient);
     expect(deps.web).toBeInstanceOf(MockWebGrounding);
-    expect(deps.embeddings).toBeInstanceOf(VoyageEmbeddingProvider);
+    expect(deps.embeddings).toBeInstanceOf(GuardedEmbeddingProvider);
   });
 
   it("keeps Voyage mocked when forced even if its key is present", () => {
@@ -153,8 +171,8 @@ describe("createAiDependencies", () => {
       }),
     );
 
-    expect(deps.llm).toBeInstanceOf(AnthropicLlmClient);
-    expect(deps.web).toBeInstanceOf(TavilyWebGrounding);
+    expect(deps.llm).toBeInstanceOf(GuardedLlmClient);
+    expect(deps.web).toBeInstanceOf(GuardedWebGrounding);
     expect(deps.embeddings).toBeInstanceOf(DeterministicEmbeddingProvider);
   });
 

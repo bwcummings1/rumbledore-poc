@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { VOYAGE_EMBEDDING_MODEL } from "@/ai/model-config";
 import {
   DEFAULT_ENTITLEMENT_CAPS,
+  DEFAULT_SPEND_GUARD_CAPS,
   DEV_AUTH_SECRET,
   DEV_CREDENTIAL_ENCRYPTION_KEY,
   DEV_PUSH_PUBLIC_KEY,
@@ -62,6 +63,10 @@ describe("parseEnv", () => {
       caps: DEFAULT_ENTITLEMENT_CAPS,
       devOverride: true,
       gateArenaAdvanced: false,
+    });
+    expect(env.spendGuard).toEqual({
+      providers: DEFAULT_SPEND_GUARD_CAPS,
+      window: "total-run",
     });
   });
 
@@ -211,6 +216,34 @@ describe("parseEnv", () => {
       parseEnv({ VOYAGE_EMBEDDING_MODEL: "voyage-fixture-model" }).ai
         .voyageEmbeddingModel,
     ).toBe("voyage-fixture-model");
+  });
+
+  it("defaults and overrides spend guard caps", () => {
+    const env = parseEnv({
+      SPEND_GUARD_ANTHROPIC_TOKENS: "1",
+      SPEND_GUARD_ODDS_REQUESTS: "2",
+      SPEND_GUARD_SPORTSDATAIO_REQUESTS: "3",
+      SPEND_GUARD_TAVILY_REQUESTS: "4",
+      SPEND_GUARD_VOYAGE_REQUESTS: "5",
+      SPEND_GUARD_WINDOW: "rolling-24h",
+    });
+
+    expect(env.spendGuard).toEqual({
+      providers: {
+        anthropic: { cap: 1, unit: "tokens" },
+        odds: { cap: 2, unit: "requests" },
+        sportsdataio: { cap: 3, unit: "requests" },
+        tavily: { cap: 4, unit: "requests" },
+        voyage: { cap: 5, unit: "requests" },
+      },
+      window: "rolling-24h",
+    });
+  });
+
+  it("rejects non-positive spend guard caps by variable name", () => {
+    expect(() => parseEnv({ SPEND_GUARD_TAVILY_REQUESTS: "0" })).toThrow(
+      /SPEND_GUARD_TAVILY_REQUESTS/,
+    );
   });
 
   it("goes real for realtime when Supabase publish and subscription credentials are set", () => {

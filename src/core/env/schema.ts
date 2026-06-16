@@ -112,11 +112,42 @@ export interface AiConfig {
   voyageEmbeddingModel: string;
 }
 
+export const SPEND_GUARD_PROVIDERS = [
+  "anthropic",
+  "odds",
+  "sportsdataio",
+  "tavily",
+  "voyage",
+] as const;
+export type SpendGuardProvider = (typeof SPEND_GUARD_PROVIDERS)[number];
+
+export const SPEND_GUARD_WINDOWS = ["total-run", "rolling-24h"] as const;
+export type SpendGuardWindow = (typeof SPEND_GUARD_WINDOWS)[number];
+export type SpendGuardUnit = "requests" | "tokens";
+
+export interface SpendGuardProviderConfig {
+  cap: number;
+  unit: SpendGuardUnit;
+}
+
+export interface SpendGuardConfig {
+  providers: Record<SpendGuardProvider, SpendGuardProviderConfig>;
+  window: SpendGuardWindow;
+}
+
 export const DEFAULT_ENTITLEMENT_CAPS = {
   aiPostsPerWeek: 25,
   individualLeaguesCovered: 10,
   maxPremiumLeaguesPerUser: null,
 } as const satisfies EntitlementCapsConfig;
+
+export const DEFAULT_SPEND_GUARD_CAPS = {
+  anthropic: { cap: 2_000_000, unit: "tokens" },
+  odds: { cap: 250, unit: "requests" },
+  sportsdataio: { cap: 250, unit: "requests" },
+  tavily: { cap: 250, unit: "requests" },
+  voyage: { cap: 25_000, unit: "requests" },
+} as const satisfies Record<SpendGuardProvider, SpendGuardProviderConfig>;
 
 // Dev-only fallback so the app boots with zero config; production requires BETTER_AUTH_SECRET.
 export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
@@ -214,6 +245,32 @@ const baseSchema = z.object({
   INGESTION_POLL_POLICY_JSON: z.string().trim().min(1).optional(),
   NEWS_RSS_FEED_URLS: z.string().trim().min(1).optional(),
   MOCK_NEWS_RSS: stringbool.optional(),
+  SPEND_GUARD_WINDOW: z.enum(SPEND_GUARD_WINDOWS).default("total-run"),
+  SPEND_GUARD_ANTHROPIC_TOKENS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_SPEND_GUARD_CAPS.anthropic.cap),
+  SPEND_GUARD_ODDS_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_SPEND_GUARD_CAPS.odds.cap),
+  SPEND_GUARD_SPORTSDATAIO_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_SPEND_GUARD_CAPS.sportsdataio.cap),
+  SPEND_GUARD_TAVILY_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_SPEND_GUARD_CAPS.tavily.cap),
+  SPEND_GUARD_VOYAGE_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_SPEND_GUARD_CAPS.voyage.cap),
 
   ANTHROPIC_API_KEY: secret.optional(),
   ANTHROPIC_MODEL_TIER: z.enum(ANTHROPIC_MODEL_TIERS).default("cheap"),
@@ -272,6 +329,7 @@ export interface Env {
   ai: AiConfig;
   news: NewsConfig;
   push: PushConfig;
+  spendGuard: SpendGuardConfig;
   services: Record<PaidService, ServiceConfig>;
 }
 
@@ -627,6 +685,31 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
           mock: true,
           publicKey: parsed.WEB_PUSH_PUBLIC_KEY ?? DEV_PUSH_PUBLIC_KEY,
         },
+    spendGuard: {
+      providers: {
+        anthropic: {
+          cap: parsed.SPEND_GUARD_ANTHROPIC_TOKENS,
+          unit: "tokens",
+        },
+        odds: {
+          cap: parsed.SPEND_GUARD_ODDS_REQUESTS,
+          unit: "requests",
+        },
+        sportsdataio: {
+          cap: parsed.SPEND_GUARD_SPORTSDATAIO_REQUESTS,
+          unit: "requests",
+        },
+        tavily: {
+          cap: parsed.SPEND_GUARD_TAVILY_REQUESTS,
+          unit: "requests",
+        },
+        voyage: {
+          cap: parsed.SPEND_GUARD_VOYAGE_REQUESTS,
+          unit: "requests",
+        },
+      },
+      window: parsed.SPEND_GUARD_WINDOW,
+    },
     services: {
       anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),
       odds: service(parsed.THE_ODDS_API_KEY, parsed.MOCK_ODDS),

@@ -8,7 +8,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 ### P. Real integrations & cost safety (see specs/25)
 - [x] Complete clean env-gated mock→real selection for Anthropic, Odds, SportsDataIO, Tavily, and Voyage. (specs/25)
 - [x] Default all AI to cheap models (Haiku, voyage-4-lite) via a model-tier config. (specs/25)
-- [ ] Build the per-provider spend guard that caps usage and falls back to mock on breach. (specs/25)
+- [x] Build the per-provider spend guard that caps usage and falls back to mock on breach. (specs/25)
 - [ ] Add secret-free usage logging/observability for provider calls. (specs/25)
 - [ ] Build the VCR fixture-first test harness with gated live-smoke validation per provider. (specs/25)
 

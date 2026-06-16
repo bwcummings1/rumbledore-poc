@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import type { Db } from "@/db/client";
 import { CompositeCentralNewsSource } from "./composite";
-import { createNewsDependencies } from "./dependencies";
+import {
+  createNewsDependencies,
+  GuardedCentralNewsSource,
+} from "./dependencies";
 import {
   MockRssCentralNewsSource,
   MockWebGroundingCentralNewsSource,
@@ -32,9 +35,13 @@ describe("createNewsDependencies", () => {
     );
 
     expect((deps.source as CompositeCentralNewsSource).sources).toEqual([
-      expect.any(TavilyCentralNewsSource),
+      expect.any(GuardedCentralNewsSource),
       expect.any(MockRssCentralNewsSource),
     ]);
+    const [grounding] = (deps.source as CompositeCentralNewsSource).sources;
+    expect((grounding as GuardedCentralNewsSource).real).toBeInstanceOf(
+      TavilyCentralNewsSource,
+    );
   });
 
   it("keeps Tavily grounding mocked when forced even if its key is present", () => {

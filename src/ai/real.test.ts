@@ -136,6 +136,12 @@ describe("AnthropicLlmClient", () => {
               tags: ["Fixture Team", "Preview"],
               title: "Title from Claude",
             },
+            usage: {
+              cache_creation_input_tokens: 30,
+              cache_read_input_tokens: 40,
+              input_tokens: 100,
+              output_tokens: 50,
+            },
           };
         },
       },
@@ -174,6 +180,16 @@ describe("AnthropicLlmClient", () => {
     });
     await llm.generate(requestFor("analyst"));
     await llm.generate(requestFor("beat_reporter"));
+    await expect(
+      llm.generateWithUsage(requestFor("commissioner")),
+    ).resolves.toMatchObject({
+      usage: {
+        cacheCreationInputTokens: 30,
+        cacheReadInputTokens: 40,
+        inputTokens: 100,
+        outputTokens: 50,
+      },
+    });
 
     const first = calls[0] as Record<string, unknown>;
     const second = calls[1] as Record<string, unknown>;
