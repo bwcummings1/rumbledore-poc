@@ -20,7 +20,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases
 - [x] Build the `eval:ai:variants` A/B harness that scores model×tone variants and names a winner. (specs/26)
 
 ### R. Theming framework (see specs/27)
-- [ ] Build the design-token system (primitives → semantic aliases → Tailwind/CSS vars). (specs/27)
+- [x] Build the design-token system (primitives → semantic aliases → Tailwind/CSS vars). (specs/27)
 - [ ] Build the ThemeProvider and data-theme swap (SSR-safe, no FOUC) with palette-a/palette-b slots. (specs/27)
 - [ ] Add contrast and reduced-motion accessibility gates on the tokens. (specs/27)
 - [ ] Migrate components to tokens incrementally, keeping the impeccable gate green. (specs/27)

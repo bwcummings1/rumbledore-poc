@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { PWA_BACKGROUND_HEX } from "@/lib/pwa";
 import { NavigationShell } from "@/navigation/navigation-shell";
+import { DEFAULT_THEME_ID } from "@/theme/registry";
+import { ThemeTokenStyle } from "@/theme/theme-style";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -42,8 +44,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html
+      lang="en"
+      data-theme={DEFAULT_THEME_ID}
+      className={`${geistSans.variable} ${geistMono.variable}`}
+    >
       <body>
+        <ThemeTokenStyle />
         <NavigationShell>{children}</NavigationShell>
         <ServiceWorkerRegistration />
       </body>

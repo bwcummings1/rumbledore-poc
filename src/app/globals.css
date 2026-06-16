@@ -6,27 +6,27 @@
 
 html {
   height: 100%;
-  color-scheme: dark;
 }
 
 @theme inline {
-  --font-heading: var(--font-geist-sans), system-ui, sans-serif;
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-family-heading);
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+  --font-editorial: var(--font-family-editorial);
 
   /* DESIGN.md type scale (6 steps): 12 / 14 / 16 / 20 / 28 / 40 */
-  --text-xs: 0.75rem;
-  --text-xs--line-height: 1.35;
-  --text-sm: 0.875rem;
-  --text-sm--line-height: 1.45;
-  --text-base: 1rem;
-  --text-base--line-height: 1.5;
-  --text-lg: 1.25rem;
-  --text-lg--line-height: 1.4;
-  --text-xl: 1.75rem;
-  --text-xl--line-height: 1.25;
-  --text-2xl: 2.5rem;
-  --text-2xl--line-height: 1.1;
+  --text-xs: var(--type-size-xs);
+  --text-xs--line-height: var(--type-line-xs);
+  --text-sm: var(--type-size-sm);
+  --text-sm--line-height: var(--type-line-sm);
+  --text-base: var(--type-size-base);
+  --text-base--line-height: var(--type-line-base);
+  --text-lg: var(--type-size-lg);
+  --text-lg--line-height: var(--type-line-lg);
+  --text-xl: var(--type-size-xl);
+  --text-xl--line-height: var(--type-line-xl);
+  --text-2xl: var(--type-size-2xl);
+  --text-2xl--line-height: var(--type-line-2xl);
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -68,10 +68,19 @@ html {
   --color-warning: var(--warning);
   --color-highlight: var(--highlight);
 
+  /* DESIGN.md spacing scale (7 steps): 4 / 8 / 12 / 16 / 24 / 32 / 48 */
+  --spacing-step-1: var(--space-1);
+  --spacing-step-2: var(--space-2);
+  --spacing-step-3: var(--space-3);
+  --spacing-step-4: var(--space-4);
+  --spacing-step-6: var(--space-6);
+  --spacing-step-8: var(--space-8);
+  --spacing-step-12: var(--space-12);
+
   /* DESIGN.md radii: 6 (controls) / 10 (cards) / 16 (sheets) */
-  --radius-control: 0.375rem;
-  --radius-card: 0.625rem;
-  --radius-sheet: 1rem;
+  --radius-control: var(--control-radius);
+  --radius-card: var(--card-radius);
+  --radius-sheet: var(--sheet-radius);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -79,54 +88,15 @@ html {
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-}
 
-/*
- * Dark-first (DESIGN.md): :root carries the dark palette; a light theme is a
- * later derived inversion. shadcn var contract mapping:
- *   surface → card/popover/muted, elevated → secondary/accent (hover surfaces),
- *   negative → destructive. DESIGN.md's sparing live/odds "accent" is exposed
- *   as --highlight because shadcn reserves "accent" for hover surfaces.
- */
-:root {
-  --background: oklch(16% 0.01 250);
-  --foreground: oklch(96% 0.01 250);
-  --surface: oklch(21% 0.012 250);
-  --elevated: oklch(25% 0.014 250);
-  --card: var(--surface);
-  --card-foreground: var(--foreground);
-  --popover: var(--elevated);
-  --popover-foreground: var(--foreground);
-  --primary: oklch(72% 0.15 145);
-  --primary-foreground: oklch(18% 0.02 145);
-  --secondary: var(--elevated);
-  --secondary-foreground: var(--foreground);
-  --muted: var(--surface);
-  --muted-foreground: oklch(72% 0.015 250);
-  --accent: var(--elevated);
-  --accent-foreground: var(--foreground);
-  --destructive: var(--negative);
-  --positive: oklch(75% 0.16 150);
-  --negative: oklch(64% 0.2 25);
-  --warning: oklch(80% 0.14 85);
-  --highlight: oklch(78% 0.13 60);
-  --border: oklch(30% 0.012 250);
-  --input: oklch(30% 0.012 250);
-  --ring: oklch(72% 0.15 145 / 60%);
-  --chart-1: var(--primary);
-  --chart-2: var(--highlight);
-  --chart-3: var(--warning);
-  --chart-4: var(--negative);
-  --chart-5: var(--muted-foreground);
-  --radius: 0.625rem;
-  --sidebar: var(--surface);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--elevated);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
+  /* DESIGN.md elevation/motion tokens */
+  --shadow-flat: var(--elevation-flat);
+  --shadow-raised: var(--elevation-raised);
+  --shadow-overlay: var(--elevation-overlay);
+  --duration-fast: var(--motion-duration-fast);
+  --duration-base: var(--motion-duration-base);
+  --duration-slow: var(--motion-duration-slow);
+  --ease-out: var(--motion-ease-out);
 }
 
 /* Safe-area utilities (viewport-fit=cover draws edge-to-edge; DESIGN.md mobile-first).
