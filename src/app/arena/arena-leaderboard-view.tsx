@@ -18,6 +18,28 @@ import type {
   ArenaMover,
   ArenaSeasonSummary,
 } from "@/betting";
+import {
+  Avatar,
+  Badge,
+  Capacity,
+  type CellTone,
+  type DataCardRow,
+  DataTable,
+  type DataTableColumn,
+  Edge,
+  type EdgeTone,
+  type KVItem,
+  KVList,
+  type KVTone,
+  Ladder,
+  Presence,
+  Progress,
+  SignedValue,
+  StatTile,
+  StatusPill,
+  type StatusTone,
+  Tag,
+} from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArenaRealtimeRefresh } from "@/realtime/client";
@@ -90,6 +112,17 @@ function seasonStatusLabel(status: ArenaSeasonSummary["status"]): string {
   }
 }
 
+function seasonStatusTone(status: ArenaSeasonSummary["status"]): StatusTone {
+  switch (status) {
+    case "active":
+      return "live";
+    case "complete":
+      return "success";
+    case "upcoming":
+      return "warning";
+  }
+}
+
 function subjectKindLabel(kind: ArenaMover["kind"]): string {
   return kind === "league" ? "League" : "Player";
 }
@@ -100,16 +133,22 @@ function movementLabel(value: number): string {
   return `${value > 0 ? "Up" : "Down"} ${steps}`;
 }
 
-function metricColor(value: number): string {
-  if (value > 0) return "text-positive";
-  if (value < 0) return "text-negative";
-  return "text-muted-foreground";
+function metricTone(value: number): KVTone {
+  if (value > 0) return "positive";
+  if (value < 0) return "negative";
+  return "muted";
 }
 
-function movementColor(value: number): string {
-  if (value > 0) return "text-positive";
-  if (value < 0) return "text-negative";
-  return "text-muted-foreground";
+function cellTone(value: number): CellTone {
+  if (value > 0) return "positive";
+  if (value < 0) return "negative";
+  return "muted";
+}
+
+function edgeTone(value: number): EdgeTone {
+  if (value > 0) return "positive";
+  if (value < 0) return "negative";
+  return "neutral";
 }
 
 function comparisonCopy(headToHead: ArenaHeadToHead): string {
@@ -138,6 +177,71 @@ function MovementIcon({ value }: { value: number }) {
   return <Minus className="size-3.5" aria-hidden="true" />;
 }
 
+function currentBalanceDelta(row: ArenaLeaderboardRow): number {
+  return row.currentBalanceCents - 100_000;
+}
+
+function leaderboardMobileRow(
+  row: ArenaLeaderboardRow,
+  netLabel: string,
+  highlightedRowId?: string | null,
+): DataCardRow {
+  const isHighlighted = row.id === highlightedRowId;
+  return {
+    cells: leaderboardKVItems(row, netLabel),
+    id: row.id,
+    leading: (
+      <span className="relative inline-flex">
+        <Avatar name={row.displayName} size="sm" />
+        {isHighlighted ? (
+          <Presence
+            className="absolute -right-1 -bottom-1"
+            label="focused league"
+            status="live"
+          />
+        ) : null}
+      </span>
+    ),
+    meta: `${row.wonSlipCount}/${row.settledSlipCount} wins · ${row.weeksSurvived}/${row.weeksPlayed} weeks`,
+    selected: isHighlighted,
+    title: row.displayName,
+  };
+}
+
+function leaderboardKVItems(
+  row: ArenaLeaderboardRow,
+  netLabel: string,
+): readonly KVItem[] {
+  return [
+    { label: "Rank", value: `#${row.rank}` },
+    {
+      label: "Movement",
+      tone: metricTone(row.rankDelta),
+      value: movementLabel(row.rankDelta),
+    },
+    {
+      label: netLabel,
+      tone: metricTone(row.netPnlCents),
+      value: formatPaperMoney(row.netPnlCents),
+    },
+    {
+      label: "ROI",
+      tone: metricTone(row.roiBps),
+      value: formatPercentBps(row.roiBps),
+    },
+    {
+      label: "Win rate",
+      tone: metricTone(row.winRateBps),
+      value: formatPercentBps(row.winRateBps),
+    },
+    {
+      label: "Current balance",
+      tone: "money",
+      value: formatPaperAmount(row.currentBalanceCents),
+    },
+  ];
+}
+
 function SeasonStrip({
   leagueId,
   rivalLeagueId,
@@ -154,6 +258,10 @@ function SeasonStrip({
       <div className="flex items-center gap-2 text-sm font-medium">
         <CalendarDays className="size-4 text-primary" aria-hidden="true" />
         Seasons
+        <Badge
+          label={`${seasons.length} arena seasons`}
+          value={seasons.length}
+        />
       </div>
       <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Seasons">
         {seasons.map((season) => (
@@ -176,9 +284,13 @@ function SeasonStrip({
           >
             <span className="min-w-0">
               <span className="block truncate">{season.name}</span>
-              <span className="block truncate text-xs opacity-80">
-                {seasonStatusLabel(season.status)} ·{" "}
-                {formatDate(season.startsAt)}-{formatDate(season.endsAt)}
+              <span className="mt-1 flex items-center gap-2 text-xs opacity-80">
+                <StatusPill tone={seasonStatusTone(season.status)}>
+                  {seasonStatusLabel(season.status)}
+                </StatusPill>
+                <span className="truncate">
+                  {formatDate(season.startsAt)}-{formatDate(season.endsAt)}
+                </span>
               </span>
             </span>
           </Link>
@@ -191,7 +303,7 @@ function SeasonStrip({
 function MovementSummary({ fallers, risers }: ArenaLeaderboardData["movers"]) {
   if (risers.length === 0 && fallers.length === 0) {
     return (
-      <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
+      <section className="cell border-dashed p-4">
         <h2 className="text-base font-semibold">No rank movement yet</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           The next standings rebuild will compare against this season's prior
@@ -223,33 +335,37 @@ function MoverList({
   title: string;
 }) {
   return (
-    <article className="rounded-card border border-border bg-card p-4">
-      <h2 className="text-base font-semibold">{title}</h2>
+    <article className="panel p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <Badge
+          label={`${movers.length} ${title.toLowerCase()}`}
+          value={movers.length}
+        />
+      </div>
       {movers.length > 0 ? (
         <div className="mt-3 grid gap-2">
           {movers.map((mover) => (
             <div
-              className="grid grid-cols-[minmax(0,1fr)_4.5rem] items-center gap-3 border-border border-t pt-2 first:border-t-0 first:pt-0"
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-border border-t pt-2 first:border-t-0 first:pt-0"
               key={`${mover.kind}:${mover.id}`}
             >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">
-                  {mover.displayName}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {subjectKindLabel(mover.kind)} · #{mover.previousRank} to #
-                  {mover.rank}
-                </p>
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar name={mover.displayName} size="sm" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {mover.displayName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {subjectKindLabel(mover.kind)} · #{mover.previousRank} to #
+                    {mover.rank}
+                  </p>
+                </div>
               </div>
-              <div
-                className={cn(
-                  "flex items-center justify-end gap-1 font-mono text-sm font-semibold tabular-nums",
-                  movementColor(mover.rankDelta),
-                )}
-              >
-                <MovementIcon value={mover.rankDelta} />
-                {Math.abs(mover.rankDelta)}
-              </div>
+              <Edge
+                tone={edgeTone(mover.rankDelta)}
+                value={Math.abs(mover.rankDelta)}
+              />
             </div>
           ))}
         </div>
@@ -271,7 +387,7 @@ function RivalryPanel({
 }) {
   if (!headToHead) {
     return (
-      <section className="rounded-card border border-dashed border-border bg-muted/25 p-4">
+      <section className="cell border-dashed p-4">
         <div className="flex items-center gap-2">
           <Swords className="size-4 text-primary" aria-hidden="true" />
           <h2 className="text-base font-semibold">League rivalry waiting</h2>
@@ -289,27 +405,24 @@ function RivalryPanel({
   );
 
   return (
-    <section className="rounded-card border border-border bg-card p-4">
+    <section className="panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-primary">
             <Swords className="size-4" aria-hidden="true" />
-            <p className="text-sm font-medium">League head-to-head</p>
+            <Tag>League head-to-head</Tag>
           </div>
           <h2 className="mt-1 text-lg font-semibold tracking-tight">
             {headToHead.anchor.displayName} vs. {headToHead.rival.displayName}
           </h2>
         </div>
-        <p
-          className={cn(
-            "font-mono text-sm font-semibold tabular-nums",
-            metricColor(
-              headToHead.anchor.netPnlCents - headToHead.rival.netPnlCents,
-            ),
+        <Edge
+          eyebrow="Margin"
+          tone={edgeTone(
+            headToHead.anchor.netPnlCents - headToHead.rival.netPnlCents,
           )}
-        >
-          {comparisonCopy(headToHead)}
-        </p>
+          value={comparisonCopy(headToHead)}
+        />
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-stretch">
@@ -320,26 +433,32 @@ function RivalryPanel({
         <HeadToHeadLeagueCard league={headToHead.rival} label="Rival" />
       </div>
 
-      <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
-        <p>
-          Rank gap{" "}
-          <span className="font-mono text-foreground tabular-nums">
-            {headToHead.rankGap}
-          </span>
-        </p>
-        <p>
-          Paper P&L gap{" "}
-          <span className="font-mono text-foreground tabular-nums">
-            {formatPaperAmount(headToHead.marginCents)}
-          </span>
-        </p>
-        <p>
-          Leader{" "}
-          <span className="font-medium text-foreground">
-            {headToHead.leader?.displayName ?? "Tied"}
-          </span>
-        </p>
-      </div>
+      <KVList
+        className="mt-4 grid gap-x-4 sm:grid-cols-3 sm:divide-y-0"
+        items={[
+          { label: "Rank gap", value: headToHead.rankGap },
+          {
+            label: "Paper P&L gap",
+            tone: "money",
+            value: formatPaperAmount(headToHead.marginCents),
+          },
+          { label: "Leader", value: headToHead.leader?.displayName ?? "Tied" },
+        ]}
+      />
+
+      {leagueOptions.length > 0 ? (
+        <div className="mt-4">
+          <Ladder
+            label="Arena league rank ladder"
+            pips={leagueOptions.map((option) => ({
+              id: option.id,
+              isCurrent: option.id === headToHead.anchor.id,
+              label: option.displayName,
+              rank: option.rank,
+            }))}
+          />
+        </div>
+      ) : null}
 
       {rivalOptions.length > 0 ? (
         <nav
@@ -385,60 +504,63 @@ function HeadToHeadLeagueCard({
   league: ArenaHeadToHeadLeague;
 }) {
   return (
-    <div className="rounded-control border border-border bg-muted/25 p-3">
+    <div className="cell p-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground uppercase">
-            {label}
-          </p>
-          <p className="mt-1 truncate text-sm font-semibold">
-            #{league.rank} {league.displayName}
-          </p>
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={league.displayName} size="sm" />
+          <div className="min-w-0">
+            <p className="eyebrow">{label}</p>
+            <p className="mt-1 truncate text-sm font-semibold">
+              #{league.rank} {league.displayName}
+            </p>
+          </div>
         </div>
-        <p
-          className={cn(
-            "font-mono text-sm font-semibold tabular-nums",
-            metricColor(league.netPnlCents),
-          )}
-        >
-          {formatPaperMoney(league.netPnlCents)}
-        </p>
+        <Edge
+          tone={edgeTone(league.netPnlCents)}
+          value={formatPaperMoney(league.netPnlCents)}
+        />
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-        <p>
-          ROI{" "}
-          <span
-            className={cn("font-mono tabular-nums", metricColor(league.roiBps))}
-          >
-            {formatPercentBps(league.roiBps)}
-          </span>
-        </p>
-        <p>
-          Win rate{" "}
-          <span
-            className={cn(
-              "font-mono tabular-nums",
-              metricColor(league.winRateBps),
-            )}
-          >
-            {formatPercentBps(league.winRateBps)}
-          </span>
-        </p>
-        <p>
-          Weeks{" "}
-          <span className="font-mono text-foreground tabular-nums">
-            {league.weeksSurvived}/{league.weeksPlayed}
-          </span>
-        </p>
-        <p
-          className={cn(
-            "flex items-center gap-1 font-mono tabular-nums",
-            movementColor(league.rankDelta),
-          )}
-        >
-          <MovementIcon value={league.rankDelta} />
-          {movementLabel(league.rankDelta)}
-        </p>
+      <div className="mt-3 grid gap-3">
+        <KVList
+          className="grid gap-x-4 sm:grid-cols-2 sm:divide-y-0"
+          items={[
+            {
+              label: "ROI",
+              tone: metricTone(league.roiBps),
+              value: formatPercentBps(league.roiBps),
+            },
+            {
+              label: "Win rate",
+              tone: metricTone(league.winRateBps),
+              value: formatPercentBps(league.winRateBps),
+            },
+            {
+              label: "Movement",
+              tone: metricTone(league.rankDelta),
+              value: (
+                <span className="inline-flex items-center gap-1">
+                  <MovementIcon value={league.rankDelta} />
+                  {movementLabel(league.rankDelta)}
+                </span>
+              ),
+            },
+            {
+              label: "Balance",
+              tone: "money",
+              value: formatPaperAmount(league.currentBalanceCents),
+            },
+          ]}
+        />
+        <Progress
+          label={`${league.displayName} win rate`}
+          showValue={true}
+          value={league.winRateBps / 100}
+        />
+        <Capacity
+          label="Weeks survived"
+          total={league.weeksPlayed}
+          used={league.weeksSurvived}
+        />
       </div>
     </div>
   );
@@ -457,84 +579,110 @@ function LeaderboardSection({
   rows: ArenaLeaderboardRow[];
   title: string;
 }) {
-  return (
-    <section className="rounded-card border border-border bg-card">
-      <div className="flex items-center justify-between gap-3 p-4">
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        <Trophy className="size-5 text-primary" aria-hidden="true" />
-      </div>
-      {rows.length > 0 ? (
-        <>
-          <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_5.75rem_4.75rem] gap-2 px-3 pb-2 text-xs font-medium text-muted-foreground sm:grid-cols-[2.75rem_minmax(0,1fr)_6.5rem_5.5rem_5.5rem]">
-            <span>#</span>
-            <span>Name</span>
-            <span className="text-right">{netLabel}</span>
-            <span className="text-right">ROI</span>
-            <span className="hidden text-right sm:block">Win rate</span>
-          </div>
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              className={cn(
-                "grid min-h-16 grid-cols-[2.75rem_minmax(0,1fr)_5.75rem_4.75rem] items-center gap-2 border-border border-t px-3 py-2 text-sm sm:grid-cols-[2.75rem_minmax(0,1fr)_6.5rem_5.5rem_5.5rem]",
-                row.id === highlightedRowId && "bg-primary/10",
-              )}
-            >
-              <div>
-                <p className="font-mono text-muted-foreground tabular-nums">
-                  {row.rank}
-                </p>
-                <p
-                  className={cn(
-                    "mt-1 flex items-center gap-1 text-xs",
-                    movementColor(row.rankDelta),
-                  )}
-                  title={
-                    row.previousRank
-                      ? `Previous rank ${row.previousRank}`
-                      : "No previous rank"
-                  }
-                >
-                  <MovementIcon value={row.rankDelta} />
-                  {movementLabel(row.rankDelta)}
-                </p>
-              </div>
-              <div className="min-w-0">
-                <p className="truncate font-medium">{row.displayName}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {row.wonSlipCount}/{row.settledSlipCount} wins ·{" "}
-                  {row.weeksSurvived}/{row.weeksPlayed} weeks
-                </p>
-              </div>
-              <p
-                className={cn(
-                  "text-right font-mono font-semibold tabular-nums",
-                  metricColor(row.netPnlCents),
-                )}
-              >
-                {formatPaperMoney(row.netPnlCents)}
-              </p>
-              <p
-                className={cn(
-                  "text-right font-mono tabular-nums",
-                  metricColor(row.roiBps),
-                )}
-              >
-                {formatPercentBps(row.roiBps)}
-              </p>
-              <p className="hidden text-right font-mono text-muted-foreground tabular-nums sm:block">
-                {formatPercentBps(row.winRateBps)}
+  const columns: readonly DataTableColumn<ArenaLeaderboardRow>[] = [
+    {
+      cell: (row) => (
+        <div>
+          <p className="metric text-muted-foreground">#{row.rank}</p>
+          <Edge
+            className="mt-1"
+            tone={edgeTone(row.rankDelta)}
+            value={movementLabel(row.rankDelta)}
+          />
+        </div>
+      ),
+      header: "#",
+      id: "rank",
+    },
+    {
+      cell: (row) => {
+        const isHighlighted = row.id === highlightedRowId;
+        return (
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="relative inline-flex">
+              <Avatar name={row.displayName} size="sm" />
+              {isHighlighted ? (
+                <Presence
+                  className="absolute -right-1 -bottom-1"
+                  label="focused league"
+                  status="live"
+                />
+              ) : null}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate font-medium">{row.displayName}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {row.wonSlipCount}/{row.settledSlipCount} wins ·{" "}
+                {row.weeksSurvived}/{row.weeksPlayed} weeks
               </p>
             </div>
-          ))}
-        </>
-      ) : (
-        <div className="p-4 pt-0">
-          <p className="rounded-control border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
-            {emptyText}
-          </p>
+          </div>
+        );
+      },
+      header: "Name",
+      id: "name",
+    },
+    {
+      align: "right",
+      cell: (row) => (
+        <SignedValue className="font-semibold" tone={cellTone(row.netPnlCents)}>
+          {formatPaperMoney(row.netPnlCents)}
+        </SignedValue>
+      ),
+      header: netLabel,
+      id: "net",
+    },
+    {
+      align: "right",
+      cell: (row) => (
+        <SignedValue tone={cellTone(row.roiBps)}>
+          {formatPercentBps(row.roiBps)}
+        </SignedValue>
+      ),
+      header: "ROI",
+      id: "roi",
+    },
+    {
+      align: "right",
+      cell: (row) => (
+        <SignedValue tone={cellTone(row.winRateBps)}>
+          {formatPercentBps(row.winRateBps)}
+        </SignedValue>
+      ),
+      header: "Win rate",
+      id: "win-rate",
+      priority: "desktop",
+    },
+  ];
+  const mobileRows = rows.map((row) =>
+    leaderboardMobileRow(row, netLabel, highlightedRowId),
+  );
+
+  return (
+    <section className="panel">
+      <div className="flex items-center justify-between gap-3 p-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <Badge label={`${rows.length} rows`} value={rows.length} />
         </div>
-      )}
+        <Tag leadingIcon={<Trophy aria-hidden="true" />}>Standings</Tag>
+      </div>
+      <div className="px-4 pb-4">
+        <DataTable
+          ariaLabel={title}
+          columns={columns}
+          empty={
+            <p className="rounded-control border border-dashed border-border bg-elevated px-3 py-3 text-sm text-muted-foreground">
+              {emptyText}
+            </p>
+          }
+          getRowId={(row) => row.id}
+          getRowName={(row) => row.displayName}
+          mobileRows={mobileRows}
+          rows={rows}
+          selectedRowIds={highlightedRowId ? [highlightedRowId] : []}
+        />
+      </div>
     </section>
   );
 }
@@ -542,6 +690,8 @@ function LeaderboardSection({
 export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
   const focusedLeagueId = data.headToHead?.anchor.id ?? null;
   const rivalLeagueId = data.headToHead?.rival.id ?? null;
+  const topLeague = data.leagueStandings[0] ?? null;
+  const topIndividual = data.individualStandings[0] ?? null;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -559,22 +709,25 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
         <div className="grid gap-3">
           <div className="flex items-center gap-2 text-primary">
             <Users className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">Central arena</p>
+            <Tag>Central arena</Tag>
           </div>
           <div className="max-w-2xl">
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
               Paper betting standings
             </h1>
             {data.season ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {data.season.name} · {formatDate(data.season.startsAt)}-
-                {formatDate(data.season.endsAt)}
-                {" · "}
-                {seasonStatusLabel(data.season.status)}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <span>
+                  {data.season.name} · {formatDate(data.season.startsAt)}-
+                  {formatDate(data.season.endsAt)}
+                </span>
+                <StatusPill tone={seasonStatusTone(data.season.status)}>
+                  {seasonStatusLabel(data.season.status)}
+                </StatusPill>
                 {data.computedAt
-                  ? ` · Updated ${formatTimestamp(data.computedAt)}`
+                  ? `Updated ${formatTimestamp(data.computedAt)}`
                   : ""}
-              </p>
+              </div>
             ) : (
               <p className="mt-2 text-sm text-muted-foreground">
                 No arena season has been created yet.
@@ -585,6 +738,41 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
       </header>
 
       <div className="grid gap-6">
+        <section
+          aria-label="Arena snapshot"
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          <StatTile
+            caption="Materialized league rows"
+            label="Leagues"
+            tone="lilac"
+            value={data.leagueStandings.length}
+          />
+          <StatTile
+            caption="Individual arena rows"
+            label="Players"
+            value={data.individualStandings.length}
+          />
+          <StatTile
+            caption={topLeague?.displayName ?? "No leader yet"}
+            delta={topLeague ? movementLabel(topLeague.rankDelta) : undefined}
+            label="Top league"
+            tone="amber"
+            value={topLeague ? formatPaperMoney(topLeague.netPnlCents) : "--"}
+          />
+          <StatTile
+            caption={topIndividual?.displayName ?? "No leader yet"}
+            delta={
+              topIndividual
+                ? formatPaperMoney(currentBalanceDelta(topIndividual))
+                : undefined
+            }
+            label="Top player"
+            value={
+              topIndividual ? formatPaperMoney(topIndividual.netPnlCents) : "--"
+            }
+          />
+        </section>
         <SeasonStrip
           leagueId={focusedLeagueId}
           rivalLeagueId={rivalLeagueId}
