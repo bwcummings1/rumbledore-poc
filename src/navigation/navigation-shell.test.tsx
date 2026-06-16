@@ -77,6 +77,10 @@ describe("NavigationShellView", () => {
     ).toBe("page");
     expect(within(tabs).queryByText("ESPN")).toBeNull();
     expect(within(tabs).queryByText("Sleeper")).toBeNull();
+    expect(screen.getAllByRole("region", { name: "Global wire" })).toHaveLength(
+      2,
+    );
+    expect(screen.getByRole("link", { name: "Skip to content" })).toBeDefined();
   });
 
   it("renders league tabs from the active league and maps legacy paths to active sections", () => {
@@ -111,6 +115,9 @@ describe("NavigationShellView", () => {
         .getByRole("link", { name: "The Press" })
         .getAttribute("aria-current"),
     ).toBe("page");
+    expect(screen.getAllByRole("region", { name: "League wire" })).toHaveLength(
+      2,
+    );
   });
 
   it("opens the mobile scope switcher sheet with the unified league list", () => {
@@ -189,6 +196,46 @@ describe("NavigationShellView", () => {
         name: "Records",
       }),
     ).toBeDefined();
+  });
+
+  it("surfaces notification chrome with unread state and mark-read action", () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Open notifications" })[0],
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    expect(within(dialog).getByText("1 unread")).toBeDefined();
+    expect(within(dialog).getByText("League wire online")).toBeDefined();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Mark all read" }),
+    );
+    expect(within(dialog).getByText("All read")).toBeDefined();
+  });
+
+  it("persists the reduced-motion shell switch to the root data attribute", () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/arena")}
+        items={items}
+      >
+        <main>Arena</main>
+      </NavigationShellView>,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Disable motion" }));
+
+    expect(document.documentElement.getAttribute("data-motion")).toBe("off");
+    expect(window.localStorage.getItem("rumbledore:motion")).toBe("off");
   });
 });
 

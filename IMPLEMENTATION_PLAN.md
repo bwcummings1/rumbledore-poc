@@ -31,7 +31,7 @@ One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AU
 - [x] Build the live/ephemeral spectacle moments (wire ticker, scoreboard strip, count-ups, stingers, orb states) behind a reduced-motion master switch. (specs/34)
 
 ### V. App shell & navigation (see specs/30)
-- [ ] Build the responsive AUSPEX app shell (desktop rail+topbar+ticker, tablet adaptation, mobile bottom-tabs+header). (specs/30)
+- [x] Build the responsive AUSPEX app shell (desktop rail+topbar+ticker, tablet adaptation, mobile bottom-tabs+header). (specs/30)
 - [ ] Build the scope-switcher (global↔league) and league switcher sheet, mobile-first. (specs/30)
 - [ ] Wire the WIRE ticker, notifications, and presence to realtime, plus the boot/splash and PWA install/offline affordances. (specs/30)
 

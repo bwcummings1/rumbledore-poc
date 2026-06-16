@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Phase 5 live AUSPEX spectacle primitives landed** with WIRE, scoreboard, count-up, stinger, vote/canon, orb-state, and conductor contracts behind the reduced-motion master switch.
+Keep it current. Last updated: 2026-06-16 — **Phase 5 responsive AUSPEX app shell landed** with the glass rail/topbar, mobile header/tabs, WIRE strip/sheet, notification/account chrome, clock, and persisted motion controls.
 
 ---
 
@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Responsive AUSPEX app shell landed — desktop rail/topbar, tablet collapse persistence, mobile header/tabs, WIRE strip/sheet, notification/account chrome, live clock, skip link, and persisted motion controls now compose the existing two-scope IA.
 - 2026-06-16: Live AUSPEX spectacle primitives landed — WIRE ticker, scoreboard strip, count-up readouts, live pulse dots, cast orb states, stingers, vote/canon moments, and a deterministic conductor now share the reduced-motion master switch.
 - 2026-06-16: Rumbledore-native viz catalog landed — bankroll equity, standings bump, playoff-odds cone, win-probability timeline, odds drift, season arc, H2H flow, activity calendar, power ladder, leverage gauge, record chase, projection violin, and season dial now share the typed AUSPEX chart contract with table fallbacks and focused fixtures.
 - 2026-06-16: AUSPEX chart library landed — a typed shared SVG primitive now formalizes the 18 canonical generators with non-color encodings, focusable marks, table fallbacks, responsive reductions, state handling, and reduced-motion CSS.
