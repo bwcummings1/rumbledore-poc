@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Records catalog coverage landed** with direct seeded multi-season catalog tests for standings, H2H, streaks, championships, milestones, co-owner identities, and ties.
+Keep it current. Last updated: 2026-06-16 — **Audit hardening Scope complete**; fixed review findings are reconciled below, with only hardening Icebox follow-ups left outside Scope.
 
 ---
 
@@ -65,14 +65,16 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **Betting:** play-money (no real prize) = low legal risk; never add real prizes, never use sportsbook trademarks, license odds (don't scrape a book). Parlays: all legs win; push/void leg drops & re-prices.
 - **AI:** treat all web/RSS as untrusted (prompt-injection); enforce league isolation in SQL (`WHERE league_id`) + RLS, never trust the model; near-dup check generated posts (cosine > ~0.92).
 
-## 7. Current state & next steps (build complete 2026-06-12)
-All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and behind green gates (typecheck/lint/test/build/ubs; ~300 tests vs a live Postgres). See §8 for the build log and `docs/HISTORY.md` for the trajectory + independent review.
+## 7. Current state & next steps (build + Scope hardening complete 2026-06-16)
+All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are built on `rebuild/foundation`, with gates kept as commit backpressure (typecheck/lint/test/build/ubs; DB-backed tests against local Postgres). See §8 for the build log and `docs/HISTORY.md` for the trajectory + independent review.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
-- **Known issues to fix (from review; logged in `IMPLEMENTATION_PLAN.md` Icebox):** AI near-dup uses no vector ordering (`src/ai/pipeline.ts`); stats playoff/championship flags hardcoded false (`src/stats/engine.ts`); identity over-merges Sleeper co-owners; invite tokens stored plaintext; bet placement reads balance before the week lock.
-- **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
+- **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
+- **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
+- **Next:** wire real service keys, complete the remaining hardening Icebox item(s), and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: Audit-hardening docs reconciled — `docs/PROGRESS.md` and `docs/HISTORY.md` now mark fixed review bugs resolved and reflect completed Scope hardening.
 - 2026-06-16: Spend-guard fallback coverage landed — rolling-24h TTL expiry is now covered for memory and Redis counters, and guarded Anthropic, Tavily, Voyage, Odds, SportsDataIO, and central-news unavailable paths fall back to deterministic mocks under tests.
 - 2026-06-16: Records catalog coverage landed — `records-catalog.ts` now has a direct seeded multi-season fixture test suite covering standings reconciliation, deterministic tied record ordering, H2H mirror ledgers, cross-season streaks, championship summaries, keeper milestones, and co-owner identity separation.
 - 2026-06-16: Transaction/waiver content emitters landed — live ingestion now fetches supported provider transactions, persists changed rows idempotently, and fans out transaction/waiver Beat Reporter trigger events.

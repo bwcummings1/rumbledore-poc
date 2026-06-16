@@ -1,7 +1,7 @@
 # Rumbledore — Project History & Trajectory
 
 > A reference for *how this project got here*: what existed before, the decision to rebuild, the methodology,
-> the autonomous build, and the current state. Technically detailed and accurate as of **2026-06-12**.
+> the autonomous build, and the current state. Technically detailed and accurate as of **2026-06-16**.
 > For current architecture/state see `docs/PROGRESS.md`; for conventions see `AGENTS.md`; for intent see `PRODUCT.md` + `specs/`.
 
 ---
@@ -104,7 +104,7 @@ each fire (token-expensive); the shell watchdog replaced it.
 
 ---
 
-## 4. Era 3 — Current state & independent review (2026-06-12)
+## 4. Era 3 — Independent review and hardening (2026-06-12 → 2026-06-16)
 
 A 4-dimension review (security/isolation, data/ingestion/stats, AI/betting, test-quality) found this is **genuine engineering,
 not scaffolding** — the opposite of Era 0.
@@ -116,23 +116,24 @@ not scaffolding** — the opposite of Era 0.
 - **Ingestion** (ESPN/Sleeper/Yahoo) makes real HTTP calls with retry/backoff/zod/normalization; verified vs the 95050 fixture.
 - **Betting** (odds locked at placement, parlay/push/void settlement, event-sourced rolling-min bankroll, central arena) is
   real and correct — no negative/double-spend path found.
-- **Gates are honest:** `pnpm typecheck`/`lint`/`test` all pass live (299 tests vs a real Postgres); no `ignoreBuildErrors`,
+- **Gates are honest:** `pnpm typecheck`/`lint`/`test` all pass live against a real Postgres-backed suite; no `ignoreBuildErrors`,
   no skipped tests, surgical mocking only at external boundaries.
 
-**Known issues to fix (real bugs in the autonomous output):**
-- 🔴 AI near-dup detection isn't real vector search (`src/ai/pipeline.ts` loads first 20 rows, no `ORDER BY embedding <=>`).
-- 🔴 Stats playoff/championship flags hardcoded `false` (`src/stats/engine.ts`) → those stats are silently zeroed.
-- 🟠 Identity resolution over-merges Sleeper co-owners (any owner-id overlap = 100% confidence).
-- 🟠 Invite tokens stored plaintext at rest (should store `sha256`).
-- 🟠 Bet placement reads balance before taking the week lock (no double-spend, but a confusing error).
-- 🟡 Lower-severity: central-content write check, arena-standings RLS, Yahoo positional home/away, invite-endpoint rate-limit.
+**Review findings and resolution:**
+- **AI near-dup vector search:** resolved in `f380946`; current generation loads nearest same-league, same-content-type memories via pgvector distance ordering (`ai_memory.embedding <=> query`), then applies the cosine threshold.
+- **Postseason/championship stats:** resolved in `dfa85a9` and hardened in `cd6cbe2`; season settings and provider finals now drive playoff/title flags, championship rows, and low-confidence integrity failures.
+- **Sleeper co-owner identity over-merge:** resolved in `485e467`; shared co-owner ids only create a strong match for the same provider team slot, and overlapping same-season slots stay separate.
+- **Invite tokens at rest:** resolved in `7a92dfa`; invite lookup stores and queries SHA-256 token hashes, with no plaintext token column.
+- **Bet placement balance race:** resolved in `22a4333`; placement now locks or opens the bankroll week before checking available balance.
+- **Audit-hardening Scope:** completed on 2026-06-16 with live ingestion calendar cadence (`0a2f543`), schedule-backed NFL calendar fallback (`43a030b`), real Anthropic judge wiring dormant under mocks (`4cc4a5b`), lore tiebreak constraints (`aa80043`), DB role privilege health plus transaction/waiver emitters (`8cd3b76`), PWA league-page cache isolation (`e208349`), records-catalog fixture coverage (`060aab8`), and spend-guard fallback coverage (`e0cf000`).
 
 **Honest gaps:** all paid services are **mocked** (Anthropic, Odds, SportsDataIO, Tavily, Browserbase) — runs on local
 Postgres/Redis + fixtures; **real Browserbase cookie-capture is the one "not wired yet" seam** (ESPN onboarding runs
-fixture-backed in mock mode by design); UI/UX has not had a human pass.
+fixture-backed in mock mode by design); UI/UX has not had a human pass. The remaining logged hardening item is a LiveClock
+SSR hydration mismatch in `IMPLEMENTATION_PLAN.md` Icebox.
 
-**Bottom line:** a legitimate, test-backed, properly-isolated foundation that delivers the roadmap — *not* production
-(needs the bug fixes, real-key wiring, and a human UX pass), but a trustworthy base.
+**Bottom line:** a legitimate, test-backed, properly-isolated foundation that delivers the roadmap and has completed the
+audit-hardening Scope — *not* production until real-key wiring and a human UX pass happen, but a trustworthy base.
 
 ---
 
@@ -143,7 +144,7 @@ fixture-backed in mock mode by design); UI/UX has not had a human pass.
 - **Build harness:** `loop.sh [build|plan]` (Fable→Codex timed switch). Stop: `touch ~/rumbledore-loop.STOP`.
   Monitor: `tail -f ~/rumbledore-loop-logs/STATUS.log` (free) or `tmux attach -t rumbledore-loop`.
 - **Manage from phone:** `ssh` (Termius) → `tmux attach -t manage` → `cbx "$(cat ~/rumbledore-manage-prompt.txt)"`.
-- **Source of truth for state:** `docs/PROGRESS.md`. Conventions: `AGENTS.md`. Specs of record: `specs/00–09`.
+- **Source of truth for state:** `docs/PROGRESS.md`. Conventions: `AGENTS.md`. Specs of record: `specs/00–35`.
 
 ## 6. Key decisions & rationale (quick reference)
 | Decision | Rationale |

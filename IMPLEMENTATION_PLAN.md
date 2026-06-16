@@ -18,7 +18,7 @@ One task = one sentence, no "and". **Spec of record: `specs/35`. Build toward `d
 - [x] Wire production emitters for the transaction/waiver content triggers from the ingestion path. (specs/35 §4)
 - [x] Add a dedicated test suite for `records-catalog.ts` over a seeded multi-season fixture. (specs/35 §9)
 - [x] Cover the spend-guard rolling-24h TTL and provider-unavailable→mock fallback paths with tests. (specs/35 §11)
-- [ ] Reconcile `docs/PROGRESS.md` / `docs/HISTORY.md` (mark fixed bugs resolved; refresh build-state). (specs/35 §12)
+- [x] Reconcile `docs/PROGRESS.md` / `docs/HISTORY.md` (mark fixed bugs resolved; refresh build-state). (specs/35 §12)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
 - [ ] **[a11y/correctness] LiveClock SSR hydration mismatch** — `src/navigation/navigation-shell.tsx:~2210` renders the live time server-side; server vs client differ by ~1s → a React hydration error on every page. Render the clock client-only (mount-gated) or suppress hydration on that node. (surfaced during the Phase-5 screenshot run)
