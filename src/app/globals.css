@@ -228,6 +228,116 @@ html {
     @apply font-sans;
   }
 
+  .auspex-atmosphere {
+    background:
+      radial-gradient(
+        ellipse at 50% 0,
+        var(--void-2, var(--surface)) 0,
+        transparent 58%
+      ),
+      linear-gradient(
+        180deg,
+        var(--void, var(--background)) 0,
+        var(--void-3, var(--background)) 100%
+      );
+    contain: paint;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    position: fixed;
+    z-index: 0;
+  }
+
+  .auspex-atmosphere__layer {
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+  }
+
+  .auspex-atmosphere__starfield {
+    animation: auspex-starfield-drift 64s linear infinite alternate;
+    background-image:
+      radial-gradient(
+        circle at 12% 18%,
+        var(--hair-3, var(--border)) 0 1px,
+        transparent 1.4px
+      ),
+      radial-gradient(
+        circle at 78% 24%,
+        var(--hair-2, var(--border)) 0 1px,
+        transparent 1.5px
+      ),
+      radial-gradient(
+        circle at 38% 74%,
+        var(--line-2, var(--border)) 0 1px,
+        transparent 1.35px
+      ),
+      radial-gradient(
+        circle at 88% 82%,
+        var(--hair, var(--border)) 0 1px,
+        transparent 1.45px
+      );
+    background-position:
+      0 0,
+      var(--space-8) var(--space-4),
+      var(--space-4) var(--space-8),
+      var(--space-12) var(--space-6);
+    background-size:
+      13.75rem 13.75rem,
+      18.5rem 18.5rem,
+      25rem 25rem,
+      32rem 32rem;
+    opacity: 0.42;
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+  }
+
+  .auspex-atmosphere__scanline {
+    background-image: repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 3px,
+      var(--hair, var(--border)) 4px,
+      transparent 5px
+    );
+    opacity: 0.2;
+  }
+
+  .auspex-atmosphere__grain {
+    background-image:
+      radial-gradient(
+        circle at 20% 30%,
+        var(--hair, var(--border)) 0 0.55px,
+        transparent 0.8px
+      ),
+      radial-gradient(
+        circle at 70% 60%,
+        var(--line, var(--border)) 0 0.45px,
+        transparent 0.75px
+      ),
+      radial-gradient(
+        circle at 45% 82%,
+        var(--hair-2, var(--border)) 0 0.5px,
+        transparent 0.85px
+      );
+    background-size:
+      0.8125rem 1.0625rem,
+      1.1875rem 1.4375rem,
+      1.8125rem 1.9375rem;
+    opacity: 0.24;
+  }
+
+  .auspex-atmosphere__vignette {
+    background: radial-gradient(
+      ellipse at 50% 45%,
+      transparent 0,
+      transparent 42%,
+      var(--void-2, var(--background)) 74%,
+      var(--void, var(--background)) 100%
+    );
+    opacity: 0.78;
+  }
+
   .prose-auspex {
     color: var(--foreground);
     font-family: var(--font-family-body);
@@ -286,5 +396,53 @@ html {
   .prose-auspex {
     font-size: var(--prose-size-wide);
     line-height: var(--prose-line-wide);
+  }
+}
+
+@keyframes auspex-starfield-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(var(--space-4), var(--space-2), 0);
+  }
+}
+
+@media (max-width: 767px) {
+  .auspex-atmosphere__starfield {
+    animation: none;
+    background-size:
+      18rem 18rem,
+      24rem 24rem,
+      32rem 32rem,
+      40rem 40rem;
+    opacity: 0.28;
+    transform: none;
+    will-change: auto;
+  }
+
+  .auspex-atmosphere__scanline {
+    opacity: 0.16;
+  }
+
+  .auspex-atmosphere__grain {
+    opacity: 0.2;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .auspex-atmosphere__starfield {
+    animation: none;
+    opacity: 0.34;
+    transform: none;
+    will-change: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auspex-atmosphere__starfield {
+    animation: none;
+    transform: none;
+    will-change: auto;
   }
 }

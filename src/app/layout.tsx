@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { PWA_BACKGROUND_HEX } from "@/lib/pwa";
 import { NavigationShell } from "@/navigation/navigation-shell";
+import { AuspexAtmosphere } from "@/theme/atmosphere";
 import { coerceThemeId, getDefaultTheme, getThemeById } from "@/theme/registry";
 import { THEME_COOKIE_NAME } from "@/theme/settings";
 import { ThemeProvider } from "@/theme/theme-provider";
@@ -51,7 +52,10 @@ export default async function RootLayout({
         <ThemePreloadScript initialThemeId={initialTheme.id} />
         <ThemeTokenStyle />
         <ThemeProvider initialThemeId={initialTheme.id}>
-          <NavigationShell>{children}</NavigationShell>
+          <AuspexAtmosphere />
+          <div className="relative z-10 min-h-dvh" data-slot="app-content">
+            <NavigationShell>{children}</NavigationShell>
+          </div>
         </ThemeProvider>
         <ServiceWorkerRegistration />
       </body>
