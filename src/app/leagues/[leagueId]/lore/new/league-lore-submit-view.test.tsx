@@ -162,7 +162,11 @@ describe("LeagueLoreSubmitView", () => {
         title: "Week 5 nuclear score",
       },
     );
-    expect(await screen.findByText(/on the record/i)).toBeDefined();
+    expect(
+      await screen.findByText(
+        "On the record. The data auto-confirmed this claim as canon.",
+      ),
+    ).toBeDefined();
   });
 });
 

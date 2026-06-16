@@ -2,7 +2,6 @@
 
 import {
   ArrowLeft,
-  Bot,
   Check,
   FilePlus2,
   GitBranch,
@@ -12,20 +11,29 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
+import { DEFAULT_PERSONA_CARDS } from "@/ai/personas";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
+import {
+  CastAiBadge,
+  CastPersonaByline,
+} from "@/components/cast/cast-presence";
 import {
   InstigatorProvocationCard,
   InstigatorVerdictCard,
 } from "@/components/lore/instigator-ui";
 import { LoreVoteWidget } from "@/components/lore/lore-vote-widget";
+import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { LoreClaimRelation, StewardLoreAction } from "@/lore";
 import type {
+  LoreClaimAuthorSummary,
   LoreClaimCard,
   LoreClaimDetailData,
   LoreClaimSubmitResponse,
@@ -158,6 +166,15 @@ function branchRelationOptions(status: LoreClaimCard["status"]) {
     : ADDITIVE_BRANCH_OPTIONS;
 }
 
+function isCanonStatus(status: LoreClaimCard["status"]): boolean {
+  switch (status) {
+    case "canon":
+      return true;
+    default:
+      return false;
+  }
+}
+
 function branchSubmitLabel(relation: BranchRelation): string {
   switch (relation) {
     case "dispute":
@@ -226,7 +243,7 @@ function lineageAnnotation(
         isChallenge(claim) &&
         claim.status === "canon",
     );
-    return replacement ? `Superseded by ${replacement.title}` : "Superseded";
+    return replacement ? `Superseded by -> ${replacement.title}` : "Superseded";
   }
   if (
     node.claim.status === "canon" &&
@@ -240,37 +257,68 @@ function lineageAnnotation(
     return "Challenged and upheld";
   }
   if (node.claim.status === "disputed") {
-    return "Challenge open";
+    return "Challenge open.";
   }
   return null;
 }
 
+function LoreAuthorByline({
+  author,
+}: {
+  readonly author: LoreClaimAuthorSummary;
+}) {
+  if (author.isAi && author.persona) {
+    const card = DEFAULT_PERSONA_CARDS[author.persona];
+    return (
+      <CastPersonaByline
+        beat={card.beat}
+        name={card.name}
+        persona={author.persona}
+        state="speaking"
+      />
+    );
+  }
+
+  return (
+    <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      <span>By {author.displayName}</span>
+      {author.isAi ? <CastAiBadge /> : null}
+    </p>
+  );
+}
+
 function ThreadNodeView({
   allClaims,
+  level = 1,
   leagueId,
   node,
+  parentTitle,
   selectedClaimId,
 }: {
   allClaims: readonly LoreClaimCard[];
+  level?: number;
   leagueId: string;
   node: ThreadNode;
+  parentTitle?: string;
   selectedClaimId: string;
 }) {
   const annotation = lineageAnnotation(node, allClaims);
   const isSelected = node.claim.id === selectedClaimId;
 
   return (
-    <div className="grid gap-3">
+    <li className="grid gap-3" data-level={level}>
       <article
         className={cn(
-          "rounded-card border bg-card p-4",
-          isSelected ? "border-primary/50" : "border-border",
+          "cell grid gap-3 p-4",
+          isSelected &&
+            "border-primary/50 shadow-[0_0_18px_var(--glow-lilac),var(--bevel)]",
         )}
+        data-selected={isSelected ? "true" : "false"}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-border bg-muted/30 px-2 py-1 text-xs font-medium text-muted-foreground">
+          <StatusPill showDot={false} tone="neutral">
             {relationLabel(node.claim.relation)}
-          </span>
+          </StatusPill>
           <span
             className={cn(
               "rounded-full border px-2 py-1 text-xs font-medium",
@@ -280,42 +328,51 @@ function ThreadNodeView({
             {statusLabel(node.claim)}
           </span>
           {annotation ? (
-            <span className="rounded-full border border-highlight/40 bg-highlight/10 px-2 py-1 text-xs font-medium text-highlight">
+            <StatusPill showDot={false} tone="warning">
               {annotation}
-            </span>
+            </StatusPill>
+          ) : null}
+          {level > 3 && parentTitle ? (
+            <StatusPill showDot={false} tone="neutral">
+              Nested in {parentTitle}
+            </StatusPill>
           ) : null}
         </div>
-        <h3 className="mt-3 text-base font-semibold">
+        <h3 className="font-display text-base font-semibold text-foreground">
           <Link
             href={`/leagues/${encodeURIComponent(leagueId)}/lore/${encodeURIComponent(node.claim.id)}`}
-            className="hover:text-primary"
+            className="hover:text-primary focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
           >
             {node.claim.title}
           </Link>
         </h3>
-        <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+        <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">
           {node.claim.bodyPreview}
         </p>
-        <p className="mt-3 text-xs font-medium text-muted-foreground">
-          By {node.claim.author.displayName}
-          {node.claim.author.isAi ? " - AI cast" : ""}
-        </p>
+        <LoreAuthorByline author={node.claim.author} />
       </article>
 
       {node.children.length > 0 ? (
-        <div className="ml-3 grid gap-3 border-l border-border pl-3 sm:ml-5 sm:pl-5">
+        <ol
+          className={cn(
+            "grid gap-3 border-l border-[var(--hair)] pl-3",
+            level < 3 ? "ml-3 sm:ml-5 sm:pl-5" : "ml-0 border-dashed",
+          )}
+        >
           {node.children.map((child) => (
             <ThreadNodeView
               allClaims={allClaims}
               key={child.claim.id}
+              level={level + 1}
               leagueId={leagueId}
               node={child}
+              parentTitle={node.claim.title}
               selectedClaimId={selectedClaimId}
             />
           ))}
-        </div>
+        </ol>
       ) : null}
-    </div>
+    </li>
   );
 }
 
@@ -357,10 +414,12 @@ function StewardControls({
   }
 
   return (
-    <section className="grid gap-3 rounded-card border border-border bg-card p-4">
+    <section className="panel grid gap-3 p-4">
       <div className="flex items-center gap-2">
         <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
-        <h2 className="text-base font-semibold">Steward tiebreak</h2>
+        <h2 className="font-display text-base font-semibold text-foreground">
+          Steward tiebreak
+        </h2>
       </div>
       <p className="text-sm text-muted-foreground">
         Commissioner and data-steward actions require an audited reason.
@@ -385,13 +444,14 @@ function StewardControls({
             variant={item.action === "veto" ? "destructive" : "secondary"}
             onClick={() => void submit(item.action)}
             disabled={!reason.trim() || busyAction !== null}
+            loading={busyAction === item.action}
           >
             {item.action === "reject" || item.action === "veto" ? (
               <X data-icon="inline-start" />
             ) : (
               <Check data-icon="inline-start" />
             )}
-            {busyAction === item.action ? "Working" : item.label}
+            {item.label}
           </Button>
         ))}
       </div>
@@ -456,9 +516,9 @@ function BranchControls({
   }
 
   return (
-    <section className="grid gap-4 rounded-card border border-border bg-card p-4">
+    <section className="panel grid gap-4 p-4">
       <div>
-        <p className="flex items-center gap-2 text-sm font-semibold">
+        <p className="flex items-center gap-2 font-display text-sm font-semibold text-foreground">
           <GitBranch className="size-4 text-primary" aria-hidden="true" />
           Branch this lore
         </p>
@@ -466,6 +526,12 @@ function BranchControls({
           Add context to any claim, or challenge canon and let the league decide
           whether the record changes.
         </p>
+        {isCanonStatus(claim.status) ? null : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Challenge controls appear only after a claim is canon. Responses and
+            addenda can still extend this thread.
+          </p>
+        )}
       </div>
 
       <form className="grid gap-3" onSubmit={submitBranch}>
@@ -488,9 +554,9 @@ function BranchControls({
           </p>
         ) : null}
         {error ? (
-          <p className="rounded-control border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </p>
+          <Alert role="alert" title="Branch could not be posted" tone="danger">
+            <p>{error}</p>
+          </Alert>
         ) : null}
         <Field controlId="branch-title" label="Branch title">
           {({ controlProps }) => (
@@ -516,9 +582,15 @@ function BranchControls({
             />
           )}
         </Field>
-        <Button type="submit" className="w-fit" disabled={disabled}>
+        <Button
+          type="submit"
+          className="w-fit"
+          disabled={disabled}
+          loading={busy}
+          loadingLabel="Posting branch"
+        >
           <FilePlus2 data-icon="inline-start" />
-          {busy ? "Posting" : branchSubmitLabel(selectedRelation)}
+          {branchSubmitLabel(selectedRelation)}
         </Button>
       </form>
     </section>
@@ -583,7 +655,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
           Lore
         </Link>
 
-        <div className="grid gap-3 rounded-card border border-border bg-card p-4">
+        <div className="panel grid gap-4 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={cn(
@@ -593,11 +665,8 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
             >
               {statusLabel(claim)}
             </span>
-            {claim.author.isAi ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-highlight/40 bg-highlight/10 px-2 py-1 text-xs font-medium text-highlight">
-                <Bot className="size-3" aria-hidden="true" />
-                AI cast
-              </span>
+            {claim.author.isAi && !claim.author.persona ? (
+              <CastAiBadge />
             ) : null}
           </div>
           <div>
@@ -605,13 +674,18 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
               <Landmark className="size-4" aria-hidden="true" />
               {data.league.name} lore
             </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+            <h1 className="h-grad mt-2 font-display text-2xl font-semibold">
               {claim.title}
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              By {claim.author.displayName} · opened{" "}
-              {formatDateTime(claim.createdAt)}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <LoreAuthorByline author={claim.author} />
+              <time
+                className="metric text-xs text-muted-foreground"
+                dateTime={claim.createdAt}
+              >
+                Opened {formatDateTime(claim.createdAt)}
+              </time>
+            </div>
           </div>
           <p className="whitespace-pre-wrap text-sm leading-6">{claim.body}</p>
           {claim.subjects.length > 0 ? (
@@ -637,25 +711,30 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
       </header>
 
       {message ? (
-        <div className="rounded-card border border-positive/40 bg-positive/10 px-3 py-2 text-sm text-positive">
-          {message}
-        </div>
+        <Alert title="Steward action recorded" tone="ok">
+          <p>{message}</p>
+        </Alert>
       ) : null}
       {branchResult ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-card border border-positive/40 bg-positive/10 px-3 py-2 text-sm text-positive">
-          <span>{branchResult.message}</span>
-          <Link
-            href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(branchResult.claimId)}`}
-            className="font-semibold underline-offset-4 hover:underline"
-          >
-            Open branch
-          </Link>
-        </div>
+        <Alert
+          actions={
+            <Link
+              href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(branchResult.claimId)}`}
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              Open branch
+            </Link>
+          }
+          title="Branch posted"
+          tone="ok"
+        >
+          <p>{branchResult.message}</p>
+        </Alert>
       ) : null}
       {error ? (
-        <div className="rounded-card border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
+        <Alert role="alert" title="Lore action failed" tone="danger">
+          <p>{error}</p>
+        </Alert>
       ) : null}
 
       {claim.instigation && claim.status === "canon" ? (
@@ -681,17 +760,16 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
           voteApiUrl={data.voteApiUrl}
         />
       ) : (
-        <section className="rounded-card border border-border bg-card p-4">
-          <p className="text-sm font-semibold">No open vote</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            This claim is read-only in its current state.
-          </p>
-        </section>
+        <EmptyState title="No open vote">
+          <p>This claim is read-only in its current state.</p>
+        </EmptyState>
       )}
 
       {data.verificationResult ? (
-        <section className="rounded-card border border-border bg-card p-4">
-          <h2 className="text-base font-semibold">Verification</h2>
+        <section className="panel grid gap-3 p-4">
+          <h2 className="font-display text-base font-semibold text-foreground">
+            Verification
+          </h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Asserted {data.verificationResult.assertedValue}; recorded{" "}
             {data.verificationResult.actualValue ?? "unavailable"}.
@@ -707,7 +785,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
 
       <section className="grid gap-4">
         <div>
-          <p className="flex items-center gap-2 text-sm font-semibold">
+          <p className="flex items-center gap-2 font-display text-sm font-semibold text-foreground">
             <GitBranch className="size-4 text-primary" aria-hidden="true" />
             Thread lineage
           </p>
@@ -717,7 +795,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
           </p>
         </div>
         {threadTree.length > 0 ? (
-          <div className="grid gap-3">
+          <ol aria-label="Lore claim lineage" className="grid gap-3">
             {threadTree.map((node) => (
               <ThreadNodeView
                 allClaims={data.thread}
@@ -727,14 +805,13 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
                 selectedClaimId={claim.id}
               />
             ))}
-          </div>
+          </ol>
         ) : (
-          <div className="rounded-card border border-dashed border-border bg-muted/20 p-4">
-            <p className="text-sm font-medium">No branches yet</p>
-            <p className="mt-2 text-sm text-muted-foreground">
+          <EmptyState title="No branches yet">
+            <p>
               Responses, addenda, disputes, and re-litigation will appear here.
             </p>
-          </div>
+          </EmptyState>
         )}
       </section>
 

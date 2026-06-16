@@ -4,7 +4,8 @@ import { ArrowLeft, CheckCircle2, FilePlus2, Landmark } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
-import { buttonVariants } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ type SubmitState =
   | {
       readonly claimId: string;
       readonly message: string;
+      readonly resultStatus: LoreClaimSubmitResponse["status"];
       readonly status: "success";
     }
   | { readonly message: string; readonly status: "error" };
@@ -94,6 +96,34 @@ function resultMessage(result: LoreClaimSubmitResponse): string {
         case "n_a":
           return `Posted. The league is voting until ${formatDateTime(result.voteClosesAt)}.`;
       }
+  }
+}
+
+function resultTitle(state: Extract<SubmitState, { status: "success" }>) {
+  switch (state.resultStatus) {
+    case "canonized":
+      return "On the record";
+    case "rejected":
+      return "Refuted by the record";
+    case "vote":
+      return "Posted for league vote";
+  }
+}
+
+function resultTone(state: SubmitState) {
+  if (state.status === "error") {
+    return "danger" as const;
+  }
+  if (state.status !== "success") {
+    return "info" as const;
+  }
+  switch (state.resultStatus) {
+    case "canonized":
+      return "ok" as const;
+    case "rejected":
+      return "danger" as const;
+    case "vote":
+      return "info" as const;
   }
 }
 
@@ -296,6 +326,7 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
       setSubmitState({
         claimId: result.claimId,
         message: resultMessage(result),
+        resultStatus: result.status,
         status: "success",
       });
     } catch (error) {
@@ -318,13 +349,13 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
           <ArrowLeft data-icon="inline-start" />
           Lore
         </Link>
-        <div className="grid gap-3">
+        <div className="panel grid gap-3 p-4">
           <div className="flex items-center gap-2 text-primary">
             <Landmark className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">Submit claim</p>
+            <p className="eyebrow text-primary">Submit claim</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            <h1 className="h-grad font-display text-xl font-semibold sm:text-2xl">
               Add to {data.league.name} lore
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -336,9 +367,11 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
       </header>
 
       <form className="grid gap-4" onSubmit={submitClaim}>
-        <section className="grid gap-4 rounded-card border border-border bg-card p-4">
+        <section className="panel grid gap-4 p-4">
           <div>
-            <h2 className="text-base font-semibold tracking-tight">Claim</h2>
+            <h2 className="font-display text-base font-semibold text-foreground">
+              Claim
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Write it like the league would say it.
             </p>
@@ -371,11 +404,14 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
           </Field>
         </section>
 
-        <section className="grid gap-4 rounded-card border border-border bg-card p-4">
+        <section className="panel grid gap-4 p-4">
           <div>
-            <h2 className="text-base font-semibold tracking-tight">Subjects</h2>
+            <h2 className="font-display text-base font-semibold text-foreground">
+              Subjects
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Optional tags keep lore attached to durable league history.
+              Optional canonical tags keep lore attached to durable league
+              history.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -450,7 +486,7 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
           </div>
         </section>
 
-        <section className="grid gap-4 rounded-card border border-border bg-card p-4">
+        <section className="panel grid gap-4 p-4">
           <Checkbox
             checked={includeAssertion}
             description="Leave this off for a pure opinion claim."
@@ -460,6 +496,11 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
 
           {includeAssertion ? (
             <div className="grid gap-4 border-border border-t pt-4">
+              <div className="cell p-3 text-sm text-muted-foreground">
+                Checked against the record before the league has to vote. If the
+                imported data cannot verify it, the claim falls back to league
+                decision.
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field controlId="assertion-source" label="Fact source">
                   <Segmented
@@ -683,26 +724,40 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
                 </Field>
               )}
             </div>
-          ) : null}
+          ) : (
+            <div className="cell p-3 text-sm text-muted-foreground">
+              Opinion mode: the league will decide this claim by quorum vote.
+            </div>
+          )}
         </section>
 
         {submitState.message ? (
-          <output
-            className={cn(
-              "rounded-card border px-3 py-2 text-sm",
+          <Alert
+            actions={
+              submitState.status === "success" ? (
+                <Link
+                  href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(submitState.claimId)}`}
+                  className={cn(buttonVariants({ variant: "outline" }))}
+                >
+                  Open claim
+                </Link>
+              ) : null
+            }
+            icon={
+              submitState.status === "success" ? (
+                <CheckCircle2 className="size-5" />
+              ) : undefined
+            }
+            role={submitState.status === "error" ? "alert" : "status"}
+            title={
               submitState.status === "success"
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-destructive/30 bg-destructive/10 text-destructive",
-            )}
+                ? resultTitle(submitState)
+                : "Claim could not be posted"
+            }
+            tone={resultTone(submitState)}
           >
-            {submitState.status === "success" ? (
-              <CheckCircle2
-                className="mr-2 inline size-4 align-[-0.125em]"
-                aria-hidden="true"
-              />
-            ) : null}
-            {submitState.message}
-          </output>
+            <p>{submitState.message}</p>
+          </Alert>
         ) : null}
 
         <div className="flex flex-wrap justify-end gap-2">
@@ -712,14 +767,15 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
           >
             Cancel
           </Link>
-          <button
-            className={cn(buttonVariants())}
+          <Button
             disabled={submitDisabled}
+            loading={submitState.status === "submitting"}
+            loadingLabel="Submitting claim"
             type="submit"
           >
             <FilePlus2 data-icon="inline-start" />
             {submitState.status === "submitting" ? "Submitting" : "Submit"}
-          </button>
+          </Button>
         </div>
       </form>
     </main>

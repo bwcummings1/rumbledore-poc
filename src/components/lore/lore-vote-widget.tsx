@@ -3,7 +3,6 @@
 import { Check, Clock3, Scale, Vote } from "lucide-react";
 import { useId, useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
-import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import type { LoreVoteChoice } from "@/lore";
@@ -122,20 +121,22 @@ function stackedStyle(value: number, total: number) {
 }
 
 function LoreMeter({ vote }: { readonly vote: LoreVoteStatusSummary }) {
+  const readId = useId();
   const max = Math.max(vote.tally.activeMembers, vote.tally.totalVotes, 1);
   const quorumPercent = Math.min(100, (vote.tally.quorum / max) * 100);
+  const meterText = `${vote.tally.affirm} affirm, ${vote.tally.reject} reject, ${vote.tally.abstain} abstain. Quorum is ${vote.tally.quorum} of ${vote.tally.activeMembers} active members.`;
 
   return (
     <div className="grid gap-2">
       <meter
+        aria-describedby={readId}
         aria-label="Lore vote quorum meter"
         className="sr-only"
         max={max}
         min={0}
         value={Math.min(vote.tally.affirm, max)}
       >
-        {vote.tally.affirm} affirm, {vote.tally.reject} reject,{" "}
-        {vote.tally.abstain} abstain, quorum {vote.tally.quorum}
+        {meterText}
       </meter>
       <div
         aria-hidden="true"
@@ -168,7 +169,7 @@ function LoreMeter({ vote }: { readonly vote: LoreVoteStatusSummary }) {
           style={{ insetInlineStart: `${quorumPercent}%` }}
         />
       </div>
-      <p className="metric text-xs text-muted-foreground">
+      <p className="metric text-xs text-muted-foreground" id={readId}>
         Quorum tick at {vote.tally.quorum} of {vote.tally.activeMembers} active
         members; abstain is neutral.
       </p>
@@ -195,13 +196,15 @@ function PollMeter({ poll }: { readonly poll: LorePollStatusSummary }) {
             min={0}
             value={option.votes}
           >
-            {option.votes} votes
+            {option.label}: {option.votes}{" "}
+            {option.votes === 1 ? "vote" : "votes"}
           </meter>
           <div
             aria-hidden="true"
             className="h-2 overflow-hidden rounded-full bg-[var(--hair-2)]"
           >
             <span
+              aria-hidden="true"
               className={cn(
                 "block h-full rounded-full",
                 poll.leadingOptionIdx === option.index
@@ -442,16 +445,17 @@ function LoreVoteWidget(props: LoreVoteWidgetProps) {
       ) : null}
       {error ? (
         <p
-          aria-live="polite"
+          aria-live="assertive"
           className="rounded-control border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {error}
         </p>
       ) : null}
       {!open ? (
-        <Button className="w-fit" disabled type="button" variant="secondary">
-          Voting closed
-        </Button>
+        <output className="cell flex min-h-11 items-center gap-2 p-3 text-sm text-muted-foreground">
+          <Clock3 className="size-4 text-primary" aria-hidden="true" />
+          Voting closed. This widget is read-only.
+        </output>
       ) : null}
     </section>
   );

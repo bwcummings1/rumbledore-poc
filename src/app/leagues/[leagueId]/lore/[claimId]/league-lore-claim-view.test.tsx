@@ -199,10 +199,13 @@ describe("LeagueLoreClaimView", () => {
     );
 
     expect(screen.getByText("Thread lineage")).toBeDefined();
+    expect(
+      screen.getByRole("list", { name: "Lore claim lineage" }),
+    ).toBeDefined();
     expect(screen.getByText("Dispute")).toBeDefined();
     expect(
       screen.getByText(
-        "Superseded by Actually, the Watson trade was justified",
+        "Superseded by -> Actually, the Watson trade was justified",
       ),
     ).toBeDefined();
     expect(

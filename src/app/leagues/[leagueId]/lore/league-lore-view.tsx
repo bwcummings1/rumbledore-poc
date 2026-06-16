@@ -8,7 +8,11 @@ import {
   Vote,
 } from "lucide-react";
 import Link from "next/link";
-import { CastAiBadge } from "@/components/cast/cast-presence";
+import { DEFAULT_PERSONA_CARDS } from "@/ai/personas";
+import {
+  CastAiBadge,
+  CastPersonaByline,
+} from "@/components/cast/cast-presence";
 import { InstigatorProvocationCard } from "@/components/lore/instigator-ui";
 import { LoreVoteWidget } from "@/components/lore/lore-vote-widget";
 import {
@@ -16,9 +20,15 @@ import {
   PublicationStoryCard,
 } from "@/components/publication/story-card";
 import { buttonVariants } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { StatTile } from "@/components/ui/stat-tile";
+import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
-import type { LoreClaimCard, LoreSectionData } from "@/lore/member-ui";
+import type {
+  LoreClaimAuthorSummary,
+  LoreClaimCard,
+  LoreSectionData,
+} from "@/lore/member-ui";
 import { buildPublicationFront } from "@/news/front";
 
 function formatCount(value: number): string {
@@ -49,6 +59,36 @@ function subjectRead(claim: LoreClaimCard): string | null {
     return null;
   }
   return `Subjects: ${claim.subjects.map((subject) => subject.label).join(", ")}`;
+}
+
+function LoreAuthorByline({
+  author,
+  compact = false,
+}: {
+  readonly author: LoreClaimAuthorSummary;
+  readonly compact?: boolean;
+}) {
+  if (author.isAi && author.persona) {
+    const card = DEFAULT_PERSONA_CARDS[author.persona];
+    return (
+      <CastPersonaByline
+        beat={card.beat}
+        className={compact ? "text-xs" : undefined}
+        name={card.name}
+        persona={author.persona}
+        state="speaking"
+      />
+    );
+  }
+
+  return (
+    <p className="flex flex-wrap items-center gap-2">
+      <span className="metric text-xs text-muted-foreground">
+        {author.displayName}
+      </span>
+      {author.isAi ? <CastAiBadge /> : null}
+    </p>
+  );
 }
 
 function toCanonStory({
@@ -118,12 +158,7 @@ function OpenVoteCard({
     <article className="panel grid gap-3 p-4" data-slot="open-lore-vote-card">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2">
-            <span className="metric text-xs text-muted-foreground">
-              {claim.author.displayName}
-            </span>
-            {claim.author.isAi ? <CastAiBadge /> : null}
-          </p>
+          <LoreAuthorByline author={claim.author} compact={true} />
           <h2 className="mt-1 font-display text-base font-semibold text-foreground">
             <Link
               href={`/leagues/${encodeURIComponent(leagueId)}/lore/${encodeURIComponent(claim.id)}`}
@@ -133,9 +168,9 @@ function OpenVoteCard({
             </Link>
           </h2>
         </div>
-        <span className="metric rounded-control border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary">
+        <StatusPill showDot={false} tone="info">
           Vote
-        </span>
+        </StatusPill>
       </div>
       <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
         {claim.bodyPreview}
@@ -165,19 +200,18 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
           League home
         </Link>
 
-        <div className="grid gap-4 rounded-card border border-border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div className="panel grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-primary">
               <Landmark className="size-5" aria-hidden="true" />
-              <p className="text-sm font-medium">Lore</p>
+              <p className="eyebrow text-primary">Official mythology</p>
             </div>
-            <h1 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
+            <h1 className="h-grad mt-3 font-display text-xl font-semibold sm:text-2xl">
               {data.league.name} official lore
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              The league's narrative record lives here: claims members submit,
-              facts the data can verify, and arguments the league decides by
-              vote.
+              A calmer ledger for claims members submit, facts the record can
+              verify, and arguments the league settles by vote.
             </p>
           </div>
 
@@ -202,16 +236,20 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
 
       <section aria-label="Lore status" className="grid gap-3 sm:grid-cols-3">
         <StatTile
+          caption="Ratified and citeable by the cast"
           label="Canon entries"
           value={formatCount(data.counts.canon)}
         />
         <StatTile
+          caption="Live decisions awaiting members"
           label="Open votes"
           tone="lilac"
           value={formatCount(data.counts.openVotes)}
         />
         <StatTile
+          caption="Claims contradicted by imported history"
           label="Refuted facts"
+          tone="amber"
           value={formatCount(data.counts.refuted)}
         />
       </section>
@@ -331,18 +369,35 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
             ) : null}
           </div>
         ) : (
-          <div className="rounded-card border border-dashed border-border bg-muted/20 p-4">
-            <p className="text-sm font-medium">
-              {data.activeSubject
-                ? "No canon for this subject"
-                : "No canon yet"}
-            </p>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          <EmptyState
+            action={
+              data.activeSubject ? (
+                <Link
+                  href={`/leagues/${encodeURIComponent(data.league.id)}/lore`}
+                  className={cn(buttonVariants({ variant: "outline" }))}
+                >
+                  Clear filter
+                </Link>
+              ) : (
+                <Link
+                  href={submitHref}
+                  className={cn(buttonVariants({ variant: "secondary" }))}
+                >
+                  <FilePlus2 data-icon="inline-start" />
+                  Make the first claim
+                </Link>
+              )
+            }
+            title={
+              data.activeSubject ? "No canon for this subject" : "No canon yet"
+            }
+          >
+            <p>
               {data.activeSubject
                 ? "Clear the subject filter to browse the full ledger."
                 : "Make the first claim, let the league vote, and the record will start here."}
             </p>
-          </div>
+          </EmptyState>
         )}
       </section>
 
@@ -378,14 +433,24 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
             ))}
           </div>
         ) : (
-          <div className="rounded-card border border-dashed border-border bg-muted/20 p-4">
-            <p className="text-sm font-medium">Start the record</p>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          <EmptyState
+            action={
+              <Link
+                href={submitHref}
+                className={cn(buttonVariants({ variant: "secondary" }))}
+              >
+                <FilePlus2 data-icon="inline-start" />
+                New claim
+              </Link>
+            }
+            title="Start the record"
+          >
+            <p>
               Opinion claims open a league vote. Structured fact claims are
               checked against imported weekly, season, and all-time records
               before the league has to argue about them.
             </p>
-          </div>
+          </EmptyState>
         )}
       </section>
     </main>
