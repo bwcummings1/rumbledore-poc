@@ -1,40 +1,62 @@
-# IMPLEMENTATION_PLAN.md — Phase 4: Reality & Tunability
+# IMPLEMENTATION_PLAN.md — Phase 5: UI/UX Overhaul (AUSPEX visual language)
 
 Disposable, loop-maintained backlog. The loop works `## Scope` until none unblocked + gates green (writes `.loop/SCOPE_DONE`), then auto-runs the value-ranked `## Icebox` ×10 (`PROMPT_harden.md`), then stops at the review checkpoint.
-One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md`.** Phases 1–3 are complete (git history + `docs/PROGRESS.md §8`). Full roadmap: `docs/ROADMAP.md`. Specs of record: `specs/25` (real integrations + cost safety), `specs/26` (model & tone tunability), `specs/27` (theming framework). Real API keys are live in `.env.local` (Anthropic/Odds/SportsDataIO/Tavily/Voyage). **AI here is for VALIDATION ONLY — prove the pipeline functions with real services; do NOT iterate tone/voice (that's the user's later fine-tuning). Keep spend bounded: cheap models, spend guard, fixture-first tests.**
+One task = one sentence, no "and". **Build toward `docs/NORTH-STAR.md` in the AUSPEX visual language — the design source-of-truth is `docs/design/rumbledore-design-language.md` + specs `28–34`.** Phases 1–4 are complete (git history + `docs/PROGRESS.md §8`). Full roadmap: `docs/ROADMAP.md`.
 
-## Scope — Phase 4 (build in order)
+**NON-NEGOTIABLES for every task:**
+- **Mobile + tablet + desktop** — every surface/component must be laid out, behave correctly, and be fully usable on all three. Not desktop-first.
+- **Accessibility** — WCAG-AA contrast, visible focus, full keyboard nav, semantic/screen-reader markup, ≥44px touch targets, honor `prefers-reduced-motion`, never color-as-sole-signal.
+- **All states** — default/hover/active/focus/disabled/loading(skeleton)/empty/error/offline/gated.
+- Builds **on Phase 4's theming framework** (`specs/27`): Spec 28 registers AUSPEX as a theme there; components consume tokens, never literals.
+- The UI gate (`npx impeccable detect src/`) must pass; this is an overhaul of existing UI — **search/restyle existing components, don't fork them.**
 
-### P. Real integrations & cost safety (see specs/25)
-- [x] Complete clean env-gated mock→real selection for Anthropic, Odds, SportsDataIO, Tavily, and Voyage. (specs/25)
-- [x] Default all AI to cheap models (Haiku, voyage-4-lite) via a model-tier config. (specs/25)
-- [x] Build the per-provider spend guard that caps usage and falls back to mock on breach. (specs/25)
-- [x] Add secret-free usage logging/observability for provider calls. (specs/25)
-- [x] Build the VCR fixture-first test harness with gated live-smoke validation per provider. (specs/25)
+## Scope — Phase 5 (build in dependency order)
 
-### Q. Model & tone tunability framework (see specs/26)
-- [x] Build the pluggable model-provider abstraction including a custom fine-tuned/self-hosted endpoint. (specs/26)
-- [x] Add data-driven per-task model routing (cheap/flagship/custom). (specs/26)
-- [x] Externalize persona tone/voice as versioned config records. (specs/26)
-- [x] Add versioned, composable, diffable prompt templates. (specs/26)
-- [x] Build the `eval:ai:variants` A/B harness that scores model×tone variants and names a winner. (specs/26)
+### S. Design foundations (see specs/28)
+- [ ] Register the AUSPEX theme in the design-token framework with the full ported token set. (specs/28)
+- [ ] Implement the typography system (Michroma/Saira/JetBrains Mono/Inter, scales, gradient-clip headings, LCD numerics, prose scale). (specs/28)
+- [ ] Implement the atmosphere layers (starfield/scanline/grain/vignette), perf-safe and reduced-motion-aware. (specs/28)
+- [ ] Implement the signature primitives: the AI orb, the Y2K bezel, and the glass panel/surface system. (specs/28)
+- [ ] Add motion/easing tokens plus the WCAG-AA contrast, focus, and reduced-motion accessibility foundation. (specs/28)
 
-### R. Theming framework (see specs/27)
-- [x] Build the design-token system (primitives → semantic aliases → Tailwind/CSS vars). (specs/27)
-- [x] Build the ThemeProvider and data-theme swap (SSR-safe, no FOUC) with palette-a/palette-b slots. (specs/27)
-- [x] Add contrast and reduced-motion accessibility gates on the tokens. (specs/27)
-- [x] Migrate components to tokens incrementally, keeping the impeccable gate green. (specs/27)
+### T. Component library (see specs/29)
+- [ ] Restyle the button and input control set to AUSPEX with all states, responsive, and a11y. (specs/29)
+- [ ] Build the data-display components (tables→mobile cards, pills/badges/tags/edges, key-value, avatars, meters/pips, stat tiles). (specs/29)
+- [ ] Build the feedback/overlay components (alerts, toasts, modals, drawers→mobile sheets, tooltips, popovers, skeletons, empty, banner). (specs/29)
+- [ ] Build the navigation atoms and command palette (breadcrumbs, tabs, pagination, steps, ⌘K + mobile equivalent). (specs/29)
 
-## Harden shortlist
-1. [x] [ai-tone/OBSERVED] Article byline surfaces still derive persona labels from `DEFAULT_PERSONA_CARDS` — correctness bug in the model/tone tunability work because edited persona metadata can persist while publication surfaces still show stale default identity.
-2. [x] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation — fixed by passing an explicit bounded Tavily SDK timeout through AI web grounding and the related central-news Tavily source, with regression coverage.
-3. [blocked] [onboarding/DEFERRED] Real Browserbase cookie-capture is human-paired — highest product value for live onboarding, but explicitly requires the user's device and is not eligible for autonomous hardening.
+### U. Data-viz & ephemera (see specs/34)
+- [ ] Build the accessible, responsive, reduced-motion-aware chart library formalizing the 18 AUSPEX generators. (specs/34)
+- [ ] Add the new Rumbledore viz (bankroll equity curve, standings bump, playoff-odds cone, win-prob timeline, and the rest). (specs/34)
+- [ ] Build the live/ephemeral spectacle moments (wire ticker, scoreboard strip, count-ups, stingers, orb states) behind a reduced-motion master switch. (specs/34)
+
+### V. App shell & navigation (see specs/30)
+- [ ] Build the responsive AUSPEX app shell (desktop rail+topbar+ticker, tablet adaptation, mobile bottom-tabs+header). (specs/30)
+- [ ] Build the scope-switcher (global↔league) and league switcher sheet, mobile-first. (specs/30)
+- [ ] Wire the WIRE ticker, notifications, and presence to realtime, plus the boot/splash and PWA install/offline affordances. (specs/30)
+
+### W. Editorial / publication register (see specs/31)
+- [ ] Build the AUSPEX reading register (the legible long-form skin) and the story-card variants. (specs/31)
+- [ ] Build the publication Front and section fronts with editorial hierarchy, responsive. (specs/31)
+- [ ] Build the article page (persona/orb byline, dek, long-form body, pull quotes, related), responsive and accessible. (specs/31)
+
+### X. Feature surfaces (see specs/32)
+- [ ] Compose the League Home dashboard in AUSPEX (matchup hero, standings ladder, cast headlines, bankroll, wire). (specs/32)
+- [ ] Compose the Arena (league-vs-league and individual leaderboards, seasons, head-to-head, rank movement). (specs/32)
+- [ ] Compose the Sportsbook (market board, the bet-slip console/sheet, the rolling bankroll LCD). (specs/32)
+- [ ] Compose Records & History, the Central News hub, and Settings/data-steward surfaces. (specs/32)
+- [ ] Compose the entitlement/upgrade and gated states (graceful, on-brand, never a broken page). (specs/32)
+
+### Y. AI cast, lore & onboarding surfaces (see specs/33)
+- [ ] Build the AI cast presence (orb identity, persona cards/bylines, the cast chat and insight cards). (specs/33)
+- [ ] Build the instigator UI (seed-debate / poll / lore-claim / verdict) and the shared vote widget. (specs/33)
+- [ ] Build the lore mechanic UI (submit, vote with quorum, canon ledger, branch/dispute trees, challenge). (specs/33)
+- [ ] Build the onboarding flows (provider connect, hosted-browser frame, discovery, leaguemate detection, invite, claim-your-team). (specs/33)
 
 ## Icebox (value-ranked; the build auto-hardens ×10 after Scope)
-Carried/forward — **re-verify each before acting.**
-- [ ] **[onboarding/DEFERRED] Real Browserbase cookie-capture is human-paired** — do NOT attempt autonomously; keep mocked. The live POC needs the user's device (Phase 4b).
-- [ ] (loop appends discovered bugs/improvements here during Phase 4)
+- [ ] **[a11y]** Run a full keyboard + screen-reader + AA-contrast sweep across every overhauled surface and fix gaps.
+- [ ] **[perf]** Verify the atmosphere/ephemera stay within the mobile perf budget; throttle/disable on low-end devices.
+- [ ] (loop appends discovered bugs/improvements here during Phase 5)
 
 ## Discoveries / bugs (loop appends here)
-- [x] [cost-safety/OBSERVED] TavilyWebGrounding still relies on the SDK call without explicit timeout/AbortSignal cancellation; fixed by adding explicit Tavily SDK timeouts to AI grounding and central-news search paths.
-- [x] [ai-tone/OBSERVED] Article byline surfaces still derive persona labels from `DEFAULT_PERSONA_CARDS`; fixed by resolving league Press/home/feed bylines from scoped persona-card metadata with default fallback.
+- (none yet this phase)
