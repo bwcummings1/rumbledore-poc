@@ -1958,6 +1958,7 @@ async function buildDataIntegrityCheckDrafts(
 ): Promise<DataIntegrityCheckDraft[]> {
   const weeklyRows = await tx
     .select({
+      isChampionship: weeklyStatistics.isChampionship,
       personId: weeklyStatistics.personId,
       pointsAgainst: weeklyStatistics.pointsAgainst,
       pointsFor: weeklyStatistics.pointsFor,
@@ -1984,6 +1985,8 @@ async function buildDataIntegrityCheckDrafts(
     .select({
       finalRank: providerFinalStandings.finalRank,
       providerTeamId: providerFinalStandings.providerTeamId,
+      rankConfidence: providerFinalStandings.rankConfidence,
+      rankSource: providerFinalStandings.rankSource,
       season: providerFinalStandings.season,
     })
     .from(providerFinalStandings)
@@ -2140,6 +2143,79 @@ async function buildDataIntegrityCheckDrafts(
   const standingsSeasons = seasonKeys(
     finalStandingRows.map((row) => row.season),
   );
+  const championshipFactsByPersonSeason = new Set(
+    weeklyRows
+      .filter((row) => row.isChampionship)
+      .map((row) => `${row.personId}:${row.season}`),
+  );
+  for (const season of standingsSeasons) {
+    const issues: Record<string, unknown>[] = [];
+    const seasonStandings = finalStandingRows
+      .filter((row) => row.season === season)
+      .sort(
+        (left, right) =>
+          left.finalRank - right.finalRank ||
+          compareStable(left.providerTeamId, right.providerTeamId),
+      );
+
+    for (const standing of seasonStandings) {
+      if (standing.rankConfidence !== "high") {
+        issues.push({
+          finalRank: standing.finalRank,
+          providerTeamId: standing.providerTeamId,
+          rankConfidence: standing.rankConfidence,
+          rankSource: standing.rankSource,
+          reason: "low_confidence_final_rank",
+        });
+      }
+    }
+
+    const champion = seasonStandings.find((row) => row.finalRank === 1);
+    const runnerUp = seasonStandings.find((row) => row.finalRank === 2);
+    const championMapping = champion
+      ? mappingsByProviderTeamSeason.get(
+          identityKey(champion.providerTeamId, season),
+        )
+      : undefined;
+    const runnerUpMapping = runnerUp
+      ? mappingsByProviderTeamSeason.get(
+          identityKey(runnerUp.providerTeamId, season),
+        )
+      : undefined;
+    if (
+      champion &&
+      runnerUp &&
+      championMapping &&
+      runnerUpMapping &&
+      (!championshipFactsByPersonSeason.has(
+        `${championMapping.personId}:${season}`,
+      ) ||
+        !championshipFactsByPersonSeason.has(
+          `${runnerUpMapping.personId}:${season}`,
+        ))
+    ) {
+      issues.push({
+        championProviderTeamId: champion.providerTeamId,
+        finalRanks: {
+          champion: champion.finalRank,
+          runnerUp: runnerUp.finalRank,
+        },
+        reason: "missing_championship_matchup",
+        runnerUpProviderTeamId: runnerUp.providerTeamId,
+      });
+    }
+
+    drafts.push({
+      checkKey: "postseason_derivation_confidence",
+      detail: {
+        checkedRows: seasonStandings.length,
+        issues,
+      },
+      season,
+      status: checkStatus(issues),
+    });
+  }
+
   for (const season of standingsSeasons) {
     const mismatches: Record<string, unknown>[] = [];
     for (const standing of finalStandingRows.filter(

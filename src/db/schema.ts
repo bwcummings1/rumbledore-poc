@@ -20,6 +20,8 @@ import {
 import { FANTASY_PROVIDER_IDS } from "../providers/ids";
 import {
   DATA_COVERAGE_STATUSES,
+  type NormalizedFinalStandingRankConfidence,
+  type NormalizedFinalStandingRankSource,
   PROVIDER_DATA_CLASSES,
   PROVIDER_DATA_SUPPORT_LEVELS,
 } from "../providers/model";
@@ -98,6 +100,7 @@ export const dataCoverageStatus = pgEnum(
 export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "reconciliation_totals",
   "standings_parity",
+  "postseason_derivation_confidence",
   "schedule_coverage",
   "identity_sanity",
   "no_silent_empty",
@@ -668,6 +671,14 @@ export const providerFinalStandings = pgTable(
     leagueProviderId: text("league_provider_id").notNull(),
     season: integer("season").notNull(),
     finalRank: integer("final_rank").notNull(),
+    rankSource: text("rank_source")
+      .$type<NormalizedFinalStandingRankSource>()
+      .notNull()
+      .default("provider_reported"),
+    rankConfidence: text("rank_confidence")
+      .$type<NormalizedFinalStandingRankConfidence>()
+      .notNull()
+      .default("high"),
     division: text("division"),
     divisionRank: integer("division_rank"),
     divisionWinner: boolean("division_winner").notNull().default(false),

@@ -663,6 +663,8 @@ function finalStandingsFromTeams(
           season: ref.season,
         },
         rank: team.rank ?? 0,
+        rankConfidence: "high",
+        rankSource: "provider_reported",
         wins: team.wins,
         losses: team.losses,
         ties: team.ties,

@@ -748,11 +748,36 @@ function finalStandingsFromTeams(
   const rawTeamById = new Map(
     sourceTeams.map((team) => [String(toInteger(team.id) ?? team.id), team]),
   );
-  const explicitRankFor = (team: NormalizedTeam) => {
-    const source = rawTeamById.get(team.providerId);
-    const rank = source?.rankCalculatedFinal ?? source?.rankFinal;
-    const parsed = toInteger(rank);
+  const positiveRank = (value: string | number | undefined) => {
+    const parsed = toInteger(value);
     return parsed && parsed > 0 ? parsed : undefined;
+  };
+  const providerRankFor = (
+    team: NormalizedTeam,
+  ): Pick<NormalizedFinalStanding, "rankConfidence" | "rankSource"> & {
+    rank?: number;
+  } => {
+    const source = rawTeamById.get(team.providerId);
+    const calculated = positiveRank(source?.rankCalculatedFinal);
+    if (calculated) {
+      return {
+        rank: calculated,
+        rankConfidence: "high",
+        rankSource: "provider_calculated_final",
+      };
+    }
+    const final = positiveRank(source?.rankFinal);
+    if (final) {
+      return {
+        rank: final,
+        rankConfidence: "high",
+        rankSource: "provider_final",
+      };
+    }
+    return {
+      rankConfidence: "low",
+      rankSource: "regular_season_fallback",
+    };
   };
   const playoffSeedFor = (team: NormalizedTeam) => {
     const parsed = toInteger(rawTeamById.get(team.providerId)?.playoffSeed);
@@ -772,38 +797,50 @@ function finalStandingsFromTeams(
   const fallbackRankByTeam = new Map(
     fallbackSorted.map((team, index) => [team.providerId, index + 1]),
   );
+  const rankByTeam = new Map(
+    teams.map((team) => [team.providerId, providerRankFor(team)]),
+  );
 
   return [...teams]
     .sort((left, right) => {
       const leftRank =
-        explicitRankFor(left) ?? fallbackRankByTeam.get(left.providerId) ?? 0;
+        rankByTeam.get(left.providerId)?.rank ??
+        fallbackRankByTeam.get(left.providerId) ??
+        0;
       const rightRank =
-        explicitRankFor(right) ?? fallbackRankByTeam.get(right.providerId) ?? 0;
+        rankByTeam.get(right.providerId)?.rank ??
+        fallbackRankByTeam.get(right.providerId) ??
+        0;
       return (
         leftRank - rightRank ||
         left.name.localeCompare(right.name) ||
         left.providerId.localeCompare(right.providerId)
       );
     })
-    .map((team, index) => ({
-      leagueProviderId: team.leagueProviderId,
-      teamRef: {
-        provider: team.provider,
-        providerId: team.providerId,
-        season: team.season,
-      },
-      ...(team.division ? { division: team.division } : {}),
-      rank:
-        explicitRankFor(team) ??
-        fallbackRankByTeam.get(team.providerId) ??
-        index + 1,
-      ...(playoffSeedFor(team) ? { playoffSeed: playoffSeedFor(team) } : {}),
-      wins: team.record.wins,
-      losses: team.record.losses,
-      ties: team.record.ties,
-      pointsFor: team.record.pointsFor,
-      pointsAgainst: team.record.pointsAgainst,
-    }));
+    .map((team, index) => {
+      const rank = rankByTeam.get(team.providerId) ?? {
+        rankConfidence: "low" as const,
+        rankSource: "regular_season_fallback" as const,
+      };
+      return {
+        leagueProviderId: team.leagueProviderId,
+        teamRef: {
+          provider: team.provider,
+          providerId: team.providerId,
+          season: team.season,
+        },
+        ...(team.division ? { division: team.division } : {}),
+        rank: rank.rank ?? fallbackRankByTeam.get(team.providerId) ?? index + 1,
+        rankConfidence: rank.rankConfidence,
+        rankSource: rank.rankSource,
+        ...(playoffSeedFor(team) ? { playoffSeed: playoffSeedFor(team) } : {}),
+        wins: team.record.wins,
+        losses: team.record.losses,
+        ties: team.record.ties,
+        pointsFor: team.record.pointsFor,
+        pointsAgainst: team.record.pointsAgainst,
+      };
+    });
 }
 
 function normalizeHistoryBundle(

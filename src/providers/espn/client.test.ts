@@ -429,6 +429,8 @@ describe("ESPN current league client", () => {
     });
     expect(result.value[0].finalStandings[0]).toMatchObject({
       rank: 1,
+      rankConfidence: "high",
+      rankSource: "provider_calculated_final",
       teamRef: { provider: "espn", providerId: "1", season: 2025 },
       leagueProviderId: "95050",
       playoffSeed: 4,
@@ -441,6 +443,45 @@ describe("ESPN current league client", () => {
     expect(calls[0].url).toBe(
       "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/95050?seasonId=2025&view=mSettings&view=mTeam&view=mStandings&view=mMembers&view=mMatchup&view=mMatchupScore",
     );
+  });
+
+  it("marks regular-season fallback final standings as low confidence", async () => {
+    const historyFixture = structuredClone(leagueFixture);
+    historyFixture.seasonId = 2024;
+    historyFixture.status.isExpired = true;
+    historyFixture.status.isActive = false;
+    for (const team of historyFixture.teams) {
+      const mutableTeam = team as {
+        playoffSeed?: unknown;
+        rankCalculatedFinal?: unknown;
+        rankFinal?: unknown;
+      };
+      delete mutableTeam.rankCalculatedFinal;
+      delete mutableTeam.rankFinal;
+      delete mutableTeam.playoffSeed;
+    }
+    historyFixture.teams[0].record.overall.wins = 10;
+    historyFixture.teams[0].record.overall.ties = 0;
+    historyFixture.teams[0].record.overall.pointsFor = 1500;
+    historyFixture.teams[1].record.overall.wins = 9;
+    historyFixture.teams[1].record.overall.ties = 0;
+    historyFixture.teams[1].record.overall.pointsFor = 1600;
+
+    const { fetch } = createCapturingFetch(jsonResponse([historyFixture]));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getHistory(fixtureSession(), leagueRef, {
+      seasons: [2024],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0].finalStandings[0]).toMatchObject({
+      rank: 1,
+      rankConfidence: "low",
+      rankSource: "regular_season_fallback",
+      teamRef: { provider: "espn", providerId: "1", season: 2024 },
+    });
   });
 
   it("falls back cleanly when ESPN omits optional team fields", async () => {

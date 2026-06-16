@@ -195,10 +195,20 @@ export interface NormalizedTransaction extends SeasonScopedProviderEntityRef {
   details: Record<string, unknown>;
 }
 
+export type NormalizedFinalStandingRankSource =
+  | "provider_reported"
+  | "provider_calculated_final"
+  | "provider_final"
+  | "regular_season_fallback";
+
+export type NormalizedFinalStandingRankConfidence = "high" | "low";
+
 export interface NormalizedFinalStanding {
   leagueProviderId: string;
   teamRef: SeasonScopedProviderEntityRef;
   rank: number;
+  rankConfidence?: NormalizedFinalStandingRankConfidence;
+  rankSource?: NormalizedFinalStandingRankSource;
   division?: string;
   divisionRank?: number;
   divisionWinner?: boolean;

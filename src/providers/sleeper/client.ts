@@ -985,6 +985,8 @@ function finalStandingsFromTeams(
         season: team.season,
       },
       rank: index + 1,
+      rankConfidence: "low",
+      rankSource: "regular_season_fallback",
       wins: team.record.wins,
       losses: team.record.losses,
       ties: team.record.ties,

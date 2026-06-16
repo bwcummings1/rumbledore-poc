@@ -1527,6 +1527,80 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("flags low-confidence postseason derivations instead of trusting fallback finals", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague(
+      "low-confidence-postseason",
+    );
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(providerFinalStandings).values([
+        {
+          contentHash: `${marker}-low-confidence-2024-1`,
+          finalRank: 1,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          playoffSeed: null,
+          pointsAgainst: 90,
+          pointsFor: 110,
+          provider: "espn",
+          providerTeamId: "1",
+          rankConfidence: "low",
+          rankSource: "regular_season_fallback",
+          season: 2024,
+          ties: 0,
+          wins: 1,
+        },
+        {
+          contentHash: `${marker}-low-confidence-2024-2`,
+          finalRank: 2,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          playoffSeed: null,
+          pointsAgainst: 80,
+          pointsFor: 100,
+          provider: "espn",
+          providerTeamId: "2",
+          rankConfidence: "low",
+          rankSource: "regular_season_fallback",
+          season: 2024,
+          ties: 0,
+          wins: 1,
+        },
+      ]);
+    });
+
+    const result = await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    expect(result.integrityFailures).toBeGreaterThan(0);
+    const rows = await selectStatsRows(leagueId);
+    const confidenceFailure = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "postseason_derivation_confidence" &&
+        row.season === 2024 &&
+        row.status === "fail",
+    );
+    expect(confidenceFailure?.detail).toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          providerTeamId: "1",
+          rankSource: "regular_season_fallback",
+          reason: "low_confidence_final_rank",
+        }),
+        expect.objectContaining({
+          championProviderTeamId: "1",
+          reason: "missing_championship_matchup",
+          runnerUpProviderTeamId: "2",
+        }),
+      ]),
+    });
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, { leagueId });
+    expect(catalog.integrityBlocked).toBe(true);
+    expect(catalog.championships.seasons).toEqual([]);
+  });
+
   it("persists division winners and keeps median rows out of H2H records", async () => {
     const { leagueId, providerLeagueId } = await seedStatsLeague("edge");
 

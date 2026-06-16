@@ -73,6 +73,7 @@ All planned scope (P0–P5) is built, committed on `rebuild/foundation`, and beh
 - **Next:** fix the above (`./loop.sh harden 10` works the highest-value Icebox items), wire real service keys, and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-16: ESPN postseason derivation confidence landed — live 95050 history validation confirmed recent `rankCalculatedFinal` title-game alignment, final standings now persist rank provenance, and low-confidence fallback finals/title-game misses surface as integrity failures.
 - 2026-06-16: Lore steward tiebreak hardening landed — steward ratify/reject now requires tie, quorum-short, or expired vote conditions, and open-vote commissioner overrides are a separate audited action.
 - 2026-06-16: Live ingestion calendar cadence hardening landed — ingestion tick now uses the NFL calendar default game-state provider so live game windows hit the 1-min matchup poll tier while off-hours stay relaxed.
 - 2026-06-16: AUSPEX onboarding flows landed — provider connect, hosted ESPN frame, unified discovery/import inventory, roster invite path, and claim-your-team previews now use the shared mobile-first onboarding register.

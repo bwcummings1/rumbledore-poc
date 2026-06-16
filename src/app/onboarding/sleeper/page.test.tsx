@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import SleeperOnboardingPage from "./page";
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 
