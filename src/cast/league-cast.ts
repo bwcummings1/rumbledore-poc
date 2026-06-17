@@ -21,7 +21,8 @@ import {
 } from "@/news/sections";
 import type { FantasyProviderId } from "@/providers";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface LeagueCastPersonaCard {
   beat: string;

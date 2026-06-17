@@ -10,7 +10,7 @@ test("root error boundary renders a safe fallback and reset action", () => {
   expect(
     screen.getByRole("heading", {
       level: 1,
-      name: "Something went wrong",
+      name: "Signal lost",
     }),
   ).toBeDefined();
 
