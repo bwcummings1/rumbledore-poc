@@ -57,7 +57,7 @@ describe("LoggedOutLanding", () => {
     expect(
       screen.getByRole("heading", {
         level: 1,
-        name: "Your fantasy league becomes the show.",
+        name: "Your fantasy league becomes the show",
       }),
     ).toBeDefined();
     expect(
@@ -84,7 +84,7 @@ describe("YourLeaguesLandingView", () => {
     expect(
       screen.getByRole("heading", {
         level: 1,
-        name: "Connect a league to open the lobby.",
+        name: "Connect a league to open the lobby",
       }),
     ).toBeDefined();
     expect(
@@ -104,7 +104,7 @@ describe("YourLeaguesLandingView", () => {
     expect(within(card).getByText("ESPN")).toBeDefined();
     expect(within(card).getByText("Your matchup · Week 2")).toBeDefined();
     expect(within(card).getByText("Live")).toBeDefined();
-    expect(within(card).getByText("Beta Brigade vs Alpha Aces")).toBeDefined();
+    expect(within(card).getByText("Beta Brigade")).toBeDefined();
     expect(within(card).getByText("91.25")).toBeDefined();
     expect(
       within(card).getByText("Beta Gets Dragged Into Prime Time"),

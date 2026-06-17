@@ -1,6 +1,19 @@
-import { ArrowRight, Newspaper, Plug, Swords, Trophy } from "lucide-react";
+import {
+  ArrowRight,
+  type LucideIcon,
+  Newspaper,
+  Plug,
+  Radio,
+  ScrollText,
+  Swords,
+  Trophy,
+  WalletCards,
+} from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { Avatar } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
+import { StatusPill } from "@/components/ui/status-pill";
 import type {
   YourLeagueCard,
   YourLeagueMatchup,
@@ -9,7 +22,6 @@ import type {
   YourLeaguesLandingData,
 } from "@/home/your-leagues";
 import { cn } from "@/lib/utils";
-import { getLeagueAvatarFallback } from "@/navigation/league-switcher-model";
 
 function formatPoints(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -39,34 +51,107 @@ function matchupStatusLabel(status: YourLeagueMatchup["status"]): string {
   }
 }
 
-function ConnectLeagueLinks() {
+const PROVIDERS: ReadonlyArray<{
+  blurb: string;
+  href: string;
+  label: string;
+}> = [
+  {
+    blurb: "Cookie or session import; full history + live scoring.",
+    href: "/onboarding/espn",
+    label: "ESPN",
+  },
+  {
+    blurb: "Public username or league ID. No password needed.",
+    href: "/onboarding/sleeper",
+    label: "Sleeper",
+  },
+  {
+    blurb: "OAuth connect; rosters, matchups, and standings.",
+    href: "/onboarding/yahoo",
+    label: "Yahoo",
+  },
+];
+
+const UNLOCKS: ReadonlyArray<{
+  desc: string;
+  icon: LucideIcon;
+  label: string;
+}> = [
+  {
+    desc: "A living home base for your league.",
+    icon: Swords,
+    label: "League home",
+  },
+  {
+    desc: "AI cast headlines, recaps, and trash talk.",
+    icon: ScrollText,
+    label: "The Press",
+  },
+  {
+    desc: "Career marks, streaks, and rivalries.",
+    icon: Trophy,
+    label: "Records",
+  },
+  {
+    desc: "Paper bankroll on real odds.",
+    icon: WalletCards,
+    label: "Bankroll",
+  },
+];
+
+function ProviderConnectCard({
+  blurb,
+  href,
+  label,
+}: {
+  blurb: string;
+  href: string;
+  label: string;
+}) {
   return (
-    <div className="flex flex-wrap gap-2">
-      <Link
-        href="/onboarding/espn"
-        className={cn(buttonVariants({ className: "w-fit" }))}
-      >
-        <Plug data-icon="inline-start" />
-        Connect ESPN
-      </Link>
-      <Link
-        href="/onboarding/sleeper"
-        className={cn(
-          buttonVariants({ className: "w-fit", variant: "secondary" }),
-        )}
-      >
-        <Plug data-icon="inline-start" />
-        Connect Sleeper
-      </Link>
-      <Link
-        href="/onboarding/yahoo"
-        className={cn(
-          buttonVariants({ className: "w-fit", variant: "secondary" }),
-        )}
-      >
-        <Plug data-icon="inline-start" />
-        Connect Yahoo
-      </Link>
+    <Link
+      aria-label={`Connect ${label}`}
+      className="group cell grid content-between gap-3 p-4 transition-[border-color,background-color] hover:border-primary/50 focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+      href={href}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="chip-glyph flex size-8 shrink-0 items-center justify-center text-primary">
+          <Plug className="size-4" aria-hidden="true" />
+        </span>
+        <ArrowRight
+          aria-hidden="true"
+          className="size-4 shrink-0 text-ink-4 transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+        />
+      </div>
+      <div>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-ink-2">
+          {label}
+        </p>
+        <p className="mt-1.5 text-xs leading-relaxed text-ink-3">{blurb}</p>
+      </div>
+    </Link>
+  );
+}
+
+function UnlockCell({
+  desc,
+  icon: Icon,
+  label,
+}: {
+  desc: string;
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <div className="cell grid gap-2 p-3">
+      <span className="chip-glyph flex size-7 shrink-0 items-center justify-center text-steel-soft">
+        <Icon className="size-3.5" aria-hidden="true" />
+      </span>
+      <p className="font-mono text-xs uppercase tracking-[0.12em] text-ink-2">
+        {label}
+      </p>
+      <p className="text-xs leading-relaxed text-ink-3">{desc}</p>
     </div>
   );
 }
@@ -96,71 +181,86 @@ function GlobalLinks() {
   );
 }
 
+function ConnectEntry({
+  eyebrow,
+  title,
+  blurb,
+}: {
+  eyebrow: string;
+  title: string;
+  blurb: string;
+}) {
+  return (
+    <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+      <header className="panel grid gap-3 p-5 sm:p-6">
+        <p className="eyebrow text-primary">{eyebrow}</p>
+        <h1 className="heading-auspex text-2xl leading-tight sm:text-3xl">
+          {title}
+        </h1>
+        <p className="max-w-2xl text-sm leading-relaxed text-ink-2">{blurb}</p>
+        <div className="mt-1">
+          <GlobalLinks />
+        </div>
+      </header>
+
+      <section aria-label="Connect a provider" className="grid gap-3">
+        <p className="font-mono text-xs uppercase tracking-[0.22em] text-ink-4">
+          Connect a provider
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {PROVIDERS.map((provider) => (
+            <ProviderConnectCard key={provider.label} {...provider} />
+          ))}
+        </div>
+      </section>
+
+      <section aria-label="What you unlock" className="grid gap-3">
+        <p className="font-mono text-xs uppercase tracking-[0.22em] text-ink-4">
+          What a league unlocks
+        </p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {UNLOCKS.map((unlock) => (
+            <UnlockCell key={unlock.label} {...unlock} />
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export function LoggedOutLanding() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col justify-center gap-8 px-4 py-8 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <section className="max-w-2xl">
-        <p className="text-sm font-medium text-primary">Rumbledore</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-          Your fantasy league becomes the show.
-        </h1>
-        <p className="mt-3 text-base text-muted-foreground">
-          Connect a league once to unlock its home base, Press headlines,
-          records, AI cast, and paper-betting arena. News and Arena stay open
-          while you get set up.
-        </p>
-      </section>
-      <div className="grid gap-3">
-        <ConnectLeagueLinks />
-        <GlobalLinks />
-      </div>
-    </main>
+    <ConnectEntry
+      blurb="Connect a league once to unlock its home base, Press headlines, records, AI cast, and paper-betting arena. News and Arena stay open while you get set up."
+      eyebrow="Rumbledore"
+      title="Your fantasy league becomes the show"
+    />
   );
 }
 
 function EmptyLeaguesLanding() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col justify-center gap-8 px-4 py-8 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <section className="max-w-2xl">
-        <p className="text-sm font-medium text-primary">Your Leagues</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-          Connect a league to open the lobby.
-        </h1>
-        <p className="mt-3 text-base text-muted-foreground">
-          ESPN, Sleeper, and Yahoo leagues share one lobby. The show starts
-          after the first league connects.
-        </p>
-      </section>
-      <div className="grid gap-3">
-        <ConnectLeagueLinks />
-        <GlobalLinks />
-      </div>
-    </main>
-  );
-}
-
-function ProviderBadge({ label }: { label: string }) {
-  return (
-    <span className="inline-flex rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground">
-      {label}
-    </span>
+    <ConnectEntry
+      blurb="ESPN, Sleeper, and Yahoo leagues share one lobby. The show starts the moment your first league connects."
+      eyebrow="Your Leagues"
+      title="Connect a league to open the lobby"
+    />
   );
 }
 
 function LeagueAvatar({ league }: { league: YourLeagueCard }) {
-  return (
-    <span className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-elevated text-xs font-semibold text-muted-foreground">
-      {league.logo ? (
+  if (league.logo) {
+    return (
+      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[var(--void-2)]">
         <span
           aria-hidden="true"
           className="size-full bg-cover bg-center"
           style={{ backgroundImage: `url(${JSON.stringify(league.logo)})` }}
         />
-      ) : (
-        getLeagueAvatarFallback(league.name)
-      )}
-    </span>
-  );
+      </span>
+    );
+  }
+  return <Avatar decorative name={league.name} size="sm" />;
 }
 
 function ScoreLine({ side }: { side: YourLeagueMatchupSide }) {
@@ -169,17 +269,15 @@ function ScoreLine({ side }: { side: YourLeagueMatchupSide }) {
       <p
         className={cn(
           "truncate text-sm",
-          side.isUserTeam
-            ? "font-semibold text-foreground"
-            : "text-muted-foreground",
+          side.isUserTeam ? "font-medium text-foreground" : "text-ink-3",
         )}
       >
         {side.name}
       </p>
       <p
         className={cn(
-          "text-right font-mono text-sm tabular-nums",
-          side.isUserTeam && "font-semibold text-positive",
+          "metric text-right text-sm",
+          side.isUserTeam ? "text-jade" : "text-ink-2",
         )}
       >
         {formatPoints(side.score)}
@@ -188,44 +286,38 @@ function ScoreLine({ side }: { side: YourLeagueMatchupSide }) {
   );
 }
 
+function PanelLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="font-mono text-xs uppercase tracking-[0.16em] text-ink-3">
+      {children}
+    </p>
+  );
+}
+
 function MatchupPanel({ matchup }: { matchup: YourLeagueMatchup | null }) {
   if (!matchup) {
     return (
-      <section className="rounded-control border border-dashed border-border bg-muted/25 px-3 py-3">
-        <p className="text-xs font-medium text-muted-foreground">This week</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          No matchup rows have been ingested yet.
-        </p>
+      <section className="cell grid gap-1 p-3">
+        <PanelLabel>This week</PanelLabel>
+        <p className="text-xs text-ink-3">No matchup rows ingested yet.</p>
       </section>
     );
   }
 
   return (
-    <section className="rounded-control border border-border bg-background/45 px-3 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-medium text-muted-foreground">
-          {matchup.isUserMatchup ? "Your matchup" : "Featured matchup"} · Week{" "}
+    <section className="cell grid gap-2 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <PanelLabel>
+          {matchup.isUserMatchup ? "Your matchup" : "Featured"} · Week{" "}
           {matchup.scoringPeriod}
-        </p>
-        <span
-          className={cn(
-            "rounded-sm border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground",
-            matchup.status === "in_progress" &&
-              "border-primary/40 text-primary",
-          )}
+        </PanelLabel>
+        <StatusPill
+          showDot={false}
+          tone={matchup.status === "in_progress" ? "live" : "neutral"}
         >
           {matchupStatusLabel(matchup.status)}
-        </span>
+        </StatusPill>
       </div>
-      {matchup.isUserMatchup ? (
-        <h3 className="mb-2 truncate text-sm font-semibold">
-          {matchup.userTeamName} vs {matchup.opponentTeamName}
-        </h3>
-      ) : (
-        <h3 className="mb-2 truncate text-sm font-semibold">
-          {matchup.away.name} at {matchup.home.name}
-        </h3>
-      )}
       <div className="grid gap-1.5">
         <ScoreLine side={matchup.away} />
         <ScoreLine side={matchup.home} />
@@ -241,33 +333,32 @@ function PressHeadline({
 }) {
   if (!headline) {
     return (
-      <section className="rounded-control border border-dashed border-border bg-muted/25 px-3 py-3">
-        <p className="text-xs font-medium text-muted-foreground">
-          Latest Press
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          No league headline has been published yet.
-        </p>
+      <section className="cell grid gap-1 p-3">
+        <PanelLabel>Latest Press</PanelLabel>
+        <p className="text-xs text-ink-3">No league headline published yet.</p>
       </section>
     );
   }
 
   return (
-    <section className="rounded-control border border-border bg-background/45 px-3 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-medium text-primary">Latest Press</p>
+    <section className="cell grid gap-1.5 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.16em] text-primary">
+          <Radio className="size-3" aria-hidden="true" />
+          Latest Press
+        </span>
         <time
-          className="shrink-0 text-xs text-muted-foreground"
+          className="metric shrink-0 text-xs text-ink-4"
           dateTime={headline.publishedAt}
         >
           {formatPublishedAt(headline.publishedAt)}
         </time>
       </div>
-      <h3 className="line-clamp-2 text-sm font-semibold">{headline.title}</h3>
+      <h3 className="line-clamp-2 font-display text-sm font-medium text-foreground">
+        {headline.title}
+      </h3>
       {headline.summary ? (
-        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-          {headline.summary}
-        </p>
+        <p className="line-clamp-2 text-xs text-ink-3">{headline.summary}</p>
       ) : null}
     </section>
   );
@@ -277,20 +368,22 @@ function LeagueCard({ league }: { league: YourLeagueCard }) {
   return (
     <Link
       aria-label={`Open ${league.name}`}
-      className="group grid min-h-[20rem] gap-4 rounded-card border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-elevated focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+      className="group panel grid min-h-[19rem] content-start gap-4 p-4 transition-[border-color] hover:border-primary/50 focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
       href={league.href}
     >
       <div className="flex items-start gap-3">
         <LeagueAvatar league={league} />
         <div className="min-w-0 flex-1">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <ProviderBadge label={league.providerLabel} />
+          <div className="mb-1.5 flex items-center justify-between gap-3">
+            <span className="font-mono text-xs uppercase tracking-[0.1em] text-ink-4">
+              {league.providerLabel}
+            </span>
             <ArrowRight
-              className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+              className="size-4 shrink-0 text-ink-4 transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
               aria-hidden="true"
             />
           </div>
-          <h2 className="line-clamp-2 text-lg font-semibold tracking-tight">
+          <h2 className="line-clamp-2 font-display text-lg font-medium text-foreground">
             {league.name}
           </h2>
         </div>
@@ -311,24 +404,25 @@ export function YourLeaguesLandingView({
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="grid gap-4">
-        <div className="flex items-center gap-2 text-primary">
-          <Swords className="size-5" aria-hidden="true" />
-          <p className="text-sm font-medium">Global lobby</p>
+    <main className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+      <header className="panel flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
+        <div className="min-w-0">
+          <p className="eyebrow text-primary">Global lobby</p>
+          <h1 className="heading-auspex mt-2 text-2xl leading-tight sm:text-3xl">
+            Your Leagues
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-ink-2">
+            Scoreboard pressure and Press heat, league by league. Pick up where
+            the last opened league left off.
+          </p>
         </div>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="max-w-2xl">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              Your Leagues
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Scoreboard pressure and Press heat, league by league. Pick up
-              where the last opened league left off.
-            </p>
-          </div>
-          <ConnectLeagueLinks />
-        </div>
+        <Link
+          href="/onboarding/espn"
+          className={cn(buttonVariants({ className: "w-fit" }))}
+        >
+          <Plug data-icon="inline-start" />
+          Connect league
+        </Link>
       </header>
 
       <section
