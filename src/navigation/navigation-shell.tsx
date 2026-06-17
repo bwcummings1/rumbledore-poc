@@ -523,7 +523,7 @@ function DesktopSidebar({
           <span className="chip-glyph size-8 text-xs">R</span>
           <span
             className={cn(
-              "heading-auspex truncate text-sm text-foreground",
+              "truncate font-heading text-sm uppercase tracking-[0.15em] text-foreground [text-shadow:0_0_18px_var(--glow-lilac)]",
               collapsed && "sr-only",
             )}
           >
@@ -666,6 +666,10 @@ function DesktopTopBar({
       )}
       data-slot="desktop-top-bar"
     >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[linear-gradient(90deg,transparent,var(--lilac),transparent)] opacity-40"
+      />
       <ShellBreadcrumbs
         className="flex-1"
         items={buildBreadcrumbItems(activeState, activeLeague)}
@@ -880,7 +884,7 @@ function NavigationSection({
     <nav aria-label={`${label} sections`} className="grid gap-1">
       <p
         className={cn(
-          "px-2 text-xs font-medium text-muted-foreground uppercase",
+          "px-2 pt-2 pb-1 font-mono text-xs uppercase tracking-[0.22em] text-ink-4",
           collapsed && "sr-only",
         )}
       >
@@ -919,9 +923,9 @@ function NavigationItem({
     <Link
       aria-current={isActive ? "page" : undefined}
       className={cn(
-        "relative flex min-h-11 items-center justify-center gap-2 rounded-control px-2 font-display text-xs font-semibold text-muted-foreground transition-[background-color,color,box-shadow,transform] hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none md:text-sm",
+        "relative flex min-h-9 items-center justify-center gap-2.5 rounded-control px-2.5 font-display text-xs font-medium tracking-[0.04em] text-ink-3 transition-[background-color,color,box-shadow,transform] hover:bg-primary/5 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none max-md:h-full max-md:flex-col max-md:gap-1 md:text-sm",
         isActive &&
-          "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_var(--hair),0_0_18px_var(--glow-lilac)]",
+          "bg-[linear-gradient(90deg,var(--primary-soft),transparent)] text-lilac [&_svg]:drop-shadow-[0_0_6px_var(--glow-lilac)]",
         compact ? "md:size-11 md:px-0" : "md:justify-start",
       )}
       href={href}
@@ -930,7 +934,7 @@ function NavigationItem({
       <span
         aria-hidden="true"
         className={cn(
-          "absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-transparent",
+          "absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-transparent max-md:hidden",
           isActive && "bg-primary shadow-[0_0_12px_var(--glow-lilac)]",
           compact &&
             "md:top-auto md:right-2 md:bottom-0 md:left-2 md:h-0.5 md:w-auto",
@@ -1123,10 +1127,8 @@ function ShellWireTicker({
     <section
       aria-label={ariaLabel}
       className={cn(
-        "auspex-wire panel grid gap-2 overflow-hidden p-2",
-        variant === "live"
-          ? "border-primary/40 bg-primary/10 shadow-[0_0_18px_var(--glow-lilac),var(--bevel)]"
-          : "border-input bg-[var(--panel)]",
+        "auspex-wire panel grid gap-1.5 overflow-hidden px-3 py-2",
+        variant === "live" ? "border-primary/30" : "",
         className,
       )}
       data-expanded={expanded ? "true" : undefined}
@@ -1239,14 +1241,14 @@ function ShellWireTickerItem({
 
   return (
     <li
-      className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-control border border-input bg-[var(--panel)] px-3 text-sm"
+      className="inline-flex shrink-0 items-center gap-2 px-2 font-mono text-xs"
       data-kind={kind}
       data-slot="wire-item"
       {...props}
     >
       {item.href ? (
         <a
-          className="inline-flex min-h-11 items-center gap-2 text-inherit focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+          className="inline-flex items-center gap-2 text-inherit transition-colors hover:text-lilac focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
           href={item.href}
         >
           {content}

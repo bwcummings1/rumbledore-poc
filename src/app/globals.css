@@ -161,6 +161,7 @@ html {
     color-mix(in srgb, var(--coral-deep) 8%, transparent)
   );
   --control-inset: rgba(0, 0, 0, 0.28);
+  --primary-soft: color-mix(in srgb, var(--lilac) 12%, transparent);
   --glow-btn-hover: 0 0 0 1px color-mix(in srgb, var(--lilac) 20%, transparent),
     0 6px 20px rgba(0, 0, 0, 0.4);
   --glow-primary-hover: 0 0 24px -2px var(--glow-lilac);
@@ -1021,6 +1022,20 @@ html {
 
 .auspex-wire__viewport {
   overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 3%,
+    #000 97%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 3%,
+    #000 97%,
+    transparent
+  );
 }
 
 .auspex-wire__track {

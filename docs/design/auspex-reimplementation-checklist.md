@@ -34,12 +34,12 @@ Structure exists; every signature was dampened toward "restraint" (the green/ant
 - [~] Navigation — DONE: tabs (Saira 500, lilac underline), breadcrumbs (mono .06em), pagination (denser bare bordered, lilac current). **Deferred: steps** (on-brand glass cards; minor polish later).
 - [ ] Patterns/motion (orb states, wire ticker, count-up, stingers) → `reference-behaviour-patterns.png` / `reference-behaviour-motion.png`
 
-## D. App shell (`src/navigation/navigation-shell.tsx`)
-- [ ] Topbar (brand+logo glow, breadcrumb, ⌘K, notifications, account, motion toggle, live clock, lilac underline).
-- [ ] Desktop rail (sections, lilac active gradient + left-border + icon glow).
-- [ ] Tablet/mobile (bottom tabs + scope-switcher sheet) — faithful, ≥44px.
-- [ ] WIRE ticker (lilac tag chip + masked marquee).
-- [ ] Boot/splash sequence.
+## D. App shell (`src/navigation/navigation-shell.tsx`) — ✅ DONE + verified
+- [x] Topbar — lilac gradient underline (ref `.topbar::after`), brand Michroma + .15em + lilac glow, ⌘K steel pill, notifications/account/motion/clock.
+- [x] Desktop rail — section labels mono .22em ink-4; items denser (min-h-9) Saira 500 .04em; active = lilac gradient fill (`--primary-soft`) + lilac text + icon drop-shadow + left-border accent.
+- [x] Mobile bottom tabs — items fill-height + stacked (icon over label); vertical accent hidden on mobile; scope-switcher sheet.
+- [x] WIRE ticker — plain mono marquee items (no heavy pills), masked viewport edges (ref `.tick-track`), subtle live border.
+- [x] Boot/splash — orb + Michroma + amber LCD (on-brand, brief). 36 nav+contract tests green; verified mobile/desktop.
 
 ## E. Feature surfaces (rebuild at reference DENSITY, mapped to real data)
 - [ ] League Home (FLAGSHIP — do first; matchup hero + gauge, standings ladder, cast headlines, bankroll LCD, wire).
