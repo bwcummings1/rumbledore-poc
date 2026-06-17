@@ -16,7 +16,7 @@ html {
   --font-mono: var(--font-family-mono);
   --font-editorial: var(--font-family-editorial);
 
-  /* DESIGN.md type scale (6 steps): 12 / 14 / 16 / 20 / 28 / 40 */
+  /* AUSPEX type scale — reference-dense (base 14px; display 21 / 28 / 42) */
   --text-xs: var(--type-size-xs);
   --text-xs--line-height: var(--type-line-xs);
   --text-sm: var(--type-size-sm);
@@ -88,7 +88,7 @@ html {
   --color-ink-3: var(--ink-3);
   --color-ink-4: var(--ink-4);
 
-  /* DESIGN.md spacing scale (7 steps): 4 / 8 / 12 / 16 / 24 / 32 / 48 */
+  /* Spacing scale (7 steps): 4 / 8 / 12 / 16 / 24 / 32 / 48 */
   --spacing-step-1: var(--space-1);
   --spacing-step-2: var(--space-2);
   --spacing-step-3: var(--space-3);
@@ -97,7 +97,7 @@ html {
   --spacing-step-8: var(--space-8);
   --spacing-step-12: var(--space-12);
 
-  /* DESIGN.md radii: 6 (controls) / 10 (cards) / 16 (sheets) */
+  /* AUSPEX radii: 7 (controls) / 14 (cards) / 16 (sheets) */
   --radius-control: var(--control-radius);
   --radius-card: var(--card-radius);
   --radius-sheet: var(--sheet-radius);
@@ -109,7 +109,7 @@ html {
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
-  /* DESIGN.md elevation/motion tokens */
+  /* Elevation + motion tokens */
   --shadow-flat: var(--elevation-flat);
   --shadow-raised: var(--elevation-raised);
   --shadow-overlay: var(--elevation-overlay);
@@ -162,8 +162,9 @@ html {
   );
   --control-inset: rgba(0, 0, 0, 0.28);
   --primary-soft: color-mix(in srgb, var(--lilac) 12%, transparent);
-  --glow-btn-hover: 0 0 0 1px color-mix(in srgb, var(--lilac) 20%, transparent),
-    0 6px 20px rgba(0, 0, 0, 0.4);
+  --glow-btn-hover:
+    0 0 0 1px color-mix(in srgb, var(--lilac) 20%, transparent), 0 6px 20px
+    rgba(0, 0, 0, 0.4);
   --glow-primary-hover: 0 0 24px -2px var(--glow-lilac);
   --glow-amber-hover: 0 0 24px -2px var(--glow-amber);
   --glow-focus-field: 0 0 14px -4px var(--glow-lilac);
@@ -706,8 +707,7 @@ html {
         900px 600px at 8% 108%,
         rgba(185, 138, 56, 0.06),
         transparent 55%
-      ),
-      linear-gradient(180deg, #0e1019, #08090f 60%);
+      ), linear-gradient(180deg, #0e1019, #08090f 60%);
     contain: paint;
     inset: 0;
     overflow: hidden;
@@ -740,7 +740,11 @@ html {
         rgba(199, 200, 246, 0.25),
         transparent
       ),
-      radial-gradient(1px 1px at 79% 82%, rgba(255, 255, 255, 0.22), transparent);
+      radial-gradient(
+        1px 1px at 79% 82%,
+        rgba(255, 255, 255, 0.22),
+        transparent
+      );
     background-size: cover;
     opacity: 0.5;
   }

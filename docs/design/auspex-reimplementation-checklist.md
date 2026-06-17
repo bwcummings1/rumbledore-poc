@@ -51,8 +51,8 @@ Finding: surfaces were already well-composed (panel/cell, SectionTitle, stat til
 - [x] command-palette — mono group labels, denser close, subtler active. sheet/locked-feature-card/steps use `panel`+re-skinned components (on-brand).
 
 ## F. Final
-- [ ] Full screenshot pass (mobile/tablet/desktop), diff every surface vs reference, fix residuals.
-- [ ] Gates green (typecheck/lint/test/build). Update docs/PROGRESS.md.
+- [x] Full screenshot pass (mobile/tablet/desktop) — verified landing, onboarding (espn/sleeper/yahoo), league-home, league-feed, league-invite, central-news, arena vs reference. Faithful: void + bright atmosphere, ringed orb, glass panels, gradient-clipped headings, pill-mono controls, dense tables, amber LCD, rail/topbar/wire shell. Empty regions are unseeded data, not styling.
+- [x] Gates green — typecheck ✓, lint ✓ (biome), tests ✓ (899 pass / 5 skip), production build ✓ (all routes compile).
 - [ ] Merge `design/auspex` → `main`.
 
 ## Verification protocol (the loop the blind agent couldn't run)

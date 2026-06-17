@@ -44,9 +44,7 @@ function StatTile({
           <span className="metric shrink-0 text-xs text-ink-3">{delta}</span>
         ) : null}
       </div>
-      {caption ? (
-        <p className="text-xs text-ink-3">{caption}</p>
-      ) : null}
+      {caption ? <p className="text-xs text-ink-3">{caption}</p> : null}
       {sparkline ? (
         <div data-slot="stat-tile-sparkline">{sparkline}</div>
       ) : null}
