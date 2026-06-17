@@ -13,23 +13,31 @@ type StatusTone =
   | "warning";
 
 const statusPillVariants = cva(
-  "inline-flex min-h-6 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold whitespace-nowrap shadow-[var(--bevel)]",
+  "inline-flex items-center gap-1.5 rounded-control border border-current px-2 py-0.5 font-mono text-xs font-medium uppercase leading-none tracking-[0.1em] whitespace-nowrap",
   {
     variants: {
       tone: {
-        danger: "border-destructive/50 bg-destructive/10 text-destructive",
-        info: "border-primary/50 bg-primary/10 text-primary",
-        live: "border-primary/50 bg-primary/10 text-primary shadow-[0_0_14px_var(--glow-lilac),var(--bevel)]",
-        neutral: "border-input bg-[var(--panel)] text-muted-foreground",
-        success: "border-positive/50 bg-positive/10 text-positive",
-        warning: "border-warning/50 bg-warning/10 text-warning",
+        danger: "text-coral",
+        info: "text-lilac",
+        live: "text-lilac shadow-[0_0_14px_var(--glow-lilac)]",
+        neutral: "text-ink-3",
+        success: "text-jade",
+        warning: "text-amber",
       },
       variant: {
         outline: "bg-transparent",
         soft: "",
-        solid: "bg-current text-primary-foreground",
+        solid: "border-transparent text-primary-foreground",
       },
     },
+    compoundVariants: [
+      { variant: "solid", tone: "danger", className: "bg-coral" },
+      { variant: "solid", tone: "info", className: "bg-lilac" },
+      { variant: "solid", tone: "live", className: "bg-lilac" },
+      { variant: "solid", tone: "neutral", className: "bg-ink-3" },
+      { variant: "solid", tone: "success", className: "bg-jade" },
+      { variant: "solid", tone: "warning", className: "bg-amber" },
+    ],
     defaultVariants: {
       tone: "neutral",
       variant: "soft",

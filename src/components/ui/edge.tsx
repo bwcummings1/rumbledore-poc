@@ -11,9 +11,9 @@ interface EdgeProps extends ComponentPropsWithoutRef<"span"> {
 }
 
 const edgeToneClasses: Record<EdgeTone, string> = {
-  negative: "border-destructive/50 bg-destructive/10 text-destructive",
-  neutral: "border-input bg-[var(--panel)] text-muted-foreground",
-  positive: "border-positive/50 bg-positive/10 text-positive",
+  negative: "border-destructive/40 bg-destructive/[0.06] text-coral",
+  neutral: "border-[var(--hair-2)] text-ink-3",
+  positive: "border-positive/40 bg-positive/[0.07] text-jade",
 };
 
 function Edge({
@@ -28,7 +28,7 @@ function Edge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-control border px-2.5 py-1 shadow-[var(--bevel)]",
+        "inline-flex items-center gap-1.5 rounded-control border px-2 py-0.5",
         edgeToneClasses[tone],
         className,
       )}
@@ -40,7 +40,7 @@ function Edge({
       <span aria-hidden="true" className="metric text-xs">
         {signal}
       </span>
-      <span className="metric text-sm font-semibold">{value}</span>
+      <span className="metric text-xs">{value}</span>
     </span>
   );
 }

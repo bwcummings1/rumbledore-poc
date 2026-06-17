@@ -46,13 +46,15 @@ function Progress({
         aria-valuemax={isIndeterminate ? undefined : max}
         aria-valuemin={isIndeterminate ? undefined : min}
         aria-valuenow={isIndeterminate ? undefined : value}
-        className="h-2 overflow-hidden rounded-full bg-[var(--hair-2)]"
+        className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]"
         role="progressbar"
       >
         <span
           className={cn(
-            "block h-full rounded-full shadow-[0_0_16px_var(--glow-lilac)]",
-            tone === "amber" ? "bg-warning" : "bg-primary",
+            "block h-full rounded-full",
+            tone === "amber"
+              ? "bg-warning shadow-[0_0_8px_var(--glow-amber)]"
+              : "bg-primary shadow-[0_0_8px_var(--glow-lilac)]",
             isIndeterminate
               ? "motion-safe:animate-pulse motion-reduce:animate-none"
               : "",

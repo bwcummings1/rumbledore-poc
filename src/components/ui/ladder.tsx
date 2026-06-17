@@ -33,9 +33,9 @@ function Ladder({ className, label, pips, ...props }: LadderProps) {
         >
           <span
             className={cn(
-              "flex min-h-9 items-center gap-2 rounded-full border border-input bg-[var(--panel)] px-2 text-xs text-muted-foreground shadow-[var(--bevel)]",
+              "flex min-h-8 items-center gap-2 rounded-lg border border-[var(--hair-2)] bg-white/[0.04] px-2.5 font-mono text-xs text-ink-3",
               pip.isCurrent
-                ? "border-primary bg-primary/10 text-foreground shadow-[0_0_16px_var(--glow-lilac),var(--bevel)]"
+                ? "border-primary/50 bg-primary/10 text-lilac-hi shadow-[0_0_12px_var(--glow-lilac)]"
                 : "",
             )}
             data-current={pip.isCurrent ? "true" : undefined}

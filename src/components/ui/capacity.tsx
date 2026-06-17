@@ -14,10 +14,10 @@ function Capacity({ className, label, total, used, ...props }: CapacityProps) {
   const ratio = safeTotal === 0 ? 0 : safeUsed / safeTotal;
   const toneClass =
     ratio >= 0.9
-      ? "bg-destructive"
+      ? "border-destructive/60 bg-destructive"
       : ratio >= 0.75
-        ? "bg-warning"
-        : "bg-primary";
+        ? "border-warning/60 bg-warning shadow-[0_0_7px_var(--glow-amber)]"
+        : "border-primary/60 bg-primary shadow-[0_0_7px_var(--glow-lilac)]";
 
   return (
     <div
@@ -47,7 +47,7 @@ function Capacity({ className, label, total, used, ...props }: CapacityProps) {
           <span
             aria-hidden="true"
             className={cn(
-              "h-2 rounded-full border border-input bg-[var(--panel)]",
+              "h-3.5 rounded-sm border border-[var(--hair-2)] bg-white/[0.02] transition-[background-color,box-shadow]",
               index < safeUsed ? toneClass : "",
             )}
             data-slot="capacity-cell"

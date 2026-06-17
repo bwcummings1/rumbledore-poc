@@ -5,21 +5,21 @@ import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "@/lib/utils";
 
 const avatarVariants = cva(
-  "bezel inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full align-middle text-center font-display font-semibold uppercase text-foreground",
+  "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[var(--void-2)] align-middle text-center font-mono font-medium uppercase text-primary-foreground",
   {
     variants: {
       size: {
         xs: "size-6 text-xs",
-        sm: "size-8 text-xs",
+        sm: "size-7 text-xs",
         md: "size-10 text-sm",
         lg: "size-12 text-base",
         xl: "size-16 text-lg",
       },
       tone: {
-        amber: "bg-warning/15 text-warning",
-        jade: "bg-positive/15 text-positive",
-        lilac: "bg-primary/15 text-primary",
-        steel: "bg-elevated text-[var(--steel-soft)]",
+        amber: "bg-amber",
+        jade: "bg-jade",
+        lilac: "bg-lilac",
+        steel: "bg-steel-soft",
       },
     },
     defaultVariants: {

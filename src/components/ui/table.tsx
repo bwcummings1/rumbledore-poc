@@ -88,10 +88,13 @@ function DataTable<T>({
           {error}
         </div>
       ) : null}
-      <div className="hidden overflow-hidden rounded-card border border-input bg-[var(--panel)] shadow-[var(--bevel)] sm:block">
-        <table aria-label={ariaLabel} className="w-full text-left text-sm">
+      <div className="hidden overflow-hidden rounded-card border border-[var(--hair-2)] bg-[var(--panel)] shadow-[var(--bevel)] sm:block">
+        <table
+          aria-label={ariaLabel}
+          className="w-full text-left text-sm text-ink-2"
+        >
           {caption ? <caption className="sr-only">{caption}</caption> : null}
-          <thead className="bg-elevated">
+          <thead>
             <tr>
               {columns.map((column) => {
                 const direction = sortDirectionForColumn(sort, column.id);
@@ -101,7 +104,7 @@ function DataTable<T>({
                       column.sortable ? ariaSortValue(direction) : undefined
                     }
                     className={cn(
-                      "eyebrow border-border border-b px-3 py-2",
+                      "border-b border-[var(--hair)] px-2.5 pt-3 pb-2.5 font-mono text-xs font-normal uppercase tracking-[0.12em] text-ink-4",
                       column.align === "right" ? "text-right" : "text-left",
                       column.priority === "desktop"
                         ? "hidden lg:table-cell"
@@ -113,7 +116,7 @@ function DataTable<T>({
                     {column.sortable ? (
                       <button
                         className={cn(
-                          "inline-flex min-h-11 items-center gap-1 rounded-control outline-none focus-visible:shadow-[var(--focus-ring-shadow)]",
+                          "inline-flex items-center gap-1 rounded-control outline-none transition-colors hover:text-ink-2 focus-visible:shadow-[var(--focus-ring-shadow)]",
                           column.align === "right" ? "justify-end" : "",
                         )}
                         onClick={() =>
@@ -160,7 +163,7 @@ function DataTable<T>({
                 return (
                   <tr
                     className={cn(
-                      "border-border border-t hover:bg-primary/10",
+                      "border-t border-[var(--hair)] transition-colors hover:bg-primary/5",
                       isSelected ? "bg-primary/10" : "",
                     )}
                     data-selected={isSelected ? "true" : undefined}
@@ -169,7 +172,7 @@ function DataTable<T>({
                     {columns.map((column) => (
                       <td
                         className={cn(
-                          "px-3 py-3 align-middle",
+                          "px-2.5 py-2.5 align-middle",
                           column.align === "right" ? "text-right" : "",
                           column.priority === "desktop"
                             ? "hidden lg:table-cell"

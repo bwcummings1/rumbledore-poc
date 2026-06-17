@@ -31,23 +31,21 @@ function StatTile({
 }: StatTileProps) {
   return (
     <fieldset
-      className={cn("cell grid gap-2 p-4", className)}
+      className={cn("cell grid gap-1.5 p-4", className)}
       data-slot="stat-tile"
       {...props}
     >
       <legend className="eyebrow min-w-0">{label}</legend>
-      <div className="flex items-start justify-end gap-3">
+      <div className="flex items-end justify-between gap-3">
+        <div className={cn("text-2xl leading-none", valueToneClasses[tone])}>
+          {value}
+        </div>
         {delta ? (
-          <span className="metric shrink-0 text-xs text-muted-foreground">
-            {delta}
-          </span>
+          <span className="metric shrink-0 text-xs text-ink-3">{delta}</span>
         ) : null}
       </div>
-      <div className={cn("text-2xl font-bold", valueToneClasses[tone])}>
-        {value}
-      </div>
       {caption ? (
-        <p className="text-sm text-muted-foreground">{caption}</p>
+        <p className="text-xs text-ink-3">{caption}</p>
       ) : null}
       {sparkline ? (
         <div data-slot="stat-tile-sparkline">{sparkline}</div>

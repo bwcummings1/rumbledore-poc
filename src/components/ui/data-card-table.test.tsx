@@ -25,5 +25,5 @@ test("DataCardTable renders mobile card rows with all key-value cells", () => {
   expect(
     screen.getByRole("listitem", { name: "Arena League B" }),
   ).toBeDefined();
-  expect(screen.getByText("+$300").className).toContain("lcd");
+  expect(screen.getByText("+$300").className).toContain("text-warning");
 });

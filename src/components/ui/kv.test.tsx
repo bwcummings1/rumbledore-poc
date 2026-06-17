@@ -13,6 +13,6 @@ test("KVList renders semantic definition rows with toned values", () => {
 
   expect(screen.getByText("Bankroll").tagName).toBe("DT");
   expect(screen.getByText("$10,000").tagName).toBe("DD");
-  expect(screen.getByText("$10,000").className).toContain("lcd");
-  expect(screen.getByText("+$250").className).toContain("text-positive");
+  expect(screen.getByText("$10,000").className).toContain("text-warning");
+  expect(screen.getByText("+$250").className).toContain("text-jade");
 });

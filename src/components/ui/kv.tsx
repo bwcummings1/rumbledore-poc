@@ -21,11 +21,11 @@ interface KVRowProps extends ComponentPropsWithoutRef<"div"> {
 }
 
 const toneClasses: Record<KVTone, string> = {
-  default: "text-foreground",
-  money: "lcd",
-  muted: "text-muted-foreground",
-  negative: "metric text-negative",
-  positive: "metric text-positive",
+  default: "metric text-foreground",
+  money: "metric text-warning",
+  muted: "metric text-ink-3",
+  negative: "metric text-coral",
+  positive: "metric text-jade",
 };
 
 function KVList({ children, className, items, ...props }: KVListProps) {
@@ -66,12 +66,15 @@ function KVRow({
       data-slot="kv-row"
       {...props}
     >
-      <dt className="eyebrow min-w-0 truncate" data-slot="kv-label">
+      <dt
+        className="min-w-0 truncate font-mono text-xs uppercase tracking-[0.12em] text-ink-3"
+        data-slot="kv-label"
+      >
         {label}
       </dt>
       <dd
         className={cn(
-          "min-w-0 break-words text-sm font-medium sm:text-right",
+          "min-w-0 break-words text-sm sm:text-right",
           toneClasses[tone],
         )}
         data-slot="kv-value"
