@@ -1,7 +1,7 @@
 # Spec 33 — AI Cast, Lore & Onboarding Surfaces (the spectacle + the flows, in AUSPEX)
 
 > Phase 5 UI/UX. WHAT the cast-presence, lore, and onboarding **surfaces** look and behave like in the AUSPEX visual
-> language — not new mechanics. Read `rumbledore-design-language.md` (tokens/type/motion/signatures) FIRST, then this.
+> language — not new mechanics. Read `DESIGN.md` (tokens/type/motion/signatures) FIRST, then this.
 > Builds on the engines `specs/12` (AI cast/instigator), `specs/13` (lore mechanic), `specs/18` (lore UI structure),
 > `specs/16` (onboarding completeness). Restyle + extend, never re-mechanic. Sibling specs: `28` foundations, `29`
 > component library, `30` shell/nav, `31` editorial register, `32` feature surfaces. **AI voice/character tuning is the

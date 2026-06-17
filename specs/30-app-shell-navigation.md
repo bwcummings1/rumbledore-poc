@@ -5,7 +5,7 @@
 > bottom-tabs + scope-switcher sheet on mobile. It does NOT redefine the IA (that is `specs/10`, EXISTS) or the
 > PWA mechanics (that is `specs/24`, EXISTS) — it dresses them in AUSPEX and fills the gaps the design template
 > left (mobile translation, presence, notifications surface, boot, install).
-> READ FIRST: `phase5-staging/rumbledore-design-language.md` (AUSPEX source-of-truth) and `docs/design/auspex-reference.html`.
+> READ FIRST: `phase5-staging/DESIGN.md` (AUSPEX source-of-truth) and `docs/design/auspex-reference.html`.
 > References: `specs/10` (two-scope IA/nav + switcher — EXISTS), `specs/24` (PWA shell/SW/offline/deep-link — EXISTS),
 > `specs/20` (realtime channels incl. `presence`, push, notification taxonomy — EXISTS), `specs/28` (tokens/type/
 > motion/atmosphere/a11y — sibling), `specs/29` (component library: orb, ticker, bezel, panel, command palette,
@@ -294,7 +294,7 @@ Gate-verifiable (`pnpm test`, e2e, axe, Lighthouse):
 10. **A11y** — landmark roles present; skip-link first; full keyboard nav of rail/tabs/switcher/palette/menus;
     focus-visible bloom; ≥44px targets; AA contrast (axe clean on shell routes).
 11. **Gates green** — `pnpm typecheck/lint/test/build`, `pnpm secret-scan`, `ubs` (exit 0) all pass, and the shell
-    holds AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`.
+    holds AUSPEX-fidelity per `DESIGN.md`.
 
 ### Needs the later human UI pass (not gate-verifiable)
 WIRE marquee speed/easing, boot choreography/timing, halo intensity, sheet drag physics, exact crumb truncation,

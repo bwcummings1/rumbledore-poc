@@ -21,8 +21,8 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 - PWA perf (if shell/PWA/routes changed; run after build): `pnpm perf:pwa`
 - Secret scan: `pnpm secret-scan`
 - Bug scan: `ubs <changed files>` (exit 0 required; see /home/ubuntu/AGENTS.md UBS section)
-- UI (only if you touched UI): must be faithful to the authoritative design doc — AUSPEX-fidelity per `docs/design/rumbledore-design-language.md` + `docs/screenshots/reference-images/` (near-pixel)
-- Authoritative design source: `docs/design/rumbledore-design-language.md` + `docs/screenshots/reference-images/` (AUSPEX, near-pixel).
+- UI (only if you touched UI): must be faithful to the authoritative design doc — AUSPEX-fidelity per `DESIGN.md` + `docs/screenshots/reference-images/` (near-pixel)
+- Authoritative design source: `DESIGN.md` + `docs/screenshots/reference-images/` (AUSPEX, near-pixel).
 
 ## Hard rules
 - NEVER disable gates. No `ignoreBuildErrors`, no `eslint.ignoreDuringBuilds`, no skipping tests to go green.

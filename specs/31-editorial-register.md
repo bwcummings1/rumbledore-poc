@@ -1,7 +1,7 @@
 # Spec 31 — Editorial / Publication Reading Register (AUSPEX long-form)
 
 > Phase 5, AUSPEX overhaul. The **net-new** register the AUSPEX reference (`docs/design/auspex-reference.html`,
-> `rumbledore-design-language.md`) does NOT cover: long-form **reading**. The template is a HUD/data tool — chrome,
+> `DESIGN.md`) does NOT cover: long-form **reading**. The template is a HUD/data tool — chrome,
 > charts, LCDs, near-zero prose. This spec defines a **calmer, lower-chrome, highly legible reading surface that
 > still unmistakably reads AUSPEX** (void + glass + hairlines + the conic orb byline + restrained accents) for "The
 > {League} Press" and "Rumbledore News". It is the most delicate design work in Phase 5: legibility must win without

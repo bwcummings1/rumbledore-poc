@@ -159,7 +159,7 @@ This spec delivers the **functional app-feel**: installability, a safe/snappy se
 and a measurable perf budget. It explicitly **DEFERS the visual design overhaul** — final color/type/motion
 language, iconography polish, splash art, install-banner styling, skeleton choreography, and copy voice — to the
 later human-paired **Soul** phase (North Star "functionality first, surface soul later"; AUSPEX-fidelity per
-`docs/design/rumbledore-design-language.md` and human-in-the-room taste ride that pass). Where this spec says "branded," it means *uses the existing tokens*, not
+`DESIGN.md` and human-in-the-room taste ride that pass). Where this spec says "branded," it means *uses the existing tokens*, not
 *introduces a design language*.
 
 ## Acceptance criteria (testable)
@@ -185,7 +185,7 @@ later human-paired **Soul** phase (North Star "functionality first, surface soul
    is encoded as a runnable check (Lighthouse CI / budget assertion) on the shell routes; data-backed routes render
    a skeleton (not a spinner) on first paint; no white flash on cold boot.
 7. **Gates green.** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm secret-scan`, `ubs` (exit 0)
-   all pass, and (UI touched) the surface holds AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`.
+   all pass, and (UI touched) the surface holds AUSPEX-fidelity per `DESIGN.md`.
 
 ### Needs the later human UI pass (not gate-verifiable here)
 The *feel* of installation and motion: install-banner timing/copy/styling, the splash/launch polish, skeleton

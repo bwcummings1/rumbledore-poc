@@ -20,7 +20,7 @@ Never corporate, never hype-y, never "AI assistant." The Narrator/Trash-Talker p
 ## Visual language
 The look is **AUSPEX / HASHMARK** — near-black void, **glass panels**, **lilac** primary + **amber** value, glow
 halos, the conic **AI orb**, silver Y2K bezels, the live atmosphere, LCD numerics, information-dense HUD.
-**Authoritative spec: `docs/design/rumbledore-design-language.md` + `docs/screenshots/reference-images/`.**
+**Authoritative spec: `DESIGN.md` + `docs/screenshots/reference-images/`.**
 
 > Note: this **replaces** an earlier "anti-references" list that forbade *glassmorphism / purple-indigo AI
 > gradients / neon / confetti*. That was wrong — AUSPEX intentionally uses glass, lilac (purple), glow, and

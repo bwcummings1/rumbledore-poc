@@ -1,6 +1,6 @@
 # AUSPEX Re-implementation — working checklist (resumable)
 
-Authoritative target: `docs/design/rumbledore-design-language.md` + the byte-exact reference
+Authoritative target: `DESIGN.md` + the byte-exact reference
 `docs/screenshots/reference-images/ui-ux-style-reference-code-from-images.html` + the renders
 `docs/screenshots/reference-images/reference-*.png`. **Fidelity bar: near-pixel.** Branch: `design/auspex`.
 Verify by building + screenshotting (mobile/tablet/desktop) and comparing to the reference renders.

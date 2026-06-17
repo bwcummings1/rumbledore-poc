@@ -2,7 +2,7 @@
 
 > Outcomes spec. Defines WHAT the AUSPEX visual foundation delivers and the contract every surface inherits — not
 > per-screen layouts (those are `29`–`33`). This is the **foundation layer of the Phase 5 UI/UX overhaul**: it takes
-> the canonical AUSPEX/HASHMARK design language (`/phase5-staging/rumbledore-design-language.md`, ported from
+> the canonical AUSPEX/HASHMARK design language (`/phase5-staging/DESIGN.md`, ported from
 > `docs/design/auspex-reference.html`) and **populates the `specs/27` theming framework** with it as a real theme
 > named **`auspex`**. Embed the North Star (`docs/NORTH-STAR.md`): Rumbledore is a **league-specific spectacle** the
 > members star in — *alive, personal, a little unhinged, a real publication*. Round one was a soulless data system;
@@ -12,8 +12,8 @@
 > as the cast's presence. **Restraint is a feature** — chrome and data dominate; prose is a calmer, lower-chrome
 > reading register (`31`).
 > References: `specs/27` (theming framework this POPULATES — the plumbing exists; this fills the `auspex` slot),
-> `specs/10` (IA/nav shells that consume the theme), `docs/NORTH-STAR.md`, `phase5-staging/rumbledore-design-language.md`
-> (canonical tokens — port verbatim), `AGENTS.md` (AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`). Real files:
+> `specs/10` (IA/nav shells that consume the theme), `docs/NORTH-STAR.md`, `phase5-staging/DESIGN.md`
+> (canonical tokens — port verbatim), `AGENTS.md` (AUSPEX-fidelity per `DESIGN.md`). Real files:
 > `src/app/globals.css` (`@theme inline` + `:root`), `src/app/layout.tsx` (font loading, `<html>` data-theme), the
 > `src/theme/*` framework introduced by `27` (`registry.ts`, `theme-provider.tsx`, `contrast.test.ts`).
 
@@ -353,12 +353,12 @@ The mandate: the foundation is **accessible + functional on all three**, not des
 
 ## 9 · Acceptance criteria (testable)
 
-Gate-verifiable (`pnpm test`, `contrast.test.ts`, AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`, e2e):
+Gate-verifiable (`pnpm test`, `contrast.test.ts`, AUSPEX-fidelity per `DESIGN.md`, e2e):
 1. **`auspex` registered & default.** `auspex` is a registered theme in `src/theme/registry.ts`, set as the default
    active theme; `<html data-theme="auspex">` resolves before paint (no FOUC, no hydration mismatch), and the whole
    app restyles to AUSPEX with **no component file changed** (the `27` one-place-swap property holds).
 2. **Tokens, not literals.** No component/CVA/page contains a raw AUSPEX color/size/duration literal where a token
-   exists; the `27` token-lint scan stays green and the surface holds AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`. All `auspex` primitives live only under
+   exists; the `27` token-lint scan stays green and the surface holds AUSPEX-fidelity per `DESIGN.md`. All `auspex` primitives live only under
    `[data-theme="auspex"]`.
 3. **Contrast gate passes for `auspex`.** `contrast.test.ts` runs the §6.1 pairs for `auspex` and asserts the
    thresholds: `ink`/`ink-2` ≥4.5 on all surfaces; light accents ≥4.5 as text; `ink-3` asserted ≥3:1 and flagged
@@ -383,7 +383,7 @@ Gate-verifiable (`pnpm test`, `contrast.test.ts`, AUSPEX-fidelity per `docs/desi
 Needs the later human pass (NOT gate-verifiable here):
 - The *exact* gradient stops/animation timing of the orb, the precise grain texture and starfield density, the silver-
   bezel highlight curve, and the final "does it feel like AUSPEX" judgment — tuned with a human in the room against
-  `docs/design/auspex-reference.html` (North Star "human in the room" + AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`).
+  `docs/design/auspex-reference.html` (North Star "human in the room" + AUSPEX-fidelity per `DESIGN.md`).
 
 ---
 
@@ -392,7 +392,7 @@ Needs the later human pass (NOT gate-verifiable here):
   `contrast.test.ts` this spec POPULATES (hard prereq; `auspex` is a theme *in* that framework).
 - **`02` Foundation** — `layout.tsx` (font loading, `<html>` data-theme), `globals.css` (`@theme inline` + per-theme layer).
 - **`specs/10` IA / `24` Mobile-PWA** — the nav shells/breakpoints that consume the foundation (atmosphere/type/spacing).
-- **`docs/NORTH-STAR.md`** — the ethos every token serves; **`phase5-staging/rumbledore-design-language.md`** +
+- **`docs/NORTH-STAR.md`** — the ethos every token serves; **`phase5-staging/DESIGN.md`** +
   `docs/design/auspex-reference.html` — the canonical AUSPEX source ported here.
 
 ## Non-goals

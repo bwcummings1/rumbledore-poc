@@ -1,7 +1,7 @@
 # Spec 32 — Feature Surfaces (AUSPEX composition of the real product)
 
 > Phase 5 UI/UX overhaul. **No app code here** — this composes the AUSPEX visual language
-> (`rumbledore-design-language.md`) into Rumbledore's real surfaces. Reads `28` (foundations/tokens/a11y),
+> (`DESIGN.md`) into Rumbledore's real surfaces. Reads `28` (foundations/tokens/a11y),
 > `29` (component library), `34` (chart/viz library), `30` (app shell), `31` (editorial register), `33`
 > (cast/lore/onboarding). Restyles **existing** routes/views (cited per surface) — it does **not** change data
 > contracts. North Star: the substrate is reachable always; the **cast/competition is the soul**; this makes the
@@ -333,7 +333,7 @@ data-steward views `src/app/leagues/[leagueId]/members/steward/data-steward-revi
 
 ---
 
-## 8. Cross-surface acceptance (AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`)
+## 8. Cross-surface acceptance (AUSPEX-fidelity per `DESIGN.md`)
 1. **Every surface** renders all five universal states (loading/empty/error/offline/gated) without a blank/500/half-
    render — asserted per surface above and as a shell-level snapshot set. 2. **Every surface** passes the a11y
    contract: keyboard reach + focus-bloom, AA contrast vs `--void`, ≥44px targets, `prefers-reduced-motion` collapsing

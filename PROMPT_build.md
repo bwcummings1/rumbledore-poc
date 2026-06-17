@@ -9,7 +9,7 @@ You are an autonomous engineer on Rumbledore. Fresh context each iteration. Be d
 2. SELECT one task — the most important UNBLOCKED item in **`## Scope`** (respect dependencies / phase order P0→P5). One task only.
 3. INVESTIGATE. Search first — do NOT assume something isn't implemented. Use parallel subagents for reads/searches.
 4. IMPLEMENT it completely. No stubs, no placeholders, no "TODO later" passed off as done. Follow the spec as an OUTCOME.
-5. VALIDATE (mandatory backpressure, one subagent for the run): `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm build` · `ubs <changed files>`; if UI changed, follow `docs/design/rumbledore-design-language.md` (AUSPEX — authoritative, near-pixel fidelity). Fix until ALL pass; fix any unrelated breakage you caused. Never weaken/skip a gate.
+5. VALIDATE (mandatory backpressure, one subagent for the run): `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm build` · `ubs <changed files>`; if UI changed, follow `DESIGN.md` (AUSPEX — authoritative, near-pixel fidelity). Fix until ALL pass; fix any unrelated breakage you caused. Never weaken/skip a gate.
 6. RECORD. Mark the Scope task done. Log any newly-discovered bug/improvement to **`## Icebox`** (NEVER to Scope, and do NOT work it now). Add a durable operational learning to `AGENTS.md` only if it'll matter next iteration. Append a 1-line note to `docs/PROGRESS.md` if a milestone moved.
 7. COMMIT + PUSH. `git add -A && git commit -m "<concise>" && git push origin $(git branch --show-current)`. Never commit secrets; never touch `main`/`v0.62`; never force-push.
 

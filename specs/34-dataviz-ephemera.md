@@ -1,7 +1,7 @@
 # Spec 34 — Data-Viz & Ephemera (the chart library + the spectacle moments)
 
 > Phase 5 / AUSPEX. **WHAT** the visualization layer and the live/ephemeral "spectacle" surfaces produce — not the
-> line-by-line component code. Read `rumbledore-design-language.md` (the AUSPEX source-of-truth) first; this is the
+> line-by-line component code. Read `DESIGN.md` (the AUSPEX source-of-truth) first; this is the
 > "cool stuff" spec it points to from §6 (the 18 chart generators) and §7 (motion). It formalizes those 18 generators
 > into an accessible, responsive **chart library**, then expands the catalog with Rumbledore-native visualizations and
 > the live/ephemeral **moments** that make data feel like a broadcast. The North-Star ethos governs: **data as

@@ -57,5 +57,5 @@ general-audience media to a league-specific spectacle the members star in — is
   including the *functional* expression of the voice (the cast, the instigation, the lore mechanic, the league-vs-league
   reframe). The **surface** soul — UI/UX polish and final voice tuning — waits for human-in-the-room direction.
 - **Add quality gates where correctness-gates can't see.** For AI content, an LLM-judge eval ("does this read as
-  authentic to *this* league?"); for UI, fidelity to the AUSPEX reference (`docs/design/rumbledore-design-language.md`). These approximate "is it good," which `pnpm test` can't.
+  authentic to *this* league?"); for UI, fidelity to the AUSPEX reference (`DESIGN.md`). These approximate "is it good," which `pnpm test` can't.
 - **This doc is the orienting truth.** Every `specs/*` derives from it; every loop run is pointed at it.
