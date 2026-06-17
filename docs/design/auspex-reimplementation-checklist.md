@@ -6,7 +6,18 @@ Authoritative target: `DESIGN.md` + the byte-exact reference
 Verify by building + screenshotting (mobile/tablet/desktop) and comparing to the reference renders.
 Tick items as done. Commit per chunk. Merge to `main` only when the whole thing is complete + verified.
 
-## Diagnosis (why the first build looked wrong)
+## PASS 2 (owner review — "still half-baked") — ✅ DONE, on `main`
+Owner flagged: floating wire, conflicting typefaces, clumsy landing, half-cooked surfaces.
+Root cause (confirmed): a set of surfaces were never re-skinned (plain dark Tailwind).
+- **Wire** → thin TOP ticker strip (lilac tag chip + masked marquee); duplicate inline wire removed (shell owns the one wire).
+- **Headings** → dropped all big gradient-clipped section headers; panels carry small mono labels (chip-glyph + label), page titles are plain solid Michroma. Owner decision: NO gradient section headings.
+- **Landing** → rebuilt in AUSPEX (glass hero + provider-connect cards + "what you unlock" cells); was fully generic.
+- **Generic-surface sweep** → records ×3, settings, invite, steward, arena, onboarding, lore, error: dropped `tracking-tight`; headings → heading-auspex; title weights → Saira 500; records table header → transparent.
+- **Typeface consistency** → all font-display/heading-auspex headings unified to 500.
+- **Docs** → consolidated to a single `DESIGN.md` (removed the duplicate spec); screenshot spec extended to 16 routes.
+- Known non-styling gaps: cast/press render thin without seeded data + entitlement (data/logic, not design).
+
+## Diagnosis (pass 1 — why the first build looked wrong)
 Structure exists; every signature was dampened toward "restraint" (the green/anti-slop regime). Restore exact reference values.
 
 ## A. Foundation (highest leverage — affects everything) — ✅ DONE + verified
