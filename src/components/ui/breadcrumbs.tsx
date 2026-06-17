@@ -114,10 +114,10 @@ function BreadcrumbLink({
   readonly mobile?: boolean;
 }) {
   const className = cn(
-    "min-w-0 truncate rounded-control px-2 py-1 font-display text-xs uppercase tracking-normal outline-none focus-visible:shadow-[var(--focus-ring-shadow)]",
+    "min-w-0 truncate rounded-control px-1.5 py-1 font-mono text-xs uppercase tracking-[0.06em] outline-none focus-visible:shadow-[var(--focus-ring-shadow)]",
     item.current
-      ? "text-foreground"
-      : "text-muted-foreground transition-colors hover:text-foreground",
+      ? "text-ink-2"
+      : "text-ink-3 transition-colors hover:text-lilac",
     mobile && "block min-h-10 px-3 py-2 text-sm normal-case",
   );
 

@@ -24,7 +24,7 @@ interface PaginationProps extends ComponentPropsWithoutRef<"nav"> {
 type PaginationRangeItem = number | "ellipsis-left" | "ellipsis-right";
 
 const paginationControlClass =
-  "inline-flex size-11 min-h-11 min-w-11 items-center justify-center rounded-control border border-input bg-[var(--panel)] px-2 font-mono text-sm text-muted-foreground shadow-[var(--bevel)] outline-none transition-[background-color,border-color,color,box-shadow] hover:border-[var(--hair-3)] hover:bg-elevated hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] aria-current:bg-primary/15 aria-current:text-foreground aria-disabled:pointer-events-none aria-disabled:opacity-50";
+  "inline-flex size-9 min-w-9 items-center justify-center rounded-md border border-[var(--hair-2)] px-2 font-mono text-xs text-ink-3 outline-none transition-[background-color,border-color,color,box-shadow] hover:border-[var(--hair-3)] hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] aria-current:border-primary/50 aria-current:bg-primary/10 aria-current:text-lilac-hi aria-disabled:pointer-events-none aria-disabled:opacity-50";
 
 function Pagination({
   className,

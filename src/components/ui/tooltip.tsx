@@ -36,7 +36,7 @@ function Tooltip({
           >
             <TooltipPrimitive.Popup
               className={cn(
-                "panel max-w-64 rounded-control px-2.5 py-1.5 text-xs text-foreground shadow-overlay outline-none motion-reduce:transition-none",
+                "panel max-w-64 rounded-control px-2.5 py-1.5 font-mono text-xs tracking-[0.04em] text-ink-2 shadow-overlay outline-none motion-reduce:transition-none",
               )}
               data-slot="tooltip"
               role="tooltip"

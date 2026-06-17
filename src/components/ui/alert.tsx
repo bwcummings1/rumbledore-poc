@@ -13,15 +13,14 @@ import {
 } from "./feedback-tones";
 
 const alertVariants = cva(
-  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-card border px-3 py-3 text-sm shadow-[var(--bevel)]",
+  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg border bg-white/[0.015] px-3.5 py-3 text-sm",
   {
     variants: {
       tone: {
-        danger:
-          "border-destructive/50 bg-destructive/10 text-destructive shadow-[var(--bevel)]",
-        info: "border-primary/50 bg-primary/10 text-foreground shadow-[0_0_18px_var(--glow-lilac),var(--bevel)]",
-        ok: "border-positive/50 bg-positive/10 text-foreground",
-        warn: "border-warning/50 bg-warning/10 text-foreground shadow-[0_0_18px_var(--glow-amber),var(--bevel)]",
+        danger: "border-destructive/35",
+        info: "border-steel/35",
+        ok: "border-positive/35",
+        warn: "border-warning/35",
       },
     },
     defaultVariants: {
@@ -67,17 +66,17 @@ function Alert({
       <span
         aria-hidden="true"
         className={cn(
-          "mt-0.5 flex size-5 items-center justify-center",
-          normalizedTone === "danger" && "text-destructive",
-          normalizedTone === "info" && "text-primary",
-          normalizedTone === "ok" && "text-positive",
-          normalizedTone === "warn" && "text-warning",
+          "mt-0.5 flex size-[1.375rem] shrink-0 items-center justify-center rounded-full [&_svg]:size-3",
+          normalizedTone === "danger" && "bg-destructive/15 text-destructive",
+          normalizedTone === "info" && "bg-steel/15 text-steel",
+          normalizedTone === "ok" && "bg-positive/15 text-positive",
+          normalizedTone === "warn" && "bg-warning/15 text-warning",
         )}
         data-slot="alert-icon"
       >
-        {icon ?? <Icon className="size-5" />}
+        {icon ?? <Icon className="size-3" />}
       </span>
-      <div className="min-w-0 border-l border-current/35 pl-3">
+      <div className="min-w-0">
         {title ? (
           <p className="font-display text-sm font-semibold text-foreground">
             {title}

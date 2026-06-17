@@ -13,15 +13,14 @@ import {
 } from "./feedback-tones";
 
 const bannerVariants = cva(
-  "panel flex w-full items-start gap-3 rounded-card px-3 py-3 text-sm sm:items-center",
+  "flex w-full items-start gap-3 rounded-card border px-3.5 py-3 text-sm text-foreground sm:items-center",
   {
     variants: {
       tone: {
-        danger:
-          "border-destructive/50 bg-destructive/10 text-foreground shadow-[var(--bevel)]",
-        info: "border-primary/50 bg-primary/10 text-foreground shadow-[0_0_18px_var(--glow-lilac),var(--bevel)]",
-        ok: "border-positive/50 bg-positive/10 text-foreground",
-        warn: "border-warning/50 bg-warning/10 text-foreground shadow-[0_0_18px_var(--glow-amber),var(--bevel)]",
+        danger: "border-destructive/35 bg-destructive/[0.06]",
+        info: "border-primary/30 bg-primary/[0.06]",
+        ok: "border-positive/35 bg-positive/[0.06]",
+        warn: "border-warning/35 bg-warning/[0.06]",
       },
     },
     defaultVariants: {

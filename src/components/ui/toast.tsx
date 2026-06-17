@@ -104,10 +104,10 @@ function ToastCard({
       aria-live={isAssertive ? "assertive" : "polite"}
       className={cn(
         "panel grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-card p-3 text-sm shadow-overlay",
-        tone === "danger" && "border-destructive/50 bg-destructive/10",
-        tone === "info" && "border-primary/50 bg-primary/10",
-        tone === "ok" && "border-positive/50 bg-positive/10",
-        tone === "warn" && "border-warning/50 bg-warning/10",
+        tone === "danger" && "border-destructive/40",
+        tone === "info" && "border-primary/40",
+        tone === "ok" && "border-positive/40",
+        tone === "warn" && "border-warning/40",
       )}
       data-slot="toast"
       data-tone={tone}
@@ -138,7 +138,7 @@ function ToastCard({
           <ToastPrimitive.Action
             {...toast.actionProps}
             className={cn(
-              "mt-3 inline-flex min-h-11 items-center rounded-control border border-input px-3 text-sm font-medium text-foreground hover:bg-primary/10 focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none",
+              "mt-3 inline-flex min-h-8 items-center rounded-full border border-[var(--hair-3)] px-3 font-mono text-xs uppercase tracking-[0.1em] text-ink-2 hover:border-primary hover:text-lilac-hi focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none",
               toast.actionProps.className,
             )}
           />
@@ -146,7 +146,7 @@ function ToastCard({
       </ToastPrimitive.Content>
       <ToastPrimitive.Close
         aria-label="Dismiss notification"
-        className="inline-flex size-11 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+        className="inline-flex size-9 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
       >
         <X className="size-4" />
       </ToastPrimitive.Close>
