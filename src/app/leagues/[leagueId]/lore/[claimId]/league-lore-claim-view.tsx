@@ -674,7 +674,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
               <Landmark className="size-4" aria-hidden="true" />
               {data.league.name} lore
             </p>
-            <h1 className="h-grad mt-2 font-display text-2xl font-semibold">
+            <h1 className="mt-2 font-display text-2xl font-semibold">
               {claim.title}
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-3">

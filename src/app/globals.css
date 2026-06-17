@@ -1118,18 +1118,6 @@ html {
   will-change: auto;
 }
 
-.auspex-wire[data-motion="off"] .auspex-wire__viewport,
-:root[data-motion="off"] .auspex-wire__viewport,
-.auspex-wire[data-expanded="true"] .auspex-wire__viewport {
-  display: none;
-}
-
-.auspex-wire[data-motion="off"] .auspex-wire__static-list,
-:root[data-motion="off"] .auspex-wire__static-list,
-.auspex-wire[data-expanded="true"] .auspex-wire__static-list {
-  display: grid;
-}
-
 :root[data-motion="off"] .auspex-chart__draw,
 :root[data-motion="off"] .auspex-chart__grow,
 :root[data-motion="off"] .auspex-live-dot,
@@ -1179,14 +1167,6 @@ html {
   animation: none;
   transform: none;
   will-change: auto;
-}
-
-:root[data-performance="constrained"] .auspex-wire__viewport {
-  display: none;
-}
-
-:root[data-performance="constrained"] .auspex-wire__static-list {
-  display: grid;
 }
 
 :root[data-performance="constrained"] .auspex-chart__draw,
@@ -1283,14 +1263,6 @@ html {
     animation: none;
     transform: none;
     will-change: auto;
-  }
-
-  .auspex-wire__viewport {
-    display: none;
-  }
-
-  .auspex-wire__static-list {
-    display: grid;
   }
 
   .auspex-vote-meter__fill {

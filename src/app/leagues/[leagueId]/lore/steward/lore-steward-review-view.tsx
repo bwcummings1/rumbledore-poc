@@ -134,7 +134,7 @@ export function LoreStewardReviewView({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="eyebrow text-primary">Lore / Steward review</p>
-            <h1 className="heading-auspex h-grad mt-1 text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex mt-1 text-2xl leading-tight sm:text-3xl">
               {data.league.name}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">

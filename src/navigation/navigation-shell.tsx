@@ -423,7 +423,7 @@ export function NavigationShellView({
       <div
         id="rumbledore-main-content"
         className={cn(
-          "min-h-dvh pt-[8rem] pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-base ease-out md:pt-[8rem] md:pb-0",
+          "min-h-dvh pt-[5.5rem] pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-base ease-out md:pt-[5.5rem] md:pb-0",
           sidebarCollapsed ? "md:pl-[4.5rem]" : "md:pl-72",
         )}
       >
@@ -1033,40 +1033,38 @@ function ShellWire({
   return (
     <div
       className={cn(
-        "fixed top-14 right-0 z-20 px-2 py-2 md:px-4",
+        "fixed top-14 right-0 left-0 z-20",
         collapsed ? "md:left-[4.5rem]" : "md:left-72",
       )}
       data-slot="shell-wire"
     >
-      <div className="mx-auto max-w-7xl">
+      <ShellWireTicker
+        aria-label={
+          activeState.scope === "league" ? "League wire" : "Global wire"
+        }
+        className="hidden md:flex"
+        items={items}
+        motion={motion}
+        status={status}
+        variant={variant}
+      />
+      <button
+        aria-label="Open The Wire"
+        className="flex w-full text-left outline-none focus-visible:shadow-[var(--focus-ring-shadow)] md:hidden"
+        onClick={onOpenWire}
+        type="button"
+      >
         <ShellWireTicker
           aria-label={
             activeState.scope === "league" ? "League wire" : "Global wire"
           }
-          className="hidden md:grid"
-          items={items}
-          motion={motion}
+          className="pointer-events-none w-full"
+          items={mobileItems}
+          motion="off"
           status={status}
           variant={variant}
         />
-        <button
-          aria-label="Open The Wire"
-          className="block w-full text-left outline-none focus-visible:shadow-[var(--focus-ring-shadow)] md:hidden"
-          onClick={onOpenWire}
-          type="button"
-        >
-          <ShellWireTicker
-            aria-label={
-              activeState.scope === "league" ? "League wire" : "Global wire"
-            }
-            className="pointer-events-none"
-            items={mobileItems}
-            motion="off"
-            status={status}
-            variant={variant}
-          />
-        </button>
-      </div>
+      </button>
     </div>
   );
 }
@@ -1122,85 +1120,85 @@ function ShellWireTicker({
   readonly variant: "digest" | "live";
 }) {
   const statusLabel = wireStatusLabel(status);
+  const dotClass =
+    status === "live"
+      ? "bg-jade shadow-[0_0_8px_var(--glow-lilac)]"
+      : status === "reconnecting"
+        ? "bg-warning"
+        : "bg-ink-4";
 
+  // Expanded (mobile sheet): a plain vertical list, not the ticker strip.
+  if (expanded) {
+    return (
+      <section
+        aria-label={ariaLabel}
+        className={cn("auspex-wire grid gap-2", className)}
+        data-motion={motion}
+        data-slot="wire-ticker"
+        data-state={status}
+        data-variant={variant}
+      >
+        {items.length === 0 ? (
+          <p className="cell px-3 py-2 font-mono text-xs text-ink-3">
+            {wireEmptyMessage(status)}
+          </p>
+        ) : (
+          <ul className="grid gap-1.5">
+            {items.map((item) => (
+              <ShellWireTickerItem item={item} key={item.id} />
+            ))}
+          </ul>
+        )}
+      </section>
+    );
+  }
+
+  // Thin ticker strip directly under the top bar (reference `.ticker`).
   return (
     <section
       aria-label={ariaLabel}
       className={cn(
-        "auspex-wire panel grid gap-1.5 overflow-hidden px-3 py-2",
-        variant === "live" ? "border-primary/30" : "",
+        "auspex-wire flex h-8 items-stretch overflow-hidden border-b border-[var(--hair)] bg-[var(--panel)] backdrop-blur-xl motion-reduce:backdrop-blur-none",
         className,
       )}
-      data-expanded={expanded ? "true" : undefined}
       data-motion={motion}
       data-slot="wire-ticker"
       data-state={status}
       data-variant={variant}
     >
-      <div className="flex min-h-8 items-center justify-between gap-3 px-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <ScrollText aria-hidden="true" className="size-4 text-primary" />
-          <span className="eyebrow text-foreground">WIRE</span>
-          <output
-            aria-label={statusLabel}
-            className={cn(
-              "inline-flex items-center gap-1.5",
-              motion === "off" && "motion-reduce:animate-none",
-            )}
-            data-motion={motion}
-            data-slot="live-pulse"
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "auspex-live-dot inline-flex size-2.5 shrink-0 rounded-full ring-2 ring-background",
-                status === "live"
-                  ? "bg-primary shadow-[0_0_14px_var(--glow-lilac)]"
-                  : status === "reconnecting"
-                    ? "bg-warning"
-                    : "bg-muted-foreground",
-              )}
-              data-status={status === "live" ? "live" : "static"}
-            />
-            <span className="sr-only">{statusLabel}</span>
-          </output>
-        </div>
-        {status === "offline" || status === "reconnecting" ? (
-          <span className="metric text-xs text-muted-foreground">
-            {statusLabel}
-          </span>
-        ) : null}
+      <div className="flex shrink-0 items-center gap-2 border-r border-[var(--lilac-deep)] bg-primary/15 px-3 text-lilac-hi">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "auspex-live-dot inline-block size-1.5 shrink-0 rounded-full",
+            dotClass,
+          )}
+          data-status={status === "live" ? "live" : "static"}
+        />
+        <span className="font-mono text-xs uppercase tracking-[0.18em]">
+          Wire
+        </span>
+        <span className="sr-only">{statusLabel}</span>
       </div>
-
       {items.length === 0 ? (
-        <p className="rounded-control border border-input bg-[var(--panel)] px-3 py-2 text-sm text-muted-foreground">
+        <span className="flex items-center px-3 font-mono text-xs text-ink-3">
           {wireEmptyMessage(status)}
-        </p>
+        </span>
       ) : (
-        <>
-          <div className="auspex-wire__viewport" data-slot="wire-marquee">
-            <ul className="auspex-wire__track gap-2">
-              {items.map((item) => (
-                <ShellWireTickerItem item={item} key={item.id} />
-              ))}
-              {items.map((item) => (
-                <ShellWireTickerItem
-                  aria-hidden="true"
-                  item={item}
-                  key={`repeat-${item.id}`}
-                />
-              ))}
-            </ul>
-          </div>
-          <ul
-            className="auspex-wire__static-list gap-2"
-            data-slot="wire-static-list"
-          >
+        <div className="auspex-wire__viewport flex-1" data-slot="wire-marquee">
+          <ul className="auspex-wire__track h-full items-center gap-2">
             {items.map((item) => (
-              <ShellWireTickerItem item={item} key={`static-${item.id}`} />
+              <ShellWireTickerItem item={item} key={item.id} />
+            ))}
+            {items.map((item) => (
+              <ShellWireTickerItem
+                aria-hidden="true"
+                item={item}
+                key={`repeat-${item.id}`}
+              />
             ))}
           </ul>
-        </>
+        </div>
       )}
     </section>
   );

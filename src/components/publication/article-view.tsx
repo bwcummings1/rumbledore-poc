@@ -148,7 +148,7 @@ function renderBodyBlock(
       return (
         <h2
           key={`${index}-${block.text}`}
-          className="heading-auspex h-grad pt-4 text-xl leading-snug"
+          className="heading-auspex pt-4 text-xl leading-snug"
         >
           {block.text}
         </h2>
@@ -242,7 +242,7 @@ function ArticleInlineDataBlock({
     >
       <header className="grid gap-1">
         <p className="eyebrow text-primary">Filed data</p>
-        <h3 className="heading-auspex h-grad text-base">{block.title}</h3>
+        <h3 className="heading-auspex text-base">{block.title}</h3>
       </header>
       <figcaption className="text-sm leading-6 text-muted-foreground">
         {block.caption}
@@ -352,7 +352,7 @@ export function PublicationArticleView({
           >
             {data.article.section.label}
           </Link>
-          <h1 className="heading-auspex h-grad text-3xl leading-tight sm:text-4xl">
+          <h1 className="heading-auspex text-3xl leading-tight sm:text-4xl">
             {data.article.headline}
           </h1>
           {data.article.dek ? (
@@ -519,9 +519,7 @@ export function PublicationArticleView({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="eyebrow text-primary">Keep reading</p>
-            <h2 className="heading-auspex h-grad mt-1 text-base">
-              Related stories
-            </h2>
+            <h2 className="heading-auspex mt-1 text-base">Related stories</h2>
           </div>
           <Link
             href={nextHref}

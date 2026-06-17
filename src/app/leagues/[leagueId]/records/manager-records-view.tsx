@@ -163,7 +163,7 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
         </div>
         <div className="max-w-2xl">
           <p className="eyebrow text-primary">Manager record book</p>
-          <h1 className="heading-auspex h-grad mt-2 text-2xl leading-tight sm:text-3xl">
+          <h1 className="heading-auspex mt-2 text-2xl leading-tight sm:text-3xl">
             {data.manager.name}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">

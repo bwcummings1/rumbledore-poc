@@ -30,8 +30,6 @@ import {
   type ScoreboardMatchup,
   type ScoreboardStatus,
   ScoreboardStrip,
-  type WireItem,
-  WireTicker,
 } from "@/components/ui/spectacle";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
@@ -215,18 +213,20 @@ function SectionTitle({
   title: string;
 }) {
   return (
-    <div className="flex min-w-0 items-end justify-between gap-3">
-      <div className="min-w-0">
-        {eyebrow ? (
-          <p className="eyebrow mb-1 truncate text-primary">{eyebrow}</p>
-        ) : null}
-        <h2 className="heading-auspex h-grad truncate text-xl leading-none">
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="chip-glyph flex size-7 shrink-0 items-center justify-center">
+          <Icon className="size-3.5" aria-hidden="true" />
+        </span>
+        <h2 className="truncate font-mono text-xs font-medium uppercase tracking-[0.16em] text-ink-2">
           {title}
         </h2>
       </div>
-      <span className="chip-glyph hidden size-8 shrink-0 items-center justify-center sm:inline-flex">
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
+      {eyebrow ? (
+        <span className="hidden max-w-[45%] truncate font-mono text-xs uppercase tracking-[0.1em] text-ink-4 sm:block">
+          {eyebrow}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -535,65 +535,6 @@ function ScoresSection({ data }: { data: LeagueHomeData }) {
         nextKickoffLabel="Matchups are still importing"
       />
     </section>
-  );
-}
-
-function buildWireItems(data: LeagueHomeData): WireItem[] {
-  const items: WireItem[] = [];
-  const matchup = data.activation?.currentMatchup ?? data.currentMatchups[0];
-  const storyline = data.storylines[0];
-  const record = data.records[0];
-
-  if (matchup) {
-    items.push({
-      fresh: matchup.status === "in_progress",
-      id: `matchup:${matchup.id}`,
-      kind: "score",
-      label: `${matchup.away.abbrev} ${formatPoints(matchup.away.score)} at ${
-        matchup.home.abbrev
-      } ${formatPoints(matchup.home.score)}`,
-      meta: `Week ${matchup.scoringPeriod} · ${matchupStatusLabel(
-        matchup.status,
-      )}`,
-    });
-  }
-
-  if (storyline) {
-    items.push({
-      fresh: true,
-      href: `/leagues/${data.league.id}/press/${storyline.id}`,
-      id: `story:${storyline.id}`,
-      kind: "cast",
-      label: storyline.title,
-      meta: storyline.byline,
-    });
-  }
-
-  if (record) {
-    items.push({
-      href: `/leagues/${data.league.id}/records`,
-      id: `record:${record.id}`,
-      kind: "record",
-      label: `${record.label}: ${formatRecordValue(
-        record.recordType,
-        record.value,
-      )}`,
-      meta: record.holderName ?? "record book",
-    });
-  }
-
-  return items;
-}
-
-function WireSection({ data }: { data: LeagueHomeData }) {
-  const items = buildWireItems(data);
-  return (
-    <WireTicker
-      aria-label="League wire"
-      items={items}
-      status={items.length > 0 ? "live" : "empty"}
-      variant="live"
-    />
   );
 }
 
@@ -931,7 +872,7 @@ export function LeagueHomeView({
               </StatusPill>
               <span className="eyebrow text-primary">League home</span>
             </div>
-            <h1 className="heading-auspex h-grad mt-3 text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex mt-3 text-2xl leading-tight sm:text-3xl">
               {data.league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -981,7 +922,6 @@ export function LeagueHomeView({
       </header>
 
       <MatchupHeroSection data={data} />
-      <WireSection data={data} />
       <ScoresSection data={data} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,.75fr)]">

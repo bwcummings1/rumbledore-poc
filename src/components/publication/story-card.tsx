@@ -58,9 +58,9 @@ function cardClassName(variant: PublicationStoryCardVariant): string {
 function headlineClassName(variant: PublicationStoryCardVariant): string {
   switch (variant) {
     case "hero":
-      return "heading-auspex h-grad line-clamp-4 text-2xl leading-tight sm:text-3xl";
+      return "heading-auspex line-clamp-4 text-2xl leading-tight sm:text-3xl";
     case "secondary":
-      return "heading-auspex h-grad line-clamp-3 text-lg leading-snug";
+      return "heading-auspex line-clamp-3 text-lg leading-snug";
     case "rail":
       return "line-clamp-2 font-display text-sm font-semibold leading-snug text-foreground";
     case "compact":

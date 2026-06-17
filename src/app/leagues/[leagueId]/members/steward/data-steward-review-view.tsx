@@ -214,7 +214,7 @@ export function DataStewardReviewView({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="eyebrow text-primary">Members / Data review</p>
-            <h1 className="heading-auspex h-grad mt-1 truncate text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex mt-1 truncate text-2xl leading-tight sm:text-3xl">
               {league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">

@@ -273,7 +273,7 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
             <p className="eyebrow">Account console</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="heading-auspex h-grad text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex text-2xl leading-tight sm:text-3xl">
               {data.user.displayName}
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">

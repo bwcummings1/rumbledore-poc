@@ -205,9 +205,7 @@ function UpgradeSurface({
     >
       <div>
         <p className="eyebrow text-warning">Entitlements</p>
-        <h2 className="heading-auspex h-grad mt-1 text-xl leading-tight">
-          {title}
-        </h2>
+        <h2 className="heading-auspex mt-1 text-xl leading-tight">{title}</h2>
         {children ? (
           <div className="mt-2 text-sm text-muted-foreground">{children}</div>
         ) : null}

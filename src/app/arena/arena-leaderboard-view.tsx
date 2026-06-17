@@ -733,7 +733,7 @@ function ArenaAnalytics({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="eyebrow">aggregate telemetry</p>
-          <h2 className="heading-auspex h-grad text-lg font-semibold">
+          <h2 className="heading-auspex text-lg font-semibold">
             Arena movement board
           </h2>
         </div>
@@ -978,7 +978,7 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
                 withText
               />
             </div>
-            <h1 className="heading-auspex h-grad mt-3 text-2xl font-semibold sm:text-4xl">
+            <h1 className="heading-auspex mt-3 text-2xl font-semibold sm:text-4xl">
               CENTRAL ARENA
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground sm:text-base">

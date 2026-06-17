@@ -603,7 +603,7 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
             <p className="text-sm font-medium">Records</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="heading-auspex h-grad text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex text-2xl leading-tight sm:text-3xl">
               {data.league.name} record book
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
