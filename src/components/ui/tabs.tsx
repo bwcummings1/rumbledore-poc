@@ -36,7 +36,7 @@ interface TabLinksProps {
 }
 
 const tabClassName =
-  "group/tab relative inline-flex min-h-11 shrink-0 snap-start items-center justify-center gap-2 rounded-none border-b border-transparent px-3 py-2 font-display text-sm text-muted-foreground outline-none transition-[border-color,color,background-color,box-shadow] hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] data-[active=true]:border-primary data-[active=true]:text-foreground data-[active=true]:shadow-[0_10px_24px_-18px_var(--glow-lilac)] data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 max-sm:min-h-12";
+  "group/tab relative -mb-px inline-flex shrink-0 snap-start items-center justify-center gap-2 rounded-none border-b-2 border-transparent px-4 py-2.5 font-display text-sm font-medium tracking-[0.05em] text-ink-3 outline-none transition-[border-color,color] hover:text-ink-2 focus-visible:shadow-[var(--focus-ring-shadow)] data-[active=true]:border-primary data-[active=true]:text-lilac data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50";
 
 function Tabs({ className, items, listLabel = "Tabs", ...props }: TabsProps) {
   return (

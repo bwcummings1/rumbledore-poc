@@ -37,13 +37,13 @@ function Slider({
       value={value}
       {...props}
     >
-      <SliderPrimitive.Control className="relative flex min-h-11 items-center">
-        <SliderPrimitive.Track className="relative h-2 w-full overflow-hidden rounded-full bg-[var(--hair-2)]">
-          <SliderPrimitive.Indicator className="absolute h-full rounded-full bg-primary shadow-[0_0_16px_var(--glow-lilac)]" />
+      <SliderPrimitive.Control className="relative flex min-h-8 items-center">
+        <SliderPrimitive.Track className="relative h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
+          <SliderPrimitive.Indicator className="absolute h-full rounded-full bg-primary shadow-[0_0_8px_var(--glow-lilac)]" />
         </SliderPrimitive.Track>
         {thumbs.map((thumb) => (
           <SliderPrimitive.Thumb
-            className="size-6 rounded-full border border-[var(--line-2)] bg-foreground shadow-[var(--bevel),var(--focus-ring-shadow)] outline-none focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)]"
+            className="size-4 rounded-full border-2 border-[var(--void-2)] bg-lilac-hi shadow-[0_0_10px_var(--glow-lilac)] outline-none focus-visible:shadow-[var(--focus-ring-shadow)]"
             getAriaLabel={(thumbIndex) =>
               typeof ariaLabel === "string" && values.length === 1
                 ? ariaLabel
@@ -57,7 +57,7 @@ function Slider({
         ))}
       </SliderPrimitive.Control>
       {showValue ? (
-        <SliderPrimitive.Value className="metric justify-self-end rounded-control border border-input bg-[var(--panel-2)] px-2 py-1 text-xs text-foreground">
+        <SliderPrimitive.Value className="metric justify-self-end rounded-control border border-[var(--hair-2)] bg-[var(--control-inset)] px-2 py-1 text-xs text-warning">
           {(_formatted, currentValues) =>
             valueLabel ? valueLabel(currentValues) : currentValues.join(" - ")
           }

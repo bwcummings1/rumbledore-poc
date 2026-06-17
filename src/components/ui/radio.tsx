@@ -34,23 +34,23 @@ function RadioGroup({ className, options, ...props }: RadioGroupProps) {
           : undefined;
         return (
           <div
-            className="flex min-h-11 cursor-pointer items-start gap-3 rounded-control border border-input bg-[var(--panel-2)] px-3 py-2 text-sm text-foreground shadow-[var(--bevel)] transition-[background-color,border-color] has-data-[checked]:border-primary has-data-[checked]:bg-primary/10 has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-50"
+            className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--hair-2)] bg-white/[0.015] px-3 py-2.5 text-sm text-foreground transition-[background-color,border-color] has-data-[checked]:border-primary/60 has-data-[checked]:bg-primary/10 has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-50"
             key={option.value}
           >
-            <span className="flex min-h-6 items-center">
+            <span className="flex min-h-5 items-center">
               <RadioPrimitive.Root
                 aria-describedby={descriptionId}
                 aria-labelledby={labelId}
-                className="group/radio inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]"
+                className="group/radio inline-flex items-center justify-center rounded-full border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]"
                 data-slot="radio"
                 disabled={option.disabled}
                 value={option.value}
               >
                 <span
                   aria-hidden="true"
-                  className="inline-flex size-5 items-center justify-center rounded-full border border-input bg-[var(--panel)] transition-[border-color] group-data-[checked]/radio:border-primary"
+                  className="inline-flex size-[1.125rem] items-center justify-center rounded-full border border-[var(--hair-3)] bg-[var(--control-inset)] transition-[background-color,border-color] group-data-[checked]/radio:border-primary group-data-[checked]/radio:bg-primary/25"
                 >
-                  <RadioPrimitive.Indicator className="size-2.5 rounded-full bg-primary shadow-[0_0_12px_var(--glow-lilac)]" />
+                  <RadioPrimitive.Indicator className="size-2 rounded-full bg-lilac-hi shadow-[0_0_8px_var(--glow-lilac)]" />
                 </span>
               </RadioPrimitive.Root>
             </span>

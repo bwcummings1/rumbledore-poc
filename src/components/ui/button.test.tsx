@@ -3,14 +3,10 @@ import { expect, test, vi } from "vitest";
 import { Button, buttonVariants } from "./button";
 
 test("Button keeps legacy variants mapped to AUSPEX variants", () => {
-  expect(buttonVariants({ variant: "default" })).toContain("var(--lilac-hi)");
-  expect(buttonVariants({ variant: "secondary" })).toContain(
-    "var(--steel-soft)",
-  );
-  expect(buttonVariants({ variant: "outline" })).toContain("var(--steel-soft)");
-  expect(buttonVariants({ variant: "destructive" })).toContain(
-    "text-destructive",
-  );
+  expect(buttonVariants({ variant: "default" })).toContain("btn-primary");
+  expect(buttonVariants({ variant: "secondary" })).toContain("btn-steel");
+  expect(buttonVariants({ variant: "outline" })).toContain("btn-steel");
+  expect(buttonVariants({ variant: "destructive" })).toContain("btn-danger");
 });
 
 test("Button supports block and loading states without firing clicks", () => {
@@ -24,16 +20,16 @@ test("Button supports block and loading states without firing clicks", () => {
 
   const button = screen.getByRole("button", { name: "Place bet" });
   expect(button.getAttribute("aria-busy")).toBe("true");
-  expect(button.className).toContain("w-full");
+  expect(button.className).toContain("btn-block");
   fireEvent.click(button);
   expect(onClick).not.toHaveBeenCalled();
 });
 
-test("Button sizes preserve a 44px minimum hit target", () => {
-  expect(buttonVariants({ size: "default" })).toContain("min-h-11");
-  expect(buttonVariants({ size: "sm" })).toContain("min-h-11");
-  expect(buttonVariants({ size: "xs" })).toContain("min-h-11");
-  expect(buttonVariants({ size: "icon-sm" })).toContain("min-w-11");
+test("Button sizes map to reference-dense AUSPEX size classes", () => {
+  expect(buttonVariants({ size: "default" })).toContain("btn-md");
+  expect(buttonVariants({ size: "sm" })).toContain("btn-sm");
+  expect(buttonVariants({ size: "xs" })).toContain("btn-sm");
+  expect(buttonVariants({ size: "icon-sm" })).toContain("btn-icon");
 });
 
 test("Button requires icon-only buttons to have an accessible name", () => {

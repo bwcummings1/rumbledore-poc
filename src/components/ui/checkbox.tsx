@@ -30,7 +30,7 @@ function Checkbox({
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy ?? (ariaLabel ? undefined : labelId)}
       className={cn(
-        "group/checkbox inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent text-primary-foreground outline-none transition-[box-shadow,color] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
+        "group/checkbox inline-flex shrink-0 items-center justify-center rounded-control border border-transparent text-lilac-hi outline-none transition-[box-shadow,color] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
         className,
       )}
       data-slot="checkbox"
@@ -39,13 +39,13 @@ function Checkbox({
     >
       <span
         aria-hidden="true"
-        className="inline-flex size-5 items-center justify-center rounded-control border border-input bg-[var(--panel-2)] shadow-[var(--bevel)] transition-[background-color,border-color] group-data-[checked]/checkbox:border-primary group-data-[checked]/checkbox:bg-primary group-data-[indeterminate]/checkbox:border-primary group-data-[indeterminate]/checkbox:bg-primary"
+        className="inline-flex size-[1.125rem] items-center justify-center rounded-control border border-[var(--hair-3)] bg-[var(--control-inset)] shadow-[var(--bevel)] transition-[background-color,border-color] group-data-[checked]/checkbox:border-primary group-data-[checked]/checkbox:bg-primary/25 group-data-[indeterminate]/checkbox:border-primary group-data-[indeterminate]/checkbox:bg-primary/25"
       >
         <CheckboxPrimitive.Indicator keepMounted={true}>
           {indeterminate ? (
-            <Minus aria-hidden="true" className="size-3.5" />
+            <Minus aria-hidden="true" className="size-3" />
           ) : (
-            <Check aria-hidden="true" className="size-3.5" />
+            <Check aria-hidden="true" className="size-3" />
           )}
         </CheckboxPrimitive.Indicator>
       </span>
@@ -57,8 +57,8 @@ function Checkbox({
   }
 
   return (
-    <div className="flex min-h-11 items-start gap-3 text-sm text-foreground has-data-[disabled]:opacity-60">
-      <span className="flex min-h-11 items-center">{control}</span>
+    <div className="flex items-start gap-3 text-sm text-foreground has-data-[disabled]:opacity-60">
+      <span className="flex items-center">{control}</span>
       <span className="grid gap-1 py-1.5">
         {label ? (
           <span className="font-medium" id={labelId}>

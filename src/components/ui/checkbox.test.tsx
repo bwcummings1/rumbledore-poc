@@ -25,8 +25,7 @@ test("Checkbox renders labeled checkbox semantics", async () => {
   const control = screen.getByRole("checkbox", {
     name: "Assert a structured fact",
   });
-  expect(control.className).toContain("min-h-11");
-  expect(control.className).toContain("min-w-11");
+  expect(control.className).toContain("rounded-control");
   fireEvent.click(control);
   await waitFor(() => expect(onCheckedChange).toHaveBeenCalled());
 });

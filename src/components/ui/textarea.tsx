@@ -44,7 +44,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         <textarea
           className={cn(
             fieldControlClasses(),
-            "min-h-24 max-h-96 resize-none overflow-y-auto",
+            "min-h-24 max-h-96 resize-none overflow-y-auto font-sans leading-relaxed",
             className,
           )}
           data-slot="textarea"

@@ -26,8 +26,8 @@ Structure exists; every signature was dampened toward "restraint" (the green/ant
 - [ ] Extend `e2e/screenshots.spec.ts` to capture it (mobile/tablet/desktop).
 
 ## C. Components (1:1 with the reference; verify each group vs its `reference-*` render)
-- [ ] Buttons (`button.tsx`) — pill, bevel, glow-on-hover, primary/steel/amber/danger/ghost, sizes, icon, loading, disabled. → `reference-controls-buttons.png`
-- [ ] Inputs/controls (field, search-input, textarea, switch, segmented, checkbox, radio, slider, stepper, select, chip, command-palette) → `reference-controls-inputs.png`
+- [x] Buttons (`button.tsx`) — ported reference `.btn` to `@layer components` (pill, mono uppercase .12em, bevel, face gradients, hover glow + lift, primary/steel/amber/danger/ghost/link, sizes, icon, loading). Verified on onboarding/league-home. Enablers added to globals: `--color-*` AUSPEX utilities, `--face-*`/`--control-inset`/`--glow-*` vars.
+- [x] Inputs/controls — field/input/search/textarea/select via re-skinned `control-styles.ts` (dark inset, 11px radius, mono, focus glow, denser); switch (track/knob ref colors), segmented (pill mono), chip (pill mono), checkbox/radio (control-inset + lilac fill/dot), slider (thin track + lilac thumb glow), stepper (control-inset + lilac hover), textarea (body font). All tests green. **Pending: command-palette** (overlay — do with feedback group).
 - [ ] Data (table, data-card-table, status-pill, badge, tag, edge, kv, avatar, presence, progress, capacity, ladder, stat-tile) → `reference-display-data.png`
 - [ ] Charts (`chart.tsx` + the 18 generators + spectacle) → `reference-display-charts.png`
 - [ ] Feedback/overlays (alert, toast/toaster, dialog, sheet, tooltip, popover, skeleton, empty-state, banner, locked-feature-card) → `reference-display-feedback.png`

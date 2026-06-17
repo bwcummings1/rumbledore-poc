@@ -24,7 +24,7 @@ function Segmented({ className, options, ...props }: SegmentedProps) {
   return (
     <RadioGroupPrimitive
       className={cn(
-        "grid min-h-11 grid-flow-col auto-cols-fr overflow-hidden rounded-control border border-input bg-[var(--panel-2)] p-1 shadow-[var(--bevel)]",
+        "grid grid-flow-col auto-cols-fr gap-[2px] overflow-hidden rounded-full border border-[var(--hair-2)] bg-[var(--control-inset)] p-[3px] shadow-[var(--bevel)]",
         className,
       )}
       data-slot="segmented"
@@ -35,7 +35,7 @@ function Segmented({ className, options, ...props }: SegmentedProps) {
         return (
           <RadioPrimitive.Root
             aria-labelledby={labelId}
-            className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-control px-3 text-center text-sm font-medium text-muted-foreground outline-none transition-[background-color,box-shadow,color] data-[checked]:bg-primary/15 data-[checked]:text-foreground data-[checked]:shadow-[var(--bevel)] focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+            className="inline-flex min-w-0 items-center justify-center gap-2 rounded-full px-3 py-1.5 text-center font-mono text-xs uppercase tracking-[0.08em] text-ink-3 outline-none transition-[background-color,box-shadow,color] data-[checked]:bg-primary/20 data-[checked]:text-lilac-hi focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
             data-slot="segmented-option"
             disabled={option.disabled}
             key={option.value}

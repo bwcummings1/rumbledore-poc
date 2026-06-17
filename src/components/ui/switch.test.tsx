@@ -8,8 +8,7 @@ test("Switch renders a labeled switch and reports changes", () => {
   render(<Switch label="Notifications" onCheckedChange={onCheckedChange} />);
 
   const control = screen.getByRole("switch", { name: "Notifications" });
-  expect(control.className).toContain("min-h-11");
-  expect(control.className).toContain("min-w-11");
+  expect(control.className).toContain("rounded-full");
   fireEvent.click(control);
   expect(onCheckedChange).toHaveBeenCalled();
 });
