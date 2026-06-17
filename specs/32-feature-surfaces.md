@@ -333,7 +333,7 @@ data-steward views `src/app/leagues/[leagueId]/members/steward/data-steward-revi
 
 ---
 
-## 8. Cross-surface acceptance (the impeccable gate)
+## 8. Cross-surface acceptance (AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`)
 1. **Every surface** renders all five universal states (loading/empty/error/offline/gated) without a blank/500/half-
    render — asserted per surface above and as a shell-level snapshot set. 2. **Every surface** passes the a11y
    contract: keyboard reach + focus-bloom, AA contrast vs `--void`, ≥44px targets, `prefers-reduced-motion` collapsing

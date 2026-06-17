@@ -293,8 +293,8 @@ Gate-verifiable (`pnpm test`, e2e, axe, Lighthouse):
    non-member hits a clean gated state (extends `specs/24` tests).
 10. **A11y** — landmark roles present; skip-link first; full keyboard nav of rail/tabs/switcher/palette/menus;
     focus-visible bloom; ≥44px targets; AA contrast (axe clean on shell routes).
-11. **Gates green** — `pnpm typecheck/lint/test/build`, `pnpm secret-scan`, `ubs` (exit 0), `npx impeccable detect
-    src/` all pass.
+11. **Gates green** — `pnpm typecheck/lint/test/build`, `pnpm secret-scan`, `ubs` (exit 0) all pass, and the shell
+    holds AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`.
 
 ### Needs the later human UI pass (not gate-verifiable)
 WIRE marquee speed/easing, boot choreography/timing, halo intensity, sheet drag physics, exact crumb truncation,

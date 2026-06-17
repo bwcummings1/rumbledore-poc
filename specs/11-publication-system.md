@@ -226,7 +226,7 @@ placement, and the final tuning of persona byline presentation. This spec fixes 
 room** (North Star "surface soul later").
 
 ### Quality gate (where correctness gates can't see)
-Beyond `pnpm test`/`impeccable`, an **LLM-judge eval** on generated articles: *"Does this read as a real,
+Beyond `pnpm test` and AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`, an **LLM-judge eval** on generated articles: *"Does this read as a real,
 edited article about THIS league — sharp headline, true-to-persona byline, a dek that earns the click, a body
 with structure — or as a generic blob with the league name pasted in?"* (North Star bar). A post that scores as a
 blob fails the gate. The structural acceptance above is necessary; this judge approximates *"is it good."*
@@ -242,7 +242,7 @@ blob fails the gate. The structural acceptance above is necessary; this judge ap
   pass the LLM-judge gate.
 - **`10` IA & Navigation** — owns the Press/News routes, masthead placement, section-nav shell, and register
   routing this spec fills with publication structure.
-- **`02` Foundation** — design tokens, layouts, the impeccable gate (the later UI pass rides this).
+- **`02` Foundation** — design tokens, layouts, AUSPEX-fidelity per `docs/design/rumbledore-design-language.md` (the later UI pass rides this).
 
 ## Non-goals
 - Defining HOW news is fetched/parsed for dek/hero/section or HOW AI bodies are generated (owned by `07`/`09`).

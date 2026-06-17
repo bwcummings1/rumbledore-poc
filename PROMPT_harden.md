@@ -16,7 +16,7 @@ If an item is trivial, **skip it** — do not let it consume an iteration.
 2. FIRST iteration only — if a `## Harden shortlist` does not yet exist in `IMPLEMENTATION_PLAN.md`, create it: rank the Icebox by the value rubric and write the **top 10** as a numbered, justified shortlist (one line each: item + why it ranks there). This makes the plan auditable before any tokens are spent on it.
 3. SELECT the highest-value remaining shortlist item. State in ONE line why it's the top remaining choice.
 4. INVESTIGATE (don't assume), then IMPLEMENT it completely. One item per iteration.
-5. VALIDATE (mandatory backpressure): `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm build` · `ubs <changed files>`; if UI changed, `npx impeccable detect src/`. Fix until ALL pass. Never weaken or skip a gate.
+5. VALIDATE (mandatory backpressure): `pnpm typecheck` · `pnpm lint` · `pnpm test` · `pnpm build` · `ubs <changed files>`; if UI changed, follow `docs/design/rumbledore-design-language.md` (AUSPEX — authoritative, near-pixel fidelity). Fix until ALL pass. Never weaken or skip a gate.
 6. RECORD: mark the shortlist item done; commit + push (descriptive message). Append any NEW discoveries to `## Icebox` (do not work them now).
 7. STOP EARLY IF the shortlist is exhausted OR nothing remaining clears the value bar (priorities 1–4): write `printf 'complete %s\n' "$(date)" > .loop/COMPLETE` and stop. Do NOT scrape the bottom of the barrel to fill the budget.
 

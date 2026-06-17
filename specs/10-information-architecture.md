@@ -220,7 +220,7 @@ Needs the later human UI pass (not gate-verifiable here):
 - The *feel* of "a real publication" in The Press, the exact card composition/density of Your Leagues, sheet vs
   rail animation, badge styling, icon-rail tooltips, and final spacing/typography. This spec fixes the
   **structure and the rules**; taste is tuned with a human in the room (per North Star "surface soul later" and
-  the impeccable gate).
+  AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`).
 
 ---
 

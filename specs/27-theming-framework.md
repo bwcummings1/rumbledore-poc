@@ -1,5 +1,11 @@
 # Spec 27 — Theming Framework (design tokens + swappable palettes)
 
+> **SUPERSEDED — anti-slop invariants DO NOT APPLY.** This spec's "anti-slop" rules (no AI gradients / no gradient
+> text / no glassmorphism / no neon / "subtle shadow never glow" / oklch primitives) are **superseded and no longer
+> apply.** AUSPEX intentionally uses **glow, gradient text, glass, and HEX colors.** The authoritative design source
+> is `docs/design/rumbledore-design-language.md` (AUSPEX). Keep this spec's framework/plumbing guidance; ignore its
+> visual "anti-slop" prohibitions wherever they conflict with AUSPEX.
+
 > Outcomes spec. Defines WHAT the theming framework delivers and the contract every component must honor — not the
 > final visual identity. Embed the North Star (`docs/NORTH-STAR.md`): Rumbledore is a **league-specific spectacle**,
 > mobile-first, snappy, "nothing dated," headed for a **distinctive look later**. Round one was a soulless data

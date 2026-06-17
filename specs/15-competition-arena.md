@@ -260,7 +260,7 @@ Built **now** (functional, gate-tested on mocks): the bet slip + parlay builder 
 (balance/floor/exposure/reset-vs-carry); open bets + settled history + audit links; mock fixtures with full market depth
 incl. prop results; arena seasons lifecycle, rank movement, head-to-head, swing signals; the `arena_recap` content type +
 betting/arena triggers wired into the `12` cast. **Deferred** to human-in-the-room direction: final **UI/UX polish** of the
-slip/board/arena (visual taste, motion, the impeccable pass), final **voice tuning** of the Betting-Advisor/arena-recap
+slip/board/arena (visual taste, motion, AUSPEX-fidelity per `docs/design/rumbledore-design-language.md`), final **voice tuning** of the Betting-Advisor/arena-recap
 wording (`12` non-goal), and any **real odds/results keys** (mocks are the contract; real adapters drop in behind the
 existing `OddsProvider`/`ResultsProvider` interfaces).
 

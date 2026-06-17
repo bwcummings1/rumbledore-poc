@@ -1,38 +1,24 @@
-# DESIGN.md — Rumbledore design system (impeccable format)
+# DESIGN.md — Rumbledore design system
 
-> PROVISIONAL baseline following impeccable anti-slop rules. To be replaced/tuned when the owner provides
-> his UI style images. Run `npx impeccable detect src/` as a gate. Extend tokens; don't override reflexively.
+> ⛔ **SUPERSEDED.** The authoritative design system is **`docs/design/rumbledore-design-language.md`**
+> (the **AUSPEX / HASHMARK** visual language), with the byte-exact reference at
+> `docs/screenshots/reference-images/` (the HTML + renders). Build to that, **near-pixel**.
+>
+> An earlier version of this file described a **different, contradictory** system — *green primary,
+> "no glassmorphism / no glow / no gradient text / no purple."* That was a provisional placeholder and is
+> now **WRONG**: it directly contradicted the owner's design and was a root cause of the first build missing
+> the look. **AUSPEX is intentionally glassy, glowing, gradient-headed, and lilac — executed with craft.**
 
-## Register
-Product register (app: dashboards, feeds, betting) + a lighter Brand register for marketing/onboarding.
+## The system (summary — full spec in the authoritative doc)
+- **Primary = lilac `#A7A9EC`** (NOT green). **Value = amber `#E2B266`.** Steel = data, jade = positive, coral = negative.
+- **Required, not forbidden:** glass panels (translucent + `backdrop-blur` + inset bevel), **glow halos**,
+  **gradient-clipped Michroma headings**, the **conic AI orb**, **silver Y2K bezels**, the live **atmosphere**
+  (stars / scanlines / grain / vignette), and **LCD** numerics.
+- Type: Michroma (headings) · Saira (display) · JetBrains Mono (data/LCD) · Inter (body, sparingly).
+- Radii 7 / 11 / 14. **Information-dense.** Mobile/tablet/desktop parity. Honor `prefers-reduced-motion`.
 
-## Anti-slop rules (hard)
-- NO purple/indigo "AI" gradients, NO gradient text, NO glassmorphism, NO unmotivated neon.
-- NO generic SaaS-template look. Restraint over decoration. Earn every accent.
-- Real hierarchy: size/weight/spacing do the work before color does.
-
-## Color (oklch; dark-first)
-- Background: `oklch(16% 0.01 250)` ; Surface: `oklch(21% 0.012 250)` ; Elevated: `oklch(25% 0.014 250)`
-- Text: `oklch(96% 0.01 250)` ; Muted text: `oklch(72% 0.015 250)`
-- Border/hairline: `oklch(30% 0.012 250)`
-- Primary (action): `oklch(72% 0.15 145)` (a confident field-turf green) ; Primary-fg: `oklch(18% 0.02 145)`
-- Positive: `oklch(75% 0.16 150)` ; Negative: `oklch(64% 0.20 25)` ; Warning: `oklch(80% 0.14 85)`
-- Accent (sparing, for live/odds highlights): `oklch(78% 0.13 60)`
-- Light theme is a derived inversion; ship dark first.
-
-## Type
-- UI/body: Geist or Inter, 400/500/600. Numerics: tabular figures for stats/odds/standings.
-- Scale (6 steps): 12 / 14 / 16 / 20 / 28 / 40 px. Line-heights tuned for dense tables vs prose.
-- Display/editorial (blog/headlines): a sharper grotesk or serif for the Narrator voice — one family, used deliberately.
-
-## Spacing & radii
-- Spacing (7 steps): 4 / 8 / 12 / 16 / 24 / 32 / 48.
-- Radii: 6 (controls) / 10 (cards) / 16 (sheets). Borders 1px hairline; elevation via subtle shadow, not glow.
-
-## Components (variants)
-- Button: primary / secondary / ghost / destructive. Inputs: default/focus/error/disabled visible states.
-- Card: standard / stat / live. Tables: dense, tabular-nums, zebra-free, hairline separators.
-- Motion: 150–220ms ease-out; purposeful (state changes, live ticks), never decorative bounce.
-
-## Mobile-first
-Thumb-reachable primary actions, bottom nav on mobile, safe-area insets, 44px min touch targets, content-first density.
+## The `impeccable` gate — REMOVED for this project
+`npx impeccable detect` flags glassmorphism, gradient text, glow/neon, and purple "AI" gradients as "slop."
+**AUSPEX is intentionally all of those.** The impeccable gate is therefore **incompatible with this design**
+and **must not gate AUSPEX work** — treat it as disabled (see `AGENTS.md`). Visual quality is enforced by
+**faithfulness to the reference** (the design-language doc + reference images), alongside typecheck/lint/test/build.

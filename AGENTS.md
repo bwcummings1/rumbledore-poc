@@ -21,7 +21,8 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 - PWA perf (if shell/PWA/routes changed; run after build): `pnpm perf:pwa`
 - Secret scan: `pnpm secret-scan`
 - Bug scan: `ubs <changed files>` (exit 0 required; see /home/ubuntu/AGENTS.md UBS section)
-- UI (only if you touched UI): `npx impeccable detect src/` must pass
+- UI (only if you touched UI): must be faithful to the authoritative design doc — AUSPEX-fidelity per `docs/design/rumbledore-design-language.md` + `docs/screenshots/reference-images/` (near-pixel)
+- Authoritative design source: `docs/design/rumbledore-design-language.md` + `docs/screenshots/reference-images/` (AUSPEX, near-pixel).
 
 ## Hard rules
 - NEVER disable gates. No `ignoreBuildErrors`, no `eslint.ignoreDuringBuilds`, no skipping tests to go green.
@@ -76,7 +77,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - `rm -rf` is blocked by a command guard; use `mv` to `/tmp` instead.
 - `/api/health` reports the local compose DB role as unsafe because the official Postgres `POSTGRES_USER` is a superuser; this is report-only outside production, while production health fails on superuser/BYPASSRLS.
 - In zsh, build changed-file UBS args as an array (or run the expansion under bash); a single space-joined string is treated as one filename.
-- Next/font variable values must be literal strings; AUSPEX font declarations live in root `auspex-fonts.ts` so `src/` stays clean for the impeccable UI detector.
+- Next/font variable values must be literal strings; AUSPEX font declarations live in root `auspex-fonts.ts` so `src/` stays clean.
 - Next dev forces dynamic App Router page `Cache-Control: no-cache, must-revalidate`; verify production cache headers through `next.config`/production server checks, not dev-server Playwright response headers.
 - `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real. EXCEPTION: the "secret compared with ==/!=" checker strips comments before honoring `ubs:ignore` — restructure the code instead (switch/truthiness instead of `==`/`!=`).
 - Live paid-provider smoke uses `.env.local` keys but may need the local force-mock flags overridden: source `.env.local`, set `MOCK_ANTHROPIC=false MOCK_VOYAGE=false MOCK_TAVILY=false MOCK_ODDS=false MOCK_SPORTSDATAIO=false`, then run `pnpm test:live-smoke`.

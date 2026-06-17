@@ -54,7 +54,7 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 ## 5. Methodology & guardrails
 - **Ralph loop** (Geoffrey Huntley / Clayton Farr playbook): `specs/*` + `PROMPT_plan.md`/`PROMPT_build.md` + `AGENTS.md` + disposable `IMPLEMENTATION_PLAN.md`; loop runs `claude -p --dangerously-skip-permissions`; **tests/build/lint are mandatory backpressure gates before every commit**. No stubs/placeholders — implement completely.
 - **Verification per iteration:** typecheck + lint + unit/integration tests + build + `ubs <changed files>` must pass before commit. (Optionally wire `no-mistakes` as a validated push gate.)
-- **UI taste:** follow **impeccable** — maintain `DESIGN.md` + `PRODUCT.md`; run `npx impeccable detect src/` as a CI gate. (UI polish is not the immediate priority, but new UI must not be "AI slop".)
+- **UI taste:** the authoritative design source is `docs/design/rumbledore-design-language.md` (AUSPEX) + `docs/screenshots/reference-images/` — build to near-pixel fidelity. (The `impeccable` gate / `DESIGN.md` + `PRODUCT.md` "anti-slop" rules are removed: they contradicted the AUSPEX design and caused a bad build.)
 - **Secrets:** never commit. `.env*` is gitignored. Add a secret-scan gate.
 - **Git:** work on `rebuild/foundation` (or child branches), commit often, push freely. NEVER force-push; NEVER touch `main`/`v0.62`.
 - **Accounts:** the Claude account is the CONFIG DIR, not `HOME` (this run's Fable phase mistakenly used `bwcummings1` because only `HOME` was set — now fixed). Launchers in `~/.local/bin`: `cbx` (Claude bxbxbxbxbxr), `cbw` (Claude bwcummings1 — reserved), `cx` (Codex). `loop.sh` pins Fable via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`.

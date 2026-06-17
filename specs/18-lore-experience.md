@@ -194,7 +194,7 @@ Gate-verifiable (`pnpm test`, e2e — flows/routing/guards/state, not visual tas
 The **feel** of the ledger: canon-card density and badge styling, the vote panel's countdown/tally treatment,
 thread-tree visualization (how lineage is drawn), the AI-badge and provenance iconography, empty-state copy/art,
 and final spacing/typography. This spec fixes the **structure, flows, states, and the API contract**; taste is
-tuned with a human in the room (North Star "surface soul later"; the impeccable gate rides this).
+tuned with a human in the room (North Star "surface soul later"; AUSPEX-fidelity per `docs/design/rumbledore-design-language.md` rides this).
 
 ## Dependencies / blocked-by
 - **`specs/13` League Lore (EXISTS)** — the engine (`src/lore/`: `submitLoreClaim`, `castLoreVote`, `closeLoreVote`,

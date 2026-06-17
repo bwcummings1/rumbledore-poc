@@ -1,8 +1,8 @@
-# PRODUCT.md — Rumbledore brief (impeccable)
+# PRODUCT.md — Rumbledore brief
 
 ## What it is
-A per-league fantasy-football companion: a living home page, an AI blogger that knows your league, paper-money
-betting on real odds, and a cross-league competitive arena.
+A per-league fantasy-football companion: a living home page, an AI cast that knows your league, paper-money
+betting on real odds, and a cross-league competitive arena — the league as an ongoing spectacle.
 
 ## Who uses it
 Fantasy league members — casual to die-hard — mostly on phones, reading in short bursts, who care about their
@@ -15,15 +15,17 @@ Never corporate, never hype-y, never "AI assistant." The Narrator/Trash-Talker p
 ## Experience principles
 - Mobile-first, fast, legible. Stats are scannable (tabular numerals). Live data feels alive.
 - Content feels authentically about *this* league (real names, real history), not generic.
-- Restraint: it should look designed, not generated. Earn every accent.
+- It should look **designed and distinctive** — the AUSPEX language, executed with craft (dense, precise, tactile).
 
-## Anti-references (do NOT look like)
-- A generic SaaS analytics dashboard. Glassmorphism. Purple/indigo AI gradients. Neon casino sportsbook.
-- Cluttered ESPN-ad-heavy density. Childish gamification confetti.
+## Visual language
+The look is **AUSPEX / HASHMARK** — near-black void, **glass panels**, **lilac** primary + **amber** value, glow
+halos, the conic **AI orb**, silver Y2K bezels, the live atmosphere, LCD numerics, information-dense HUD.
+**Authoritative spec: `docs/design/rumbledore-design-language.md` + `docs/screenshots/reference-images/`.**
+
+> Note: this **replaces** an earlier "anti-references" list that forbade *glassmorphism / purple-indigo AI
+> gradients / neon / confetti*. That was wrong — AUSPEX intentionally uses glass, lilac (purple), glow, and
+> tasteful celebratory stingers. The thing to avoid is *generic SaaS-template / unconsidered* design — not the
+> AUSPEX signatures, which are deliberate.
 
 ## Key surfaces
-League home · league feed + blog · central news hub · bet slip + markets · bankroll · arena leaderboards · league records · onboarding/connect.
-
-## Note
-Provisional pending the owner's UI style images; tokens live in `DESIGN.md`. UI polish is not the current priority,
-but nothing ships as "AI slop" — `npx impeccable detect src/` is a gate.
+League home · league feed + The Press · central news hub · bet slip + markets · bankroll · arena leaderboards · league records · lore · onboarding/connect.
