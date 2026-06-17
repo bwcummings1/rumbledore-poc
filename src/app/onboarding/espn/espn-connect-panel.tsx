@@ -380,7 +380,7 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow text-primary">Primary connect</p>
-            <h2 className="mt-1 font-display text-base font-semibold text-foreground">
+            <h2 className="mt-1 font-display text-base font-medium text-foreground">
               Hosted ESPN login
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -450,7 +450,7 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
             )}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--hair)] px-3 py-2">
-              <p className="font-display text-sm font-semibold text-foreground">
+              <p className="font-display text-sm font-medium text-foreground">
                 Secure ESPN login - hosted by Rumbledore
               </p>
               <span className="lcd text-xs text-muted-foreground">
@@ -484,7 +484,7 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow text-warning">Fallback</p>
-            <h2 className="mt-1 font-display text-base font-semibold text-foreground">
+            <h2 className="mt-1 font-display text-base font-medium text-foreground">
               Manual cookie fallback
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">

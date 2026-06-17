@@ -520,7 +520,7 @@ function MoverList({
   return (
     <article className="panel p-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">{title}</h2>
+        <h2 className="heading-auspex text-base">{title}</h2>
         <Badge
           label={`${movers.length} ${title.toLowerCase()}`}
           value={movers.length}
@@ -595,7 +595,7 @@ function RivalryPanel({
             <Swords className="size-4" aria-hidden="true" />
             <Tag>League head-to-head</Tag>
           </div>
-          <h2 className="mt-1 text-lg font-semibold tracking-tight">
+          <h2 className="mt-1 text-lg font-medium">
             {headToHead.anchor.displayName} vs. {headToHead.rival.displayName}
           </h2>
         </div>
@@ -733,9 +733,7 @@ function ArenaAnalytics({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="eyebrow">aggregate telemetry</p>
-          <h2 className="heading-auspex text-lg font-semibold">
-            Arena movement board
-          </h2>
+          <h2 className="heading-auspex text-lg">Arena movement board</h2>
         </div>
         <StatusPill tone="neutral">
           charts expose aggregate ranks only
@@ -919,7 +917,7 @@ function LeaderboardSection({
     <section className="panel">
       <div className="flex items-center justify-between gap-3 p-4">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <h2 className="heading-auspex text-lg">{title}</h2>
           <Badge label={`${rows.length} rows`} value={rows.length} />
         </div>
         <Tag leadingIcon={<Trophy aria-hidden="true" />}>Standings</Tag>
@@ -978,7 +976,7 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
                 withText
               />
             </div>
-            <h1 className="heading-auspex mt-3 text-2xl font-semibold sm:text-4xl">
+            <h1 className="heading-auspex mt-3 text-2xl sm:text-4xl">
               CENTRAL ARENA
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground sm:text-base">
@@ -1005,7 +1003,7 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
           </div>
           <div className="cell grid gap-2 p-3 text-sm lg:min-w-72">
             <p className="eyebrow">rivalry frame</p>
-            <p className="font-display text-base font-semibold text-foreground">
+            <p className="font-display text-base font-medium text-foreground">
               {data.headToHead
                 ? `${data.headToHead.anchor.displayName} vs. ${data.headToHead.rival.displayName}`
                 : "Waiting for a second league"}

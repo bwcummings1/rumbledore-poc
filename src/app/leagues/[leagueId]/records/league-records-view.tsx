@@ -69,9 +69,7 @@ function RecordCard({
         </p>
       </div>
       <div className="grid gap-2">
-        <h3 className="font-display text-base font-semibold tracking-tight">
-          {record.label}
-        </h3>
+        <h3 className="font-display text-base font-medium">{record.label}</h3>
         <p className="text-sm text-muted-foreground">
           {record.holderPersonId ? (
             <Link
@@ -122,7 +120,7 @@ function Section({
     <section className="scroll-mt-28 grid gap-3" id={id}>
       <div className="flex items-center gap-2">
         {icon}
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <h2 className="heading-auspex text-lg">{title}</h2>
       </div>
       {children}
     </section>
@@ -185,9 +183,7 @@ function CompactList({
 
   return (
     <div className="cell p-4">
-      <h3 className="font-display text-sm font-semibold tracking-tight">
-        {title}
-      </h3>
+      <h3 className="font-display text-sm font-medium">{title}</h3>
       <ol className="mt-3 grid gap-2">
         {items.slice(0, 5).map((item) => (
           <li
@@ -332,7 +328,7 @@ function Championships({ data }: { data: RecordsPageData }) {
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="overflow-x-auto rounded-card border border-border bg-[var(--panel)] shadow-[var(--bevel)]">
           <table className="w-full min-w-[32rem] text-left text-sm">
-            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+            <thead className="text-xs uppercase tracking-[0.12em] text-ink-4">
               <tr>
                 <th className="px-3 py-2 font-medium">Season</th>
                 <th className="px-3 py-2 font-medium">Champion</th>
@@ -390,7 +386,7 @@ function RivalryList({
 
   return (
     <div className="cell p-4">
-      <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+      <h3 className="text-sm font-medium">{title}</h3>
       <ol className="mt-3 grid gap-2">
         {pairs.slice(0, 4).map((pair) => (
           <li
@@ -486,9 +482,7 @@ function KeeperMilestones({ data }: { data: RecordsPageData }) {
     return (
       <Section id="keeper-milestones" title="Draft and keeper milestones">
         <div className="cell border-dashed p-4">
-          <h3 className="text-sm font-semibold tracking-tight">
-            Keeper milestones unavailable
-          </h3>
+          <h3 className="text-sm font-medium">Keeper milestones unavailable</h3>
           <p className="mt-2 text-sm text-muted-foreground">
             This provider import has no trusted draft or keeper milestone
             aggregate yet.
@@ -510,9 +504,7 @@ function KeeperMilestones({ data }: { data: RecordsPageData }) {
             <p className="text-xs uppercase text-muted-foreground">
               {entry.milestoneType.replaceAll("_", " ")}
             </p>
-            <h3 className="mt-2 text-sm font-semibold tracking-tight">
-              {entry.label}
-            </h3>
+            <h3 className="mt-2 text-sm font-medium">{entry.label}</h3>
             <p className="mt-3 font-mono text-lg font-semibold tabular-nums">
               {formatNumber(entry.value)}
             </p>

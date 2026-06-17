@@ -284,9 +284,7 @@ export function DataStewardReviewView({
             <p className="text-xs font-medium text-muted-foreground">
               Suggested-link band
             </p>
-            <h2 className="text-lg font-semibold tracking-tight">
-              Ambiguous identities
-            </h2>
+            <h2 className="heading-auspex text-lg">Ambiguous identities</h2>
           </div>
           <UserCheck className="size-5 text-primary" aria-hidden />
         </div>
@@ -298,7 +296,7 @@ export function DataStewardReviewView({
                 className="cell grid gap-3 p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <p className="font-display text-sm font-semibold">
+                  <p className="font-display text-sm font-medium">
                     Team {suggestion.providerTeamId} · {suggestion.season}
                   </p>
                   <StatusPill tone="warning">
@@ -356,9 +354,7 @@ export function DataStewardReviewView({
             <p className="text-xs font-medium text-muted-foreground">
               Trusted substrate
             </p>
-            <h2 className="text-lg font-semibold tracking-tight">
-              Integrity flags
-            </h2>
+            <h2 className="heading-auspex text-lg">Integrity flags</h2>
           </div>
           <AlertTriangle className="size-5 text-highlight" aria-hidden />
         </div>
@@ -368,7 +364,7 @@ export function DataStewardReviewView({
               <article key={check.id} className="cell grid gap-3 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="font-display text-base font-semibold">
+                    <h3 className="font-display text-base font-medium">
                       {checkLabel(check.checkKey)}
                     </h3>
                     <p className="mt-1 text-sm text-muted-foreground">

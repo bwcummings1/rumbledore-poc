@@ -355,7 +355,7 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
             <p className="eyebrow text-primary">Submit claim</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="font-display text-xl font-semibold sm:text-2xl">
+            <h1 className="font-display text-xl font-medium sm:text-2xl">
               Add to {data.league.name} lore
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -369,7 +369,7 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
       <form className="grid gap-4" onSubmit={submitClaim}>
         <section className="panel grid gap-4 p-4">
           <div>
-            <h2 className="font-display text-base font-semibold text-foreground">
+            <h2 className="font-display text-base font-medium text-foreground">
               Claim
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -406,7 +406,7 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
 
         <section className="panel grid gap-4 p-4">
           <div>
-            <h2 className="font-display text-base font-semibold text-foreground">
+            <h2 className="font-display text-base font-medium text-foreground">
               Subjects
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">

@@ -47,7 +47,7 @@ function EmptyState({
           (variant === "gated" ? <LockKeyhole className="size-4" /> : null)}
       </span>
       <div className="grid max-w-md gap-1">
-        <h2 className="font-display text-base font-semibold text-foreground">
+        <h2 className="font-display text-base font-medium text-foreground">
           {title}
         </h2>
         {children ? (

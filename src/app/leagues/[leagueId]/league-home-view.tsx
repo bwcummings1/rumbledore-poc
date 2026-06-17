@@ -295,7 +295,7 @@ function MatchupSideCell({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="eyebrow text-muted-foreground">{side.abbrev}</p>
-          <h3 className="truncate font-display text-base font-semibold text-foreground">
+          <h3 className="truncate font-display text-base font-medium text-foreground">
             {side.name}
           </h3>
         </div>
@@ -556,7 +556,7 @@ function RecordTile({ record }: { record: LeagueHomeRecord }) {
     <article className="cell grid gap-2 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-display text-sm font-semibold text-foreground">
+          <h3 className="font-display text-sm font-medium text-foreground">
             {record.label}
           </h3>
           <p className="mt-1 truncate text-xs text-muted-foreground">

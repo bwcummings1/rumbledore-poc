@@ -42,7 +42,7 @@ function MeetingList({
 
   return (
     <section className="grid gap-3">
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <h2 className="heading-auspex text-lg">{title}</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {rows.slice(0, 6).map((row) => (
           <article
@@ -161,7 +161,7 @@ export function HeadToHeadRecordsView({
 
       <section className="grid gap-3 lg:grid-cols-2">
         <div className="panel grid gap-4 p-4">
-          <h2 className="font-display text-base font-semibold tracking-tight">
+          <h2 className="font-display text-base font-medium">
             {data.personA.name}
           </h2>
           <Link
@@ -185,7 +185,7 @@ export function HeadToHeadRecordsView({
           />
         </div>
         <div className="panel grid gap-4 p-4">
-          <h2 className="font-display text-base font-semibold tracking-tight">
+          <h2 className="font-display text-base font-medium">
             {data.personB.name}
           </h2>
           <Link
@@ -211,7 +211,7 @@ export function HeadToHeadRecordsView({
       </section>
 
       <section className="grid gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Streaks</h2>
+        <h2 className="heading-auspex text-lg">Streaks</h2>
         <div className="grid gap-3 sm:grid-cols-3">
           <StatTile
             label="Current"
@@ -242,9 +242,7 @@ export function HeadToHeadRecordsView({
 
       {data.seasonPairs.length > 0 ? (
         <section className="grid gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Season ledgers
-          </h2>
+          <h2 className="heading-auspex text-lg">Season ledgers</h2>
           <H2HSeasonPairsTable
             personAName={data.personA.name}
             personBName={data.personB.name}

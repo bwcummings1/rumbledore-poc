@@ -333,7 +333,7 @@ export function SleeperConnectPanel({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow text-primary">Public connect</p>
-            <h2 className="mt-1 font-display text-base font-semibold text-foreground">
+            <h2 className="mt-1 font-display text-base font-medium text-foreground">
               Sleeper account
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">

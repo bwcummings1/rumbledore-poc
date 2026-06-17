@@ -78,7 +78,7 @@ function Alert({
       </span>
       <div className="min-w-0">
         {title ? (
-          <p className="font-display text-sm font-semibold text-foreground">
+          <p className="font-display text-sm font-medium text-foreground">
             {title}
           </p>
         ) : null}

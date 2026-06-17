@@ -127,7 +127,7 @@ function OnboardingProviderPicker({
         <div className="min-w-0">
           <p className="eyebrow text-primary">Connect once</p>
           <h2
-            className="mt-1 font-display text-base font-semibold text-foreground"
+            className="mt-1 font-display text-base font-medium text-foreground"
             id="provider-picker-heading"
           >
             Provider options stay open
@@ -161,7 +161,7 @@ function OnboardingProviderPicker({
             >
               <span className="flex items-start justify-between gap-3">
                 <span>
-                  <span className="font-display text-sm font-semibold text-foreground">
+                  <span className="font-display text-sm font-medium text-foreground">
                     {getProviderBadgeLabel(card.provider)}
                   </span>
                   <span className="mt-1 block text-xs text-muted-foreground">
@@ -212,7 +212,7 @@ function OnboardingStatusBanner({
         data-state={isRefreshing ? "think" : "offline"}
       />
       <div className="min-w-0">
-        <p className="font-display text-sm font-semibold">
+        <p className="font-display text-sm font-medium">
           {isOnline ? "Refreshing league inventory" : "Offline"}
         </p>
         <p className="mt-1 text-muted-foreground">
@@ -279,7 +279,7 @@ function OnboardingLeagueInventory({
         <div className="min-w-0">
           <p className="eyebrow text-primary">Discovery</p>
           <h2
-            className="mt-1 font-display text-base font-semibold text-foreground"
+            className="mt-1 font-display text-base font-medium text-foreground"
             id="league-inventory-heading"
           >
             Your leagues
@@ -417,7 +417,7 @@ function LeagueInventoryRow({
           />
           <span className="min-w-0">
             <span className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="truncate font-display text-sm font-semibold text-foreground">
+              <span className="truncate font-display text-sm font-medium text-foreground">
                 {league.name}
               </span>
               <Tag>{providerLabel}</Tag>
@@ -505,7 +505,7 @@ function OnboardingFlowCallout() {
     <section className="cell grid gap-3 px-4 py-3">
       <div className="flex items-center gap-2">
         <ShieldAlert aria-hidden="true" className="size-4 text-primary" />
-        <p className="font-display text-sm font-semibold text-foreground">
+        <p className="font-display text-sm font-medium text-foreground">
           Onboarding path
         </p>
       </div>

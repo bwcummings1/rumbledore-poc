@@ -407,7 +407,7 @@ function Chart({ className, spec, ...props }: ChartProps) {
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
-          <h3 className="heading-auspex text-sm font-semibold">{spec.title}</h3>
+          <h3 className="heading-auspex text-sm">{spec.title}</h3>
           <p className="eyebrow">
             {chartKindLabels[spec.kind]}
             {statusText ? ` / ${statusText}` : ""}

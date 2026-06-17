@@ -203,7 +203,7 @@ function InstigatorVerdictCard({
           />
           <div>
             <p className="eyebrow text-primary">Verdict column</p>
-            <h2 className="font-display text-base font-semibold text-foreground">
+            <h2 className="font-display text-base font-medium text-foreground">
               The league has spoken
             </h2>
           </div>

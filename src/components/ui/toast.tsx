@@ -126,7 +126,7 @@ function ToastCard({
         )}
       />
       <ToastPrimitive.Content className="min-w-0">
-        <ToastPrimitive.Title className="font-display text-sm font-semibold text-foreground">
+        <ToastPrimitive.Title className="font-display text-sm font-medium text-foreground">
           {toast.title}
         </ToastPrimitive.Title>
         {toast.description ? (

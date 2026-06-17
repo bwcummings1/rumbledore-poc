@@ -173,7 +173,7 @@ function CastPersonaByline({
       <CastPersonaOrb persona={persona} state={state} />
       <div className="min-w-0">
         <p className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-          <span className="truncate font-display font-semibold text-foreground">
+          <span className="truncate font-display font-medium text-foreground">
             {name}
           </span>
           <CastAiBadge />
@@ -213,7 +213,7 @@ function CastPersonaCard({ card }: { readonly card: LeagueCastPersonaCard }) {
             </span>
           </span>
           <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold text-foreground">
+            <h2 className="font-display text-base font-medium text-foreground">
               {card.name}
             </h2>
             <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">

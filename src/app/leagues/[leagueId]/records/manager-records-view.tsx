@@ -33,7 +33,7 @@ function Section({
     <section className="grid gap-3">
       <div className="flex items-center gap-2">
         {icon}
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <h2 className="heading-auspex text-lg">{title}</h2>
       </div>
       {children}
     </section>
@@ -60,7 +60,7 @@ function HeldRecords({
         {records.map((record) => (
           <article className="cell grid gap-3 p-4" key={record.id}>
             <div className="mb-2 flex items-center justify-between gap-3">
-              <h3 className="font-display text-base font-semibold tracking-tight">
+              <h3 className="font-display text-base font-medium">
                 {record.label}
               </h3>
               <p className="lcd text-lg font-semibold">
@@ -102,9 +102,7 @@ function WeeklyList({
 
   return (
     <div className="cell p-4">
-      <h3 className="font-display text-sm font-semibold tracking-tight">
-        {title}
-      </h3>
+      <h3 className="font-display text-sm font-medium">{title}</h3>
       <ol className="mt-3 grid gap-2">
         {rows.slice(0, 5).map((row) => (
           <li
@@ -245,7 +243,7 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
             </div>
             {data.placements.length > 0 ? (
               <div className="cell p-4">
-                <h3 className="font-display text-sm font-semibold tracking-tight">
+                <h3 className="font-display text-sm font-medium">
                   Placement ledger
                 </h3>
                 <ol className="mt-3 grid gap-2">

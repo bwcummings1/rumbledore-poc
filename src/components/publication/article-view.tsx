@@ -372,7 +372,7 @@ export function PublicationArticleView({
               />
             ) : null}
             <div className="grid min-w-0 gap-0.5">
-              <p className="font-display text-sm font-semibold text-foreground">
+              <p className="font-display text-sm font-medium text-foreground">
                 {data.article.byline}
               </p>
               {data.article.bylineDetail ? (
@@ -463,7 +463,7 @@ export function PublicationArticleView({
             className="panel mx-auto grid w-full max-w-[72ch] gap-3 border-primary/35 p-4"
           >
             <div>
-              <p className="flex items-center gap-2 font-display text-sm font-semibold">
+              <p className="flex items-center gap-2 font-display text-sm font-medium">
                 <Landmark className="size-4 text-primary" aria-hidden="true" />
                 Cited canon
               </p>

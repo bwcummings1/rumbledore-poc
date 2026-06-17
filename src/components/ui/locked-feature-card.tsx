@@ -167,7 +167,7 @@ function LockedFeatureCard({
           {resolvedReason ? (
             <p className="eyebrow text-warning">{resolvedReason}</p>
           ) : null}
-          <h2 className="font-display text-base font-semibold text-foreground">
+          <h2 className="font-display text-base font-medium text-foreground">
             {resolvedTitle}
           </h2>
           <div className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -215,7 +215,7 @@ function UpgradeSurface({
           <span className="chip-glyph grid size-9 place-items-center text-[var(--steel-soft)]">
             <CircleGauge className="size-4" aria-hidden="true" />
           </span>
-          <h3 className="font-display text-sm font-semibold">Free league</h3>
+          <h3 className="font-display text-sm font-medium">Free league</h3>
           <p className="text-sm text-muted-foreground">
             Provider connect, full history, records, league reading, lore
             viewing, and base paper betting.
@@ -225,7 +225,7 @@ function UpgradeSurface({
           <span className="chip-glyph grid size-9 place-items-center text-warning">
             <Sparkles className="size-4" aria-hidden="true" />
           </span>
-          <h3 className="font-display text-sm font-semibold">Premium league</h3>
+          <h3 className="font-display text-sm font-medium">Premium league</h3>
           <p className="text-sm text-muted-foreground">
             League-wide cast generation, cadence, instigations, cast-driven lore
             canon, and premium spectacle surfaces.
@@ -235,7 +235,7 @@ function UpgradeSurface({
           <span className="chip-glyph grid size-9 place-items-center text-primary">
             <Bot className="size-4" aria-hidden="true" />
           </span>
-          <h3 className="font-display text-sm font-semibold">Individual</h3>
+          <h3 className="font-display text-sm font-medium">Individual</h3>
           <p className="text-sm text-muted-foreground">
             A personal agent for your teams across leagues, independent of a
             league-wide premium cast entitlement.

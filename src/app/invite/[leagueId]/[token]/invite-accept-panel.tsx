@@ -105,7 +105,7 @@ export function InviteAcceptPanel({
       <section className="panel grid gap-3 p-4">
         <div className="grid gap-1">
           <p className="eyebrow text-primary">Claim requires an account</p>
-          <h2 className="font-display text-base font-semibold text-foreground">
+          <h2 className="font-display text-base font-medium text-foreground">
             Sign in, then come back to this exact team.
           </h2>
           <p className="text-sm text-muted-foreground">
@@ -133,7 +133,7 @@ export function InviteAcceptPanel({
       {isOpenMode ? (
         hasOpenTargets ? (
           <fieldset className="grid gap-2">
-            <legend className="font-display text-sm font-semibold text-foreground">
+            <legend className="font-display text-sm font-medium text-foreground">
               Choose your team
             </legend>
             <div className="grid gap-2">
@@ -162,7 +162,7 @@ export function InviteAcceptPanel({
                         className="mt-1 size-5 accent-primary"
                       />
                       <span className="min-w-0">
-                        <span className="block truncate font-display text-sm font-semibold text-foreground">
+                        <span className="block truncate font-display text-sm font-medium text-foreground">
                           {teamLabel(target)}
                         </span>
                         <span className="block truncate text-muted-foreground">

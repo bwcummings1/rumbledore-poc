@@ -298,7 +298,7 @@ function LoreVoteWidget(props: LoreVoteWidgetProps) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2
-            className="flex items-center gap-2 font-display text-sm font-semibold text-foreground"
+            className="flex items-center gap-2 font-display text-sm font-medium text-foreground"
             id={`${id}-title`}
           >
             {props.mode === "lore" ? (

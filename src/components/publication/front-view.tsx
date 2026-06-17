@@ -222,7 +222,7 @@ function PublicationRailBand({ rail }: { rail: PublicationRail }) {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="min-w-0">
           <p className="eyebrow text-primary">{rail.eyebrow}</p>
-          <h2 className="font-display text-base font-semibold text-foreground">
+          <h2 className="font-display text-base font-medium text-foreground">
             {rail.title}
           </h2>
         </div>

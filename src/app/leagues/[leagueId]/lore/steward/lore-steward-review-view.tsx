@@ -183,7 +183,7 @@ export function LoreStewardReviewView({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-display text-base font-semibold tracking-tight">
+                    <h2 className="font-display text-base font-medium">
                       <Link
                         href={`/leagues/${encodeURIComponent(data.league.id)}/lore/${encodeURIComponent(claim.id)}`}
                         className="hover:text-primary"

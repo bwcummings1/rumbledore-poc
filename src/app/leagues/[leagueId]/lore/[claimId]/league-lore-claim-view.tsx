@@ -338,7 +338,7 @@ function ThreadNodeView({
             </StatusPill>
           ) : null}
         </div>
-        <h3 className="font-display text-base font-semibold text-foreground">
+        <h3 className="font-display text-base font-medium text-foreground">
           <Link
             href={`/leagues/${encodeURIComponent(leagueId)}/lore/${encodeURIComponent(node.claim.id)}`}
             className="hover:text-primary focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
@@ -417,7 +417,7 @@ function StewardControls({
     <section className="panel grid gap-3 p-4">
       <div className="flex items-center gap-2">
         <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
-        <h2 className="font-display text-base font-semibold text-foreground">
+        <h2 className="font-display text-base font-medium text-foreground">
           Steward tiebreak
         </h2>
       </div>
@@ -518,7 +518,7 @@ function BranchControls({
   return (
     <section className="panel grid gap-4 p-4">
       <div>
-        <p className="flex items-center gap-2 font-display text-sm font-semibold text-foreground">
+        <p className="flex items-center gap-2 font-display text-sm font-medium text-foreground">
           <GitBranch className="size-4 text-primary" aria-hidden="true" />
           Branch this lore
         </p>
@@ -674,7 +674,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
               <Landmark className="size-4" aria-hidden="true" />
               {data.league.name} lore
             </p>
-            <h1 className="mt-2 font-display text-2xl font-semibold">
+            <h1 className="mt-2 font-display text-2xl font-medium">
               {claim.title}
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -767,7 +767,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
 
       {data.verificationResult ? (
         <section className="panel grid gap-3 p-4">
-          <h2 className="font-display text-base font-semibold text-foreground">
+          <h2 className="font-display text-base font-medium text-foreground">
             Verification
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -785,7 +785,7 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
 
       <section className="grid gap-4">
         <div>
-          <p className="flex items-center gap-2 font-display text-sm font-semibold text-foreground">
+          <p className="flex items-center gap-2 font-display text-sm font-medium text-foreground">
             <GitBranch className="size-4 text-primary" aria-hidden="true" />
             Thread lineage
           </p>

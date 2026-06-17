@@ -738,7 +738,7 @@ function SpectacleStinger({
               <span className="lcd text-lg font-bold">{metric}</span>
             ) : null}
           </div>
-          <p className="mt-2 font-display text-base font-semibold text-foreground">
+          <p className="mt-2 font-display text-base font-medium text-foreground">
             {title}
           </p>
           {detail ? (
@@ -872,7 +872,7 @@ function CanonizedMoment({
         </span>
         <div className="min-w-0">
           <p className="metric text-xs font-bold text-primary">CANON</p>
-          <h3 className="font-display text-base font-semibold text-foreground">
+          <h3 className="font-display text-base font-medium text-foreground">
             {title}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">{claimContent}</p>

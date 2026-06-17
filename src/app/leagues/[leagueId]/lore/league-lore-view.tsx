@@ -159,7 +159,7 @@ function OpenVoteCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <LoreAuthorByline author={claim.author} compact={true} />
-          <h2 className="mt-1 font-display text-base font-semibold text-foreground">
+          <h2 className="mt-1 font-display text-base font-medium text-foreground">
             <Link
               href={`/leagues/${encodeURIComponent(leagueId)}/lore/${encodeURIComponent(claim.id)}`}
               className="hover:text-primary focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
@@ -206,7 +206,7 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
               <Landmark className="size-5" aria-hidden="true" />
               <p className="eyebrow text-primary">Official mythology</p>
             </div>
-            <h1 className="mt-3 font-display text-xl font-semibold sm:text-2xl">
+            <h1 className="mt-3 font-display text-xl font-medium sm:text-2xl">
               {data.league.name} official lore
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">

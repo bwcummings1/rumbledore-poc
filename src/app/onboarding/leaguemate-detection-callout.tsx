@@ -65,7 +65,7 @@ export function LeaguemateDetectionCallout({
     <div className="mt-3 grid gap-3 border-t border-[var(--hair)] pt-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 font-display text-sm font-semibold text-foreground">
+          <p className="flex items-center gap-2 font-display text-sm font-medium text-foreground">
             <span
               aria-hidden="true"
               className="orb orb-sm"

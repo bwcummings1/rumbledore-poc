@@ -171,7 +171,7 @@ function DataStewardDoorwayCard({
     <section className="panel grid gap-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 font-display text-sm font-semibold text-foreground">
+          <p className="flex items-center gap-2 font-display text-sm font-medium text-foreground">
             <ShieldCheck className="size-4 shrink-0 text-primary" aria-hidden />
             Data steward doorway
           </p>
@@ -431,7 +431,7 @@ export function LeagueInviteView({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="eyebrow text-primary">Members / Settings</p>
-            <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="mt-2 font-display text-2xl font-medium text-foreground sm:text-3xl">
               {initialSummary.league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -450,7 +450,7 @@ export function LeagueInviteView({
         </div>
         <div className="cell flex flex-wrap items-center justify-between gap-3 px-3 py-3">
           <div className="grid gap-1">
-            <h2 className="font-display text-base font-semibold text-foreground">
+            <h2 className="font-display text-base font-medium text-foreground">
               {heading}
             </h2>
             <p className="text-sm text-muted-foreground">
@@ -530,7 +530,7 @@ export function LeagueInviteView({
               <article key={key} className="panel grid gap-4 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="truncate font-display text-base font-semibold text-foreground">
+                    <h3 className="truncate font-display text-base font-medium text-foreground">
                       {target.displayName}
                     </h3>
                     <p className="mt-1 truncate text-sm text-muted-foreground">

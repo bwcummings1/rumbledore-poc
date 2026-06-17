@@ -48,7 +48,7 @@ function Popover({
             {title ? (
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <PopoverPrimitive.Title className="font-display text-sm font-semibold text-foreground">
+                  <PopoverPrimitive.Title className="font-display text-sm font-medium text-foreground">
                     {title}
                   </PopoverPrimitive.Title>
                   {description ? (

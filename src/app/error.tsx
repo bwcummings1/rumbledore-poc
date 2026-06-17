@@ -13,9 +13,7 @@ export default function ErrorBoundary({
     <main className="flex min-h-dvh items-center justify-center p-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))]">
       <section className="flex max-w-md flex-col gap-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Something went wrong
-          </h1>
+          <h1 className="text-2xl font-medium">Something went wrong</h1>
           <p className="text-base text-muted-foreground">
             The app hit an unexpected error. Try again from the last stable
             screen.

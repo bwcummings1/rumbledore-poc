@@ -28,9 +28,7 @@ function SignInRequired() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-4 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))]">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">
-          Sign in required
-        </h1>
+        <h1 className="text-xl font-medium">Sign in required</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Connect a league or sign in before opening account settings.
         </p>

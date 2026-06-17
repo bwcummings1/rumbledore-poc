@@ -122,7 +122,7 @@ function ProviderConnectionCard({
     <article className="cell grid gap-3 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-display text-sm font-semibold">
+          <h3 className="font-display text-sm font-medium">
             {connection.providerLabel}
           </h3>
           <p className="mt-1 break-all text-xs text-muted-foreground">
@@ -191,7 +191,7 @@ function PersonalAgentPanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="eyebrow text-primary">Personal agent</p>
-          <h2 className="mt-1 font-display text-lg font-semibold tracking-tight">
+          <h2 className="mt-1 heading-auspex text-lg">
             Watching {briefing.coveredLeagueCount} of{" "}
             {briefing.totalLeagueCount} leagues
           </h2>
@@ -296,7 +296,7 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="eyebrow text-primary">Connected providers</p>
-              <h2 className="mt-1 font-display text-lg font-semibold tracking-tight">
+              <h2 className="mt-1 heading-auspex text-lg">
                 {data.connections.length}
               </h2>
             </div>
@@ -344,9 +344,7 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="eyebrow text-primary">Notification prefs</p>
-              <h2 className="mt-1 font-display text-lg font-semibold tracking-tight">
-                League-scoped
-              </h2>
+              <h2 className="mt-1 heading-auspex text-lg">League-scoped</h2>
             </div>
             <Bell className="size-5 text-primary" aria-hidden="true" />
           </div>
@@ -366,9 +364,7 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
       </section>
 
       <section className="grid gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">
-          Installed leagues
-        </h2>
+        <h2 className="heading-auspex text-lg">Installed leagues</h2>
         {data.leagues.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.leagues.map((league) => (
@@ -380,7 +376,7 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-display font-semibold">
+                    <p className="truncate font-display font-medium">
                       {league.name}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">

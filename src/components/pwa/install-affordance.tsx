@@ -137,7 +137,7 @@ export function InstallAffordance() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="eyebrow text-primary">Home screen</p>
-          <h2 className="mt-1 font-display text-lg font-semibold tracking-normal">
+          <h2 className="mt-1 font-display text-lg font-medium tracking-normal">
             Add Rumbledore
           </h2>
         </div>

@@ -62,13 +62,13 @@ function headlineClassName(variant: PublicationStoryCardVariant): string {
     case "secondary":
       return "heading-auspex line-clamp-3 text-lg leading-snug";
     case "rail":
-      return "line-clamp-2 font-display text-sm font-semibold leading-snug text-foreground";
+      return "line-clamp-2 font-display text-sm font-medium leading-snug text-foreground";
     case "compact":
-      return "line-clamp-2 font-display text-sm font-semibold leading-snug text-foreground sm:text-base";
+      return "line-clamp-2 font-display text-sm font-medium leading-snug text-foreground sm:text-base";
     case "inFeed":
-      return "line-clamp-2 font-display text-base font-semibold leading-snug text-foreground";
+      return "line-clamp-2 font-display text-base font-medium leading-snug text-foreground";
     case "river":
-      return "line-clamp-2 font-display text-base font-semibold leading-snug text-foreground";
+      return "line-clamp-2 font-display text-base font-medium leading-snug text-foreground";
   }
 }
 

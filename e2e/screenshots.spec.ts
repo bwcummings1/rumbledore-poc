@@ -73,6 +73,7 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
     ["04-onboarding-yahoo", "/onboarding/yahoo"],
     ["08-central-news", "/news"],
     ["09-arena-leaderboard", "/arena"],
+    ["16-you-settings", "/you"],
   ];
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -104,6 +105,12 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
     ["05-league-home", homeHref],
     ["06-league-feed", `/leagues/${leagueId}/feed`],
     ["07-league-invite", `/leagues/${leagueId}/invite`],
+    ["10-records", `/leagues/${leagueId}/records`],
+    ["11-cast", `/leagues/${leagueId}/cast`],
+    ["12-bet", `/leagues/${leagueId}/bet`],
+    ["13-press", `/leagues/${leagueId}/press`],
+    ["14-lore", `/leagues/${leagueId}/lore`],
+    ["15-members", `/leagues/${leagueId}/members`],
   ];
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
