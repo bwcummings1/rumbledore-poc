@@ -4,7 +4,7 @@ import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "@/lib/utils";
 
 const skeletonVariants = cva(
-  "relative overflow-hidden bg-muted-foreground/15 before:absolute before:inset-0 before:-translate-x-full before:bg-[linear-gradient(90deg,transparent,var(--glow-lilac),transparent)] motion-safe:before:animate-pulse motion-reduce:before:hidden",
+  "relative overflow-hidden bg-muted-foreground/15 before:absolute before:inset-0 before:-translate-x-full before:bg-[linear-gradient(90deg,transparent,var(--glow-lilac),transparent)] motion-safe:before:animate-[auspex-shimmer_1.5s_ease-in-out_infinite] motion-reduce:before:hidden",
   {
     variants: {
       variant: {

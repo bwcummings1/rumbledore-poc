@@ -53,7 +53,10 @@ Finding: surfaces were already well-composed (panel/cell, SectionTitle, stat til
 ## F. Final
 - [x] Full screenshot pass (mobile/tablet/desktop) — verified landing, onboarding (espn/sleeper/yahoo), league-home, league-feed, league-invite, central-news, arena vs reference. Faithful: void + bright atmosphere, ringed orb, glass panels, gradient-clipped headings, pill-mono controls, dense tables, amber LCD, rail/topbar/wire shell. Empty regions are unseeded data, not styling.
 - [x] Gates green — typecheck ✓, lint ✓ (biome), tests ✓ (899 pass / 5 skip), production build ✓ (all routes compile).
-- [ ] Merge `design/auspex` → `main`.
+- [x] Merged `design/auspex` → `main` (fast-forward) and pushed to `origin/main`.
+
+---
+**STATUS: COMPLETE.** The AUSPEX/HASHMARK re-port is faithful, gated (typecheck/lint/899 tests/build), merged, and pushed. Remaining items are deliberate on-brand choices, not defects: `Steps` uses glass cards (richer than the reference inline-circle pattern); `Presence` keeps lilac-live (design-language semantic) over the reference's jade dot. Surfaces without seed data (Press/Bet/Records/Lore/Settings) inherit the now-faithful components but weren't pixel-diffed (no fixture data).
 
 ## Verification protocol (the loop the blind agent couldn't run)
 edit → `PATH=/usr/bin:$PATH pnpm typecheck` → build/screenshot → **read the screenshot, compare to the reference render** → fix until it matches → commit.
