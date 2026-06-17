@@ -122,9 +122,7 @@ describe("reduced-motion theme tokens", () => {
     expect(globalsCss).toContain("var(--motion-duration-focus-bloom)");
     expect(globalsCss).toContain("var(--motion-ease-spring)");
     expect(globalsCss).toContain("var(--motion-duration-atmosphere)");
-    expect(globalsCss).toContain(
-      "var(--motion-ease-linear) infinite alternate",
-    );
+    expect(globalsCss).toContain("animation: auspex-twinkle 7s");
     expect(globalsCss).toContain(':root[data-motion="off"] .orb::before');
     expect(globalsCss).toContain(
       ':root[data-motion="off"] .auspex-wire__track',

@@ -1,0 +1,60 @@
+# AUSPEX Re-implementation — working checklist (resumable)
+
+Authoritative target: `docs/design/rumbledore-design-language.md` + the byte-exact reference
+`docs/screenshots/reference-images/ui-ux-style-reference-code-from-images.html` + the renders
+`docs/screenshots/reference-images/reference-*.png`. **Fidelity bar: near-pixel.** Branch: `design/auspex`.
+Verify by building + screenshotting (mobile/tablet/desktop) and comparing to the reference renders.
+Tick items as done. Commit per chunk. Merge to `main` only when the whole thing is complete + verified.
+
+## Diagnosis (why the first build looked wrong)
+Structure exists; every signature was dampened toward "restraint" (the green/anti-slop regime). Restore exact reference values.
+
+## A. Foundation (highest leverage — affects everything) — ✅ DONE + verified
+- [x] **Letter-spacing** — restored: heading .015em, display .06em, eyebrow .26em (mono). (`auspex.ts`)
+- [x] **Orb** — exact conic `from 220deg,#8E7BE6,#C77BD0,#E2A85C,#5FC9C0,#8E7BE6`; **dark lens core** `::after inset 14%, radial #23253a→#0b0c14 72%` + inner shadow; base 34px; sizes sm 24/lg 52; spin 7s; `.think` 1.5s + `0 0 30px glow-lilac,0 0 54px rgba(199,123,208,.25)`.
+- [x] **Atmosphere** — bright stars (rgba(199,200,246,.5)/(130,178,208,.4)/white) opacity .5 + twinkle 7s; scanline `0deg rgba(0,0,0,.16) 0 1px/1px 3px` opacity .38 **soft-light**; real SVG feTurbulence grain .045; vignette `120% 90% at 50% 40%`; dual-radial+linear void bg. Glass kept on mobile (blur 10px).
+- [x] **Heading gradient** — `linear-gradient(180deg,#ffffff 52%,var(--lilac-hi) 145%)`; display-xl/display-l now Saira 500.
+- [x] **Glass panel** — `blur(16px) saturate(118%)` + `glass-shadow 0 10px 30px rgba(0,0,0,.28)`; cell radius → r-lg.
+- [x] **LCD** — mono 500, letter-spacing .04em, `text-shadow 0 0 16px glow-amber`; lilac variant; metric mono 500.
+- [x] **Body bg** — exact dual radial + linear void (in `.auspex-atmosphere`).
+- [x] **Type + radius scales** — denser reference scale (base 14, xl 21, 2xl 28, 3xl 42); radius card→14, sheet→16; eyebrow→mono.
+- [x] **Token-contract / contrast tests** — confirmed already compatible (scan only components for raw literals; signatures live in tokens/globals). Updated 5 foundation tests (typography/atmosphere/signature/registry/reduced-motion) to the faithful values. All 38 theme tests green; typecheck green.
+- [x] Built + screenshotted all 27 routes → league-home shows gradient hero, amber LCD, ringed orb, glass on void. Foundation verified; remaining gaps = component re-skin + surface density (Steps C/E).
+
+## B. Kitchen-sink page (verification harness)
+- [ ] A dev-only `/design` (or e2e-only) page rendering every primitive + component (like the HASHMARK sections) so each can be screenshotted + diffed against `reference-*`.
+- [ ] Extend `e2e/screenshots.spec.ts` to capture it (mobile/tablet/desktop).
+
+## C. Components (1:1 with the reference; verify each group vs its `reference-*` render)
+- [ ] Buttons (`button.tsx`) — pill, bevel, glow-on-hover, primary/steel/amber/danger/ghost, sizes, icon, loading, disabled. → `reference-controls-buttons.png`
+- [ ] Inputs/controls (field, search-input, textarea, switch, segmented, checkbox, radio, slider, stepper, select, chip, command-palette) → `reference-controls-inputs.png`
+- [ ] Data (table, data-card-table, status-pill, badge, tag, edge, kv, avatar, presence, progress, capacity, ladder, stat-tile) → `reference-display-data.png`
+- [ ] Charts (`chart.tsx` + the 18 generators + spectacle) → `reference-display-charts.png`
+- [ ] Feedback/overlays (alert, toast/toaster, dialog, sheet, tooltip, popover, skeleton, empty-state, banner, locked-feature-card) → `reference-display-feedback.png`
+- [ ] Navigation (breadcrumbs, tabs, pagination, steps) → `reference-display-navigation.png`
+- [ ] Patterns/motion (orb states, wire ticker, count-up, stingers) → `reference-behaviour-patterns.png` / `reference-behaviour-motion.png`
+
+## D. App shell (`src/navigation/navigation-shell.tsx`)
+- [ ] Topbar (brand+logo glow, breadcrumb, ⌘K, notifications, account, motion toggle, live clock, lilac underline).
+- [ ] Desktop rail (sections, lilac active gradient + left-border + icon glow).
+- [ ] Tablet/mobile (bottom tabs + scope-switcher sheet) — faithful, ≥44px.
+- [ ] WIRE ticker (lilac tag chip + masked marquee).
+- [ ] Boot/splash sequence.
+
+## E. Feature surfaces (rebuild at reference DENSITY, mapped to real data)
+- [ ] League Home (FLAGSHIP — do first; matchup hero + gauge, standings ladder, cast headlines, bankroll LCD, wire).
+- [ ] Arena (leaderboards + the movement board charts at density).
+- [ ] Sportsbook + bet-slip drawer/sheet + bankroll.
+- [ ] Records & History.
+- [ ] Central News + The Press (editorial register).
+- [ ] Lore (claim/vote/canon/branch).
+- [ ] Onboarding flows.
+- [ ] Settings / entitlement / gated states.
+
+## F. Final
+- [ ] Full screenshot pass (mobile/tablet/desktop), diff every surface vs reference, fix residuals.
+- [ ] Gates green (typecheck/lint/test/build). Update docs/PROGRESS.md.
+- [ ] Merge `design/auspex` → `main`.
+
+## Verification protocol (the loop the blind agent couldn't run)
+edit → `PATH=/usr/bin:$PATH pnpm typecheck` → build/screenshot → **read the screenshot, compare to the reference render** → fix until it matches → commit.

@@ -17,12 +17,12 @@ describe("AUSPEX signature primitives", () => {
 
     expect(extensions["orb-fill"]).toContain("conic-gradient");
     expect(extensions["orb-shadow"]).toContain("--glow-lilac");
-    expect(extensions["orb-shadow-think"]).toContain("--glow-amber");
+    expect(extensions["orb-shadow-think"]).toContain("rgba(199,123,208");
     expect(extensions["bezel-fill"]).toContain("linear-gradient");
     expect(extensions["bezel-fallback-ring"]).toBe("var(--line-2)");
-    expect(extensions["glass-blur"]).toBe("18px");
+    expect(extensions["glass-blur"]).toBe("16px");
     expect(extensions["glass-shadow"]).toContain("rgba(");
-    expect(variables["duration-orb"]).toBe("18000ms");
+    expect(variables["duration-orb"]).toBe("7000ms");
     expect(variables["motion-duration-orb"]).toBe("var(--duration-orb)");
     expect(variables["ease-linear"]).toBe("linear");
     expect(variables["motion-ease-linear"]).toBe("var(--ease-linear)");
@@ -84,17 +84,17 @@ describe("AUSPEX signature primitives", () => {
     expect(globalsCss).toContain("(backdrop-filter: blur(1px)) or");
     expect(globalsCss).toContain("(-webkit-backdrop-filter: blur(1px))");
     expect(globalsCss).toContain(
-      "-webkit-backdrop-filter: blur(var(--glass-blur, 0));",
+      "-webkit-backdrop-filter: blur(var(--glass-blur, 0)) saturate(118%);",
     );
     expect(globalsCss).toContain(
-      "backdrop-filter: blur(var(--glass-blur, 0));",
+      "backdrop-filter: blur(var(--glass-blur, 0)) saturate(118%);",
     );
     expect(globalsCss).toContain("@supports not (");
     expect(globalsCss).toContain(
       "background: var(--panel-solid, var(--surface));",
     );
     expect(extractBlock(globalsCss, "@media (max-width: 767px)")).toContain(
-      "backdrop-filter: none;",
+      "backdrop-filter: blur(10px) saturate(112%);",
     );
   });
 });

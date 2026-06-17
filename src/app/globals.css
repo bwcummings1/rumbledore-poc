@@ -139,7 +139,7 @@ html {
 @utility display-xl {
   font-family: var(--font-family-display);
   font-size: var(--type-size-3xl);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: var(--display-letter-spacing);
   line-height: var(--type-line-3xl);
   text-transform: uppercase;
@@ -148,7 +148,7 @@ html {
 @utility display-l {
   font-family: var(--font-family-display);
   font-size: var(--type-size-2xl);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: var(--display-letter-spacing);
   line-height: var(--type-line-2xl);
   text-transform: uppercase;
@@ -156,9 +156,9 @@ html {
 
 @utility eyebrow {
   color: var(--muted-foreground);
-  font-family: var(--font-family-display);
+  font-family: var(--font-family-mono);
   font-size: var(--type-size-xs);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: var(--eyebrow-letter-spacing);
   line-height: var(--type-line-xs);
   text-transform: uppercase;
@@ -181,6 +181,7 @@ html {
     "tnum" 1,
     "zero" 1;
   font-variant-numeric: var(--numeric-figure-spacing);
+  font-weight: 500;
 }
 
 @utility lcd {
@@ -190,6 +191,8 @@ html {
     "tnum" 1,
     "zero" 1;
   font-variant-numeric: var(--numeric-figure-spacing);
+  font-weight: 500;
+  letter-spacing: 0.04em;
   text-shadow: var(--lcd-value-shadow);
 }
 
@@ -216,14 +219,14 @@ html {
 }
 
 @utility orb {
-  --orb-size: var(--space-6);
+  --orb-size: 2.125rem;
 
   align-items: center;
   aspect-ratio: 1;
   background: var(--elevated);
-  border: 1px solid var(--hair-2, var(--border));
+  border: none;
   border-radius: 50%;
-  box-shadow: var(--orb-shadow, var(--elevation-raised)), var(--bevel, none);
+  box-shadow: var(--orb-shadow, var(--elevation-raised));
   color: var(--primary-foreground);
   display: inline-flex;
   flex: 0 0 auto;
@@ -239,7 +242,7 @@ html {
 }
 
 @utility orb-sm {
-  --orb-size: calc(var(--space-4) + var(--space-1));
+  --orb-size: 1.5rem;
 }
 
 @utility orb-md {
@@ -247,7 +250,7 @@ html {
 }
 
 @utility orb-lg {
-  --orb-size: var(--space-12);
+  --orb-size: 3.25rem;
 }
 
 @utility orb-xl {
@@ -289,7 +292,7 @@ html {
 @utility cell {
   background: var(--panel, var(--surface));
   border: 1px solid var(--hair, var(--border));
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-card);
   box-shadow: var(--bevel, none);
   color: var(--foreground);
 }
@@ -305,15 +308,11 @@ html {
 }
 
 .orb::after {
-  background: radial-gradient(
-    circle at 30% 24%,
-    var(--lilac-hi, var(--foreground)) 0,
-    transparent 42%
-  );
+  background: radial-gradient(circle at 36% 30%, #23253a, #0b0c14 72%);
   border-radius: inherit;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8);
   content: "";
-  inset: 12%;
-  opacity: 0.38;
+  inset: 14%;
   position: absolute;
 }
 
@@ -333,7 +332,7 @@ html {
 .orb.think::before,
 .orb.is-thinking::before,
 .orb[data-state="think"]::before {
-  animation-duration: var(--motion-duration-slow);
+  animation-duration: 1.5s;
 }
 
 .orb[data-state="speaking"] {
@@ -458,8 +457,8 @@ html {
     (-webkit-backdrop-filter: blur(1px))
   ) {
   .panel {
-    -webkit-backdrop-filter: blur(var(--glass-blur, 0));
-    backdrop-filter: blur(var(--glass-blur, 0));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 0)) saturate(118%);
+    backdrop-filter: blur(var(--glass-blur, 0)) saturate(118%);
   }
 }
 
@@ -510,15 +509,16 @@ html {
   .auspex-atmosphere {
     background:
       radial-gradient(
-        ellipse at 50% 0,
-        var(--void-2, var(--surface)) 0,
-        transparent 58%
+        1200px 700px at 78% -8%,
+        rgba(111, 114, 201, 0.12),
+        transparent 60%
       ),
-      linear-gradient(
-        180deg,
-        var(--void, var(--background)) 0,
-        var(--void-3, var(--background)) 100%
-      );
+      radial-gradient(
+        900px 600px at 8% 108%,
+        rgba(185, 138, 56, 0.06),
+        transparent 55%
+      ),
+      linear-gradient(180deg, #0e1019, #08090f 60%);
     contain: paint;
     inset: 0;
     overflow: hidden;
@@ -534,88 +534,49 @@ html {
   }
 
   .auspex-atmosphere__starfield {
-    animation: auspex-starfield-drift var(--motion-duration-atmosphere)
-      var(--motion-ease-linear) infinite alternate;
+    animation: auspex-twinkle 7s var(--motion-ease-out) infinite;
     background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(199, 200, 246, 0.5), transparent),
+      radial-gradient(1px 1px at 70% 60%, rgba(130, 178, 208, 0.4), transparent),
       radial-gradient(
-        circle at 12% 18%,
-        var(--hair-3, var(--border)) 0 1px,
-        transparent 1.4px
+        1px 1px at 40% 80%,
+        rgba(199, 200, 246, 0.35),
+        transparent
       ),
+      radial-gradient(1px 1px at 88% 22%, rgba(255, 255, 255, 0.3), transparent),
+      radial-gradient(1px 1px at 55% 12%, rgba(130, 178, 208, 0.3), transparent),
+      radial-gradient(1px 1px at 12% 70%, rgba(199, 200, 246, 0.3), transparent),
       radial-gradient(
-        circle at 78% 24%,
-        var(--hair-2, var(--border)) 0 1px,
-        transparent 1.5px
+        1px 1px at 33% 48%,
+        rgba(199, 200, 246, 0.25),
+        transparent
       ),
-      radial-gradient(
-        circle at 38% 74%,
-        var(--line-2, var(--border)) 0 1px,
-        transparent 1.35px
-      ),
-      radial-gradient(
-        circle at 88% 82%,
-        var(--hair, var(--border)) 0 1px,
-        transparent 1.45px
-      );
-    background-position:
-      0 0,
-      var(--space-8) var(--space-4),
-      var(--space-4) var(--space-8),
-      var(--space-12) var(--space-6);
-    background-size:
-      13.75rem 13.75rem,
-      18.5rem 18.5rem,
-      25rem 25rem,
-      32rem 32rem;
-    opacity: 0.42;
-    transform: translate3d(0, 0, 0);
-    will-change: transform;
+      radial-gradient(1px 1px at 79% 82%, rgba(255, 255, 255, 0.22), transparent);
+    background-size: cover;
+    opacity: 0.5;
   }
 
   .auspex-atmosphere__scanline {
     background-image: repeating-linear-gradient(
-      180deg,
-      transparent 0,
-      transparent 3px,
-      var(--hair, var(--border)) 4px,
-      transparent 5px
+      0deg,
+      rgba(0, 0, 0, 0.16) 0 1px,
+      transparent 1px 3px
     );
-    opacity: 0.2;
+    mix-blend-mode: soft-light;
+    opacity: 0.38;
   }
 
   .auspex-atmosphere__grain {
-    background-image:
-      radial-gradient(
-        circle at 20% 30%,
-        var(--hair, var(--border)) 0 0.55px,
-        transparent 0.8px
-      ),
-      radial-gradient(
-        circle at 70% 60%,
-        var(--line, var(--border)) 0 0.45px,
-        transparent 0.75px
-      ),
-      radial-gradient(
-        circle at 45% 82%,
-        var(--hair-2, var(--border)) 0 0.5px,
-        transparent 0.85px
-      );
-    background-size:
-      0.8125rem 1.0625rem,
-      1.1875rem 1.4375rem,
-      1.8125rem 1.9375rem;
-    opacity: 0.24;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.045;
   }
 
   .auspex-atmosphere__vignette {
     background: radial-gradient(
-      ellipse at 50% 45%,
-      transparent 0,
-      transparent 42%,
-      var(--void-2, var(--background)) 74%,
-      var(--void, var(--background)) 100%
+      120% 90% at 50% 40%,
+      transparent 55%,
+      rgba(0, 0, 0, 0.55)
     );
-    opacity: 0.78;
   }
 
   .prose-auspex {
@@ -717,18 +678,19 @@ html {
   }
 }
 
-@keyframes auspex-starfield-drift {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(var(--space-4), var(--space-2), 0);
-  }
-}
-
 @keyframes auspex-orb-spin {
   to {
     transform: rotate(1turn);
+  }
+}
+
+@keyframes auspex-twinkle {
+  0%,
+  100% {
+    opacity: 0.46;
+  }
+  50% {
+    opacity: 0.64;
   }
 }
 
@@ -1037,21 +999,13 @@ html {
 
 @media (max-width: 767px) {
   .panel {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    background: var(--panel-solid, var(--surface));
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
+    backdrop-filter: blur(10px) saturate(112%);
   }
 
   .auspex-atmosphere__starfield {
     animation: none;
-    background-size:
-      18rem 18rem,
-      24rem 24rem,
-      32rem 32rem,
-      40rem 40rem;
-    opacity: 0.28;
-    transform: none;
-    will-change: auto;
+    opacity: 0.42;
   }
 
   .auspex-atmosphere__scanline {

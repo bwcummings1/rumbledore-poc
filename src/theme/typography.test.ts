@@ -48,10 +48,10 @@ describe("AUSPEX typography foundation", () => {
     expect(variables["font-family-heading"]).toBe("var(--head)");
     expect(variables["font-family-display"]).toBe("var(--disp)");
     expect(variables["font-family-body"]).toBe("var(--body)");
-    expect(variables["type-size-3xl"]).toBe("3.25rem");
-    expect(variables["type-size-3xl-mobile"]).toBe("2.5rem");
+    expect(variables["type-size-3xl"]).toBe("2.625rem");
+    expect(variables["type-size-3xl-mobile"]).toBe("2.25rem");
     expect(variables["heading-clip-fill"]).toBe(
-      "linear-gradient(180deg, var(--foreground), var(--primary))",
+      "linear-gradient(180deg, #ffffff 52%, var(--lilac-hi) 145%)",
     );
     expect(variables["prose-size"]).toBe("1.0625rem");
     expect(variables["prose-size-wide"]).toBe("1.1875rem");

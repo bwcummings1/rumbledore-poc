@@ -75,7 +75,7 @@ describe("theme registry", () => {
     expect(
       getThemeExtensionCssVariables(auspex)["focus-ring-shadow"],
     ).toContain("--glow-lilac");
-    expect(getThemeExtensionCssVariables(auspex)["glass-blur"]).toBe("18px");
+    expect(getThemeExtensionCssVariables(auspex)["glass-blur"]).toBe("16px");
     expect(getThemeExtensionCssVariables(auspex).head).toContain(
       "--font-michroma",
     );
@@ -100,25 +100,25 @@ describe("theme registry", () => {
     expect(css).toContain("--bevel: inset 0 1px 0");
     expect(css).toContain("--orb-fill: conic-gradient");
     expect(css).toContain("--bezel-fill: linear-gradient");
-    expect(css).toContain("--glass-blur: 18px;");
+    expect(css).toContain("--glass-blur: 16px;");
     expect(css).toContain("--background: var(--void);");
     expect(css).toContain("--font-family-heading: var(--head);");
     expect(css).toContain("--font-family-display: var(--disp);");
     expect(css).toContain("--font-family-body: var(--body);");
-    expect(css).toContain("--type-size-3xl: 3.25rem;");
+    expect(css).toContain("--type-size-3xl: 2.625rem;");
     expect(css).toContain("--prose-measure: 70ch;");
     expect(css).toContain(
-      "--heading-clip-fill: linear-gradient(180deg, var(--foreground), var(--primary));",
+      "--heading-clip-fill: linear-gradient(180deg, #ffffff 52%, var(--lilac-hi) 145%);",
     );
     expect(css).toContain("@media (max-width: 639px)");
     expect(css).toContain("--type-size-3xl: var(--type-size-3xl-mobile);");
     expect(css).toContain("--primitive-color-ink-950: oklch(16% 0.01 250);");
     expect(css).toContain("--primitive-color-ink-950: oklch(98% 0.006 250);");
     expect(css).toContain("--duration-fast: 150ms;");
-    expect(css).toContain("--duration-orb: 18000ms;");
+    expect(css).toContain("--duration-orb: 7000ms;");
     expect(css).toContain("--duration-atmosphere: 64000ms;");
     expect(css).toContain("--duration-focus-bloom: 150ms;");
-    expect(css).toContain("--duration-marquee: 28000ms;");
+    expect(css).toContain("--duration-marquee: 36000ms;");
     expect(css).toContain("--motion-duration-orb: var(--duration-orb);");
     expect(css).toContain(
       "--motion-duration-atmosphere: var(--duration-atmosphere);",

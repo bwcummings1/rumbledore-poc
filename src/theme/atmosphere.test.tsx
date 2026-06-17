@@ -62,12 +62,10 @@ describe("AUSPEX atmosphere foundation", () => {
     expect(globalsCss).toContain("radial-gradient");
     expect(globalsCss).toContain("repeating-linear-gradient");
     expect(globalsCss).toContain("var(--void, var(--background))");
-    expect(globalsCss).toContain("var(--hair-3, var(--border))");
-    expect(globalsCss).toContain("var(--motion-duration-atmosphere)");
-    expect(globalsCss).toContain(
-      "var(--motion-ease-linear) infinite alternate",
-    );
-    expect(globalsCss).toContain("@keyframes auspex-starfield-drift");
+    expect(globalsCss).toContain("rgba(199, 200, 246, 0.5)");
+    expect(globalsCss).toContain("mix-blend-mode: soft-light;");
+    expect(globalsCss).toContain("animation: auspex-twinkle 7s");
+    expect(globalsCss).toContain("@keyframes auspex-twinkle");
   });
 
   it("throttles drift on touch breakpoints and disables it for reduced motion", () => {
