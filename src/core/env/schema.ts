@@ -325,9 +325,12 @@ const baseSchema = z.object({
 type RawEnv = z.infer<typeof baseSchema>;
 
 function defaultEntitlementDevOverride(nodeEnv: RawEnv["NODE_ENV"]): boolean {
+  // TEMPORARY (pre-pricing testing): the free tier has every feature, so the
+  // entitlement dev-override defaults ON in every environment — nothing is gated.
+  // Re-gate when the pricing plan lands by restoring the production case to `false`.
   switch (nodeEnv) {
     case "production":
-      return false;
+      return true;
     case "development":
     case "test":
       return true;

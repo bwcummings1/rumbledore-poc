@@ -612,7 +612,8 @@ describe("parseEnv", () => {
     expect(env.credentials.encryptionKey).toBe(
       "prod-credential-key-minimum-32-chars",
     );
-    expect(env.entitlements.devOverride).toBe(false);
+    // TEMPORARY (pre-pricing): dev-override defaults ON everywhere — nothing gated.
+    expect(env.entitlements.devOverride).toBe(true);
   });
 
   it("configures entitlement dev override by environment", () => {
