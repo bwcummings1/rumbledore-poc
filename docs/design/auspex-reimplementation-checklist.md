@@ -41,15 +41,14 @@ Structure exists; every signature was dampened toward "restraint" (the green/ant
 - [x] WIRE ticker — plain mono marquee items (no heavy pills), masked viewport edges (ref `.tick-track`), subtle live border.
 - [x] Boot/splash — orb + Michroma + amber LCD (on-brand, brief). 36 nav+contract tests green; verified mobile/desktop.
 
-## E. Feature surfaces (rebuild at reference DENSITY, mapped to real data)
-- [ ] League Home (FLAGSHIP — do first; matchup hero + gauge, standings ladder, cast headlines, bankroll LCD, wire).
-- [ ] Arena (leaderboards + the movement board charts at density).
-- [ ] Sportsbook + bet-slip drawer/sheet + bankroll.
-- [ ] Records & History.
-- [ ] Central News + The Press (editorial register).
-- [ ] Lore (claim/vote/canon/branch).
-- [ ] Onboarding flows.
-- [ ] Settings / entitlement / gated states.
+## E. Feature surfaces — ✅ substantially DONE
+Finding: surfaces were already well-composed (panel/cell, SectionTitle, stat tiles, KV, the spectacle components) and **most already used `heading-auspex h-grad`** — so the foundation + component re-skins propagated automatically. Remaining surface work was targeted:
+- [x] League Home (FLAGSHIP) — `SectionTitle` now gradient-clips (text-xl, h-grad) so STANDINGS/PRESS/BANKROLL/TEAMS headers match the reference `.sec-h`; matchup hero, win-prob bar, stat tiles, standings table, bankroll LCD, wire — verified.
+- [x] Cast — section headings gradient-clipped.
+- [x] Arena / Central News / Onboarding (espn/sleeper/yahoo) / League feed / Invite — verified faithful via screenshots (gradient headings, glass panels, dense controls, atmosphere). Charts inherit the faithful `auspex-chart` foundation (data-gated for visual diff).
+- [~] Press / Bet / Records / Lore / You(settings) — not in the screenshot spec + mostly empty without seed data, but they compose the same now-faithful components + `h-grad` headings. (Spot-check later if data added.)
+- [x] Charts (`chart.tsx`, 3281 lines) — already faithful: `auspex-chart panel`, `h-grad` titles, `auspex-chart__value fill-warning` (amber LCD), `auspex-chart__draw stroke-primary`, `toneColor()`. Inherits foundation; no re-skin needed.
+- [x] command-palette — mono group labels, denser close, subtler active. sheet/locked-feature-card/steps use `panel`+re-skinned components (on-brand).
 
 ## F. Final
 - [ ] Full screenshot pass (mobile/tablet/desktop), diff every surface vs reference, fix residuals.

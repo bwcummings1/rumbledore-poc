@@ -204,7 +204,7 @@ function CommandPalette({
             ) : (
               <DialogPrimitive.Close
                 aria-label="Close command palette"
-                className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted-foreground outline-none transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-muted-foreground outline-none transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
               >
                 <X aria-hidden="true" className="size-4" />
               </DialogPrimitive.Close>
@@ -246,7 +246,7 @@ function CommandPalette({
                     className="grid gap-1 py-1"
                     key={group.label}
                   >
-                    <h3 className="px-2 py-1 font-display text-xs uppercase text-muted-foreground">
+                    <h3 className="px-2 py-1 font-mono text-xs uppercase tracking-[0.18em] text-ink-4">
                       {group.label}
                     </h3>
                     {group.items.map((item) => {
@@ -261,8 +261,8 @@ function CommandPalette({
                           className={cn(
                             "grid min-h-12 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-control border border-transparent px-3 py-2 text-left outline-none transition-[background-color,border-color,box-shadow,color] focus-visible:shadow-[var(--focus-ring-shadow)]",
                             active
-                              ? "border-primary/40 bg-primary/15 text-foreground"
-                              : "text-muted-foreground hover:bg-primary/10 hover:text-foreground",
+                              ? "border-primary/40 bg-primary/10 text-foreground"
+                              : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
                             item.disabled && "pointer-events-none opacity-50",
                           )}
                           disabled={item.disabled}

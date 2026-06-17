@@ -215,16 +215,16 @@ function SectionTitle({
   title: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center justify-between gap-3">
+    <div className="flex min-w-0 items-end justify-between gap-3">
       <div className="min-w-0">
         {eyebrow ? (
-          <p className="eyebrow truncate text-primary">{eyebrow}</p>
+          <p className="eyebrow mb-1 truncate text-primary">{eyebrow}</p>
         ) : null}
-        <h2 className="heading-auspex truncate text-lg leading-tight">
+        <h2 className="heading-auspex h-grad truncate text-xl leading-none">
           {title}
         </h2>
       </div>
-      <span className="chip-glyph hidden size-9 shrink-0 items-center justify-center sm:inline-flex">
+      <span className="chip-glyph hidden size-8 shrink-0 items-center justify-center sm:inline-flex">
         <Icon className="size-4" aria-hidden="true" />
       </span>
     </div>

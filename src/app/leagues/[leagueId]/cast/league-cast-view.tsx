@@ -87,7 +87,7 @@ export function LeagueCastView({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="eyebrow text-primary">Roster</p>
-            <h2 className="heading-auspex text-xl leading-tight">
+            <h2 className="heading-auspex h-grad text-xl leading-tight">
               Persona dossiers
             </h2>
           </div>
@@ -103,7 +103,7 @@ export function LeagueCastView({
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="eyebrow text-primary">Reads</p>
-              <h2 className="heading-auspex text-xl leading-tight">
+              <h2 className="heading-auspex h-grad text-xl leading-tight">
                 Insight cards
               </h2>
             </div>
@@ -133,7 +133,7 @@ export function LeagueCastView({
         <aside className="grid content-start gap-3">
           <div>
             <p className="eyebrow text-primary">Thread</p>
-            <h2 className="heading-auspex text-xl leading-tight">
+            <h2 className="heading-auspex h-grad text-xl leading-tight">
               What the cast is saying
             </h2>
           </div>
