@@ -95,7 +95,7 @@ function Sheet({
             </button>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <DialogPrimitive.Title className="font-display text-base font-semibold text-foreground">
+                <DialogPrimitive.Title className="font-display text-sm font-medium uppercase tracking-[0.12em] text-foreground">
                   {title}
                 </DialogPrimitive.Title>
                 {description ? (
@@ -106,7 +106,7 @@ function Sheet({
               </div>
               <DialogPrimitive.Close
                 aria-label={closeLabel}
-                className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
               >
                 <X className="size-4" />
               </DialogPrimitive.Close>
