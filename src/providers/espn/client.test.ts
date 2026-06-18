@@ -72,6 +72,53 @@ function fixtureSession(overrides: Partial<EspnSession> = {}): EspnSession {
   };
 }
 
+function twoWeekEspnMatchupFixture() {
+  const fixture = structuredClone(leagueFixture);
+  Object.assign(fixture.settings.scheduleSettings, {
+    matchupPeriods: { "14": [14, 15] },
+    playoffMatchupPeriodLength: 2,
+  });
+  Object.assign(fixture, {
+    scoringPeriodId: 15,
+    seasonId: 2025,
+    schedule: [
+      {
+        away: {
+          pointsByScoringPeriod: { "14": 98 },
+          teamId: 2,
+          totalPoints: 98,
+        },
+        home: {
+          pointsByScoringPeriod: { "14": 120 },
+          teamId: 1,
+          totalPoints: 120,
+        },
+        id: 90,
+        matchupPeriodId: 14,
+        scoringPeriodId: 14,
+        winner: "UNDECIDED",
+      },
+      {
+        away: {
+          pointsByScoringPeriod: { "15": 112 },
+          teamId: 2,
+          totalPoints: 210,
+        },
+        home: {
+          pointsByScoringPeriod: { "15": 110 },
+          teamId: 1,
+          totalPoints: 230,
+        },
+        id: 90,
+        matchupPeriodId: 14,
+        scoringPeriodId: 15,
+        winner: "HOME",
+      },
+    ],
+  });
+  return fixture;
+}
+
 describe("ESPN Fan API discovery client", () => {
   it("authenticates cookie credentials against the Fan API", async () => {
     const { calls, fetch } = createCapturingFetch(jsonResponse(fanApiFixture));
@@ -363,8 +410,35 @@ describe("ESPN current league client", () => {
       1, 1, 1, 1, 1, 1,
     ]);
     expect(calls[0].url).toBe(
-      "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leagues/95050?view=mMatchup&view=mMatchupScore&scoringPeriodId=1",
+      "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leagues/95050?view=mMatchup&view=mMatchupScore&view=mSettings&scoringPeriodId=1",
     );
+  });
+
+  it("keeps ESPN two-week matchup windows when filtering by raw scoring period", async () => {
+    const { fetch } = createCapturingFetch(
+      jsonResponse(twoWeekEspnMatchupFixture()),
+    );
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getMatchups(
+      fixtureSession(),
+      { ...leagueRef, season: 2025 },
+      15,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]).toMatchObject({
+      providerId: "90",
+      scoringPeriod: 14,
+      periodStart: 14,
+      scoringPeriodSpan: 2,
+      homeScore: 230,
+      awayScore: 210,
+      winner: "home",
+      status: "final",
+    });
   });
 
   it("normalizes ESPN leagueHistory seasons into season bundles", async () => {
@@ -448,6 +522,31 @@ describe("ESPN current league client", () => {
     expect(calls[0].url).toBe(
       "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/95050?seasonId=2025&view=mSettings&view=mTeam&view=mStandings&view=mMembers&view=mMatchup&view=mMatchupScore",
     );
+  });
+
+  it("normalizes ESPN history two-week schedule rows into one span-aware matchup", async () => {
+    const { fetch } = createCapturingFetch(
+      jsonResponse([twoWeekEspnMatchupFixture()]),
+    );
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getHistory(fixtureSession(), leagueRef, {
+      seasons: [2025],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0].matchups).toHaveLength(1);
+    expect(result.value[0].matchups[0]).toMatchObject({
+      providerId: "90",
+      scoringPeriod: 14,
+      periodStart: 14,
+      scoringPeriodSpan: 2,
+      homeScore: 230,
+      awayScore: 210,
+      winner: "home",
+      status: "final",
+    });
   });
 
   it("marks regular-season fallback final standings as low confidence", async () => {

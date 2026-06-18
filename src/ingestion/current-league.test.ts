@@ -317,6 +317,15 @@ function edgeCaseProviderFor(providerLeagueId: string) {
           kind: "median" as const,
           providerId: "week-1-median",
         },
+        {
+          ...matchups.value[0],
+          awayScore: 210,
+          homeScore: 230,
+          periodStart: 14,
+          providerId: "two-week-final",
+          scoringPeriod: 14,
+          scoringPeriodSpan: 2,
+        },
       ]);
     },
     async getRosters() {
@@ -857,6 +866,16 @@ describe("syncCurrentLeague", () => {
       periodStart: 1,
       providerMatchupId: "week-1-median",
       scoringPeriodSpan: 1,
+    });
+    expect(
+      rows.matchups.find(
+        (matchup) => matchup.providerMatchupId === "two-week-final",
+      ),
+    ).toMatchObject({
+      homeScore: 230,
+      periodStart: 14,
+      scoringPeriod: 14,
+      scoringPeriodSpan: 2,
     });
     expect(rows.rosterEntries[0]).toMatchObject({
       isKeeper: true,
