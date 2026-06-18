@@ -8,10 +8,12 @@ import {
   within,
 } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { leagueRealtimeChannel, REALTIME_EVENTS } from "@/realtime/interfaces";
 import { MOTION_STORAGE_KEY } from "@/theme/settings";
 import type { LeagueSwitcherViewItem } from "./league-switcher-model";
+import type * as NavigationShellModule from "./navigation-shell";
+import type * as ScopeModule from "./scope";
 
 const realtimeMock = vi.hoisted(() => {
   const state = {
@@ -60,11 +62,9 @@ vi.mock("@/realtime/client", () => {
   };
 });
 
-import {
-  NavigationShellView,
-  shouldShowNavigationShell,
-} from "./navigation-shell";
-import { deriveActiveNavigationState } from "./scope";
+let NavigationShellView!: typeof NavigationShellModule.NavigationShellView;
+let shouldShowNavigationShell!: typeof NavigationShellModule.shouldShowNavigationShell;
+let deriveActiveNavigationState!: typeof ScopeModule.deriveActiveNavigationState;
 
 const items = [
   item({
@@ -83,6 +83,16 @@ const items = [
   }),
 ] satisfies readonly LeagueSwitcherViewItem[];
 
+beforeEach(async () => {
+  assertJsdomHarness();
+  vi.resetModules();
+  const shellModule = await import("./navigation-shell");
+  const scopeModule = await import("./scope");
+  NavigationShellView = shellModule.NavigationShellView;
+  shouldShowNavigationShell = shellModule.shouldShowNavigationShell;
+  deriveActiveNavigationState = scopeModule.deriveActiveNavigationState;
+});
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -94,6 +104,18 @@ afterEach(() => {
   realtimeMock.openRealtimePresenceSubscription.mockClear();
   realtimeMock.openRealtimeRefreshSubscription.mockClear();
 });
+
+function assertJsdomHarness() {
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    typeof window.localStorage === "undefined"
+  ) {
+    throw new Error(
+      "navigation-shell.test.tsx requires Vitest's jsdom environment before importing the shell module.",
+    );
+  }
+}
 
 describe("shouldShowNavigationShell", () => {
   it("keeps app sections inside the shell and utility paths outside it", () => {
