@@ -1,0 +1,98 @@
+[
+  {
+    "team_name": "Old Team 13",
+    "owner_name": "Old Manager 13",
+    "total_points_for": 1532.2,
+    "total_points_against": 1404.7000000000003,
+    "end_of_season_rank": 1,
+    "end_of_season_record": "10-3-0"
+  },
+  {
+    "team_name": "Old Team 06",
+    "owner_name": "Old Manager 06",
+    "total_points_for": 1511.3999999999999,
+    "total_points_against": 1385.8999999999999,
+    "end_of_season_rank": 2,
+    "end_of_season_record": "9-4-0"
+  },
+  {
+    "team_name": "Old Team 04",
+    "owner_name": "Old Manager 04",
+    "total_points_for": 1629.3,
+    "total_points_against": 1440.5000000000002,
+    "end_of_season_rank": 3,
+    "end_of_season_record": "8-5-0"
+  },
+  {
+    "team_name": "Old Team 07",
+    "owner_name": "Old Manager 07",
+    "total_points_for": 1532.8999999999999,
+    "total_points_against": 1579.9999999999998,
+    "end_of_season_rank": 4,
+    "end_of_season_record": "7-6-0"
+  },
+  {
+    "team_name": "Old Team 01",
+    "owner_name": "Old Manager 01",
+    "total_points_for": 1525.6,
+    "total_points_against": 1422.8,
+    "end_of_season_rank": 5,
+    "end_of_season_record": "7-6-0"
+  },
+  {
+    "team_name": "Old Team 11",
+    "owner_name": "Old Manager 11",
+    "total_points_for": 1500.6000000000001,
+    "total_points_against": 1510.3999999999996,
+    "end_of_season_rank": 6,
+    "end_of_season_record": "7-6-0"
+  },
+  {
+    "team_name": "Old Team 12",
+    "owner_name": "Old Manager 12",
+    "total_points_for": 1493.1999999999998,
+    "total_points_against": 1507.5,
+    "end_of_season_rank": 7,
+    "end_of_season_record": "7-6-0"
+  },
+  {
+    "team_name": "Old Team 02",
+    "owner_name": "Old Manager 02",
+    "total_points_for": 1442.5000000000002,
+    "total_points_against": 1511.1000000000004,
+    "end_of_season_rank": 8,
+    "end_of_season_record": "7-6-0"
+  },
+  {
+    "team_name": "Old Team 05",
+    "owner_name": "Old Manager 05",
+    "total_points_for": 1561.8,
+    "total_points_against": 1438.3,
+    "end_of_season_rank": 9,
+    "end_of_season_record": "6-7-0"
+  },
+  {
+    "team_name": "Old Team 09",
+    "owner_name": "Old Manager 09",
+    "total_points_for": 1529.4,
+    "total_points_against": 1493.6000000000004,
+    "end_of_season_rank": 10,
+    "end_of_season_record": "6-7-0"
+  },
+  {
+    "team_name": "Old Team 03",
+    "owner_name": "Old Manager 03",
+    "total_points_for": 1222.9,
+    "total_points_against": 1470.8000000000002,
+    "end_of_season_rank": 11,
+    "end_of_season_record": "3-10-0"
+  },
+  {
+    "team_name": "Old Team 08",
+    "owner_name": "Old Manager 08",
+    "total_points_for": 1268.8999999999999,
+    "total_points_against": 1585.0999999999997,
+    "end_of_season_rank": 12,
+    "end_of_season_record": "1-12-0"
+  }
+]

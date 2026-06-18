@@ -60,7 +60,15 @@ import {
 } from "./steward";
 
 const marker = `statstest-${randomUUID()}`;
-const OLD_LEAGUE_FIXTURE_ROOT = "/home/ubuntu/espn-api-old-2024/scripts-output";
+const VENDORED_OLD_LEAGUE_FIXTURE_ROOT = join(
+  process.cwd(),
+  "src/stats/__fixtures__/old-league",
+);
+const EXTERNAL_OLD_LEAGUE_FIXTURE_ROOT =
+  "/home/ubuntu/espn-api-old-2024/scripts-output";
+const OLD_LEAGUE_FIXTURE_ROOT = existsSync(VENDORED_OLD_LEAGUE_FIXTURE_ROOT)
+  ? VENDORED_OLD_LEAGUE_FIXTURE_ROOT
+  : EXTERNAL_OLD_LEAGUE_FIXTURE_ROOT;
 const oldLeagueFixtureIt = existsSync(OLD_LEAGUE_FIXTURE_ROOT) ? it : it.skip;
 let handle: DbHandle;
 
