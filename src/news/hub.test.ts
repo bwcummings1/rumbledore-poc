@@ -236,10 +236,13 @@ describe("central news hub", () => {
 
     expect(data.activeSection?.label).toBe("Injuries");
     expect(data.sections.map((section) => section.label)).toEqual([
-      "NFL",
-      "Fantasy",
-      "Injuries",
+      "Headlines",
+      "Players",
       "Rankings",
+      "Start/Sit",
+      "Injuries",
+      "Waivers",
+      "Analysis",
     ]);
     expect(markedItems.map((item) => item.title)).toEqual([
       "Starter injury anchors the section front",

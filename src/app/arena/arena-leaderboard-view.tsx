@@ -48,6 +48,10 @@ import {
 } from "@/components/ui/table";
 import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
+import {
+  ARENA_NAVIGATION_SECTIONS,
+  type ArenaSectionId,
+} from "@/navigation/scope";
 import { ArenaRealtimeRefresh } from "@/realtime/client";
 
 const ARENA_BANKROLL_FLOOR_CENTS = 100_000;
@@ -106,12 +110,23 @@ function arenaHref(input: {
   rivalLeagueId?: string | null;
   seasonId?: string | null;
 }): string {
+  return arenaSectionHref("/arena", input);
+}
+
+function arenaSectionHref(
+  path: string,
+  input: {
+    leagueId?: string | null;
+    rivalLeagueId?: string | null;
+    seasonId?: string | null;
+  },
+): string {
   const params = new URLSearchParams();
   if (input.seasonId) params.set("seasonId", input.seasonId);
   if (input.leagueId) params.set("leagueId", input.leagueId);
   if (input.rivalLeagueId) params.set("rivalLeagueId", input.rivalLeagueId);
   const query = params.toString();
-  return query ? `/arena?${query}` : "/arena";
+  return query ? `${path}?${query}` : path;
 }
 
 function seasonStatusLabel(status: ArenaSeasonSummary["status"]): string {
@@ -942,7 +957,117 @@ function LeaderboardSection({
   );
 }
 
-export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
+function ArenaEntryPoints({
+  focusedLeagueId,
+  rivalLeagueId,
+  seasonId,
+}: {
+  focusedLeagueId: string | null;
+  rivalLeagueId: string | null;
+  seasonId: string | null;
+}) {
+  const entrySections = ARENA_NAVIGATION_SECTIONS.filter(
+    (section) => section.id !== "leaderboard",
+  );
+
+  return (
+    <section aria-label="Arena sections" className="panel p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow">environment sections</p>
+          <h2 className="heading-auspex text-lg">Choose the arena angle</h2>
+        </div>
+        <StatusPill tone="neutral">aggregate-only views</StatusPill>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {entrySections.map((section) => (
+          <Link
+            className="cell grid min-h-32 content-between gap-3 p-3 outline-none transition-[border-color,box-shadow,transform] hover:border-[var(--hair-3)] hover:shadow-[0_0_18px_var(--glow-lilac),var(--bevel)] focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)]"
+            href={arenaSectionHref(section.href, {
+              leagueId: focusedLeagueId,
+              rivalLeagueId,
+              seasonId,
+            })}
+            key={section.id}
+          >
+            <span className="eyebrow">{section.label}</span>
+            <span className="font-display text-sm font-semibold text-foreground">
+              {arenaSectionDeck(section.id)}
+            </span>
+            <Edge tone="neutral" value="Open" />
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ArenaRulesSection() {
+  return (
+    <section className="panel grid gap-4 p-4" aria-label="Arena rules">
+      <div>
+        <p className="eyebrow">rules of engagement</p>
+        <h2 className="heading-auspex text-lg">Aggregate bragging rights</h2>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="cell p-3">
+          <Tag>Play money only</Tag>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Arena balances rank paper-betting performance. There are no prizes,
+            deposits, cash-outs, or real-money payouts.
+          </p>
+        </div>
+        <div className="cell p-3">
+          <Tag>League isolation</Tag>
+          <p className="mt-3 text-sm text-muted-foreground">
+            The Arena can show league ranks, P&L, ROI, and movement. Raw slips
+            stay inside their league and user-scoped betting history.
+          </p>
+        </div>
+        <div className="cell p-3">
+          <Tag>Rolling floor</Tag>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Rankings come from aggregate bankroll ledgers over the selected
+            Arena season, including the weekly rolling-minimum floor.
+          </p>
+        </div>
+      </div>
+      <KVList
+        className="grid gap-x-4 sm:grid-cols-3 sm:divide-y-0"
+        items={[
+          { label: "League ladder", value: "Avg aggregate P&L" },
+          { label: "Individual ladder", value: "Net paper P&L" },
+          { label: "Movement", value: "Delta vs prior materialization" },
+        ]}
+      />
+    </section>
+  );
+}
+
+function arenaSectionDeck(sectionId: ArenaSectionId): string {
+  switch (sectionId) {
+    case "leaderboard":
+      return "The main league and individual ladders.";
+    case "leagues":
+      return "Your league's aggregate duel against the field.";
+    case "matchups":
+      return "Head-to-head rival framing and duel margin.";
+    case "movers":
+      return "Rank jumps, drops, and movement telemetry.";
+    case "rules":
+      return "The play-money and isolation contract.";
+    case "seasons":
+      return "Active windows and prior Arena history.";
+  }
+}
+
+export function ArenaLeaderboardView({
+  data,
+  sectionId = "leaderboard",
+}: {
+  data: ArenaLeaderboardData;
+  sectionId?: ArenaSectionId;
+}) {
   const focusedLeagueId = data.headToHead?.anchor.id ?? null;
   const rivalLeagueId = data.headToHead?.rival.id ?? null;
   const topLeague = data.leagueStandings[0] ?? null;
@@ -1083,18 +1208,39 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
             }
           />
         </section>
-        <SeasonStrip
-          leagueId={focusedLeagueId}
-          rivalLeagueId={rivalLeagueId}
-          seasons={data.seasons}
-        />
-        <RivalryPanel
-          headToHead={data.headToHead}
-          leagueOptions={data.leagueOptions}
-          seasonId={data.season?.id ?? null}
-        />
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="grid gap-6">
+
+        {sectionId === "leaderboard" ? (
+          <>
+            <div className="grid gap-6">
+              <LeaderboardSection
+                emptyText="No league standings have been materialized yet."
+                highlightedRowId={focusedLeagueId}
+                netLabel="Avg P&L"
+                rows={data.leagueStandings}
+                title="League leaderboard"
+              />
+              <LeaderboardSection
+                emptyText="No individual standings have been materialized yet."
+                netLabel="Net P&L"
+                rows={data.individualStandings}
+                title="Individual leaderboard"
+              />
+            </div>
+            <ArenaEntryPoints
+              focusedLeagueId={focusedLeagueId}
+              rivalLeagueId={rivalLeagueId}
+              seasonId={data.season?.id ?? null}
+            />
+          </>
+        ) : null}
+
+        {sectionId === "leagues" ? (
+          <>
+            <RivalryPanel
+              headToHead={data.headToHead}
+              leagueOptions={data.leagueOptions}
+              seasonId={data.season?.id ?? null}
+            />
             <LeaderboardSection
               emptyText="No league standings have been materialized yet."
               highlightedRowId={focusedLeagueId}
@@ -1102,16 +1248,51 @@ export function ArenaLeaderboardView({ data }: { data: ArenaLeaderboardData }) {
               rows={data.leagueStandings}
               title="League leaderboard"
             />
+          </>
+        ) : null}
+
+        {sectionId === "movers" ? (
+          <>
+            <MovementSummary {...data.movers} />
+            <ArenaAnalytics data={data} focusedLeagueId={focusedLeagueId} />
+          </>
+        ) : null}
+
+        {sectionId === "matchups" ? (
+          <>
+            <RivalryPanel
+              headToHead={data.headToHead}
+              leagueOptions={data.leagueOptions}
+              seasonId={data.season?.id ?? null}
+            />
+            <ArenaAnalytics data={data} focusedLeagueId={focusedLeagueId} />
+          </>
+        ) : null}
+
+        {sectionId === "seasons" ? (
+          <>
+            <SeasonStrip
+              leagueId={focusedLeagueId}
+              rivalLeagueId={rivalLeagueId}
+              seasons={data.seasons}
+            />
+            <LeaderboardSection
+              emptyText="No league standings have been materialized yet."
+              highlightedRowId={focusedLeagueId}
+              netLabel="Avg P&L"
+              rows={data.leagueStandings}
+              title="Season league standings"
+            />
             <LeaderboardSection
               emptyText="No individual standings have been materialized yet."
               netLabel="Net P&L"
               rows={data.individualStandings}
-              title="Individual leaderboard"
+              title="Season individual standings"
             />
-          </div>
-          <MovementSummary {...data.movers} />
-        </div>
-        <ArenaAnalytics data={data} focusedLeagueId={focusedLeagueId} />
+          </>
+        ) : null}
+
+        {sectionId === "rules" ? <ArenaRulesSection /> : null}
       </div>
     </main>
   );

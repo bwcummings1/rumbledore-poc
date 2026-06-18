@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Home, ListFilter, Plus } from "lucide-react";
+import { Check, Home, ListFilter, Newspaper, Plus, Trophy } from "lucide-react";
 import Link from "next/link";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Presence } from "@/components/ui/presence";
@@ -76,7 +76,7 @@ export function LeagueSwitcherView({
           <div className="min-w-0">
             <p className="eyebrow">Scope</p>
             <h2 className="truncate font-display text-base font-semibold text-foreground">
-              Switch leagues
+              Switch environments
             </h2>
           </div>
           <GroupToggle
@@ -93,7 +93,7 @@ export function LeagueSwitcherView({
         </div>
       )}
 
-      <GlobalScopeRow activeState={activeState} />
+      <EnvironmentScopeRows activeState={activeState} />
 
       <SearchInput
         aria-label="Search leagues"
@@ -185,42 +185,83 @@ function GroupToggle({
   );
 }
 
-function GlobalScopeRow({
+function EnvironmentScopeRows({
   activeState,
 }: {
   readonly activeState: ActiveNavigationState;
 }) {
-  const isActive =
-    activeState.scope === "global" && activeState.sectionId === "your-leagues";
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="sr-only">Environment scopes</legend>
+      <EnvironmentScopeRow
+        active={activeState.scope === "global"}
+        description="Cross-league lobby"
+        href="/"
+        icon={<Home aria-hidden="true" className="size-4" />}
+        label="Your Leagues"
+        tag="Global scope"
+      />
+      <EnvironmentScopeRow
+        active={activeState.scope === "news"}
+        description="Headlines, players, waivers"
+        href="/news"
+        icon={<Newspaper aria-hidden="true" className="size-4" />}
+        label="Rumbledore News"
+        tag="News environment"
+      />
+      <EnvironmentScopeRow
+        active={activeState.scope === "arena"}
+        description="League-vs-league board"
+        href="/arena"
+        icon={<Trophy aria-hidden="true" className="size-4" />}
+        label="Central Arena"
+        tag="Arena environment"
+      />
+    </fieldset>
+  );
+}
 
+function EnvironmentScopeRow({
+  active,
+  description,
+  href,
+  icon,
+  label,
+  tag,
+}: {
+  readonly active: boolean;
+  readonly description: string;
+  readonly href: string;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly tag: string;
+}) {
   return (
     <Link
-      aria-current={isActive ? "page" : undefined}
-      aria-label="Your Leagues, Global scope"
+      aria-current={active ? "page" : undefined}
+      aria-label={`${label}, ${tag}`}
       className={cn(
         switcherRowClasses,
         "border-[var(--hair-2)] bg-primary/10",
-        isActive &&
+        active &&
           "border-primary/50 shadow-[inset_3px_0_0_var(--primary),0_0_18px_var(--glow-lilac),var(--bevel)]",
       )}
       data-switcher-option="true"
-      href="/"
+      href={href}
     >
-      <span className="chip-glyph size-10 text-primary">
-        <Home aria-hidden="true" className="size-4" />
-      </span>
+      <span className="chip-glyph size-10 text-primary">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-display text-sm font-semibold text-foreground">
-          Your Leagues
+          {label}
         </span>
         <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-          <Tag className="min-h-5 px-1.5 py-0 text-xs">Global scope</Tag>
+          <Tag className="min-h-5 px-1.5 py-0 text-xs">{tag}</Tag>
           <span className="truncate text-xs text-muted-foreground">
-            Cross-league lobby
+            {description}
           </span>
         </span>
       </span>
-      {isActive ? (
+      {active ? (
         <Check className="size-4 shrink-0 text-primary" aria-hidden="true" />
       ) : null}
     </Link>

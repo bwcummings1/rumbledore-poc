@@ -1,7 +1,10 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { CentralNewsHubData } from "@/news/hub";
-import { CENTRAL_PUBLICATION_SECTIONS } from "@/news/sections";
+import {
+  CENTRAL_PUBLICATION_SECTIONS,
+  type CentralPublicationSectionId,
+} from "@/news/sections";
 import { NewsHubView } from "./news-hub-view";
 
 const router = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -10,6 +13,16 @@ vi.mock("next/navigation", () => ({
   useRouter: () => router,
 }));
 
+function section(id: CentralPublicationSectionId) {
+  const found = CENTRAL_PUBLICATION_SECTIONS.find(
+    (candidate) => candidate.id === id,
+  );
+  if (!found) {
+    throw new Error(`Missing test section ${id}`);
+  }
+  return found;
+}
+
 const data: CentralNewsHubData = {
   activeSection: null,
   forYourLeague: null,
@@ -17,7 +30,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-1",
       publishedAt: "2026-06-11T14:00:00.000Z",
-      section: CENTRAL_PUBLICATION_SECTIONS[2],
+      section: section("injuries"),
       source: "NFL Wire",
       sourceUrl: "https://news.example.com/injury-update",
       summary: "A central fantasy injury update with source attribution.",
@@ -26,7 +39,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-2",
       publishedAt: "2026-06-11T13:00:00.000Z",
-      section: CENTRAL_PUBLICATION_SECTIONS[3],
+      section: section("rankings"),
       source: "Fantasy Desk",
       sourceUrl: "https://news.example.com/rankings",
       summary: "A rankings move with league-wide implications.",
@@ -35,7 +48,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-3",
       publishedAt: "2026-06-11T12:00:00.000Z",
-      section: CENTRAL_PUBLICATION_SECTIONS[2],
+      section: section("injuries"),
       source: "Injury Wire",
       sourceUrl: "https://news.example.com/injuries",
       summary: "A late injury report changes flex decisions.",
@@ -44,7 +57,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-4",
       publishedAt: "2026-06-11T11:00:00.000Z",
-      section: CENTRAL_PUBLICATION_SECTIONS[1],
+      section: section("waivers"),
       source: "Waiver Desk",
       sourceUrl: "https://news.example.com/waivers",
       summary: "Waiver names worth watching after Sunday.",
@@ -53,7 +66,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-5",
       publishedAt: "2026-06-11T10:00:00.000Z",
-      section: CENTRAL_PUBLICATION_SECTIONS[0],
+      section: section("headlines"),
       source: "NFL Wire",
       sourceUrl: "https://news.example.com/weather",
       summary: "Weather may change passing volume.",
@@ -62,7 +75,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-6",
       publishedAt: "2026-06-11T09:00:00.000Z",
-      section: CENTRAL_PUBLICATION_SECTIONS[1],
+      section: section("players"),
       source: "Depth Chart",
       sourceUrl: "https://news.example.com/depth",
       summary: "Depth chart notes for fantasy managers.",
@@ -89,10 +102,13 @@ test("news hub view renders the central publication front", () => {
   const sections = within(screen.getByLabelText("News sections"));
   expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
     "Front",
-    "NFL",
-    "Fantasy",
-    "Injuries",
+    "Headlines",
+    "Players",
     "Rankings",
+    "Start/Sit",
+    "Injuries",
+    "Waivers",
+    "Analysis",
   ]);
   const lead = within(screen.getByLabelText("Lead story"));
   expect(
@@ -146,7 +162,7 @@ test("news hub view renders a for your league rail when tailored stories exist",
               publishedAt: "2026-06-11T13:00:00.000Z",
               relevanceReason: "Fixture Team 01 rosters the affected starter.",
               relevanceScore: 8,
-              section: CENTRAL_PUBLICATION_SECTIONS[3],
+              section: section("rankings"),
               source: "Fantasy Desk",
               sourceUrl: "https://news.example.com/rankings",
               summary: "Fixture Team 01 has a lineup decision now.",
@@ -197,7 +213,7 @@ test("news hub view renders a section front empty state", () => {
     <NewsHubView
       data={{
         ...data,
-        activeSection: CENTRAL_PUBLICATION_SECTIONS[0],
+        activeSection: section("headlines"),
         items: [],
       }}
     />,
@@ -206,8 +222,8 @@ test("news hub view renders a section front empty state", () => {
   expect(
     screen.getByRole("heading", { level: 1, name: "Rumbledore News" }),
   ).toBeDefined();
-  expect(screen.getByText("NFL section")).toBeDefined();
-  expect(screen.getByText("No NFL stories yet")).toBeDefined();
+  expect(screen.getByText("Headlines section")).toBeDefined();
+  expect(screen.getByText("No Headlines stories yet")).toBeDefined();
   expect(
     screen
       .getByRole("link", { name: /open rumbledore news/i })
