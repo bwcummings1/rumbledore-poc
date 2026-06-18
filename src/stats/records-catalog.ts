@@ -8,6 +8,7 @@ import {
   headToHeadRecords,
   identityMappings,
   leagueGroupingSeasons,
+  leagueSeasonGroupings,
   leagueSeasonSettings,
   persons,
   recordBookAllTimeStandings,
@@ -332,6 +333,16 @@ function median(values: readonly number[]): number {
   return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
+function standardDeviation(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
 function compareStable(left: string, right: string): number {
   return left.localeCompare(right, undefined, {
     numeric: true,
@@ -367,9 +378,38 @@ function periodContext(
     opponentPersonId: row.opponentPersonId,
     personId: row.personId,
     personName: personName(personNames, row.personId),
-    scoringPeriod: row.scoringPeriod,
+    scoringPeriod: scoringWindowStart(row),
     season: row.season,
   };
+}
+
+type ScoringWindowInput = Pick<
+  WeeklyStatisticsRow,
+  "periodStart" | "scoringPeriod" | "scoringPeriodSpan" | "season"
+>;
+
+function scoringWindowStart(row: ScoringWindowInput): number {
+  return row.periodStart ?? row.scoringPeriod;
+}
+
+function scoringWindowSpan(row: ScoringWindowInput): number {
+  return Math.max(1, row.scoringPeriodSpan);
+}
+
+function scoringWindowKey(row: ScoringWindowInput): string {
+  return `${row.season}:${scoringWindowStart(row)}:${scoringWindowSpan(row)}`;
+}
+
+function compareScoringWindow(
+  left: ScoringWindowInput,
+  right: ScoringWindowInput,
+): number {
+  return (
+    left.season - right.season ||
+    scoringWindowStart(left) - scoringWindowStart(right) ||
+    scoringWindowSpan(left) - scoringWindowSpan(right) ||
+    left.scoringPeriod - right.scoringPeriod
+  );
 }
 
 function compareWeeklyAscending(
@@ -377,8 +417,7 @@ function compareWeeklyAscending(
   right: WeeklyStatisticsRow,
 ): number {
   return (
-    left.season - right.season ||
-    left.scoringPeriod - right.scoringPeriod ||
+    compareScoringWindow(left, right) ||
     compareStable(left.personId, right.personId) ||
     compareStable(left.matchupId, right.matchupId)
   );
@@ -688,10 +727,17 @@ function isDefaultLens(lens?: RecordBookLens): boolean {
 }
 
 function lensSeasonSet(lens?: RecordBookLens): Set<number> | null {
-  if (!lens?.seasonSet || lens.seasonSet.length === 0) {
+  if (!lens) {
     return null;
   }
-  return new Set(lens.seasonSet);
+  if (lens.seasonSet && lens.seasonSet.length > 0) {
+    return new Set(lens.seasonSet);
+  }
+  return lens.groupingId ? new Set() : null;
+}
+
+function personSeasonKey(personId: string, season: number): string {
+  return `${personId}:${season}`;
 }
 
 function filterWeeklyRowsByLens(
@@ -741,70 +787,167 @@ function filterChampionshipRowsByLens(
 
 function derivedSeasonRowsFromWeeklyRows(
   rows: readonly WeeklyStatisticsRow[],
+  sourceSeasonRows: readonly SeasonStatisticsRow[] = [],
+  lens?: RecordBookLens,
 ): SeasonStatisticsRow[] {
   const grouped = new Map<string, WeeklyStatisticsRow[]>();
+  const byWindow = new Map<string, WeeklyStatisticsRow[]>();
+  const sourceByPersonSeason = new Map(
+    sourceSeasonRows.map((row) => [
+      personSeasonKey(row.personId, row.season),
+      row,
+    ]),
+  );
   for (const row of rows) {
-    const key = `${row.personId}:${row.season}`;
+    const key = personSeasonKey(row.personId, row.season);
     grouped.set(key, [...(grouped.get(key) ?? []), row]);
+    const windowKey = scoringWindowKey(row);
+    byWindow.set(windowKey, [...(byWindow.get(windowKey) ?? []), row]);
   }
+
+  const allPlay = new Map<
+    string,
+    { expectedWins: number; losses: number; ties: number; wins: number }
+  >();
+  for (const windowRows of byWindow.values()) {
+    const scoringRowsByPerson = new Map<string, WeeklyStatisticsRow>();
+    for (const row of windowRows) {
+      const existing = scoringRowsByPerson.get(row.personId);
+      if (
+        !existing ||
+        (existing.matchupKind !== "head_to_head" &&
+          row.matchupKind === "head_to_head") ||
+        (existing.matchupKind === row.matchupKind &&
+          compareStable(row.matchupId, existing.matchupId) < 0)
+      ) {
+        scoringRowsByPerson.set(row.personId, row);
+      }
+    }
+
+    const scoringRows = [...scoringRowsByPerson.values()];
+    for (const row of scoringRows) {
+      const key = personSeasonKey(row.personId, row.season);
+      const entry = allPlay.get(key) ?? {
+        expectedWins: 0,
+        losses: 0,
+        ties: 0,
+        wins: 0,
+      };
+      const opponents = scoringRows.filter(
+        (opponent) => opponent.personId !== row.personId,
+      );
+      let windowWins = 0;
+      for (const opponent of opponents) {
+        if (row.pointsFor > opponent.pointsFor) {
+          entry.wins += 1;
+          windowWins += 1;
+        } else if (row.pointsFor < opponent.pointsFor) {
+          entry.losses += 1;
+        } else {
+          entry.ties += 1;
+        }
+      }
+      entry.expectedWins +=
+        opponents.length > 0 ? windowWins / opponents.length : 0;
+      allPlay.set(key, entry);
+    }
+  }
+
   const now = new Date(0);
+  const segment = lens?.segment ?? "both";
   const seasonRows: SeasonStatisticsRow[] = [];
   for (const [key, groupedRows] of grouped) {
     const [personId, seasonRaw] = key.split(":");
     const season = Number(seasonRaw);
-    const wins = groupedRows.filter((row) => row.result === "win").length;
-    const losses = groupedRows.filter((row) => row.result === "loss").length;
-    const ties = groupedRows.filter((row) => row.result === "tie").length;
+    const sorted = [...groupedRows].sort(compareWeeklyAscending);
+    const wins = sorted.filter((row) => row.result === "win").length;
+    const losses = sorted.filter((row) => row.result === "loss").length;
+    const ties = sorted.filter((row) => row.result === "tie").length;
     const pointsFor = round(
-      groupedRows.reduce((sum, row) => sum + row.pointsFor, 0),
+      sorted.reduce((sum, row) => sum + row.pointsFor, 0),
       4,
     );
     const pointsAgainst = round(
-      groupedRows.reduce((sum, row) => sum + row.pointsAgainst, 0),
+      sorted.reduce((sum, row) => sum + row.pointsAgainst, 0),
       4,
     );
-    const scoringPeriods = groupedRows.reduce(
+    const scoringPeriods = sorted.reduce(
       (sum, row) => sum + Math.max(1, row.scoringPeriodSpan),
       0,
     );
-    const scoresFor = groupedRows.map((row) => row.pointsFor);
-    const scoresAgainst = groupedRows.map((row) => row.pointsAgainst);
+    const scoresFor = sorted.map((row) => row.pointsFor);
+    const scoresAgainst = sorted.map((row) => row.pointsAgainst);
     const games = wins + losses + ties;
     const positiveScores = scoresFor.filter((score) => score > 0);
+    let currentStreakLength = 0;
+    let currentStreakType: SeasonStatisticsRow["currentStreakType"] = null;
+    let longestLossStreak = 0;
+    let longestWinStreak = 0;
+
+    for (const row of sorted) {
+      if (row.result === currentStreakType) {
+        currentStreakLength += 1;
+      } else {
+        currentStreakType = row.result;
+        currentStreakLength = 1;
+      }
+      if (row.result === "win") {
+        longestWinStreak = Math.max(longestWinStreak, currentStreakLength);
+      }
+      if (row.result === "loss") {
+        longestLossStreak = Math.max(longestLossStreak, currentStreakLength);
+      }
+    }
+
+    const source = sourceByPersonSeason.get(key);
+    const allPlayRow = allPlay.get(key) ?? {
+      expectedWins: 0,
+      losses: 0,
+      ties: 0,
+      wins: 0,
+    };
+    const expectedWins = round(allPlayRow.expectedWins, 4);
+    const preservePostseasonPlacement = segment === "playoff";
     seasonRows.push({
-      allPlayLosses: losses,
-      allPlayTies: ties,
-      allPlayWins: wins,
+      allPlayLosses: allPlayRow.losses,
+      allPlayTies: allPlayRow.ties,
+      allPlayWins: allPlayRow.wins,
       avgPointsAgainst:
         scoringPeriods > 0 ? round(pointsAgainst / scoringPeriods, 4) : 0,
       avgPointsFor:
         scoringPeriods > 0 ? round(pointsFor / scoringPeriods, 4) : 0,
       createdAt: now,
-      currentStreakLength: 0,
-      currentStreakType: null,
-      divisionWinner: false,
-      expectedWins: wins,
-      finalPlacement: "out",
-      finalRank: 0,
+      currentStreakLength,
+      currentStreakType,
+      divisionWinner: source?.divisionWinner ?? false,
+      expectedWins,
+      finalPlacement: preservePostseasonPlacement
+        ? (source?.finalPlacement ?? "out")
+        : "out",
+      finalRank: preservePostseasonPlacement
+        ? (source?.finalRank ?? 0)
+        : (source?.playoffSeed ?? 0),
       highestScore: scoresFor.length > 0 ? round(Math.max(...scoresFor), 4) : 0,
       id: `lens-season-${season}-${personId}`,
-      leagueId: groupedRows[0]?.leagueId ?? "",
-      longestLossStreak: 0,
-      longestWinStreak: 0,
+      leagueId: sorted[0]?.leagueId ?? "",
+      longestLossStreak,
+      longestWinStreak,
       losses,
       lowestScore:
         positiveScores.length > 0 ? round(Math.min(...positiveScores), 4) : 0,
-      luck: 0,
-      madeChampionship: false,
-      madePlayoffs: groupedRows.some((row) => row.isPlayoff),
+      luck: round(wins - expectedWins, 4),
+      madeChampionship: preservePostseasonPlacement
+        ? (source?.madeChampionship ?? sorted.some((row) => row.isChampionship))
+        : false,
+      madePlayoffs: source?.madePlayoffs ?? sorted.some((row) => row.isPlayoff),
       medianPointsAgainst: round(median(scoresAgainst), 4),
       medianPointsFor: round(median(scoresFor), 4),
       personId,
-      playoffSeed: null,
+      playoffSeed: source?.playoffSeed ?? null,
       pointDifferential: round(pointsFor - pointsAgainst, 4),
       pointsAgainst,
       pointsFor,
-      scoringStdDev: 0,
+      scoringStdDev: round(standardDeviation(scoresFor), 4),
       season,
       ties,
       updatedAt: now,
@@ -851,13 +994,13 @@ function bestStreaks(
 
       if (currentStart && currentEnd) {
         const candidate = {
-          endScoringPeriod: currentEnd.scoringPeriod,
+          endScoringPeriod: scoringWindowStart(currentEnd),
           endSeason: currentEnd.season,
           length: currentLength,
           personId,
           personName: personName(personNames, personId),
           recordType,
-          startScoringPeriod: currentStart.scoringPeriod,
+          startScoringPeriod: scoringWindowStart(currentStart),
           startSeason: currentStart.season,
         };
         if (!best || compareStreak(candidate, best) < 0) {
@@ -871,13 +1014,13 @@ function bestStreaks(
 
     if (currentStart && currentEnd) {
       const candidate = {
-        endScoringPeriod: currentEnd.scoringPeriod,
+        endScoringPeriod: scoringWindowStart(currentEnd),
         endSeason: currentEnd.season,
         length: currentLength,
         personId,
         personName: personName(personNames, personId),
         recordType,
-        startScoringPeriod: currentStart.scoringPeriod,
+        startScoringPeriod: scoringWindowStart(currentStart),
         startSeason: currentStart.season,
       };
       if (!best || compareStreak(candidate, best) < 0) {
@@ -1063,8 +1206,7 @@ function headToHeadMeetingGroups(
       row.opponentPersonId,
     );
     const key = [
-      row.season,
-      row.scoringPeriod,
+      scoringWindowKey(row),
       row.matchupId,
       personAId,
       personBId,
@@ -1101,7 +1243,7 @@ function headToHeadMeetingGroups(
         personBId,
         personBPoints: personBRow.pointsFor,
         playoff: personARow.isPlayoff || personBRow.isPlayoff,
-        scoringPeriod: personARow.scoringPeriod,
+        scoringPeriod: scoringWindowStart(personARow),
         season: personARow.season,
         winnerPersonId,
       } satisfies HeadToHeadMeetingForCatalog;
@@ -2124,7 +2266,11 @@ export function buildRecordsCatalog(input: {
   const seasonRows =
     (input.lens?.segment ?? "both") === "both"
       ? filterSeasonRowsByLens(input.seasonRows, input.lens)
-      : derivedSeasonRowsFromWeeklyRows(weeklyRows);
+      : derivedSeasonRowsFromWeeklyRows(
+          weeklyRows,
+          filterSeasonRowsByLens(input.seasonRows, input.lens),
+          input.lens,
+        );
   const championshipRows = filterChampionshipRowsByLens(
     input.championshipRows ?? [],
     input.lens,
@@ -2306,18 +2452,33 @@ export async function getLeagueRecordsCatalog(
         asc(weeklyStatistics.personId),
       );
     const lens = { ...(input.lens ?? {}) };
-    if (lens.groupingId && (!lens.seasonSet || lens.seasonSet.length === 0)) {
-      const groupingSeasonRows = await tx
-        .select({ season: leagueGroupingSeasons.season })
-        .from(leagueGroupingSeasons)
+    if (lens.groupingId) {
+      const [confirmedGrouping] = await tx
+        .select({ id: leagueSeasonGroupings.id })
+        .from(leagueSeasonGroupings)
         .where(
           and(
-            eq(leagueGroupingSeasons.leagueId, input.leagueId),
-            eq(leagueGroupingSeasons.groupingId, lens.groupingId),
+            eq(leagueSeasonGroupings.leagueId, input.leagueId),
+            eq(leagueSeasonGroupings.id, lens.groupingId),
+            eq(leagueSeasonGroupings.status, "confirmed"),
           ),
         )
-        .orderBy(asc(leagueGroupingSeasons.season));
-      lens.seasonSet = groupingSeasonRows.map((row) => row.season);
+        .limit(1);
+      if (!confirmedGrouping) {
+        lens.seasonSet = [];
+      } else {
+        const groupingSeasonRows = await tx
+          .select({ season: leagueGroupingSeasons.season })
+          .from(leagueGroupingSeasons)
+          .where(
+            and(
+              eq(leagueGroupingSeasons.leagueId, input.leagueId),
+              eq(leagueGroupingSeasons.groupingId, lens.groupingId),
+            ),
+          )
+          .orderBy(asc(leagueGroupingSeasons.season));
+        lens.seasonSet = groupingSeasonRows.map((row) => row.season);
+      }
     }
 
     return buildRecordsCatalog({

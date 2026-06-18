@@ -19,8 +19,19 @@ type WeeklyRow = typeof weeklyStatistics.$inferSelect;
 
 const NOW = new Date("2026-06-16T00:00:00.000Z");
 const LEAGUE_ID = "catalog-fixture-league";
-const OLD_LEAGUE_FIXTURE_ROOT = "/home/ubuntu/espn-api-old-2024/scripts-output";
+const VENDORED_OLD_LEAGUE_FIXTURE_ROOT = join(
+  process.cwd(),
+  "src/stats/__fixtures__/old-league",
+);
+const EXTERNAL_OLD_LEAGUE_FIXTURE_ROOT =
+  "/home/ubuntu/espn-api-old-2024/scripts-output";
+const OLD_LEAGUE_FIXTURE_ROOT = existsSync(VENDORED_OLD_LEAGUE_FIXTURE_ROOT)
+  ? VENDORED_OLD_LEAGUE_FIXTURE_ROOT
+  : EXTERNAL_OLD_LEAGUE_FIXTURE_ROOT;
 const oldLeagueFixtureIt = existsSync(OLD_LEAGUE_FIXTURE_ROOT) ? it : it.skip;
+const OLD_MANAGER_01 = "Old Manager 01";
+const OLD_MANAGER_11 = "Old Manager 11";
+const OLD_MANAGER_12 = "Old Manager 12";
 const PEOPLE = {
   alpha: "person-alpha-shared",
   beta: "person-beta-shared",
@@ -1020,6 +1031,44 @@ describe("buildRecordsCatalog", () => {
       value: 120,
     });
 
+    const regularEraWeeklyRows = weeklyRows.map((row) =>
+      row.matchupId === "matchup-2024-3-alpha-median"
+        ? {
+            ...row,
+            margin: -15,
+            result: "loss" as const,
+          }
+        : row,
+    );
+    const regularEraCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { seasonSet: [2024, 2025], segment: "regular" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows: regularEraWeeklyRows,
+    });
+    expect(
+      regularEraCatalog.allTimeStandings.find(
+        (row) => row.personId === PEOPLE.alpha,
+      ),
+    ).toMatchObject({
+      careerLuck: -1,
+      regularSeasonTitles: 1,
+    });
+    expect(regularEraCatalog.streaks.longestWins[0]).toMatchObject({
+      length: 2,
+      personId: PEOPLE.alpha,
+    });
+    expect(
+      regularEraCatalog.championships.managerRecords.find(
+        (row) => row.personId === PEOPLE.beta,
+      ),
+    ).toMatchObject({
+      regularSeasonTitles: 1,
+    });
+
     const seasonSetCatalog = buildRecordsCatalog({
       championshipRows,
       headToHeadRows,
@@ -1060,8 +1109,8 @@ describe("buildRecordsCatalog", () => {
         weeklyRows,
       });
       expect(earlyRegularCatalog.highLow.highestScores[0]).toMatchObject({
-        personId: oldLeaguePersonId("truman1109"),
-        personName: "truman1109",
+        personId: oldLeaguePersonId(OLD_MANAGER_12),
+        personName: OLD_MANAGER_12,
         scoringPeriod: 14,
         season: 2012,
         value: 325,
@@ -1079,8 +1128,8 @@ describe("buildRecordsCatalog", () => {
       expect(
         firstTwelveTeamEraRegularCatalog.highLow.highestScores[0],
       ).toMatchObject({
-        personId: oldLeaguePersonId("bradwcummings"),
-        personName: "bradwcummings",
+        personId: oldLeaguePersonId(OLD_MANAGER_01),
+        personName: OLD_MANAGER_01,
         scoringPeriod: 13,
         season: 2015,
         value: 192.7,
@@ -1095,8 +1144,8 @@ describe("buildRecordsCatalog", () => {
       expect(
         laterTwelveTeamEraPlayoffCatalog.highLow.highestScores[0],
       ).toMatchObject({
-        personId: oldLeaguePersonId("Squyres18"),
-        personName: "Squyres18",
+        personId: oldLeaguePersonId(OLD_MANAGER_11),
+        personName: OLD_MANAGER_11,
         scoringPeriod: 16,
         season: 2022,
         value: 247.5,

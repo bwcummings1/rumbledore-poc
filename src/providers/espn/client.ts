@@ -115,6 +115,9 @@ const leagueSettingsSchema = z
           )
           .optional(),
         matchupPeriodCount: numericValue.optional(),
+        matchupPeriodLength: numericValue.optional(),
+        matchupPeriods: z.record(z.string(), z.array(numericValue)).optional(),
+        playoffMatchupPeriodLength: numericValue.optional(),
         playoffTeamCount: numericValue.optional(),
       })
       .passthrough()
@@ -185,6 +188,7 @@ const espnMemberSchema = z
 
 const espnMatchupSideSchema = z
   .object({
+    pointsByScoringPeriod: z.record(z.string(), numericValue).optional(),
     teamId: numericValue,
     totalPoints: numericValue.optional(),
   })
@@ -196,6 +200,7 @@ const espnMatchupSchema = z
     home: espnMatchupSideSchema,
     id: numericValue,
     matchupPeriodId: numericValue,
+    scoringPeriodId: numericValue.optional(),
     winner: z.string().optional(),
   })
   .passthrough();
@@ -314,6 +319,17 @@ function toNumber(value: string | number | undefined): number | undefined {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function sortedUniquePositiveIntegers(
+  values: Iterable<number | undefined>,
+): number[] {
+  return [...new Set(values)]
+    .filter(
+      (value): value is number =>
+        value !== undefined && Number.isInteger(value) && value > 0,
+    )
+    .sort((left, right) => left - right);
 }
 
 function isFflEntry(entry: z.infer<typeof fanEntrySchema>): boolean {
@@ -707,13 +723,110 @@ function normalizeMatchupStatus(
     : "unknown";
 }
 
-function normalizeMatchup(
+function matchupPeriodIdsFromSettings(
   matchup: EspnMatchup,
+  league: EspnLeagueApiResponse,
+): number[] {
+  const matchupPeriod = toInteger(matchup.matchupPeriodId);
+  if (matchupPeriod === undefined) {
+    return [];
+  }
+
+  const rawPeriods =
+    league.settings?.scheduleSettings?.matchupPeriods?.[String(matchupPeriod)];
+  return sortedUniquePositiveIntegers((rawPeriods ?? []).map(toInteger));
+}
+
+function matchupSideScoringPeriods(
+  side: EspnMatchup["home"] | EspnMatchup["away"],
+): number[] {
+  return sortedUniquePositiveIntegers(
+    Object.keys(side.pointsByScoringPeriod ?? {}).map((key) => toInteger(key)),
+  );
+}
+
+function matchupScoringPeriods(
+  matchup: EspnMatchup,
+  league: EspnLeagueApiResponse,
+): number[] {
+  const matchupPeriod = toInteger(matchup.matchupPeriodId);
+  return sortedUniquePositiveIntegers([
+    ...matchupPeriodIdsFromSettings(matchup, league),
+    ...matchupSideScoringPeriods(matchup.home),
+    ...matchupSideScoringPeriods(matchup.away),
+    toInteger(matchup.scoringPeriodId),
+    matchupPeriod,
+  ]);
+}
+
+function matchupWindow(
+  matchups: readonly EspnMatchup[],
+  league: EspnLeagueApiResponse,
+): { periodStart: number; scoringPeriodSpan: number } {
+  const periods = sortedUniquePositiveIntegers(
+    matchups.flatMap((matchup) => matchupScoringPeriods(matchup, league)),
+  );
+  const fallback = toInteger(matchups[0]?.matchupPeriodId) ?? 0;
+  const periodStart = periods[0] ?? fallback;
+  const periodEnd = periods.at(-1) ?? periodStart;
+  return {
+    periodStart,
+    scoringPeriodSpan: Math.max(1, periodEnd - periodStart + 1),
+  };
+}
+
+function matchupGroupKey(matchup: EspnMatchup): string {
+  const providerId = String(toInteger(matchup.id) ?? matchup.id);
+  const matchupPeriod = toInteger(matchup.matchupPeriodId) ?? 0;
+  return `${providerId}:${matchupPeriod}`;
+}
+
+function matchupMatchesScoringPeriod(
+  matchups: readonly EspnMatchup[],
+  league: EspnLeagueApiResponse,
+  scoringPeriod: number,
+): boolean {
+  return matchups.some((matchup) =>
+    matchupScoringPeriods(matchup, league).includes(scoringPeriod),
+  );
+}
+
+function latestMatchupRow(
+  matchups: readonly EspnMatchup[],
+  league: EspnLeagueApiResponse,
+): EspnMatchup {
+  const sorted = [...matchups].sort((left, right) => {
+    const leftPeriods = matchupScoringPeriods(left, league);
+    const rightPeriods = matchupScoringPeriods(right, league);
+    const leftEnd = leftPeriods.at(-1) ?? 0;
+    const rightEnd = rightPeriods.at(-1) ?? 0;
+    return (
+      leftEnd - rightEnd ||
+      (toInteger(left.scoringPeriodId) ?? 0) -
+        (toInteger(right.scoringPeriodId) ?? 0) ||
+      String(toInteger(left.id) ?? left.id).localeCompare(
+        String(toInteger(right.id) ?? right.id),
+        undefined,
+        { numeric: true },
+      )
+    );
+  });
+  const latest = sorted.at(-1);
+  if (!latest) {
+    throw new Error("cannot normalize empty ESPN matchup group");
+  }
+  return latest;
+}
+
+function normalizeMatchup(
+  matchups: readonly EspnMatchup[],
   leagueRef: ProviderLeagueRef,
   league: EspnLeagueApiResponse,
 ): NormalizedMatchup {
+  const matchup = latestMatchupRow(matchups, league);
   const providerId = String(toInteger(matchup.id) ?? matchup.id);
   const scoringPeriod = toInteger(matchup.matchupPeriodId) ?? 0;
+  const window = matchupWindow(matchups, league);
   const homeTeamId = String(
     toInteger(matchup.home.teamId) ?? matchup.home.teamId,
   );
@@ -727,8 +840,8 @@ function normalizeMatchup(
     leagueProviderId: leagueRef.providerId,
     season: leagueRef.season,
     scoringPeriod,
-    periodStart: scoringPeriod,
-    scoringPeriodSpan: 1,
+    periodStart: window.periodStart,
+    scoringPeriodSpan: window.scoringPeriodSpan,
     homeTeamRef: {
       provider: ESPN_PROVIDER_ID,
       providerId: homeTeamId,
@@ -744,6 +857,27 @@ function normalizeMatchup(
     winner: normalizeMatchupWinner(matchup.winner),
     status: normalizeMatchupStatus(matchup, league),
   };
+}
+
+function normalizeScheduleMatchups(
+  schedule: readonly EspnMatchup[],
+  leagueRef: ProviderLeagueRef,
+  league: EspnLeagueApiResponse,
+  scoringPeriod?: number,
+): NormalizedMatchup[] {
+  const grouped = new Map<string, EspnMatchup[]>();
+  for (const matchup of schedule) {
+    const key = matchupGroupKey(matchup);
+    grouped.set(key, [...(grouped.get(key) ?? []), matchup]);
+  }
+
+  return [...grouped.values()]
+    .filter(
+      (matchups) =>
+        scoringPeriod === undefined ||
+        matchupMatchesScoringPeriod(matchups, league, scoringPeriod),
+    )
+    .map((matchups) => normalizeMatchup(matchups, leagueRef, league));
 }
 
 function finalStandingsFromTeams(
@@ -866,8 +1000,10 @@ function normalizeHistoryBundle(
   const members = (league.members ?? []).map((member) =>
     normalizeMember(member, seasonRef),
   );
-  const matchups = (league.schedule ?? []).map((matchup) =>
-    normalizeMatchup(matchup, seasonRef, league),
+  const matchups = normalizeScheduleMatchups(
+    league.schedule ?? [],
+    seasonRef,
+    league,
   );
 
   return {
@@ -1005,20 +1141,18 @@ export class EspnDiscoveryClient {
       resource: "league-matchups",
       scoringPeriod,
       session,
-      views: ["mMatchup", "mMatchupScore"],
+      views: ["mMatchup", "mMatchupScore", "mSettings"],
     });
     if (!league.ok) {
       return league;
     }
 
-    const matchups = (league.value.schedule ?? [])
-      .filter((matchup) => {
-        if (scoringPeriod === undefined) {
-          return true;
-        }
-        return toInteger(matchup.matchupPeriodId) === scoringPeriod;
-      })
-      .map((matchup) => normalizeMatchup(matchup, ref, league.value));
+    const matchups = normalizeScheduleMatchups(
+      league.value.schedule ?? [],
+      ref,
+      league.value,
+      scoringPeriod,
+    );
 
     return ok(matchups);
   }

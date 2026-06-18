@@ -226,6 +226,35 @@ function personPairKey(personAId: string, personBId: string): string {
   return `${left}\u001f${right}`;
 }
 
+type ScoringWindowInput = Pick<
+  WeeklyFact,
+  "periodStart" | "scoringPeriod" | "scoringPeriodSpan" | "season"
+>;
+
+function scoringWindowStart(fact: ScoringWindowInput): number {
+  return fact.periodStart ?? fact.scoringPeriod;
+}
+
+function scoringWindowSpan(fact: ScoringWindowInput): number {
+  return Math.max(1, fact.scoringPeriodSpan);
+}
+
+function scoringWindowKey(fact: ScoringWindowInput): string {
+  return `${fact.season}:${scoringWindowStart(fact)}:${scoringWindowSpan(fact)}`;
+}
+
+function compareScoringWindow(
+  left: ScoringWindowInput,
+  right: ScoringWindowInput,
+): number {
+  return (
+    left.season - right.season ||
+    scoringWindowStart(left) - scoringWindowStart(right) ||
+    scoringWindowSpan(left) - scoringWindowSpan(right) ||
+    left.scoringPeriod - right.scoringPeriod
+  );
+}
+
 function personPairFromKey(key: string): {
   personAId: string;
   personBId: string;
@@ -858,7 +887,7 @@ async function loadLeagueSeasonSettings(tx: LeagueScopedTx, leagueId: string) {
 function rankWeeklyFacts(facts: WeeklyFact[]): WeeklyFact[] {
   const byWeek = new Map<string, WeeklyFact[]>();
   for (const fact of facts) {
-    const key = `${fact.season}:${fact.periodStart ?? fact.scoringPeriod}`;
+    const key = scoringWindowKey(fact);
     const weekly = byWeek.get(key) ?? [];
     weekly.push(fact);
     byWeek.set(key, weekly);
@@ -1282,7 +1311,7 @@ function buildSeasonStats(
   for (const fact of facts) {
     const teamKey = `${fact.personId}:${fact.season}`;
     byTeamSeason.set(teamKey, [...(byTeamSeason.get(teamKey) ?? []), fact]);
-    const weekKey = `${fact.season}:${fact.scoringPeriod}`;
+    const weekKey = scoringWindowKey(fact);
     byWeek.set(weekKey, [...(byWeek.get(weekKey) ?? []), fact]);
   }
 
@@ -1338,7 +1367,7 @@ function buildSeasonStats(
   for (const [teamKey, teamFacts] of byTeamSeason) {
     const sorted = [...teamFacts].sort(
       (left, right) =>
-        left.scoringPeriod - right.scoringPeriod ||
+        compareScoringWindow(left, right) ||
         compareStable(left.matchupId, right.matchupId),
     );
     const [personId, seasonRaw] = teamKey.split(":");
@@ -1520,8 +1549,7 @@ function headToHeadRows(
     const [seasonRaw, personAId, personBId] = key.split(":");
     const sorted = [...meetings].sort(
       (left, right) =>
-        left.season - right.season ||
-        left.scoringPeriod - right.scoringPeriod ||
+        compareScoringWindow(left, right) ||
         compareStable(left.matchupId, right.matchupId),
     );
     const row: HeadToHeadRow = {
@@ -1564,7 +1592,7 @@ function headToHeadRows(
       row.playoffMeetings += meeting.isPlayoff ? 1 : 0;
       row.championshipMeetings += meeting.isChampionship ? 1 : 0;
       row.lastSeason = meeting.season;
-      row.lastScoringPeriod = meeting.scoringPeriod;
+      row.lastScoringPeriod = scoringWindowStart(meeting);
 
       const winner =
         personAScore > personBScore
@@ -1672,11 +1700,17 @@ function recordEvents({
   const winners = facts.filter((fact) => fact.result === "win");
   const losers = facts.filter((fact) => fact.result === "loss");
   const weeklySort = (fact: WeeklyFact) =>
-    `${fact.season}:${fact.scoringPeriod}:${fact.personId}`;
+    [
+      fact.season,
+      scoringWindowStart(fact),
+      scoringWindowSpan(fact),
+      fact.scoringPeriod,
+      fact.personId,
+    ].join(":");
   const singleWeek = (fact: WeeklyFact): RecordCandidate => ({
     holderPersonId: fact.personId,
     opponentPersonId: fact.opponentPersonId,
-    scoringPeriod: fact.scoringPeriod,
+    scoringPeriod: scoringWindowStart(fact),
     season: fact.season,
     sortKey: weeklySort(fact),
     value: fact.pointsFor,
@@ -2456,19 +2490,29 @@ async function buildDataIntegrityCheckDrafts(
     teamIds.add(row.providerTeamId);
     teamIdsBySeason.set(row.season, teamIds);
   }
-  const matchupsBySeasonWeek = new Map<string, typeof matchupRows>();
+  const matchupsBySeasonWindow = new Map<
+    string,
+    {
+      rows: typeof matchupRows;
+      season: number;
+      windowStart: number;
+      windowSpan: number;
+    }
+  >();
   for (const row of matchupRows) {
-    const key = `${row.season}:${row.scoringPeriod}`;
-    matchupsBySeasonWeek.set(key, [
-      ...(matchupsBySeasonWeek.get(key) ?? []),
-      row,
-    ]);
+    const key = scoringWindowKey(row);
+    const current = matchupsBySeasonWindow.get(key) ?? {
+      rows: [],
+      season: row.season,
+      windowSpan: scoringWindowSpan(row),
+      windowStart: scoringWindowStart(row),
+    };
+    current.rows.push(row);
+    matchupsBySeasonWindow.set(key, current);
   }
   const scheduleBySeason = new Map<number, Record<string, unknown>[]>();
-  for (const [key, rows] of matchupsBySeasonWeek) {
-    const [seasonRaw, scoringPeriodRaw] = key.split(":");
-    const season = Number(seasonRaw);
-    const scoringPeriod = Number(scoringPeriodRaw);
+  for (const window of matchupsBySeasonWindow.values()) {
+    const { rows, season, windowSpan, windowStart } = window;
     const expectedTeamIds = teamIdsBySeason.get(season) ?? new Set<string>();
     const seenTeamIds = new Set<string>();
     for (const row of rows) {
@@ -2483,7 +2527,8 @@ async function buildDataIntegrityCheckDrafts(
         ...(scheduleBySeason.get(season) ?? []),
         {
           missingTeamIds,
-          scoringPeriod,
+          scoringPeriod: windowStart,
+          scoringPeriodSpan: windowSpan,
         },
       ]);
     }
@@ -2493,8 +2538,8 @@ async function buildDataIntegrityCheckDrafts(
     drafts.push({
       checkKey: "schedule_coverage",
       detail: {
-        checkedWeeks: [...matchupsBySeasonWeek.keys()].filter((key) =>
-          key.startsWith(`${season}:`),
+        checkedWeeks: [...matchupsBySeasonWindow.values()].filter(
+          (window) => window.season === season,
         ).length,
         gaps,
         teamCount: teamIdsBySeason.get(season)?.size ?? 0,

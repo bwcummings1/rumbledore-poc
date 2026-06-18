@@ -1,0 +1,82 @@
+[
+  {
+    "team_name": "Old Team 09",
+    "owner_name": "Old Manager 09",
+    "total_points_for": 1642,
+    "total_points_against": 1235,
+    "end_of_season_rank": 1,
+    "end_of_season_record": "12-1-0"
+  },
+  {
+    "team_name": "Old Team 03",
+    "owner_name": "Old Manager 03",
+    "total_points_for": 1676,
+    "total_points_against": 1529,
+    "end_of_season_rank": 2,
+    "end_of_season_record": "10-3-0"
+  },
+  {
+    "team_name": "Old Team 04",
+    "owner_name": "Old Manager 04",
+    "total_points_for": 1688,
+    "total_points_against": 1482,
+    "end_of_season_rank": 3,
+    "end_of_season_record": "9-4-0"
+  },
+  {
+    "team_name": "Old Team 15",
+    "owner_name": "Old Manager 15",
+    "total_points_for": 1624,
+    "total_points_against": 1521,
+    "end_of_season_rank": 4,
+    "end_of_season_record": "8-5-0"
+  },
+  {
+    "team_name": "Old Team 11",
+    "owner_name": "Old Manager 11",
+    "total_points_for": 1509,
+    "total_points_against": 1534,
+    "end_of_season_rank": 5,
+    "end_of_season_record": "7-6-0"
+  },
+  {
+    "team_name": "Old Team 06",
+    "owner_name": "Old Manager 06",
+    "total_points_for": 1474,
+    "total_points_against": 1562,
+    "end_of_season_rank": 6,
+    "end_of_season_record": "5-8-0"
+  },
+  {
+    "team_name": "Old Team 12",
+    "owner_name": "Old Manager 12",
+    "total_points_for": 1473,
+    "total_points_against": 1699,
+    "end_of_season_rank": 7,
+    "end_of_season_record": "4-9-0"
+  },
+  {
+    "team_name": "Old Team 05",
+    "owner_name": "Old Manager 05",
+    "total_points_for": 1393,
+    "total_points_against": 1517,
+    "end_of_season_rank": 8,
+    "end_of_season_record": "4-9-0"
+  },
+  {
+    "team_name": "Old Team 01",
+    "owner_name": "Old Manager 01",
+    "total_points_for": 1390,
+    "total_points_against": 1584,
+    "end_of_season_rank": 9,
+    "end_of_season_record": "3-10-0"
+  },
+  {
+    "team_name": "Old Team 13",
+    "owner_name": "Old Manager 13",
+    "total_points_for": 1343,
+    "total_points_against": 1549,
+    "end_of_season_rank": 10,
+    "end_of_season_record": "3-10-0"
+  }
+]

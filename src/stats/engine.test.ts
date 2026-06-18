@@ -60,7 +60,15 @@ import {
 } from "./steward";
 
 const marker = `statstest-${randomUUID()}`;
-const OLD_LEAGUE_FIXTURE_ROOT = "/home/ubuntu/espn-api-old-2024/scripts-output";
+const VENDORED_OLD_LEAGUE_FIXTURE_ROOT = join(
+  process.cwd(),
+  "src/stats/__fixtures__/old-league",
+);
+const EXTERNAL_OLD_LEAGUE_FIXTURE_ROOT =
+  "/home/ubuntu/espn-api-old-2024/scripts-output";
+const OLD_LEAGUE_FIXTURE_ROOT = existsSync(VENDORED_OLD_LEAGUE_FIXTURE_ROOT)
+  ? VENDORED_OLD_LEAGUE_FIXTURE_ROOT
+  : EXTERNAL_OLD_LEAGUE_FIXTURE_ROOT;
 const oldLeagueFixtureIt = existsSync(OLD_LEAGUE_FIXTURE_ROOT) ? it : it.skip;
 let handle: DbHandle;
 
@@ -379,9 +387,14 @@ function oldLeagueTotalsPath(season: number): string {
 }
 
 function readOldLeagueTotals(season: number): OldLeagueTotalRow[] {
-  return JSON.parse(
-    readFileSync(oldLeagueTotalsPath(season), "utf8"),
-  ) as OldLeagueTotalRow[];
+  const path = oldLeagueTotalsPath(season);
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as OldLeagueTotalRow[];
+  } catch (error) {
+    throw new Error(`old-league totals fixture could not be parsed: ${path}`, {
+      cause: error,
+    });
+  }
 }
 
 function oldLeagueRosterFormat(season: number): Record<string, unknown> {
@@ -1092,6 +1105,128 @@ describe("recomputeLeagueStatistics", () => {
     ).toBe("Alex Corrected");
   });
 
+  it("routes weekly-stat score edits through the backing matchup so engine and catalog rows stay aligned", async () => {
+    const { leagueId } = await seedStatsLeague("curation-weekly-score");
+    const actorUserId = await seedActor("curation-weekly-score-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const alex2025 = before.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    if (!alex2025) {
+      throw new Error("expected Alex 2025 mapping");
+    }
+    const weeklyTarget = before.weeklyRows.find(
+      (row) =>
+        row.personId === alex2025.personId &&
+        row.season === 2025 &&
+        row.scoringPeriod === 1,
+    );
+    if (!weeklyTarget) {
+      throw new Error("expected target weekly statistic");
+    }
+    expect(
+      before.seasonRows.find(
+        (row) => row.personId === alex2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      highestScore: 100,
+      pointsFor: 195,
+    });
+
+    const edit = await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "substantive",
+      field: "points_for",
+      leagueId,
+      reason: "score correction from league audit",
+      targetId: weeklyTarget.id,
+      targetKind: "weekly_stat",
+      value: 130,
+    });
+
+    expect(edit).toMatchObject({
+      afterValue: 130,
+      beforeValue: 100,
+    });
+    expect(edit.recompute.matchups).toBeGreaterThan(0);
+
+    const matchup = await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(fantasyMatchups)
+        .where(eq(fantasyMatchups.id, weeklyTarget.matchupId))
+        .limit(1);
+      return row;
+    });
+    expect(matchup).toMatchObject({
+      homeScore: 130,
+      id: weeklyTarget.matchupId,
+      winner: "home",
+    });
+
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.weeklyRows.find((row) => row.id === weeklyTarget.id),
+    ).toBeUndefined();
+    expect(
+      after.weeklyRows.find(
+        (row) =>
+          row.matchupId === weeklyTarget.matchupId &&
+          row.personId === alex2025.personId,
+      ),
+    ).toMatchObject({
+      pointsAgainst: 90,
+      pointsFor: 130,
+      result: "win",
+    });
+    expect(
+      after.seasonRows.find(
+        (row) => row.personId === alex2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      avgPointsFor: 112.5,
+      highestScore: 130,
+      pointsFor: 225,
+      wins: 1,
+    });
+    expect(
+      after.allTimeStandingRows.find(
+        (row) => row.personId === alex2025.personId,
+      ),
+    ).toMatchObject({
+      pointsFor: 335,
+      wins: 2,
+    });
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        afterValue: 130,
+        beforeValue: 100,
+        field: "home_score",
+        targetId: weeklyTarget.matchupId,
+        targetKind: "matchup",
+      }),
+    );
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      personId: alex2025.personId,
+      value: 130,
+    });
+    expect(
+      catalog.allTimeStandings.find(
+        (row) => row.personId === alex2025.personId,
+      ),
+    ).toMatchObject({
+      pointsFor: 335,
+      wins: 2,
+    });
+  });
+
   it("keeps manually edited team-season fields sticky across provider-derived recomputes", async () => {
     const { leagueId } = await seedStatsLeague("curation-sticky-team");
     const actorUserId = await seedActor("curation-sticky-team-actor");
@@ -1279,6 +1414,16 @@ describe("recomputeLeagueStatistics", () => {
     if (!secondEra) {
       throw new Error("expected second proposed era");
     }
+    await expect(
+      confirmLeagueSeasonGrouping(handle.db, {
+        actorUserId,
+        groupingId: secondEra.id,
+        leagueId,
+        name: "Invalid Era",
+        reason: "should reject unknown seasons",
+        seasons: [2025, 2099],
+      }),
+    ).rejects.toThrow("unknown league season(s): 2099");
     const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
       actorUserId,
       groupingId: secondEra.id,
@@ -1292,6 +1437,22 @@ describe("recomputeLeagueStatistics", () => {
       seasons: [2025],
       status: "confirmed",
     });
+    const firstEra = proposals.find((proposal) =>
+      proposal.seasons.includes(2024),
+    );
+    if (!firstEra) {
+      throw new Error("expected first proposed era");
+    }
+    await expect(
+      confirmLeagueSeasonGrouping(handle.db, {
+        actorUserId,
+        groupingId: firstEra.id,
+        leagueId,
+        name: "Overlapping Era",
+        reason: "should reject overlapping confirmed eras",
+        seasons: [2024, 2025],
+      }),
+    ).rejects.toThrow("overlaps confirmed era season(s): 2025");
 
     const after = await selectStatsRows(leagueId);
     expect(after.groupingRows).toHaveLength(2);
@@ -1323,6 +1484,73 @@ describe("recomputeLeagueStatistics", () => {
       season: 2025,
       value: 120,
     });
+  });
+
+  it("does not treat proposed or empty era lenses as cumulative records", async () => {
+    const { leagueId } = await seedStatsLeague("empty-era-lens");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const cumulativeCatalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(cumulativeCatalog.allTimeStandings.length).toBeGreaterThan(0);
+    expect(cumulativeCatalog.highLow.highestScores.length).toBeGreaterThan(0);
+
+    const groupingIds = await withLeagueContext(
+      handle.db,
+      leagueId,
+      async (tx) => {
+        const [proposedGrouping] = await tx
+          .insert(leagueSeasonGroupings)
+          .values({
+            kind: "era",
+            leagueId,
+            name: "Unconfirmed Era",
+            ordinal: 1,
+            status: "proposed",
+          })
+          .returning({ id: leagueSeasonGroupings.id });
+        const [emptyConfirmedGrouping] = await tx
+          .insert(leagueSeasonGroupings)
+          .values({
+            kind: "era",
+            leagueId,
+            name: "Empty Confirmed Era",
+            ordinal: 2,
+            status: "confirmed",
+          })
+          .returning({ id: leagueSeasonGroupings.id });
+        if (!proposedGrouping || !emptyConfirmedGrouping) {
+          throw new Error("expected era lens guard groupings");
+        }
+        await tx.insert(leagueGroupingSeasons).values({
+          groupingId: proposedGrouping.id,
+          leagueId,
+          season: 2025,
+        });
+        return {
+          emptyConfirmedGroupingId: emptyConfirmedGrouping.id,
+          proposedGroupingId: proposedGrouping.id,
+        };
+      },
+    );
+
+    for (const groupingId of [
+      groupingIds.proposedGroupingId,
+      groupingIds.emptyConfirmedGroupingId,
+    ]) {
+      const catalog = await getLeagueRecordsCatalog(handle.db, {
+        leagueId,
+        lens: { groupingId, segment: "both" },
+        limit: 5,
+      });
+      expect(catalog.integrityBlocked).toBe(false);
+      expect(catalog.allTimeStandings).toEqual([]);
+      expect(catalog.highLow.highestScores).toEqual([]);
+      expect(catalog.headToHead.allTimePairs).toEqual([]);
+      expect(catalog.championships.managerRecords).toEqual([]);
+    }
   });
 
   oldLeagueFixtureIt(
@@ -1406,6 +1634,12 @@ describe("recomputeLeagueStatistics", () => {
     if (!casey2025) {
       throw new Error("expected Casey 2025 mapping");
     }
+    const evan2025 = before.mappingRows.find(
+      (row) => row.providerTeamId === "4" && row.season === 2025,
+    );
+    if (!evan2025) {
+      throw new Error("expected Evan 2025 mapping");
+    }
 
     let matchupId = "";
     await withLeagueContext(handle.db, leagueId, async (tx) => {
@@ -1450,10 +1684,28 @@ describe("recomputeLeagueStatistics", () => {
         (row) => row.personId === casey2025.personId && row.season === 2025,
       ),
     ).toMatchObject({
+      allPlayLosses: 1,
+      allPlayWins: 3,
       avgPointsFor: 70,
+      expectedWins: 1.6667,
+      luck: -0.6667,
       losses: 1,
       pointsFor: 210,
       wins: 1,
+    });
+    expect(
+      after.seasonRows.find(
+        (row) => row.personId === evan2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      allPlayLosses: 4,
+      allPlayWins: 0,
+      avgPointsFor: 60,
+      expectedWins: 0,
+      luck: 0,
+      losses: 2,
+      pointsFor: 180,
+      wins: 0,
     });
     expect(after.integrityRows).toContainEqual(
       expect.objectContaining({
@@ -1472,6 +1724,120 @@ describe("recomputeLeagueStatistics", () => {
         targetKind: "matchup",
       }),
     );
+  });
+
+  it("keys span-aware records by period start when provider scoring period is the window end", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague("window-key");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(leagueSeasonSettings).values({
+        contentHash: `${marker}-window-key-settings-2025`,
+        leagueId,
+        leagueProviderId: providerLeagueId,
+        matchupPeriodCount: 2,
+        provider: "espn",
+        season: 2025,
+      });
+      for (const providerMatchupId of ["2025-2-a", "2025-2-b"]) {
+        await tx
+          .update(fantasyMatchups)
+          .set({
+            periodStart: 2,
+            scoringPeriod: 3,
+            scoringPeriodSpan: 2,
+          })
+          .where(
+            and(
+              eq(fantasyMatchups.leagueId, leagueId),
+              eq(fantasyMatchups.providerMatchupId, providerMatchupId),
+            ),
+          );
+      }
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    const rows = await selectStatsRows(leagueId);
+    const mappingFor = (providerTeamId: string, season: number) => {
+      const mapping = rows.mappingRows.find(
+        (row) => row.providerTeamId === providerTeamId && row.season === season,
+      );
+      if (!mapping) {
+        throw new Error(`mapping ${providerTeamId}/${season} was not found`);
+      }
+      return mapping;
+    };
+    const alex2025 = mappingFor("1", 2025);
+    const casey2025 = mappingFor("2", 2025);
+    const drew2025 = mappingFor("3", 2025);
+
+    expect(
+      rows.weeklyRows.filter(
+        (row) =>
+          row.season === 2025 &&
+          row.scoringPeriod === 3 &&
+          row.periodStart === 2,
+      ),
+    ).toHaveLength(4);
+    expect(
+      rows.seasonRows.find(
+        (row) => row.personId === casey2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      allPlayLosses: 1,
+      allPlayWins: 5,
+      avgPointsFor: 70,
+      expectedWins: 1.6667,
+      luck: -0.6667,
+      pointsFor: 210,
+    });
+
+    const currentHighScore = rows.recordRows.find(
+      (row) => row.recordType === "highest_single_week_score" && row.isCurrent,
+    );
+    expect(currentHighScore).toMatchObject({
+      holderPersonId: casey2025.personId,
+      scoringPeriod: 2,
+      season: 2025,
+      value: 120,
+    });
+
+    const alexDrewAllTime = rows.h2hRows.find(
+      (row) =>
+        row.season === 0 &&
+        [row.personAId, row.personBId].includes(alex2025.personId) &&
+        [row.personAId, row.personBId].includes(drew2025.personId),
+    );
+    expect(alexDrewAllTime).toMatchObject({
+      lastScoringPeriod: 2,
+      lastSeason: 2025,
+      meetings: 2,
+    });
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 20,
+    });
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      personId: casey2025.personId,
+      scoringPeriod: 2,
+      season: 2025,
+      value: 120,
+    });
+    expect(
+      catalog.headToHead.allTimePairs.find(
+        (row) =>
+          [row.personA.personId, row.personB.personId].includes(
+            alex2025.personId,
+          ) &&
+          [row.personA.personId, row.personB.personId].includes(
+            drew2025.personId,
+          ),
+      ),
+    ).toMatchObject({
+      lastScoringPeriod: 2,
+      meetings: 2,
+    });
   });
 
   it("materializes keeper milestone aggregates from trusted roster signals", async () => {
@@ -2422,6 +2788,36 @@ describe("recomputeLeagueStatistics", () => {
     if (!correctionAudit) {
       throw new Error("data correction audit row was not written");
     }
+
+    await expect(
+      listUnifiedDataLedger(handle.db, {
+        leagueId,
+        targetId: reconciliationFailure.id,
+        targetKind: "integrity_check",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        field: "mark_reviewed",
+        source: "data_correction_audit",
+        targetId: reconciliationFailure.id,
+        targetKind: "integrity_check",
+      }),
+    ]);
+    const targetIdOnlyLedger = await listUnifiedDataLedger(handle.db, {
+      leagueId,
+      targetId: reconciliationFailure.id,
+    });
+    expect(targetIdOnlyLedger).toEqual([
+      expect.objectContaining({
+        source: "data_correction_audit",
+        targetId: reconciliationFailure.id,
+        targetKind: "integrity_check",
+      }),
+    ]);
+    expect(
+      targetIdOnlyLedger.some((entry) => entry.source === "identity_audit"),
+    ).toBe(false);
+
     await expect(
       withLeagueContext(handle.db, leagueId, (tx) =>
         tx
@@ -2432,6 +2828,153 @@ describe("recomputeLeagueStatistics", () => {
     ).rejects.toMatchObject({
       cause: expect.objectContaining({ code: "55000" }),
     });
+  });
+
+  it("flags grouping coverage, span sanity, and data-edit ledger completeness failures", async () => {
+    const { leagueId } = await seedStatsLeague("integrity-uncovered");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [targetMatchup] = await tx
+        .select({ id: fantasyMatchups.id })
+        .from(fantasyMatchups)
+        .where(
+          and(
+            eq(fantasyMatchups.leagueId, leagueId),
+            eq(fantasyMatchups.providerMatchupId, "2025-2-b"),
+          ),
+        )
+        .limit(1);
+      const [targetWeekly] = targetMatchup
+        ? await tx
+            .select({ id: weeklyStatistics.id })
+            .from(weeklyStatistics)
+            .where(eq(weeklyStatistics.matchupId, targetMatchup.id))
+            .limit(1)
+        : [];
+      if (!targetMatchup || !targetWeekly) {
+        throw new Error("expected integrity test matchup and weekly row");
+      }
+
+      const [firstGrouping] = await tx
+        .insert(leagueSeasonGroupings)
+        .values({
+          kind: "era",
+          leagueId,
+          name: "Overlap A",
+          ordinal: 1,
+          status: "confirmed",
+        })
+        .returning({ id: leagueSeasonGroupings.id });
+      const [secondGrouping] = await tx
+        .insert(leagueSeasonGroupings)
+        .values({
+          kind: "era",
+          leagueId,
+          name: "Overlap B",
+          ordinal: 2,
+          status: "confirmed",
+        })
+        .returning({ id: leagueSeasonGroupings.id });
+      if (!firstGrouping || !secondGrouping) {
+        throw new Error("expected integrity test groupings");
+      }
+      await tx.insert(leagueGroupingSeasons).values([
+        {
+          groupingId: firstGrouping.id,
+          leagueId,
+          season: 2025,
+        },
+        {
+          groupingId: secondGrouping.id,
+          leagueId,
+          season: 2025,
+        },
+        {
+          groupingId: firstGrouping.id,
+          leagueId,
+          season: 2099,
+        },
+      ]);
+
+      await tx
+        .update(fantasyMatchups)
+        .set({ scoringPeriodSpan: 2 })
+        .where(eq(fantasyMatchups.id, targetMatchup.id));
+      await tx
+        .update(weeklyStatistics)
+        .set({ scoringPeriodSpan: 1 })
+        .where(eq(weeklyStatistics.id, targetWeekly.id));
+      await tx.insert(leagueDataEdits).values({
+        afterValue: "stale",
+        beforeValue: "missing",
+        editClass: "substantive",
+        field: "canonical_name",
+        leagueId,
+        reason: "test stale ledger target",
+        targetId: randomUUID(),
+        targetKind: "person",
+      });
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, { leagueId });
+    expect(integrity.failures).toBeGreaterThanOrEqual(3);
+
+    const rows = await selectStatsRows(leagueId);
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "grouping_season_coverage",
+        season: null,
+        status: "fail",
+        detail: expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              reason: "season_in_multiple_confirmed_groupings",
+              season: 2025,
+            }),
+            expect.objectContaining({
+              reason: "unknown_grouping_season",
+              season: 2099,
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "matchup_span_sanity",
+        season: 2025,
+        status: "fail",
+        detail: expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              reason: "span_without_settings_or_ledger",
+              scoringPeriodSpan: 2,
+            }),
+            expect.objectContaining({
+              reason: "weekly_span_mismatch",
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "data_edit_ledger_completeness",
+        season: null,
+        status: "fail",
+        detail: expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              field: "canonical_name",
+              reason: "substantive_edit_target_missing",
+              targetKind: "person",
+            }),
+          ]),
+        }),
+      }),
+    );
   });
 
   it("applies steward merge and split corrections as sticky manual mappings", async () => {

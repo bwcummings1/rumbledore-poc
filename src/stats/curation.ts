@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
@@ -21,6 +21,9 @@ import { refreshRecordBookAggregates } from "./records-catalog";
 type LeagueDataEditInsert = typeof leagueDataEdits.$inferInsert;
 export type LeagueDataEditTargetKind = LeagueDataEditInsert["targetKind"];
 export type LeagueDataEditClass = LeagueDataEditInsert["editClass"];
+export type UnifiedLedgerTargetKind =
+  | LeagueDataEditTargetKind
+  | "integrity_check";
 
 export interface ApplyLeagueDataEditInput {
   actorUserId: string;
@@ -128,6 +131,16 @@ function requireNumber(value: unknown, field: string): number {
   return value;
 }
 
+function winnerFromScores(homeScore: number, awayScore: number) {
+  if (homeScore > awayScore) {
+    return "home" as const;
+  }
+  if (awayScore > homeScore) {
+    return "away" as const;
+  }
+  return "tie" as const;
+}
+
 function requirePositiveInteger(value: unknown, field: string): number {
   if (!Number.isInteger(value) || Number(value) < 1) {
     throw new Error(`${field} must be a positive integer`);
@@ -211,6 +224,10 @@ async function applyTargetUpdate(
 ): Promise<{
   afterValue: unknown;
   beforeValue: unknown;
+  ledgerTarget?: Pick<
+    ApplyLeagueDataEditInput,
+    "field" | "targetId" | "targetKind"
+  >;
   matchupIds: string[];
   recordsRefresh: boolean;
 }> {
@@ -395,8 +412,62 @@ async function applyTargetUpdate(
     if (!row) {
       throw new Error("weekly statistic was not found");
     }
+    const [backingMatchup] = await tx
+      .select()
+      .from(fantasyMatchups)
+      .where(
+        and(
+          eq(fantasyMatchups.leagueId, input.leagueId),
+          eq(fantasyMatchups.id, row.matchupId),
+        ),
+      )
+      .limit(1);
+    const [teamSeason] = await tx
+      .select({ providerTeamId: teamSeasons.providerTeamId })
+      .from(teamSeasons)
+      .where(
+        and(
+          eq(teamSeasons.leagueId, input.leagueId),
+          eq(teamSeasons.id, row.teamSeasonId),
+        ),
+      )
+      .limit(1);
+    const side =
+      backingMatchup &&
+      teamSeason?.providerTeamId === backingMatchup.homeTeamProviderId
+        ? "home"
+        : backingMatchup &&
+            teamSeason?.providerTeamId === backingMatchup.awayTeamProviderId
+          ? "away"
+          : null;
     if (input.field === "points_for") {
       const afterValue = requireNumber(input.value, input.field);
+      if (backingMatchup && side) {
+        const homeScore =
+          side === "home" ? afterValue : backingMatchup.homeScore;
+        const awayScore =
+          side === "away" ? afterValue : backingMatchup.awayScore;
+        await tx
+          .update(fantasyMatchups)
+          .set({
+            awayScore,
+            homeScore,
+            updatedAt: new Date(),
+            winner: winnerFromScores(homeScore, awayScore),
+          })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.pointsFor,
+          ledgerTarget: {
+            field: side === "home" ? "home_score" : "away_score",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ pointsFor: afterValue, updatedAt: new Date() })
@@ -410,6 +481,32 @@ async function applyTargetUpdate(
     }
     if (input.field === "points_against") {
       const afterValue = requireNumber(input.value, input.field);
+      if (backingMatchup && side) {
+        const homeScore =
+          side === "away" ? afterValue : backingMatchup.homeScore;
+        const awayScore =
+          side === "home" ? afterValue : backingMatchup.awayScore;
+        await tx
+          .update(fantasyMatchups)
+          .set({
+            awayScore,
+            homeScore,
+            updatedAt: new Date(),
+            winner: winnerFromScores(homeScore, awayScore),
+          })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.pointsAgainst,
+          ledgerTarget: {
+            field: side === "home" ? "away_score" : "home_score",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ pointsAgainst: afterValue, updatedAt: new Date() })
@@ -439,6 +536,23 @@ async function applyTargetUpdate(
     }
     if (input.field === "scoring_period_span") {
       const afterValue = requirePositiveInteger(input.value, input.field);
+      if (backingMatchup) {
+        await tx
+          .update(fantasyMatchups)
+          .set({ scoringPeriodSpan: afterValue, updatedAt: new Date() })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.scoringPeriodSpan,
+          ledgerTarget: {
+            field: "scoring_period_span",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ scoringPeriodSpan: afterValue, updatedAt: new Date() })
@@ -452,6 +566,23 @@ async function applyTargetUpdate(
     }
     if (input.field === "period_start") {
       const afterValue = optionalInteger(input.value, input.field);
+      if (backingMatchup) {
+        await tx
+          .update(fantasyMatchups)
+          .set({ periodStart: afterValue, updatedAt: new Date() })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.periodStart,
+          ledgerTarget: {
+            field: "period_start",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ periodStart: afterValue, updatedAt: new Date() })
@@ -605,10 +736,18 @@ export async function applyLeagueDataEdit(
 ): Promise<ApplyLeagueDataEditResult> {
   const applied = await withLeagueContext(db, input.leagueId, async (tx) => {
     const update = await applyTargetUpdate(tx, input);
+    const ledgerTarget = update.ledgerTarget ?? {
+      field: input.field,
+      targetId: input.targetId,
+      targetKind: input.targetKind,
+    };
     const editId = await writeDataEdit(tx, {
       ...input,
       afterValue: update.afterValue,
       beforeValue: update.beforeValue,
+      field: ledgerTarget.field,
+      targetId: ledgerTarget.targetId,
+      targetKind: ledgerTarget.targetKind,
     });
     let records = 0;
     if (update.recordsRefresh) {
@@ -697,13 +836,18 @@ function settingFormatType(scoringSettings: Record<string, unknown>): string {
 function settingRosterFormat(
   scoringSettings: Record<string, unknown>,
 ): unknown {
-  return (
-    scoringSettings.roster_format ??
-    scoringSettings.rosterFormat ??
-    scoringSettings.rosterSlots ??
-    scoringSettings.lineupSlots ??
-    null
-  );
+  for (const key of [
+    "roster_format",
+    "rosterFormat",
+    "rosterSlots",
+    "lineupSlots",
+  ]) {
+    const value = scoringSettings[key];
+    if (value !== null && value !== undefined) {
+      return value;
+    }
+  }
+  return null;
 }
 
 export function detectSeasonGroupingProposals(input: {
@@ -870,6 +1014,68 @@ async function groupingWithSeasons(
   }));
 }
 
+async function validateConfirmedGroupingSeasons(
+  tx: LeagueScopedTx,
+  input: {
+    groupingId: string;
+    kind: string;
+    leagueId: string;
+    seasons: readonly number[];
+  },
+): Promise<void> {
+  const descriptors = await loadSeasonDescriptors(tx, input.leagueId);
+  const knownSeasons = new Set(descriptors.keys());
+  const unknownSeasons = input.seasons.filter(
+    (season) => !knownSeasons.has(season),
+  );
+  if (unknownSeasons.length > 0) {
+    throw new Error(
+      `season grouping includes unknown league season(s): ${unknownSeasons.join(", ")}`,
+    );
+  }
+
+  if (input.seasons.length === 0) {
+    return;
+  }
+
+  const confirmedGroupings = await tx
+    .select({ id: leagueSeasonGroupings.id })
+    .from(leagueSeasonGroupings)
+    .where(
+      and(
+        eq(leagueSeasonGroupings.leagueId, input.leagueId),
+        eq(leagueSeasonGroupings.kind, input.kind),
+        eq(leagueSeasonGroupings.status, "confirmed"),
+      ),
+    );
+  const otherGroupingIds = confirmedGroupings
+    .map((row) => row.id)
+    .filter((id) => id !== input.groupingId);
+  if (otherGroupingIds.length === 0) {
+    return;
+  }
+
+  const overlappingRows = await tx
+    .select({ season: leagueGroupingSeasons.season })
+    .from(leagueGroupingSeasons)
+    .where(
+      and(
+        eq(leagueGroupingSeasons.leagueId, input.leagueId),
+        inArray(leagueGroupingSeasons.groupingId, otherGroupingIds),
+        inArray(leagueGroupingSeasons.season, input.seasons),
+      ),
+    )
+    .orderBy(asc(leagueGroupingSeasons.season));
+  const overlappingSeasons = sortedUniqueNumbers(
+    overlappingRows.map((row) => row.season),
+  );
+  if (overlappingSeasons.length > 0) {
+    throw new Error(
+      `season grouping overlaps confirmed ${input.kind} season(s): ${overlappingSeasons.join(", ")}`,
+    );
+  }
+}
+
 export async function proposeLeagueSeasonGroupings(
   db: Db,
   input: { kind?: string; leagueId: string },
@@ -953,6 +1159,12 @@ export async function confirmLeagueSeasonGrouping(
       throw new Error("season grouping was not found");
     }
     const seasons = sortedUniqueNumbers(input.seasons);
+    await validateConfirmedGroupingSeasons(tx, {
+      groupingId: input.groupingId,
+      kind: before.kind,
+      leagueId: input.leagueId,
+      seasons,
+    });
     await tx
       .update(leagueSeasonGroupings)
       .set({
@@ -1026,27 +1238,34 @@ export async function listUnifiedDataLedger(
     leagueId: string;
     limit?: number;
     targetId?: string;
-    targetKind?: LeagueDataEditTargetKind;
+    targetKind?: UnifiedLedgerTargetKind;
   },
 ): Promise<UnifiedLedgerEntry[]> {
   const limit = Math.max(1, Math.min(200, input.limit ?? 100));
   return withLeagueContext(db, input.leagueId, async (tx) => {
-    const dataRows = await tx
-      .select()
-      .from(leagueDataEdits)
-      .where(
-        and(
-          eq(leagueDataEdits.leagueId, input.leagueId),
-          input.targetKind
-            ? eq(leagueDataEdits.targetKind, input.targetKind)
-            : undefined,
-          input.targetId
-            ? eq(leagueDataEdits.targetId, input.targetId)
-            : undefined,
-        ),
-      )
-      .orderBy(desc(leagueDataEdits.createdAt))
-      .limit(limit);
+    const dataEditTargetKind =
+      input.targetKind && input.targetKind !== "integrity_check"
+        ? input.targetKind
+        : undefined;
+    const dataRows =
+      input.targetKind === "integrity_check"
+        ? []
+        : await tx
+            .select()
+            .from(leagueDataEdits)
+            .where(
+              and(
+                eq(leagueDataEdits.leagueId, input.leagueId),
+                dataEditTargetKind
+                  ? eq(leagueDataEdits.targetKind, dataEditTargetKind)
+                  : undefined,
+                input.targetId
+                  ? eq(leagueDataEdits.targetId, input.targetId)
+                  : undefined,
+              ),
+            )
+            .orderBy(desc(leagueDataEdits.createdAt))
+            .limit(limit);
 
     const identityRows =
       input.targetKind && !["person", "team_season"].includes(input.targetKind)
@@ -1063,18 +1282,31 @@ export async function listUnifiedDataLedger(
                 input.targetKind === "team_season" && input.targetId
                   ? eq(identityAuditLog.teamSeasonId, input.targetId)
                   : undefined,
+                !input.targetKind && input.targetId
+                  ? or(
+                      eq(identityAuditLog.personId, input.targetId),
+                      eq(identityAuditLog.teamSeasonId, input.targetId),
+                    )
+                  : undefined,
               ),
             )
             .orderBy(desc(identityAuditLog.createdAt))
             .limit(limit);
 
     const correctionRows =
-      input.targetKind || input.targetId
+      input.targetKind && input.targetKind !== "integrity_check"
         ? []
         : await tx
             .select()
             .from(dataCorrectionAuditLog)
-            .where(eq(dataCorrectionAuditLog.leagueId, input.leagueId))
+            .where(
+              and(
+                eq(dataCorrectionAuditLog.leagueId, input.leagueId),
+                input.targetId
+                  ? eq(dataCorrectionAuditLog.integrityCheckId, input.targetId)
+                  : undefined,
+              ),
+            )
             .orderBy(desc(dataCorrectionAuditLog.createdAt))
             .limit(limit);
 
