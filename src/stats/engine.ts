@@ -12,6 +12,9 @@ import {
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
+  leagueDataEdits,
+  leagueGroupingSeasons,
+  leagueSeasonGroupings,
   leagueSeasonSettings,
   type PersonOwnerHistoryEntry,
   persons,
@@ -88,10 +91,12 @@ interface WeeklyFact {
   matchupId: string;
   opponentPersonId: string;
   personId: string;
+  periodStart: number | null;
   pointsAgainst: number;
   pointsFor: number;
   result: WeeklyResult;
   scoringPeriod: number;
+  scoringPeriodSpan: number;
   season: number;
   teamSeasonId: string;
   weeklyRank: number;
@@ -686,7 +691,9 @@ async function loadFinalMatchups(tx: LeagueScopedTx, leagueId: string) {
       homeTeamProviderId: fantasyMatchups.homeTeamProviderId,
       id: fantasyMatchups.id,
       kind: fantasyMatchups.kind,
+      periodStart: fantasyMatchups.periodStart,
       scoringPeriod: fantasyMatchups.scoringPeriod,
+      scoringPeriodSpan: fantasyMatchups.scoringPeriodSpan,
       season: fantasyMatchups.season,
       status: fantasyMatchups.status,
     })
@@ -724,7 +731,7 @@ async function loadLeagueSeasonSettings(tx: LeagueScopedTx, leagueId: string) {
 function rankWeeklyFacts(facts: WeeklyFact[]): WeeklyFact[] {
   const byWeek = new Map<string, WeeklyFact[]>();
   for (const fact of facts) {
-    const key = `${fact.season}:${fact.scoringPeriod}`;
+    const key = `${fact.season}:${fact.periodStart ?? fact.scoringPeriod}`;
     const weekly = byWeek.get(key) ?? [];
     weekly.push(fact);
     byWeek.set(key, weekly);
@@ -984,6 +991,8 @@ function buildWeeklyFacts({
 
     const homeScore = round(matchup.homeScore, 2);
     const awayScore = round(matchup.awayScore, 2);
+    const scoringPeriodSpan = Math.max(1, matchup.scoringPeriodSpan ?? 1);
+    const periodStart = matchup.periodStart ?? matchup.scoringPeriod;
     const flags = postseasonFlags.get(matchup.id) ?? {
       isChampionship: false,
       isPlayoff: false,
@@ -999,10 +1008,12 @@ function buildWeeklyFacts({
       matchupId: matchup.id,
       opponentPersonId: awayMapping.personId,
       personId: homeMapping.personId,
+      periodStart,
       pointsAgainst: awayScore,
       pointsFor: homeScore,
       result: toWeeklyResult(homeScore, awayScore),
       scoringPeriod: matchup.scoringPeriod,
+      scoringPeriodSpan,
       season: matchup.season,
       teamSeasonId: homeTeamSeason.id,
       weeklyRank: 0,
@@ -1018,10 +1029,12 @@ function buildWeeklyFacts({
       matchupId: matchup.id,
       opponentPersonId: homeMapping.personId,
       personId: awayMapping.personId,
+      periodStart,
       pointsAgainst: homeScore,
       pointsFor: awayScore,
       result: toWeeklyResult(awayScore, homeScore),
       scoringPeriod: matchup.scoringPeriod,
+      scoringPeriodSpan,
       season: matchup.season,
       teamSeasonId: awayTeamSeason.id,
       weeklyRank: 0,
@@ -1204,6 +1217,10 @@ function buildSeasonStats(
     const [personId, seasonRaw] = teamKey.split(":");
     const season = Number(seasonRaw);
     const games = sorted.length;
+    const scoringPeriods = sorted.reduce(
+      (sum, fact) => sum + Math.max(1, fact.scoringPeriodSpan),
+      0,
+    );
     const wins = sorted.filter((fact) => fact.result === "win").length;
     const losses = sorted.filter((fact) => fact.result === "loss").length;
     const ties = sorted.filter((fact) => fact.result === "tie").length;
@@ -1250,8 +1267,8 @@ function buildSeasonStats(
       allPlayLosses: allPlayRow.losses,
       allPlayTies: allPlayRow.ties,
       allPlayWins: allPlayRow.wins,
-      avgPointsAgainst: round(pointsAgainst / games, 2),
-      avgPointsFor: round(pointsFor / games, 2),
+      avgPointsAgainst: round(pointsAgainst / Math.max(1, scoringPeriods), 2),
+      avgPointsFor: round(pointsFor / Math.max(1, scoringPeriods), 2),
       currentStreakLength,
       currentStreakType,
       divisionWinner: false,
@@ -1958,12 +1975,16 @@ async function buildDataIntegrityCheckDrafts(
 ): Promise<DataIntegrityCheckDraft[]> {
   const weeklyRows = await tx
     .select({
+      id: weeklyStatistics.id,
       isChampionship: weeklyStatistics.isChampionship,
+      matchupId: weeklyStatistics.matchupId,
       personId: weeklyStatistics.personId,
+      periodStart: weeklyStatistics.periodStart,
       pointsAgainst: weeklyStatistics.pointsAgainst,
       pointsFor: weeklyStatistics.pointsFor,
       result: weeklyStatistics.result,
       scoringPeriod: weeklyStatistics.scoringPeriod,
+      scoringPeriodSpan: weeklyStatistics.scoringPeriodSpan,
       season: weeklyStatistics.season,
     })
     .from(weeklyStatistics)
@@ -2020,7 +2041,9 @@ async function buildDataIntegrityCheckDrafts(
       awayTeamProviderId: fantasyMatchups.awayTeamProviderId,
       homeTeamProviderId: fantasyMatchups.homeTeamProviderId,
       id: fantasyMatchups.id,
+      periodStart: fantasyMatchups.periodStart,
       scoringPeriod: fantasyMatchups.scoringPeriod,
+      scoringPeriodSpan: fantasyMatchups.scoringPeriodSpan,
       season: fantasyMatchups.season,
       status: fantasyMatchups.status,
     })
@@ -2041,6 +2064,43 @@ async function buildDataIntegrityCheckDrafts(
     })
     .from(dataCoverage)
     .where(eq(dataCoverage.leagueId, leagueId));
+  const settingsRows = await tx
+    .select({
+      id: leagueSeasonSettings.id,
+      matchupPeriodCount: leagueSeasonSettings.matchupPeriodCount,
+      season: leagueSeasonSettings.season,
+    })
+    .from(leagueSeasonSettings)
+    .where(eq(leagueSeasonSettings.leagueId, leagueId));
+  const groupingRows = await tx
+    .select({
+      id: leagueSeasonGroupings.id,
+      kind: leagueSeasonGroupings.kind,
+      status: leagueSeasonGroupings.status,
+    })
+    .from(leagueSeasonGroupings)
+    .where(eq(leagueSeasonGroupings.leagueId, leagueId));
+  const groupingSeasonRows = await tx
+    .select({
+      groupingId: leagueGroupingSeasons.groupingId,
+      season: leagueGroupingSeasons.season,
+    })
+    .from(leagueGroupingSeasons)
+    .where(eq(leagueGroupingSeasons.leagueId, leagueId));
+  const editRows = await tx
+    .select({
+      editClass: leagueDataEdits.editClass,
+      field: leagueDataEdits.field,
+      id: leagueDataEdits.id,
+      targetId: leagueDataEdits.targetId,
+      targetKind: leagueDataEdits.targetKind,
+    })
+    .from(leagueDataEdits)
+    .where(eq(leagueDataEdits.leagueId, leagueId));
+  const personRows = await tx
+    .select({ id: persons.id })
+    .from(persons)
+    .where(eq(persons.leagueId, leagueId));
 
   const drafts: DataIntegrityCheckDraft[] = [];
 
@@ -2425,6 +2485,181 @@ async function buildDataIntegrityCheckDrafts(
     });
   }
 
+  const knownSeasons = new Set([
+    ...settingsRows.map((row) => row.season),
+    ...teamSeasonRows.map((row) => row.season),
+    ...matchupRows.map((row) => row.season),
+    ...seasonRows.map((row) => row.season),
+  ]);
+  const groupingById = new Map(groupingRows.map((row) => [row.id, row]));
+  const groupingCoverageIssues: Record<string, unknown>[] = [];
+  const seasonKindMembership = new Map<string, string[]>();
+  for (const row of groupingSeasonRows) {
+    const grouping = groupingById.get(row.groupingId);
+    if (!grouping) {
+      groupingCoverageIssues.push({
+        groupingId: row.groupingId,
+        reason: "season_without_grouping",
+        season: row.season,
+      });
+      continue;
+    }
+    if (!knownSeasons.has(row.season)) {
+      groupingCoverageIssues.push({
+        groupingId: row.groupingId,
+        reason: "unknown_grouping_season",
+        season: row.season,
+      });
+    }
+    if (grouping.status === "confirmed") {
+      const membershipKey = `${grouping.kind}:${row.season}`;
+      seasonKindMembership.set(membershipKey, [
+        ...(seasonKindMembership.get(membershipKey) ?? []),
+        grouping.id,
+      ]);
+    }
+  }
+  for (const [key, groupingIds] of seasonKindMembership) {
+    if (groupingIds.length <= 1) {
+      continue;
+    }
+    const [kind, seasonRaw] = key.split(":");
+    groupingCoverageIssues.push({
+      groupingIds: groupingIds.sort(compareStable),
+      kind,
+      reason: "season_in_multiple_confirmed_groupings",
+      season: Number(seasonRaw),
+    });
+  }
+  drafts.push({
+    checkKey: "grouping_season_coverage",
+    detail: {
+      checkedGroupings: groupingRows.length,
+      checkedSeasons: groupingSeasonRows.length,
+      issues: groupingCoverageIssues,
+    },
+    season: null,
+    status: checkStatus(groupingCoverageIssues),
+  });
+
+  const settingPeriodCountBySeason = new Map(
+    settingsRows.map((row) => [row.season, row.matchupPeriodCount]),
+  );
+  const spanEditTargets = new Set(
+    editRows
+      .filter(
+        (row) =>
+          row.targetKind === "matchup" && row.field === "scoring_period_span",
+      )
+      .map((row) => row.targetId),
+  );
+  const weeklyByMatchup = new Map<string, typeof weeklyRows>();
+  for (const row of weeklyRows) {
+    weeklyByMatchup.set(row.matchupId, [
+      ...(weeklyByMatchup.get(row.matchupId) ?? []),
+      row,
+    ]);
+  }
+  const spanIssuesBySeason = new Map<number, Record<string, unknown>[]>();
+  for (const matchup of matchupRows) {
+    const issues = spanIssuesBySeason.get(matchup.season) ?? [];
+    if (matchup.scoringPeriodSpan < 1) {
+      issues.push({
+        matchupId: matchup.id,
+        reason: "matchup_span_below_one",
+        scoringPeriodSpan: matchup.scoringPeriodSpan,
+      });
+    }
+    const settingPeriodCount =
+      settingPeriodCountBySeason.get(matchup.season) ?? 1;
+    if (
+      matchup.scoringPeriodSpan > 1 &&
+      settingPeriodCount <= 1 &&
+      !spanEditTargets.has(matchup.id)
+    ) {
+      issues.push({
+        matchupId: matchup.id,
+        reason: "span_without_settings_or_ledger",
+        scoringPeriodSpan: matchup.scoringPeriodSpan,
+      });
+    }
+    for (const weekly of weeklyByMatchup.get(matchup.id) ?? []) {
+      if (
+        weekly.scoringPeriodSpan !== matchup.scoringPeriodSpan ||
+        (weekly.periodStart ?? weekly.scoringPeriod) !==
+          (matchup.periodStart ?? matchup.scoringPeriod)
+      ) {
+        issues.push({
+          matchupId: matchup.id,
+          reason: "weekly_span_mismatch",
+          weeklyPersonId: weekly.personId,
+        });
+      }
+    }
+    if (issues.length > 0) {
+      spanIssuesBySeason.set(matchup.season, issues);
+    }
+  }
+  for (const season of seasonKeys(matchupRows.map((row) => row.season))) {
+    const issues = spanIssuesBySeason.get(season) ?? [];
+    drafts.push({
+      checkKey: "matchup_span_sanity",
+      detail: {
+        checkedMatchups: matchupRows.filter((row) => row.season === season)
+          .length,
+        issues,
+      },
+      season,
+      status: checkStatus(issues),
+    });
+  }
+
+  const editTargets = {
+    grouping: new Set(groupingRows.map((row) => row.id)),
+    matchup: new Set(matchupRows.map((row) => row.id)),
+    person: new Set(personRows.map((row) => row.id)),
+    season_setting: new Set(settingsRows.map((row) => row.id)),
+    team_season: new Set(teamSeasonRows.map((row) => row.id)),
+    weekly_stat: new Set(weeklyRows.map((row) => row.id)),
+  };
+  const ledgerIssues: Record<string, unknown>[] = [];
+  for (const row of editRows.filter(
+    (entry) => entry.editClass === "substantive",
+  )) {
+    const targetSet =
+      row.targetKind === "person"
+        ? editTargets.person
+        : row.targetKind === "team_season"
+          ? editTargets.team_season
+          : row.targetKind === "weekly_stat"
+            ? editTargets.weekly_stat
+            : row.targetKind === "matchup"
+              ? editTargets.matchup
+              : row.targetKind === "season_setting"
+                ? editTargets.season_setting
+                : editTargets.grouping;
+    if (!targetSet.has(row.targetId)) {
+      ledgerIssues.push({
+        editId: row.id,
+        field: row.field,
+        reason: "substantive_edit_target_missing",
+        targetId: row.targetId,
+        targetKind: row.targetKind,
+      });
+    }
+  }
+  drafts.push({
+    checkKey: "data_edit_ledger_completeness",
+    detail: {
+      checkedSubstantiveEdits: editRows.filter(
+        (entry) => entry.editClass === "substantive",
+      ).length,
+      issues: ledgerIssues,
+    },
+    season: null,
+    status: checkStatus(ledgerIssues),
+  });
+
   return drafts;
 }
 
@@ -2557,11 +2792,13 @@ function weeklyStatisticValues(fact: WeeklyFact) {
     matchupKind: fact.matchupKind,
     matchupId: fact.matchupId,
     opponentPersonId: fact.opponentPersonId,
+    periodStart: fact.periodStart,
     personId: fact.personId,
     pointsAgainst: fact.pointsAgainst,
     pointsFor: fact.pointsFor,
     result: fact.result,
     scoringPeriod: fact.scoringPeriod,
+    scoringPeriodSpan: fact.scoringPeriodSpan,
     season: fact.season,
     teamSeasonId: fact.teamSeasonId,
     weeklyRank: fact.weeklyRank,

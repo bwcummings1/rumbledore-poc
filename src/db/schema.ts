@@ -105,6 +105,9 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "identity_sanity",
   "no_silent_empty",
   "finalized_state_regression",
+  "grouping_season_coverage",
+  "matchup_span_sanity",
+  "data_edit_ledger_completeness",
 ]);
 
 export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [
@@ -116,6 +119,25 @@ export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [
 export const dataCorrectionAuditAction = pgEnum(
   "data_correction_audit_action",
   ["mark_reviewed", "rerun_integrity"],
+);
+
+export const leagueDataEditTargetKind = pgEnum("league_data_edit_target_kind", [
+  "person",
+  "team_season",
+  "weekly_stat",
+  "matchup",
+  "season_setting",
+  "grouping",
+]);
+
+export const leagueDataEditClass = pgEnum("league_data_edit_class", [
+  "cosmetic",
+  "substantive",
+]);
+
+export const leagueSeasonGroupingStatus = pgEnum(
+  "league_season_grouping_status",
+  ["proposed", "confirmed"],
 );
 
 export const onboardingCredentialStatus = pgEnum(
@@ -628,6 +650,8 @@ export const fantasyMatchups = pgTable(
     leagueProviderId: text("league_provider_id").notNull(),
     season: integer("season").notNull(),
     scoringPeriod: integer("scoring_period").notNull(),
+    periodStart: integer("period_start"),
+    scoringPeriodSpan: integer("scoring_period_span").notNull().default(1),
     kind: fantasyMatchupKind("kind").notNull().default("head_to_head"),
     homeTeamProviderId: text("home_team_provider_id").notNull(),
     awayTeamProviderId: text("away_team_provider_id").notNull(),
@@ -656,6 +680,10 @@ export const fantasyMatchups = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+    check(
+      "fantasy_matchups_scoring_period_span_positive",
+      sql`${table.scoringPeriodSpan} >= 1`,
+    ),
   ],
 );
 
@@ -722,6 +750,7 @@ export const leagueSeasonSettings = pgTable(
     provider: fantasyProvider("provider").notNull(),
     leagueProviderId: text("league_provider_id").notNull(),
     season: integer("season").notNull(),
+    matchupPeriodCount: integer("matchup_period_count").notNull().default(1),
     regularSeasonEndScoringPeriod: integer("regular_season_end_scoring_period"),
     playoffStartScoringPeriod: integer("playoff_start_scoring_period"),
     championshipScoringPeriod: integer("championship_scoring_period"),
@@ -755,6 +784,10 @@ export const leagueSeasonSettings = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+    check(
+      "league_season_settings_matchup_period_count_positive",
+      sql`${table.matchupPeriodCount} >= 1`,
+    ),
   ],
 );
 
@@ -1024,6 +1057,125 @@ export const dataCorrectionAuditLog = pgTable(
   ],
 );
 
+export const leagueDataEdits = pgTable(
+  "league_data_edits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    targetKind: leagueDataEditTargetKind("target_kind").notNull(),
+    targetId: uuid("target_id").notNull(),
+    field: text("field").notNull(),
+    beforeValue: jsonb("before_value").$type<unknown>(),
+    afterValue: jsonb("after_value").$type<unknown>(),
+    editClass: leagueDataEditClass("edit_class").notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("league_data_edits_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("league_data_edits_target_idx").on(
+      table.leagueId,
+      table.targetKind,
+      table.targetId,
+      table.createdAt,
+    ),
+    pgPolicy("league_data_edits_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export interface LeagueSeasonGroupingConfig {
+  format_type?: "traditional" | "best_ball" | string;
+  member_count_hint?: number;
+  notes?: string;
+  roster_format?: unknown;
+  scoring_format?: unknown;
+}
+
+export const leagueSeasonGroupings = pgTable(
+  "league_season_groupings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().default("era"),
+    name: text("name").notNull(),
+    ordinal: integer("ordinal").notNull().default(0),
+    config: jsonb("config")
+      .$type<LeagueSeasonGroupingConfig>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    status: leagueSeasonGroupingStatus("status").notNull().default("proposed"),
+    derivedFrom: jsonb("derived_from")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    confirmedByUserId: uuid("confirmed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("league_season_groupings_league_status_idx").on(
+      table.leagueId,
+      table.kind,
+      table.status,
+      table.ordinal,
+    ),
+    pgPolicy("league_season_groupings_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const leagueGroupingSeasons = pgTable(
+  "league_grouping_seasons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    groupingId: uuid("grouping_id")
+      .notNull()
+      .references(() => leagueSeasonGroupings.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+  },
+  (table) => [
+    uniqueIndex("league_grouping_seasons_grouping_season_unique").on(
+      table.leagueId,
+      table.groupingId,
+      table.season,
+    ),
+    index("league_grouping_seasons_league_season_idx").on(
+      table.leagueId,
+      table.season,
+    ),
+    pgPolicy("league_grouping_seasons_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 // ── Statistics, identity resolution, and record book (league-scoped) ───────
 
 export interface PersonOwnerHistoryEntry {
@@ -1207,6 +1359,8 @@ export const weeklyStatistics = pgTable(
       .references(() => fantasyMatchups.id, { onDelete: "cascade" }),
     season: integer("season").notNull(),
     scoringPeriod: integer("scoring_period").notNull(),
+    periodStart: integer("period_start"),
+    scoringPeriodSpan: integer("scoring_period_span").notNull().default(1),
     pointsFor: numeric("points_for", {
       mode: "number",
       precision: 12,
@@ -1249,6 +1403,10 @@ export const weeklyStatistics = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+    check(
+      "weekly_statistics_scoring_period_span_positive",
+      sql`${table.scoringPeriodSpan} >= 1`,
+    ),
   ],
 );
 

@@ -18,6 +18,9 @@ import {
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
+  leagueDataEdits,
+  leagueGroupingSeasons,
+  leagueSeasonGroupings,
   leagueSeasonSettings,
   leagues,
   loreClaims,
@@ -33,6 +36,12 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import {
+  applyLeagueDataEdit,
+  confirmLeagueSeasonGrouping,
+  listUnifiedDataLedger,
+  proposeLeagueSeasonGroupings,
+} from "./curation";
 import {
   mergePersons,
   recomputeChangedMatchupStatistics,
@@ -591,6 +600,21 @@ async function selectStatsRows(leagueId: string) {
       .select()
       .from(dataCorrectionAuditLog)
       .where(eq(dataCorrectionAuditLog.leagueId, leagueId));
+    const dataEditRows = await tx
+      .select()
+      .from(leagueDataEdits)
+      .where(eq(leagueDataEdits.leagueId, leagueId))
+      .orderBy(asc(leagueDataEdits.createdAt));
+    const groupingRows = await tx
+      .select()
+      .from(leagueSeasonGroupings)
+      .where(eq(leagueSeasonGroupings.leagueId, leagueId))
+      .orderBy(asc(leagueSeasonGroupings.ordinal));
+    const groupingSeasonRows = await tx
+      .select()
+      .from(leagueGroupingSeasons)
+      .where(eq(leagueGroupingSeasons.leagueId, leagueId))
+      .orderBy(asc(leagueGroupingSeasons.season));
 
     return {
       auditRows,
@@ -598,6 +622,9 @@ async function selectStatsRows(leagueId: string) {
       calculationRows,
       championshipRows,
       dataCorrectionAuditRows,
+      dataEditRows,
+      groupingRows,
+      groupingSeasonRows,
       h2hRows,
       integrityRows,
       mappingRows,
@@ -865,6 +892,337 @@ describe("recomputeLeagueStatistics", () => {
       length: 1,
       personId: drew2024.personId,
     });
+  });
+
+  it("applies general person edits once, records them in the unified ledger, and refreshes scoped records", async () => {
+    const { leagueId } = await seedStatsLeague("curation-person");
+    const actorUserId = await seedActor("curation-person-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const alex = before.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    if (!alex) {
+      throw new Error("expected Alex mapping");
+    }
+    const beforeWeeklyPersonRows = before.weeklyRows.filter(
+      (row) => row.personId === alex.personId,
+    );
+
+    const edit = await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "cosmetic",
+      field: "canonical_name",
+      leagueId,
+      reason: "owner name cleanup",
+      targetId: alex.personId,
+      targetKind: "person",
+      value: "Alex Corrected",
+    });
+
+    expect(edit).toMatchObject({
+      afterValue: "Alex Corrected",
+      beforeValue: "Alex Manager",
+    });
+    expect(edit.recompute.records).toBeGreaterThanOrEqual(0);
+
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.personRows.find((row) => row.id === alex.personId)?.canonicalName,
+    ).toBe("Alex Corrected");
+    expect(
+      after.weeklyRows.filter((row) => row.personId === alex.personId),
+    ).toHaveLength(beforeWeeklyPersonRows.length);
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        actorUserId,
+        afterValue: "Alex Corrected",
+        beforeValue: "Alex Manager",
+        editClass: "cosmetic",
+        field: "canonical_name",
+        targetId: alex.personId,
+        targetKind: "person",
+      }),
+    );
+    expect(after.calculationRows).toContainEqual(
+      expect.objectContaining({
+        calculationType: "records",
+        status: "completed",
+      }),
+    );
+
+    const ledger = await listUnifiedDataLedger(handle.db, {
+      leagueId,
+      targetId: alex.personId,
+      targetKind: "person",
+    });
+    expect(ledger[0]).toMatchObject({
+      afterValue: "Alex Corrected",
+      beforeValue: "Alex Manager",
+      source: "league_data_edit",
+      targetId: alex.personId,
+      targetKind: "person",
+    });
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(
+      catalog.allTimeStandings.find((row) => row.personId === alex.personId)
+        ?.personName,
+    ).toBe("Alex Corrected");
+  });
+
+  it("keeps league data edits append-only and RLS policy-scoped", async () => {
+    const leagueA = await seedStatsLeague("curation-append-a");
+    const actorUserId = await seedActor("curation-append-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId: leagueA.leagueId });
+    const rowsA = await selectStatsRows(leagueA.leagueId);
+    const targetPerson = rowsA.personRows[0];
+    if (!targetPerson) {
+      throw new Error("expected target person");
+    }
+    const edit = await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "cosmetic",
+      field: "canonical_name",
+      leagueId: leagueA.leagueId,
+      targetId: targetPerson.id,
+      targetKind: "person",
+      value: "Append Only Name",
+    });
+
+    await expect(
+      withLeagueContext(handle.db, leagueA.leagueId, (tx) =>
+        tx
+          .update(leagueDataEdits)
+          .set({ reason: "mutated" })
+          .where(eq(leagueDataEdits.id, edit.editId)),
+      ),
+    ).rejects.toThrow(/league_data_edits|append-only/);
+    await expect(
+      withLeagueContext(handle.db, leagueA.leagueId, (tx) =>
+        tx.delete(leagueDataEdits).where(eq(leagueDataEdits.id, edit.editId)),
+      ),
+    ).rejects.toThrow(/league_data_edits|append-only/);
+
+    const rlsRows = await handle.pool.query<{
+      relforcerowsecurity: boolean;
+      relname: string;
+      relrowsecurity: boolean;
+    }>(
+      `select relname, relrowsecurity, relforcerowsecurity
+         from pg_class
+        where relname = any($1::text[])
+        order by relname`,
+      [
+        [
+          "league_data_edits",
+          "league_grouping_seasons",
+          "league_season_groupings",
+        ],
+      ],
+    );
+    expect(rlsRows.rows).toEqual([
+      {
+        relforcerowsecurity: true,
+        relname: "league_data_edits",
+        relrowsecurity: true,
+      },
+      {
+        relforcerowsecurity: true,
+        relname: "league_grouping_seasons",
+        relrowsecurity: true,
+      },
+      {
+        relforcerowsecurity: true,
+        relname: "league_season_groupings",
+        relrowsecurity: true,
+      },
+    ]);
+    const policyRows = await handle.pool.query<{
+      policyname: string;
+      qual: string;
+      tablename: string;
+      with_check: string;
+    }>(
+      `select tablename, policyname, qual, with_check
+         from pg_policies
+        where tablename = any($1::text[])
+        order by tablename`,
+      [
+        [
+          "league_data_edits",
+          "league_grouping_seasons",
+          "league_season_groupings",
+        ],
+      ],
+    );
+    expect(policyRows.rows).toHaveLength(3);
+    for (const row of policyRows.rows) {
+      expect(row.qual).toContain("current_league_id()");
+      expect(row.with_check).toContain("current_league_id()");
+    }
+  });
+
+  it("proposes and confirms optional season groupings, then lenses records by the confirmed season set", async () => {
+    const { leagueId } = await seedStatsLeague("curation-groupings");
+    const actorUserId = await seedActor("curation-groupings-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const blair2024 = before.mappingRows.find(
+      (row) => row.providerTeamId === "2" && row.season === 2024,
+    );
+    if (!blair2024) {
+      throw new Error("expected Blair 2024 mapping");
+    }
+
+    const proposals = await proposeLeagueSeasonGroupings(handle.db, {
+      leagueId,
+    });
+    expect(proposals.map((proposal) => proposal.status)).toEqual([
+      "proposed",
+      "proposed",
+    ]);
+    expect(proposals.map((proposal) => proposal.seasons)).toEqual([
+      [2024],
+      [2025],
+    ]);
+
+    const secondEra = proposals.find((proposal) =>
+      proposal.seasons.includes(2025),
+    );
+    if (!secondEra) {
+      throw new Error("expected second proposed era");
+    }
+    const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
+      actorUserId,
+      groupingId: secondEra.id,
+      leagueId,
+      name: "Split Era",
+      reason: "confirmed owner turnover boundary",
+      seasons: [2025],
+    });
+    expect(confirmed).toMatchObject({
+      name: "Split Era",
+      seasons: [2025],
+      status: "confirmed",
+    });
+
+    const after = await selectStatsRows(leagueId);
+    expect(after.groupingRows).toHaveLength(2);
+    expect(after.groupingSeasonRows).toContainEqual(
+      expect.objectContaining({
+        groupingId: secondEra.id,
+        season: 2025,
+      }),
+    );
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        field: "grouping_confirmation",
+        targetId: secondEra.id,
+        targetKind: "grouping",
+      }),
+    );
+
+    const lensCatalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      lens: { groupingId: secondEra.id, segment: "both" },
+      limit: 10,
+    });
+    expect(
+      lensCatalog.allTimeStandings.some(
+        (row) => row.personId === blair2024.personId,
+      ),
+    ).toBe(false);
+    expect(lensCatalog.highLow.highestScores[0]).toMatchObject({
+      season: 2025,
+      value: 120,
+    });
+  });
+
+  it("normalizes multi-week matchup spans for averages while preserving full W/L and totals", async () => {
+    const { leagueId } = await seedStatsLeague("curation-span");
+    const actorUserId = await seedActor("curation-span-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const casey2025 = before.mappingRows.find(
+      (row) => row.providerTeamId === "2" && row.season === 2025,
+    );
+    if (!casey2025) {
+      throw new Error("expected Casey 2025 mapping");
+    }
+
+    let matchupId = "";
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [matchup] = await tx
+        .select({ id: fantasyMatchups.id })
+        .from(fantasyMatchups)
+        .where(
+          and(
+            eq(fantasyMatchups.leagueId, leagueId),
+            eq(fantasyMatchups.providerMatchupId, "2025-2-b"),
+          ),
+        )
+        .limit(1);
+      matchupId = matchup?.id ?? "";
+    });
+    if (!matchupId) {
+      throw new Error("expected target matchup");
+    }
+
+    await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "substantive",
+      field: "scoring_period_span",
+      leagueId,
+      reason: "two-week final imported as one matchup",
+      targetId: matchupId,
+      targetKind: "matchup",
+      value: 2,
+    });
+
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.weeklyRows.filter((row) => row.matchupId === matchupId),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scoringPeriodSpan: 2 }),
+        expect.objectContaining({ scoringPeriodSpan: 2 }),
+      ]),
+    );
+    expect(
+      after.seasonRows.find(
+        (row) => row.personId === casey2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      avgPointsFor: 70,
+      losses: 1,
+      pointsFor: 210,
+      wins: 1,
+    });
+    expect(after.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "matchup_span_sanity",
+        season: 2025,
+        status: "pass",
+      }),
+    );
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        afterValue: 2,
+        beforeValue: 1,
+        editClass: "substantive",
+        field: "scoring_period_span",
+        targetId: matchupId,
+        targetKind: "matchup",
+      }),
+    );
   });
 
   it("materializes keeper milestone aggregates from trusted roster signals", async () => {

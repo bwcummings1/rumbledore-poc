@@ -7,6 +7,7 @@ import {
   fantasyRosterEntries,
   headToHeadRecords,
   identityMappings,
+  leagueGroupingSeasons,
   leagueSeasonSettings,
   persons,
   recordBookAllTimeStandings,
@@ -260,9 +261,19 @@ interface AllTimeStandingAccumulator {
   pointsFor: number;
   regularSeasonTitles: number;
   runnerUps: number;
+  scoringPeriods: number;
   seasons: SeasonStatisticsRow[];
   ties: number;
   wins: number;
+}
+
+export type RecordBookSegment = "both" | "playoff" | "regular";
+
+export interface RecordBookLens {
+  groupingId?: string | null;
+  scope?: "all";
+  seasonSet?: readonly number[];
+  segment?: RecordBookSegment;
 }
 
 interface MatchupCombinedAccumulator {
@@ -294,6 +305,18 @@ interface ChampionshipAccumulator {
 function round(value: number, places = 4): number {
   const factor = 10 ** places;
   return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[middle] ?? 0;
+  }
+  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
 function compareStable(left: string, right: string): number {
@@ -511,6 +534,7 @@ function buildAllTimeStandings(
       pointsFor: 0,
       regularSeasonTitles: 0,
       runnerUps: 0,
+      scoringPeriods: 0,
       seasons: [],
       ties: 0,
       wins: 0,
@@ -526,6 +550,10 @@ function buildAllTimeStandings(
     current.regularSeasonTitles +=
       championshipRows.length === 0 && row.playoffSeed === 1 ? 1 : 0;
     current.runnerUps += row.finalPlacement === "runner_up" ? 1 : 0;
+    current.scoringPeriods +=
+      row.avgPointsFor > 0
+        ? row.pointsFor / row.avgPointsFor
+        : row.wins + row.losses + row.ties;
     current.seasons.push(row);
     current.ties += row.ties;
     current.wins += row.wins;
@@ -540,8 +568,13 @@ function buildAllTimeStandings(
       const worstSeason = [...row.seasons].sort(compareWorstSeason)[0] ?? null;
       return {
         avgPointsAgainst:
-          row.games > 0 ? round(row.pointsAgainst / row.games, 4) : 0,
-        avgPointsFor: row.games > 0 ? round(row.pointsFor / row.games, 4) : 0,
+          row.scoringPeriods > 0
+            ? round(row.pointsAgainst / row.scoringPeriods, 4)
+            : 0,
+        avgPointsFor:
+          row.scoringPeriods > 0
+            ? round(row.pointsFor / row.scoringPeriods, 4)
+            : 0,
         bestSeason: bestSeason ? seasonSummary(bestSeason) : null,
         careerLuck: row.careerLuck,
         championships: row.championships,
@@ -630,6 +663,140 @@ function materializedAllTimeStandings(
         compareStable(left.personName, right.personName) ||
         compareStable(left.personId, right.personId),
     );
+}
+
+function isDefaultLens(lens?: RecordBookLens): boolean {
+  return (
+    !lens ||
+    (!lens.groupingId &&
+      (!lens.seasonSet || lens.seasonSet.length === 0) &&
+      (lens.segment === undefined || lens.segment === "both"))
+  );
+}
+
+function lensSeasonSet(lens?: RecordBookLens): Set<number> | null {
+  if (!lens?.seasonSet || lens.seasonSet.length === 0) {
+    return null;
+  }
+  return new Set(lens.seasonSet);
+}
+
+function filterWeeklyRowsByLens(
+  rows: readonly WeeklyStatisticsRow[],
+  lens?: RecordBookLens,
+): WeeklyStatisticsRow[] {
+  const seasons = lensSeasonSet(lens);
+  const segment = lens?.segment ?? "both";
+  return rows.filter((row) => {
+    if (seasons && !seasons.has(row.season)) {
+      return false;
+    }
+    if (segment === "regular" && row.isPlayoff) {
+      return false;
+    }
+    if (segment === "playoff" && !row.isPlayoff) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function filterSeasonRowsByLens(
+  rows: readonly SeasonStatisticsRow[],
+  lens?: RecordBookLens,
+): SeasonStatisticsRow[] {
+  const seasons = lensSeasonSet(lens);
+  if (!seasons) {
+    return [...rows];
+  }
+  return rows.filter((row) => seasons.has(row.season));
+}
+
+function filterChampionshipRowsByLens(
+  rows: readonly ChampionshipRecordRow[],
+  lens?: RecordBookLens,
+): ChampionshipRecordRow[] {
+  const seasons = lensSeasonSet(lens);
+  if (!seasons) {
+    return [...rows];
+  }
+  return rows.filter((row) => seasons.has(row.season));
+}
+
+function derivedSeasonRowsFromWeeklyRows(
+  rows: readonly WeeklyStatisticsRow[],
+): SeasonStatisticsRow[] {
+  const grouped = new Map<string, WeeklyStatisticsRow[]>();
+  for (const row of rows) {
+    const key = `${row.personId}:${row.season}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), row]);
+  }
+  const now = new Date(0);
+  const seasonRows: SeasonStatisticsRow[] = [];
+  for (const [key, groupedRows] of grouped) {
+    const [personId, seasonRaw] = key.split(":");
+    const season = Number(seasonRaw);
+    const wins = groupedRows.filter((row) => row.result === "win").length;
+    const losses = groupedRows.filter((row) => row.result === "loss").length;
+    const ties = groupedRows.filter((row) => row.result === "tie").length;
+    const pointsFor = round(
+      groupedRows.reduce((sum, row) => sum + row.pointsFor, 0),
+      4,
+    );
+    const pointsAgainst = round(
+      groupedRows.reduce((sum, row) => sum + row.pointsAgainst, 0),
+      4,
+    );
+    const scoringPeriods = groupedRows.reduce(
+      (sum, row) => sum + Math.max(1, row.scoringPeriodSpan),
+      0,
+    );
+    const scoresFor = groupedRows.map((row) => row.pointsFor);
+    const scoresAgainst = groupedRows.map((row) => row.pointsAgainst);
+    const games = wins + losses + ties;
+    const positiveScores = scoresFor.filter((score) => score > 0);
+    seasonRows.push({
+      allPlayLosses: losses,
+      allPlayTies: ties,
+      allPlayWins: wins,
+      avgPointsAgainst:
+        scoringPeriods > 0 ? round(pointsAgainst / scoringPeriods, 4) : 0,
+      avgPointsFor:
+        scoringPeriods > 0 ? round(pointsFor / scoringPeriods, 4) : 0,
+      createdAt: now,
+      currentStreakLength: 0,
+      currentStreakType: null,
+      divisionWinner: false,
+      expectedWins: wins,
+      finalPlacement: "out",
+      finalRank: 0,
+      highestScore: scoresFor.length > 0 ? round(Math.max(...scoresFor), 4) : 0,
+      id: `lens-season-${season}-${personId}`,
+      leagueId: groupedRows[0]?.leagueId ?? "",
+      longestLossStreak: 0,
+      longestWinStreak: 0,
+      losses,
+      lowestScore:
+        positiveScores.length > 0 ? round(Math.min(...positiveScores), 4) : 0,
+      luck: 0,
+      madeChampionship: false,
+      madePlayoffs: groupedRows.some((row) => row.isPlayoff),
+      medianPointsAgainst: round(median(scoresAgainst), 4),
+      medianPointsFor: round(median(scoresFor), 4),
+      personId,
+      playoffSeed: null,
+      pointDifferential: round(pointsFor - pointsAgainst, 4),
+      pointsAgainst,
+      pointsFor,
+      scoringStdDev: 0,
+      season,
+      ties,
+      updatedAt: now,
+      winPercentage: games > 0 ? round((wins + ties * 0.5) / games, 4) : 0,
+      wins,
+    });
+  }
+  return seasonRows;
 }
 
 function bestStreaks(
@@ -1633,6 +1800,7 @@ export function buildRecordsCatalog(input: {
   allTimeStandingRows?: readonly RecordBookAllTimeStandingRow[];
   championshipRows?: readonly ChampionshipRecordRow[];
   headToHeadRows?: readonly HeadToHeadRecordRow[];
+  lens?: RecordBookLens;
   limit?: number;
   milestoneRows?: readonly RecordBookMilestoneRow[];
   personNames: ReadonlyMap<string, string>;
@@ -1640,24 +1808,42 @@ export function buildRecordsCatalog(input: {
   weeklyRows: readonly WeeklyStatisticsRow[];
 }): RecordsCatalog {
   const limit = input.limit ?? DEFAULT_CATALOG_LIMIT;
-  const headToHeadRows = input.weeklyRows.filter(
+  const defaultLens = isDefaultLens(input.lens);
+  const weeklyRows = filterWeeklyRowsByLens(input.weeklyRows, input.lens);
+  const seasonRows =
+    (input.lens?.segment ?? "both") === "both"
+      ? filterSeasonRowsByLens(input.seasonRows, input.lens)
+      : derivedSeasonRowsFromWeeklyRows(weeklyRows);
+  const championshipRows = filterChampionshipRowsByLens(
+    input.championshipRows ?? [],
+    input.lens,
+  );
+  const headToHeadRecordRows =
+    input.lens?.seasonSet && input.lens.seasonSet.length > 0
+      ? (input.headToHeadRows ?? []).filter(
+          (row) =>
+            row.season === 0 || input.lens?.seasonSet?.includes(row.season),
+        )
+      : (input.headToHeadRows ?? []);
+  const headToHeadRows = weeklyRows.filter(
     (row) => row.matchupKind === "head_to_head",
   );
   const winners = headToHeadRows.filter((row) => row.result === "win");
-  const losers = input.weeklyRows.filter((row) => row.result === "loss");
-  const scoredRows = input.weeklyRows.filter((row) => row.pointsFor > 0);
+  const losers = weeklyRows.filter((row) => row.result === "loss");
+  const scoredRows = weeklyRows.filter((row) => row.pointsFor > 0);
 
   return {
-    allTimeStandings: input.allTimeStandingRows
-      ? materializedAllTimeStandings(
-          input.allTimeStandingRows,
-          input.personNames,
-        )
-      : buildAllTimeStandings(
-          input.seasonRows,
-          input.personNames,
-          input.championshipRows,
-        ),
+    allTimeStandings:
+      defaultLens && input.allTimeStandingRows
+        ? materializedAllTimeStandings(
+            input.allTimeStandingRows,
+            input.personNames,
+          )
+        : buildAllTimeStandings(
+            seasonRows,
+            input.personNames,
+            championshipRows,
+          ),
     blowouts: {
       biggest: blowoutTop(
         winners,
@@ -1675,15 +1861,12 @@ export function buildRecordsCatalog(input: {
       ),
     },
     championships: buildChampionshipCatalog({
-      championshipRows: input.championshipRows ?? [],
+      championshipRows,
       personNames: input.personNames,
-      seasonRows: input.seasonRows,
-      weeklyRows: input.weeklyRows,
+      seasonRows,
+      weeklyRows,
     }),
-    headToHead: buildHeadToHeadCatalog(
-      input.headToHeadRows ?? [],
-      input.personNames,
-    ),
+    headToHead: buildHeadToHeadCatalog(headToHeadRecordRows, input.personNames),
     highLow: {
       bestScoresInLosses: weeklyTop(
         losers,
@@ -1698,7 +1881,7 @@ export function buildRecordsCatalog(input: {
         limit,
       ),
       highestScores: weeklyTop(
-        input.weeklyRows,
+        weeklyRows,
         "highest_single_week_score",
         input.personNames,
         "max",
@@ -1727,25 +1910,15 @@ export function buildRecordsCatalog(input: {
       ),
     },
     streaks: {
-      longestLosses: bestStreaks(
-        input.weeklyRows,
-        input.personNames,
-        "loss",
-        limit,
-      ),
-      longestWins: bestStreaks(
-        input.weeklyRows,
-        input.personNames,
-        "win",
-        limit,
-      ),
+      longestLosses: bestStreaks(weeklyRows, input.personNames, "loss", limit),
+      longestWins: bestStreaks(weeklyRows, input.personNames, "win", limit),
     },
   };
 }
 
 export async function getLeagueRecordsCatalog(
   db: Db,
-  input: { leagueId: string; limit?: number },
+  input: { leagueId: string; lens?: RecordBookLens; limit?: number },
 ): Promise<RecordsCatalog> {
   return withLeagueContext(db, input.leagueId, async (tx) => {
     const unresolvedFailures = await tx
@@ -1819,11 +1992,26 @@ export async function getLeagueRecordsCatalog(
         asc(weeklyStatistics.matchupId),
         asc(weeklyStatistics.personId),
       );
+    const lens = { ...(input.lens ?? {}) };
+    if (lens.groupingId && (!lens.seasonSet || lens.seasonSet.length === 0)) {
+      const groupingSeasonRows = await tx
+        .select({ season: leagueGroupingSeasons.season })
+        .from(leagueGroupingSeasons)
+        .where(
+          and(
+            eq(leagueGroupingSeasons.leagueId, input.leagueId),
+            eq(leagueGroupingSeasons.groupingId, lens.groupingId),
+          ),
+        )
+        .orderBy(asc(leagueGroupingSeasons.season));
+      lens.seasonSet = groupingSeasonRows.map((row) => row.season);
+    }
 
     return buildRecordsCatalog({
       allTimeStandingRows,
       championshipRows,
       headToHeadRows,
+      lens,
       limit: input.limit,
       milestoneRows,
       personNames,

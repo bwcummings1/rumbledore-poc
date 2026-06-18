@@ -49,6 +49,8 @@ function weeklyRow(
         | "isPlayoff"
         | "isTopScorer"
         | "matchupKind"
+        | "periodStart"
+        | "scoringPeriodSpan"
         | "weeklyRank"
       >
     >,
@@ -65,11 +67,13 @@ function weeklyRow(
     matchupId: input.matchupId,
     matchupKind: input.matchupKind ?? "head_to_head",
     opponentPersonId: input.opponentPersonId,
+    periodStart: input.periodStart ?? input.scoringPeriod,
     personId: input.personId,
     pointsAgainst: input.pointsAgainst,
     pointsFor: input.pointsFor,
     result: input.result,
     scoringPeriod: input.scoringPeriod,
+    scoringPeriodSpan: input.scoringPeriodSpan ?? 1,
     season: input.season,
     teamSeasonId: `team-season-${input.season}-${input.personId}`,
     updatedAt: NOW,
@@ -583,6 +587,7 @@ function buildSeededCatalog() {
   ];
 
   return {
+    championshipRows,
     catalog: buildRecordsCatalog({
       championshipRows,
       headToHeadRows,
@@ -592,7 +597,10 @@ function buildSeededCatalog() {
       seasonRows,
       weeklyRows,
     }),
+    headToHeadRows,
+    milestoneRows,
     seasonRows,
+    weeklyRows,
   };
 }
 
@@ -842,5 +850,81 @@ describe("buildRecordsCatalog", () => {
         value: 140,
       }),
     ]);
+  });
+
+  it("applies parameterized segment and season-set lenses", () => {
+    const {
+      championshipRows,
+      headToHeadRows,
+      milestoneRows,
+      seasonRows,
+      weeklyRows,
+    } = buildSeededCatalog();
+
+    const playoffCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { segment: "playoff" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows,
+    });
+    expect(playoffCatalog.highLow.highestScores[0]).toMatchObject({
+      season: 2024,
+      value: 140,
+    });
+    expect(playoffCatalog.highLow.highestScores).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({
+          matchupId: "matchup-2024-1-alpha-beta",
+        }),
+      ]),
+    );
+    expect(
+      playoffCatalog.allTimeStandings.find(
+        (row) => row.personId === PEOPLE.alpha,
+      ),
+    ).toMatchObject({
+      games: 2,
+      pointsFor: 270,
+    });
+
+    const regularCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { segment: "regular" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows,
+    });
+    expect(regularCatalog.highLow.highestScores[0]).toMatchObject({
+      season: 2024,
+      value: 120,
+    });
+
+    const seasonSetCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { seasonSet: [2025], segment: "both" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows,
+    });
+    expect(seasonSetCatalog.championships.seasons).toHaveLength(1);
+    expect(seasonSetCatalog.championships.seasons[0]).toMatchObject({
+      season: 2025,
+    });
+    expect(
+      seasonSetCatalog.allTimeStandings.find(
+        (row) => row.personId === PEOPLE.gamma,
+      ),
+    ).toMatchObject({
+      losses: 2,
+      pointsFor: 170,
+      seasons: 1,
+    });
   });
 });
