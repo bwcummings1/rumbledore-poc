@@ -13,6 +13,18 @@
 # Usage: ./loop.sh [build|plan|harden] [hard_cap]      Stop: touch ~/rumbledore-loop.STOP
 set -uo pipefail
 
+# --- RETIRED 2026-06-18 ----------------------------------------------------------
+# The autonomous Ralph loop is retired. The build model is now ORCHESTRATION.md
+# (orchestrated tracks: a coordinator agent + file-disjoint workstream agents in git
+# worktrees; the orchestrator owns all merges to main). This script is kept only for
+# historical reference and refuses to run unless explicitly overridden.
+if [ "${ALLOW_RETIRED_LOOP:-}" != "1" ]; then
+  echo "loop.sh is RETIRED — see ORCHESTRATION.md for the current build model." >&2
+  echo "(Archival override: ALLOW_RETIRED_LOOP=1 ./loop.sh)" >&2
+  exit 1
+fi
+# ---------------------------------------------------------------------------------
+
 # --- account pinning: Claude account is set by CONFIG DIR, not HOME (see docs/HISTORY.md) ---
 export HOME=/home/ubuntu
 export CLAUDE_CONFIG_DIR=/home/ubuntu/.claude      # pins Fable to bxbxbxbxbxr (NOT bwcummings1)

@@ -3,6 +3,8 @@
 Keep this lean and operational. Vision/architecture/state live in `docs/PROGRESS.md` and `specs/`.
 Status notes do NOT go here — they go in `IMPLEMENTATION_PLAN.md`.
 
+> **Operating model (2026-06-18): `ORCHESTRATION.md` is authoritative.** The autonomous Ralph loop is **retired** (`loop.sh` is guarded off; `PROMPT_build.md` / `PROMPT_harden.md` / `PROMPT_plan.md` and the "pick the next `IMPLEMENTATION_PLAN.md` task and loop" model are **historical** — do not follow them). You are either the **orchestrator** or a **workstream agent**: read `ORCHESTRATION.md` for your role, your file-ownership boundary, and the per-round commit→push→(orchestrator-)merge protocol. Everything below (gates, hard rules, conventions, gotchas) still applies.
+
 ## What this is
 Sandboxed per-league fantasy-football companion (ESPN now; Sleeper/Yahoo later): per-league home, AI blogger,
 paper betting with a central inter-league arena, league records. Mobile-first PWA. See `docs/PROGRESS.md` §1.
@@ -35,8 +37,9 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 - "Don't assume not implemented" — search the codebase before building something.
 
 ## Git
-- Work on `rebuild/foundation` (or a child branch). Commit small, descriptive, often. Push the current branch.
-- NEVER force-push. NEVER touch `main` or `v0.62`.
+- **Workstream agents:** work in your own git worktree on your `ws/<track>-<spec>` branch (see `ORCHESTRATION.md`). Commit small/descriptive/often; push **your branch** at each completion round. Do **NOT** merge to `main`.
+- **The orchestrator owns all merges to `main`** (the live/integration branch) after review + a full gate run.
+- NEVER force-push. Workstream agents never commit or push to `main` directly. (`v0.62` etc. are read-only history.)
 
 ## Mining the old code (reference only; do not copy patterns blindly)
 `git show v0.62:<path>` — e.g. `prisma/schema.prisma`, `lib/crypto/encryption.ts`, `lib/identity/*`, ESPN client headers.
@@ -82,11 +85,10 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - `ubs` false positives (e.g. fixture "keys" in tests): suppress with inline `// ubs:ignore — reason` after verifying it's not real. EXCEPTION: the "secret compared with ==/!=" checker strips comments before honoring `ubs:ignore` — restructure the code instead (switch/truthiness instead of `==`/`!=`).
 - Live paid-provider smoke uses `.env.local` keys but may need the local force-mock flags overridden: source `.env.local`, set `MOCK_ANTHROPIC=false MOCK_VOYAGE=false MOCK_TAVILY=false MOCK_ODDS=false MOCK_SPORTSDATAIO=false`, then run `pnpm test:live-smoke`.
 
-## Runtime note (for humans starting the loop)
-Claude's account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME` — a tmux session that
+## Runtime note (accounts & launchers)
+An agent's account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME` — a tmux session that
 only sets `HOME` keeps whatever account the inherited config dir points to. Use the verified launchers in `~/.local/bin`:
-`cbx` (Claude `bxbxbxbxbxr` — build account), `cbw` (Claude `bwcummings1` — reserved for other agents), `cx` (Codex).
-`loop.sh` pins Fable to `bxbxbxbxbxr` via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`.
-Harness: `./loop.sh build` = Scope → auto value-ranked Harden ×10 → stop (hard-cap backstop); `./loop.sh harden 10` for a
-bounded hardening run. Stop: `touch ~/rumbledore-loop.STOP`. Monitor: `tail -f ~/rumbledore-loop-logs/STATUS.log`.
-Full trajectory + review: `docs/HISTORY.md`.
+`cbx` (Claude `bxbxbxbxbxr`), `cbw` (Claude `bwcummings1` — reserved for other agents), `cx` (Codex). Assign each
+**concurrent** agent its own account so parallel tracks don't share a 5-hour limit (see `docs/HISTORY.md §3`).
+**The build harness is now `ORCHESTRATION.md`, not the loop.** `loop.sh` is retired/guarded; worktree + tmux setup, the
+per-round protocol, and the orchestrator's merge duties live in `ORCHESTRATION.md`. Full trajectory: `docs/HISTORY.md`.

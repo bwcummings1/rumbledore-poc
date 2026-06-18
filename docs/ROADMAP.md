@@ -2,6 +2,8 @@
 
 The durable phase plan toward the North Star (`docs/NORTH-STAR.md`). Disposable per-phase backlogs live in `IMPLEMENTATION_PLAN.md`; this file is the stable map of what each phase is and what still remains. Timeline anchors: **~1 month to football buzz, ~3 months to the season** (season opens ~Sept 2026; this was written in the June 2026 offseason).
 
+> **Status (2026-06-18) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3 and the Phase 5 **UI/UX overhaul** (the AUSPEX design language, incl. the pass-2 refinements) are **done and on `main`**. The only outstanding *roadmap* items are deliberately deferred: **real paid-API keys/capture** (Phase 4) and **Stripe billing** (Phase 6). The project is now in **targeted-increment mode** on a functionally- and visually-complete app; the next increment (data-curation/eras/ledger, News/Arena as self-contained environments, the ambient agent/WizKit tier, the general↔personal wire toggle) is **specified in `specs/36`–`41`**, sequenced and run per **`ORCHESTRATION.md`** (orchestrated tracks; the Ralph loop is retired). Phase labels marked "current" below are historical.
+
 The work splits along one line: **🤖 loop-buildable** (functional, fully mockable — the autonomous Ralph loop can build it) vs **🤝 human-paired** (needs the user and/or real API keys — voice, design, real integrations).
 
 ---
@@ -13,7 +15,7 @@ The work splits along one line: **🤖 loop-buildable** (functional, fully mocka
 
 ---
 
-## 🤖 Phase 3 — Live & Connected  *(current; loop-buildable, all-mocked)*
+## ✅ Phase 3 — Live & Connected  *(delivered — see Status note above)*
 The last big **functional** layer — turn a one-time import into a living feed. Specs `19`–`24`.
 - **Always-on ingestion & freshness** (`19`) — scheduled adaptive-cadence polling that keeps every connected league current and future-season, idempotent, reconnect-aware. *(The "keep capturing going forward" engine — see the onboarding discussion below.)*
 - **Realtime & notifications** (`20`) — Supabase Realtime + Web Push end-to-end: scores, settlements, content drops, lore-vote outcomes, arena swings.
@@ -22,7 +24,7 @@ The last big **functional** layer — turn a one-time import into a living feed.
 - **Records & history surfaces** (`23`) — all-time records, streaks, head-to-head, championships from the ~10-yr history. **Real data viewable now in the offseason.**
 - **Mobile PWA shell** (`24`) — installable, shareable, snappy app-shell (functional, not the visual overhaul).
 
-→ After Phase 3 the product is **functionally whole**: data flows live, it feels alive — but it's still mock-connected and visually unfinished.
+→ Phase 3 made the product **functionally whole**, and the Phase 5 UI/UX overhaul made it **visually complete** (AUSPEX). It remains mock-connected by design until the deferred real-key work (Phase 4).
 
 ---
 

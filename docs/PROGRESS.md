@@ -1,13 +1,13 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-16 — **Audit hardening Scope complete**; fixed review findings are reconciled below, with only hardening Icebox follow-ups left outside Scope.
+Keep it current. Last updated: 2026-06-18 — **Phases delivered + the AUSPEX UI overhaul (incl. pass-2 refinements) are merged to `main`.** Now in targeted-increment planning: data-curation/eras/ledger, News/Arena as self-contained environments, the ambient agent/WizKit tier, and the general↔personal wire toggle (new specs `36+`).
 
 ---
 
 ## 0. TL;DR for whoever picks this up
-- We are doing a **clean, first-principles rebuild** of Rumbledore on branch **`rebuild/foundation`**.
-- Execution model: **Ralph loop** (autonomous agents in tmux) — see `docs/methodology` below + `AGENTS.md` + `PROMPT_build.md`.
+- The clean, first-principles rebuild is **delivered**; the live/integration branch is now **`main`** (it carries the full build + the AUSPEX UI overhaul). `rebuild/foundation` was the autonomous-build branch (historical).
+- The autonomous **Ralph loop** completed its run (`.loop/COMPLETE`) and is idle. The next increment is **human-directed**; the execution model (orchestrated parallel workstream agents vs. the loop) is being decided — see the next-increment plan + new specs (`36+`).
 - **Account routing:** the build runs on `bxbxbxbxbxr`, but the Claude account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME` — `loop.sh` pins it via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`. Use launchers `cbx`/`cbw`/`cx`. Never run heavy work on `bwcummings1` (other agents + shared 5h limit). See `docs/HISTORY.md §3`.
 - ESPN ingestion is **proven working** on a real league (95050). Creds are in gitignored `.env.local`.
 - Quality gates are **ON** from day one (typecheck, lint, test, build, `ubs`). Never disable them.

@@ -1,7 +1,7 @@
 # Rumbledore — Project History & Trajectory
 
 > A reference for *how this project got here*: what existed before, the decision to rebuild, the methodology,
-> the autonomous build, and the current state. Technically detailed and accurate as of **2026-06-16**.
+> the autonomous build, and the current state. Technically detailed and accurate as of **2026-06-18**.
 > For current architecture/state see `docs/PROGRESS.md`; for conventions see `AGENTS.md`; for intent see `PRODUCT.md` + `specs/`.
 
 ---
@@ -137,8 +137,32 @@ audit-hardening Scope — *not* production until real-key wiring and a human UX 
 
 ---
 
-## 5. Operational reference
-- **Repo/branch:** `rebuild/foundation` (never touch `main`/`v0.62`; mine old assets via `git show v0.62:<path>`).
+## 5. Era 4 — Design language & the AUSPEX UI overhaul (2026-06-15 → 2026-06-17)
+
+The "human UX pass" flagged as a gap in Era 3 happened — on **`main`**. A near-pixel re-port to the **AUSPEX/HASHMARK**
+visual language (tokens, atmosphere, the conic AI orb, glass panels, LCD numerics, Michroma/Saira/JetBrains-Mono/Inter type)
+re-skinned every surface — controls, data display, feedback, nav, the shell.
+
+Then an owner-directed **pass 2** corrected the parts still half-baked:
+- The **wire** became a thin **top ticker strip** (right under the top bar) — not a floating/bottom bar.
+- Section/page headings → **plain solid Michroma** (the big **gradient-clipped** headings were removed); small **mono
+  uppercase labels** kept for panel headers; Michroma kept as the display face.
+- The **landing** was rebuilt as a designed in-app entry; remaining generic-Tailwind surfaces were swept into the language.
+- Design docs were **consolidated to a single authoritative `DESIGN.md`** (the duplicate
+  `docs/design/rumbledore-design-language.md` was removed); a token-contract test + a screenshot verify loop enforce fidelity.
+- Entitlements were **ungated for testing** (free tier = all features) pending the pricing plan; the cast-404 (typo'd UUID
+  regex) was fixed and AUSPEX not-found/error pages added.
+
+Net: the app is now **functionally whole and visually complete**, and **design is a standing gate**, not a finished phase.
+The autonomous loop's run is complete; the project moved to **`main`** as the live branch and entered
+**targeted-increment planning** — data-curation/eras/ledger, News/Arena as self-contained environments, an ambient
+agent/WizKit tier, and a general↔personal wire toggle — captured as new specs (`36+`).
+
+---
+
+## 6. Operational reference
+- **Repo/branch:** live/integration branch is **`main`** (carries the full build + the AUSPEX overhaul). `rebuild/foundation`
+  was the autonomous-build branch (historical); old assets are minable via `git show v0.62:<path>`.
 - **Accounts (tmux-safe launchers in `~/.local/bin`):** `cbx` = Claude `bxbxbxbxbxr`, `cbw` = Claude `bwcummings1`
   (busy — other agents), `cx` = Codex (ChatGPT). Bare `claude` defaults to `bwcummings1`; bare `codex` is broken in tmux.
 - **Build harness:** `loop.sh [build|plan]` (Fable→Codex timed switch). Stop: `touch ~/rumbledore-loop.STOP`.
@@ -146,7 +170,7 @@ audit-hardening Scope — *not* production until real-key wiring and a human UX 
 - **Manage from phone:** `ssh` (Termius) → `tmux attach -t manage` → `cbx "$(cat ~/rumbledore-manage-prompt.txt)"`.
 - **Source of truth for state:** `docs/PROGRESS.md`. Conventions: `AGENTS.md`. Specs of record: `specs/00–35`.
 
-## 6. Key decisions & rationale (quick reference)
+## 7. Key decisions & rationale (quick reference)
 | Decision | Rationale |
 |---|---|
 | Clean rebuild (not patch v0.62) | v0.62 had systemic fake-auth/disabled-gates/fictional-isolation; faster to rebuild right than to un-rot |
