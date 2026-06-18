@@ -57,6 +57,7 @@ export const RECORD_TYPE_LABELS = {
 export type RecordType = keyof typeof RECORD_TYPE_LABELS;
 
 type TeamSeasonRow = typeof teamSeasons.$inferSelect;
+type TeamSeasonInsert = typeof teamSeasons.$inferInsert;
 type IdentityMappingRow = typeof identityMappings.$inferSelect;
 type ProviderFinalStandingRow = typeof providerFinalStandings.$inferSelect;
 type LeagueSeasonSettingsRow = typeof leagueSeasonSettings.$inferSelect;
@@ -246,6 +247,128 @@ function sortedUniqueNumbers(values: Iterable<number>): number[] {
     .sort((left, right) => left - right);
 }
 
+function valuesDiffer(left: unknown, right: unknown): boolean {
+  return stableJson(left) !== stableJson(right);
+}
+
+function teamSeasonIdentityKey(
+  row: Pick<TeamSeasonInsert, "provider" | "providerTeamId" | "season">,
+): string {
+  return [row.provider, row.providerTeamId, row.season].join("\u001f");
+}
+
+async function preserveStickyTeamSeasonFacts(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  facts: readonly TeamSeasonInsert[],
+): Promise<TeamSeasonInsert[]> {
+  if (facts.length === 0) {
+    return [];
+  }
+  const editRows = await tx
+    .select({
+      field: leagueDataEdits.field,
+      targetId: leagueDataEdits.targetId,
+    })
+    .from(leagueDataEdits)
+    .where(
+      and(
+        eq(leagueDataEdits.leagueId, leagueId),
+        eq(leagueDataEdits.targetKind, "team_season"),
+        inArray(leagueDataEdits.field, [
+          "division",
+          "owner_names",
+          "team_name",
+        ]),
+      ),
+    );
+  const targetIds = [...new Set(editRows.map((row) => row.targetId))];
+  if (targetIds.length === 0) {
+    return [...facts];
+  }
+  const existingRows = await tx
+    .select({
+      division: teamSeasons.division,
+      id: teamSeasons.id,
+      ownerNames: teamSeasons.ownerNames,
+      provider: teamSeasons.provider,
+      providerTeamId: teamSeasons.providerTeamId,
+      season: teamSeasons.season,
+      teamName: teamSeasons.teamName,
+    })
+    .from(teamSeasons)
+    .where(
+      and(
+        eq(teamSeasons.leagueId, leagueId),
+        inArray(teamSeasons.id, targetIds),
+      ),
+    );
+  const fieldsByTargetId = new Map<string, Set<string>>();
+  for (const edit of editRows) {
+    const fields = fieldsByTargetId.get(edit.targetId) ?? new Set<string>();
+    fields.add(edit.field);
+    fieldsByTargetId.set(edit.targetId, fields);
+  }
+  const existingByIdentity = new Map(
+    existingRows.map((row) => [teamSeasonIdentityKey(row), row]),
+  );
+  const conflicts: DataIntegrityCheckInsert[] = [];
+  const preserved = facts.map((fact) => {
+    const existing = existingByIdentity.get(teamSeasonIdentityKey(fact));
+    const stickyFields = existing ? fieldsByTargetId.get(existing.id) : null;
+    if (!existing || !stickyFields || stickyFields.size === 0) {
+      return fact;
+    }
+    const next = { ...fact };
+    const preserve = (
+      field: string,
+      incomingValue: unknown,
+      preservedValue: unknown,
+      apply: () => void,
+    ) => {
+      if (!stickyFields.has(field)) {
+        return;
+      }
+      if (valuesDiffer(incomingValue, preservedValue)) {
+        conflicts.push({
+          checkKey: "sticky_edit_conflict",
+          detail: {
+            field,
+            incomingValue,
+            preservedValue,
+            providerIdentity: {
+              provider: fact.provider,
+              providerTeamId: fact.providerTeamId,
+              season: fact.season,
+            },
+            reason: "provider_import_conflicts_with_manual_edit",
+            targetId: existing.id,
+            targetKind: "team_season",
+          },
+          leagueId,
+          season: fact.season,
+          status: "fail",
+        });
+      }
+      apply();
+    };
+    preserve("team_name", fact.teamName, existing.teamName, () => {
+      next.teamName = existing.teamName;
+    });
+    preserve("owner_names", fact.ownerNames, existing.ownerNames, () => {
+      next.ownerNames = existing.ownerNames;
+    });
+    preserve("division", fact.division ?? null, existing.division, () => {
+      next.division = existing.division;
+    });
+    return next;
+  });
+  if (conflicts.length > 0) {
+    await tx.insert(dataIntegrityChecks).values(conflicts);
+  }
+  return preserved;
+}
+
 function ownerSignature(values: readonly string[]): string {
   return sortedUnique(values).join("\u001f");
 }
@@ -432,7 +555,11 @@ async function upsertTeamSeasonFacts(
   tx: LeagueScopedTx,
   leagueId: string,
 ): Promise<TeamSeasonRow[]> {
-  const facts = await loadTeamSeasonFacts(tx, leagueId);
+  const facts = await preserveStickyTeamSeasonFacts(
+    tx,
+    leagueId,
+    await loadTeamSeasonFacts(tx, leagueId),
+  );
   if (facts.length > 0) {
     await tx
       .insert(teamSeasons)

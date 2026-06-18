@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
@@ -58,6 +60,8 @@ import {
 } from "./steward";
 
 const marker = `statstest-${randomUUID()}`;
+const OLD_LEAGUE_FIXTURE_ROOT = "/home/ubuntu/espn-api-old-2024/scripts-output";
+const oldLeagueFixtureIt = existsSync(OLD_LEAGUE_FIXTURE_ROOT) ? it : it.skip;
 let handle: DbHandle;
 
 interface SeededStatsLeague {
@@ -88,6 +92,15 @@ interface MatchupFixture {
   providerMatchupId: string;
   scoringPeriod: number;
   season: number;
+}
+
+interface OldLeagueTotalRow {
+  end_of_season_rank: number;
+  end_of_season_record: string;
+  owner_name: string;
+  team_name: string;
+  total_points_against: number;
+  total_points_for: number;
 }
 
 const teams: TeamFixture[] = [
@@ -355,6 +368,110 @@ async function seedActor(tag: string): Promise<string> {
     throw new Error("steward actor was not created");
   }
   return user.id;
+}
+
+function oldLeagueTotalsPath(season: number): string {
+  return join(
+    OLD_LEAGUE_FIXTURE_ROOT,
+    "ffl-totals",
+    `team_stats_${season}.json`,
+  );
+}
+
+function readOldLeagueTotals(season: number): OldLeagueTotalRow[] {
+  return JSON.parse(
+    readFileSync(oldLeagueTotalsPath(season), "utf8"),
+  ) as OldLeagueTotalRow[];
+}
+
+function oldLeagueRosterFormat(season: number): Record<string, unknown> {
+  return season < 2020
+    ? { offensive_player_slot: "op" }
+    : { offensive_player_slot: "flex" };
+}
+
+async function seedOldLeagueGroupingOracle(
+  tag: string,
+): Promise<SeededStatsLeague> {
+  const providerLeagueId = `${marker}-${tag}`;
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      currentScoringPeriod: 17,
+      name: `${marker} ${tag}`,
+      provider: "espn",
+      providerLeagueId,
+      scoringType: "H2H_POINTS",
+      season: 2023,
+      size: 12,
+      sport: "ffl",
+      status: "complete",
+    })
+    .returning();
+  if (!league) {
+    throw new Error("old-league grouping oracle league was not created");
+  }
+
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    for (const season of [
+      2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022,
+      2023,
+    ]) {
+      const totals = readOldLeagueTotals(season);
+      const rosterFormat = oldLeagueRosterFormat(season);
+      await tx.insert(leagueSeasonSettings).values({
+        contentHash: `${marker}-${tag}-settings-${season}`,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        scoringSettings: {
+          format_type: "traditional",
+          roster_format: rosterFormat,
+          scoring_type: "H2H_POINTS",
+        },
+        season,
+      });
+
+      for (const [index, total] of totals.entries()) {
+        const providerTeamId = String(index + 1);
+        const [team] = await tx
+          .insert(fantasyTeams)
+          .values({
+            abbrev: `O${providerTeamId}`,
+            contentHash: `${marker}-${tag}-team-${season}-${providerTeamId}`,
+            leagueId: league.id,
+            leagueProviderId: providerLeagueId,
+            losses: Number(total.end_of_season_record.split("-")[1] ?? 0),
+            name: total.team_name,
+            ownerMemberIds: [total.owner_name],
+            pointsAgainst: total.total_points_against,
+            pointsFor: total.total_points_for,
+            provider: "espn",
+            providerTeamId,
+            season,
+            ties: Number(total.end_of_season_record.split("-")[2] ?? 0),
+            wins: Number(total.end_of_season_record.split("-")[0] ?? 0),
+          })
+          .returning({ id: fantasyTeams.id });
+        if (!team) {
+          throw new Error("old-league fantasy team row was not created");
+        }
+        await tx.insert(teamSeasons).values({
+          fantasyTeamId: team.id,
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          ownerMemberIds: [total.owner_name],
+          ownerNames: [total.owner_name],
+          provider: "espn",
+          providerTeamId,
+          season,
+          teamName: total.team_name,
+        });
+      }
+    }
+  });
+
+  return { leagueId: league.id, providerLeagueId };
 }
 
 async function seedCoOwnerLeague(tag: string): Promise<SeededStatsLeague> {
@@ -975,6 +1092,69 @@ describe("recomputeLeagueStatistics", () => {
     ).toBe("Alex Corrected");
   });
 
+  it("keeps manually edited team-season fields sticky across provider-derived recomputes", async () => {
+    const { leagueId } = await seedStatsLeague("curation-sticky-team");
+    const actorUserId = await seedActor("curation-sticky-team-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const alex2025TeamSeason = before.teamSeasonRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    if (!alex2025TeamSeason) {
+      throw new Error("expected Alex 2025 team-season row");
+    }
+
+    await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "cosmetic",
+      field: "team_name",
+      leagueId,
+      reason: "team name cleanup",
+      targetId: alex2025TeamSeason.id,
+      targetKind: "team_season",
+      value: "Manual Alex Franchise",
+    });
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .update(fantasyTeams)
+        .set({
+          contentHash: `${marker}-curation-sticky-provider-overwrite`,
+          name: "Provider Reimport Name",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(fantasyTeams.leagueId, leagueId),
+            eq(fantasyTeams.providerTeamId, "1"),
+            eq(fantasyTeams.season, 2025),
+          ),
+        );
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.teamSeasonRows.find((row) => row.id === alex2025TeamSeason.id)
+        ?.teamName,
+    ).toBe("Manual Alex Franchise");
+    expect(after.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "sticky_edit_conflict",
+        detail: expect.objectContaining({
+          field: "team_name",
+          incomingValue: "Provider Reimport Name",
+          preservedValue: "Manual Alex Franchise",
+          targetId: alex2025TeamSeason.id,
+          targetKind: "team_season",
+        }),
+        season: 2025,
+        status: "fail",
+      }),
+    );
+  });
+
   it("keeps league data edits append-only and RLS policy-scoped", async () => {
     const leagueA = await seedStatsLeague("curation-append-a");
     const actorUserId = await seedActor("curation-append-actor");
@@ -1144,6 +1324,75 @@ describe("recomputeLeagueStatistics", () => {
       value: 120,
     });
   });
+
+  oldLeagueFixtureIt(
+    "proposes old-league era boundaries from the historical fixture and confirms arbitrary season sets",
+    async () => {
+      const { leagueId } = await seedOldLeagueGroupingOracle(
+        "old-fixture-groupings",
+      );
+      const actorUserId = await seedActor("old-fixture-groupings-actor");
+
+      const proposals = await proposeLeagueSeasonGroupings(handle.db, {
+        leagueId,
+      });
+      expect(proposals.map((proposal) => proposal.seasons)).toEqual([
+        [2011],
+        [2012],
+        [2013, 2014, 2015, 2016, 2017, 2018, 2019],
+        [2020, 2021, 2022, 2023],
+      ]);
+      expect(proposals[1]?.derivedFrom).toMatchObject({
+        boundaryReasons: expect.arrayContaining(["member_set_change"]),
+      });
+      expect(proposals[2]?.derivedFrom).toMatchObject({
+        boundaryReasons: expect.arrayContaining([
+          "member_count_change",
+          "member_set_change",
+        ]),
+      });
+      expect(proposals[3]?.derivedFrom).toMatchObject({
+        boundaryReasons: expect.arrayContaining([
+          "member_set_change",
+          "roster_change",
+        ]),
+      });
+
+      const thirdProposal = proposals[2];
+      if (!thirdProposal) {
+        throw new Error("expected the 2013-2019 old-league era proposal");
+      }
+      const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
+        actorUserId,
+        groupingId: thirdProposal.id,
+        leagueId,
+        name: "Owner-picked composite era",
+        reason: "old fixture oracle exercises arbitrary season sets",
+        seasons: [2013, 2015, 2023],
+      });
+      expect(confirmed).toMatchObject({
+        name: "Owner-picked composite era",
+        seasons: [2013, 2015, 2023],
+        status: "confirmed",
+      });
+
+      const ledger = await listUnifiedDataLedger(handle.db, {
+        leagueId,
+        targetId: thirdProposal.id,
+        targetKind: "grouping",
+      });
+      expect(ledger[0]).toMatchObject({
+        afterValue: expect.objectContaining({
+          seasons: [2013, 2015, 2023],
+          status: "confirmed",
+        }),
+        field: "grouping_confirmation",
+        source: "league_data_edit",
+        targetId: thirdProposal.id,
+        targetKind: "grouping",
+      });
+    },
+  );
 
   it("normalizes multi-week matchup spans for averages while preserving full W/L and totals", async () => {
     const { leagueId } = await seedStatsLeague("curation-span");

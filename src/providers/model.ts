@@ -102,6 +102,7 @@ export interface NormalizedLeague extends ProviderLeagueRef {
 
 export interface NormalizedPostseasonSettings {
   championshipScoringPeriod?: number;
+  matchupPeriodCount?: number;
   playoffStartScoringPeriod?: number;
   playoffTeamCount?: number;
   regularSeasonEndScoringPeriod?: number;
@@ -147,6 +148,8 @@ export type NormalizedMatchupStatus =
 export interface NormalizedMatchup extends SeasonScopedProviderEntityRef {
   leagueProviderId: string;
   scoringPeriod: number;
+  periodStart?: number;
+  scoringPeriodSpan?: number;
   kind?: NormalizedMatchupKind;
   homeTeamRef: SeasonScopedProviderEntityRef;
   awayTeamRef: SeasonScopedProviderEntityRef;

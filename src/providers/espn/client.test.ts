@@ -263,6 +263,7 @@ describe("ESPN current league client", () => {
       status: "preseason",
       postseason: {
         championshipScoringPeriod: 17,
+        matchupPeriodCount: 14,
         playoffStartScoringPeriod: 15,
         playoffTeamCount: 6,
         regularSeasonEndScoringPeriod: 14,
@@ -411,6 +412,7 @@ describe("ESPN current league client", () => {
       status: "complete",
       postseason: {
         championshipScoringPeriod: 17,
+        matchupPeriodCount: 14,
         playoffStartScoringPeriod: 15,
         playoffTeamCount: 6,
         regularSeasonEndScoringPeriod: 14,
@@ -422,6 +424,9 @@ describe("ESPN current league client", () => {
       provider: "espn",
       providerId: "1",
       season: 2025,
+      periodStart: 1,
+      scoringPeriod: 1,
+      scoringPeriodSpan: 1,
       homeScore: 120.5,
       awayScore: 99.25,
       winner: "home",

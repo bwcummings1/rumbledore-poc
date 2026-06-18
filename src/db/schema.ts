@@ -108,6 +108,7 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "grouping_season_coverage",
   "matchup_span_sanity",
   "data_edit_ledger_completeness",
+  "sticky_edit_conflict",
 ]);
 
 export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [

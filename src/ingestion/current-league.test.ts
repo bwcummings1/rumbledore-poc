@@ -525,7 +525,9 @@ describe("syncCurrentLeague", () => {
     });
     expect(firstRows.matchups[0]).toMatchObject({
       providerMatchupId: "1",
+      periodStart: 1,
       scoringPeriod: 1,
+      scoringPeriodSpan: 1,
       homeTeamProviderId: "7",
       awayTeamProviderId: "5",
       homeScore: 0,
@@ -843,6 +845,7 @@ describe("syncCurrentLeague", () => {
         keeperCount: 2,
         source: "fixture",
       },
+      matchupPeriodCount: 1,
       scoringSettings: {
         idp: true,
         rec: 0.5,
@@ -851,7 +854,9 @@ describe("syncCurrentLeague", () => {
     expect(rows.teams.map((team) => team.division)).toEqual(["East", "West"]);
     expect(rows.matchups[0]).toMatchObject({
       kind: "median",
+      periodStart: 1,
       providerMatchupId: "week-1-median",
+      scoringPeriodSpan: 1,
     });
     expect(rows.rosterEntries[0]).toMatchObject({
       isKeeper: true,
