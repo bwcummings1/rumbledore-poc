@@ -377,9 +377,38 @@ function periodContext(
     opponentPersonId: row.opponentPersonId,
     personId: row.personId,
     personName: personName(personNames, row.personId),
-    scoringPeriod: row.scoringPeriod,
+    scoringPeriod: scoringWindowStart(row),
     season: row.season,
   };
+}
+
+type ScoringWindowInput = Pick<
+  WeeklyStatisticsRow,
+  "periodStart" | "scoringPeriod" | "scoringPeriodSpan" | "season"
+>;
+
+function scoringWindowStart(row: ScoringWindowInput): number {
+  return row.periodStart ?? row.scoringPeriod;
+}
+
+function scoringWindowSpan(row: ScoringWindowInput): number {
+  return Math.max(1, row.scoringPeriodSpan);
+}
+
+function scoringWindowKey(row: ScoringWindowInput): string {
+  return `${row.season}:${scoringWindowStart(row)}:${scoringWindowSpan(row)}`;
+}
+
+function compareScoringWindow(
+  left: ScoringWindowInput,
+  right: ScoringWindowInput,
+): number {
+  return (
+    left.season - right.season ||
+    scoringWindowStart(left) - scoringWindowStart(right) ||
+    scoringWindowSpan(left) - scoringWindowSpan(right) ||
+    left.scoringPeriod - right.scoringPeriod
+  );
 }
 
 function compareWeeklyAscending(
@@ -387,8 +416,7 @@ function compareWeeklyAscending(
   right: WeeklyStatisticsRow,
 ): number {
   return (
-    left.season - right.season ||
-    left.scoringPeriod - right.scoringPeriod ||
+    compareScoringWindow(left, right) ||
     compareStable(left.personId, right.personId) ||
     compareStable(left.matchupId, right.matchupId)
   );
@@ -708,17 +736,6 @@ function personSeasonKey(personId: string, season: number): string {
   return `${personId}:${season}`;
 }
 
-function scoringWindowKey(
-  row: Pick<
-    WeeklyStatisticsRow,
-    "periodStart" | "scoringPeriod" | "scoringPeriodSpan" | "season"
-  >,
-): string {
-  const start = row.periodStart ?? row.scoringPeriod;
-  const span = Math.max(1, row.scoringPeriodSpan);
-  return `${row.season}:${start}:${span}`;
-}
-
 function filterWeeklyRowsByLens(
   rows: readonly WeeklyStatisticsRow[],
   lens?: RecordBookLens,
@@ -973,13 +990,13 @@ function bestStreaks(
 
       if (currentStart && currentEnd) {
         const candidate = {
-          endScoringPeriod: currentEnd.scoringPeriod,
+          endScoringPeriod: scoringWindowStart(currentEnd),
           endSeason: currentEnd.season,
           length: currentLength,
           personId,
           personName: personName(personNames, personId),
           recordType,
-          startScoringPeriod: currentStart.scoringPeriod,
+          startScoringPeriod: scoringWindowStart(currentStart),
           startSeason: currentStart.season,
         };
         if (!best || compareStreak(candidate, best) < 0) {
@@ -993,13 +1010,13 @@ function bestStreaks(
 
     if (currentStart && currentEnd) {
       const candidate = {
-        endScoringPeriod: currentEnd.scoringPeriod,
+        endScoringPeriod: scoringWindowStart(currentEnd),
         endSeason: currentEnd.season,
         length: currentLength,
         personId,
         personName: personName(personNames, personId),
         recordType,
-        startScoringPeriod: currentStart.scoringPeriod,
+        startScoringPeriod: scoringWindowStart(currentStart),
         startSeason: currentStart.season,
       };
       if (!best || compareStreak(candidate, best) < 0) {
@@ -1185,8 +1202,7 @@ function headToHeadMeetingGroups(
       row.opponentPersonId,
     );
     const key = [
-      row.season,
-      row.scoringPeriod,
+      scoringWindowKey(row),
       row.matchupId,
       personAId,
       personBId,
@@ -1223,7 +1239,7 @@ function headToHeadMeetingGroups(
         personBId,
         personBPoints: personBRow.pointsFor,
         playoff: personARow.isPlayoff || personBRow.isPlayoff,
-        scoringPeriod: personARow.scoringPeriod,
+        scoringPeriod: scoringWindowStart(personARow),
         season: personARow.season,
         winnerPersonId,
       } satisfies HeadToHeadMeetingForCatalog;

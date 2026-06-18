@@ -1506,6 +1506,120 @@ describe("recomputeLeagueStatistics", () => {
     );
   });
 
+  it("keys span-aware records by period start when provider scoring period is the window end", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague("window-key");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(leagueSeasonSettings).values({
+        contentHash: `${marker}-window-key-settings-2025`,
+        leagueId,
+        leagueProviderId: providerLeagueId,
+        matchupPeriodCount: 2,
+        provider: "espn",
+        season: 2025,
+      });
+      for (const providerMatchupId of ["2025-2-a", "2025-2-b"]) {
+        await tx
+          .update(fantasyMatchups)
+          .set({
+            periodStart: 2,
+            scoringPeriod: 3,
+            scoringPeriodSpan: 2,
+          })
+          .where(
+            and(
+              eq(fantasyMatchups.leagueId, leagueId),
+              eq(fantasyMatchups.providerMatchupId, providerMatchupId),
+            ),
+          );
+      }
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    const rows = await selectStatsRows(leagueId);
+    const mappingFor = (providerTeamId: string, season: number) => {
+      const mapping = rows.mappingRows.find(
+        (row) => row.providerTeamId === providerTeamId && row.season === season,
+      );
+      if (!mapping) {
+        throw new Error(`mapping ${providerTeamId}/${season} was not found`);
+      }
+      return mapping;
+    };
+    const alex2025 = mappingFor("1", 2025);
+    const casey2025 = mappingFor("2", 2025);
+    const drew2025 = mappingFor("3", 2025);
+
+    expect(
+      rows.weeklyRows.filter(
+        (row) =>
+          row.season === 2025 &&
+          row.scoringPeriod === 3 &&
+          row.periodStart === 2,
+      ),
+    ).toHaveLength(4);
+    expect(
+      rows.seasonRows.find(
+        (row) => row.personId === casey2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      allPlayLosses: 1,
+      allPlayWins: 5,
+      avgPointsFor: 70,
+      expectedWins: 1.6667,
+      luck: -0.6667,
+      pointsFor: 210,
+    });
+
+    const currentHighScore = rows.recordRows.find(
+      (row) => row.recordType === "highest_single_week_score" && row.isCurrent,
+    );
+    expect(currentHighScore).toMatchObject({
+      holderPersonId: casey2025.personId,
+      scoringPeriod: 2,
+      season: 2025,
+      value: 120,
+    });
+
+    const alexDrewAllTime = rows.h2hRows.find(
+      (row) =>
+        row.season === 0 &&
+        [row.personAId, row.personBId].includes(alex2025.personId) &&
+        [row.personAId, row.personBId].includes(drew2025.personId),
+    );
+    expect(alexDrewAllTime).toMatchObject({
+      lastScoringPeriod: 2,
+      lastSeason: 2025,
+      meetings: 2,
+    });
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 20,
+    });
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      personId: casey2025.personId,
+      scoringPeriod: 2,
+      season: 2025,
+      value: 120,
+    });
+    expect(
+      catalog.headToHead.allTimePairs.find(
+        (row) =>
+          [row.personA.personId, row.personB.personId].includes(
+            alex2025.personId,
+          ) &&
+          [row.personA.personId, row.personB.personId].includes(
+            drew2025.personId,
+          ),
+      ),
+    ).toMatchObject({
+      lastScoringPeriod: 2,
+      meetings: 2,
+    });
+  });
+
   it("materializes keeper milestone aggregates from trusted roster signals", async () => {
     const { leagueId, providerLeagueId } = await seedStatsLeague("keepers");
 
