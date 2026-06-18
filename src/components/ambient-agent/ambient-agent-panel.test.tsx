@@ -69,9 +69,11 @@ test("ambient agent opens from the collapsed orb and renders a grounded answer",
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Open personal agent" }));
-  expect(
-    screen.getByRole("dialog", { name: "WizKit personal agent" }),
-  ).toBeDefined();
+  const panel = screen.getByRole("dialog", {
+    name: "WizKit personal agent",
+  });
+  expect(panel).toBeDefined();
+  expect(panel.getAttribute("aria-modal")).toBeNull();
   expect(screen.getByText("Scope: NHS Alumni Annual")).toBeDefined();
 
   fireEvent.click(

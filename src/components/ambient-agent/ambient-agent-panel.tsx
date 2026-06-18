@@ -384,7 +384,6 @@ export function AmbientAgentPanel({
         {open ? (
           <section
             aria-label="WizKit personal agent"
-            aria-modal="true"
             className="panel grid max-h-[min(76dvh,42rem)] w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden shadow-overlay"
             data-state={state}
             data-slot="ambient-agent-panel"
