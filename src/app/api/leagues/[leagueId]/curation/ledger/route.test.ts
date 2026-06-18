@@ -28,6 +28,7 @@ vi.mock("@/stats", async (importOriginal) => {
 
 const leagueId = "00000000-0000-4000-8000-000000000001";
 const personId = "00000000-0000-4000-8000-000000000002";
+const integrityCheckId = "00000000-0000-4000-8000-000000000004";
 
 function routeContext() {
   return { params: Promise.resolve({ leagueId }) };
@@ -105,5 +106,52 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
 
     expect(response.status).toBe(403);
     expect(listUnifiedDataLedger).not.toHaveBeenCalled();
+  });
+
+  it("accepts integrity-check ledger filters", async () => {
+    mocks.requireLeagueRole.mockResolvedValue({
+      ok: true,
+      value: {
+        leagueId,
+        role: "member",
+        session: { user: { id: personId } },
+        userId: personId,
+      },
+    });
+    mocks.listUnifiedDataLedger.mockResolvedValue([
+      {
+        actorUserId: personId,
+        afterValue: { status: "reviewed" },
+        beforeValue: { status: "fail" },
+        createdAt: "2026-06-18T12:00:00.000Z",
+        editClass: "audit",
+        field: "mark_reviewed",
+        id: "00000000-0000-4000-8000-000000000005",
+        reason: "accepted provider total",
+        source: "data_correction_audit",
+        targetId: integrityCheckId,
+        targetKind: "integrity_check",
+      },
+    ]);
+
+    const response = await GET(
+      new Request(
+        `https://rumbledore.test/api/leagues/${leagueId}/curation/ledger?targetKind=integrity_check&targetId=${integrityCheckId}`,
+      ),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      entries: [
+        { source: "data_correction_audit", targetKind: "integrity_check" },
+      ],
+    });
+    expect(listUnifiedDataLedger).toHaveBeenCalledWith(mocks.db, {
+      leagueId,
+      limit: 100,
+      targetId: integrityCheckId,
+      targetKind: "integrity_check",
+    });
   });
 });

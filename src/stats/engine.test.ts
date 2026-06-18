@@ -2568,6 +2568,36 @@ describe("recomputeLeagueStatistics", () => {
     if (!correctionAudit) {
       throw new Error("data correction audit row was not written");
     }
+
+    await expect(
+      listUnifiedDataLedger(handle.db, {
+        leagueId,
+        targetId: reconciliationFailure.id,
+        targetKind: "integrity_check",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        field: "mark_reviewed",
+        source: "data_correction_audit",
+        targetId: reconciliationFailure.id,
+        targetKind: "integrity_check",
+      }),
+    ]);
+    const targetIdOnlyLedger = await listUnifiedDataLedger(handle.db, {
+      leagueId,
+      targetId: reconciliationFailure.id,
+    });
+    expect(targetIdOnlyLedger).toEqual([
+      expect.objectContaining({
+        source: "data_correction_audit",
+        targetId: reconciliationFailure.id,
+        targetKind: "integrity_check",
+      }),
+    ]);
+    expect(
+      targetIdOnlyLedger.some((entry) => entry.source === "identity_audit"),
+    ).toBe(false);
+
     await expect(
       withLeagueContext(handle.db, leagueId, (tx) =>
         tx

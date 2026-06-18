@@ -18,6 +18,7 @@ const ledgerTargetKindSchema = z
     "season_setting",
     "grouping",
     "member",
+    "integrity_check",
   ])
   .optional();
 

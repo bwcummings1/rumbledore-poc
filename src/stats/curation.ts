@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
@@ -21,6 +21,9 @@ import { refreshRecordBookAggregates } from "./records-catalog";
 type LeagueDataEditInsert = typeof leagueDataEdits.$inferInsert;
 export type LeagueDataEditTargetKind = LeagueDataEditInsert["targetKind"];
 export type LeagueDataEditClass = LeagueDataEditInsert["editClass"];
+export type UnifiedLedgerTargetKind =
+  | LeagueDataEditTargetKind
+  | "integrity_check";
 
 export interface ApplyLeagueDataEditInput {
   actorUserId: string;
@@ -1026,27 +1029,34 @@ export async function listUnifiedDataLedger(
     leagueId: string;
     limit?: number;
     targetId?: string;
-    targetKind?: LeagueDataEditTargetKind;
+    targetKind?: UnifiedLedgerTargetKind;
   },
 ): Promise<UnifiedLedgerEntry[]> {
   const limit = Math.max(1, Math.min(200, input.limit ?? 100));
   return withLeagueContext(db, input.leagueId, async (tx) => {
-    const dataRows = await tx
-      .select()
-      .from(leagueDataEdits)
-      .where(
-        and(
-          eq(leagueDataEdits.leagueId, input.leagueId),
-          input.targetKind
-            ? eq(leagueDataEdits.targetKind, input.targetKind)
-            : undefined,
-          input.targetId
-            ? eq(leagueDataEdits.targetId, input.targetId)
-            : undefined,
-        ),
-      )
-      .orderBy(desc(leagueDataEdits.createdAt))
-      .limit(limit);
+    const dataEditTargetKind =
+      input.targetKind && input.targetKind !== "integrity_check"
+        ? input.targetKind
+        : undefined;
+    const dataRows =
+      input.targetKind === "integrity_check"
+        ? []
+        : await tx
+            .select()
+            .from(leagueDataEdits)
+            .where(
+              and(
+                eq(leagueDataEdits.leagueId, input.leagueId),
+                dataEditTargetKind
+                  ? eq(leagueDataEdits.targetKind, dataEditTargetKind)
+                  : undefined,
+                input.targetId
+                  ? eq(leagueDataEdits.targetId, input.targetId)
+                  : undefined,
+              ),
+            )
+            .orderBy(desc(leagueDataEdits.createdAt))
+            .limit(limit);
 
     const identityRows =
       input.targetKind && !["person", "team_season"].includes(input.targetKind)
@@ -1063,18 +1073,31 @@ export async function listUnifiedDataLedger(
                 input.targetKind === "team_season" && input.targetId
                   ? eq(identityAuditLog.teamSeasonId, input.targetId)
                   : undefined,
+                !input.targetKind && input.targetId
+                  ? or(
+                      eq(identityAuditLog.personId, input.targetId),
+                      eq(identityAuditLog.teamSeasonId, input.targetId),
+                    )
+                  : undefined,
               ),
             )
             .orderBy(desc(identityAuditLog.createdAt))
             .limit(limit);
 
     const correctionRows =
-      input.targetKind || input.targetId
+      input.targetKind && input.targetKind !== "integrity_check"
         ? []
         : await tx
             .select()
             .from(dataCorrectionAuditLog)
-            .where(eq(dataCorrectionAuditLog.leagueId, input.leagueId))
+            .where(
+              and(
+                eq(dataCorrectionAuditLog.leagueId, input.leagueId),
+                input.targetId
+                  ? eq(dataCorrectionAuditLog.integrityCheckId, input.targetId)
+                  : undefined,
+              ),
+            )
             .orderBy(desc(dataCorrectionAuditLog.createdAt))
             .limit(limit);
 
