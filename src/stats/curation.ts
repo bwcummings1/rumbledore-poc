@@ -700,13 +700,18 @@ function settingFormatType(scoringSettings: Record<string, unknown>): string {
 function settingRosterFormat(
   scoringSettings: Record<string, unknown>,
 ): unknown {
-  return (
-    scoringSettings.roster_format ??
-    scoringSettings.rosterFormat ??
-    scoringSettings.rosterSlots ??
-    scoringSettings.lineupSlots ??
-    null
-  );
+  for (const key of [
+    "roster_format",
+    "rosterFormat",
+    "rosterSlots",
+    "lineupSlots",
+  ]) {
+    const value = scoringSettings[key];
+    if (value !== null && value !== undefined) {
+      return value;
+    }
+  }
+  return null;
 }
 
 export function detectSeasonGroupingProposals(input: {
@@ -873,6 +878,68 @@ async function groupingWithSeasons(
   }));
 }
 
+async function validateConfirmedGroupingSeasons(
+  tx: LeagueScopedTx,
+  input: {
+    groupingId: string;
+    kind: string;
+    leagueId: string;
+    seasons: readonly number[];
+  },
+): Promise<void> {
+  const descriptors = await loadSeasonDescriptors(tx, input.leagueId);
+  const knownSeasons = new Set(descriptors.keys());
+  const unknownSeasons = input.seasons.filter(
+    (season) => !knownSeasons.has(season),
+  );
+  if (unknownSeasons.length > 0) {
+    throw new Error(
+      `season grouping includes unknown league season(s): ${unknownSeasons.join(", ")}`,
+    );
+  }
+
+  if (input.seasons.length === 0) {
+    return;
+  }
+
+  const confirmedGroupings = await tx
+    .select({ id: leagueSeasonGroupings.id })
+    .from(leagueSeasonGroupings)
+    .where(
+      and(
+        eq(leagueSeasonGroupings.leagueId, input.leagueId),
+        eq(leagueSeasonGroupings.kind, input.kind),
+        eq(leagueSeasonGroupings.status, "confirmed"),
+      ),
+    );
+  const otherGroupingIds = confirmedGroupings
+    .map((row) => row.id)
+    .filter((id) => id !== input.groupingId);
+  if (otherGroupingIds.length === 0) {
+    return;
+  }
+
+  const overlappingRows = await tx
+    .select({ season: leagueGroupingSeasons.season })
+    .from(leagueGroupingSeasons)
+    .where(
+      and(
+        eq(leagueGroupingSeasons.leagueId, input.leagueId),
+        inArray(leagueGroupingSeasons.groupingId, otherGroupingIds),
+        inArray(leagueGroupingSeasons.season, input.seasons),
+      ),
+    )
+    .orderBy(asc(leagueGroupingSeasons.season));
+  const overlappingSeasons = sortedUniqueNumbers(
+    overlappingRows.map((row) => row.season),
+  );
+  if (overlappingSeasons.length > 0) {
+    throw new Error(
+      `season grouping overlaps confirmed ${input.kind} season(s): ${overlappingSeasons.join(", ")}`,
+    );
+  }
+}
+
 export async function proposeLeagueSeasonGroupings(
   db: Db,
   input: { kind?: string; leagueId: string },
@@ -956,6 +1023,12 @@ export async function confirmLeagueSeasonGrouping(
       throw new Error("season grouping was not found");
     }
     const seasons = sortedUniqueNumbers(input.seasons);
+    await validateConfirmedGroupingSeasons(tx, {
+      groupingId: input.groupingId,
+      kind: before.kind,
+      leagueId: input.leagueId,
+      seasons,
+    });
     await tx
       .update(leagueSeasonGroupings)
       .set({

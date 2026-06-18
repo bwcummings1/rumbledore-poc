@@ -387,9 +387,14 @@ function oldLeagueTotalsPath(season: number): string {
 }
 
 function readOldLeagueTotals(season: number): OldLeagueTotalRow[] {
-  return JSON.parse(
-    readFileSync(oldLeagueTotalsPath(season), "utf8"),
-  ) as OldLeagueTotalRow[];
+  const path = oldLeagueTotalsPath(season);
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as OldLeagueTotalRow[];
+  } catch (error) {
+    throw new Error(`old-league totals fixture could not be parsed: ${path}`, {
+      cause: error,
+    });
+  }
 }
 
 function oldLeagueRosterFormat(season: number): Record<string, unknown> {
@@ -1287,6 +1292,16 @@ describe("recomputeLeagueStatistics", () => {
     if (!secondEra) {
       throw new Error("expected second proposed era");
     }
+    await expect(
+      confirmLeagueSeasonGrouping(handle.db, {
+        actorUserId,
+        groupingId: secondEra.id,
+        leagueId,
+        name: "Invalid Era",
+        reason: "should reject unknown seasons",
+        seasons: [2025, 2099],
+      }),
+    ).rejects.toThrow("unknown league season(s): 2099");
     const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
       actorUserId,
       groupingId: secondEra.id,
@@ -1300,6 +1315,22 @@ describe("recomputeLeagueStatistics", () => {
       seasons: [2025],
       status: "confirmed",
     });
+    const firstEra = proposals.find((proposal) =>
+      proposal.seasons.includes(2024),
+    );
+    if (!firstEra) {
+      throw new Error("expected first proposed era");
+    }
+    await expect(
+      confirmLeagueSeasonGrouping(handle.db, {
+        actorUserId,
+        groupingId: firstEra.id,
+        leagueId,
+        name: "Overlapping Era",
+        reason: "should reject overlapping confirmed eras",
+        seasons: [2024, 2025],
+      }),
+    ).rejects.toThrow("overlaps confirmed era season(s): 2025");
 
     const after = await selectStatsRows(leagueId);
     expect(after.groupingRows).toHaveLength(2);
