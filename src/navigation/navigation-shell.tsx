@@ -810,7 +810,7 @@ function MobileBottomTabs({
   return (
     <nav
       aria-label="Current scope sections"
-      className="fixed inset-x-0 bottom-0 z-30 grid min-h-16 grid-cols-[repeat(var(--nav-count),minmax(0,1fr))] border-t border-[var(--hair)] bg-[var(--panel-solid)]/95 px-1 pb-safe shadow-overlay backdrop-blur md:hidden motion-reduce:backdrop-blur-none"
+      className="fixed inset-x-0 bottom-0 z-30 grid min-h-16 grid-cols-[repeat(var(--nav-count),minmax(4.25rem,1fr))] overflow-x-auto overscroll-x-contain border-t border-[var(--hair)] bg-[var(--panel-solid)]/95 px-1 pb-safe shadow-overlay backdrop-blur md:hidden motion-reduce:backdrop-blur-none"
       data-slot="mobile-bottom-tabs"
       style={{ "--nav-count": currentNavItems.length } as CSSProperties}
     >
@@ -918,7 +918,7 @@ function NavigationItem({
     <Link
       aria-current={isActive ? "page" : undefined}
       className={cn(
-        "relative flex min-h-9 items-center justify-center gap-2.5 rounded-control px-2.5 font-display text-xs font-medium tracking-[0.04em] text-ink-3 transition-[background-color,color,box-shadow,transform] hover:bg-primary/5 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none max-md:h-full max-md:flex-col max-md:gap-1 md:text-sm",
+        "relative flex min-h-9 items-center justify-center gap-2.5 rounded-control px-2.5 font-display text-xs font-medium tracking-[0.04em] text-ink-3 transition-[background-color,color,box-shadow,transform] hover:bg-primary/5 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none max-md:h-full max-md:flex-col max-md:gap-1 max-md:px-1 md:text-sm",
         isActive &&
           "bg-[linear-gradient(90deg,var(--primary-soft),transparent)] text-lilac [&_svg]:drop-shadow-[0_0_6px_var(--glow-lilac)]",
         compact ? "md:size-11 md:px-0" : "md:justify-start",
@@ -2315,18 +2315,18 @@ function buildWireItems(
         meta: "FRONT",
       },
       {
-        href: "/news/injuries",
-        id: "news:injuries",
+        href: "/news/players",
+        id: "news:players",
         kind: "record",
-        label: "Injury and practice-report signals stay browsable",
-        meta: "INJURY",
+        label: "Player-tagged stories get their own board",
+        meta: "PLAYERS",
       },
       {
-        href: "/news/rankings",
-        id: "news:rankings",
+        href: "/news/start-sit",
+        id: "news:start-sit",
         kind: "swing",
-        label: "Rankings and start-sit movement rolls into sections",
-        meta: "RANKS",
+        label: "Start/sit, waivers, and injuries stay browsable",
+        meta: "TOOLS",
       },
     ];
   }
@@ -2547,7 +2547,7 @@ function buildShellNotifications(
     return [
       {
         detail:
-          "General NFL and fantasy headlines are live here; roster-personal filtering lands in the wire toggle.",
+          "General headlines, players, rankings, start/sit, injuries, waivers, and analysis live here.",
         href: "/news",
         id: "shell:news:wire",
         kind: "blog",

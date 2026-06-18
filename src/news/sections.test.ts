@@ -12,7 +12,15 @@ describe("publication section taxonomies", () => {
   it("declares the central and league beats from the publication spec", () => {
     expect(
       CENTRAL_PUBLICATION_SECTIONS.map((section) => section.label),
-    ).toEqual(["NFL", "Fantasy", "Injuries", "Rankings"]);
+    ).toEqual([
+      "Headlines",
+      "Players",
+      "Rankings",
+      "Start/Sit",
+      "Injuries",
+      "Waivers",
+      "Analysis",
+    ]);
     expect(LEAGUE_PUBLICATION_SECTIONS.map((section) => section.label)).toEqual(
       ["Recaps", "Power Rankings", "Trash Talk", "Records", "Previews"],
     );
@@ -21,6 +29,9 @@ describe("publication section taxonomies", () => {
   it("looks up section fronts by slug", () => {
     expect(getCentralPublicationSectionBySlug("injuries")?.label).toBe(
       "Injuries",
+    );
+    expect(getCentralPublicationSectionBySlug("start-sit")?.label).toBe(
+      "Start/Sit",
     );
     expect(getLeaguePublicationSectionBySlug("power-rankings")?.label).toBe(
       "Power Rankings",
@@ -46,9 +57,27 @@ describe("publication section taxonomies", () => {
     expect(
       resolveCentralPublicationSection({
         metadata: {},
+        title: "Waiver wire priority opens after Sunday",
+      }).label,
+    ).toBe("Waivers");
+    expect(
+      resolveCentralPublicationSection({
+        metadata: {},
         title: "Default fantasy market story",
       }).label,
-    ).toBe("Fantasy");
+    ).toBe("Analysis");
+    expect(
+      resolveCentralPublicationSection({
+        metadata: { section: "nfl" },
+        title: "Old metadata still maps to the main desk",
+      }).label,
+    ).toBe("Headlines");
+    expect(
+      resolveCentralPublicationSection({
+        metadata: {},
+        title: "Generic league office headline",
+      }).label,
+    ).toBe("Headlines");
   });
 
   it("resolves league sections from metadata, persona, and kind fallbacks", () => {

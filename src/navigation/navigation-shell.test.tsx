@@ -125,7 +125,16 @@ describe("NavigationShellView", () => {
       within(tabs)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Front", "NFL", "Fantasy", "Injuries", "Rankings"]);
+    ).toEqual([
+      "Front",
+      "Headlines",
+      "Players",
+      "Rankings",
+      "Start/Sit",
+      "Injuries",
+      "Waivers",
+      "Analysis",
+    ]);
     expect(
       within(tabs).getByRole("link", { name: "Front" }).getAttribute("href"),
     ).toBe("/news");

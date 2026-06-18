@@ -203,7 +203,7 @@ function EnvironmentScopeRows({
       />
       <EnvironmentScopeRow
         active={activeState.scope === "news"}
-        description="NFL and fantasy sections"
+        description="Headlines, players, waivers"
         href="/news"
         icon={<Newspaper aria-hidden="true" className="size-4" />}
         label="Rumbledore News"

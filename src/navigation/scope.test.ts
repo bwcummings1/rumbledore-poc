@@ -30,20 +30,27 @@ describe("navigation scope taxonomy", () => {
   it("defines news as its own browsable environment", () => {
     expect(NEWS_NAVIGATION_SECTIONS.map((section) => section.label)).toEqual([
       "Front",
-      "NFL",
-      "Fantasy",
-      "Injuries",
+      "Headlines",
+      "Players",
       "Rankings",
+      "Start/Sit",
+      "Injuries",
+      "Waivers",
+      "Analysis",
     ]);
     expect(NEWS_NAVIGATION_SECTIONS.map((section) => section.href)).toEqual([
       "/news",
-      "/news/nfl",
-      "/news/fantasy",
-      "/news/injuries",
+      "/news/headlines",
+      "/news/players",
       "/news/rankings",
+      "/news/start-sit",
+      "/news/injuries",
+      "/news/waivers",
+      "/news/analysis",
     ]);
     expect(getNewsSectionHref("front")).toBe("/news");
     expect(getNewsSectionHref("injuries")).toBe("/news/injuries");
+    expect(getNewsSectionHref("waivers")).toBe("/news/waivers");
     expectNoProviderSections(NEWS_NAVIGATION_SECTIONS);
   });
 
@@ -121,6 +128,14 @@ describe("deriveActiveNavigationState", () => {
     expect(deriveActiveNavigationState("/news/injuries")).toMatchObject({
       scope: "news",
       sectionId: "injuries",
+    });
+    expect(deriveActiveNavigationState("/news/start-sit")).toMatchObject({
+      scope: "news",
+      sectionId: "start-sit",
+    });
+    expect(deriveActiveNavigationState("/news/waivers")).toMatchObject({
+      scope: "news",
+      sectionId: "waivers",
     });
     expect(deriveActiveNavigationState("/news/articles/story-1")).toMatchObject(
       {

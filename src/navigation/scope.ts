@@ -382,14 +382,20 @@ function newsSectionIcon(
   sectionId: CentralPublicationSectionId,
 ): NavigationIconName {
   switch (sectionId) {
+    case "analysis":
+      return "scroll-text";
+    case "headlines":
+      return "newspaper";
     case "injuries":
       return "landmark";
+    case "players":
+      return "users";
     case "rankings":
       return "book-open";
-    case "nfl":
+    case "start-sit":
+      return "ticket";
+    case "waivers":
       return "trophy";
-    case "fantasy":
-      return "scroll-text";
   }
 }
 
