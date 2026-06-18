@@ -474,6 +474,33 @@ describe("NavigationShellView", () => {
     ).toBe(true);
   });
 
+  it("keeps the wire feed toggle reachable in the tablet ticker", () => {
+    const { container } = render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/news")}
+        items={items}
+      >
+        <main>Central news</main>
+      </NavigationShellView>,
+    );
+
+    const wireModeToggle = container.querySelector(
+      '[data-slot="wire-mode-toggle"]',
+    );
+    expect(wireModeToggle?.className).toContain("md:flex");
+    expect(wireModeToggle?.className).not.toContain("lg:flex");
+    expect(
+      within(wireModeToggle as HTMLElement).getByRole("button", {
+        name: "General",
+      }),
+    ).toBeDefined();
+    expect(
+      within(wireModeToggle as HTMLElement).getByRole("button", {
+        name: "Personal",
+      }),
+    ).toBeDefined();
+  });
+
   it("persists the reduced-motion shell switch to the root data attribute", () => {
     render(
       <NavigationShellView

@@ -1238,7 +1238,7 @@ function ShellWireTicker({
       </div>
       {showModeToggle && onWireModeChange ? (
         <WireModeToggle
-          className="hidden border-r border-[var(--hair)] px-2 lg:flex"
+          className="hidden border-r border-[var(--hair)] px-2 md:flex"
           mode={wireMode}
           onModeChange={onWireModeChange}
         />
@@ -1331,7 +1331,10 @@ function WireModeToggle({
   readonly onModeChange: (mode: ShellWireMode) => void;
 }) {
   return (
-    <fieldset className={cn("flex items-center gap-1", className)}>
+    <fieldset
+      className={cn("flex items-center gap-1", className)}
+      data-slot="wire-mode-toggle"
+    >
       <legend className="sr-only">Wire feed</legend>
       {(
         [
