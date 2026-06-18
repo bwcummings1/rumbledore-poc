@@ -22,9 +22,14 @@ export interface DataStewardReviewDoorway {
   unresolvedIntegrityChecks: number;
 }
 
+export interface PublicDataLedgerDoorway {
+  href: string;
+}
+
 export interface DataStewardDoorwaySummary {
   canAssignStewards: boolean;
   canOpenReview: boolean;
+  publicLedger: PublicDataLedgerDoorway;
   review: DataStewardReviewDoorway | null;
   stewardCandidates: DataStewardCandidate[];
 }
@@ -107,6 +112,10 @@ function reviewHref(
   return base;
 }
 
+function publicLedgerHref(leagueId: string): string {
+  return `/leagues/${encodeURIComponent(leagueId)}/members/steward#public-ledger`;
+}
+
 async function listStewardCandidates(
   db: Db,
   leagueId: string,
@@ -186,6 +195,9 @@ export async function listDataStewardDoorway(
     return ok({
       canAssignStewards: canAssign,
       canOpenReview: canReview,
+      publicLedger: {
+        href: publicLedgerHref(input.leagueId),
+      },
       review,
       stewardCandidates: canAssign
         ? await listStewardCandidates(db, input.leagueId)
