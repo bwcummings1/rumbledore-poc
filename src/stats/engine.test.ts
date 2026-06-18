@@ -2610,6 +2610,153 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("flags grouping coverage, span sanity, and data-edit ledger completeness failures", async () => {
+    const { leagueId } = await seedStatsLeague("integrity-uncovered");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [targetMatchup] = await tx
+        .select({ id: fantasyMatchups.id })
+        .from(fantasyMatchups)
+        .where(
+          and(
+            eq(fantasyMatchups.leagueId, leagueId),
+            eq(fantasyMatchups.providerMatchupId, "2025-2-b"),
+          ),
+        )
+        .limit(1);
+      const [targetWeekly] = targetMatchup
+        ? await tx
+            .select({ id: weeklyStatistics.id })
+            .from(weeklyStatistics)
+            .where(eq(weeklyStatistics.matchupId, targetMatchup.id))
+            .limit(1)
+        : [];
+      if (!targetMatchup || !targetWeekly) {
+        throw new Error("expected integrity test matchup and weekly row");
+      }
+
+      const [firstGrouping] = await tx
+        .insert(leagueSeasonGroupings)
+        .values({
+          kind: "era",
+          leagueId,
+          name: "Overlap A",
+          ordinal: 1,
+          status: "confirmed",
+        })
+        .returning({ id: leagueSeasonGroupings.id });
+      const [secondGrouping] = await tx
+        .insert(leagueSeasonGroupings)
+        .values({
+          kind: "era",
+          leagueId,
+          name: "Overlap B",
+          ordinal: 2,
+          status: "confirmed",
+        })
+        .returning({ id: leagueSeasonGroupings.id });
+      if (!firstGrouping || !secondGrouping) {
+        throw new Error("expected integrity test groupings");
+      }
+      await tx.insert(leagueGroupingSeasons).values([
+        {
+          groupingId: firstGrouping.id,
+          leagueId,
+          season: 2025,
+        },
+        {
+          groupingId: secondGrouping.id,
+          leagueId,
+          season: 2025,
+        },
+        {
+          groupingId: firstGrouping.id,
+          leagueId,
+          season: 2099,
+        },
+      ]);
+
+      await tx
+        .update(fantasyMatchups)
+        .set({ scoringPeriodSpan: 2 })
+        .where(eq(fantasyMatchups.id, targetMatchup.id));
+      await tx
+        .update(weeklyStatistics)
+        .set({ scoringPeriodSpan: 1 })
+        .where(eq(weeklyStatistics.id, targetWeekly.id));
+      await tx.insert(leagueDataEdits).values({
+        afterValue: "stale",
+        beforeValue: "missing",
+        editClass: "substantive",
+        field: "canonical_name",
+        leagueId,
+        reason: "test stale ledger target",
+        targetId: randomUUID(),
+        targetKind: "person",
+      });
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, { leagueId });
+    expect(integrity.failures).toBeGreaterThanOrEqual(3);
+
+    const rows = await selectStatsRows(leagueId);
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "grouping_season_coverage",
+        season: null,
+        status: "fail",
+        detail: expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              reason: "season_in_multiple_confirmed_groupings",
+              season: 2025,
+            }),
+            expect.objectContaining({
+              reason: "unknown_grouping_season",
+              season: 2099,
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "matchup_span_sanity",
+        season: 2025,
+        status: "fail",
+        detail: expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              reason: "span_without_settings_or_ledger",
+              scoringPeriodSpan: 2,
+            }),
+            expect.objectContaining({
+              reason: "weekly_span_mismatch",
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "data_edit_ledger_completeness",
+        season: null,
+        status: "fail",
+        detail: expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              field: "canonical_name",
+              reason: "substantive_edit_target_missing",
+              targetKind: "person",
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it("applies steward merge and split corrections as sticky manual mappings", async () => {
     const { leagueId } = await seedStatsLeague("steward");
     await recomputeLeagueStatistics(handle.db, { leagueId });
