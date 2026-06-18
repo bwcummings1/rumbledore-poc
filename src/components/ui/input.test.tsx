@@ -16,9 +16,10 @@ test("Input renders the AUSPEX shell with optional clear affordance", () => {
   );
 
   expect(screen.getByLabelText("Stake").className).toContain("metric");
+  expect(screen.getByLabelText("Stake").className).toContain("min-h-11");
   expect(screen.getByLabelText("Stake").className).toContain("pr-12");
   const clear = screen.getByRole("button", { name: "Clear" });
-  expect(clear.className).toContain("size-8");
+  expect(clear.className).toContain("size-11");
   fireEvent.click(clear);
   expect(onClear).toHaveBeenCalledTimes(1);
 });

@@ -19,6 +19,9 @@ test("Breadcrumbs renders the current page and exposes hidden mobile crumbs", as
   expect(
     within(nav).getByText("Week 1 column").getAttribute("aria-current"),
   ).toBe("page");
+  expect(within(nav).getByText("Week 1 column").className).toContain(
+    "min-h-11",
+  );
 
   fireEvent.click(
     within(nav).getByRole("button", { name: "Show hidden breadcrumbs" }),

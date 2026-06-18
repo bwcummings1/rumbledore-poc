@@ -218,13 +218,12 @@ function GatedState() {
           <LockKeyhole className="size-4" />
         </span>
         <div>
-          <p className="eyebrow text-warning">WizKit access check</p>
-          <h2 className="font-display text-base font-medium">
-            Personal agent is gated
-          </h2>
+          <p className="eyebrow text-warning">Individual tier required</p>
+          <h2 className="heading-auspex text-base">Get your personal agent</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            The entitlement gate is working. Pricing is not wired yet, and the
-            current app config leaves WizKit open for testing.
+            Cross-league briefings about your teams are part of the individual
+            WizKit tier. Pricing is not wired yet, and the current app config
+            leaves WizKit open for testing.
           </p>
         </div>
       </div>
@@ -384,7 +383,6 @@ export function AmbientAgentPanel({
         {open ? (
           <section
             aria-label="WizKit personal agent"
-            aria-modal="true"
             className="panel grid max-h-[min(76dvh,42rem)] w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden shadow-overlay"
             data-state={state}
             data-slot="ambient-agent-panel"

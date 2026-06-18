@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { LeagueInviteView } from "./league-invite-view";
 
@@ -51,6 +57,7 @@ const initialSummary = {
 };
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   clipboardWrite.mockClear();
 });
@@ -260,6 +267,9 @@ test("invite view exposes the data steward doorway for commissioners", async () 
       stewardDoorway={{
         canAssignStewards: true,
         canOpenReview: true,
+        publicLedger: {
+          href: "/leagues/00000000-0000-4000-8000-000000000001/members/steward#public-ledger",
+        },
         review: {
           href: "/leagues/00000000-0000-4000-8000-000000000001/members/steward#identity-review",
           latestFailureAt: "2026-06-15T12:00:00.000Z",
@@ -286,6 +296,13 @@ test("invite view exposes the data steward doorway for commissioners", async () 
     screen.getByText("1 suggested identity link · 2 integrity flags"),
   ).toBeDefined();
   expect(
+    screen
+      .getByRole("link", { name: "Open public ledger" })
+      .getAttribute("href"),
+  ).toBe(
+    "/leagues/00000000-0000-4000-8000-000000000001/members/steward#public-ledger",
+  );
+  expect(
     screen.getByRole("link", { name: "Open data review" }).getAttribute("href"),
   ).toBe(
     "/leagues/00000000-0000-4000-8000-000000000001/members/steward#identity-review",
@@ -303,4 +320,37 @@ test("invite view exposes the data steward doorway for commissioners", async () 
       method: "POST",
     }),
   );
+});
+
+test("ordinary members can reach the public data ledger without steward controls", () => {
+  render(
+    <LeagueInviteView
+      initialSummary={initialSummary}
+      stewardDoorway={{
+        canAssignStewards: false,
+        canOpenReview: false,
+        publicLedger: {
+          href: "/leagues/00000000-0000-4000-8000-000000000001/members/steward#public-ledger",
+        },
+        review: null,
+        stewardCandidates: [],
+      }}
+    />,
+  );
+
+  expect(screen.getByText("Data transparency")).toBeDefined();
+  expect(
+    screen.getByText(
+      "Every member can inspect the league-visible edit ledger.",
+    ),
+  ).toBeDefined();
+  expect(
+    screen
+      .getByRole("link", { name: "Open public ledger" })
+      .getAttribute("href"),
+  ).toBe(
+    "/leagues/00000000-0000-4000-8000-000000000001/members/steward#public-ledger",
+  );
+  expect(screen.queryByRole("link", { name: "Open data review" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Make steward" })).toBeNull();
 });

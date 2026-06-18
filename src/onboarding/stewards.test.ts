@@ -256,6 +256,9 @@ describe("data steward doorway", () => {
     expect(commissionerDoorway.value).toMatchObject({
       canAssignStewards: true,
       canOpenReview: true,
+      publicLedger: {
+        href: `/leagues/${league.id}/members/steward#public-ledger`,
+      },
       review: {
         needsReview: true,
         suggestedIdentityLinks: 1,
@@ -290,6 +293,9 @@ describe("data steward doorway", () => {
     expect(memberDoorway.value).toMatchObject({
       canAssignStewards: false,
       canOpenReview: false,
+      publicLedger: {
+        href: `/leagues/${league.id}/members/steward#public-ledger`,
+      },
       review: null,
       stewardCandidates: [],
     });

@@ -8,6 +8,7 @@ import {
   Link2,
   Mail,
   MessageSquare,
+  ScrollText,
   ShieldCheck,
   UserCheck,
   Users,
@@ -68,9 +69,14 @@ interface DataStewardReviewDoorway {
   unresolvedIntegrityChecks: number;
 }
 
+interface PublicDataLedgerDoorway {
+  href: string;
+}
+
 interface DataStewardDoorwaySummary {
   canAssignStewards: boolean;
   canOpenReview: boolean;
+  publicLedger: PublicDataLedgerDoorway;
   review: DataStewardReviewDoorway | null;
   stewardCandidates: DataStewardCandidate[];
 }
@@ -163,9 +169,7 @@ function DataStewardDoorwayCard({
   doorway: DataStewardDoorwaySummary;
   onAssign: (candidate: DataStewardCandidate) => Promise<void>;
 }) {
-  if (!doorway.canAssignStewards && !doorway.canOpenReview) {
-    return null;
-  }
+  const publicOnly = !doorway.canAssignStewards && !doorway.canOpenReview;
 
   return (
     <section className="panel grid gap-4 p-4">
@@ -173,24 +177,35 @@ function DataStewardDoorwayCard({
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-display text-sm font-medium text-foreground">
             <ShieldCheck className="size-4 shrink-0 text-primary" aria-hidden />
-            Data steward doorway
+            {publicOnly ? "Data transparency" : "Data steward doorway"}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {reviewStatusText(doorway.review)}
+            {publicOnly
+              ? "Every member can inspect the league-visible edit ledger."
+              : reviewStatusText(doorway.review)}
           </p>
         </div>
         {doorway.review?.needsReview ? (
           <AlertTriangle className="size-5 text-highlight" aria-hidden />
+        ) : publicOnly ? (
+          <ScrollText className="size-5 text-primary" aria-hidden />
         ) : (
           <CheckCircle2 className="size-5 text-positive" aria-hidden />
         )}
       </div>
 
       <div className="flex flex-wrap gap-2">
+        <Link
+          href={doorway.publicLedger.href}
+          className={cn(buttonVariants({ variant: "secondary" }))}
+        >
+          <ScrollText data-icon="inline-start" />
+          Open public ledger
+        </Link>
         {doorway.canOpenReview && doorway.review ? (
           <Link
             href={doorway.review.href}
-            className={cn(buttonVariants({ variant: "secondary" }))}
+            className={cn(buttonVariants({ variant: "outline" }))}
           >
             <ShieldCheck data-icon="inline-start" />
             Open data review

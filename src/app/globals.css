@@ -554,6 +554,8 @@ html {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    min-inline-size: 2.75rem;
+    min-block-size: 2.75rem;
     gap: var(--space-2);
     overflow: hidden;
     white-space: nowrap;
@@ -648,7 +650,7 @@ html {
     text-decoration-line: underline;
   }
   .btn-sm {
-    padding: 0.375rem 0.75rem;
+    padding: 0.5rem 0.75rem;
     gap: var(--space-1);
   }
   .btn-md {
@@ -664,17 +666,17 @@ html {
   }
   .btn-icon {
     padding: 0;
-    inline-size: 2.125rem;
-    block-size: 2.125rem;
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
     border-radius: var(--radius-control);
   }
   .btn-icon-sm {
-    inline-size: 1.875rem;
-    block-size: 1.875rem;
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
   }
   .btn-icon-lg {
-    inline-size: 2.5rem;
-    block-size: 2.5rem;
+    inline-size: 3rem;
+    block-size: 3rem;
   }
   .btn-link.btn-md,
   .btn-link.btn-sm {
