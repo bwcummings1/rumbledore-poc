@@ -19,6 +19,9 @@ test("Pagination marks the current page and disables bounds", () => {
       .getAllByRole("button", { name: "Previous page" })[0]
       .getAttribute("aria-disabled"),
   ).toBe("true");
+  expect(
+    screen.getAllByRole("button", { name: "Previous page" })[0]?.className,
+  ).toContain("size-11");
   expect(screen.getAllByRole("link", { name: "Next page" }).length).toBe(2);
   expect(screen.getByLabelText("Jump to page")).toBeDefined();
 });

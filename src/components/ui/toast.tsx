@@ -138,7 +138,7 @@ function ToastCard({
           <ToastPrimitive.Action
             {...toast.actionProps}
             className={cn(
-              "mt-3 inline-flex min-h-8 items-center rounded-full border border-[var(--hair-3)] px-3 font-mono text-xs uppercase tracking-[0.1em] text-ink-2 hover:border-primary hover:text-lilac-hi focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none",
+              "mt-3 inline-flex min-h-11 min-w-11 items-center rounded-full border border-[var(--hair-3)] px-3 font-mono text-xs uppercase tracking-[0.1em] text-ink-2 hover:border-primary hover:text-lilac-hi focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none",
               toast.actionProps.className,
             )}
           />
@@ -146,7 +146,7 @@ function ToastCard({
       </ToastPrimitive.Content>
       <ToastPrimitive.Close
         aria-label="Dismiss notification"
-        className="inline-flex size-9 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+        className="inline-flex size-11 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
       >
         <X className="size-4" />
       </ToastPrimitive.Close>

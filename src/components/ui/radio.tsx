@@ -34,14 +34,14 @@ function RadioGroup({ className, options, ...props }: RadioGroupProps) {
           : undefined;
         return (
           <div
-            className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--hair-2)] bg-white/[0.015] px-3 py-2.5 text-sm text-foreground transition-[background-color,border-color] has-data-[checked]:border-primary/60 has-data-[checked]:bg-primary/10 has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-50"
+            className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-[var(--hair-2)] bg-white/[0.015] px-3 py-2.5 text-sm text-foreground transition-[background-color,border-color] has-data-[checked]:border-primary/60 has-data-[checked]:bg-primary/10 has-data-[disabled]:cursor-not-allowed has-data-[disabled]:opacity-50"
             key={option.value}
           >
             <span className="flex min-h-5 items-center">
               <RadioPrimitive.Root
                 aria-describedby={descriptionId}
                 aria-labelledby={labelId}
-                className="group/radio inline-flex items-center justify-center rounded-full border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]"
+                className="group/radio inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]"
                 data-slot="radio"
                 disabled={option.disabled}
                 value={option.value}

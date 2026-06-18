@@ -114,11 +114,11 @@ function BreadcrumbLink({
   readonly mobile?: boolean;
 }) {
   const className = cn(
-    "min-w-0 truncate rounded-control px-1.5 py-1 font-mono text-xs uppercase tracking-[0.06em] outline-none focus-visible:shadow-[var(--focus-ring-shadow)]",
+    "inline-flex min-h-11 min-w-11 items-center truncate rounded-control px-1.5 py-1 font-mono text-xs uppercase tracking-[0.06em] outline-none focus-visible:shadow-[var(--focus-ring-shadow)]",
     item.current
       ? "text-ink-2"
       : "text-ink-3 transition-colors hover:text-lilac",
-    mobile && "block min-h-10 px-3 py-2 text-sm normal-case",
+    mobile && "flex px-3 py-2 text-sm normal-case",
   );
 
   if (!item.href || item.current) {
