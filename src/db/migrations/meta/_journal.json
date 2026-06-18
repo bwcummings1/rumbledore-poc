@@ -330,6 +330,20 @@
       "when": 1781523200000,
       "tag": "0046_postseason_derivation_confidence",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1781526800000,
+      "tag": "0047_data_curation_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1781530400000,
+      "tag": "0048_sticky_edit_conflict_check",
+      "breakpoints": true
     }
   ]
 }

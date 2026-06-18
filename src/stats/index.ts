@@ -1,4 +1,19 @@
 export {
+  type ApplyLeagueDataEditInput,
+  type ApplyLeagueDataEditResult,
+  applyLeagueDataEdit,
+  confirmLeagueSeasonGrouping,
+  detectSeasonGroupingProposals,
+  groupingConfigIsEquivalent,
+  type LeagueDataEditClass,
+  type LeagueDataEditTargetKind,
+  listUnifiedDataLedger,
+  type PersistedSeasonGrouping,
+  proposeLeagueSeasonGroupings,
+  type SeasonGroupingProposal,
+  type UnifiedLedgerEntry,
+} from "./curation";
+export {
   mergePersons,
   RECORD_TYPE_LABELS,
   type RecordBrokenHook,
@@ -30,6 +45,8 @@ export {
   type ManagerHeadToHeadStreakSummary,
   type PersonCatalogRef,
   type RecordBookAggregateRefreshSummary,
+  type RecordBookLens,
+  type RecordBookSegment,
   type RecordsCatalog,
   refreshRecordBookAggregates,
   type SeasonSummary,

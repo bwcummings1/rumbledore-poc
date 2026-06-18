@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
@@ -18,6 +20,9 @@ import {
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
+  leagueDataEdits,
+  leagueGroupingSeasons,
+  leagueSeasonGroupings,
   leagueSeasonSettings,
   leagues,
   loreClaims,
@@ -34,6 +39,12 @@ import {
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
+  applyLeagueDataEdit,
+  confirmLeagueSeasonGrouping,
+  listUnifiedDataLedger,
+  proposeLeagueSeasonGroupings,
+} from "./curation";
+import {
   mergePersons,
   recomputeChangedMatchupStatistics,
   recomputeLeagueStatistics,
@@ -49,6 +60,8 @@ import {
 } from "./steward";
 
 const marker = `statstest-${randomUUID()}`;
+const OLD_LEAGUE_FIXTURE_ROOT = "/home/ubuntu/espn-api-old-2024/scripts-output";
+const oldLeagueFixtureIt = existsSync(OLD_LEAGUE_FIXTURE_ROOT) ? it : it.skip;
 let handle: DbHandle;
 
 interface SeededStatsLeague {
@@ -79,6 +92,15 @@ interface MatchupFixture {
   providerMatchupId: string;
   scoringPeriod: number;
   season: number;
+}
+
+interface OldLeagueTotalRow {
+  end_of_season_rank: number;
+  end_of_season_record: string;
+  owner_name: string;
+  team_name: string;
+  total_points_against: number;
+  total_points_for: number;
 }
 
 const teams: TeamFixture[] = [
@@ -348,6 +370,110 @@ async function seedActor(tag: string): Promise<string> {
   return user.id;
 }
 
+function oldLeagueTotalsPath(season: number): string {
+  return join(
+    OLD_LEAGUE_FIXTURE_ROOT,
+    "ffl-totals",
+    `team_stats_${season}.json`,
+  );
+}
+
+function readOldLeagueTotals(season: number): OldLeagueTotalRow[] {
+  return JSON.parse(
+    readFileSync(oldLeagueTotalsPath(season), "utf8"),
+  ) as OldLeagueTotalRow[];
+}
+
+function oldLeagueRosterFormat(season: number): Record<string, unknown> {
+  return season < 2020
+    ? { offensive_player_slot: "op" }
+    : { offensive_player_slot: "flex" };
+}
+
+async function seedOldLeagueGroupingOracle(
+  tag: string,
+): Promise<SeededStatsLeague> {
+  const providerLeagueId = `${marker}-${tag}`;
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      currentScoringPeriod: 17,
+      name: `${marker} ${tag}`,
+      provider: "espn",
+      providerLeagueId,
+      scoringType: "H2H_POINTS",
+      season: 2023,
+      size: 12,
+      sport: "ffl",
+      status: "complete",
+    })
+    .returning();
+  if (!league) {
+    throw new Error("old-league grouping oracle league was not created");
+  }
+
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    for (const season of [
+      2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022,
+      2023,
+    ]) {
+      const totals = readOldLeagueTotals(season);
+      const rosterFormat = oldLeagueRosterFormat(season);
+      await tx.insert(leagueSeasonSettings).values({
+        contentHash: `${marker}-${tag}-settings-${season}`,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        scoringSettings: {
+          format_type: "traditional",
+          roster_format: rosterFormat,
+          scoring_type: "H2H_POINTS",
+        },
+        season,
+      });
+
+      for (const [index, total] of totals.entries()) {
+        const providerTeamId = String(index + 1);
+        const [team] = await tx
+          .insert(fantasyTeams)
+          .values({
+            abbrev: `O${providerTeamId}`,
+            contentHash: `${marker}-${tag}-team-${season}-${providerTeamId}`,
+            leagueId: league.id,
+            leagueProviderId: providerLeagueId,
+            losses: Number(total.end_of_season_record.split("-")[1] ?? 0),
+            name: total.team_name,
+            ownerMemberIds: [total.owner_name],
+            pointsAgainst: total.total_points_against,
+            pointsFor: total.total_points_for,
+            provider: "espn",
+            providerTeamId,
+            season,
+            ties: Number(total.end_of_season_record.split("-")[2] ?? 0),
+            wins: Number(total.end_of_season_record.split("-")[0] ?? 0),
+          })
+          .returning({ id: fantasyTeams.id });
+        if (!team) {
+          throw new Error("old-league fantasy team row was not created");
+        }
+        await tx.insert(teamSeasons).values({
+          fantasyTeamId: team.id,
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          ownerMemberIds: [total.owner_name],
+          ownerNames: [total.owner_name],
+          provider: "espn",
+          providerTeamId,
+          season,
+          teamName: total.team_name,
+        });
+      }
+    }
+  });
+
+  return { leagueId: league.id, providerLeagueId };
+}
+
 async function seedCoOwnerLeague(tag: string): Promise<SeededStatsLeague> {
   const providerLeagueId = `${marker}-${tag}`;
   const [league] = await handle.db
@@ -591,6 +717,21 @@ async function selectStatsRows(leagueId: string) {
       .select()
       .from(dataCorrectionAuditLog)
       .where(eq(dataCorrectionAuditLog.leagueId, leagueId));
+    const dataEditRows = await tx
+      .select()
+      .from(leagueDataEdits)
+      .where(eq(leagueDataEdits.leagueId, leagueId))
+      .orderBy(asc(leagueDataEdits.createdAt));
+    const groupingRows = await tx
+      .select()
+      .from(leagueSeasonGroupings)
+      .where(eq(leagueSeasonGroupings.leagueId, leagueId))
+      .orderBy(asc(leagueSeasonGroupings.ordinal));
+    const groupingSeasonRows = await tx
+      .select()
+      .from(leagueGroupingSeasons)
+      .where(eq(leagueGroupingSeasons.leagueId, leagueId))
+      .orderBy(asc(leagueGroupingSeasons.season));
 
     return {
       auditRows,
@@ -598,6 +739,9 @@ async function selectStatsRows(leagueId: string) {
       calculationRows,
       championshipRows,
       dataCorrectionAuditRows,
+      dataEditRows,
+      groupingRows,
+      groupingSeasonRows,
       h2hRows,
       integrityRows,
       mappingRows,
@@ -865,6 +1009,469 @@ describe("recomputeLeagueStatistics", () => {
       length: 1,
       personId: drew2024.personId,
     });
+  });
+
+  it("applies general person edits once, records them in the unified ledger, and refreshes scoped records", async () => {
+    const { leagueId } = await seedStatsLeague("curation-person");
+    const actorUserId = await seedActor("curation-person-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const alex = before.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    if (!alex) {
+      throw new Error("expected Alex mapping");
+    }
+    const beforeWeeklyPersonRows = before.weeklyRows.filter(
+      (row) => row.personId === alex.personId,
+    );
+
+    const edit = await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "cosmetic",
+      field: "canonical_name",
+      leagueId,
+      reason: "owner name cleanup",
+      targetId: alex.personId,
+      targetKind: "person",
+      value: "Alex Corrected",
+    });
+
+    expect(edit).toMatchObject({
+      afterValue: "Alex Corrected",
+      beforeValue: "Alex Manager",
+    });
+    expect(edit.recompute.records).toBeGreaterThanOrEqual(0);
+
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.personRows.find((row) => row.id === alex.personId)?.canonicalName,
+    ).toBe("Alex Corrected");
+    expect(
+      after.weeklyRows.filter((row) => row.personId === alex.personId),
+    ).toHaveLength(beforeWeeklyPersonRows.length);
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        actorUserId,
+        afterValue: "Alex Corrected",
+        beforeValue: "Alex Manager",
+        editClass: "cosmetic",
+        field: "canonical_name",
+        targetId: alex.personId,
+        targetKind: "person",
+      }),
+    );
+    expect(after.calculationRows).toContainEqual(
+      expect.objectContaining({
+        calculationType: "records",
+        status: "completed",
+      }),
+    );
+
+    const ledger = await listUnifiedDataLedger(handle.db, {
+      leagueId,
+      targetId: alex.personId,
+      targetKind: "person",
+    });
+    expect(ledger[0]).toMatchObject({
+      afterValue: "Alex Corrected",
+      beforeValue: "Alex Manager",
+      source: "league_data_edit",
+      targetId: alex.personId,
+      targetKind: "person",
+    });
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(
+      catalog.allTimeStandings.find((row) => row.personId === alex.personId)
+        ?.personName,
+    ).toBe("Alex Corrected");
+  });
+
+  it("keeps manually edited team-season fields sticky across provider-derived recomputes", async () => {
+    const { leagueId } = await seedStatsLeague("curation-sticky-team");
+    const actorUserId = await seedActor("curation-sticky-team-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const alex2025TeamSeason = before.teamSeasonRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    if (!alex2025TeamSeason) {
+      throw new Error("expected Alex 2025 team-season row");
+    }
+
+    await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "cosmetic",
+      field: "team_name",
+      leagueId,
+      reason: "team name cleanup",
+      targetId: alex2025TeamSeason.id,
+      targetKind: "team_season",
+      value: "Manual Alex Franchise",
+    });
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .update(fantasyTeams)
+        .set({
+          contentHash: `${marker}-curation-sticky-provider-overwrite`,
+          name: "Provider Reimport Name",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(fantasyTeams.leagueId, leagueId),
+            eq(fantasyTeams.providerTeamId, "1"),
+            eq(fantasyTeams.season, 2025),
+          ),
+        );
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.teamSeasonRows.find((row) => row.id === alex2025TeamSeason.id)
+        ?.teamName,
+    ).toBe("Manual Alex Franchise");
+    expect(after.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "sticky_edit_conflict",
+        detail: expect.objectContaining({
+          field: "team_name",
+          incomingValue: "Provider Reimport Name",
+          preservedValue: "Manual Alex Franchise",
+          targetId: alex2025TeamSeason.id,
+          targetKind: "team_season",
+        }),
+        season: 2025,
+        status: "fail",
+      }),
+    );
+  });
+
+  it("keeps league data edits append-only and RLS policy-scoped", async () => {
+    const leagueA = await seedStatsLeague("curation-append-a");
+    const actorUserId = await seedActor("curation-append-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId: leagueA.leagueId });
+    const rowsA = await selectStatsRows(leagueA.leagueId);
+    const targetPerson = rowsA.personRows[0];
+    if (!targetPerson) {
+      throw new Error("expected target person");
+    }
+    const edit = await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "cosmetic",
+      field: "canonical_name",
+      leagueId: leagueA.leagueId,
+      targetId: targetPerson.id,
+      targetKind: "person",
+      value: "Append Only Name",
+    });
+
+    await expect(
+      withLeagueContext(handle.db, leagueA.leagueId, (tx) =>
+        tx
+          .update(leagueDataEdits)
+          .set({ reason: "mutated" })
+          .where(eq(leagueDataEdits.id, edit.editId)),
+      ),
+    ).rejects.toThrow(/league_data_edits|append-only/);
+    await expect(
+      withLeagueContext(handle.db, leagueA.leagueId, (tx) =>
+        tx.delete(leagueDataEdits).where(eq(leagueDataEdits.id, edit.editId)),
+      ),
+    ).rejects.toThrow(/league_data_edits|append-only/);
+
+    const rlsRows = await handle.pool.query<{
+      relforcerowsecurity: boolean;
+      relname: string;
+      relrowsecurity: boolean;
+    }>(
+      `select relname, relrowsecurity, relforcerowsecurity
+         from pg_class
+        where relname = any($1::text[])
+        order by relname`,
+      [
+        [
+          "league_data_edits",
+          "league_grouping_seasons",
+          "league_season_groupings",
+        ],
+      ],
+    );
+    expect(rlsRows.rows).toEqual([
+      {
+        relforcerowsecurity: true,
+        relname: "league_data_edits",
+        relrowsecurity: true,
+      },
+      {
+        relforcerowsecurity: true,
+        relname: "league_grouping_seasons",
+        relrowsecurity: true,
+      },
+      {
+        relforcerowsecurity: true,
+        relname: "league_season_groupings",
+        relrowsecurity: true,
+      },
+    ]);
+    const policyRows = await handle.pool.query<{
+      policyname: string;
+      qual: string;
+      tablename: string;
+      with_check: string;
+    }>(
+      `select tablename, policyname, qual, with_check
+         from pg_policies
+        where tablename = any($1::text[])
+        order by tablename`,
+      [
+        [
+          "league_data_edits",
+          "league_grouping_seasons",
+          "league_season_groupings",
+        ],
+      ],
+    );
+    expect(policyRows.rows).toHaveLength(3);
+    for (const row of policyRows.rows) {
+      expect(row.qual).toContain("current_league_id()");
+      expect(row.with_check).toContain("current_league_id()");
+    }
+  });
+
+  it("proposes and confirms optional season groupings, then lenses records by the confirmed season set", async () => {
+    const { leagueId } = await seedStatsLeague("curation-groupings");
+    const actorUserId = await seedActor("curation-groupings-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const blair2024 = before.mappingRows.find(
+      (row) => row.providerTeamId === "2" && row.season === 2024,
+    );
+    if (!blair2024) {
+      throw new Error("expected Blair 2024 mapping");
+    }
+
+    const proposals = await proposeLeagueSeasonGroupings(handle.db, {
+      leagueId,
+    });
+    expect(proposals.map((proposal) => proposal.status)).toEqual([
+      "proposed",
+      "proposed",
+    ]);
+    expect(proposals.map((proposal) => proposal.seasons)).toEqual([
+      [2024],
+      [2025],
+    ]);
+
+    const secondEra = proposals.find((proposal) =>
+      proposal.seasons.includes(2025),
+    );
+    if (!secondEra) {
+      throw new Error("expected second proposed era");
+    }
+    const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
+      actorUserId,
+      groupingId: secondEra.id,
+      leagueId,
+      name: "Split Era",
+      reason: "confirmed owner turnover boundary",
+      seasons: [2025],
+    });
+    expect(confirmed).toMatchObject({
+      name: "Split Era",
+      seasons: [2025],
+      status: "confirmed",
+    });
+
+    const after = await selectStatsRows(leagueId);
+    expect(after.groupingRows).toHaveLength(2);
+    expect(after.groupingSeasonRows).toContainEqual(
+      expect.objectContaining({
+        groupingId: secondEra.id,
+        season: 2025,
+      }),
+    );
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        field: "grouping_confirmation",
+        targetId: secondEra.id,
+        targetKind: "grouping",
+      }),
+    );
+
+    const lensCatalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      lens: { groupingId: secondEra.id, segment: "both" },
+      limit: 10,
+    });
+    expect(
+      lensCatalog.allTimeStandings.some(
+        (row) => row.personId === blair2024.personId,
+      ),
+    ).toBe(false);
+    expect(lensCatalog.highLow.highestScores[0]).toMatchObject({
+      season: 2025,
+      value: 120,
+    });
+  });
+
+  oldLeagueFixtureIt(
+    "proposes old-league era boundaries from the historical fixture and confirms arbitrary season sets",
+    async () => {
+      const { leagueId } = await seedOldLeagueGroupingOracle(
+        "old-fixture-groupings",
+      );
+      const actorUserId = await seedActor("old-fixture-groupings-actor");
+
+      const proposals = await proposeLeagueSeasonGroupings(handle.db, {
+        leagueId,
+      });
+      expect(proposals.map((proposal) => proposal.seasons)).toEqual([
+        [2011],
+        [2012],
+        [2013, 2014, 2015, 2016, 2017, 2018, 2019],
+        [2020, 2021, 2022, 2023],
+      ]);
+      expect(proposals[1]?.derivedFrom).toMatchObject({
+        boundaryReasons: expect.arrayContaining(["member_set_change"]),
+      });
+      expect(proposals[2]?.derivedFrom).toMatchObject({
+        boundaryReasons: expect.arrayContaining([
+          "member_count_change",
+          "member_set_change",
+        ]),
+      });
+      expect(proposals[3]?.derivedFrom).toMatchObject({
+        boundaryReasons: expect.arrayContaining([
+          "member_set_change",
+          "roster_change",
+        ]),
+      });
+
+      const thirdProposal = proposals[2];
+      if (!thirdProposal) {
+        throw new Error("expected the 2013-2019 old-league era proposal");
+      }
+      const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
+        actorUserId,
+        groupingId: thirdProposal.id,
+        leagueId,
+        name: "Owner-picked composite era",
+        reason: "old fixture oracle exercises arbitrary season sets",
+        seasons: [2013, 2015, 2023],
+      });
+      expect(confirmed).toMatchObject({
+        name: "Owner-picked composite era",
+        seasons: [2013, 2015, 2023],
+        status: "confirmed",
+      });
+
+      const ledger = await listUnifiedDataLedger(handle.db, {
+        leagueId,
+        targetId: thirdProposal.id,
+        targetKind: "grouping",
+      });
+      expect(ledger[0]).toMatchObject({
+        afterValue: expect.objectContaining({
+          seasons: [2013, 2015, 2023],
+          status: "confirmed",
+        }),
+        field: "grouping_confirmation",
+        source: "league_data_edit",
+        targetId: thirdProposal.id,
+        targetKind: "grouping",
+      });
+    },
+  );
+
+  it("normalizes multi-week matchup spans for averages while preserving full W/L and totals", async () => {
+    const { leagueId } = await seedStatsLeague("curation-span");
+    const actorUserId = await seedActor("curation-span-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const casey2025 = before.mappingRows.find(
+      (row) => row.providerTeamId === "2" && row.season === 2025,
+    );
+    if (!casey2025) {
+      throw new Error("expected Casey 2025 mapping");
+    }
+
+    let matchupId = "";
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [matchup] = await tx
+        .select({ id: fantasyMatchups.id })
+        .from(fantasyMatchups)
+        .where(
+          and(
+            eq(fantasyMatchups.leagueId, leagueId),
+            eq(fantasyMatchups.providerMatchupId, "2025-2-b"),
+          ),
+        )
+        .limit(1);
+      matchupId = matchup?.id ?? "";
+    });
+    if (!matchupId) {
+      throw new Error("expected target matchup");
+    }
+
+    await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "substantive",
+      field: "scoring_period_span",
+      leagueId,
+      reason: "two-week final imported as one matchup",
+      targetId: matchupId,
+      targetKind: "matchup",
+      value: 2,
+    });
+
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.weeklyRows.filter((row) => row.matchupId === matchupId),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scoringPeriodSpan: 2 }),
+        expect.objectContaining({ scoringPeriodSpan: 2 }),
+      ]),
+    );
+    expect(
+      after.seasonRows.find(
+        (row) => row.personId === casey2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      avgPointsFor: 70,
+      losses: 1,
+      pointsFor: 210,
+      wins: 1,
+    });
+    expect(after.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "matchup_span_sanity",
+        season: 2025,
+        status: "pass",
+      }),
+    );
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        afterValue: 2,
+        beforeValue: 1,
+        editClass: "substantive",
+        field: "scoring_period_span",
+        targetId: matchupId,
+        targetKind: "matchup",
+      }),
+    );
   });
 
   it("materializes keeper milestone aggregates from trusted roster signals", async () => {

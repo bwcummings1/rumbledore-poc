@@ -505,6 +505,7 @@ function normalizePostseasonSettings(
   const settings: NormalizedPostseasonSettings = {
     ...(regularSeasonEnd
       ? {
+          matchupPeriodCount: regularSeasonEnd,
           regularSeasonEndScoringPeriod: regularSeasonEnd,
           playoffStartScoringPeriod: regularSeasonEnd + 1,
         }
@@ -726,6 +727,8 @@ function normalizeMatchup(
     leagueProviderId: leagueRef.providerId,
     season: leagueRef.season,
     scoringPeriod,
+    periodStart: scoringPeriod,
+    scoringPeriodSpan: 1,
     homeTeamRef: {
       provider: ESPN_PROVIDER_ID,
       providerId: homeTeamId,

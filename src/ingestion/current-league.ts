@@ -11,6 +11,7 @@ import {
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
+  leagueDataEdits,
   leagueSeasonSettings,
   leagues,
   providerFinalStandings,
@@ -154,9 +155,11 @@ type MatchupUpsertRow = {
   kind: NormalizedMatchup["kind"] | "head_to_head";
   leagueId: string;
   leagueProviderId: string;
+  periodStart: number;
   provider: NormalizedMatchup["provider"];
   providerMatchupId: string;
   scoringPeriod: number;
+  scoringPeriodSpan: number;
   season: number;
   status: NormalizedMatchup["status"];
   winner: NormalizedMatchup["winner"];
@@ -183,6 +186,60 @@ function currentTime(
   deps: Pick<CurrentLeagueSyncInput<FantasyProviderSession>, "now">,
 ): Date {
   return deps.now?.() ?? new Date();
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableJson(nested)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function valuesDiffer(left: unknown, right: unknown): boolean {
+  return stableJson(left) !== stableJson(right);
+}
+
+interface StickyEditConflict {
+  field: string;
+  incomingValue: unknown;
+  preservedValue: unknown;
+  providerIdentity: Record<string, unknown>;
+  season: number | null;
+  targetId: string;
+  targetKind: "matchup" | "season_setting";
+}
+
+async function recordStickyEditConflicts(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  conflicts: readonly StickyEditConflict[],
+): Promise<void> {
+  if (conflicts.length === 0) {
+    return;
+  }
+  await tx.insert(dataIntegrityChecks).values(
+    conflicts.map((conflict) => ({
+      checkKey: "sticky_edit_conflict" as const,
+      detail: {
+        field: conflict.field,
+        incomingValue: conflict.incomingValue,
+        preservedValue: conflict.preservedValue,
+        providerIdentity: conflict.providerIdentity,
+        reason: "provider_import_conflicts_with_manual_edit",
+        targetId: conflict.targetId,
+        targetKind: conflict.targetKind,
+      },
+      leagueId,
+      season: conflict.season,
+      status: "fail" as const,
+    })),
+  );
 }
 
 function changedScoringPeriod(
@@ -300,13 +357,157 @@ function matchupHashPayload(matchup: NormalizedMatchup) {
     homeTeamProviderId: matchup.homeTeamRef.providerId,
     kind: matchup.kind ?? "head_to_head",
     leagueProviderId: matchup.leagueProviderId,
+    periodStart: matchup.periodStart ?? matchup.scoringPeriod,
     provider: matchup.provider,
     providerId: matchup.providerId,
     scoringPeriod: matchup.scoringPeriod,
+    scoringPeriodSpan: matchup.scoringPeriodSpan ?? 1,
     season: matchup.season,
     status: matchup.status,
     winner: matchup.winner,
   };
+}
+
+function matchupRowHashPayload(row: MatchupUpsertRow) {
+  return {
+    awayScore: row.awayScore,
+    awayTeamProviderId: row.awayTeamProviderId,
+    homeScore: row.homeScore,
+    homeTeamProviderId: row.homeTeamProviderId,
+    kind: row.kind,
+    leagueProviderId: row.leagueProviderId,
+    periodStart: row.periodStart,
+    provider: row.provider,
+    providerId: row.providerMatchupId,
+    scoringPeriod: row.scoringPeriod,
+    scoringPeriodSpan: row.scoringPeriodSpan,
+    season: row.season,
+    status: row.status,
+    winner: row.winner,
+  };
+}
+
+async function preserveStickyMatchupEdits(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  rows: readonly MatchupUpsertRow[],
+): Promise<MatchupUpsertRow[]> {
+  if (rows.length === 0) {
+    return [];
+  }
+  const editRows = await tx
+    .select({
+      field: leagueDataEdits.field,
+      targetId: leagueDataEdits.targetId,
+    })
+    .from(leagueDataEdits)
+    .where(
+      and(
+        eq(leagueDataEdits.leagueId, leagueId),
+        eq(leagueDataEdits.targetKind, "matchup"),
+        inArray(leagueDataEdits.field, [
+          "away_score",
+          "home_score",
+          "period_start",
+          "scoring_period_span",
+          "winner",
+        ]),
+      ),
+    );
+  const targetIds = [...new Set(editRows.map((row) => row.targetId))];
+  if (targetIds.length === 0) {
+    return [...rows];
+  }
+  const existingRows = await tx
+    .select({
+      awayScore: fantasyMatchups.awayScore,
+      homeScore: fantasyMatchups.homeScore,
+      id: fantasyMatchups.id,
+      leagueProviderId: fantasyMatchups.leagueProviderId,
+      periodStart: fantasyMatchups.periodStart,
+      provider: fantasyMatchups.provider,
+      providerMatchupId: fantasyMatchups.providerMatchupId,
+      scoringPeriod: fantasyMatchups.scoringPeriod,
+      scoringPeriodSpan: fantasyMatchups.scoringPeriodSpan,
+      season: fantasyMatchups.season,
+      winner: fantasyMatchups.winner,
+    })
+    .from(fantasyMatchups)
+    .where(
+      and(
+        eq(fantasyMatchups.leagueId, leagueId),
+        inArray(fantasyMatchups.id, targetIds),
+      ),
+    );
+  const fieldsByTargetId = new Map<string, Set<string>>();
+  for (const edit of editRows) {
+    const fields = fieldsByTargetId.get(edit.targetId) ?? new Set<string>();
+    fields.add(edit.field);
+    fieldsByTargetId.set(edit.targetId, fields);
+  }
+  const existingByIdentity = new Map(
+    existingRows.map((row) => [matchupIdentityKey(row), row]),
+  );
+  const conflicts: StickyEditConflict[] = [];
+  const preserved = rows.map((row) => {
+    const existing = existingByIdentity.get(matchupIdentityKey(row));
+    const stickyFields = existing ? fieldsByTargetId.get(existing.id) : null;
+    if (!existing || !stickyFields || stickyFields.size === 0) {
+      return row;
+    }
+    const next = { ...row };
+    const preserve = (
+      field: string,
+      incomingValue: unknown,
+      preservedValue: unknown,
+      apply: () => void,
+    ) => {
+      if (!stickyFields.has(field)) {
+        return;
+      }
+      if (valuesDiffer(incomingValue, preservedValue)) {
+        conflicts.push({
+          field,
+          incomingValue,
+          preservedValue,
+          providerIdentity: {
+            leagueProviderId: row.leagueProviderId,
+            provider: row.provider,
+            providerMatchupId: row.providerMatchupId,
+            scoringPeriod: row.scoringPeriod,
+          },
+          season: row.season,
+          targetId: existing.id,
+          targetKind: "matchup",
+        });
+      }
+      apply();
+    };
+    preserve("home_score", row.homeScore, existing.homeScore, () => {
+      next.homeScore = existing.homeScore;
+    });
+    preserve("away_score", row.awayScore, existing.awayScore, () => {
+      next.awayScore = existing.awayScore;
+    });
+    preserve("winner", row.winner, existing.winner, () => {
+      next.winner = existing.winner;
+    });
+    preserve("period_start", row.periodStart, existing.periodStart, () => {
+      next.periodStart = existing.periodStart ?? existing.scoringPeriod;
+    });
+    preserve(
+      "scoring_period_span",
+      row.scoringPeriodSpan,
+      existing.scoringPeriodSpan,
+      () => {
+        next.scoringPeriodSpan = existing.scoringPeriodSpan;
+      },
+    );
+    next.contentHash = stableContentHash(matchupRowHashPayload(next));
+    return next;
+  });
+  await recordStickyEditConflicts(tx, leagueId, conflicts);
+  return preserved;
 }
 
 function finalStandingHashPayload(standing: NormalizedFinalStanding) {
@@ -338,6 +539,7 @@ function leagueSeasonSettingsHashPayload(league: NormalizedLeague) {
     isKeeperLeague: league.keeperSettings?.isKeeper ?? false,
     keeperSettings: league.keeperSettings ?? {},
     leagueProviderId: league.providerId,
+    matchupPeriodCount: league.postseason?.matchupPeriodCount ?? 1,
     playoffStartScoringPeriod:
       league.postseason?.playoffStartScoringPeriod ?? null,
     playoffTeamCount: league.postseason?.playoffTeamCount ?? null,
@@ -347,6 +549,165 @@ function leagueSeasonSettingsHashPayload(league: NormalizedLeague) {
     scoringSettings: league.scoringSettings ?? {},
     season: league.season,
   };
+}
+
+type LeagueSeasonSettingsUpsertRow = typeof leagueSeasonSettings.$inferInsert;
+
+function leagueSeasonSettingsRowHashPayload(
+  row: LeagueSeasonSettingsUpsertRow,
+) {
+  return {
+    championshipScoringPeriod: row.championshipScoringPeriod ?? null,
+    isDynastyLeague: row.isDynastyLeague ?? false,
+    isKeeperLeague: row.isKeeperLeague ?? false,
+    keeperSettings: row.keeperSettings ?? {},
+    leagueProviderId: row.leagueProviderId,
+    matchupPeriodCount: row.matchupPeriodCount ?? 1,
+    playoffStartScoringPeriod: row.playoffStartScoringPeriod ?? null,
+    playoffTeamCount: row.playoffTeamCount ?? null,
+    provider: row.provider,
+    regularSeasonEndScoringPeriod: row.regularSeasonEndScoringPeriod ?? null,
+    scoringSettings: row.scoringSettings ?? {},
+    season: row.season,
+  };
+}
+
+async function preserveStickySeasonSettingEdits(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  row: LeagueSeasonSettingsUpsertRow,
+): Promise<LeagueSeasonSettingsUpsertRow> {
+  const [existing] = await tx
+    .select({
+      championshipScoringPeriod: leagueSeasonSettings.championshipScoringPeriod,
+      id: leagueSeasonSettings.id,
+      keeperSettings: leagueSeasonSettings.keeperSettings,
+      matchupPeriodCount: leagueSeasonSettings.matchupPeriodCount,
+      playoffStartScoringPeriod: leagueSeasonSettings.playoffStartScoringPeriod,
+      playoffTeamCount: leagueSeasonSettings.playoffTeamCount,
+      regularSeasonEndScoringPeriod:
+        leagueSeasonSettings.regularSeasonEndScoringPeriod,
+      scoringSettings: leagueSeasonSettings.scoringSettings,
+      season: leagueSeasonSettings.season,
+    })
+    .from(leagueSeasonSettings)
+    .where(
+      and(
+        eq(leagueSeasonSettings.leagueId, leagueId),
+        eq(leagueSeasonSettings.provider, row.provider),
+        eq(leagueSeasonSettings.leagueProviderId, row.leagueProviderId),
+        eq(leagueSeasonSettings.season, row.season),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    return row;
+  }
+  const editRows = await tx
+    .select({ field: leagueDataEdits.field })
+    .from(leagueDataEdits)
+    .where(
+      and(
+        eq(leagueDataEdits.leagueId, leagueId),
+        eq(leagueDataEdits.targetKind, "season_setting"),
+        eq(leagueDataEdits.targetId, existing.id),
+      ),
+    );
+  const stickyFields = new Set(editRows.map((edit) => edit.field));
+  if (stickyFields.size === 0) {
+    return row;
+  }
+
+  const conflicts: StickyEditConflict[] = [];
+  const next = { ...row };
+  const preserve = (
+    field: string,
+    incomingValue: unknown,
+    preservedValue: unknown,
+    apply: () => void,
+  ) => {
+    if (!stickyFields.has(field)) {
+      return;
+    }
+    if (valuesDiffer(incomingValue, preservedValue)) {
+      conflicts.push({
+        field,
+        incomingValue,
+        preservedValue,
+        providerIdentity: {
+          leagueProviderId: row.leagueProviderId,
+          provider: row.provider,
+          season: row.season,
+        },
+        season: row.season ?? null,
+        targetId: existing.id,
+        targetKind: "season_setting",
+      });
+    }
+    apply();
+  };
+  preserve(
+    "matchup_period_count",
+    row.matchupPeriodCount ?? 1,
+    existing.matchupPeriodCount,
+    () => {
+      next.matchupPeriodCount = existing.matchupPeriodCount;
+    },
+  );
+  preserve(
+    "regular_season_end_scoring_period",
+    row.regularSeasonEndScoringPeriod ?? null,
+    existing.regularSeasonEndScoringPeriod,
+    () => {
+      next.regularSeasonEndScoringPeriod =
+        existing.regularSeasonEndScoringPeriod;
+    },
+  );
+  preserve(
+    "playoff_start_scoring_period",
+    row.playoffStartScoringPeriod ?? null,
+    existing.playoffStartScoringPeriod,
+    () => {
+      next.playoffStartScoringPeriod = existing.playoffStartScoringPeriod;
+    },
+  );
+  preserve(
+    "championship_scoring_period",
+    row.championshipScoringPeriod ?? null,
+    existing.championshipScoringPeriod,
+    () => {
+      next.championshipScoringPeriod = existing.championshipScoringPeriod;
+    },
+  );
+  preserve(
+    "playoff_team_count",
+    row.playoffTeamCount ?? null,
+    existing.playoffTeamCount,
+    () => {
+      next.playoffTeamCount = existing.playoffTeamCount;
+    },
+  );
+  preserve(
+    "scoring_settings",
+    row.scoringSettings ?? {},
+    existing.scoringSettings,
+    () => {
+      next.scoringSettings = existing.scoringSettings;
+    },
+  );
+  preserve(
+    "keeper_settings",
+    row.keeperSettings ?? {},
+    existing.keeperSettings,
+    () => {
+      next.keeperSettings = existing.keeperSettings;
+    },
+  );
+  next.contentHash = stableContentHash(
+    leagueSeasonSettingsRowHashPayload(next),
+  );
+  await recordStickyEditConflicts(tx, leagueId, conflicts);
+  return next;
 }
 
 function rosterEntryHashPayload({
@@ -801,7 +1162,7 @@ async function upsertMatchups(
     return { changedIds: [], scoringPeriods: [], stats: stats(0, 0) };
   }
 
-  const rows: MatchupUpsertRow[] = matchups.map((matchup) => ({
+  let rows: MatchupUpsertRow[] = matchups.map((matchup) => ({
     awayScore: matchup.awayScore,
     awayTeamProviderId: matchup.awayTeamRef.providerId,
     contentHash: stableContentHash(matchupHashPayload(matchup)),
@@ -810,13 +1171,16 @@ async function upsertMatchups(
     kind: matchup.kind ?? "head_to_head",
     leagueId,
     leagueProviderId: matchup.leagueProviderId,
+    periodStart: matchup.periodStart ?? matchup.scoringPeriod,
     provider: matchup.provider,
     providerMatchupId: matchup.providerId,
     scoringPeriod: matchup.scoringPeriod,
+    scoringPeriodSpan: matchup.scoringPeriodSpan ?? 1,
     season: matchup.season,
     status: matchup.status,
     winner: matchup.winner,
   }));
+  rows = await preserveStickyMatchupEdits(tx, leagueId, rows);
   const regressionNotes = await finalizedMatchupRegressionNotes(
     tx,
     leagueId,
@@ -841,6 +1205,8 @@ async function upsertMatchups(
         homeScore: sql`excluded.home_score`,
         homeTeamProviderId: sql`excluded.home_team_provider_id`,
         kind: sql`excluded.kind`,
+        periodStart: sql`excluded.period_start`,
+        scoringPeriodSpan: sql`excluded.scoring_period_span`,
         status: sql`excluded.status`,
         updatedAt: sql`now()`,
         winner: sql`excluded.winner`,
@@ -938,7 +1304,7 @@ async function upsertLeagueSeasonSettings(
     return emptyStats();
   }
 
-  const row = {
+  let row: LeagueSeasonSettingsUpsertRow = {
     championshipScoringPeriod:
       league.postseason?.championshipScoringPeriod ?? null,
     contentHash: stableContentHash(leagueSeasonSettingsHashPayload(league)),
@@ -947,6 +1313,7 @@ async function upsertLeagueSeasonSettings(
     keeperSettings: league.keeperSettings ?? {},
     leagueId,
     leagueProviderId: league.providerId,
+    matchupPeriodCount: league.postseason?.matchupPeriodCount ?? 1,
     playoffStartScoringPeriod:
       league.postseason?.playoffStartScoringPeriod ?? null,
     playoffTeamCount: league.postseason?.playoffTeamCount ?? null,
@@ -956,6 +1323,7 @@ async function upsertLeagueSeasonSettings(
     scoringSettings: league.scoringSettings ?? {},
     season: league.season,
   };
+  row = await preserveStickySeasonSettingEdits(tx, leagueId, row);
 
   const changed = await tx
     .insert(leagueSeasonSettings)
@@ -973,6 +1341,7 @@ async function upsertLeagueSeasonSettings(
         isDynastyLeague: sql`excluded.is_dynasty_league`,
         isKeeperLeague: sql`excluded.is_keeper_league`,
         keeperSettings: sql`excluded.keeper_settings`,
+        matchupPeriodCount: sql`excluded.matchup_period_count`,
         playoffStartScoringPeriod: sql`excluded.playoff_start_scoring_period`,
         playoffTeamCount: sql`excluded.playoff_team_count`,
         regularSeasonEndScoringPeriod: sql`excluded.regular_season_end_scoring_period`,

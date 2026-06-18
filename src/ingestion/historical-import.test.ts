@@ -92,6 +92,7 @@ function bundleFor(
       status: "complete",
       postseason: {
         championshipScoringPeriod: 3,
+        matchupPeriodCount: 1,
         playoffStartScoringPeriod: 2,
         playoffTeamCount: 2,
         regularSeasonEndScoringPeriod: 1,
@@ -380,6 +381,7 @@ describe("importLeagueHistory", () => {
     expect(rows.seasonSettings).toHaveLength(2);
     expect(rows.seasonSettings[0]).toMatchObject({
       championshipScoringPeriod: 3,
+      matchupPeriodCount: 1,
       playoffStartScoringPeriod: 2,
       playoffTeamCount: 2,
       regularSeasonEndScoringPeriod: 1,

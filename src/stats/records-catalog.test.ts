@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type {
   championshipRecords,
@@ -17,6 +19,8 @@ type WeeklyRow = typeof weeklyStatistics.$inferSelect;
 
 const NOW = new Date("2026-06-16T00:00:00.000Z");
 const LEAGUE_ID = "catalog-fixture-league";
+const OLD_LEAGUE_FIXTURE_ROOT = "/home/ubuntu/espn-api-old-2024/scripts-output";
+const oldLeagueFixtureIt = existsSync(OLD_LEAGUE_FIXTURE_ROOT) ? it : it.skip;
 const PEOPLE = {
   alpha: "person-alpha-shared",
   beta: "person-beta-shared",
@@ -49,6 +53,8 @@ function weeklyRow(
         | "isPlayoff"
         | "isTopScorer"
         | "matchupKind"
+        | "periodStart"
+        | "scoringPeriodSpan"
         | "weeklyRank"
       >
     >,
@@ -65,11 +71,13 @@ function weeklyRow(
     matchupId: input.matchupId,
     matchupKind: input.matchupKind ?? "head_to_head",
     opponentPersonId: input.opponentPersonId,
+    periodStart: input.periodStart ?? input.scoringPeriod,
     personId: input.personId,
     pointsAgainst: input.pointsAgainst,
     pointsFor: input.pointsFor,
     result: input.result,
     scoringPeriod: input.scoringPeriod,
+    scoringPeriodSpan: input.scoringPeriodSpan ?? 1,
     season: input.season,
     teamSeasonId: `team-season-${input.season}-${input.personId}`,
     updatedAt: NOW,
@@ -127,6 +135,105 @@ function matchupRows(input: {
       season: input.season,
     }),
   ];
+}
+
+interface OldLeagueMatchupRow {
+  away_team_name: string;
+  away_team_owner: string;
+  away_team_score: number;
+  home_team_name: string;
+  home_team_owner: string;
+  home_team_score: number;
+  week: number | string;
+}
+
+function oldLeaguePersonId(ownerName: string): string {
+  return `old-owner:${ownerName}`;
+}
+
+function parseOldLeagueWeek(week: number | string): {
+  scoringPeriod: number;
+  span: number;
+} {
+  if (typeof week === "number") {
+    return { scoringPeriod: week, span: 1 };
+  }
+  const [startRaw, endRaw] = week.split("-");
+  const start = Number(startRaw);
+  const end = Number(endRaw ?? startRaw);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) {
+    throw new Error(`unsupported old-league week value: ${week}`);
+  }
+  return { scoringPeriod: start, span: end - start + 1 };
+}
+
+function readOldLeagueJson<T>(...parts: string[]): T {
+  return JSON.parse(
+    readFileSync(join(OLD_LEAGUE_FIXTURE_ROOT, ...parts), "utf8"),
+  ) as T;
+}
+
+function oldLeagueWeeklyRows(input: {
+  isPlayoff: boolean;
+  rows: readonly OldLeagueMatchupRow[];
+  season: number;
+}): { names: Map<string, string>; weeklyRows: WeeklyRow[] } {
+  const names = new Map<string, string>();
+  const weeklyRows = input.rows.flatMap((row, index) => {
+    const { scoringPeriod, span } = parseOldLeagueWeek(row.week);
+    const homePersonId = oldLeaguePersonId(row.home_team_owner);
+    const awayPersonId = oldLeaguePersonId(row.away_team_owner);
+    names.set(homePersonId, row.home_team_owner);
+    names.set(awayPersonId, row.away_team_owner);
+    const matchupId = `old-${input.season}-${input.isPlayoff ? "playoff" : "regular"}-${index}`;
+    return matchupRows({
+      isPlayoff: input.isPlayoff,
+      matchupId,
+      personAId: homePersonId,
+      personAScore: row.home_team_score,
+      personBId: awayPersonId,
+      personBScore: row.away_team_score,
+      scoringPeriod,
+      season: input.season,
+    }).map((weekly) => ({
+      ...weekly,
+      periodStart: scoringPeriod,
+      scoringPeriodSpan: span,
+      teamSeasonId: `old-team-season-${input.season}-${weekly.personId}`,
+    }));
+  });
+  return { names, weeklyRows };
+}
+
+function loadOldLeagueFixtureRows(seasons: readonly number[]): {
+  personNames: Map<string, string>;
+  weeklyRows: WeeklyRow[];
+} {
+  const personNames = new Map<string, string>();
+  const weeklyRows: WeeklyRow[] = [];
+  for (const season of seasons) {
+    const regular = oldLeagueWeeklyRows({
+      isPlayoff: false,
+      rows: readOldLeagueJson<OldLeagueMatchupRow[]>(
+        "ffl-matchups",
+        `processed_matchups_${season}.json`,
+      ),
+      season,
+    });
+    const playoff = oldLeagueWeeklyRows({
+      isPlayoff: true,
+      rows: readOldLeagueJson<OldLeagueMatchupRow[]>(
+        "ffl-playoffs",
+        `processed_playoff_matchups_${season}.json`,
+      ),
+      season,
+    });
+    for (const [id, name] of [...regular.names, ...playoff.names]) {
+      personNames.set(id, name);
+    }
+    weeklyRows.push(...regular.weeklyRows, ...playoff.weeklyRows);
+  }
+  return { personNames, weeklyRows };
 }
 
 function seasonRow(
@@ -583,6 +690,7 @@ function buildSeededCatalog() {
   ];
 
   return {
+    championshipRows,
     catalog: buildRecordsCatalog({
       championshipRows,
       headToHeadRows,
@@ -592,7 +700,10 @@ function buildSeededCatalog() {
       seasonRows,
       weeklyRows,
     }),
+    headToHeadRows,
+    milestoneRows,
     seasonRows,
+    weeklyRows,
   };
 }
 
@@ -843,4 +954,140 @@ describe("buildRecordsCatalog", () => {
       }),
     ]);
   });
+
+  it("applies parameterized segment and season-set lenses", () => {
+    const {
+      championshipRows,
+      headToHeadRows,
+      milestoneRows,
+      seasonRows,
+      weeklyRows,
+    } = buildSeededCatalog();
+
+    const playoffCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { segment: "playoff" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows,
+    });
+    expect(playoffCatalog.highLow.highestScores[0]).toMatchObject({
+      season: 2024,
+      value: 140,
+    });
+    expect(playoffCatalog.highLow.highestScores).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({
+          matchupId: "matchup-2024-1-alpha-beta",
+        }),
+      ]),
+    );
+    expect(
+      playoffCatalog.allTimeStandings.find(
+        (row) => row.personId === PEOPLE.alpha,
+      ),
+    ).toMatchObject({
+      games: 2,
+      pointsFor: 270,
+    });
+
+    const regularCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { segment: "regular" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows,
+    });
+    expect(regularCatalog.highLow.highestScores[0]).toMatchObject({
+      season: 2024,
+      value: 120,
+    });
+
+    const seasonSetCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { seasonSet: [2025], segment: "both" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows,
+    });
+    expect(seasonSetCatalog.championships.seasons).toHaveLength(1);
+    expect(seasonSetCatalog.championships.seasons[0]).toMatchObject({
+      season: 2025,
+    });
+    expect(
+      seasonSetCatalog.allTimeStandings.find(
+        (row) => row.personId === PEOPLE.gamma,
+      ),
+    ).toMatchObject({
+      losses: 2,
+      pointsFor: 170,
+      seasons: 1,
+    });
+  });
+
+  oldLeagueFixtureIt(
+    "reproduces old-league fixture record slices through parameterized lenses",
+    () => {
+      const seasons = [
+        2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022,
+        2023,
+      ];
+      const { personNames, weeklyRows } = loadOldLeagueFixtureRows(seasons);
+
+      const earlyRegularCatalog = buildRecordsCatalog({
+        lens: { seasonSet: [2011, 2012], segment: "regular" },
+        personNames,
+        seasonRows: [],
+        weeklyRows,
+      });
+      expect(earlyRegularCatalog.highLow.highestScores[0]).toMatchObject({
+        personId: oldLeaguePersonId("truman1109"),
+        personName: "truman1109",
+        scoringPeriod: 14,
+        season: 2012,
+        value: 325,
+      });
+
+      const firstTwelveTeamEraRegularCatalog = buildRecordsCatalog({
+        lens: {
+          seasonSet: [2013, 2014, 2015, 2016, 2017, 2018, 2019],
+          segment: "regular",
+        },
+        personNames,
+        seasonRows: [],
+        weeklyRows,
+      });
+      expect(
+        firstTwelveTeamEraRegularCatalog.highLow.highestScores[0],
+      ).toMatchObject({
+        personId: oldLeaguePersonId("bradwcummings"),
+        personName: "bradwcummings",
+        scoringPeriod: 13,
+        season: 2015,
+        value: 192.7,
+      });
+
+      const laterTwelveTeamEraPlayoffCatalog = buildRecordsCatalog({
+        lens: { seasonSet: [2020, 2021, 2022, 2023], segment: "playoff" },
+        personNames,
+        seasonRows: [],
+        weeklyRows,
+      });
+      expect(
+        laterTwelveTeamEraPlayoffCatalog.highLow.highestScores[0],
+      ).toMatchObject({
+        personId: oldLeaguePersonId("Squyres18"),
+        personName: "Squyres18",
+        scoringPeriod: 16,
+        season: 2022,
+        value: 247.5,
+      });
+    },
+  );
 });
