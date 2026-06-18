@@ -332,6 +332,16 @@ function median(values: readonly number[]): number {
   return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
+function standardDeviation(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
 function compareStable(left: string, right: string): number {
   return left.localeCompare(right, undefined, {
     numeric: true,
@@ -694,6 +704,21 @@ function lensSeasonSet(lens?: RecordBookLens): Set<number> | null {
   return new Set(lens.seasonSet);
 }
 
+function personSeasonKey(personId: string, season: number): string {
+  return `${personId}:${season}`;
+}
+
+function scoringWindowKey(
+  row: Pick<
+    WeeklyStatisticsRow,
+    "periodStart" | "scoringPeriod" | "scoringPeriodSpan" | "season"
+  >,
+): string {
+  const start = row.periodStart ?? row.scoringPeriod;
+  const span = Math.max(1, row.scoringPeriodSpan);
+  return `${row.season}:${start}:${span}`;
+}
+
 function filterWeeklyRowsByLens(
   rows: readonly WeeklyStatisticsRow[],
   lens?: RecordBookLens,
@@ -741,70 +766,167 @@ function filterChampionshipRowsByLens(
 
 function derivedSeasonRowsFromWeeklyRows(
   rows: readonly WeeklyStatisticsRow[],
+  sourceSeasonRows: readonly SeasonStatisticsRow[] = [],
+  lens?: RecordBookLens,
 ): SeasonStatisticsRow[] {
   const grouped = new Map<string, WeeklyStatisticsRow[]>();
+  const byWindow = new Map<string, WeeklyStatisticsRow[]>();
+  const sourceByPersonSeason = new Map(
+    sourceSeasonRows.map((row) => [
+      personSeasonKey(row.personId, row.season),
+      row,
+    ]),
+  );
   for (const row of rows) {
-    const key = `${row.personId}:${row.season}`;
+    const key = personSeasonKey(row.personId, row.season);
     grouped.set(key, [...(grouped.get(key) ?? []), row]);
+    const windowKey = scoringWindowKey(row);
+    byWindow.set(windowKey, [...(byWindow.get(windowKey) ?? []), row]);
   }
+
+  const allPlay = new Map<
+    string,
+    { expectedWins: number; losses: number; ties: number; wins: number }
+  >();
+  for (const windowRows of byWindow.values()) {
+    const scoringRowsByPerson = new Map<string, WeeklyStatisticsRow>();
+    for (const row of windowRows) {
+      const existing = scoringRowsByPerson.get(row.personId);
+      if (
+        !existing ||
+        (existing.matchupKind !== "head_to_head" &&
+          row.matchupKind === "head_to_head") ||
+        (existing.matchupKind === row.matchupKind &&
+          compareStable(row.matchupId, existing.matchupId) < 0)
+      ) {
+        scoringRowsByPerson.set(row.personId, row);
+      }
+    }
+
+    const scoringRows = [...scoringRowsByPerson.values()];
+    for (const row of scoringRows) {
+      const key = personSeasonKey(row.personId, row.season);
+      const entry = allPlay.get(key) ?? {
+        expectedWins: 0,
+        losses: 0,
+        ties: 0,
+        wins: 0,
+      };
+      const opponents = scoringRows.filter(
+        (opponent) => opponent.personId !== row.personId,
+      );
+      let windowWins = 0;
+      for (const opponent of opponents) {
+        if (row.pointsFor > opponent.pointsFor) {
+          entry.wins += 1;
+          windowWins += 1;
+        } else if (row.pointsFor < opponent.pointsFor) {
+          entry.losses += 1;
+        } else {
+          entry.ties += 1;
+        }
+      }
+      entry.expectedWins +=
+        opponents.length > 0 ? windowWins / opponents.length : 0;
+      allPlay.set(key, entry);
+    }
+  }
+
   const now = new Date(0);
+  const segment = lens?.segment ?? "both";
   const seasonRows: SeasonStatisticsRow[] = [];
   for (const [key, groupedRows] of grouped) {
     const [personId, seasonRaw] = key.split(":");
     const season = Number(seasonRaw);
-    const wins = groupedRows.filter((row) => row.result === "win").length;
-    const losses = groupedRows.filter((row) => row.result === "loss").length;
-    const ties = groupedRows.filter((row) => row.result === "tie").length;
+    const sorted = [...groupedRows].sort(compareWeeklyAscending);
+    const wins = sorted.filter((row) => row.result === "win").length;
+    const losses = sorted.filter((row) => row.result === "loss").length;
+    const ties = sorted.filter((row) => row.result === "tie").length;
     const pointsFor = round(
-      groupedRows.reduce((sum, row) => sum + row.pointsFor, 0),
+      sorted.reduce((sum, row) => sum + row.pointsFor, 0),
       4,
     );
     const pointsAgainst = round(
-      groupedRows.reduce((sum, row) => sum + row.pointsAgainst, 0),
+      sorted.reduce((sum, row) => sum + row.pointsAgainst, 0),
       4,
     );
-    const scoringPeriods = groupedRows.reduce(
+    const scoringPeriods = sorted.reduce(
       (sum, row) => sum + Math.max(1, row.scoringPeriodSpan),
       0,
     );
-    const scoresFor = groupedRows.map((row) => row.pointsFor);
-    const scoresAgainst = groupedRows.map((row) => row.pointsAgainst);
+    const scoresFor = sorted.map((row) => row.pointsFor);
+    const scoresAgainst = sorted.map((row) => row.pointsAgainst);
     const games = wins + losses + ties;
     const positiveScores = scoresFor.filter((score) => score > 0);
+    let currentStreakLength = 0;
+    let currentStreakType: SeasonStatisticsRow["currentStreakType"] = null;
+    let longestLossStreak = 0;
+    let longestWinStreak = 0;
+
+    for (const row of sorted) {
+      if (row.result === currentStreakType) {
+        currentStreakLength += 1;
+      } else {
+        currentStreakType = row.result;
+        currentStreakLength = 1;
+      }
+      if (row.result === "win") {
+        longestWinStreak = Math.max(longestWinStreak, currentStreakLength);
+      }
+      if (row.result === "loss") {
+        longestLossStreak = Math.max(longestLossStreak, currentStreakLength);
+      }
+    }
+
+    const source = sourceByPersonSeason.get(key);
+    const allPlayRow = allPlay.get(key) ?? {
+      expectedWins: 0,
+      losses: 0,
+      ties: 0,
+      wins: 0,
+    };
+    const expectedWins = round(allPlayRow.expectedWins, 4);
+    const preservePostseasonPlacement = segment === "playoff";
     seasonRows.push({
-      allPlayLosses: losses,
-      allPlayTies: ties,
-      allPlayWins: wins,
+      allPlayLosses: allPlayRow.losses,
+      allPlayTies: allPlayRow.ties,
+      allPlayWins: allPlayRow.wins,
       avgPointsAgainst:
         scoringPeriods > 0 ? round(pointsAgainst / scoringPeriods, 4) : 0,
       avgPointsFor:
         scoringPeriods > 0 ? round(pointsFor / scoringPeriods, 4) : 0,
       createdAt: now,
-      currentStreakLength: 0,
-      currentStreakType: null,
-      divisionWinner: false,
-      expectedWins: wins,
-      finalPlacement: "out",
-      finalRank: 0,
+      currentStreakLength,
+      currentStreakType,
+      divisionWinner: source?.divisionWinner ?? false,
+      expectedWins,
+      finalPlacement: preservePostseasonPlacement
+        ? (source?.finalPlacement ?? "out")
+        : "out",
+      finalRank: preservePostseasonPlacement
+        ? (source?.finalRank ?? 0)
+        : (source?.playoffSeed ?? 0),
       highestScore: scoresFor.length > 0 ? round(Math.max(...scoresFor), 4) : 0,
       id: `lens-season-${season}-${personId}`,
-      leagueId: groupedRows[0]?.leagueId ?? "",
-      longestLossStreak: 0,
-      longestWinStreak: 0,
+      leagueId: sorted[0]?.leagueId ?? "",
+      longestLossStreak,
+      longestWinStreak,
       losses,
       lowestScore:
         positiveScores.length > 0 ? round(Math.min(...positiveScores), 4) : 0,
-      luck: 0,
-      madeChampionship: false,
-      madePlayoffs: groupedRows.some((row) => row.isPlayoff),
+      luck: round(wins - expectedWins, 4),
+      madeChampionship: preservePostseasonPlacement
+        ? (source?.madeChampionship ?? sorted.some((row) => row.isChampionship))
+        : false,
+      madePlayoffs: source?.madePlayoffs ?? sorted.some((row) => row.isPlayoff),
       medianPointsAgainst: round(median(scoresAgainst), 4),
       medianPointsFor: round(median(scoresFor), 4),
       personId,
-      playoffSeed: null,
+      playoffSeed: source?.playoffSeed ?? null,
       pointDifferential: round(pointsFor - pointsAgainst, 4),
       pointsAgainst,
       pointsFor,
-      scoringStdDev: 0,
+      scoringStdDev: round(standardDeviation(scoresFor), 4),
       season,
       ties,
       updatedAt: now,
@@ -2124,7 +2246,11 @@ export function buildRecordsCatalog(input: {
   const seasonRows =
     (input.lens?.segment ?? "both") === "both"
       ? filterSeasonRowsByLens(input.seasonRows, input.lens)
-      : derivedSeasonRowsFromWeeklyRows(weeklyRows);
+      : derivedSeasonRowsFromWeeklyRows(
+          weeklyRows,
+          filterSeasonRowsByLens(input.seasonRows, input.lens),
+          input.lens,
+        );
   const championshipRows = filterChampionshipRowsByLens(
     input.championshipRows ?? [],
     input.lens,

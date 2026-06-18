@@ -1020,6 +1020,44 @@ describe("buildRecordsCatalog", () => {
       value: 120,
     });
 
+    const regularEraWeeklyRows = weeklyRows.map((row) =>
+      row.matchupId === "matchup-2024-3-alpha-median"
+        ? {
+            ...row,
+            margin: -15,
+            result: "loss" as const,
+          }
+        : row,
+    );
+    const regularEraCatalog = buildRecordsCatalog({
+      championshipRows,
+      headToHeadRows,
+      lens: { seasonSet: [2024, 2025], segment: "regular" },
+      milestoneRows,
+      personNames,
+      seasonRows,
+      weeklyRows: regularEraWeeklyRows,
+    });
+    expect(
+      regularEraCatalog.allTimeStandings.find(
+        (row) => row.personId === PEOPLE.alpha,
+      ),
+    ).toMatchObject({
+      careerLuck: -1,
+      regularSeasonTitles: 1,
+    });
+    expect(regularEraCatalog.streaks.longestWins[0]).toMatchObject({
+      length: 2,
+      personId: PEOPLE.alpha,
+    });
+    expect(
+      regularEraCatalog.championships.managerRecords.find(
+        (row) => row.personId === PEOPLE.beta,
+      ),
+    ).toMatchObject({
+      regularSeasonTitles: 1,
+    });
+
     const seasonSetCatalog = buildRecordsCatalog({
       championshipRows,
       headToHeadRows,
