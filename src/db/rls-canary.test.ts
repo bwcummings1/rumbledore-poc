@@ -21,6 +21,9 @@ import {
   type LoreSubject,
   type LoreVerification,
   type LoreVote,
+  leagueDataEdits,
+  leagueGroupingSeasons,
+  leagueSeasonGroupings,
   leagues,
   loreClaims,
   loreEvents,
@@ -39,6 +42,10 @@ import {
   users,
 } from "./schema";
 import { migrateSerialized } from "./test-support";
+
+type LeagueDataEdit = typeof leagueDataEdits.$inferSelect;
+type LeagueSeasonGrouping = typeof leagueSeasonGroupings.$inferSelect;
+type LeagueGroupingSeason = typeof leagueGroupingSeasons.$inferSelect;
 
 /**
  * THE league-isolation canary (spec 02 §7): two leagues, one RLS-bound role,
@@ -76,6 +83,12 @@ let bankrollLedgerA: { id: string; leagueId: string };
 let bankrollLedgerB: { id: string; leagueId: string };
 let integrityCheckA: DataIntegrityCheck;
 let integrityCheckB: DataIntegrityCheck;
+let leagueDataEditA: LeagueDataEdit;
+let leagueDataEditB: LeagueDataEdit;
+let leagueSeasonGroupingA: LeagueSeasonGrouping;
+let leagueSeasonGroupingB: LeagueSeasonGrouping;
+let leagueGroupingSeasonA: LeagueGroupingSeason;
+let leagueGroupingSeasonB: LeagueGroupingSeason;
 let memberA: Member;
 let memberB: Member;
 let instigationA: Instigation;
@@ -135,7 +148,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -310,6 +323,76 @@ beforeAll(async () => {
         leagueId: leagueB,
         season: 2026,
         status: "fail",
+      },
+    ])
+    .returning();
+
+  [leagueSeasonGroupingA, leagueSeasonGroupingB] = await admin.db
+    .insert(leagueSeasonGroupings)
+    .values([
+      {
+        confirmedByUserId: userA.id,
+        config: { member_count_hint: 10 },
+        derivedFrom: { marker, side: "a" },
+        kind: "era",
+        leagueId: leagueA,
+        name: "Canary Era A",
+        ordinal: 1,
+        status: "confirmed",
+      },
+      {
+        confirmedByUserId: userB.id,
+        config: { member_count_hint: 12 },
+        derivedFrom: { marker, side: "b" },
+        kind: "era",
+        leagueId: leagueB,
+        name: "Canary Era B",
+        ordinal: 1,
+        status: "confirmed",
+      },
+    ])
+    .returning();
+
+  [leagueGroupingSeasonA, leagueGroupingSeasonB] = await admin.db
+    .insert(leagueGroupingSeasons)
+    .values([
+      {
+        groupingId: leagueSeasonGroupingA.id,
+        leagueId: leagueA,
+        season: 2026,
+      },
+      {
+        groupingId: leagueSeasonGroupingB.id,
+        leagueId: leagueB,
+        season: 2026,
+      },
+    ])
+    .returning();
+
+  [leagueDataEditA, leagueDataEditB] = await admin.db
+    .insert(leagueDataEdits)
+    .values([
+      {
+        actorUserId: userA.id,
+        afterValue: { name: "Canary Era A" },
+        beforeValue: { name: "Proposed Era A" },
+        editClass: "substantive",
+        field: "grouping_confirmation",
+        leagueId: leagueA,
+        reason: "canary",
+        targetId: leagueSeasonGroupingA.id,
+        targetKind: "grouping",
+      },
+      {
+        actorUserId: userB.id,
+        afterValue: { name: "Canary Era B" },
+        beforeValue: { name: "Proposed Era B" },
+        editClass: "substantive",
+        field: "grouping_confirmation",
+        leagueId: leagueB,
+        reason: "canary",
+        targetId: leagueSeasonGroupingB.id,
+        targetKind: "grouping",
       },
     ])
     .returning();
@@ -590,6 +673,37 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("sees no curation rows at all outside a league context", async () => {
+    const edits = await canary.db
+      .select()
+      .from(leagueDataEdits)
+      .where(
+        inArray(leagueDataEdits.id, [leagueDataEditA.id, leagueDataEditB.id]),
+      );
+    const groupings = await canary.db
+      .select()
+      .from(leagueSeasonGroupings)
+      .where(
+        inArray(leagueSeasonGroupings.id, [
+          leagueSeasonGroupingA.id,
+          leagueSeasonGroupingB.id,
+        ]),
+      );
+    const groupingSeasons = await canary.db
+      .select()
+      .from(leagueGroupingSeasons)
+      .where(
+        inArray(leagueGroupingSeasons.id, [
+          leagueGroupingSeasonA.id,
+          leagueGroupingSeasonB.id,
+        ]),
+      );
+
+    expect(edits).toHaveLength(0);
+    expect(groupings).toHaveLength(0);
+    expect(groupingSeasons).toHaveLength(0);
+  });
+
   it("sees no instigator or lore rows at all outside a league context", async () => {
     const instigationRows = await canary.db
       .select()
@@ -685,6 +799,34 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows.map((row) => row.id)).toContain(integrityCheckA.id);
     expect(rows.map((row) => row.id)).not.toContain(integrityCheckB.id);
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered curation scans still yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, async (tx) => ({
+      edits: await tx.select().from(leagueDataEdits),
+      groupingSeasons: await tx.select().from(leagueGroupingSeasons),
+      groupings: await tx.select().from(leagueSeasonGroupings),
+    }));
+
+    expect(rows.edits.map((row) => row.id)).toContain(leagueDataEditA.id);
+    expect(rows.edits.map((row) => row.id)).not.toContain(leagueDataEditB.id);
+    expect(rows.edits.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(rows.groupings.map((row) => row.id)).toContain(
+      leagueSeasonGroupingA.id,
+    );
+    expect(rows.groupings.map((row) => row.id)).not.toContain(
+      leagueSeasonGroupingB.id,
+    );
+    expect(rows.groupings.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(rows.groupingSeasons.map((row) => row.id)).toContain(
+      leagueGroupingSeasonA.id,
+    );
+    expect(rows.groupingSeasons.map((row) => row.id)).not.toContain(
+      leagueGroupingSeasonB.id,
+    );
+    expect(rows.groupingSeasons.every((row) => row.leagueId === leagueA)).toBe(
+      true,
+    );
   });
 
   it("scoped to league A, unfiltered instigator and lore scans yield only league A rows", async () => {
@@ -811,6 +953,51 @@ describe("two-league isolation under withLeagueContext", () => {
             leagueId: leagueB,
             season: 2026,
             status: "fail",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing league B curation rows from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(leagueSeasonGroupings).values({
+            derivedFrom: { marker, bad: true },
+            kind: "era",
+            leagueId: leagueB,
+            name: "Bad Cross-League Era",
+            ordinal: 9,
+            status: "confirmed",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(leagueGroupingSeasons).values({
+            groupingId: leagueSeasonGroupingB.id,
+            leagueId: leagueB,
+            season: 2027,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(leagueDataEdits).values({
+            afterValue: "bad",
+            beforeValue: null,
+            editClass: "substantive",
+            field: "grouping_confirmation",
+            leagueId: leagueB,
+            targetId: leagueSeasonGroupingB.id,
+            targetKind: "grouping",
           }),
         ),
       ),
