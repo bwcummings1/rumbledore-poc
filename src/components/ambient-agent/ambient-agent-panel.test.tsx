@@ -143,8 +143,11 @@ test("ambient agent renders the gated state returned by the server", async () =>
   );
 
   await waitFor(() => {
-    expect(screen.getByText("WizKit access check")).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Get your personal agent" }),
+    ).toBeDefined();
   });
+  expect(screen.getByText("Individual tier required")).toBeDefined();
   expect(
     screen.getByRole("link", { name: /Review WizKit/i }).getAttribute("href"),
   ).toBe("/you#upgrade-options");
