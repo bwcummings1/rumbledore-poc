@@ -129,6 +129,7 @@ export const leagueDataEditTargetKind = pgEnum("league_data_edit_target_kind", [
   "matchup",
   "season_setting",
   "grouping",
+  "member",
 ]);
 
 export const leagueDataEditClass = pgEnum("league_data_edit_class", [

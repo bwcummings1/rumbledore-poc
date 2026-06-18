@@ -344,6 +344,13 @@
       "when": 1781530400000,
       "tag": "0048_sticky_edit_conflict_check",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1781534000000,
+      "tag": "0049_commissioner_handoff_member_target",
+      "breakpoints": true
     }
   ]
 }

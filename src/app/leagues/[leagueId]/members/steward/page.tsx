@@ -12,6 +12,10 @@ import {
   redirectToLeagueDeepLinkOnboarding,
 } from "../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
+import {
+  type DataCurationSummary,
+  loadDataCurationSummary,
+} from "./curation-data";
 import { DataStewardReviewView } from "./data-steward-review-view";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +41,7 @@ export default async function DataStewardReviewPage({
     db,
     headers: await headers(),
     leagueId,
-    minRole: "data_steward",
+    minRole: "member",
   });
 
   if (!access.ok) {
@@ -54,7 +58,7 @@ export default async function DataStewardReviewPage({
     return (
       <LeagueSectionAccessState
         title="No data review access"
-        body="This page is available to league data stewards and commissioners."
+        body="This page is available to league members."
       />
     );
   }
@@ -70,8 +74,30 @@ export default async function DataStewardReviewPage({
     notFound();
   }
 
-  const review = await listDataStewardReview(db, { leagueId });
-  if (!review.ok) {
+  let curation: DataCurationSummary;
+  try {
+    curation = await loadDataCurationSummary(db, {
+      leagueId,
+      userRole: access.value.role,
+    });
+  } catch (error) {
+    return (
+      <LeagueSectionAccessState
+        title="Data review unavailable"
+        body={
+          error instanceof Error
+            ? error.message
+            : "Data curation state could not be loaded."
+        }
+      />
+    );
+  }
+
+  const review =
+    access.value.role === "member"
+      ? { integrityChecks: [], suggestedIdentityLinks: [] }
+      : await listDataStewardReview(db, { leagueId });
+  if ("ok" in review && !review.ok) {
     return (
       <LeagueSectionAccessState
         title="Data review unavailable"
@@ -81,6 +107,10 @@ export default async function DataStewardReviewPage({
   }
 
   return (
-    <DataStewardReviewView initialSummary={review.value} league={league} />
+    <DataStewardReviewView
+      curation={curation}
+      initialSummary={"ok" in review ? review.value : review}
+      league={league}
+    />
   );
 }

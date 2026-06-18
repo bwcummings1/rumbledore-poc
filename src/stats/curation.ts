@@ -924,6 +924,15 @@ export async function proposeLeagueSeasonGroupings(
   });
 }
 
+export async function listLeagueSeasonGroupings(
+  db: Db,
+  input: { leagueId: string },
+): Promise<PersistedSeasonGrouping[]> {
+  return withLeagueContext(db, input.leagueId, (tx) =>
+    groupingWithSeasons(tx, input.leagueId),
+  );
+}
+
 export async function confirmLeagueSeasonGrouping(
   db: Db,
   input: {

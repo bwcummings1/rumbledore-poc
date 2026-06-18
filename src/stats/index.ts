@@ -1,4 +1,10 @@
 export {
+  type CommissionerHandoffResult,
+  type CommissionerMemberSummary,
+  listCommissionerHandoffCandidates,
+  transferCommissionerRole,
+} from "./commissioner";
+export {
   type ApplyLeagueDataEditInput,
   type ApplyLeagueDataEditResult,
   applyLeagueDataEdit,
@@ -7,6 +13,7 @@ export {
   groupingConfigIsEquivalent,
   type LeagueDataEditClass,
   type LeagueDataEditTargetKind,
+  listLeagueSeasonGroupings,
   listUnifiedDataLedger,
   type PersistedSeasonGrouping,
   proposeLeagueSeasonGroupings,
