@@ -59,7 +59,7 @@ function Popover({
                 </div>
                 <PopoverPrimitive.Close
                   aria-label="Close popover"
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
                 >
                   <X className="size-4" />
                 </PopoverPrimitive.Close>

@@ -24,10 +24,10 @@ function Stepper({
       data-slot="stepper"
       {...props}
     >
-      <NumberFieldPrimitive.Group className="grid grid-cols-[2.25rem_minmax(0,1fr)_2.25rem] overflow-hidden rounded-lg border border-[var(--hair-2)] bg-[var(--control-inset)] shadow-[var(--bevel)] focus-within:border-primary data-[disabled]:opacity-50">
+      <NumberFieldPrimitive.Group className="grid min-h-11 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] overflow-hidden rounded-lg border border-[var(--hair-2)] bg-[var(--control-inset)] shadow-[var(--bevel)] focus-within:border-primary data-[disabled]:opacity-50">
         <NumberFieldPrimitive.Decrement
           aria-label="Decrease"
-          className="flex items-center justify-center border-r border-[var(--hair-2)] text-ink-2 transition-[background-color,color] hover:bg-primary/10 hover:text-lilac-hi disabled:pointer-events-none disabled:opacity-50"
+          className="flex min-h-11 items-center justify-center border-r border-[var(--hair-2)] text-ink-2 transition-[background-color,color] hover:bg-primary/10 hover:text-lilac-hi disabled:pointer-events-none disabled:opacity-50"
         >
           <Minus aria-hidden="true" className="size-4" />
         </NumberFieldPrimitive.Decrement>
@@ -48,7 +48,7 @@ function Stepper({
         />
         <NumberFieldPrimitive.Increment
           aria-label="Increase"
-          className="flex items-center justify-center border-l border-[var(--hair-2)] text-ink-2 transition-[background-color,color] hover:bg-primary/10 hover:text-lilac-hi disabled:pointer-events-none disabled:opacity-50"
+          className="flex min-h-11 items-center justify-center border-l border-[var(--hair-2)] text-ink-2 transition-[background-color,color] hover:bg-primary/10 hover:text-lilac-hi disabled:pointer-events-none disabled:opacity-50"
         >
           <Plus aria-hidden="true" className="size-4" />
         </NumberFieldPrimitive.Increment>

@@ -37,13 +37,13 @@ function Slider({
       value={value}
       {...props}
     >
-      <SliderPrimitive.Control className="relative flex min-h-8 items-center">
+      <SliderPrimitive.Control className="relative flex min-h-11 items-center">
         <SliderPrimitive.Track className="relative h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
           <SliderPrimitive.Indicator className="absolute h-full rounded-full bg-primary shadow-[0_0_8px_var(--glow-lilac)]" />
         </SliderPrimitive.Track>
         {thumbs.map((thumb) => (
           <SliderPrimitive.Thumb
-            className="size-4 rounded-full border-2 border-[var(--void-2)] bg-lilac-hi shadow-[0_0_10px_var(--glow-lilac)] outline-none focus-visible:shadow-[var(--focus-ring-shadow)]"
+            className="relative size-11 rounded-full bg-transparent outline-none before:absolute before:top-1/2 before:left-1/2 before:size-4 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:border-2 before:border-[var(--void-2)] before:bg-lilac-hi before:shadow-[0_0_10px_var(--glow-lilac)] focus-visible:shadow-[var(--focus-ring-shadow)]"
             getAriaLabel={(thumbIndex) =>
               typeof ariaLabel === "string" && values.length === 1
                 ? ariaLabel

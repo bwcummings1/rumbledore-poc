@@ -30,7 +30,7 @@ function Checkbox({
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy ?? (ariaLabel ? undefined : labelId)}
       className={cn(
-        "group/checkbox inline-flex shrink-0 items-center justify-center rounded-control border border-transparent text-lilac-hi outline-none transition-[box-shadow,color] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
+        "group/checkbox inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent text-lilac-hi outline-none transition-[box-shadow,color] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
         className,
       )}
       data-slot="checkbox"
@@ -57,7 +57,7 @@ function Checkbox({
   }
 
   return (
-    <div className="flex items-start gap-3 text-sm text-foreground has-data-[disabled]:opacity-60">
+    <div className="flex min-h-11 items-start gap-3 text-sm text-foreground has-data-[disabled]:opacity-60">
       <span className="flex items-center">{control}</span>
       <span className="grid gap-1 py-1.5">
         {label ? (

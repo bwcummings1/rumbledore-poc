@@ -561,7 +561,7 @@ function DesktopSidebar({
           aria-label="Rumbledore home"
           href="/"
           className={cn(
-            "flex min-w-0 items-center gap-2 rounded-control text-sidebar-foreground outline-none transition-colors hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]",
+            "flex min-h-11 min-w-11 items-center gap-2 rounded-control text-sidebar-foreground outline-none transition-colors hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]",
             collapsed ? "justify-center" : "truncate",
           )}
         >
@@ -959,7 +959,7 @@ function NavigationItem({
     <Link
       aria-current={isActive ? "page" : undefined}
       className={cn(
-        "relative flex min-h-9 items-center justify-center gap-2.5 rounded-control px-2.5 font-display text-xs font-medium tracking-[0.04em] text-ink-3 transition-[background-color,color,box-shadow,transform] hover:bg-primary/5 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none max-md:h-full max-md:flex-col max-md:gap-1 max-md:px-1 md:text-sm",
+        "relative flex min-h-11 items-center justify-center gap-2.5 rounded-control px-2.5 font-display text-xs font-medium tracking-[0.04em] text-ink-3 transition-[background-color,color,box-shadow,transform] hover:bg-primary/5 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none max-md:h-full max-md:flex-col max-md:gap-1 max-md:px-1 md:text-sm",
         isActive &&
           "bg-[linear-gradient(90deg,var(--primary-soft),transparent)] text-lilac [&_svg]:drop-shadow-[0_0_6px_var(--glow-lilac)]",
         compact ? "md:size-11 md:px-0" : "md:justify-start",
@@ -1238,7 +1238,7 @@ function ShellWireTicker({
       </div>
       {showModeToggle && onWireModeChange ? (
         <WireModeToggle
-          className="hidden border-r border-[var(--hair)] px-2 lg:flex"
+          className="hidden border-r border-[var(--hair)] px-2 md:flex"
           mode={wireMode}
           onModeChange={onWireModeChange}
         />
@@ -1309,7 +1309,7 @@ function ShellWireTickerItem({
     >
       {item.href ? (
         <a
-          className="inline-flex items-center gap-2 text-inherit transition-colors hover:text-lilac focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
+          className="inline-flex min-h-11 items-center gap-2 text-inherit transition-colors hover:text-lilac focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
           href={item.href}
         >
           {content}
@@ -1331,7 +1331,10 @@ function WireModeToggle({
   readonly onModeChange: (mode: ShellWireMode) => void;
 }) {
   return (
-    <fieldset className={cn("flex items-center gap-1", className)}>
+    <fieldset
+      className={cn("flex items-center gap-1", className)}
+      data-slot="wire-mode-toggle"
+    >
       <legend className="sr-only">Wire feed</legend>
       {(
         [

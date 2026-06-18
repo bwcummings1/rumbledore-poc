@@ -69,9 +69,11 @@ test("ambient agent opens from the collapsed orb and renders a grounded answer",
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Open personal agent" }));
-  expect(
-    screen.getByRole("dialog", { name: "WizKit personal agent" }),
-  ).toBeDefined();
+  const panel = screen.getByRole("dialog", {
+    name: "WizKit personal agent",
+  });
+  expect(panel).toBeDefined();
+  expect(panel.getAttribute("aria-modal")).toBeNull();
   expect(screen.getByText("Scope: NHS Alumni Annual")).toBeDefined();
 
   fireEvent.click(
@@ -141,8 +143,11 @@ test("ambient agent renders the gated state returned by the server", async () =>
   );
 
   await waitFor(() => {
-    expect(screen.getByText("WizKit access check")).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Get your personal agent" }),
+    ).toBeDefined();
   });
+  expect(screen.getByText("Individual tier required")).toBeDefined();
   expect(
     screen.getByRole("link", { name: /Review WizKit/i }).getAttribute("href"),
   ).toBe("/you#upgrade-options");

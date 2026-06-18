@@ -25,7 +25,7 @@ function Chip({
       <button
         aria-pressed={props["aria-pressed"] ?? selected}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border border-[var(--hair-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-[0.06em] text-ink-3 outline-none transition-[background-color,border-color,box-shadow,color] hover:border-[var(--hair-3)] hover:text-ink-2 focus-visible:border-primary focus-visible:shadow-[var(--focus-ring-shadow)] disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-full border border-[var(--hair-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-[0.06em] text-ink-3 outline-none transition-[background-color,border-color,box-shadow,color] hover:border-[var(--hair-3)] hover:text-ink-2 focus-visible:border-primary focus-visible:shadow-[var(--focus-ring-shadow)] disabled:pointer-events-none disabled:opacity-50",
           selected ? "border-primary/50 bg-primary/10 text-lilac-hi" : "",
           onRemove ? "rounded-r-none pr-2.5" : "",
           className,
@@ -44,7 +44,7 @@ function Chip({
       {onRemove ? (
         <button
           aria-label={removableLabel}
-          className="inline-flex size-7 items-center justify-center rounded-full rounded-l-none border border-l-0 border-[var(--hair-2)] text-ink-3 outline-none transition-[background-color,color] hover:bg-primary/10 hover:text-coral focus-visible:border-primary focus-visible:shadow-[var(--focus-ring-shadow)] [&_svg]:size-3"
+          className="inline-flex size-11 items-center justify-center rounded-full rounded-l-none border border-l-0 border-[var(--hair-2)] text-ink-3 outline-none transition-[background-color,color] hover:bg-primary/10 hover:text-coral focus-visible:border-primary focus-visible:shadow-[var(--focus-ring-shadow)] [&_svg]:size-3"
           onClick={onRemove}
           type="button"
         >

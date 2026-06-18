@@ -18,6 +18,9 @@ test("Stepper renders spinbutton and increment controls", () => {
   expect(
     screen.getByRole("spinbutton", { name: "Stake amount" }),
   ).toBeDefined();
+  expect(screen.getByRole("button", { name: "Increase" }).className).toContain(
+    "min-h-11",
+  );
   fireEvent.click(screen.getByRole("button", { name: "Increase" }));
   expect(onValueChange).toHaveBeenCalled();
 });

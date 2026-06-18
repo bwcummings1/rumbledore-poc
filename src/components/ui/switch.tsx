@@ -28,7 +28,7 @@ function Switch({
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy ?? (ariaLabel ? undefined : labelId)}
       className={cn(
-        "group/switch relative inline-flex shrink-0 items-center justify-center rounded-full border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
+        "group/switch relative inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-transparent outline-none transition-[box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)] data-[disabled]:opacity-50",
         className,
       )}
       data-slot="switch"

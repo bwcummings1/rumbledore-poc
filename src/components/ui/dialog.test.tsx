@@ -19,6 +19,9 @@ test("Dialog renders modal semantics and closes on Escape", async () => {
   const dialog = screen.getByRole("dialog", { name: "Confirm import" });
   expect(dialog.getAttribute("aria-modal")).toBe("true");
   expect(screen.getByText("This action can be reviewed.")).toBeDefined();
+  expect(
+    screen.getByRole("button", { name: "Close dialog" }).className,
+  ).toContain("size-11");
 
   fireEvent.keyDown(dialog, { key: "Escape" });
   await waitFor(() =>

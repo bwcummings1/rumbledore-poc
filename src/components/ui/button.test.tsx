@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { Button, buttonVariants } from "./button";
@@ -30,6 +31,14 @@ test("Button sizes map to reference-dense AUSPEX size classes", () => {
   expect(buttonVariants({ size: "sm" })).toContain("btn-sm");
   expect(buttonVariants({ size: "xs" })).toContain("btn-sm");
   expect(buttonVariants({ size: "icon-sm" })).toContain("btn-icon");
+});
+
+test("Button CSS keeps compact controls at a 44px target", () => {
+  const css = readFileSync("src/app/globals.css", "utf8");
+
+  expect(css).toContain("min-inline-size: 2.75rem");
+  expect(css).toContain("min-block-size: 2.75rem");
+  expect(css).toContain(".btn-icon-sm {\n    inline-size: 2.75rem");
 });
 
 test("Button requires icon-only buttons to have an accessible name", () => {

@@ -20,6 +20,11 @@ test("Chip renders selectable and removable affordances", () => {
   const chip = screen.getByRole("button", { name: "Max" });
   expect(chip.getAttribute("aria-pressed")).toBe("true");
   expect(chip.className).toContain("rounded-full");
+  expect(chip.className).toContain("min-h-11");
+  expect(chip.className).toContain("min-w-11");
+  expect(
+    screen.getByRole("button", { name: "Remove stake chip" }).className,
+  ).toContain("size-11");
   fireEvent.click(chip);
   fireEvent.click(screen.getByRole("button", { name: "Remove stake chip" }));
   expect(onClick).toHaveBeenCalledTimes(1);
