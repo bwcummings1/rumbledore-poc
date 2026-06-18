@@ -6,6 +6,8 @@ import {
   championshipRecords,
   dataIntegrityChecks,
   headToHeadRecords,
+  leagueGroupingSeasons,
+  leagueSeasonGroupings,
   leagues,
   type PersonOwnerHistoryEntry,
   persons,
@@ -16,13 +18,18 @@ import {
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
 import {
+  type BlowoutCatalogEntry,
   buildRecordsCatalog,
   type HeadToHeadPairCatalogEntry,
   type ManagerChampionshipRecord,
   type ManagerHeadToHeadLedgerEntry,
   RECORD_TYPE_LABELS,
+  type RecordBookLens,
+  type RecordBookSegment,
   type RecordsCatalog,
   type RecordType,
+  type StreakCatalogEntry,
+  type WeeklyCatalogEntry,
 } from "@/stats";
 
 const DETAIL_LIMIT = 8;
@@ -78,6 +85,28 @@ export interface RecordsPersonSummary {
   ownerHistory: PersonOwnerHistoryEntry[];
   ownerNames: string[];
   seasonSpan: string | null;
+}
+
+export interface RecordsGroupingOption {
+  formatType: string;
+  id: string;
+  kind: string;
+  name: string;
+  ordinal: number;
+  seasons: number[];
+}
+
+export interface RecordsLensSelection {
+  groupingId: string | null;
+  groupings: RecordsGroupingOption[];
+  scope: "all";
+  seasonSet: number[];
+  segment: RecordBookSegment;
+}
+
+export interface RecordsLensInput {
+  groupingId?: string | null;
+  segment?: RecordBookSegment;
 }
 
 export interface CurrentRecordBookEntry {
@@ -137,6 +166,7 @@ export interface RecordsPageData {
   catalog: RecordsCatalog;
   currentRecords: CurrentRecordBookEntry[];
   league: RecordsLeagueSummary;
+  lens: RecordsLensSelection;
   managers: RecordsPersonSummary[];
 }
 
@@ -185,6 +215,7 @@ interface RecordsSourceData {
   currentRecordRows: AllTimeRecordRow[];
   headToHeadRows: HeadToHeadRecordRow[];
   league: RecordsLeagueSummary;
+  lens: RecordsLensSelection;
   milestoneRows: RecordBookMilestoneRow[];
   personRows: PersonRow[];
   previousRecordRows: AllTimeRecordRow[];
@@ -195,6 +226,44 @@ interface RecordsSourceData {
 export type RecordsDataResult<T> =
   | { data: T; status: "ready" }
   | { status: "not_found" };
+
+const RECORD_SEGMENTS = new Set<RecordBookSegment>([
+  "both",
+  "playoff",
+  "regular",
+]);
+
+function firstSearchValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+export function recordsLensFromSearchParams(
+  searchParams:
+    | Record<string, string | string[] | undefined>
+    | null
+    | undefined,
+): RecordsLensInput {
+  const segment = firstSearchValue(searchParams?.segment);
+  const grouping =
+    firstSearchValue(searchParams?.grouping) ??
+    firstSearchValue(searchParams?.groupingId) ??
+    firstSearchValue(searchParams?.era);
+  return {
+    groupingId:
+      grouping && !["all", "cumulative", "none"].includes(grouping)
+        ? grouping
+        : null,
+    segment:
+      segment && RECORD_SEGMENTS.has(segment as RecordBookSegment)
+        ? (segment as RecordBookSegment)
+        : undefined,
+  };
+}
+
+function round(value: number, places = 4): number {
+  const factor = 10 ** places;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
 
 function compareStable(left: string, right: string): number {
   return left.localeCompare(right, undefined, {
@@ -238,6 +307,64 @@ function seasonSpanFor(
   const first = Math.min(...starts);
   const last = Math.max(...ends);
   return first === last ? String(first) : `${first}-${last}`;
+}
+
+function groupingFormatType(
+  config: typeof leagueSeasonGroupings.$inferSelect.config,
+): string {
+  return typeof config.format_type === "string" && config.format_type
+    ? config.format_type
+    : "traditional";
+}
+
+function toGroupingOptions(
+  groupingRows: Pick<
+    typeof leagueSeasonGroupings.$inferSelect,
+    "config" | "id" | "kind" | "name" | "ordinal"
+  >[],
+  seasonRows: Pick<
+    typeof leagueGroupingSeasons.$inferSelect,
+    "groupingId" | "season"
+  >[],
+): RecordsGroupingOption[] {
+  return groupingRows.map((row) => ({
+    formatType: groupingFormatType(row.config),
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    ordinal: row.ordinal,
+    seasons: seasonRows
+      .filter((season) => season.groupingId === row.id)
+      .map((season) => season.season)
+      .sort((left, right) => left - right),
+  }));
+}
+
+function resolveLensSelection(
+  input: RecordsLensInput | null | undefined,
+  groupings: readonly RecordsGroupingOption[],
+): RecordsLensSelection {
+  const segment = input?.segment ?? "both";
+  const grouping =
+    input?.groupingId && groupings.length > 0
+      ? (groupings.find((option) => option.id === input.groupingId) ?? null)
+      : null;
+  return {
+    groupingId: grouping?.id ?? null,
+    groupings: [...groupings],
+    scope: "all",
+    seasonSet: grouping?.seasons ?? [],
+    segment,
+  };
+}
+
+function toRecordBookLens(lens: RecordsLensSelection): RecordBookLens {
+  return {
+    groupingId: lens.groupingId,
+    scope: lens.scope,
+    seasonSet: lens.seasonSet,
+    segment: lens.segment,
+  };
 }
 
 function toLeagueSummary(row: LeagueRow): RecordsLeagueSummary {
@@ -298,6 +425,346 @@ function toCurrentRecordEntry(
   };
 }
 
+function lensIsDefault(lens: RecordsLensSelection): boolean {
+  return (
+    lens.segment === "both" &&
+    lens.groupingId === null &&
+    lens.seasonSet.length === 0
+  );
+}
+
+function lensRecordId(
+  lens: RecordsLensSelection,
+  recordType: RecordType,
+  suffix: string,
+): string {
+  const grouping = lens.groupingId ?? "cumulative";
+  return `lens-${lens.segment}-${grouping}-${recordType}-${suffix}`;
+}
+
+function lensRecordEntry(input: {
+  holderPersonId: string | null;
+  lens: RecordsLensSelection;
+  opponentName?: string | null;
+  opponentPersonId?: string | null;
+  personNames: ReadonlyMap<string, string>;
+  recordType: RecordType;
+  scoringPeriod?: number | null;
+  season?: number | null;
+  suffix: string;
+  value: number;
+}): CurrentRecordBookEntry {
+  return {
+    holderName: personName(input.personNames, input.holderPersonId),
+    holderPersonId: input.holderPersonId,
+    id: lensRecordId(input.lens, input.recordType, input.suffix),
+    label: recordLabel(input.recordType),
+    opponentName: input.opponentName ?? null,
+    opponentPersonId: input.opponentPersonId ?? null,
+    previousHolderName: null,
+    previousRecordId: null,
+    previousValue: null,
+    recordType: input.recordType,
+    scoringPeriod: input.scoringPeriod ?? null,
+    season: input.season ?? null,
+    value: round(input.value, 4),
+  };
+}
+
+function weeklyCatalogRecord(
+  row: WeeklyCatalogEntry | undefined,
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry | null {
+  if (!row) {
+    return null;
+  }
+  return lensRecordEntry({
+    holderPersonId: row.personId,
+    lens,
+    opponentName: row.opponentName,
+    opponentPersonId: row.opponentPersonId,
+    personNames,
+    recordType: row.recordType,
+    scoringPeriod: row.scoringPeriod,
+    season: row.season,
+    suffix: `${row.personId}-${row.season}-${row.scoringPeriod}-${row.matchupId ?? "matchup"}`,
+    value: row.value,
+  });
+}
+
+function blowoutCatalogRecord(
+  row: BlowoutCatalogEntry | undefined,
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry | null {
+  if (!row) {
+    return null;
+  }
+  return lensRecordEntry({
+    holderPersonId: row.personId,
+    lens,
+    opponentName: row.opponentName,
+    opponentPersonId: row.opponentPersonId,
+    personNames,
+    recordType: row.recordType,
+    scoringPeriod: row.scoringPeriod,
+    season: row.season,
+    suffix: `${row.personId}-${row.season}-${row.scoringPeriod}-${row.matchupId ?? "matchup"}`,
+    value: row.margin,
+  });
+}
+
+function streakCatalogRecord(
+  row: StreakCatalogEntry | undefined,
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry | null {
+  if (!row) {
+    return null;
+  }
+  return lensRecordEntry({
+    holderPersonId: row.personId,
+    lens,
+    personNames,
+    recordType: row.recordType,
+    scoringPeriod: row.startScoringPeriod,
+    season: row.startSeason,
+    suffix: `${row.personId}-${row.startSeason}-${row.startScoringPeriod}-${row.endSeason}-${row.endScoringPeriod}`,
+    value: row.length,
+  });
+}
+
+function compareRecordCandidate(
+  left: {
+    personId: string;
+    personName: string;
+    season?: number | null;
+    value: number;
+  },
+  right: {
+    personId: string;
+    personName: string;
+    season?: number | null;
+    value: number;
+  },
+  direction: "max" | "min",
+): number {
+  const valueCompare =
+    direction === "max" ? right.value - left.value : left.value - right.value;
+  return (
+    valueCompare ||
+    (left.season ?? 0) - (right.season ?? 0) ||
+    compareStable(left.personName, right.personName) ||
+    compareStable(left.personId, right.personId)
+  );
+}
+
+function seasonRecord(
+  rows: readonly SeasonStatisticsRow[],
+  recordType: RecordType,
+  selector: (row: SeasonStatisticsRow) => number,
+  direction: "max" | "min",
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry | null {
+  const candidates = rows
+    .filter((row) => row.wins + row.losses + row.ties > 0)
+    .map((row) => ({
+      personId: row.personId,
+      personName: personName(personNames, row.personId) ?? "Unknown manager",
+      season: row.season,
+      value: selector(row),
+    }))
+    .sort((left, right) => compareRecordCandidate(left, right, direction));
+  const winner = candidates[0];
+  if (!winner) {
+    return null;
+  }
+  return lensRecordEntry({
+    holderPersonId: winner.personId,
+    lens,
+    personNames,
+    recordType,
+    season: winner.season,
+    suffix: `${winner.personId}-${winner.season}`,
+    value: winner.value,
+  });
+}
+
+function careerRecord(
+  rows: readonly RecordsCatalog["allTimeStandings"][number][],
+  recordType: RecordType,
+  selector: (row: RecordsCatalog["allTimeStandings"][number]) => number,
+  direction: "max" | "min",
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry | null {
+  const candidates = rows
+    .filter((row) => row.games > 0 || row.seasons > 0)
+    .map((row) => ({
+      personId: row.personId,
+      personName: row.personName,
+      value: selector(row),
+    }))
+    .sort((left, right) => compareRecordCandidate(left, right, direction));
+  const winner = candidates[0];
+  if (!winner) {
+    return null;
+  }
+  return lensRecordEntry({
+    holderPersonId: winner.personId,
+    lens,
+    personNames,
+    recordType,
+    suffix: winner.personId,
+    value: winner.value,
+  });
+}
+
+function derivedCurrentRecords(
+  catalog: RecordsCatalog,
+  seasonRows: readonly SeasonStatisticsRow[],
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry[] {
+  return [
+    careerRecord(
+      catalog.allTimeStandings,
+      "best_career_win_percentage",
+      (row) => row.winPercentage,
+      "max",
+      lens,
+      personNames,
+    ),
+    careerRecord(
+      catalog.allTimeStandings,
+      "most_career_points",
+      (row) => row.pointsFor,
+      "max",
+      lens,
+      personNames,
+    ),
+    careerRecord(
+      catalog.allTimeStandings,
+      "most_championships",
+      (row) => row.championships,
+      "max",
+      lens,
+      personNames,
+    ),
+    careerRecord(
+      catalog.allTimeStandings,
+      "most_playoff_appearances",
+      (row) => row.playoffAppearances,
+      "max",
+      lens,
+      personNames,
+    ),
+    careerRecord(
+      catalog.allTimeStandings,
+      "luckiest_career",
+      (row) => row.careerLuck,
+      "max",
+      lens,
+      personNames,
+    ),
+    streakCatalogRecord(catalog.streaks.longestWins[0], lens, personNames),
+    streakCatalogRecord(catalog.streaks.longestLosses[0], lens, personNames),
+    seasonRecord(
+      seasonRows,
+      "most_wins_season",
+      (row) => row.wins,
+      "max",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "fewest_wins_season",
+      (row) => row.wins,
+      "min",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "most_points_for_season",
+      (row) => row.pointsFor,
+      "max",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "fewest_points_for_season",
+      (row) => row.pointsFor,
+      "min",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "most_points_against_season",
+      (row) => row.pointsAgainst,
+      "max",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "fewest_points_against_season",
+      (row) => row.pointsAgainst,
+      "min",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "best_luck_season",
+      (row) => row.luck,
+      "max",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "worst_luck_season",
+      (row) => row.luck,
+      "min",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "highest_season_scoring_average",
+      (row) => row.avgPointsFor,
+      "max",
+      lens,
+      personNames,
+    ),
+    weeklyCatalogRecord(catalog.highLow.highestScores[0], lens, personNames),
+    weeklyCatalogRecord(catalog.highLow.lowestScores[0], lens, personNames),
+    weeklyCatalogRecord(
+      catalog.highLow.highestCombinedMatchups[0],
+      lens,
+      personNames,
+    ),
+    weeklyCatalogRecord(
+      catalog.highLow.bestScoresInLosses[0],
+      lens,
+      personNames,
+    ),
+    weeklyCatalogRecord(
+      catalog.highLow.worstScoresInWins[0],
+      lens,
+      personNames,
+    ),
+    blowoutCatalogRecord(catalog.blowouts.biggest[0], lens, personNames),
+    blowoutCatalogRecord(catalog.blowouts.narrowestWins[0], lens, personNames),
+  ].filter((record): record is CurrentRecordBookEntry => Boolean(record));
+}
+
 function toSeasonLine(row: SeasonStatisticsRow): ManagerSeasonLine {
   return {
     avgPointsAgainst: row.avgPointsAgainst,
@@ -347,6 +814,149 @@ function compareWeeklyAscending(
     compareStable(left.personId, right.personId) ||
     compareStable(left.matchupId, right.matchupId)
   );
+}
+
+function lensSeasonSet(lens: RecordsLensSelection): Set<number> | null {
+  return lens.seasonSet.length > 0 ? new Set(lens.seasonSet) : null;
+}
+
+function filterWeeklyRowsByLens(
+  rows: readonly WeeklyStatisticsRow[],
+  lens: RecordsLensSelection,
+): WeeklyStatisticsRow[] {
+  const seasons = lensSeasonSet(lens);
+  return rows.filter((row) => {
+    if (seasons && !seasons.has(row.season)) {
+      return false;
+    }
+    if (lens.segment === "regular" && row.isPlayoff) {
+      return false;
+    }
+    if (lens.segment === "playoff" && !row.isPlayoff) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function filterSeasonRowsByLens(
+  rows: readonly SeasonStatisticsRow[],
+  lens: RecordsLensSelection,
+): SeasonStatisticsRow[] {
+  const seasons = lensSeasonSet(lens);
+  return seasons ? rows.filter((row) => seasons.has(row.season)) : [...rows];
+}
+
+function filterChampionshipRowsByLens(
+  rows: readonly ChampionshipRecordRow[],
+  lens: RecordsLensSelection,
+): ChampionshipRecordRow[] {
+  if (lens.segment === "regular") {
+    return [];
+  }
+  const seasons = lensSeasonSet(lens);
+  return seasons ? rows.filter((row) => seasons.has(row.season)) : [...rows];
+}
+
+function derivedSeasonRowsFromWeeklyRows(
+  rows: readonly WeeklyStatisticsRow[],
+): SeasonStatisticsRow[] {
+  const grouped = new Map<string, WeeklyStatisticsRow[]>();
+  for (const row of rows) {
+    grouped.set(`${row.personId}:${row.season}`, [
+      ...(grouped.get(`${row.personId}:${row.season}`) ?? []),
+      row,
+    ]);
+  }
+
+  const now = new Date(0);
+  return [...grouped.entries()].map(([key, groupedRows]) => {
+    const [personId, seasonRaw] = key.split(":");
+    const season = Number(seasonRaw);
+    const wins = groupedRows.filter((row) => row.result === "win").length;
+    const losses = groupedRows.filter((row) => row.result === "loss").length;
+    const ties = groupedRows.filter((row) => row.result === "tie").length;
+    const pointsFor = round(
+      groupedRows.reduce((sum, row) => sum + row.pointsFor, 0),
+      4,
+    );
+    const pointsAgainst = round(
+      groupedRows.reduce((sum, row) => sum + row.pointsAgainst, 0),
+      4,
+    );
+    const scoringPeriods = groupedRows.reduce(
+      (sum, row) => sum + Math.max(1, row.scoringPeriodSpan),
+      0,
+    );
+    const scoresFor = groupedRows.map((row) => row.pointsFor);
+    const scoresAgainst = groupedRows.map((row) => row.pointsAgainst);
+    const positiveScores = scoresFor.filter((score) => score > 0);
+    const games = wins + losses + ties;
+
+    return {
+      allPlayLosses: losses,
+      allPlayTies: ties,
+      allPlayWins: wins,
+      avgPointsAgainst:
+        scoringPeriods > 0 ? round(pointsAgainst / scoringPeriods, 4) : 0,
+      avgPointsFor:
+        scoringPeriods > 0 ? round(pointsFor / scoringPeriods, 4) : 0,
+      createdAt: now,
+      currentStreakLength: 0,
+      currentStreakType: null,
+      divisionWinner: false,
+      expectedWins: wins,
+      finalPlacement: "out",
+      finalRank: 0,
+      highestScore: scoresFor.length > 0 ? round(Math.max(...scoresFor), 4) : 0,
+      id: `records-lens-season-${season}-${personId}`,
+      leagueId: groupedRows[0]?.leagueId ?? "",
+      longestLossStreak: 0,
+      longestWinStreak: 0,
+      losses,
+      lowestScore:
+        positiveScores.length > 0 ? round(Math.min(...positiveScores), 4) : 0,
+      luck: 0,
+      madeChampionship: false,
+      madePlayoffs: groupedRows.some((row) => row.isPlayoff),
+      medianPointsAgainst:
+        scoresAgainst.length > 0 ? round(median(scoresAgainst), 4) : 0,
+      medianPointsFor: scoresFor.length > 0 ? round(median(scoresFor), 4) : 0,
+      personId: personId ?? "",
+      playoffSeed: null,
+      pointDifferential: round(pointsFor - pointsAgainst, 4),
+      pointsAgainst,
+      pointsFor,
+      scoringStdDev: 0,
+      season,
+      ties,
+      updatedAt: now,
+      winPercentage: games > 0 ? round((wins + ties * 0.5) / games, 4) : 0,
+      wins,
+    } satisfies SeasonStatisticsRow;
+  });
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[middle] ?? 0;
+  }
+  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+}
+
+function seasonRowsForLens(
+  rows: readonly SeasonStatisticsRow[],
+  weeklyRows: readonly WeeklyStatisticsRow[],
+  lens: RecordsLensSelection,
+): SeasonStatisticsRow[] {
+  return lens.segment === "both"
+    ? filterSeasonRowsByLens(rows, lens)
+    : derivedSeasonRowsFromWeeklyRows(weeklyRows);
 }
 
 function topWeeklyHighlights(
@@ -406,20 +1016,30 @@ function toRecordsPageData(source: RecordsSourceData): RecordsPageData {
   const previousById = new Map(
     source.previousRecordRows.map((record) => [record.id, record]),
   );
+  const currentRecords =
+    lensIsDefault(source.lens) && source.currentRecordRows.length > 0
+      ? source.currentRecordRows.map((row) =>
+          toCurrentRecordEntry(row, personNames, previousById),
+        )
+      : derivedCurrentRecords(
+          source.catalog,
+          source.seasonRows,
+          source.lens,
+          personNames,
+        );
 
   return {
     catalog: source.catalog,
-    currentRecords: source.currentRecordRows.map((row) =>
-      toCurrentRecordEntry(row, personNames, previousById),
-    ),
+    currentRecords,
     league: source.league,
+    lens: source.lens,
     managers: source.personRows.map(toPersonSummary),
   };
 }
 
 async function loadRecordsSourceData(
   db: Db,
-  input: { leagueId: string; limit?: number },
+  input: { leagueId: string; lens?: RecordsLensInput; limit?: number },
 ): Promise<RecordsDataResult<RecordsSourceData>> {
   const [league] = await db
     .select({
@@ -461,12 +1081,57 @@ async function loadRecordsSourceData(
       .from(persons)
       .where(eq(persons.leagueId, input.leagueId))
       .orderBy(asc(persons.canonicalName), asc(persons.id));
+    const groupingRows = await tx
+      .select({
+        config: leagueSeasonGroupings.config,
+        id: leagueSeasonGroupings.id,
+        kind: leagueSeasonGroupings.kind,
+        name: leagueSeasonGroupings.name,
+        ordinal: leagueSeasonGroupings.ordinal,
+      })
+      .from(leagueSeasonGroupings)
+      .where(
+        and(
+          eq(leagueSeasonGroupings.leagueId, input.leagueId),
+          eq(leagueSeasonGroupings.status, "confirmed"),
+        ),
+      )
+      .orderBy(
+        asc(leagueSeasonGroupings.kind),
+        asc(leagueSeasonGroupings.ordinal),
+        asc(leagueSeasonGroupings.name),
+        asc(leagueSeasonGroupings.id),
+      );
+    const groupingSeasonRows =
+      groupingRows.length > 0
+        ? await tx
+            .select({
+              groupingId: leagueGroupingSeasons.groupingId,
+              season: leagueGroupingSeasons.season,
+            })
+            .from(leagueGroupingSeasons)
+            .where(
+              and(
+                eq(leagueGroupingSeasons.leagueId, input.leagueId),
+                inArray(
+                  leagueGroupingSeasons.groupingId,
+                  groupingRows.map((row) => row.id),
+                ),
+              ),
+            )
+            .orderBy(asc(leagueGroupingSeasons.season))
+        : [];
+    const lens = resolveLensSelection(
+      input.lens,
+      toGroupingOptions(groupingRows, groupingSeasonRows),
+    );
 
     if (unresolvedFailures.length > 0) {
       const emptyCatalog = buildRecordsCatalog({
         championshipRows: [],
         headToHeadRows: [],
         limit: input.limit,
+        lens: toRecordBookLens(lens),
         personNames: new Map(
           personRows.map((person) => [person.id, person.canonicalName]),
         ),
@@ -479,6 +1144,7 @@ async function loadRecordsSourceData(
         championshipRows: [],
         currentRecordRows: [],
         headToHeadRows: [],
+        lens,
         milestoneRows: [],
         personRows,
         previousRecordRows: [],
@@ -582,11 +1248,22 @@ async function loadRecordsSourceData(
         asc(recordBookMilestones.milestoneType),
         asc(recordBookMilestones.milestoneKey),
       );
+    const weeklyRowsForLens = filterWeeklyRowsByLens(weeklyRows, lens);
+    const seasonRowsForSelectedLens = seasonRowsForLens(
+      seasonRows,
+      weeklyRowsForLens,
+      lens,
+    );
+    const championshipRowsForLens = filterChampionshipRowsByLens(
+      championshipRows,
+      lens,
+    );
     return {
       catalog: buildRecordsCatalog({
         allTimeStandingRows,
-        championshipRows,
+        championshipRows: championshipRowsForLens,
         headToHeadRows,
+        lens: toRecordBookLens(lens),
         limit: input.limit,
         milestoneRows,
         personNames,
@@ -594,14 +1271,15 @@ async function loadRecordsSourceData(
         weeklyRows,
       }),
       allTimeStandingRows,
-      championshipRows,
+      championshipRows: championshipRowsForLens,
       currentRecordRows,
       headToHeadRows,
+      lens,
       milestoneRows,
       personRows,
       previousRecordRows,
-      seasonRows,
-      weeklyRows,
+      seasonRows: seasonRowsForSelectedLens,
+      weeklyRows: weeklyRowsForLens,
     };
   });
 
@@ -616,7 +1294,7 @@ async function loadRecordsSourceData(
 
 export async function getLeagueRecordsPageData(
   db: Db,
-  input: { leagueId: string; limit?: number },
+  input: { leagueId: string; lens?: RecordsLensInput; limit?: number },
 ): Promise<RecordsDataResult<RecordsPageData>> {
   const source = await loadRecordsSourceData(db, input);
   if (source.status !== "ready") {
@@ -627,9 +1305,10 @@ export async function getLeagueRecordsPageData(
 
 export async function getManagerRecordsPageData(
   db: Db,
-  input: { leagueId: string; personId: string },
+  input: { leagueId: string; lens?: RecordsLensInput; personId: string },
 ): Promise<RecordsDataResult<ManagerRecordsPageData>> {
   const source = await loadRecordsSourceData(db, {
+    lens: input.lens,
     leagueId: input.leagueId,
     limit: DETAIL_LIMIT,
   });
@@ -760,7 +1439,12 @@ function headToHeadMeetings(
 
 export async function getHeadToHeadRecordsPageData(
   db: Db,
-  input: { leagueId: string; personAId: string; personBId: string },
+  input: {
+    leagueId: string;
+    lens?: RecordsLensInput;
+    personAId: string;
+    personBId: string;
+  },
 ): Promise<RecordsDataResult<HeadToHeadRecordsPageData>> {
   if (input.personAId === input.personBId) {
     return { status: "not_found" };
@@ -769,6 +1453,7 @@ export async function getHeadToHeadRecordsPageData(
   const [canonicalPersonAId, canonicalPersonBId] =
     canonicalizeHeadToHeadPersonIds(input.personAId, input.personBId);
   const source = await loadRecordsSourceData(db, {
+    lens: input.lens,
     leagueId: input.leagueId,
     limit: DETAIL_LIMIT,
   });

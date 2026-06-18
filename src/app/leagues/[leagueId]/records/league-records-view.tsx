@@ -19,10 +19,12 @@ import {
   formatRecordContext,
   formatRecordValue,
   h2hHref,
+  leagueRecordsHref,
   managerHref,
 } from "./records-format";
 import type {
   CurrentRecordBookEntry,
+  RecordsLensInput,
   RecordsPageData,
 } from "./records-page-data";
 import { AllTimeStandingsTable } from "./records-tables";
@@ -42,6 +44,144 @@ function hasTrustedRecordData(data: RecordsPageData): boolean {
     data.catalog.headToHead.allTimePairs.length > 0 ||
     data.catalog.championships.seasons.length > 0 ||
     data.catalog.milestones.keeper.status === "available"
+  );
+}
+
+const segmentOptions = [
+  { label: "Both", value: "both" },
+  { label: "Regular", value: "regular" },
+  { label: "Playoff", value: "playoff" },
+] as const;
+
+function lensInput(
+  data: RecordsPageData,
+  updates: Partial<RecordsLensInput>,
+): RecordsLensInput {
+  return {
+    groupingId:
+      updates.groupingId === undefined
+        ? data.lens.groupingId
+        : updates.groupingId,
+    segment: updates.segment ?? data.lens.segment,
+  };
+}
+
+function seasonSetLabel(seasons: readonly number[]): string {
+  if (seasons.length === 0) {
+    return "All seasons";
+  }
+  if (seasons.length === 1) {
+    return String(seasons[0]);
+  }
+  return `${seasons[0]}-${seasons[seasons.length - 1]}`;
+}
+
+function LensControls({ data }: { data: RecordsPageData }) {
+  const selectedGrouping = data.lens.groupingId
+    ? (data.lens.groupings.find(
+        (option) => option.id === data.lens.groupingId,
+      ) ?? null)
+    : null;
+
+  return (
+    <section aria-label="Record book lens" className="panel grid gap-4 p-4">
+      <div className="grid gap-1">
+        <p className="eyebrow text-primary">Lens</p>
+        <p className="text-sm text-muted-foreground">
+          Records recalculate by segment and confirmed era; cumulative remains
+          the default.
+        </p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+        <div className="grid gap-2">
+          <p className="font-mono text-xs uppercase tracking-[0.16em] text-ink-4">
+            Segment
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {segmentOptions.map((option) => {
+              const selected = data.lens.segment === option.value;
+              return (
+                <Link
+                  aria-current={selected ? "page" : undefined}
+                  className={cn(
+                    "inline-flex min-h-11 items-center rounded-full border px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] transition-[background-color,box-shadow,color,border-color]",
+                    selected
+                      ? "border-primary/50 bg-primary/20 text-lilac-hi shadow-[0_0_18px_var(--glow-lilac)]"
+                      : "border-[var(--hair-2)] bg-[var(--control-inset)] text-ink-3 hover:border-primary/40 hover:text-foreground",
+                  )}
+                  href={leagueRecordsHref(
+                    data.league,
+                    lensInput(data, { segment: option.value }),
+                  )}
+                  key={option.value}
+                >
+                  {option.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+        {data.lens.groupings.length > 0 ? (
+          <div className="grid gap-2">
+            <p className="font-mono text-xs uppercase tracking-[0.16em] text-ink-4">
+              Era
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                aria-current={
+                  data.lens.groupingId === null ? "page" : undefined
+                }
+                className={cn(
+                  "inline-flex min-h-11 items-center rounded-full border px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] transition-[background-color,box-shadow,color,border-color]",
+                  data.lens.groupingId === null
+                    ? "border-primary/50 bg-primary/20 text-lilac-hi shadow-[0_0_18px_var(--glow-lilac)]"
+                    : "border-[var(--hair-2)] bg-[var(--control-inset)] text-ink-3 hover:border-primary/40 hover:text-foreground",
+                )}
+                href={leagueRecordsHref(
+                  data.league,
+                  lensInput(data, { groupingId: null }),
+                )}
+              >
+                Cumulative
+              </Link>
+              {data.lens.groupings.map((option) => {
+                const selected = data.lens.groupingId === option.id;
+                return (
+                  <Link
+                    aria-current={selected ? "page" : undefined}
+                    className={cn(
+                      "inline-flex min-h-11 items-center rounded-full border px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] transition-[background-color,box-shadow,color,border-color]",
+                      selected
+                        ? "border-primary/50 bg-primary/20 text-lilac-hi shadow-[0_0_18px_var(--glow-lilac)]"
+                        : "border-[var(--hair-2)] bg-[var(--control-inset)] text-ink-3 hover:border-primary/40 hover:text-foreground",
+                    )}
+                    href={leagueRecordsHref(
+                      data.league,
+                      lensInput(data, { groupingId: option.id }),
+                    )}
+                    key={option.id}
+                    title={`${option.name}: ${seasonSetLabel(option.seasons)} (${option.formatType})`}
+                  >
+                    {option.name}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <StatusPill tone="info">
+          {data.lens.segment === "both" ? "All games" : data.lens.segment}
+        </StatusPill>
+        <StatusPill tone="neutral">
+          {selectedGrouping
+            ? `${selectedGrouping.name} · ${seasonSetLabel(selectedGrouping.seasons)}`
+            : "Cumulative"}
+        </StatusPill>
+        <StatusPill tone="neutral">Scope: league</StatusPill>
+      </div>
+    </section>
   );
 }
 
@@ -74,7 +214,7 @@ function RecordCard({
           {record.holderPersonId ? (
             <Link
               className="font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
-              href={managerHref(data.league, record.holderPersonId)}
+              href={managerHref(data.league, record.holderPersonId, data.lens)}
             >
               {record.holderName ?? "Unknown holder"}
             </Link>
@@ -139,7 +279,11 @@ function AllTimeStandings({ data }: { data: RecordsPageData }) {
       id="all-time"
       title="All-time standings"
     >
-      <AllTimeStandingsTable league={data.league} rows={standings} />
+      <AllTimeStandingsTable
+        league={data.league}
+        lens={data.lens}
+        rows={standings}
+      />
     </Section>
   );
 }
@@ -399,6 +543,7 @@ function RivalryList({
                 data.league,
                 pair.personA.personId,
                 pair.personB.personId,
+                data.lens,
               )}
             >
               {pair.personA.personName} vs {pair.personB.personName}
@@ -511,7 +656,7 @@ function KeeperMilestones({ data }: { data: RecordsPageData }) {
             {entry.personId ? (
               <Link
                 className="mt-2 block text-sm text-muted-foreground underline-offset-4 hover:underline"
-                href={managerHref(data.league, entry.personId)}
+                href={managerHref(data.league, entry.personId, data.lens)}
               >
                 {entry.personName ?? "Unknown manager"}
               </Link>
@@ -616,6 +761,8 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
           </div>
         </div>
       </header>
+
+      <LensControls data={data} />
 
       {data.catalog.integrityBlocked ? (
         <EmptyState

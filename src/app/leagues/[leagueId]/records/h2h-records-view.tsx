@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   formatMeetingContext,
   formatNumber,
+  leagueRecordsHref,
   managerHref,
 } from "./records-format";
 import type {
@@ -92,7 +93,7 @@ export function HeadToHeadRecordsView({
       <header className="panel grid gap-4 p-4">
         <div className="flex flex-wrap gap-2">
           <Link
-            href={`/leagues/${data.league.id}/records`}
+            href={leagueRecordsHref(data.league, data.lens)}
             className={cn(
               buttonVariants({ className: "w-fit", variant: "ghost" }),
             )}
@@ -166,7 +167,7 @@ export function HeadToHeadRecordsView({
           </h2>
           <Link
             className="mt-1 inline-flex text-sm font-medium underline-offset-4 hover:underline"
-            href={managerHref(data.league, data.personA.id)}
+            href={managerHref(data.league, data.personA.id, data.lens)}
           >
             Manager page
           </Link>
@@ -190,7 +191,7 @@ export function HeadToHeadRecordsView({
           </h2>
           <Link
             className="mt-1 inline-flex text-sm font-medium underline-offset-4 hover:underline"
-            href={managerHref(data.league, data.personB.id)}
+            href={managerHref(data.league, data.personB.id, data.lens)}
           >
             Manager page
           </Link>

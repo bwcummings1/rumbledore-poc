@@ -992,6 +992,19 @@ describe("buildRecordsCatalog", () => {
       games: 2,
       pointsFor: 270,
     });
+    expect(
+      playoffCatalog.headToHead.allTimePairs.find(
+        (row) =>
+          row.personA.personId === PEOPLE.alpha &&
+          row.personB.personId === PEOPLE.beta,
+      ),
+    ).toMatchObject({
+      championshipMeetings: 1,
+      meetings: 1,
+      personA: expect.objectContaining({ points: 130, wins: 0 }),
+      personB: expect.objectContaining({ points: 140, wins: 1 }),
+      playoffMeetings: 1,
+    });
 
     const regularCatalog = buildRecordsCatalog({
       championshipRows,

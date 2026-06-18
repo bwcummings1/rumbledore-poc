@@ -10,9 +10,11 @@ import {
 } from "../../../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../../../league-section-access-state";
 import { HeadToHeadRecordsView } from "../../../h2h-records-view";
+import { h2hHref } from "../../../records-format";
 import {
   canonicalizeHeadToHeadPersonIds,
   getHeadToHeadRecordsPageData,
+  recordsLensFromSearchParams,
 } from "../../../records-page-data";
 
 export const dynamic = "force-dynamic";
@@ -70,15 +72,17 @@ export default async function HeadToHeadRecordsPage({
 
   const [canonicalPersonAId, canonicalPersonBId] =
     canonicalizeHeadToHeadPersonIds(personAId, personBId);
+  const lens = recordsLensFromSearchParams(query);
   if (canonicalPersonAId !== personAId || canonicalPersonBId !== personBId) {
     redirect(
-      `/leagues/${leagueId}/records/h2h/${canonicalPersonAId}/${canonicalPersonBId}`,
+      h2hHref({ id: leagueId }, canonicalPersonAId, canonicalPersonBId, lens),
     );
   }
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
   const result = await getHeadToHeadRecordsPageData(db, {
+    lens,
     leagueId,
     personAId: canonicalPersonAId,
     personBId: canonicalPersonBId,

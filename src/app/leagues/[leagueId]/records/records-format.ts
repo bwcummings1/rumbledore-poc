@@ -3,6 +3,7 @@ import type {
   HeadToHeadMeeting,
   ManagerWeeklyHighlight,
   RecordsLeagueSummary,
+  RecordsLensInput,
 } from "./records-page-data";
 
 export function formatNumber(value: number, maximumFractionDigits = 2): string {
@@ -60,17 +61,38 @@ export function formatMeetingContext(row: HeadToHeadMeeting): string {
   return labels.join(" - ");
 }
 
-export function managerHref(
-  league: RecordsLeagueSummary,
-  personId: string,
+function lensQuery(lens?: RecordsLensInput | null): string {
+  const params = new URLSearchParams();
+  if (lens?.segment && lens.segment !== "both") {
+    params.set("segment", lens.segment);
+  }
+  if (lens?.groupingId) {
+    params.set("grouping", lens.groupingId);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export function leagueRecordsHref(
+  league: Pick<RecordsLeagueSummary, "id">,
+  lens?: RecordsLensInput | null,
 ): string {
-  return `/leagues/${league.id}/records/managers/${personId}`;
+  return `/leagues/${league.id}/records${lensQuery(lens)}`;
+}
+
+export function managerHref(
+  league: Pick<RecordsLeagueSummary, "id">,
+  personId: string,
+  lens?: RecordsLensInput | null,
+): string {
+  return `/leagues/${league.id}/records/managers/${personId}${lensQuery(lens)}`;
 }
 
 export function h2hHref(
-  league: RecordsLeagueSummary,
+  league: Pick<RecordsLeagueSummary, "id">,
   personAId: string,
   personBId: string,
+  lens?: RecordsLensInput | null,
 ): string {
-  return `/leagues/${league.id}/records/h2h/${personAId}/${personBId}`;
+  return `/leagues/${league.id}/records/h2h/${personAId}/${personBId}${lensQuery(lens)}`;
 }

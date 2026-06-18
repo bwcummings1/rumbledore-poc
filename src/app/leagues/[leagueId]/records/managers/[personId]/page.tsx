@@ -10,7 +10,10 @@ import {
 } from "../../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../../league-section-access-state";
 import { ManagerRecordsView } from "../../manager-records-view";
-import { getManagerRecordsPageData } from "../../records-page-data";
+import {
+  getManagerRecordsPageData,
+  recordsLensFromSearchParams,
+} from "../../records-page-data";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +62,11 @@ export default async function ManagerRecordsPage({
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
-  const result = await getManagerRecordsPageData(db, { leagueId, personId });
+  const result = await getManagerRecordsPageData(db, {
+    lens: recordsLensFromSearchParams(query),
+    leagueId,
+    personId,
+  });
   switch (result.status) {
     case "ready":
       return <ManagerRecordsView data={result.data} />;
