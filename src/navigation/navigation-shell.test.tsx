@@ -105,7 +105,7 @@ describe("shouldShowNavigationShell", () => {
 });
 
 describe("NavigationShellView", () => {
-  it("renders global mobile tabs and the Global scope name without provider nav nodes", () => {
+  it("renders news environment tabs and the News scope name without provider nav nodes", () => {
     render(
       <NavigationShellView
         activeState={deriveActiveNavigationState("/news")}
@@ -118,28 +118,51 @@ describe("NavigationShellView", () => {
     const topBarButton = screen.getByRole("button", {
       name: "Open scope switcher",
     });
-    expect(within(topBarButton).getByText("Your Leagues")).toBeDefined();
+    expect(within(topBarButton).getByText("Rumbledore News")).toBeDefined();
 
     const tabs = screen.getByLabelText("Current scope sections");
     expect(
       within(tabs)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Your Leagues", "News", "Arena", "You"]);
+    ).toEqual(["Front", "NFL", "Fantasy", "Injuries", "Rankings"]);
     expect(
-      within(tabs).getByRole("link", { name: "News" }).getAttribute("href"),
+      within(tabs).getByRole("link", { name: "Front" }).getAttribute("href"),
     ).toBe("/news");
     expect(
       within(tabs)
-        .getByRole("link", { name: "News" })
+        .getByRole("link", { name: "Front" })
         .getAttribute("aria-current"),
     ).toBe("page");
     expect(within(tabs).queryByText("ESPN")).toBeNull();
     expect(within(tabs).queryByText("Sleeper")).toBeNull();
-    expect(screen.getAllByRole("region", { name: "Global wire" })).toHaveLength(
+    expect(screen.getAllByRole("region", { name: "News wire" })).toHaveLength(
       2,
     );
     expect(screen.getByRole("link", { name: "Skip to content" })).toBeDefined();
+  });
+
+  it("renders global tabs as the lobby environment", () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/")}
+        items={items}
+      >
+        <main>Lobby</main>
+      </NavigationShellView>,
+    );
+
+    const tabs = screen.getByLabelText("Current scope sections");
+    expect(
+      within(tabs)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Your Leagues", "You"]);
+    expect(
+      within(tabs)
+        .getByRole("link", { name: "Your Leagues" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("renders league tabs from the active league and maps legacy paths to active sections", () => {
@@ -192,7 +215,9 @@ describe("NavigationShellView", () => {
     const trigger = screen.getByRole("button", { name: "Open scope switcher" });
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole("dialog", { name: /Switch leagues/i });
+    const dialog = screen.getByRole("dialog", {
+      name: /Switch environments/i,
+    });
     expect(dialog.getAttribute("data-slot")).toBe("sheet");
     expect(
       within(dialog).getByRole("button", { name: "Resize sheet" }),
@@ -211,12 +236,22 @@ describe("NavigationShellView", () => {
         name: /Your Leagues, Global scope/i,
       }),
     ).toBeDefined();
+    expect(
+      within(dialog).getByRole("link", {
+        name: /Rumbledore News, News environment/i,
+      }),
+    ).toBeDefined();
+    expect(
+      within(dialog).getByRole("link", {
+        name: /Central Arena, Arena environment/i,
+      }),
+    ).toBeDefined();
 
     fireEvent.keyDown(dialog, { key: "Escape" });
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Switch leagues/i }),
+        screen.queryByRole("dialog", { name: /Switch environments/i }),
       ).toBeNull();
     });
     await waitFor(() => {
@@ -236,20 +271,6 @@ describe("NavigationShellView", () => {
 
     const sidebar = container.querySelector('[data-slot="desktop-sidebar"]');
     expect(sidebar?.getAttribute("data-collapsed")).toBe("false");
-    expect(
-      within(screen.getByLabelText("Global sections"))
-        .getByRole("link", {
-          name: "News",
-        })
-        .getAttribute("href"),
-    ).toBe("/news?leagueId=league-a");
-    expect(
-      within(screen.getByLabelText("Global sections"))
-        .getByRole("link", {
-          name: "Arena",
-        })
-        .getAttribute("href"),
-    ).toBe("/arena?leagueId=league-a");
     expect(
       within(screen.getByLabelText("League sections")).getByRole("link", {
         name: "Records",

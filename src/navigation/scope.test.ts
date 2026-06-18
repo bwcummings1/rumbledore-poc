@@ -1,30 +1,72 @@
 import { describe, expect, it } from "vitest";
 import {
+  ARENA_NAVIGATION_SECTIONS,
   deriveActiveNavigationState,
   GLOBAL_NAVIGATION_SECTIONS,
+  getArenaSectionHref,
   getLeagueNavigationSections,
   getLeagueSectionHref,
   getLeagueSwitchHref,
+  getNewsSectionHref,
   getProviderBadgeLabel,
   LEAGUE_NAVIGATION_SECTIONS,
+  NEWS_NAVIGATION_SECTIONS,
 } from "./scope";
 
 describe("navigation scope taxonomy", () => {
   it("defines the exact global sections without provider nav nodes", () => {
     expect(GLOBAL_NAVIGATION_SECTIONS.map((section) => section.label)).toEqual([
       "Your Leagues",
-      "News",
-      "Arena",
       "You",
     ]);
     expect(GLOBAL_NAVIGATION_SECTIONS.map((section) => section.href)).toEqual([
       "/",
-      "/news",
-      "/arena",
       "/you",
     ]);
 
     expectNoProviderSections(GLOBAL_NAVIGATION_SECTIONS);
+  });
+
+  it("defines news as its own browsable environment", () => {
+    expect(NEWS_NAVIGATION_SECTIONS.map((section) => section.label)).toEqual([
+      "Front",
+      "NFL",
+      "Fantasy",
+      "Injuries",
+      "Rankings",
+    ]);
+    expect(NEWS_NAVIGATION_SECTIONS.map((section) => section.href)).toEqual([
+      "/news",
+      "/news/nfl",
+      "/news/fantasy",
+      "/news/injuries",
+      "/news/rankings",
+    ]);
+    expect(getNewsSectionHref("front")).toBe("/news");
+    expect(getNewsSectionHref("injuries")).toBe("/news/injuries");
+    expectNoProviderSections(NEWS_NAVIGATION_SECTIONS);
+  });
+
+  it("defines arena as its own browsable environment", () => {
+    expect(ARENA_NAVIGATION_SECTIONS.map((section) => section.label)).toEqual([
+      "Leaderboard",
+      "League vs League",
+      "Movers",
+      "Matchups",
+      "Seasons",
+      "Rules",
+    ]);
+    expect(ARENA_NAVIGATION_SECTIONS.map((section) => section.href)).toEqual([
+      "/arena",
+      "/arena/leagues",
+      "/arena/movers",
+      "/arena/matchups",
+      "/arena/seasons",
+      "/arena/rules",
+    ]);
+    expect(getArenaSectionHref("leaderboard")).toBe("/arena");
+    expect(getArenaSectionHref("movers")).toBe("/arena/movers");
+    expectNoProviderSections(ARENA_NAVIGATION_SECTIONS);
   });
 
   it("defines the exact league sections without provider nav nodes", () => {
@@ -65,21 +107,41 @@ describe("deriveActiveNavigationState", () => {
       scope: "global",
       sectionId: "your-leagues",
     });
-    expect(deriveActiveNavigationState("/news")).toMatchObject({
-      scope: "global",
-      sectionId: "news",
-    });
-    expect(deriveActiveNavigationState("/news/injuries")).toMatchObject({
-      scope: "global",
-      sectionId: "news",
-    });
-    expect(deriveActiveNavigationState("/arena")).toMatchObject({
-      scope: "global",
-      sectionId: "arena",
-    });
     expect(deriveActiveNavigationState("/you")).toMatchObject({
       scope: "global",
       sectionId: "you",
+    });
+  });
+
+  it("derives news scope and active news sections", () => {
+    expect(deriveActiveNavigationState("/news")).toMatchObject({
+      scope: "news",
+      sectionId: "front",
+    });
+    expect(deriveActiveNavigationState("/news/injuries")).toMatchObject({
+      scope: "news",
+      sectionId: "injuries",
+    });
+    expect(deriveActiveNavigationState("/news/articles/story-1")).toMatchObject(
+      {
+        scope: "news",
+        sectionId: "front",
+      },
+    );
+  });
+
+  it("derives arena scope and active arena sections", () => {
+    expect(deriveActiveNavigationState("/arena")).toMatchObject({
+      scope: "arena",
+      sectionId: "leaderboard",
+    });
+    expect(deriveActiveNavigationState("/arena/movers")).toMatchObject({
+      scope: "arena",
+      sectionId: "movers",
+    });
+    expect(deriveActiveNavigationState("/arena/rules")).toMatchObject({
+      scope: "arena",
+      sectionId: "rules",
     });
   });
 
@@ -178,8 +240,8 @@ describe("deriveActiveNavigationState", () => {
     });
     expect(deriveActiveNavigationState("news/")).toMatchObject({
       pathname: "/news",
-      scope: "global",
-      sectionId: "news",
+      scope: "news",
+      sectionId: "front",
     });
     expect(deriveActiveNavigationState(null)).toEqual({
       leagueId: null,

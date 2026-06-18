@@ -33,5 +33,5 @@ export default async function ArenaPage({ searchParams }: ArenaPageProps) {
       firstSearchValue(params?.season) ??
       undefined,
   });
-  return <ArenaLeaderboardView data={data} />;
+  return <ArenaLeaderboardView data={data} sectionId="leaderboard" />;
 }

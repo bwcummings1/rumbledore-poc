@@ -194,12 +194,6 @@ test("arena leaderboard view renders league and individual standings", () => {
   ).toBeDefined();
   expect(screen.getAllByText("Arena League B").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Arena League A").length).toBeGreaterThan(0);
-  expect(
-    screen.getByRole("heading", { name: /Arena League B vs/ }),
-  ).toBeDefined();
-  expect(
-    screen.getAllByText("Arena League B leads by $100").length,
-  ).toBeGreaterThanOrEqual(1);
   expect(screen.getAllByText("Arena Gamma").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("+$300").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("+300%").length).toBeGreaterThanOrEqual(2);
@@ -207,15 +201,54 @@ test("arena leaderboard view renders league and individual standings", () => {
     screen.getAllByText("1/1 wins · 1/1 weeks").length,
   ).toBeGreaterThanOrEqual(2);
   expect(
-    screen.getByRole("link", { name: /2026 Arena/ }).getAttribute("href"),
-  ).toBe("/arena?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a");
-  expect(screen.getByRole("link", { name: /2025 Arena/ })).toBeDefined();
+    screen
+      .getByRole("link", { name: /League vs League/i })
+      .getAttribute("href"),
+  ).toBe(
+    "/arena/leagues?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a",
+  );
+  expect(
+    screen.getByRole("link", { name: /Movers/i }).getAttribute("href"),
+  ).toBe(
+    "/arena/movers?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a",
+  );
+  expect(
+    screen.getByRole("link", { name: /Rules/i }).getAttribute("href"),
+  ).toBe(
+    "/arena/rules?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a",
+  );
+  expect(
+    screen.getByRole("heading", { name: "Choose the arena angle" }),
+  ).toBeDefined();
+  expect(screen.queryByRole("heading", { name: "Arena movement board" })).toBe(
+    null,
+  );
+});
+
+test("arena matchup section renders rivalry and analytics", () => {
+  render(<ArenaLeaderboardView data={data} sectionId="matchups" />);
+
+  expect(
+    screen.getByRole("heading", { name: /Arena League B vs/ }),
+  ).toBeDefined();
+  expect(
+    screen.getAllByText("Arena League B leads by $100").length,
+  ).toBeGreaterThanOrEqual(1);
   expect(
     screen.getByRole("link", { name: /Arena League A/ }).getAttribute("href"),
   ).toBe("/arena?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a");
+  expect(
+    screen.getByRole("heading", { name: "Arena movement board" }),
+  ).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Rank race" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Duel margin" })).toBeDefined();
+});
+
+test("arena movers section renders rank movement", () => {
+  render(<ArenaLeaderboardView data={data} sectionId="movers" />);
+
   expect(screen.getByText("Biggest risers")).toBeDefined();
   expect(screen.getByText("Player · #3 to #1")).toBeDefined();
-  expect(screen.getAllByText("Up 2").length).toBeGreaterThanOrEqual(1);
   expect(
     screen.getByRole("heading", { name: "Arena movement board" }),
   ).toBeDefined();
@@ -228,6 +261,27 @@ test("arena leaderboard view renders league and individual standings", () => {
       "Arena rank movement from prior materialization to now",
     ).length,
   ).toBeGreaterThanOrEqual(1);
+});
+
+test("arena seasons and rules sections render their own surfaces", () => {
+  render(<ArenaLeaderboardView data={data} sectionId="seasons" />);
+
+  expect(
+    screen.getByRole("link", { name: /2026 Arena/ }).getAttribute("href"),
+  ).toBe("/arena?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a");
+  expect(screen.getByRole("link", { name: /2025 Arena/ })).toBeDefined();
+  expect(
+    screen.getByRole("heading", { name: "Season league standings" }),
+  ).toBeDefined();
+
+  cleanup();
+  render(<ArenaLeaderboardView data={data} sectionId="rules" />);
+
+  expect(
+    screen.getByRole("heading", { name: "Aggregate bragging rights" }),
+  ).toBeDefined();
+  expect(screen.getByText("Play money only")).toBeDefined();
+  expect(screen.getByText("League isolation")).toBeDefined();
 });
 
 test("arena leaderboard view renders empty states", () => {
@@ -257,6 +311,27 @@ test("arena leaderboard view renders empty states", () => {
     screen.getAllByText("No individual standings have been materialized yet.")
       .length,
   ).toBeGreaterThanOrEqual(1);
+  expect(
+    screen.getByRole("heading", { name: "Choose the arena angle" }),
+  ).toBeDefined();
+});
+
+test("arena subsection empty states stay coherent for solo or zero-league users", () => {
+  const emptyData: ArenaLeaderboardData = {
+    computedAt: null,
+    headToHead: null,
+    individualStandings: [],
+    leagueOptions: [],
+    leagueStandings: [],
+    movers: { fallers: [], risers: [] },
+    season: null,
+    seasons: [],
+  };
+
+  render(<ArenaLeaderboardView data={emptyData} sectionId="movers" />);
   expect(screen.getByText("No rank movement yet")).toBeDefined();
+
+  cleanup();
+  render(<ArenaLeaderboardView data={emptyData} sectionId="leagues" />);
   expect(screen.getByText("League rivalry waiting")).toBeDefined();
 });
