@@ -1,5 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import type { DataCurationSummary } from "./curation-data";
 import { DataStewardReviewView } from "./data-steward-review-view";
 
 const league = {
@@ -32,7 +39,88 @@ const initialSummary = {
   ],
 };
 
+const curationSummary: DataCurationSummary = {
+  access: {
+    canConfirmGroupings: true,
+    canEditData: true,
+    canHandoffCommissioner: true,
+    role: "commissioner",
+  },
+  commissionerCandidates: [
+    {
+      displayName: "Fixture Steward",
+      email: "steward@example.com",
+      memberId: "00000000-0000-4000-8000-000000000301",
+      role: "data_steward",
+      userId: "00000000-0000-4000-8000-000000000302",
+    },
+  ],
+  groupings: [
+    {
+      config: { format_type: "traditional" },
+      confirmedByUserId: null,
+      derivedFrom: { boundaryReasons: ["member_count_change"] },
+      id: "00000000-0000-4000-8000-000000000401",
+      kind: "era",
+      name: "Era 2",
+      ordinal: 2,
+      seasons: [2013, 2014],
+      status: "proposed",
+    },
+  ],
+  ledger: [
+    {
+      actorUserId: "00000000-0000-4000-8000-000000000002",
+      afterValue: "Fixture Manager",
+      beforeValue: "Fixture Manger",
+      createdAt: "2026-06-18T12:00:00.000Z",
+      editClass: "cosmetic",
+      field: "canonical_name",
+      id: "00000000-0000-4000-8000-000000000501",
+      reason: "spelling",
+      source: "league_data_edit",
+      targetId: "00000000-0000-4000-8000-000000000601",
+      targetKind: "person",
+    },
+  ],
+  matchupSpans: [
+    {
+      awayScore: 120.4,
+      awayTeamName: "Road Team",
+      homeScore: 144.2,
+      homeTeamName: "Home Team",
+      id: "00000000-0000-4000-8000-000000000701",
+      matchupPeriodCount: 2,
+      periodStart: 15,
+      scoringPeriod: 16,
+      scoringPeriodSpan: 1,
+      season: 2026,
+      status: "final",
+    },
+  ],
+  persons: [
+    {
+      canonicalName: "Fixture Manger",
+      id: "00000000-0000-4000-8000-000000000601",
+      ownerHistoryCount: 1,
+      seasons: [2024, 2025, 2026],
+    },
+  ],
+  teamSeasons: [
+    {
+      id: "00000000-0000-4000-8000-000000000801",
+      ownerNames: ["Fixture Manger"],
+      personId: "00000000-0000-4000-8000-000000000601",
+      personName: "Fixture Manger",
+      providerTeamId: "2",
+      season: 2026,
+      teamName: "Fixture Team",
+    },
+  ],
+};
+
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
@@ -103,5 +191,147 @@ test("data steward review view posts review actions and updates local state", as
 
   await waitFor(() => {
     expect(screen.getByText("Integrity checks were rerun.")).toBeDefined();
+  });
+});
+
+test("ordinary members can inspect the public ledger without edit controls", () => {
+  render(
+    <DataStewardReviewView
+      curation={{
+        ...curationSummary,
+        access: {
+          canConfirmGroupings: false,
+          canEditData: false,
+          canHandoffCommissioner: false,
+          role: "member",
+        },
+        commissionerCandidates: [],
+      }}
+      initialSummary={{ integrityChecks: [], suggestedIdentityLinks: [] }}
+      league={league}
+    />,
+  );
+
+  expect(
+    screen.getByRole("button", { name: "Open public ledger" }),
+  ).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Save name" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Rerun checks" })).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Open public ledger" }));
+
+  expect(screen.getByRole("dialog")).toBeDefined();
+  expect(screen.getAllByText(/canonical_name/)[0]).toBeDefined();
+});
+
+test("commissioners can submit curation edits, era confirms, and handoff actions", async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/curation/ledger")) {
+        return new Response(
+          JSON.stringify({ entries: curationSummary.ledger }),
+          {
+            headers: { "content-type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+      if (url.includes("/curation/groupings")) {
+        return new Response(
+          JSON.stringify({
+            grouping: {
+              ...curationSummary.groupings[0],
+              name: "Owner era",
+              seasons: [2013, 2015],
+              status: "confirmed",
+            },
+          }),
+          {
+            headers: { "content-type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          requestBody: init?.body ? JSON.parse(String(init.body)) : null,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      );
+    });
+
+  render(
+    <DataStewardReviewView
+      curation={curationSummary}
+      initialSummary={initialSummary}
+      league={league}
+    />,
+  );
+
+  fireEvent.change(screen.getAllByDisplayValue("Fixture Manger")[0], {
+    target: { value: "Fixture Manager" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/00000000-0000-4000-8000-000000000001/curation/edits",
+      expect.objectContaining({
+        body: JSON.stringify({
+          editClass: "cosmetic",
+          field: "canonical_name",
+          reason: "Corrected person display name",
+          targetId: "00000000-0000-4000-8000-000000000601",
+          targetKind: "person",
+          value: "Fixture Manager",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  fireEvent.change(screen.getByDisplayValue("Era 2"), {
+    target: { value: "Owner era" },
+  });
+  fireEvent.change(screen.getByDisplayValue("2013, 2014"), {
+    target: { value: "2013, 2015" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm grouping" }));
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/00000000-0000-4000-8000-000000000001/curation/groupings",
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: "confirm",
+          groupingId: "00000000-0000-4000-8000-000000000401",
+          name: "Owner era",
+          reason: "Confirmed season grouping",
+          seasons: [2013, 2015],
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Hand off" }));
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/00000000-0000-4000-8000-000000000001/commissioner/handoff",
+      expect.objectContaining({
+        body: JSON.stringify({
+          reason: "Commissioner handoff",
+          targetMemberId: "00000000-0000-4000-8000-000000000301",
+        }),
+        method: "POST",
+      }),
+    );
   });
 });
