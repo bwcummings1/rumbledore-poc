@@ -131,6 +131,16 @@ function requireNumber(value: unknown, field: string): number {
   return value;
 }
 
+function winnerFromScores(homeScore: number, awayScore: number) {
+  if (homeScore > awayScore) {
+    return "home" as const;
+  }
+  if (awayScore > homeScore) {
+    return "away" as const;
+  }
+  return "tie" as const;
+}
+
 function requirePositiveInteger(value: unknown, field: string): number {
   if (!Number.isInteger(value) || Number(value) < 1) {
     throw new Error(`${field} must be a positive integer`);
@@ -214,6 +224,10 @@ async function applyTargetUpdate(
 ): Promise<{
   afterValue: unknown;
   beforeValue: unknown;
+  ledgerTarget?: Pick<
+    ApplyLeagueDataEditInput,
+    "field" | "targetId" | "targetKind"
+  >;
   matchupIds: string[];
   recordsRefresh: boolean;
 }> {
@@ -398,8 +412,62 @@ async function applyTargetUpdate(
     if (!row) {
       throw new Error("weekly statistic was not found");
     }
+    const [backingMatchup] = await tx
+      .select()
+      .from(fantasyMatchups)
+      .where(
+        and(
+          eq(fantasyMatchups.leagueId, input.leagueId),
+          eq(fantasyMatchups.id, row.matchupId),
+        ),
+      )
+      .limit(1);
+    const [teamSeason] = await tx
+      .select({ providerTeamId: teamSeasons.providerTeamId })
+      .from(teamSeasons)
+      .where(
+        and(
+          eq(teamSeasons.leagueId, input.leagueId),
+          eq(teamSeasons.id, row.teamSeasonId),
+        ),
+      )
+      .limit(1);
+    const side =
+      backingMatchup &&
+      teamSeason?.providerTeamId === backingMatchup.homeTeamProviderId
+        ? "home"
+        : backingMatchup &&
+            teamSeason?.providerTeamId === backingMatchup.awayTeamProviderId
+          ? "away"
+          : null;
     if (input.field === "points_for") {
       const afterValue = requireNumber(input.value, input.field);
+      if (backingMatchup && side) {
+        const homeScore =
+          side === "home" ? afterValue : backingMatchup.homeScore;
+        const awayScore =
+          side === "away" ? afterValue : backingMatchup.awayScore;
+        await tx
+          .update(fantasyMatchups)
+          .set({
+            awayScore,
+            homeScore,
+            updatedAt: new Date(),
+            winner: winnerFromScores(homeScore, awayScore),
+          })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.pointsFor,
+          ledgerTarget: {
+            field: side === "home" ? "home_score" : "away_score",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ pointsFor: afterValue, updatedAt: new Date() })
@@ -413,6 +481,32 @@ async function applyTargetUpdate(
     }
     if (input.field === "points_against") {
       const afterValue = requireNumber(input.value, input.field);
+      if (backingMatchup && side) {
+        const homeScore =
+          side === "away" ? afterValue : backingMatchup.homeScore;
+        const awayScore =
+          side === "home" ? afterValue : backingMatchup.awayScore;
+        await tx
+          .update(fantasyMatchups)
+          .set({
+            awayScore,
+            homeScore,
+            updatedAt: new Date(),
+            winner: winnerFromScores(homeScore, awayScore),
+          })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.pointsAgainst,
+          ledgerTarget: {
+            field: side === "home" ? "away_score" : "home_score",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ pointsAgainst: afterValue, updatedAt: new Date() })
@@ -442,6 +536,23 @@ async function applyTargetUpdate(
     }
     if (input.field === "scoring_period_span") {
       const afterValue = requirePositiveInteger(input.value, input.field);
+      if (backingMatchup) {
+        await tx
+          .update(fantasyMatchups)
+          .set({ scoringPeriodSpan: afterValue, updatedAt: new Date() })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.scoringPeriodSpan,
+          ledgerTarget: {
+            field: "scoring_period_span",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ scoringPeriodSpan: afterValue, updatedAt: new Date() })
@@ -455,6 +566,23 @@ async function applyTargetUpdate(
     }
     if (input.field === "period_start") {
       const afterValue = optionalInteger(input.value, input.field);
+      if (backingMatchup) {
+        await tx
+          .update(fantasyMatchups)
+          .set({ periodStart: afterValue, updatedAt: new Date() })
+          .where(eq(fantasyMatchups.id, backingMatchup.id));
+        return {
+          afterValue,
+          beforeValue: row.periodStart,
+          ledgerTarget: {
+            field: "period_start",
+            targetId: backingMatchup.id,
+            targetKind: "matchup",
+          },
+          matchupIds: [backingMatchup.id],
+          recordsRefresh: false,
+        };
+      }
       await tx
         .update(weeklyStatistics)
         .set({ periodStart: afterValue, updatedAt: new Date() })
@@ -608,10 +736,18 @@ export async function applyLeagueDataEdit(
 ): Promise<ApplyLeagueDataEditResult> {
   const applied = await withLeagueContext(db, input.leagueId, async (tx) => {
     const update = await applyTargetUpdate(tx, input);
+    const ledgerTarget = update.ledgerTarget ?? {
+      field: input.field,
+      targetId: input.targetId,
+      targetKind: input.targetKind,
+    };
     const editId = await writeDataEdit(tx, {
       ...input,
       afterValue: update.afterValue,
       beforeValue: update.beforeValue,
+      field: ledgerTarget.field,
+      targetId: ledgerTarget.targetId,
+      targetKind: ledgerTarget.targetKind,
     });
     let records = 0;
     if (update.recordsRefresh) {

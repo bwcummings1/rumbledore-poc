@@ -1105,6 +1105,128 @@ describe("recomputeLeagueStatistics", () => {
     ).toBe("Alex Corrected");
   });
 
+  it("routes weekly-stat score edits through the backing matchup so engine and catalog rows stay aligned", async () => {
+    const { leagueId } = await seedStatsLeague("curation-weekly-score");
+    const actorUserId = await seedActor("curation-weekly-score-actor");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const before = await selectStatsRows(leagueId);
+    const alex2025 = before.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    if (!alex2025) {
+      throw new Error("expected Alex 2025 mapping");
+    }
+    const weeklyTarget = before.weeklyRows.find(
+      (row) =>
+        row.personId === alex2025.personId &&
+        row.season === 2025 &&
+        row.scoringPeriod === 1,
+    );
+    if (!weeklyTarget) {
+      throw new Error("expected target weekly statistic");
+    }
+    expect(
+      before.seasonRows.find(
+        (row) => row.personId === alex2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      highestScore: 100,
+      pointsFor: 195,
+    });
+
+    const edit = await applyLeagueDataEdit(handle.db, {
+      actorUserId,
+      editClass: "substantive",
+      field: "points_for",
+      leagueId,
+      reason: "score correction from league audit",
+      targetId: weeklyTarget.id,
+      targetKind: "weekly_stat",
+      value: 130,
+    });
+
+    expect(edit).toMatchObject({
+      afterValue: 130,
+      beforeValue: 100,
+    });
+    expect(edit.recompute.matchups).toBeGreaterThan(0);
+
+    const matchup = await withLeagueContext(handle.db, leagueId, async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(fantasyMatchups)
+        .where(eq(fantasyMatchups.id, weeklyTarget.matchupId))
+        .limit(1);
+      return row;
+    });
+    expect(matchup).toMatchObject({
+      homeScore: 130,
+      id: weeklyTarget.matchupId,
+      winner: "home",
+    });
+
+    const after = await selectStatsRows(leagueId);
+    expect(
+      after.weeklyRows.find((row) => row.id === weeklyTarget.id),
+    ).toBeUndefined();
+    expect(
+      after.weeklyRows.find(
+        (row) =>
+          row.matchupId === weeklyTarget.matchupId &&
+          row.personId === alex2025.personId,
+      ),
+    ).toMatchObject({
+      pointsAgainst: 90,
+      pointsFor: 130,
+      result: "win",
+    });
+    expect(
+      after.seasonRows.find(
+        (row) => row.personId === alex2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      avgPointsFor: 112.5,
+      highestScore: 130,
+      pointsFor: 225,
+      wins: 1,
+    });
+    expect(
+      after.allTimeStandingRows.find(
+        (row) => row.personId === alex2025.personId,
+      ),
+    ).toMatchObject({
+      pointsFor: 335,
+      wins: 2,
+    });
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        afterValue: 130,
+        beforeValue: 100,
+        field: "home_score",
+        targetId: weeklyTarget.matchupId,
+        targetKind: "matchup",
+      }),
+    );
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      personId: alex2025.personId,
+      value: 130,
+    });
+    expect(
+      catalog.allTimeStandings.find(
+        (row) => row.personId === alex2025.personId,
+      ),
+    ).toMatchObject({
+      pointsFor: 335,
+      wins: 2,
+    });
+  });
+
   it("keeps manually edited team-season fields sticky across provider-derived recomputes", async () => {
     const { leagueId } = await seedStatsLeague("curation-sticky-team");
     const actorUserId = await seedActor("curation-sticky-team-actor");
