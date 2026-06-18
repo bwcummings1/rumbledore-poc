@@ -50,6 +50,10 @@ describe("LeagueSwitcherView", () => {
     expect(links[0]?.getAttribute("href")).toBe("/");
     expect(links[0]?.textContent).toContain("Your Leagues");
     expect(links[0]?.textContent).toContain("Global scope");
+    expect(links[1]?.getAttribute("href")).toBe("/news");
+    expect(links[1]?.textContent).toContain("Rumbledore News");
+    expect(links[2]?.getAttribute("href")).toBe("/arena");
+    expect(links[2]?.textContent).toContain("Central Arena");
 
     const activeLeague = screen.getByRole("link", {
       name: /NHS Alumni Annual/i,
@@ -100,6 +104,16 @@ describe("LeagueSwitcherView", () => {
         .getAttribute("href"),
     ).toBe("/");
     expect(
+      screen
+        .getByRole("link", { name: /Rumbledore News, News environment/i })
+        .getAttribute("href"),
+    ).toBe("/news");
+    expect(
+      screen
+        .getByRole("link", { name: /Central Arena, Arena environment/i })
+        .getAttribute("href"),
+    ).toBe("/arena");
+    expect(
       screen.getByRole("link", { name: /^ESPN$/i }).getAttribute("href"),
     ).toBe("/onboarding/espn");
     expect(
@@ -123,6 +137,16 @@ describe("LeagueSwitcherView", () => {
         .getByRole("link", { name: /Your Leagues, Global scope/i })
         .getAttribute("href"),
     ).toBe("/");
+    expect(
+      screen.getByRole("link", {
+        name: /Rumbledore News, News environment/i,
+      }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", {
+        name: /Central Arena, Arena environment/i,
+      }),
+    ).toBeDefined();
     expect(screen.queryByText("No leagues match that search.")).toBeNull();
     expect(screen.getByRole("link", { name: /^ESPN$/i })).toBeDefined();
     expect(screen.getByRole("link", { name: /^Sleeper$/i })).toBeDefined();
@@ -141,13 +165,24 @@ describe("LeagueSwitcherView", () => {
     const globalRow = screen.getByRole("link", {
       name: /Your Leagues, Global scope/i,
     });
+    const newsRow = screen.getByRole("link", {
+      name: /Rumbledore News, News environment/i,
+    });
+    const arenaRow = screen.getByRole("link", {
+      name: /Central Arena, Arena environment/i,
+    });
     const activeLeague = screen.getByRole("link", {
       name: /NHS Alumni Annual/i,
     });
 
     globalRow.focus();
     fireEvent.keyDown(globalRow, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(newsRow);
 
+    fireEvent.keyDown(newsRow, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(arenaRow);
+
+    fireEvent.keyDown(arenaRow, { key: "ArrowDown" });
     expect(document.activeElement).toBe(activeLeague);
     expect(screen.getByLabelText("3 members online")).toBeDefined();
   });

@@ -9,10 +9,13 @@ export interface PublicationSection<Id extends string = string> {
 }
 
 export type CentralPublicationSectionId =
-  | "nfl"
-  | "fantasy"
+  | "headlines"
+  | "players"
   | "injuries"
-  | "rankings";
+  | "rankings"
+  | "start-sit"
+  | "waivers"
+  | "analysis";
 
 export type LeaguePublicationSectionId =
   | "recaps"
@@ -22,10 +25,13 @@ export type LeaguePublicationSectionId =
   | "previews";
 
 export const CENTRAL_PUBLICATION_SECTIONS = [
-  { id: "nfl", label: "NFL", slug: "nfl" },
-  { id: "fantasy", label: "Fantasy", slug: "fantasy" },
-  { id: "injuries", label: "Injuries", slug: "injuries" },
+  { id: "headlines", label: "Headlines", slug: "headlines" },
+  { id: "players", label: "Players", slug: "players" },
   { id: "rankings", label: "Rankings", slug: "rankings" },
+  { id: "start-sit", label: "Start/Sit", slug: "start-sit" },
+  { id: "injuries", label: "Injuries", slug: "injuries" },
+  { id: "waivers", label: "Waivers", slug: "waivers" },
+  { id: "analysis", label: "Analysis", slug: "analysis" },
 ] as const satisfies readonly PublicationSection<CentralPublicationSectionId>[];
 
 export const LEAGUE_PUBLICATION_SECTIONS = [
@@ -40,7 +46,7 @@ export const LEAGUE_PUBLICATION_SECTIONS = [
   { id: "previews", label: "Previews", slug: "previews" },
 ] as const satisfies readonly PublicationSection<LeaguePublicationSectionId>[];
 
-const CENTRAL_DEFAULT_SECTION_ID: CentralPublicationSectionId = "fantasy";
+const CENTRAL_DEFAULT_SECTION_ID: CentralPublicationSectionId = "headlines";
 const LEAGUE_DEFAULT_SECTION_ID: LeaguePublicationSectionId = "recaps";
 
 const CENTRAL_SECTION_BY_ID: ReadonlyMap<
@@ -69,25 +75,61 @@ const LEAGUE_SECTION_BY_SLUG: ReadonlyMap<
 );
 
 const CENTRAL_SECTION_ALIASES = new Map<string, CentralPublicationSectionId>([
-  ["nfl", "nfl"],
-  ["league", "nfl"],
-  ["football", "nfl"],
-  ["fantasy", "fantasy"],
-  ["fantasy-football", "fantasy"],
-  ["fantasy_football", "fantasy"],
-  ["waiver", "fantasy"],
-  ["waivers", "fantasy"],
   ["injury", "injuries"],
   ["injuries", "injuries"],
   ["injured", "injuries"],
   ["practice-report", "injuries"],
   ["practice_report", "injuries"],
+  ["questionable", "injuries"],
+  ["inactive", "injuries"],
+  ["waiver", "waivers"],
+  ["waivers", "waivers"],
+  ["waiver-wire", "waivers"],
+  ["waiver_wire", "waivers"],
+  ["add-drop", "waivers"],
+  ["add_drop", "waivers"],
+  ["start-sit", "start-sit"],
+  ["start_sit", "start-sit"],
+  ["startsit", "start-sit"],
+  ["start", "start-sit"],
+  ["sit", "start-sit"],
+  ["lineup", "start-sit"],
+  ["flex", "start-sit"],
   ["rank", "rankings"],
   ["ranks", "rankings"],
   ["ranking", "rankings"],
   ["rankings", "rankings"],
-  ["start-sit", "rankings"],
-  ["start_sit", "rankings"],
+  ["players", "players"],
+  ["player", "players"],
+  ["depth-chart", "players"],
+  ["depth_chart", "players"],
+  ["rookie", "players"],
+  ["quarterback", "players"],
+  ["running-back", "players"],
+  ["running_back", "players"],
+  ["receiver", "players"],
+  ["wide-receiver", "players"],
+  ["wide_receiver", "players"],
+  ["tight-end", "players"],
+  ["tight_end", "players"],
+  ["analysis", "analysis"],
+  ["fantasy", "analysis"],
+  ["fantasy-football", "analysis"],
+  ["fantasy_football", "analysis"],
+  ["matchup", "analysis"],
+  ["trade", "analysis"],
+  ["usage", "analysis"],
+  ["targets", "analysis"],
+  ["snap", "analysis"],
+  ["trend", "analysis"],
+  ["headlines", "headlines"],
+  ["headline", "headlines"],
+  ["breaking", "headlines"],
+  ["nfl", "headlines"],
+  ["league", "headlines"],
+  ["football", "headlines"],
+  ["coach", "headlines"],
+  ["team", "headlines"],
 ]);
 
 const LEAGUE_SECTION_ALIASES = new Map<string, LeaguePublicationSectionId>([

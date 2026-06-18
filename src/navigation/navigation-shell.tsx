@@ -63,13 +63,17 @@ import {
 import { LeagueSwitcherView } from "./league-switcher-view";
 import {
   type ActiveNavigationState,
+  ARENA_NAVIGATION_SECTIONS,
   GLOBAL_NAVIGATION_SECTIONS,
   type GlobalSectionId,
+  getArenaSectionHref,
   getLeagueNavigationSections,
   getLeagueSectionHref,
   getLeagueSwitchHref,
+  getNewsSectionHref,
   LEAGUE_NAVIGATION_SECTIONS,
   type NavigationIconName,
+  NEWS_NAVIGATION_SECTIONS,
 } from "./scope";
 import { useActiveNavigationState } from "./use-active-navigation-state";
 
@@ -95,7 +99,9 @@ const DeferredSignOutButton = dynamic(
 
 type NavigationShellItem =
   | (typeof GLOBAL_NAVIGATION_SECTIONS)[number]
-  | ReturnType<typeof getLeagueNavigationSections>[number];
+  | ReturnType<typeof getLeagueNavigationSections>[number]
+  | (typeof NEWS_NAVIGATION_SECTIONS)[number]
+  | (typeof ARENA_NAVIGATION_SECTIONS)[number];
 
 const NAVIGATION_SHELL_HIDDEN_SEGMENTS = new Set([
   "_next",
@@ -264,9 +270,7 @@ export function NavigationShellView({
         null)
       : null;
   const currentNavItems: readonly NavigationShellItem[] =
-    activeState.scope === "league"
-      ? getLeagueNavigationSections(activeState.leagueId)
-      : GLOBAL_NAVIGATION_SECTIONS;
+    getNavigationItemsForActiveState(activeState);
   const commandItems = useMemo(
     () => buildCommandItems(activeState, sortedItems),
     [activeState, sortedItems],
@@ -545,8 +549,8 @@ function DesktopSidebar({
         <NavigationSection
           activeState={activeState}
           collapsed={collapsed}
-          items={GLOBAL_NAVIGATION_SECTIONS}
-          label="Global"
+          items={currentNavItems}
+          label={navigationGroupLabel(activeState.scope)}
         />
 
         <div className="relative border-y border-[var(--hair)] py-3">
@@ -619,15 +623,6 @@ function DesktopSidebar({
             </div>
           ) : null}
         </div>
-
-        {activeState.scope === "league" ? (
-          <NavigationSection
-            activeState={activeState}
-            collapsed={collapsed}
-            items={currentNavItems}
-            label="League"
-          />
-        ) : null}
       </div>
     </aside>
   );
@@ -815,7 +810,7 @@ function MobileBottomTabs({
   return (
     <nav
       aria-label="Current scope sections"
-      className="fixed inset-x-0 bottom-0 z-30 grid min-h-16 grid-cols-[repeat(var(--nav-count),minmax(0,1fr))] border-t border-[var(--hair)] bg-[var(--panel-solid)]/95 px-1 pb-safe shadow-overlay backdrop-blur md:hidden motion-reduce:backdrop-blur-none"
+      className="fixed inset-x-0 bottom-0 z-30 grid min-h-16 grid-cols-[repeat(var(--nav-count),minmax(4.25rem,1fr))] overflow-x-auto overscroll-x-contain border-t border-[var(--hair)] bg-[var(--panel-solid)]/95 px-1 pb-safe shadow-overlay backdrop-blur md:hidden motion-reduce:backdrop-blur-none"
       data-slot="mobile-bottom-tabs"
       style={{ "--nav-count": currentNavItems.length } as CSSProperties}
     >
@@ -854,7 +849,7 @@ function MobileSwitcherSheet({
       title={
         <span className="grid gap-1">
           <span className="eyebrow">Scope</span>
-          <span>Switch leagues</span>
+          <span>Switch environments</span>
         </span>
       }
     >
@@ -923,7 +918,7 @@ function NavigationItem({
     <Link
       aria-current={isActive ? "page" : undefined}
       className={cn(
-        "relative flex min-h-9 items-center justify-center gap-2.5 rounded-control px-2.5 font-display text-xs font-medium tracking-[0.04em] text-ink-3 transition-[background-color,color,box-shadow,transform] hover:bg-primary/5 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none max-md:h-full max-md:flex-col max-md:gap-1 md:text-sm",
+        "relative flex min-h-9 items-center justify-center gap-2.5 rounded-control px-2.5 font-display text-xs font-medium tracking-[0.04em] text-ink-3 transition-[background-color,color,box-shadow,transform] hover:bg-primary/5 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none max-md:h-full max-md:flex-col max-md:gap-1 max-md:px-1 md:text-sm",
         isActive &&
           "bg-[linear-gradient(90deg,var(--primary-soft),transparent)] text-lilac [&_svg]:drop-shadow-[0_0_6px_var(--glow-lilac)]",
         compact ? "md:size-11 md:px-0" : "md:justify-start",
@@ -1039,9 +1034,7 @@ function ShellWire({
       data-slot="shell-wire"
     >
       <ShellWireTicker
-        aria-label={
-          activeState.scope === "league" ? "League wire" : "Global wire"
-        }
+        aria-label={wireAriaLabel(activeState.scope)}
         className="hidden md:flex"
         items={items}
         motion={motion}
@@ -1055,9 +1048,7 @@ function ShellWire({
         type="button"
       >
         <ShellWireTicker
-          aria-label={
-            activeState.scope === "league" ? "League wire" : "Global wire"
-          }
+          aria-label={wireAriaLabel(activeState.scope)}
           className="pointer-events-none w-full"
           items={mobileItems}
           motion="off"
@@ -2313,21 +2304,68 @@ function buildWireItems(
     ];
   }
 
+  if (activeState.scope === "news") {
+    return [
+      {
+        fresh: true,
+        href: "/news",
+        id: "news:front",
+        kind: "cast",
+        label: "Central headlines feed the News front",
+        meta: "FRONT",
+      },
+      {
+        href: "/news/players",
+        id: "news:players",
+        kind: "record",
+        label: "Player-tagged stories get their own board",
+        meta: "PLAYERS",
+      },
+      {
+        href: "/news/start-sit",
+        id: "news:start-sit",
+        kind: "swing",
+        label: "Start/sit, waivers, and injuries stay browsable",
+        meta: "TOOLS",
+      },
+    ];
+  }
+
+  if (activeState.scope === "arena") {
+    return [
+      {
+        fresh: true,
+        href: "/arena",
+        id: "arena:leaderboard",
+        kind: "swing",
+        label: "League-vs-league standings anchor the Arena",
+        meta: "BOARD",
+      },
+      {
+        href: "/arena/movers",
+        id: "arena:movers",
+        kind: "swing",
+        label: "Rank jumps and drops surface as arena movement",
+        meta: "MOVERS",
+      },
+      {
+        href: "/arena/matchups",
+        id: "arena:matchups",
+        kind: "bet",
+        label: "Head-to-head league duels frame the rivalry",
+        meta: "H2H",
+      },
+    ];
+  }
+
   return [
     {
       fresh: true,
-      href: "/news",
-      id: "global:news",
-      kind: "cast",
-      label: "Central news signals feed the global wire",
-      meta: "NEWS",
-    },
-    {
-      href: "/arena",
-      id: "global:arena",
-      kind: "swing",
-      label: "Arena movement spans every league",
-      meta: "ARENA",
+      href: "/",
+      id: "global:lobby",
+      kind: "system",
+      label: "Your league lobby stays ready",
+      meta: "LOBBY",
     },
     {
       href: "/you",
@@ -2449,8 +2487,10 @@ function wireVariantForScope(
   scope: ActiveNavigationState["scope"],
 ): "digest" | "live" {
   switch (scope) {
+    case "arena":
     case "league":
       return "live";
+    case "news":
     case "global":
       return "digest";
   }
@@ -2503,11 +2543,59 @@ function buildShellNotifications(
     ];
   }
 
+  if (activeState.scope === "news") {
+    return [
+      {
+        detail:
+          "General headlines, players, rankings, start/sit, injuries, waivers, and analysis live here.",
+        href: "/news",
+        id: "shell:news:wire",
+        kind: "blog",
+        timestamp: "now",
+        title: "Rumbledore News online",
+      },
+      {
+        detail:
+          "Use the environment switcher to jump back to leagues or the Arena.",
+        href: "/",
+        id: "shell:news:switcher",
+        kind: "scores",
+        read: true,
+        timestamp: "scope",
+        title: "Environment switcher ready",
+      },
+    ];
+  }
+
+  if (activeState.scope === "arena") {
+    return [
+      {
+        detail:
+          "Arena standings and movement notices appear here as aggregate leaderboards refresh.",
+        href: "/arena",
+        id: "shell:arena:wire",
+        kind: "arena",
+        timestamp: "now",
+        title: "Arena wire online",
+      },
+      {
+        detail:
+          "League-vs-league views expose aggregate ranks only, never raw slips.",
+        href: "/arena/rules",
+        id: "shell:arena:rules",
+        kind: "arena",
+        read: true,
+        timestamp: "rules",
+        title: "Arena rules available",
+      },
+    ];
+  }
+
   return [
     {
       detail:
-        "Arena standings, central news, and account notices appear here while you move across scopes.",
-      href: "/arena",
+        "League lobby and account notices appear here while News and Arena live as their own environments.",
+      href: "/",
       id: "shell:global:arena",
       kind: "arena",
       timestamp: "now",
@@ -2539,11 +2627,70 @@ function globalHrefForLeagueScope(
   leagueId: string,
   fallbackHref: string,
 ): string {
-  if (sectionId === "news" || sectionId === "arena") {
+  if (sectionId === "your-leagues") {
+    void leagueId;
+    return fallbackHref;
+  }
+
+  if (sectionId === "you") {
     return `${fallbackHref}?leagueId=${encodeURIComponent(leagueId)}`;
   }
 
   return fallbackHref;
+}
+
+function getNavigationItemsForActiveState(
+  activeState: ActiveNavigationState,
+): readonly NavigationShellItem[] {
+  switch (activeState.scope) {
+    case "arena":
+      return ARENA_NAVIGATION_SECTIONS;
+    case "global":
+      return GLOBAL_NAVIGATION_SECTIONS;
+    case "league":
+      return getLeagueNavigationSections(activeState.leagueId);
+    case "news":
+      return NEWS_NAVIGATION_SECTIONS;
+  }
+}
+
+function navigationGroupLabel(scope: ActiveNavigationState["scope"]): string {
+  switch (scope) {
+    case "arena":
+      return "Arena";
+    case "global":
+      return "Global";
+    case "league":
+      return "League";
+    case "news":
+      return "News";
+  }
+}
+
+function wireAriaLabel(scope: ActiveNavigationState["scope"]): string {
+  switch (scope) {
+    case "arena":
+      return "Arena wire";
+    case "global":
+      return "Global wire";
+    case "league":
+      return "League wire";
+    case "news":
+      return "News wire";
+  }
+}
+
+function scopeAvatarLabel(scope: ActiveNavigationState["scope"]): string {
+  switch (scope) {
+    case "arena":
+      return "AR";
+    case "global":
+      return "RL";
+    case "league":
+      return "L";
+    case "news":
+      return "NW";
+  }
 }
 
 function ScopeAvatar({
@@ -2556,7 +2703,7 @@ function ScopeAvatar({
   if (!activeLeague) {
     return (
       <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-elevated text-xs font-semibold text-muted-foreground">
-        {activeState.scope === "league" ? "L" : "RL"}
+        {scopeAvatarLabel(activeState.scope)}
       </span>
     );
   }
@@ -2582,11 +2729,16 @@ function scopeDisplayName(
   activeState: ActiveNavigationState,
   activeLeague: LeagueSwitcherViewItem | null,
 ): string {
-  if (activeState.scope === "league") {
-    return activeLeague?.name ?? "League";
+  switch (activeState.scope) {
+    case "arena":
+      return "Central Arena";
+    case "global":
+      return "Your Leagues";
+    case "league":
+      return activeLeague?.name ?? "League";
+    case "news":
+      return "Rumbledore News";
   }
-
-  return "Your Leagues";
 }
 
 function buildBreadcrumbItems(
@@ -2604,6 +2756,42 @@ function buildBreadcrumbItems(
     return [
       { href: "/", label: "Your Leagues" },
       { current: true, href: section.href, label: section.label },
+    ];
+  }
+
+  if (activeState.scope === "news") {
+    const section = NEWS_NAVIGATION_SECTIONS.find(
+      (candidate) => candidate.id === activeState.sectionId,
+    );
+    if (!section || section.id === "front") {
+      return [{ current: true, href: "/news", label: "Rumbledore News" }];
+    }
+
+    return [
+      { href: "/news", label: "Rumbledore News" },
+      {
+        current: true,
+        href: getNewsSectionHref(section.id),
+        label: section.label,
+      },
+    ];
+  }
+
+  if (activeState.scope === "arena") {
+    const section = ARENA_NAVIGATION_SECTIONS.find(
+      (candidate) => candidate.id === activeState.sectionId,
+    );
+    if (!section || section.id === "leaderboard") {
+      return [{ current: true, href: "/arena", label: "Central Arena" }];
+    }
+
+    return [
+      { href: "/arena", label: "Central Arena" },
+      {
+        current: true,
+        href: getArenaSectionHref(section.id),
+        label: section.label,
+      },
     ];
   }
 
@@ -2647,6 +2835,24 @@ function buildCommandItems(
     label: section.label,
   }));
 
+  const newsItems = NEWS_NAVIGATION_SECTIONS.map((section) => ({
+    group: "News",
+    href: section.href,
+    icon: iconFor(section.icon),
+    id: `news-${section.id}`,
+    keywords: ["news", section.id],
+    label: section.id === "front" ? "Rumbledore News" : section.label,
+  }));
+
+  const arenaItems = ARENA_NAVIGATION_SECTIONS.map((section) => ({
+    group: "Arena",
+    href: section.href,
+    icon: iconFor(section.icon),
+    id: `arena-${section.id}`,
+    keywords: ["arena", section.id],
+    label: section.id === "leaderboard" ? "Arena Leaderboard" : section.label,
+  }));
+
   const leagueSectionItems =
     activeState.scope === "league"
       ? getLeagueNavigationSections(activeState.leagueId).map((section) => ({
@@ -2685,6 +2891,8 @@ function buildCommandItems(
 
   return [
     ...globalItems,
+    ...newsItems,
+    ...arenaItems,
     ...leagueSectionItems,
     ...leagueItems,
     ...connectItems,

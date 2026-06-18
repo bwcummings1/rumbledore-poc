@@ -334,9 +334,12 @@ function keywordTags({
     ["rank", "rankings"],
     ["start", "start-sit"],
     ["sit", "start-sit"],
+    ["lineup", "start-sit"],
     ["waiver", "waivers"],
+    ["depth", "players"],
     ["rookie", "rookies"],
     ["trade", "trades"],
+    ["usage", "usage"],
   ] as const) {
     if (haystack.includes(needle)) {
       tags.push(tag);
@@ -374,13 +377,22 @@ function editorialImportanceFor({
     case "injuries":
       score += 24;
       break;
-    case "rankings":
-      score += 14;
+    case "waivers":
+      score += 22;
       break;
-    case "fantasy":
+    case "start-sit":
+      score += 18;
+      break;
+    case "rankings":
+      score += 16;
+      break;
+    case "players":
+      score += 12;
+      break;
+    case "analysis":
       score += 10;
       break;
-    case "nfl":
+    case "headlines":
       score += 6;
       break;
   }
@@ -422,16 +434,29 @@ function specificSectionFromText({
   ) {
     return "injuries";
   }
-  if (/rank|start[-\s]?sit/.test(haystack)) {
+  if (/start[-\s]?sit|\bstart\b|\bsit\b|lineup|flex/.test(haystack)) {
+    return "start-sit";
+  }
+  if (/rank/.test(haystack)) {
     return "rankings";
   }
-  if (/waiver|lineup|roster|fantasy/.test(haystack)) {
-    return "fantasy";
+  if (/waiver|add[-\s]?drop/.test(haystack)) {
+    return "waivers";
+  }
+  if (
+    /depth chart|rookie|quarterback|running back|receiver|tight end|player/.test(
+      haystack,
+    )
+  ) {
+    return "players";
+  }
+  if (/fantasy|matchup|trade|usage|target|snap|trend/.test(haystack)) {
+    return "analysis";
   }
   if (
     /nfl|football|team|coach|quarterback|running back|receiver/.test(haystack)
   ) {
-    return "nfl";
+    return "headlines";
   }
 
   return null;
