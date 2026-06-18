@@ -33,6 +33,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AmbientAgentPanel } from "@/components/ambient-agent/ambient-agent-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -466,6 +467,11 @@ export function NavigationShellView({
       >
         {children}
       </div>
+
+      <AmbientAgentPanel
+        activeLeagueName={activeLeague?.name}
+        activeState={activeState}
+      />
 
       <MobileBottomTabs
         activeState={activeState}
