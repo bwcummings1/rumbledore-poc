@@ -1,13 +1,13 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-18 — **Phases delivered + the AUSPEX UI overhaul (incl. pass-2 refinements) are merged to `main`.** Now in targeted-increment planning: data-curation/eras/ledger, News/Arena as self-contained environments, the ambient agent/WizKit tier, and the general↔personal wire toggle (new specs `36+`).
+Keep it current. Last updated: 2026-06-18 — **Increment 1 (specs 36–41) DELIVERED on branch `review/increment-1`** (data curation foundation, record-book lenses, commissioner/edit/public-ledger, News+Arena environments, news pipeline + general↔personal wire toggle, ambient agent + WizKit tier). Built via the orchestrated 3-track model (`ORCHESTRATION.md`) across 3 Codex accounts; final integrated gates green (typecheck/lint/test 939✓/build/ubs 0-critical). **`main` is untouched — awaiting owner review of `review/increment-1`.**
 
 ---
 
 ## 0. TL;DR for whoever picks this up
 - The clean, first-principles rebuild is **delivered**; the live/integration branch is now **`main`** (it carries the full build + the AUSPEX UI overhaul). `rebuild/foundation` was the autonomous-build branch (historical).
-- The autonomous **Ralph loop** completed its run (`.loop/COMPLETE`) and is idle. The next increment is **human-directed**; the execution model (orchestrated parallel workstream agents vs. the loop) is being decided — see the next-increment plan + new specs (`36+`).
+- The autonomous **Ralph loop** is retired (`loop.sh` guarded). Increment 1 was built via the **orchestrated-tracks** model (`ORCHESTRATION.md`): an orchestrator + file-disjoint workstream agents in git worktrees, balanced across 3 Codex accounts (A=specs 36/37/38, B=39/40, C=41), each branch merged into `review/increment-1` only after gates green. **`main` was never touched.** Branch `review/increment-1` is ready for owner review; per-tick status in `.orchestration/STATUS.md`.
 - **Account routing:** the build runs on `bxbxbxbxbxr`, but the Claude account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME` — `loop.sh` pins it via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`. Use launchers `cbx`/`cbw`/`cx`. Never run heavy work on `bwcummings1` (other agents + shared 5h limit). See `docs/HISTORY.md §3`.
 - ESPN ingestion is **proven working** on a real league (95050). Creds are in gitignored `.env.local`.
 - Quality gates are **ON** from day one (typecheck, lint, test, build, `ubs`). Never disable them.
