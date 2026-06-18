@@ -86,8 +86,10 @@ const items = [
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   document.documentElement.removeAttribute("data-motion");
   window.localStorage.removeItem(MOTION_STORAGE_KEY);
+  window.localStorage.removeItem("rumbledore:wire-mode");
   realtimeMock.state.lastRefresh = null;
   realtimeMock.openRealtimePresenceSubscription.mockClear();
   realtimeMock.openRealtimeRefreshSubscription.mockClear();
@@ -374,6 +376,80 @@ describe("NavigationShellView", () => {
         .getByRole("link", { name: /Settle it: lore vote opened/i })
         .getAttribute("href"),
     ).toBe("/leagues/league-a/lore/claim-1");
+  });
+
+  it("toggles the wire between general and personal news and persists the preference", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/navigation/league-switcher")) {
+        return new Response(JSON.stringify({ items }), { status: 200 });
+      }
+      if (url.startsWith("/news/wire")) {
+        const mode = new URL(url, "https://rumbledore.test").searchParams.get(
+          "mode",
+        );
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                href:
+                  mode === "personal"
+                    ? "/news/articles/personal-1"
+                    : "/news/articles/general-1",
+                id: mode === "personal" ? "personal-1" : "general-1",
+                matchedLabels:
+                  mode === "personal" ? ["Fixture Starter"] : undefined,
+                mode,
+                publishedAt: "2026-06-16T12:00:00.000Z",
+                section: mode === "personal" ? "Injuries" : "Headlines",
+                source: "Wire Desk",
+                title:
+                  mode === "personal"
+                    ? "Fixture Starter injury watch"
+                    : "General NFL headline",
+              },
+            ],
+            mode,
+            status: "ready",
+          }),
+          { status: 200 },
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/news")}
+        items={items}
+      >
+        <main>Central news</main>
+      </NavigationShellView>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("General NFL headline").length,
+      ).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Personal" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Fixture Starter injury watch").length,
+      ).toBeGreaterThan(0);
+    });
+    expect(window.localStorage.getItem("rumbledore:wire-mode")).toBe(
+      "personal",
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes("/news/wire?limit=8&mode=personal"),
+      ),
+    ).toBe(true);
   });
 
   it("persists the reduced-motion shell switch to the root data attribute", () => {

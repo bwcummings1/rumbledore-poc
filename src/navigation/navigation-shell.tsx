@@ -128,10 +128,12 @@ const EMPTY_NAVIGATION_ITEMS: readonly LeagueSwitcherViewItem[] = [];
 const SHELL_REALTIME_MAX_ITEMS = 8;
 const SHELL_REALTIME_RECONNECT_MS = 60_000;
 const SHELL_REALTIME_TOKEN_REFRESH_SKEW_MS = 30_000;
+const WIRE_MODE_STORAGE_KEY = "rumbledore:wire-mode";
 
 type ShellNotificationKind = "arena" | "blog" | "lore" | "odds" | "scores";
 type ShellMotionMode = "auto" | "off";
 type ShellRealtimeStatus = "connecting" | "live" | "offline" | "reconnecting";
+type ShellWireMode = "general" | "personal";
 type ShellWireItemKind =
   | "bet"
   | "cast"
@@ -172,6 +174,33 @@ interface ShellRealtimeState {
   readonly presenceByLeagueId: Readonly<Record<string, number>>;
   readonly status: ShellRealtimeStatus;
   readonly wireItems: readonly ShellWireItem[];
+}
+
+interface NewsWireApiItem {
+  readonly href: string;
+  readonly id: string;
+  readonly matchedLabels?: readonly string[];
+  readonly publishedAt: string;
+  readonly section: string;
+  readonly source: string;
+  readonly title: string;
+}
+
+interface NewsWireApiResponse {
+  readonly items: readonly NewsWireApiItem[];
+  readonly mode: ShellWireMode;
+  readonly rosteredPlayerCount?: number;
+  readonly status:
+    | "empty"
+    | "no_matches"
+    | "no_rosters"
+    | "ready"
+    | "signed_out";
+}
+
+interface NewsWireFeedState {
+  readonly data: NewsWireApiResponse | null;
+  readonly status: "error" | "loading" | "ready";
 }
 
 export interface NavigationShellProps {
@@ -259,11 +288,13 @@ export function NavigationShellView({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [wireSheetOpen, setWireSheetOpen] = useState(false);
   const [motionOff, setMotionOff] = useShellMotionPreference();
+  const [wireMode, setWireMode] = useWireModePreference();
   const [readNotificationIds, setReadNotificationIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
   const sortedItems = useMemo(() => sortLeagueSwitcherItems(items), [items]);
   const shellRealtime = useShellRealtime(activeState);
+  const newsWireFeed = useNewsWireFeed(wireMode);
   const activeLeague =
     activeState.scope === "league"
       ? (sortedItems.find((item) => item.leagueId === activeState.leagueId) ??
@@ -277,8 +308,8 @@ export function NavigationShellView({
   );
   const motionMode: ShellMotionMode = motionOff ? "off" : "auto";
   const fallbackWireItems = useMemo(
-    () => buildWireItems(activeState, activeLeague),
-    [activeState, activeLeague],
+    () => buildWireItems(wireMode, newsWireFeed),
+    [newsWireFeed, wireMode],
   );
   const wireItems = useMemo(
     () => mergeShellItems(shellRealtime.wireItems, fallbackWireItems),
@@ -421,13 +452,15 @@ export function NavigationShellView({
         items={wireItems}
         motion={motionMode}
         onOpenWire={() => setWireSheetOpen(true)}
+        onWireModeChange={setWireMode}
         realtimeStatus={shellRealtime.status}
+        wireMode={wireMode}
       />
 
       <div
         id="rumbledore-main-content"
         className={cn(
-          "min-h-dvh pt-[5.5rem] pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-base ease-out md:pt-[5.5rem] md:pb-0",
+          "min-h-dvh pt-[6.25rem] pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-base ease-out md:pt-[6.25rem] md:pb-0",
           sidebarCollapsed ? "md:pl-[4.5rem]" : "md:pl-72",
         )}
       >
@@ -453,7 +486,9 @@ export function NavigationShellView({
         motion={motionMode}
         onOpenChange={setWireSheetOpen}
         open={wireSheetOpen}
+        onWireModeChange={setWireMode}
         realtimeStatus={shellRealtime.status}
+        wireMode={wireMode}
       />
 
       <CommandPalette
@@ -1012,14 +1047,18 @@ function ShellWire({
   items,
   motion,
   onOpenWire,
+  onWireModeChange,
   realtimeStatus,
+  wireMode,
 }: {
   readonly activeState: ActiveNavigationState;
   readonly collapsed: boolean;
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
   readonly onOpenWire: () => void;
+  readonly onWireModeChange: (mode: ShellWireMode) => void;
   readonly realtimeStatus: ShellRealtimeStatus;
+  readonly wireMode: ShellWireMode;
 }) {
   const status = wireStatusForRealtime(realtimeStatus, items);
   const variant = wireVariantForScope(activeState.scope);
@@ -1038,8 +1077,11 @@ function ShellWire({
         className="hidden md:flex"
         items={items}
         motion={motion}
+        onWireModeChange={onWireModeChange}
+        showModeToggle
         status={status}
         variant={variant}
+        wireMode={wireMode}
       />
       <button
         aria-label="Open The Wire"
@@ -1054,6 +1096,7 @@ function ShellWire({
           motion="off"
           status={status}
           variant={variant}
+          wireMode={wireMode}
         />
       </button>
     </div>
@@ -1063,20 +1106,24 @@ function ShellWire({
 function WireSheet({
   items,
   motion,
+  onWireModeChange,
   onOpenChange,
   open,
   realtimeStatus,
+  wireMode,
 }: {
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
+  readonly onWireModeChange: (mode: ShellWireMode) => void;
   readonly onOpenChange: (open: boolean) => void;
   readonly open: boolean;
   readonly realtimeStatus: ShellRealtimeStatus;
+  readonly wireMode: ShellWireMode;
 }) {
   return (
     <Sheet
       closeLabel="Close The Wire"
-      description="Recent league and arena signals, newest first."
+      description="General NFL and fantasy headlines, or the same wire filtered to your rostered players."
       onOpenChange={onOpenChange}
       open={open}
       title="The Wire"
@@ -1086,8 +1133,11 @@ function WireSheet({
         expanded
         items={items}
         motion={motion}
+        onWireModeChange={onWireModeChange}
+        showModeToggle
         status={wireStatusForRealtime(realtimeStatus, items)}
         variant="live"
+        wireMode={wireMode}
       />
     </Sheet>
   );
@@ -1099,16 +1149,22 @@ function ShellWireTicker({
   expanded = false,
   items,
   motion,
+  onWireModeChange,
+  showModeToggle = false,
   status,
   variant,
+  wireMode,
 }: {
   readonly "aria-label": string;
   readonly className?: string;
   readonly expanded?: boolean;
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
+  readonly onWireModeChange?: (mode: ShellWireMode) => void;
+  readonly showModeToggle?: boolean;
   readonly status: ShellWireStatus;
   readonly variant: "digest" | "live";
+  readonly wireMode: ShellWireMode;
 }) {
   const statusLabel = wireStatusLabel(status);
   const dotClass =
@@ -1129,6 +1185,9 @@ function ShellWireTicker({
         data-state={status}
         data-variant={variant}
       >
+        {showModeToggle && onWireModeChange ? (
+          <WireModeToggle mode={wireMode} onModeChange={onWireModeChange} />
+        ) : null}
         {items.length === 0 ? (
           <p className="cell px-3 py-2 font-mono text-xs text-ink-3">
             {wireEmptyMessage(status)}
@@ -1149,7 +1208,7 @@ function ShellWireTicker({
     <section
       aria-label={ariaLabel}
       className={cn(
-        "auspex-wire flex h-8 items-stretch overflow-hidden border-b border-[var(--hair)] bg-[var(--panel)] backdrop-blur-xl motion-reduce:backdrop-blur-none",
+        "auspex-wire flex h-11 items-stretch overflow-hidden border-b border-[var(--hair)] bg-[var(--panel)] backdrop-blur-xl motion-reduce:backdrop-blur-none",
         className,
       )}
       data-motion={motion}
@@ -1171,6 +1230,13 @@ function ShellWireTicker({
         </span>
         <span className="sr-only">{statusLabel}</span>
       </div>
+      {showModeToggle && onWireModeChange ? (
+        <WireModeToggle
+          className="hidden border-r border-[var(--hair)] px-2 lg:flex"
+          mode={wireMode}
+          onModeChange={onWireModeChange}
+        />
+      ) : null}
       {items.length === 0 ? (
         <span className="flex items-center px-3 font-mono text-xs text-ink-3">
           {wireEmptyMessage(status)}
@@ -1246,6 +1312,46 @@ function ShellWireTickerItem({
         content
       )}
     </li>
+  );
+}
+
+function WireModeToggle({
+  className,
+  mode,
+  onModeChange,
+}: {
+  readonly className?: string;
+  readonly mode: ShellWireMode;
+  readonly onModeChange: (mode: ShellWireMode) => void;
+}) {
+  return (
+    <fieldset className={cn("flex items-center gap-1", className)}>
+      <legend className="sr-only">Wire feed</legend>
+      {(
+        [
+          ["general", "General"],
+          ["personal", "Personal"],
+        ] as const
+      ).map(([value, label]) => {
+        const active = mode === value;
+        return (
+          <button
+            aria-pressed={active}
+            className={cn(
+              "inline-flex min-h-11 items-center rounded-full border px-3 font-mono text-xs uppercase tracking-[0.14em] outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]",
+              active
+                ? "border-primary/60 bg-primary/15 text-lilac-hi shadow-[0_0_14px_var(--glow-lilac)]"
+                : "border-[var(--hair)] bg-transparent text-ink-3 hover:border-primary/40 hover:text-foreground",
+            )}
+            key={value}
+            onClick={() => onModeChange(value)}
+            type="button"
+          >
+            {label}
+          </button>
+        );
+      })}
+    </fieldset>
   );
 }
 
@@ -2252,6 +2358,82 @@ function useShellMotionPreference(): readonly [
   return [motionOff, setMotionOff] as const;
 }
 
+function useWireModePreference(): readonly [
+  ShellWireMode,
+  (mode: ShellWireMode) => void,
+] {
+  const [mode, setModeState] = useState<ShellWireMode>("general");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(WIRE_MODE_STORAGE_KEY);
+      if (stored === "personal" || stored === "general") {
+        setModeState(stored);
+      }
+    } catch {
+      // The wire still defaults to general when storage is unavailable.
+    }
+  }, []);
+
+  const setMode = useCallback((nextMode: ShellWireMode) => {
+    setModeState(nextMode);
+    try {
+      window.localStorage.setItem(WIRE_MODE_STORAGE_KEY, nextMode);
+    } catch {
+      // Preference persistence is best-effort.
+    }
+  }, []);
+
+  return [mode, setMode] as const;
+}
+
+function useNewsWireFeed(mode: ShellWireMode): NewsWireFeedState {
+  const [state, setState] = useState<NewsWireFeedState>({
+    data: null,
+    status: "loading",
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState((current) => ({
+      data: current.data?.mode === mode ? current.data : null,
+      status: "loading",
+    }));
+
+    async function loadWire() {
+      try {
+        const params = new URLSearchParams({
+          limit: String(SHELL_REALTIME_MAX_ITEMS),
+          mode,
+        });
+        const response = await fetch(`/news/wire?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`wire feed returned ${response.status}`);
+        }
+
+        const payload = (await response.json()) as NewsWireApiResponse;
+        if (!controller.signal.aborted) {
+          setState({ data: payload, status: "ready" });
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setState({ data: null, status: "error" });
+        }
+      }
+    }
+
+    void loadWire();
+
+    return () => {
+      controller.abort();
+    };
+  }, [mode]);
+
+  return state;
+}
+
 function applyShellMotionPreference(motionOff: boolean): void {
   if (typeof document === "undefined") {
     return;
@@ -2264,117 +2446,89 @@ function applyShellMotionPreference(motionOff: boolean): void {
 }
 
 function buildWireItems(
-  activeState: ActiveNavigationState,
-  activeLeague: LeagueSwitcherViewItem | null,
+  wireMode: ShellWireMode,
+  feed: NewsWireFeedState,
 ): readonly ShellWireItem[] {
-  if (activeState.scope === "league") {
-    const leagueBase = `/leagues/${encodeURIComponent(activeState.leagueId)}`;
-    const leagueName = activeLeague?.name ?? "League";
-
-    return [
-      {
-        fresh: true,
-        href: leagueBase,
-        id: `scores:${activeState.leagueId}`,
-        kind: "score",
-        label: `${leagueName} scoreboard ready`,
-        meta: "SCORES",
-      },
-      {
-        href: `${leagueBase}/press`,
-        id: `press:${activeState.leagueId}`,
-        kind: "cast",
-        label: "The Press drops appear here",
-        meta: "PRESS",
-      },
-      {
-        href: `${leagueBase}/bet`,
-        id: `odds:${activeState.leagueId}`,
-        kind: "bet",
-        label: "Line movement and slips feed the wire",
-        meta: "ODDS",
-      },
-      {
-        href: `${leagueBase}/lore`,
-        id: `lore:${activeState.leagueId}`,
-        kind: "lore",
-        label: "Lore votes and canon moments surface live",
-        meta: "LORE",
-      },
-    ];
+  if (feed.status === "ready" && feed.data?.items.length) {
+    return feed.data.items.map((item, index) => ({
+      fresh: index === 0,
+      href: item.href,
+      id: `news-wire:${wireMode}:${item.id}`,
+      kind: wireMode === "personal" ? "record" : "cast",
+      label: item.title,
+      meta:
+        wireMode === "personal" && item.matchedLabels?.length
+          ? item.matchedLabels.slice(0, 2).join(", ")
+          : `${item.section} · ${item.source}`,
+    }));
   }
 
-  if (activeState.scope === "news") {
-    return [
-      {
-        fresh: true,
+  const fallback = newsWireFallbackItem(wireMode, feed);
+  return fallback ? [fallback] : [];
+}
+
+function newsWireFallbackItem(
+  wireMode: ShellWireMode,
+  feed: NewsWireFeedState,
+): ShellWireItem | null {
+  if (feed.status === "loading") {
+    return {
+      id: `news-wire:${wireMode}:loading`,
+      kind: "system",
+      label:
+        wireMode === "personal"
+          ? "Personal roster wire loading"
+          : "Central news wire loading",
+      meta: wireMode === "personal" ? "PERSONAL" : "GENERAL",
+    };
+  }
+
+  if (feed.status === "error" || !feed.data) {
+    return {
+      href: "/news",
+      id: `news-wire:${wireMode}:error`,
+      kind: "system",
+      label: "News wire will retry on the next route",
+      meta: "WIRE",
+    };
+  }
+
+  switch (feed.data.status) {
+    case "empty":
+      return {
         href: "/news",
-        id: "news:front",
-        kind: "cast",
-        label: "Central headlines feed the News front",
-        meta: "FRONT",
-      },
-      {
-        href: "/news/players",
-        id: "news:players",
-        kind: "record",
-        label: "Player-tagged stories get their own board",
-        meta: "PLAYERS",
-      },
-      {
-        href: "/news/start-sit",
-        id: "news:start-sit",
-        kind: "swing",
-        label: "Start/sit, waivers, and injuries stay browsable",
-        meta: "TOOLS",
-      },
-    ];
+        id: "news-wire:general:empty",
+        kind: "system",
+        label: "Central news firehose is quiet",
+        meta: "GENERAL",
+      };
+    case "no_matches":
+      return {
+        href: "/news",
+        id: "news-wire:personal:no-matches",
+        kind: "system",
+        label: "No rostered-player headlines yet",
+        meta: "PERSONAL",
+      };
+    case "no_rosters":
+      return {
+        href: "/",
+        id: "news-wire:personal:no-rosters",
+        kind: "system",
+        label: "Claim your team to personalize the wire",
+        meta: "PERSONAL",
+      };
+    case "signed_out":
+      return {
+        href: "/you",
+        id: "news-wire:personal:signed-out",
+        kind: "system",
+        label: "Sign in to filter the wire to your roster",
+        meta: "PERSONAL",
+      };
+    case "ready":
+      return null;
   }
-
-  if (activeState.scope === "arena") {
-    return [
-      {
-        fresh: true,
-        href: "/arena",
-        id: "arena:leaderboard",
-        kind: "swing",
-        label: "League-vs-league standings anchor the Arena",
-        meta: "BOARD",
-      },
-      {
-        href: "/arena/movers",
-        id: "arena:movers",
-        kind: "swing",
-        label: "Rank jumps and drops surface as arena movement",
-        meta: "MOVERS",
-      },
-      {
-        href: "/arena/matchups",
-        id: "arena:matchups",
-        kind: "bet",
-        label: "Head-to-head league duels frame the rivalry",
-        meta: "H2H",
-      },
-    ];
-  }
-
-  return [
-    {
-      fresh: true,
-      href: "/",
-      id: "global:lobby",
-      kind: "system",
-      label: "Your league lobby stays ready",
-      meta: "LOBBY",
-    },
-    {
-      href: "/you",
-      id: "global:account",
-      kind: "system",
-      label: "Provider, push, and install controls live under You",
-      meta: "ACCOUNT",
-    },
-  ];
 }
 
 function leagueHref(leagueId: string, suffix = ""): string {
