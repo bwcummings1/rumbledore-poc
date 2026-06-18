@@ -10,7 +10,10 @@ import {
 } from "../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../league-section-access-state";
 import { LeagueRecordsView } from "./league-records-view";
-import { getLeagueRecordsPageData } from "./records-page-data";
+import {
+  getLeagueRecordsPageData,
+  recordsLensFromSearchParams,
+} from "./records-page-data";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +63,7 @@ export default async function LeagueRecordsPage({
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
   const result = await getLeagueRecordsPageData(db, {
+    lens: recordsLensFromSearchParams(query),
     leagueId,
   });
 

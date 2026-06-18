@@ -152,6 +152,13 @@ const data: RecordsPageData = {
     size: 12,
     status: "in_season",
   },
+  lens: {
+    groupingId: null,
+    groupings: [],
+    scope: "all",
+    seasonSet: [],
+    segment: "both",
+  },
   managers: [
     {
       id: managerAId,
@@ -198,6 +205,8 @@ test("league records view renders structured record book sections", () => {
       .getAttribute("href"),
   ).toBe(`/leagues/${leagueId}/records/h2h/${managerAId}/${managerBId}`);
   expect(screen.getByText("Keeper milestones unavailable")).toBeDefined();
+  expect(screen.getByRole("link", { name: "Regular" })).toBeDefined();
+  expect(screen.queryByText("Era")).toBeNull();
 });
 
 test("league records view renders an empty state", () => {
@@ -221,4 +230,40 @@ test("league records view renders an empty state", () => {
   );
 
   expect(screen.getByText("No records calculated yet")).toBeDefined();
+});
+
+test("league records view renders era lens controls when confirmed groupings exist", () => {
+  render(
+    <LeagueRecordsView
+      data={{
+        ...data,
+        lens: {
+          groupingId: "00000000-0000-4000-8000-000000000777",
+          groupings: [
+            {
+              formatType: "traditional",
+              id: "00000000-0000-4000-8000-000000000777",
+              kind: "era",
+              name: "Era 2",
+              ordinal: 2,
+              seasons: [2020, 2021, 2022],
+            },
+          ],
+          scope: "all",
+          seasonSet: [2020, 2021, 2022],
+          segment: "regular",
+        },
+      }}
+    />,
+  );
+
+  expect(screen.getByText("Era")).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: "Cumulative" }).getAttribute("href"),
+  ).toBe(`/leagues/${leagueId}/records?segment=regular`);
+  expect(
+    screen.getByRole("link", { name: "Playoff" }).getAttribute("href"),
+  ).toBe(
+    `/leagues/${leagueId}/records?segment=playoff&grouping=00000000-0000-4000-8000-000000000777`,
+  );
 });

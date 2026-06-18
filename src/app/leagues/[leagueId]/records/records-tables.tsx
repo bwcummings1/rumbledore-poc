@@ -23,6 +23,7 @@ import {
 import type {
   ManagerSeasonLine,
   RecordsLeagueSummary,
+  RecordsLensInput,
 } from "./records-page-data";
 
 function compareText(left: string, right: string): number {
@@ -108,9 +109,11 @@ function compareStandings(
 
 export function AllTimeStandingsTable({
   league,
+  lens,
   rows,
 }: {
   readonly league: RecordsLeagueSummary;
+  readonly lens?: RecordsLensInput | null;
   readonly rows: readonly AllTimeStandingCatalogRow[];
 }) {
   const [sort, setSort] = useState<DataTableSort | null>({
@@ -134,7 +137,7 @@ export function AllTimeStandingsTable({
       cell: (row) => (
         <Link
           className="font-medium underline-offset-4 hover:text-primary hover:underline"
-          href={managerHref(league, row.personId)}
+          href={managerHref(league, row.personId, lens)}
         >
           {row.personName}
         </Link>
@@ -391,10 +394,12 @@ function compareLedgers(
 
 export function ManagerH2HLedgersTable({
   league,
+  lens,
   managerId,
   rows,
 }: {
   readonly league: RecordsLeagueSummary;
+  readonly lens?: RecordsLensInput | null;
   readonly managerId: string;
   readonly rows: readonly ManagerHeadToHeadLedgerEntry[];
 }) {
@@ -411,7 +416,7 @@ export function ManagerH2HLedgersTable({
       cell: (row) => (
         <Link
           className="font-medium underline-offset-4 hover:text-primary hover:underline"
-          href={h2hHref(league, managerId, row.opponentPersonId)}
+          href={h2hHref(league, managerId, row.opponentPersonId, lens)}
         >
           {row.opponentName}
         </Link>

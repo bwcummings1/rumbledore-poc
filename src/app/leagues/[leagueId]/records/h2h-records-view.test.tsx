@@ -98,6 +98,13 @@ const data: HeadToHeadRecordsPageData = {
     size: 12,
     status: "in_season",
   },
+  lens: {
+    groupingId: null,
+    groupings: [],
+    scope: "all",
+    seasonSet: [],
+    segment: "both",
+  },
   managers: [],
   meetings: [
     {

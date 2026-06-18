@@ -12,6 +12,7 @@ import {
   formatRecordValue,
   formatWeekContext,
   h2hHref,
+  leagueRecordsHref,
 } from "./records-format";
 import type {
   CurrentRecordBookEntry,
@@ -77,6 +78,7 @@ function HeldRecords({
                   data.league,
                   record.holderPersonId ?? data.manager.id,
                   record.opponentPersonId,
+                  data.lens,
                 )}
               >
                 Open rivalry
@@ -141,7 +143,7 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
       <header className="panel grid gap-4 p-4">
         <div className="flex flex-wrap gap-2">
           <Link
-            href={`/leagues/${data.league.id}/records`}
+            href={leagueRecordsHref(data.league, data.lens)}
             className={cn(
               buttonVariants({ className: "w-fit", variant: "ghost" }),
             )}
@@ -303,6 +305,7 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
             >
               <ManagerH2HLedgersTable
                 league={data.league}
+                lens={data.lens}
                 managerId={data.manager.id}
                 rows={data.h2hLedgers}
               />

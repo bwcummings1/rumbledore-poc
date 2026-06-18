@@ -281,6 +281,19 @@ interface MatchupCombinedAccumulator {
   rows: WeeklyStatisticsRow[];
 }
 
+interface HeadToHeadMeetingForCatalog {
+  championship: boolean;
+  matchupId: string;
+  personAId: string;
+  personAPoints: number;
+  personBId: string;
+  personBPoints: number;
+  playoff: boolean;
+  scoringPeriod: number;
+  season: number;
+  winnerPersonId: string | null;
+}
+
 interface ChampionshipAccumulator {
   championshipAppearances: number;
   championshipGameLosses: number;
@@ -716,6 +729,9 @@ function filterChampionshipRowsByLens(
   rows: readonly ChampionshipRecordRow[],
   lens?: RecordBookLens,
 ): ChampionshipRecordRow[] {
+  if ((lens?.segment ?? "both") === "regular") {
+    return [];
+  }
   const seasons = lensSeasonSet(lens);
   if (!seasons) {
     return [...rows];
@@ -1004,6 +1020,301 @@ function compareHeadToHeadPair(
     compareStable(left.personA.personId, right.personA.personId) ||
     compareStable(left.personB.personId, right.personB.personId)
   );
+}
+
+function headToHeadMeetingSort(
+  left: HeadToHeadMeetingForCatalog,
+  right: HeadToHeadMeetingForCatalog,
+): number {
+  return (
+    left.season - right.season ||
+    left.scoringPeriod - right.scoringPeriod ||
+    compareStable(left.matchupId, right.matchupId)
+  );
+}
+
+function headToHeadPairKey(
+  personAId: string,
+  personBId: string,
+  season: number,
+): string {
+  return `${season}:${personAId}:${personBId}`;
+}
+
+function canonicalHeadToHeadPair(
+  personAId: string,
+  personBId: string,
+): [string, string] {
+  return compareStable(personAId, personBId) <= 0
+    ? [personAId, personBId]
+    : [personBId, personAId];
+}
+
+function headToHeadMeetingGroups(
+  rows: readonly WeeklyStatisticsRow[],
+): HeadToHeadMeetingForCatalog[] {
+  const grouped = new Map<string, WeeklyStatisticsRow[]>();
+  for (const row of rows) {
+    if (row.matchupKind !== "head_to_head" || !row.opponentPersonId) {
+      continue;
+    }
+    const [personAId, personBId] = canonicalHeadToHeadPair(
+      row.personId,
+      row.opponentPersonId,
+    );
+    const key = [
+      row.season,
+      row.scoringPeriod,
+      row.matchupId,
+      personAId,
+      personBId,
+    ].join(":");
+    grouped.set(key, [...(grouped.get(key) ?? []), row]);
+  }
+
+  return [...grouped.values()]
+    .map((groupRows) => {
+      const first = groupRows[0];
+      if (!first?.opponentPersonId) {
+        return null;
+      }
+      const [personAId, personBId] = canonicalHeadToHeadPair(
+        first.personId,
+        first.opponentPersonId,
+      );
+      const personARow = groupRows.find((row) => row.personId === personAId);
+      const personBRow = groupRows.find((row) => row.personId === personBId);
+      if (!personARow || !personBRow) {
+        return null;
+      }
+      const winnerPersonId =
+        personARow.pointsFor > personBRow.pointsFor
+          ? personAId
+          : personBRow.pointsFor > personARow.pointsFor
+            ? personBId
+            : null;
+      return {
+        championship: personARow.isChampionship || personBRow.isChampionship,
+        matchupId: personARow.matchupId,
+        personAId,
+        personAPoints: personARow.pointsFor,
+        personBId,
+        personBPoints: personBRow.pointsFor,
+        playoff: personARow.isPlayoff || personBRow.isPlayoff,
+        scoringPeriod: personARow.scoringPeriod,
+        season: personARow.season,
+        winnerPersonId,
+      } satisfies HeadToHeadMeetingForCatalog;
+    })
+    .filter((meeting): meeting is HeadToHeadMeetingForCatalog =>
+      Boolean(meeting),
+    )
+    .sort(headToHeadMeetingSort);
+}
+
+function streakSummaryFromMeetings(
+  meetings: readonly HeadToHeadMeetingForCatalog[],
+  personNames: ReadonlyMap<string, string>,
+  mode: "current" | "longest",
+): HeadToHeadStreakSummary | null {
+  let currentPersonId: string | null = null;
+  let currentLength = 0;
+  let bestPersonId: string | null = null;
+  let bestLength = 0;
+
+  for (const meeting of meetings) {
+    if (!meeting.winnerPersonId) {
+      currentPersonId = null;
+      currentLength = 0;
+      continue;
+    }
+    if (meeting.winnerPersonId === currentPersonId) {
+      currentLength += 1;
+    } else {
+      currentPersonId = meeting.winnerPersonId;
+      currentLength = 1;
+    }
+    if (currentLength > bestLength) {
+      bestPersonId = currentPersonId;
+      bestLength = currentLength;
+    }
+  }
+
+  const personId = mode === "current" ? currentPersonId : bestPersonId;
+  const length = mode === "current" ? currentLength : bestLength;
+  return h2hStreak(personNames, personId, length);
+}
+
+function headToHeadPairEntryFromMeetings(
+  meetings: readonly HeadToHeadMeetingForCatalog[],
+  personNames: ReadonlyMap<string, string>,
+  season: number,
+): HeadToHeadPairCatalogEntry | null {
+  const first = meetings[0];
+  if (!first) {
+    return null;
+  }
+  const sorted = [...meetings].sort(headToHeadMeetingSort);
+  const personAId = first.personAId;
+  const personBId = first.personBId;
+  const personAWins = sorted.filter(
+    (meeting) => meeting.winnerPersonId === personAId,
+  ).length;
+  const personBWins = sorted.filter(
+    (meeting) => meeting.winnerPersonId === personBId,
+  ).length;
+  const ties = sorted.filter((meeting) => !meeting.winnerPersonId).length;
+  const personAPoints = round(
+    sorted.reduce((sum, meeting) => sum + meeting.personAPoints, 0),
+    4,
+  );
+  const personBPoints = round(
+    sorted.reduce((sum, meeting) => sum + meeting.personBPoints, 0),
+    4,
+  );
+  const last = sorted.at(-1) ?? null;
+
+  return {
+    championshipMeetings: sorted.filter((meeting) => meeting.championship)
+      .length,
+    currentStreak: streakSummaryFromMeetings(sorted, personNames, "current"),
+    lastScoringPeriod: last?.scoringPeriod ?? null,
+    lastSeason: last?.season ?? null,
+    longestStreak: streakSummaryFromMeetings(sorted, personNames, "longest"),
+    meetings: sorted.length,
+    personA: {
+      avgPoints: avg(personAPoints, sorted.length),
+      highestScore:
+        sorted.length > 0
+          ? round(Math.max(...sorted.map((meeting) => meeting.personAPoints)))
+          : 0,
+      losses: personBWins,
+      personId: personAId,
+      personName: personName(personNames, personAId),
+      points: personAPoints,
+      wins: personAWins,
+    },
+    personB: {
+      avgPoints: avg(personBPoints, sorted.length),
+      highestScore:
+        sorted.length > 0
+          ? round(Math.max(...sorted.map((meeting) => meeting.personBPoints)))
+          : 0,
+      losses: personAWins,
+      personId: personBId,
+      personName: personName(personNames, personBId),
+      points: personBPoints,
+      wins: personBWins,
+    },
+    playoffMeetings: sorted.filter((meeting) => meeting.playoff).length,
+    season,
+    ties,
+  };
+}
+
+function buildHeadToHeadCatalogFromWeeklyRows(
+  rows: readonly WeeklyStatisticsRow[],
+  personNames: ReadonlyMap<string, string>,
+): RecordsCatalog["headToHead"] {
+  const meetings = headToHeadMeetingGroups(rows);
+  const byPair = new Map<string, HeadToHeadMeetingForCatalog[]>();
+  for (const meeting of meetings) {
+    for (const season of [0, meeting.season]) {
+      const key = headToHeadPairKey(
+        meeting.personAId,
+        meeting.personBId,
+        season,
+      );
+      byPair.set(key, [...(byPair.get(key) ?? []), meeting]);
+    }
+  }
+
+  const pairs = [...byPair.entries()]
+    .map(([key, pairMeetings]) => {
+      const [seasonRaw] = key.split(":");
+      return headToHeadPairEntryFromMeetings(
+        pairMeetings,
+        personNames,
+        Number(seasonRaw),
+      );
+    })
+    .filter((pair): pair is HeadToHeadPairCatalogEntry => Boolean(pair))
+    .sort(compareHeadToHeadPair);
+
+  return {
+    allTimePairs: pairs.filter((row) => row.season === 0),
+    managerLedgers: pairs
+      .flatMap((row) => [
+        {
+          avgPointsAgainst: row.personB.avgPoints,
+          avgPointsFor: row.personA.avgPoints,
+          championshipMeetings: row.championshipMeetings,
+          currentStreak: row.currentStreak
+            ? {
+                ...row.currentStreak,
+                isAgainst: row.currentStreak.personId !== row.personA.personId,
+              }
+            : null,
+          highestScore: row.personA.highestScore,
+          lastScoringPeriod: row.lastScoringPeriod,
+          lastSeason: row.lastSeason,
+          longestStreak: row.longestStreak
+            ? {
+                ...row.longestStreak,
+                isAgainst: row.longestStreak.personId !== row.personA.personId,
+              }
+            : null,
+          losses: row.personA.losses,
+          meetings: row.meetings,
+          opponentHighestScore: row.personB.highestScore,
+          opponentName: row.personB.personName,
+          opponentPersonId: row.personB.personId,
+          personId: row.personA.personId,
+          personName: row.personA.personName,
+          playoffMeetings: row.playoffMeetings,
+          pointsAgainst: row.personB.points,
+          pointsFor: row.personA.points,
+          season: row.season,
+          ties: row.ties,
+          wins: row.personA.wins,
+        },
+        {
+          avgPointsAgainst: row.personA.avgPoints,
+          avgPointsFor: row.personB.avgPoints,
+          championshipMeetings: row.championshipMeetings,
+          currentStreak: row.currentStreak
+            ? {
+                ...row.currentStreak,
+                isAgainst: row.currentStreak.personId !== row.personB.personId,
+              }
+            : null,
+          highestScore: row.personB.highestScore,
+          lastScoringPeriod: row.lastScoringPeriod,
+          lastSeason: row.lastSeason,
+          longestStreak: row.longestStreak
+            ? {
+                ...row.longestStreak,
+                isAgainst: row.longestStreak.personId !== row.personB.personId,
+              }
+            : null,
+          losses: row.personB.losses,
+          meetings: row.meetings,
+          opponentHighestScore: row.personA.highestScore,
+          opponentName: row.personA.personName,
+          opponentPersonId: row.personA.personId,
+          personId: row.personB.personId,
+          personName: row.personB.personName,
+          playoffMeetings: row.playoffMeetings,
+          pointsAgainst: row.personA.points,
+          pointsFor: row.personB.points,
+          season: row.season,
+          ties: row.ties,
+          wins: row.personB.wins,
+        },
+      ])
+      .sort(compareManagerLedger),
+    seasonPairs: pairs.filter((row) => row.season !== 0),
+  };
 }
 
 function managerLedgerEntry(
@@ -1866,7 +2177,9 @@ export function buildRecordsCatalog(input: {
       seasonRows,
       weeklyRows,
     }),
-    headToHead: buildHeadToHeadCatalog(headToHeadRecordRows, input.personNames),
+    headToHead: defaultLens
+      ? buildHeadToHeadCatalog(headToHeadRecordRows, input.personNames)
+      : buildHeadToHeadCatalogFromWeeklyRows(headToHeadRows, input.personNames),
     highLow: {
       bestScoresInLosses: weeklyTop(
         losers,
