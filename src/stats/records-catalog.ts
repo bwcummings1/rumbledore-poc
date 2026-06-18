@@ -8,6 +8,7 @@ import {
   headToHeadRecords,
   identityMappings,
   leagueGroupingSeasons,
+  leagueSeasonGroupings,
   leagueSeasonSettings,
   persons,
   recordBookAllTimeStandings,
@@ -726,10 +727,13 @@ function isDefaultLens(lens?: RecordBookLens): boolean {
 }
 
 function lensSeasonSet(lens?: RecordBookLens): Set<number> | null {
-  if (!lens?.seasonSet || lens.seasonSet.length === 0) {
+  if (!lens) {
     return null;
   }
-  return new Set(lens.seasonSet);
+  if (lens.seasonSet && lens.seasonSet.length > 0) {
+    return new Set(lens.seasonSet);
+  }
+  return lens.groupingId ? new Set() : null;
 }
 
 function personSeasonKey(personId: string, season: number): string {
@@ -2448,18 +2452,33 @@ export async function getLeagueRecordsCatalog(
         asc(weeklyStatistics.personId),
       );
     const lens = { ...(input.lens ?? {}) };
-    if (lens.groupingId && (!lens.seasonSet || lens.seasonSet.length === 0)) {
-      const groupingSeasonRows = await tx
-        .select({ season: leagueGroupingSeasons.season })
-        .from(leagueGroupingSeasons)
+    if (lens.groupingId) {
+      const [confirmedGrouping] = await tx
+        .select({ id: leagueSeasonGroupings.id })
+        .from(leagueSeasonGroupings)
         .where(
           and(
-            eq(leagueGroupingSeasons.leagueId, input.leagueId),
-            eq(leagueGroupingSeasons.groupingId, lens.groupingId),
+            eq(leagueSeasonGroupings.leagueId, input.leagueId),
+            eq(leagueSeasonGroupings.id, lens.groupingId),
+            eq(leagueSeasonGroupings.status, "confirmed"),
           ),
         )
-        .orderBy(asc(leagueGroupingSeasons.season));
-      lens.seasonSet = groupingSeasonRows.map((row) => row.season);
+        .limit(1);
+      if (!confirmedGrouping) {
+        lens.seasonSet = [];
+      } else {
+        const groupingSeasonRows = await tx
+          .select({ season: leagueGroupingSeasons.season })
+          .from(leagueGroupingSeasons)
+          .where(
+            and(
+              eq(leagueGroupingSeasons.leagueId, input.leagueId),
+              eq(leagueGroupingSeasons.groupingId, lens.groupingId),
+            ),
+          )
+          .orderBy(asc(leagueGroupingSeasons.season));
+        lens.seasonSet = groupingSeasonRows.map((row) => row.season);
+      }
     }
 
     return buildRecordsCatalog({

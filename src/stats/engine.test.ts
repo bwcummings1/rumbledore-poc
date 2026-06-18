@@ -1486,6 +1486,73 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("does not treat proposed or empty era lenses as cumulative records", async () => {
+    const { leagueId } = await seedStatsLeague("empty-era-lens");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const cumulativeCatalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      limit: 5,
+    });
+    expect(cumulativeCatalog.allTimeStandings.length).toBeGreaterThan(0);
+    expect(cumulativeCatalog.highLow.highestScores.length).toBeGreaterThan(0);
+
+    const groupingIds = await withLeagueContext(
+      handle.db,
+      leagueId,
+      async (tx) => {
+        const [proposedGrouping] = await tx
+          .insert(leagueSeasonGroupings)
+          .values({
+            kind: "era",
+            leagueId,
+            name: "Unconfirmed Era",
+            ordinal: 1,
+            status: "proposed",
+          })
+          .returning({ id: leagueSeasonGroupings.id });
+        const [emptyConfirmedGrouping] = await tx
+          .insert(leagueSeasonGroupings)
+          .values({
+            kind: "era",
+            leagueId,
+            name: "Empty Confirmed Era",
+            ordinal: 2,
+            status: "confirmed",
+          })
+          .returning({ id: leagueSeasonGroupings.id });
+        if (!proposedGrouping || !emptyConfirmedGrouping) {
+          throw new Error("expected era lens guard groupings");
+        }
+        await tx.insert(leagueGroupingSeasons).values({
+          groupingId: proposedGrouping.id,
+          leagueId,
+          season: 2025,
+        });
+        return {
+          emptyConfirmedGroupingId: emptyConfirmedGrouping.id,
+          proposedGroupingId: proposedGrouping.id,
+        };
+      },
+    );
+
+    for (const groupingId of [
+      groupingIds.proposedGroupingId,
+      groupingIds.emptyConfirmedGroupingId,
+    ]) {
+      const catalog = await getLeagueRecordsCatalog(handle.db, {
+        leagueId,
+        lens: { groupingId, segment: "both" },
+        limit: 5,
+      });
+      expect(catalog.integrityBlocked).toBe(false);
+      expect(catalog.allTimeStandings).toEqual([]);
+      expect(catalog.highLow.highestScores).toEqual([]);
+      expect(catalog.headToHead.allTimePairs).toEqual([]);
+      expect(catalog.championships.managerRecords).toEqual([]);
+    }
+  });
+
   oldLeagueFixtureIt(
     "proposes old-league era boundaries from the historical fixture and confirms arbitrary season sets",
     async () => {
