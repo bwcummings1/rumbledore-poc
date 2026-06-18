@@ -226,6 +226,17 @@ function personPairKey(personAId: string, personBId: string): string {
   return `${left}\u001f${right}`;
 }
 
+function scoringWindowKey(
+  fact: Pick<
+    WeeklyFact,
+    "periodStart" | "scoringPeriod" | "scoringPeriodSpan" | "season"
+  >,
+): string {
+  const start = fact.periodStart ?? fact.scoringPeriod;
+  const span = Math.max(1, fact.scoringPeriodSpan);
+  return `${fact.season}:${start}:${span}`;
+}
+
 function personPairFromKey(key: string): {
   personAId: string;
   personBId: string;
@@ -858,7 +869,7 @@ async function loadLeagueSeasonSettings(tx: LeagueScopedTx, leagueId: string) {
 function rankWeeklyFacts(facts: WeeklyFact[]): WeeklyFact[] {
   const byWeek = new Map<string, WeeklyFact[]>();
   for (const fact of facts) {
-    const key = `${fact.season}:${fact.periodStart ?? fact.scoringPeriod}`;
+    const key = scoringWindowKey(fact);
     const weekly = byWeek.get(key) ?? [];
     weekly.push(fact);
     byWeek.set(key, weekly);
@@ -1282,7 +1293,7 @@ function buildSeasonStats(
   for (const fact of facts) {
     const teamKey = `${fact.personId}:${fact.season}`;
     byTeamSeason.set(teamKey, [...(byTeamSeason.get(teamKey) ?? []), fact]);
-    const weekKey = `${fact.season}:${fact.scoringPeriod}`;
+    const weekKey = scoringWindowKey(fact);
     byWeek.set(weekKey, [...(byWeek.get(weekKey) ?? []), fact]);
   }
 

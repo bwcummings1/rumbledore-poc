@@ -1406,6 +1406,12 @@ describe("recomputeLeagueStatistics", () => {
     if (!casey2025) {
       throw new Error("expected Casey 2025 mapping");
     }
+    const evan2025 = before.mappingRows.find(
+      (row) => row.providerTeamId === "4" && row.season === 2025,
+    );
+    if (!evan2025) {
+      throw new Error("expected Evan 2025 mapping");
+    }
 
     let matchupId = "";
     await withLeagueContext(handle.db, leagueId, async (tx) => {
@@ -1450,10 +1456,28 @@ describe("recomputeLeagueStatistics", () => {
         (row) => row.personId === casey2025.personId && row.season === 2025,
       ),
     ).toMatchObject({
+      allPlayLosses: 1,
+      allPlayWins: 3,
       avgPointsFor: 70,
+      expectedWins: 1.6667,
+      luck: -0.6667,
       losses: 1,
       pointsFor: 210,
       wins: 1,
+    });
+    expect(
+      after.seasonRows.find(
+        (row) => row.personId === evan2025.personId && row.season === 2025,
+      ),
+    ).toMatchObject({
+      allPlayLosses: 4,
+      allPlayWins: 0,
+      avgPointsFor: 60,
+      expectedWins: 0,
+      luck: 0,
+      losses: 2,
+      pointsFor: 180,
+      wins: 0,
     });
     expect(after.integrityRows).toContainEqual(
       expect.objectContaining({
