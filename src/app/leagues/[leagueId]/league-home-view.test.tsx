@@ -1,4 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { EntitlementResolution } from "@/entitlements";
 import type { LeagueHomeData } from "@/home/league-home";
@@ -157,17 +163,16 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(
     screen.getByRole("heading", { level: 1, name: "NHS Alumni Annual" }),
   ).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Standings" })).toBeDefined();
-  expect(screen.getAllByText("Fixture Team 01").length).toBeGreaterThan(1);
-  expect(screen.getAllByText("Fixture Manager 12").length).toBeGreaterThan(1);
-  expect(screen.getAllByText("0-0-0").length).toBeGreaterThan(1);
+  const sectionTabs = screen.getByRole("tablist", {
+    name: "League home sections",
+  });
   expect(
-    screen.getByRole("heading", { name: "Week 1 matchups" }),
-  ).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Teams" })).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Record book" })).toBeDefined();
-  expect(screen.getByText("Highest weekly score")).toBeDefined();
-  expect(screen.getByText("142.50")).toBeDefined();
+    within(sectionTabs)
+      .getByRole("tab", { name: "Press" })
+      .getAttribute("aria-selected"),
+  ).toBe("true");
+  expect(screen.queryByRole("heading", { name: "Standings" })).toBeNull();
+
   expect(screen.getByRole("heading", { name: "From the Press" })).toBeDefined();
   const pressTeaser = screen.getByLabelText("From the Press");
   expect(
@@ -193,11 +198,38 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(screen.getByRole("link", { name: "Cast" }).getAttribute("href")).toBe(
     "/leagues/00000000-0000-4000-8000-000000000001/cast",
   );
-  expect(screen.getByRole("heading", { name: "Bankroll" })).toBeDefined();
-  expect(screen.getByText("$10,000")).toBeDefined();
+
+  fireEvent.click(within(sectionTabs).getByRole("tab", { name: "This Week" }));
+  expect(
+    screen.getByRole("heading", { name: "Week 1 matchups" }),
+  ).toBeDefined();
   expect(
     screen.getByText("Your league is importing — history lands soon"),
   ).toBeDefined();
+
+  fireEvent.click(within(sectionTabs).getByRole("tab", { name: "Standings" }));
+  expect(screen.getByRole("heading", { name: "Standings" })).toBeDefined();
+  expect(screen.getAllByText("Fixture Team 01").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Fixture Manager 12").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("0-0-0").length).toBeGreaterThan(0);
+
+  fireEvent.click(within(sectionTabs).getByRole("tab", { name: "Bankroll" }));
+  expect(screen.getByRole("heading", { name: "Bankroll" })).toBeDefined();
+  expect(screen.getByText("$10,000")).toBeDefined();
+
+  fireEvent.click(within(sectionTabs).getByRole("tab", { name: "Teams" }));
+  expect(screen.getByRole("heading", { name: "Teams" })).toBeDefined();
+
+  fireEvent.click(
+    within(sectionTabs).getByRole("tab", { name: "Record Book" }),
+  );
+  expect(screen.getByRole("heading", { name: "Record book" })).toBeDefined();
+  expect(screen.getByText("Highest weekly score")).toBeDefined();
+  expect(screen.getByText("142.50")).toBeDefined();
+
+  fireEvent.click(within(sectionTabs).getByRole("tab", { name: "Upcoming" }));
+  expect(screen.getByRole("heading", { name: "Upcoming" })).toBeDefined();
+  expect(screen.getByText("1 on the board")).toBeDefined();
 });
 
 test("league home view renders the claimed-team activation hook", () => {
@@ -238,6 +270,7 @@ test("league home view renders the claimed-team activation hook", () => {
     />,
   );
 
+  fireEvent.click(screen.getByRole("tab", { name: "This Week" }));
   expect(screen.getByText("Your team is waiting")).toBeDefined();
   expect(screen.getByText("10-5-1 · 65.6%")).toBeDefined();
   expect(
@@ -266,7 +299,10 @@ test("league home view gates the cast rail without hiding the substrate", () => 
       .getByRole("link", { name: "Review upgrade options" })
       .getAttribute("href"),
   ).toBe("/you#upgrade-options");
+
+  fireEvent.click(screen.getByRole("tab", { name: "Standings" }));
   expect(screen.getByRole("heading", { name: "Standings" })).toBeDefined();
+  fireEvent.click(screen.getByRole("tab", { name: "Record Book" }));
   expect(screen.getByRole("heading", { name: "Record book" })).toBeDefined();
   expect(screen.getByText("Highest weekly score")).toBeDefined();
 });

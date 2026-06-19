@@ -101,12 +101,19 @@ test("mock ESPN connect imports the fixture league and opens standings", async (
   await expect(
     page.getByText("2026 ESPN fantasy football · Preseason"),
   ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Press" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("tab", { name: "Standings" }).click();
   await expect(page.getByRole("heading", { name: "Standings" })).toBeVisible();
   await expect(page.getByText("H2H_POINTS standings")).toBeVisible();
   await expect(page.getByText("Fixture Team 01").first()).toBeVisible();
   await expect(page.getByText("Fixture Manager 12").first()).toBeVisible();
+  await page.getByRole("tab", { name: "This Week" }).click();
   await expect(
     page.getByRole("heading", { name: "Week 1 matchups" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Teams" }).click();
   await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
 });

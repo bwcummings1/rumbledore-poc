@@ -37,6 +37,10 @@ import { Ladder } from "@/components/ui/ladder";
 import { Pagination } from "@/components/ui/pagination";
 import { Presence } from "@/components/ui/presence";
 import { Progress } from "@/components/ui/progress";
+import {
+  type SectionTabLinkItem,
+  SectionTabs,
+} from "@/components/ui/section-tabs";
 import { CountUpValue, LivePulseDot } from "@/components/ui/spectacle";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
@@ -957,51 +961,6 @@ function LeaderboardSection({
   );
 }
 
-function ArenaEntryPoints({
-  focusedLeagueId,
-  rivalLeagueId,
-  seasonId,
-}: {
-  focusedLeagueId: string | null;
-  rivalLeagueId: string | null;
-  seasonId: string | null;
-}) {
-  const entrySections = ARENA_NAVIGATION_SECTIONS.filter(
-    (section) => section.id !== "leaderboard",
-  );
-
-  return (
-    <section aria-label="Arena sections" className="panel p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="eyebrow">environment sections</p>
-          <h2 className="heading-auspex text-lg">Choose the arena angle</h2>
-        </div>
-        <StatusPill tone="neutral">aggregate-only views</StatusPill>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {entrySections.map((section) => (
-          <Link
-            className="cell grid min-h-32 content-between gap-3 p-3 outline-none transition-[border-color,box-shadow,transform] hover:border-[var(--hair-3)] hover:shadow-[0_0_18px_var(--glow-lilac),var(--bevel)] focus-visible:shadow-[var(--focus-ring-shadow),var(--bevel)]"
-            href={arenaSectionHref(section.href, {
-              leagueId: focusedLeagueId,
-              rivalLeagueId,
-              seasonId,
-            })}
-            key={section.id}
-          >
-            <span className="eyebrow">{section.label}</span>
-            <span className="font-display text-sm font-semibold text-foreground">
-              {arenaSectionDeck(section.id)}
-            </span>
-            <Edge tone="neutral" value="Open" />
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function ArenaRulesSection() {
   return (
     <section className="panel grid gap-4 p-4" aria-label="Arena rules">
@@ -1073,6 +1032,21 @@ export function ArenaLeaderboardView({
   const topLeague = data.leagueStandings[0] ?? null;
   const topIndividual = data.individualStandings[0] ?? null;
   const asOf = asOfStatus(data.computedAt, data.season);
+  const activeArenaSection =
+    ARENA_NAVIGATION_SECTIONS.find((section) => section.id === sectionId) ??
+    ARENA_NAVIGATION_SECTIONS[0];
+  const sectionNavItems: readonly SectionTabLinkItem[] =
+    ARENA_NAVIGATION_SECTIONS.map((section) => ({
+      active: section.id === sectionId,
+      description: arenaSectionDeck(section.id),
+      href: arenaSectionHref(section.href, {
+        leagueId: focusedLeagueId,
+        rivalLeagueId,
+        seasonId: data.season?.id ?? null,
+      }),
+      label: section.label,
+      value: section.id,
+    }));
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -1101,7 +1075,7 @@ export function ArenaLeaderboardView({
                 withText
               />
             </div>
-            <h1 className="heading-auspex mt-3 text-2xl sm:text-4xl">
+            <h1 className="heading-auspex mt-3 text-xl leading-tight">
               CENTRAL ARENA
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground sm:text-base">
@@ -1127,20 +1101,26 @@ export function ArenaLeaderboardView({
             )}
           </div>
           <div className="cell grid gap-2 p-3 text-sm lg:min-w-72">
-            <p className="eyebrow">rivalry frame</p>
+            <p className="eyebrow">active section</p>
             <p className="font-display text-base font-medium text-foreground">
-              {data.headToHead
-                ? `${data.headToHead.anchor.displayName} vs. ${data.headToHead.rival.displayName}`
-                : "Waiting for a second league"}
+              {activeArenaSection?.label ?? "Leaderboard"}
             </p>
             <p className="text-muted-foreground">
-              {data.headToHead
-                ? comparisonCopy(data.headToHead)
-                : "The first materialized rival unlocks the duel panel."}
+              {activeArenaSection
+                ? arenaSectionDeck(activeArenaSection.id)
+                : "The main league and individual ladders."}
             </p>
           </div>
         </div>
       </header>
+
+      <SectionTabs
+        ariaLabel="Arena sections"
+        deck="Move between aggregate arena views without stacking every rivalry, movement, and history panel on one landing page."
+        items={sectionNavItems}
+        mode="links"
+        title="Arena Sections"
+      />
 
       <div className="grid gap-6">
         <section
@@ -1210,28 +1190,21 @@ export function ArenaLeaderboardView({
         </section>
 
         {sectionId === "leaderboard" ? (
-          <>
-            <div className="grid gap-6">
-              <LeaderboardSection
-                emptyText="No league standings have been materialized yet."
-                highlightedRowId={focusedLeagueId}
-                netLabel="Avg P&L"
-                rows={data.leagueStandings}
-                title="League leaderboard"
-              />
-              <LeaderboardSection
-                emptyText="No individual standings have been materialized yet."
-                netLabel="Net P&L"
-                rows={data.individualStandings}
-                title="Individual leaderboard"
-              />
-            </div>
-            <ArenaEntryPoints
-              focusedLeagueId={focusedLeagueId}
-              rivalLeagueId={rivalLeagueId}
-              seasonId={data.season?.id ?? null}
+          <div className="grid gap-6">
+            <LeaderboardSection
+              emptyText="No league standings have been materialized yet."
+              highlightedRowId={focusedLeagueId}
+              netLabel="Avg P&L"
+              rows={data.leagueStandings}
+              title="League leaderboard"
             />
-          </>
+            <LeaderboardSection
+              emptyText="No individual standings have been materialized yet."
+              netLabel="Net P&L"
+              rows={data.individualStandings}
+              title="Individual leaderboard"
+            />
+          </div>
         ) : null}
 
         {sectionId === "leagues" ? (
