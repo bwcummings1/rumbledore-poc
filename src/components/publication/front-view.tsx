@@ -90,9 +90,7 @@ export function PublicationMasthead({
         <p className="eyebrow text-primary">{eyebrow}</p>
         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,26rem)] lg:items-end">
           <div className="min-w-0">
-            <h1 className="heading-auspex text-2xl leading-tight sm:text-3xl lg:text-4xl">
-              {title}
-            </h1>
+            <h1 className="heading-auspex text-xl leading-tight">{title}</h1>
             {sectionLabel ? (
               <p className="metric mt-2 w-fit rounded-control border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary">
                 {sectionLabel}

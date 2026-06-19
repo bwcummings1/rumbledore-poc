@@ -14,7 +14,7 @@ export default async function EspnOnboardingPage({
     <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-5 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <header className="panel grid gap-3 p-5">
         <p className="eyebrow text-primary">ESPN connect</p>
-        <h1 className="font-display text-2xl font-medium text-foreground sm:text-3xl">
+        <h1 className="heading-auspex text-xl leading-tight">
           Bring your league into Rumbledore
         </h1>
         <p className="max-w-2xl text-base text-muted-foreground">

@@ -117,7 +117,7 @@ export function HeadToHeadRecordsView({
             <p className="eyebrow">Head-to-head</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="heading-auspex text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex text-xl leading-tight">
               {data.personA.name} vs {data.personB.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">

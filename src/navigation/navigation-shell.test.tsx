@@ -353,6 +353,30 @@ describe("NavigationShellView", () => {
     expect(within(dialog).getByText("All read")).toBeDefined();
   });
 
+  it("anchors desktop and mobile notification badges outside the icon buttons", () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    const badges = screen.getAllByLabelText("1 unread notifications");
+
+    expect(badges).toHaveLength(2);
+    for (const badge of badges) {
+      expect(badge.closest("button")).toBeNull();
+      expect(badge.parentElement?.classList.contains("relative")).toBe(true);
+      expect(badge.parentElement?.classList.contains("shrink-0")).toBe(true);
+      expect(badge.classList.contains("pointer-events-none")).toBe(true);
+      expect(badge.classList.contains("absolute")).toBe(true);
+      expect(badge.classList.contains("-top-1")).toBe(true);
+      expect(badge.classList.contains("-right-1")).toBe(true);
+    }
+  });
+
   it("renders realtime-fed wire items and notifications", async () => {
     render(
       <NavigationShellView

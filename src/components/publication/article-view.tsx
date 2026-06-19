@@ -352,7 +352,7 @@ export function PublicationArticleView({
           >
             {data.article.section.label}
           </Link>
-          <h1 className="heading-auspex text-3xl leading-tight sm:text-4xl">
+          <h1 className="heading-auspex text-xl leading-tight">
             {data.article.headline}
           </h1>
           {data.article.dek ? (

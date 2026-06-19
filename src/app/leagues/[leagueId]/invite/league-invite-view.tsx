@@ -446,7 +446,7 @@ export function LeagueInviteView({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="eyebrow text-primary">Members / Settings</p>
-            <h1 className="mt-2 font-display text-2xl font-medium text-foreground sm:text-3xl">
+            <h1 className="mt-2 heading-auspex text-xl leading-tight">
               {initialSummary.league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">

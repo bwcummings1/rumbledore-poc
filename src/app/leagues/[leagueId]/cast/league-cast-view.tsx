@@ -34,7 +34,7 @@ export function LeagueCastView({
               </StatusPill>
               <span className="eyebrow text-primary">AI cast</span>
             </div>
-            <h1 className="heading-auspex mt-3 text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex mt-3 text-xl leading-tight">
               {data.league.name} Cast
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
