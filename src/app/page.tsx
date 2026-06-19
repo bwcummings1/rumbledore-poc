@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getYourLeaguesLandingData } from "@/home/your-leagues";
@@ -18,5 +19,9 @@ export default async function Home() {
   const data = await getYourLeaguesLandingData(getDb(), {
     userId: session.value.userId,
   });
+  if (data.leagues.length > 0) {
+    redirect("/news");
+  }
+
   return <YourLeaguesLandingView data={data} />;
 }
