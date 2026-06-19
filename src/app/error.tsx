@@ -20,7 +20,7 @@ export default function ErrorBoundary({
         </span>
         <div className="grid gap-2">
           <p className="eyebrow text-coral">System {"//"} Error</p>
-          <h1 className="heading-auspex text-2xl">Signal lost</h1>
+          <h1 className="heading-auspex text-xl leading-tight">Signal lost</h1>
           <p className="text-sm text-ink-2">
             The app hit an unexpected error. Try again from the last stable
             screen.

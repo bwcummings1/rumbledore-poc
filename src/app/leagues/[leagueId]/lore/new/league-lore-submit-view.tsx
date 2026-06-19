@@ -355,7 +355,7 @@ export function LeagueLoreSubmitView({ data }: { data: LoreSectionData }) {
             <p className="eyebrow text-primary">Submit claim</p>
           </div>
           <div className="max-w-2xl">
-            <h1 className="font-display text-xl font-medium sm:text-2xl">
+            <h1 className="heading-auspex text-xl leading-tight">
               Add to {data.league.name} lore
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">

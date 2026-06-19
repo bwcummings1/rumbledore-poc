@@ -206,7 +206,7 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
               <Landmark className="size-5" aria-hidden="true" />
               <p className="eyebrow text-primary">Official mythology</p>
             </div>
-            <h1 className="mt-3 font-display text-xl font-medium sm:text-2xl">
+            <h1 className="mt-3 heading-auspex text-xl leading-tight">
               {data.league.name} official lore
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">

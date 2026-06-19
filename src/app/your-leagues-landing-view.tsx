@@ -194,9 +194,7 @@ function ConnectEntry({
     <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <header className="panel grid gap-3 p-5 sm:p-6">
         <p className="eyebrow text-primary">{eyebrow}</p>
-        <h1 className="heading-auspex text-2xl leading-tight sm:text-3xl">
-          {title}
-        </h1>
+        <h1 className="heading-auspex text-xl leading-tight">{title}</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-ink-2">{blurb}</p>
         <div className="mt-1">
           <GlobalLinks />
@@ -408,7 +406,7 @@ export function YourLeaguesLandingView({
       <header className="panel flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
         <div className="min-w-0">
           <p className="eyebrow text-primary">Global lobby</p>
-          <h1 className="heading-auspex mt-2 text-2xl leading-tight sm:text-3xl">
+          <h1 className="heading-auspex mt-2 text-xl leading-tight">
             Your Leagues
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-ink-2">

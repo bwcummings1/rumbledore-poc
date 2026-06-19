@@ -1220,7 +1220,7 @@ function LeagueBetViewContent({ data }: { readonly data: LeagueBetData }) {
                 {data.league.providerLabel} · {data.league.season}
               </StatusPill>
             </div>
-            <h1 className="mt-2 text-xl font-semibold sm:text-2xl">
+            <h1 className="mt-2 heading-auspex text-xl leading-tight">
               {data.league.name} betting desk
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">

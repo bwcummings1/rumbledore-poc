@@ -19,7 +19,7 @@ export default function OfflinePage() {
         />
         <div className="grid gap-2">
           <p className="eyebrow text-muted-foreground">Connection</p>
-          <h1 className="heading-auspex text-xl">Offline</h1>
+          <h1 className="heading-auspex text-xl leading-tight">Offline</h1>
           <output className="lcd text-sm text-muted-foreground">
             OFFLINE — reconnect to see live league data
           </output>

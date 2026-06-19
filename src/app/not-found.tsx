@@ -15,7 +15,9 @@ export default function NotFound() {
         </span>
         <div className="grid gap-2">
           <p className="eyebrow text-primary">404 {"//"} Not found</p>
-          <h1 className="heading-auspex text-2xl">Off the board</h1>
+          <h1 className="heading-auspex text-xl leading-tight">
+            Off the board
+          </h1>
           <p className="text-sm text-ink-2">
             That page isn&apos;t on the wire — it may have moved, or never
             existed.
