@@ -25,6 +25,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { type KVItem, KVList } from "@/components/ui/kv";
 import { LockedFeatureCard } from "@/components/ui/locked-feature-card";
 import {
+  type SectionTabPanelItem,
+  SectionTabs,
+} from "@/components/ui/section-tabs";
+import {
   CastOrbStatus,
   CountUpValue,
   type ScoreboardMatchup,
@@ -47,6 +51,15 @@ import type {
 import { cn } from "@/lib/utils";
 import { LeagueRealtimeRefresh } from "@/realtime/client";
 import { LeagueStandingsTable } from "./league-standings-table";
+
+type LeagueHomeSectionId =
+  | "press"
+  | "this-week"
+  | "standings"
+  | "bankroll"
+  | "teams"
+  | "records"
+  | "upcoming";
 
 function formatPoints(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -860,6 +873,67 @@ export function LeagueHomeView({
   castEntitlement?: EntitlementResolution;
   data: LeagueHomeData;
 }) {
+  const sectionItems: readonly SectionTabPanelItem[] = [
+    {
+      description:
+        "The league publication lead, cast availability, and the next dispatch entry point.",
+      label: "Press",
+      panel: (
+        <PressTeaserSection castEntitlement={castEntitlement} data={data} />
+      ),
+      value: "press" satisfies LeagueHomeSectionId,
+    },
+    {
+      description:
+        data.currentScoringPeriod === null
+          ? "Current matchup cards and the league scoreboard."
+          : `Week ${data.currentScoringPeriod} matchup cards and the league scoreboard.`,
+      label: "This Week",
+      panel: (
+        <div className="grid gap-6">
+          <MatchupHeroSection data={data} />
+          <ScoresSection data={data} />
+        </div>
+      ),
+      value: "this-week" satisfies LeagueHomeSectionId,
+    },
+    {
+      description:
+        "The current league table with record, points, and playoff-line context.",
+      label: "Standings",
+      panel: <StandingsSection data={data} />,
+      value: "standings" satisfies LeagueHomeSectionId,
+    },
+    {
+      description:
+        "Paper bankroll status and the jump point into the league betting desk.",
+      label: "Bankroll",
+      panel: <BankrollPreviewSection leagueId={data.league.id} />,
+      value: "bankroll" satisfies LeagueHomeSectionId,
+    },
+    {
+      description:
+        "Manager and team cards, including the claimed-team marker when available.",
+      label: "Teams",
+      panel: <TeamsSection data={data} />,
+      value: "teams" satisfies LeagueHomeSectionId,
+    },
+    {
+      description:
+        "Featured all-time marks from the league record book, with a path to the full archive.",
+      label: "Record Book",
+      panel: <RecordsSection data={data} />,
+      value: "records" satisfies LeagueHomeSectionId,
+    },
+    {
+      description:
+        "Upcoming board context for the current scoring period and provider feed.",
+      label: "Upcoming",
+      panel: <UpcomingSection data={data} />,
+      value: "upcoming" satisfies LeagueHomeSectionId,
+    },
+  ];
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <LeagueRealtimeRefresh leagueId={data.league.id} />
@@ -872,7 +946,7 @@ export function LeagueHomeView({
               </StatusPill>
               <span className="eyebrow text-primary">League home</span>
             </div>
-            <h1 className="heading-auspex mt-3 text-2xl leading-tight sm:text-3xl">
+            <h1 className="heading-auspex mt-3 text-xl leading-tight">
               {data.league.name}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -921,21 +995,14 @@ export function LeagueHomeView({
         <HeaderStats data={data} />
       </header>
 
-      <MatchupHeroSection data={data} />
-      <ScoresSection data={data} />
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,.75fr)]">
-        <div className="grid content-start gap-6">
-          <StandingsSection data={data} />
-          <RecordsSection data={data} />
-        </div>
-        <aside className="grid content-start gap-6">
-          <PressTeaserSection castEntitlement={castEntitlement} data={data} />
-          <BankrollPreviewSection leagueId={data.league.id} />
-          <TeamsSection data={data} />
-          <UpcomingSection data={data} />
-        </aside>
-      </div>
+      <SectionTabs
+        ariaLabel="League home sections"
+        defaultValue="press"
+        deck="Open one league-home surface at a time; the shell rail remains available for full league areas."
+        items={sectionItems}
+        mode="panels"
+        title="League Home Sections"
+      />
     </main>
   );
 }

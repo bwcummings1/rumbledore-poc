@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { ArenaLeaderboardData } from "@/betting";
 import { ArenaLeaderboardView } from "./arena-leaderboard-view";
@@ -192,6 +192,12 @@ test("arena leaderboard view renders league and individual standings", () => {
   expect(
     screen.getByRole("heading", { name: "Individual leaderboard" }),
   ).toBeDefined();
+  const arenaTabs = screen.getByRole("tablist", { name: "Arena sections" });
+  expect(
+    within(arenaTabs)
+      .getByRole("tab", { name: "Leaderboard" })
+      .getAttribute("aria-current"),
+  ).toBe("page");
   expect(screen.getAllByText("Arena League B").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Arena League A").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Arena Gamma").length).toBeGreaterThanOrEqual(2);
@@ -201,25 +207,25 @@ test("arena leaderboard view renders league and individual standings", () => {
     screen.getAllByText("1/1 wins · 1/1 weeks").length,
   ).toBeGreaterThanOrEqual(2);
   expect(
-    screen
-      .getByRole("link", { name: /League vs League/i })
+    within(arenaTabs)
+      .getByRole("tab", { name: /League vs League/i })
       .getAttribute("href"),
   ).toBe(
     "/arena/leagues?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a",
   );
   expect(
-    screen.getByRole("link", { name: /Movers/i }).getAttribute("href"),
+    within(arenaTabs).getByRole("tab", { name: "Movers" }).getAttribute("href"),
   ).toBe(
     "/arena/movers?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a",
   );
   expect(
-    screen.getByRole("link", { name: /Rules/i }).getAttribute("href"),
+    within(arenaTabs).getByRole("tab", { name: "Rules" }).getAttribute("href"),
   ).toBe(
     "/arena/rules?seasonId=season-1&leagueId=league-b&rivalLeagueId=league-a",
   );
   expect(
-    screen.getByRole("heading", { name: "Choose the arena angle" }),
-  ).toBeDefined();
+    screen.queryByRole("heading", { name: "Choose the arena angle" }),
+  ).toBeNull();
   expect(screen.queryByRole("heading", { name: "Arena movement board" })).toBe(
     null,
   );
@@ -312,8 +318,8 @@ test("arena leaderboard view renders empty states", () => {
       .length,
   ).toBeGreaterThanOrEqual(1);
   expect(
-    screen.getByRole("heading", { name: "Choose the arena angle" }),
-  ).toBeDefined();
+    screen.queryByRole("heading", { name: "Choose the arena angle" }),
+  ).toBeNull();
 });
 
 test("arena subsection empty states stay coherent for solo or zero-league users", () => {
