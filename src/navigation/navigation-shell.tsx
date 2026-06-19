@@ -1396,7 +1396,6 @@ function NotificationsMenu({
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label="Open notifications"
-        className="relative"
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
         size="icon"
@@ -1404,14 +1403,14 @@ function NotificationsMenu({
         variant="ghost"
       >
         <Bell aria-hidden="true" />
-        {unreadCount > 0 ? (
-          <Badge
-            className="absolute -top-1 -right-1"
-            label={`${unreadCount} unread notifications`}
-            value={unreadCount}
-          />
-        ) : null}
       </Button>
+      {unreadCount > 0 ? (
+        <Badge
+          className="pointer-events-none absolute -top-1 -right-1"
+          label={`${unreadCount} unread notifications`}
+          value={unreadCount}
+        />
+      ) : null}
       {open ? (
         <div
           aria-labelledby="notifications-panel-title"
