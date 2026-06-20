@@ -428,8 +428,10 @@ export function NavigationShellView({
         onMarkAllNotificationsRead={markAllNotificationsRead}
         onMotionChange={setMotionOff}
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        onWireModeChange={setWireMode}
         realtimeStatus={shellRealtime.status}
         unreadNotificationCount={unreadNotificationCount}
+        wireMode={wireMode}
       />
 
       <MobileTopBar
@@ -442,9 +444,11 @@ export function NavigationShellView({
         onMotionChange={setMotionOff}
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         onOpenSwitcher={() => setMobileSwitcherOpen(true)}
+        onWireModeChange={setWireMode}
         presenceByLeagueId={shellRealtime.presenceByLeagueId}
         realtimeStatus={shellRealtime.status}
         unreadNotificationCount={unreadNotificationCount}
+        wireMode={wireMode}
       />
 
       <ShellWire
@@ -453,9 +457,7 @@ export function NavigationShellView({
         items={wireItems}
         motion={motionMode}
         onOpenWire={() => setWireSheetOpen(true)}
-        onWireModeChange={setWireMode}
         realtimeStatus={shellRealtime.status}
-        wireMode={wireMode}
       />
 
       <div
@@ -492,9 +494,7 @@ export function NavigationShellView({
         motion={motionMode}
         onOpenChange={setWireSheetOpen}
         open={wireSheetOpen}
-        onWireModeChange={setWireMode}
         realtimeStatus={shellRealtime.status}
-        wireMode={wireMode}
       />
 
       <CommandPalette
@@ -679,8 +679,10 @@ function DesktopTopBar({
   onMarkAllNotificationsRead,
   onMotionChange,
   onOpenCommandPalette,
+  onWireModeChange,
   realtimeStatus,
   unreadNotificationCount,
+  wireMode,
 }: {
   readonly activeLeague: LeagueSwitcherViewItem | null;
   readonly activeState: ActiveNavigationState;
@@ -691,8 +693,10 @@ function DesktopTopBar({
   readonly onMarkAllNotificationsRead: () => void;
   readonly onMotionChange: (motionOff: boolean) => void;
   readonly onOpenCommandPalette: () => void;
+  readonly onWireModeChange: (mode: ShellWireMode) => void;
   readonly realtimeStatus: ShellRealtimeStatus;
   readonly unreadNotificationCount: number;
+  readonly wireMode: ShellWireMode;
 }) {
   return (
     <header
@@ -723,6 +727,7 @@ function DesktopTopBar({
           Ctrl K
         </kbd>
       </Button>
+      <WireModeToggle mode={wireMode} onModeChange={onWireModeChange} />
       <NotificationsMenu
         notifications={notifications}
         onMarkAllRead={onMarkAllNotificationsRead}
@@ -756,9 +761,11 @@ function MobileTopBar({
   onMotionChange,
   onOpenCommandPalette,
   onOpenSwitcher,
+  onWireModeChange,
   presenceByLeagueId,
   realtimeStatus,
   unreadNotificationCount,
+  wireMode,
 }: {
   readonly activeLeague: LeagueSwitcherViewItem | null;
   readonly activeState: ActiveNavigationState;
@@ -769,9 +776,11 @@ function MobileTopBar({
   readonly onMotionChange: (motionOff: boolean) => void;
   readonly onOpenCommandPalette: () => void;
   readonly onOpenSwitcher: () => void;
+  readonly onWireModeChange: (mode: ShellWireMode) => void;
   readonly presenceByLeagueId: Readonly<Record<string, number>>;
   readonly realtimeStatus: ShellRealtimeStatus;
   readonly unreadNotificationCount: number;
+  readonly wireMode: ShellWireMode;
 }) {
   return (
     <header
@@ -824,6 +833,7 @@ function MobileTopBar({
       >
         <Search aria-hidden="true" />
       </Button>
+      <WireModeToggle mode={wireMode} onModeChange={onWireModeChange} />
       <NotificationsMenu
         notifications={notifications}
         onMarkAllRead={onMarkAllNotificationsRead}
@@ -1053,18 +1063,14 @@ function ShellWire({
   items,
   motion,
   onOpenWire,
-  onWireModeChange,
   realtimeStatus,
-  wireMode,
 }: {
   readonly activeState: ActiveNavigationState;
   readonly collapsed: boolean;
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
   readonly onOpenWire: () => void;
-  readonly onWireModeChange: (mode: ShellWireMode) => void;
   readonly realtimeStatus: ShellRealtimeStatus;
-  readonly wireMode: ShellWireMode;
 }) {
   const status = wireStatusForRealtime(realtimeStatus, items);
   const variant = wireVariantForScope(activeState.scope);
@@ -1083,11 +1089,8 @@ function ShellWire({
         className="hidden md:flex"
         items={items}
         motion={motion}
-        onWireModeChange={onWireModeChange}
-        showModeToggle
         status={status}
         variant={variant}
-        wireMode={wireMode}
       />
       <button
         aria-label="Open The Wire"
@@ -1102,7 +1105,6 @@ function ShellWire({
           motion="off"
           status={status}
           variant={variant}
-          wireMode={wireMode}
         />
       </button>
     </div>
@@ -1112,19 +1114,15 @@ function ShellWire({
 function WireSheet({
   items,
   motion,
-  onWireModeChange,
   onOpenChange,
   open,
   realtimeStatus,
-  wireMode,
 }: {
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
-  readonly onWireModeChange: (mode: ShellWireMode) => void;
   readonly onOpenChange: (open: boolean) => void;
   readonly open: boolean;
   readonly realtimeStatus: ShellRealtimeStatus;
-  readonly wireMode: ShellWireMode;
 }) {
   return (
     <Sheet
@@ -1139,11 +1137,8 @@ function WireSheet({
         expanded
         items={items}
         motion={motion}
-        onWireModeChange={onWireModeChange}
-        showModeToggle
         status={wireStatusForRealtime(realtimeStatus, items)}
         variant="live"
-        wireMode={wireMode}
       />
     </Sheet>
   );
@@ -1155,22 +1150,16 @@ function ShellWireTicker({
   expanded = false,
   items,
   motion,
-  onWireModeChange,
-  showModeToggle = false,
   status,
   variant,
-  wireMode,
 }: {
   readonly "aria-label": string;
   readonly className?: string;
   readonly expanded?: boolean;
   readonly items: readonly ShellWireItem[];
   readonly motion: ShellMotionMode;
-  readonly onWireModeChange?: (mode: ShellWireMode) => void;
-  readonly showModeToggle?: boolean;
   readonly status: ShellWireStatus;
   readonly variant: "digest" | "live";
-  readonly wireMode: ShellWireMode;
 }) {
   const statusLabel = wireStatusLabel(status);
   const dotClass =
@@ -1191,9 +1180,6 @@ function ShellWireTicker({
         data-state={status}
         data-variant={variant}
       >
-        {showModeToggle && onWireModeChange ? (
-          <WireModeToggle mode={wireMode} onModeChange={onWireModeChange} />
-        ) : null}
         {items.length === 0 ? (
           <p className="cell px-3 py-2 font-mono text-xs text-ink-3">
             {wireEmptyMessage(status)}
@@ -1236,13 +1222,6 @@ function ShellWireTicker({
         </span>
         <span className="sr-only">{statusLabel}</span>
       </div>
-      {showModeToggle && onWireModeChange ? (
-        <WireModeToggle
-          className="hidden border-r border-[var(--hair)] px-2 md:flex"
-          mode={wireMode}
-          onModeChange={onWireModeChange}
-        />
-      ) : null}
       {items.length === 0 ? (
         <span className="flex items-center px-3 font-mono text-xs text-ink-3">
           {wireEmptyMessage(status)}
@@ -1330,33 +1309,39 @@ function WireModeToggle({
   readonly mode: ShellWireMode;
   readonly onModeChange: (mode: ShellWireMode) => void;
 }) {
+  const options = [
+    { label: "Global news", shortLabel: "G", value: "general" },
+    { label: "Your players", shortLabel: "P", value: "personal" },
+  ] as const;
+
   return (
     <fieldset
-      className={cn("flex items-center gap-1", className)}
+      aria-label="Wire feed"
+      className={cn(
+        "inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-full border border-[var(--hair)] bg-[var(--panel)] p-0.5 shadow-[var(--bevel)]",
+        className,
+      )}
       data-slot="wire-mode-toggle"
     >
       <legend className="sr-only">Wire feed</legend>
-      {(
-        [
-          ["general", "General"],
-          ["personal", "Personal"],
-        ] as const
-      ).map(([value, label]) => {
+      {options.map(({ label, shortLabel, value }) => {
         const active = mode === value;
         return (
           <button
+            aria-label={label}
             aria-pressed={active}
             className={cn(
-              "inline-flex min-h-11 items-center rounded-full border px-3 font-mono text-xs uppercase tracking-[0.14em] outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]",
+              "inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 font-mono text-xs uppercase tracking-[0.14em] outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:shadow-[var(--focus-ring-shadow)]",
               active
                 ? "border-primary/60 bg-primary/15 text-lilac-hi shadow-[0_0_14px_var(--glow-lilac)]"
                 : "border-[var(--hair)] bg-transparent text-ink-3 hover:border-primary/40 hover:text-foreground",
             )}
             key={value}
             onClick={() => onModeChange(value)}
+            title={label}
             type="button"
           >
-            {label}
+            <span aria-hidden="true">{shortLabel}</span>
           </button>
         );
       })}

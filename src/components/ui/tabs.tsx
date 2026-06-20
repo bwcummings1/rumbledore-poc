@@ -1,81 +1,57 @@
 "use client";
 
-import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import Link from "next/link";
-import type { ComponentProps, KeyboardEvent, ReactNode } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 
 import { cn } from "@/lib/utils";
+import { tabClassName } from "./tab-styles";
 
-interface TabItem {
-  readonly disabled?: boolean;
-  readonly label: ReactNode;
-  readonly panel: ReactNode;
-  readonly value: string;
-}
-
-interface TabsProps
-  extends Omit<ComponentProps<typeof TabsPrimitive.Root>, "children"> {
-  readonly items: readonly TabItem[];
-  readonly listLabel?: string;
-}
-
-interface TabLinkItem {
+interface TabBaseItem {
   readonly active?: boolean;
   readonly badge?: ReactNode;
   readonly disabled?: boolean;
-  readonly href: string;
   readonly icon?: ReactNode;
   readonly label: ReactNode;
+}
+
+interface TabLinkItem extends TabBaseItem {
+  readonly href: string;
   readonly prefetch?: boolean;
+}
+
+interface TabButtonItem extends TabBaseItem {
+  readonly controlsId?: string;
+  readonly id?: string;
+  readonly onSelect: () => void;
+  readonly value: string;
+}
+
+interface TabPanelLinkItem extends Omit<TabBaseItem, "active"> {
+  readonly panel: ReactNode;
+  readonly value: string;
 }
 
 interface TabLinksProps {
   readonly ariaLabel: string;
   readonly className?: string;
-  readonly items: readonly TabLinkItem[];
+  readonly items: readonly (TabButtonItem | TabLinkItem)[];
 }
 
-const tabClassName =
-  "group/tab relative -mb-px inline-flex shrink-0 snap-start items-center justify-center gap-2 rounded-none border-b-2 border-transparent px-4 py-2.5 font-display text-sm font-medium tracking-[0.05em] text-ink-3 outline-none transition-[border-color,color] hover:text-ink-2 focus-visible:shadow-[var(--focus-ring-shadow)] data-[active=true]:border-primary data-[active=true]:text-lilac data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50";
-
-function Tabs({ className, items, listLabel = "Tabs", ...props }: TabsProps) {
-  return (
-    <TabsPrimitive.Root
-      className={cn("grid gap-3", className)}
-      data-slot="tabs"
-      {...props}
-    >
-      <TabsPrimitive.List
-        activateOnFocus={true}
-        aria-label={listLabel}
-        className="relative flex min-w-0 snap-x gap-1 overflow-x-auto border-b border-border motion-reduce:scroll-auto"
-        data-slot="tabs-list"
-      >
-        {items.map((item) => (
-          <TabsPrimitive.Tab
-            className={tabClassName}
-            data-slot="tabs-tab"
-            disabled={item.disabled}
-            key={item.value}
-            value={item.value}
-          >
-            {item.label}
-          </TabsPrimitive.Tab>
-        ))}
-      </TabsPrimitive.List>
-      {items.map((item) => (
-        <TabsPrimitive.Panel
-          className="outline-none focus-visible:shadow-[var(--focus-ring-shadow)]"
-          data-slot="tabs-panel"
-          key={item.value}
-          tabIndex={-1}
-          value={item.value}
-        >
-          {item.panel}
-        </TabsPrimitive.Panel>
-      ))}
-    </TabsPrimitive.Root>
-  );
+interface TabLinksPanelGroupProps {
+  readonly ariaLabel: string;
+  readonly className?: string;
+  readonly defaultValue?: string;
+  readonly header: ReactNode;
+  readonly headerClassName?: string;
+  readonly items: readonly TabPanelLinkItem[];
+  readonly panelClassName?: string;
 }
 
 function TabLinks({ ariaLabel, className, items }: TabLinksProps) {
@@ -91,32 +67,134 @@ function TabLinks({ ariaLabel, className, items }: TabLinksProps) {
         onKeyDown={handleTabLinkKeyDown}
         role="tablist"
       >
-        {items.map((item) => (
-          <Link
-            aria-current={item.active ? "page" : undefined}
-            aria-disabled={item.disabled ? true : undefined}
-            aria-selected={Boolean(item.active)}
-            className={tabClassName}
-            data-active={item.active ? "true" : "false"}
-            data-disabled={item.disabled ? "true" : undefined}
-            data-slot="tab-link"
-            href={item.href}
-            key={item.href}
-            prefetch={item.prefetch}
-            role="tab"
-            tabIndex={item.active ? 0 : -1}
-          >
-            {item.icon ? (
-              <span className="shrink-0 [&_svg:not([class*='size-'])]:size-4">
-                {item.icon}
-              </span>
-            ) : null}
-            <span className="truncate">{item.label}</span>
-            {item.badge ? <span className="shrink-0">{item.badge}</span> : null}
-          </Link>
-        ))}
+        {items.map((item) => {
+          const content = (
+            <>
+              {item.icon ? (
+                <span className="shrink-0 [&_svg:not([class*='size-'])]:size-4">
+                  {item.icon}
+                </span>
+              ) : null}
+              <span className="truncate">{item.label}</span>
+              {item.badge ? (
+                <span className="shrink-0">{item.badge}</span>
+              ) : null}
+            </>
+          );
+
+          if ("href" in item) {
+            return (
+              <Link
+                aria-current={item.active ? "page" : undefined}
+                aria-disabled={item.disabled ? true : undefined}
+                aria-selected={Boolean(item.active)}
+                className={tabClassName}
+                data-active={item.active ? "true" : "false"}
+                data-disabled={item.disabled ? "true" : undefined}
+                data-slot="tab-link"
+                href={item.href}
+                key={item.href}
+                prefetch={item.prefetch}
+                role="tab"
+                tabIndex={item.active ? 0 : -1}
+              >
+                {content}
+              </Link>
+            );
+          }
+
+          return (
+            <button
+              aria-controls={item.controlsId}
+              aria-disabled={item.disabled ? true : undefined}
+              aria-selected={Boolean(item.active)}
+              className={tabClassName}
+              data-active={item.active ? "true" : "false"}
+              data-disabled={item.disabled ? "true" : undefined}
+              data-slot="tab-link"
+              disabled={item.disabled}
+              id={item.id}
+              key={item.value}
+              onClick={item.onSelect}
+              role="tab"
+              tabIndex={item.active ? 0 : -1}
+              type="button"
+            >
+              {content}
+            </button>
+          );
+        })}
       </div>
     </nav>
+  );
+}
+
+function TabLinksPanelGroup({
+  ariaLabel,
+  className,
+  defaultValue,
+  header,
+  headerClassName,
+  items,
+  panelClassName,
+}: TabLinksPanelGroupProps) {
+  const idPrefix = useId();
+  const fallbackValue = useMemo(
+    () =>
+      defaultValue ??
+      items.find((item) => !item.disabled)?.value ??
+      items[0]?.value ??
+      "",
+    [defaultValue, items],
+  );
+  const [activeValue, setActiveValue] = useState(fallbackValue);
+
+  useEffect(() => {
+    setActiveValue(fallbackValue);
+  }, [fallbackValue]);
+
+  const activeItem =
+    items.find((item) => item.value === activeValue && !item.disabled) ??
+    items.find((item) => !item.disabled) ??
+    items[0];
+  const tabItems: readonly TabButtonItem[] = items.map((item) => {
+    const active = item.value === activeItem?.value;
+    return {
+      active,
+      badge: item.badge,
+      controlsId: `${idPrefix}-${item.value}-panel`,
+      disabled: item.disabled,
+      icon: item.icon,
+      id: `${idPrefix}-${item.value}-tab`,
+      label: item.label,
+      onSelect: () => setActiveValue(item.value),
+      value: item.value,
+    };
+  });
+
+  return (
+    <section
+      className={cn("grid gap-6", className)}
+      data-slot="tab-links-panel-group"
+    >
+      <header className={cn("panel grid gap-5 p-4 sm:p-5", headerClassName)}>
+        {header}
+        <TabLinks ariaLabel={ariaLabel} items={tabItems} />
+      </header>
+      {activeItem ? (
+        <section
+          aria-labelledby={`${idPrefix}-${activeItem.value}-tab`}
+          className={cn(
+            "outline-none focus-visible:shadow-[var(--focus-ring-shadow)]",
+            panelClassName,
+          )}
+          id={`${idPrefix}-${activeItem.value}-panel`}
+          role="tabpanel"
+        >
+          {activeItem.panel}
+        </section>
+      ) : null}
+    </section>
   );
 }
 
@@ -159,8 +237,19 @@ function handleTabLinkKeyDown(event: KeyboardEvent<HTMLDivElement>) {
             : currentIndex - 1;
 
   event.preventDefault();
-  tabs[nextIndex]?.focus();
+  const nextTab = tabs[nextIndex];
+  nextTab?.focus();
+
+  if (nextTab instanceof HTMLButtonElement) {
+    nextTab.click();
+  }
 }
 
-export { TabLinks, Tabs };
-export type { TabItem, TabLinkItem, TabLinksProps, TabsProps };
+export { TabLinks, TabLinksPanelGroup };
+export type {
+  TabButtonItem,
+  TabLinkItem,
+  TabLinksPanelGroupProps,
+  TabLinksProps,
+  TabPanelLinkItem,
+};
