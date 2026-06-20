@@ -26,7 +26,7 @@ import { Slider } from "@/components/ui/slider";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import { Stepper } from "@/components/ui/stepper";
-import { Tabs } from "@/components/ui/tabs";
+import { Tabs } from "@/components/ui/tabs-root";
 import { useToast } from "@/components/ui/toast";
 import { Toaster } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";

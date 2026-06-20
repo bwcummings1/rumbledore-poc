@@ -466,7 +466,7 @@ describe("NavigationShellView", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(
+    const { container } = render(
       <NavigationShellView
         activeState={deriveActiveNavigationState("/news")}
         items={items}
@@ -481,7 +481,14 @@ describe("NavigationShellView", () => {
       ).toBeGreaterThan(0);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Personal" }));
+    const desktopTopBar = container.querySelector(
+      '[data-slot="desktop-top-bar"]',
+    );
+    fireEvent.click(
+      within(desktopTopBar as HTMLElement).getByRole("button", {
+        name: "Your players",
+      }),
+    );
 
     await waitFor(() => {
       expect(
@@ -498,7 +505,7 @@ describe("NavigationShellView", () => {
     ).toBe(true);
   });
 
-  it("keeps the wire feed toggle reachable in the tablet ticker", () => {
+  it("keeps the wire feed toggle reachable in the top bar", () => {
     const { container } = render(
       <NavigationShellView
         activeState={deriveActiveNavigationState("/news")}
@@ -508,21 +515,38 @@ describe("NavigationShellView", () => {
       </NavigationShellView>,
     );
 
-    const wireModeToggle = container.querySelector(
+    const desktopTopBar = container.querySelector(
+      '[data-slot="desktop-top-bar"]',
+    );
+    const shellWire = container.querySelector('[data-slot="shell-wire"]');
+    const wireModeToggle = (desktopTopBar as HTMLElement).querySelector(
       '[data-slot="wire-mode-toggle"]',
     );
-    expect(wireModeToggle?.className).toContain("md:flex");
-    expect(wireModeToggle?.className).not.toContain("lg:flex");
+    const searchButton = within(desktopTopBar as HTMLElement).getByRole(
+      "button",
+      { name: "Open command palette" },
+    );
+
+    expect(searchButton.nextElementSibling).toBe(wireModeToggle);
     expect(
-      within(wireModeToggle as HTMLElement).getByRole("button", {
-        name: "General",
-      }),
-    ).toBeDefined();
-    expect(
-      within(wireModeToggle as HTMLElement).getByRole("button", {
-        name: "Personal",
-      }),
-    ).toBeDefined();
+      (shellWire as HTMLElement).querySelector(
+        '[data-slot="wire-mode-toggle"]',
+      ),
+    ).toBeNull();
+    const globalNews = within(wireModeToggle as HTMLElement).getByRole(
+      "button",
+      {
+        name: "Global news",
+      },
+    );
+    const yourPlayers = within(wireModeToggle as HTMLElement).getByRole(
+      "button",
+      {
+        name: "Your players",
+      },
+    );
+    expect(globalNews.textContent).toBe("G");
+    expect(yourPlayers.textContent).toBe("P");
   });
 
   it("persists the reduced-motion shell switch to the root data attribute", () => {

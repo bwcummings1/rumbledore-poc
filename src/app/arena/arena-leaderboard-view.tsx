@@ -37,10 +37,6 @@ import { Ladder } from "@/components/ui/ladder";
 import { Pagination } from "@/components/ui/pagination";
 import { Presence } from "@/components/ui/presence";
 import { Progress } from "@/components/ui/progress";
-import {
-  type SectionTabLinkItem,
-  SectionTabs,
-} from "@/components/ui/section-tabs";
 import { CountUpValue, LivePulseDot } from "@/components/ui/spectacle";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
@@ -50,6 +46,7 @@ import {
   type DataTableColumn,
   SignedValue,
 } from "@/components/ui/table";
+import { type TabLinkItem, TabLinks } from "@/components/ui/tabs";
 import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import {
@@ -1035,23 +1032,22 @@ export function ArenaLeaderboardView({
   const activeArenaSection =
     ARENA_NAVIGATION_SECTIONS.find((section) => section.id === sectionId) ??
     ARENA_NAVIGATION_SECTIONS[0];
-  const sectionNavItems: readonly SectionTabLinkItem[] =
-    ARENA_NAVIGATION_SECTIONS.map((section) => ({
+  const sectionNavItems: readonly TabLinkItem[] = ARENA_NAVIGATION_SECTIONS.map(
+    (section) => ({
       active: section.id === sectionId,
-      description: arenaSectionDeck(section.id),
       href: arenaSectionHref(section.href, {
         leagueId: focusedLeagueId,
         rivalLeagueId,
         seasonId: data.season?.id ?? null,
       }),
       label: section.label,
-      value: section.id,
-    }));
+    }),
+  );
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <ArenaRealtimeRefresh />
-      <header className="panel relative overflow-hidden p-4 sm:p-5">
+      <header className="panel relative grid gap-5 overflow-hidden p-4 sm:p-5">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent"
@@ -1112,15 +1108,8 @@ export function ArenaLeaderboardView({
             </p>
           </div>
         </div>
+        <TabLinks ariaLabel="Arena sections" items={sectionNavItems} />
       </header>
-
-      <SectionTabs
-        ariaLabel="Arena sections"
-        deck="Move between aggregate arena views without stacking every rivalry, movement, and history panel on one landing page."
-        items={sectionNavItems}
-        mode="links"
-        title="Arena Sections"
-      />
 
       <div className="grid gap-6">
         <section

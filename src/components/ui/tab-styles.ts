@@ -1,0 +1,2 @@
+export const tabClassName =
+  "group/tab relative -mb-px inline-flex shrink-0 snap-start items-center justify-center gap-2 rounded-none border-b-2 border-transparent px-4 py-2.5 font-display text-sm font-medium tracking-[0.05em] text-ink-3 outline-none transition-[border-color,color] hover:text-ink-2 focus-visible:shadow-[var(--focus-ring-shadow)] data-[active=true]:border-primary data-[active=true]:text-lilac data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50";

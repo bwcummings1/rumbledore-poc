@@ -161,8 +161,16 @@ export type {
   SortDirection,
 } from "./table";
 export { DataTable, nextSort, SignedValue } from "./table";
-export type { TabItem, TabLinkItem, TabLinksProps, TabsProps } from "./tabs";
-export { TabLinks, Tabs } from "./tabs";
+export type {
+  TabButtonItem,
+  TabLinkItem,
+  TabLinksPanelGroupProps,
+  TabLinksProps,
+  TabPanelLinkItem,
+} from "./tabs";
+export { TabLinks, TabLinksPanelGroup } from "./tabs";
+export type { TabItem, TabsProps } from "./tabs-root";
+export { Tabs } from "./tabs-root";
 export type { TagProps } from "./tag";
 export { Tag } from "./tag";
 export type { TextareaProps } from "./textarea";

@@ -25,10 +25,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { type KVItem, KVList } from "@/components/ui/kv";
 import { LockedFeatureCard } from "@/components/ui/locked-feature-card";
 import {
-  type SectionTabPanelItem,
-  SectionTabs,
-} from "@/components/ui/section-tabs";
-import {
   CastOrbStatus,
   CountUpValue,
   type ScoreboardMatchup,
@@ -37,6 +33,10 @@ import {
 } from "@/components/ui/spectacle";
 import { StatTile } from "@/components/ui/stat-tile";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
+import {
+  TabLinksPanelGroup,
+  type TabPanelLinkItem,
+} from "@/components/ui/tabs";
 import type { EntitlementResolution } from "@/entitlements";
 import type {
   LeagueHomeActivation,
@@ -873,10 +873,8 @@ export function LeagueHomeView({
   castEntitlement?: EntitlementResolution;
   data: LeagueHomeData;
 }) {
-  const sectionItems: readonly SectionTabPanelItem[] = [
+  const sectionItems: readonly TabPanelLinkItem[] = [
     {
-      description:
-        "The league publication lead, cast availability, and the next dispatch entry point.",
       label: "Press",
       panel: (
         <PressTeaserSection castEntitlement={castEntitlement} data={data} />
@@ -884,10 +882,6 @@ export function LeagueHomeView({
       value: "press" satisfies LeagueHomeSectionId,
     },
     {
-      description:
-        data.currentScoringPeriod === null
-          ? "Current matchup cards and the league scoreboard."
-          : `Week ${data.currentScoringPeriod} matchup cards and the league scoreboard.`,
       label: "This Week",
       panel: (
         <div className="grid gap-6">
@@ -898,36 +892,26 @@ export function LeagueHomeView({
       value: "this-week" satisfies LeagueHomeSectionId,
     },
     {
-      description:
-        "The current league table with record, points, and playoff-line context.",
       label: "Standings",
       panel: <StandingsSection data={data} />,
       value: "standings" satisfies LeagueHomeSectionId,
     },
     {
-      description:
-        "Paper bankroll status and the jump point into the league betting desk.",
       label: "Bankroll",
       panel: <BankrollPreviewSection leagueId={data.league.id} />,
       value: "bankroll" satisfies LeagueHomeSectionId,
     },
     {
-      description:
-        "Manager and team cards, including the claimed-team marker when available.",
       label: "Teams",
       panel: <TeamsSection data={data} />,
       value: "teams" satisfies LeagueHomeSectionId,
     },
     {
-      description:
-        "Featured all-time marks from the league record book, with a path to the full archive.",
       label: "Record Book",
       panel: <RecordsSection data={data} />,
       value: "records" satisfies LeagueHomeSectionId,
     },
     {
-      description:
-        "Upcoming board context for the current scoring period and provider feed.",
       label: "Upcoming",
       panel: <UpcomingSection data={data} />,
       value: "upcoming" satisfies LeagueHomeSectionId,
@@ -937,71 +921,72 @@ export function LeagueHomeView({
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <LeagueRealtimeRefresh leagueId={data.league.id} />
-      <header className="panel grid gap-5 p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusPill tone={leagueStatusTone(data.league.status)}>
-                {leagueStatusLabel(data.league.status)}
-              </StatusPill>
-              <span className="eyebrow text-primary">League home</span>
-            </div>
-            <h1 className="heading-auspex mt-3 text-xl leading-tight">
-              {data.league.name}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {data.league.season} ESPN fantasy football ·{" "}
-              {leagueStatusLabel(data.league.status)}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <LeagueNotificationToggle leagueId={data.league.id} />
-            <Link
-              href={`/leagues/${data.league.id}/members`}
-              className={cn(
-                buttonVariants({ className: "w-fit", variant: "secondary" }),
-              )}
-            >
-              <UserPlus data-icon="inline-start" />
-              Invite
-            </Link>
-            <Link
-              href={`/leagues/${data.league.id}/cast`}
-              className={cn(
-                buttonVariants({ className: "w-fit", variant: "outline" }),
-              )}
-            >
-              <Bot data-icon="inline-start" />
-              Cast
-            </Link>
-            <Link
-              href={`/leagues/${data.league.id}/press`}
-              className={cn(buttonVariants({ className: "w-fit" }))}
-            >
-              <Rss data-icon="inline-start" />
-              The Press
-            </Link>
-            <Link
-              href={`/news?leagueId=${data.league.id}`}
-              className={cn(
-                buttonVariants({ className: "w-fit", variant: "outline" }),
-              )}
-            >
-              <Newspaper data-icon="inline-start" />
-              Central news
-            </Link>
-          </div>
-        </div>
-        <HeaderStats data={data} />
-      </header>
-
-      <SectionTabs
+      <TabLinksPanelGroup
         ariaLabel="League home sections"
         defaultValue="press"
-        deck="Open one league-home surface at a time; the shell rail remains available for full league areas."
+        header={
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusPill tone={leagueStatusTone(data.league.status)}>
+                    {leagueStatusLabel(data.league.status)}
+                  </StatusPill>
+                  <span className="eyebrow text-primary">League home</span>
+                </div>
+                <h1 className="heading-auspex mt-3 text-xl leading-tight">
+                  {data.league.name}
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {data.league.season} ESPN fantasy football ·{" "}
+                  {leagueStatusLabel(data.league.status)}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <LeagueNotificationToggle leagueId={data.league.id} />
+                <Link
+                  href={`/leagues/${data.league.id}/members`}
+                  className={cn(
+                    buttonVariants({
+                      className: "w-fit",
+                      variant: "secondary",
+                    }),
+                  )}
+                >
+                  <UserPlus data-icon="inline-start" />
+                  Invite
+                </Link>
+                <Link
+                  href={`/leagues/${data.league.id}/cast`}
+                  className={cn(
+                    buttonVariants({ className: "w-fit", variant: "outline" }),
+                  )}
+                >
+                  <Bot data-icon="inline-start" />
+                  Cast
+                </Link>
+                <Link
+                  href={`/leagues/${data.league.id}/press`}
+                  className={cn(buttonVariants({ className: "w-fit" }))}
+                >
+                  <Rss data-icon="inline-start" />
+                  The Press
+                </Link>
+                <Link
+                  href={`/news?leagueId=${data.league.id}`}
+                  className={cn(
+                    buttonVariants({ className: "w-fit", variant: "outline" }),
+                  )}
+                >
+                  <Newspaper data-icon="inline-start" />
+                  Central news
+                </Link>
+              </div>
+            </div>
+            <HeaderStats data={data} />
+          </>
+        }
         items={sectionItems}
-        mode="panels"
-        title="League Home Sections"
       />
     </main>
   );
