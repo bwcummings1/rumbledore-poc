@@ -5,6 +5,7 @@ import {
   type FantasyProvider,
   type FantasyProviderCapabilities,
   type FantasyProviderSession,
+  type NormalizedAcquisitionSettings,
   type NormalizedFinalStanding,
   type NormalizedLeague,
   type NormalizedMatchup,
@@ -13,6 +14,7 @@ import {
   type NormalizedMember,
   type NormalizedMemberRole,
   type NormalizedPostseasonSettings,
+  type NormalizedRosterSettings,
   type NormalizedSeasonBundle,
   type NormalizedTeam,
   type NormalizedTransaction,
@@ -98,10 +100,26 @@ export const ESPN_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
 };
 
 const numericValue = z.union([z.number(), z.string()]);
+const acquisitionTypeValue = z.union([z.number(), z.string()]);
 
 const leagueSettingsSchema = z
   .object({
+    acquisitionSettings: z
+      .object({
+        acquisitionBudget: numericValue.optional(),
+        acquisitionType: acquisitionTypeValue.optional(),
+        budget: numericValue.optional(),
+        waiverBudget: numericValue.optional(),
+      })
+      .passthrough()
+      .optional(),
     name: z.string().optional(),
+    rosterSettings: z
+      .object({
+        lineupSlotCounts: z.record(z.string(), numericValue).optional(),
+      })
+      .passthrough()
+      .optional(),
     scheduleSettings: z
       .object({
         divisions: z
@@ -196,9 +214,9 @@ const espnMatchupSideSchema = z
 
 const espnMatchupSchema = z
   .object({
-    away: espnMatchupSideSchema,
+    away: espnMatchupSideSchema.optional(),
     home: espnMatchupSideSchema,
-    id: numericValue,
+    id: numericValue.optional(),
     matchupPeriodId: numericValue,
     scoringPeriodId: numericValue.optional(),
     winner: z.string().optional(),
@@ -269,6 +287,9 @@ type EspnLeagueHistoryApiResponse = z.infer<
   typeof leagueHistoryApiResponseSchema
 >;
 type EspnMatchup = z.infer<typeof espnMatchupSchema>;
+type EspnHeadToHeadMatchup = EspnMatchup & {
+  away: NonNullable<EspnMatchup["away"]>;
+};
 type EspnMember = z.infer<typeof espnMemberSchema>;
 type EspnTeam = z.infer<typeof espnTeamSchema>;
 type NormalizedEspnCookies = Pick<EspnSession, "espn_s2" | "swid">;
@@ -506,6 +527,71 @@ function positiveInteger(
   return parsed && parsed > 0 ? parsed : undefined;
 }
 
+function normalizeLineupSlotCounts(
+  counts: Record<string, string | number> | undefined,
+): Record<string, number> | undefined {
+  if (!counts) {
+    return undefined;
+  }
+
+  const normalized = Object.fromEntries(
+    Object.entries(counts)
+      .map(([slotId, value]) => {
+        const count = toInteger(value);
+        return count === undefined || count < 0 ? undefined : [slotId, count];
+      })
+      .filter((entry): entry is [string, number] => Boolean(entry)),
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeRosterSettings(
+  league: EspnLeagueApiResponse,
+): NormalizedRosterSettings | undefined {
+  const lineupSlotCounts = normalizeLineupSlotCounts(
+    league.settings?.rosterSettings?.lineupSlotCounts,
+  );
+  if (!lineupSlotCounts) {
+    return undefined;
+  }
+
+  return {
+    lineupSlotCounts,
+    source: "espn.settings.rosterSettings",
+  };
+}
+
+function normalizeAcquisitionSettings(
+  league: EspnLeagueApiResponse,
+): NormalizedAcquisitionSettings | undefined {
+  const settings = league.settings?.acquisitionSettings;
+  if (!settings) {
+    return undefined;
+  }
+
+  const acquisitionType =
+    settings.acquisitionType === undefined
+      ? undefined
+      : String(settings.acquisitionType).trim();
+  const acquisitionBudget =
+    toInteger(settings.acquisitionBudget) ??
+    toInteger(settings.waiverBudget) ??
+    toInteger(settings.budget);
+  const {
+    acquisitionBudget: _rawAcquisitionBudget,
+    acquisitionType: _rawAcquisitionType,
+    ...rawSettings
+  } = settings;
+
+  return {
+    ...rawSettings,
+    ...(acquisitionType ? { acquisitionType } : {}),
+    ...(acquisitionBudget === undefined ? {} : { acquisitionBudget }),
+    source: "espn.settings.acquisitionSettings",
+  };
+}
+
 function normalizePostseasonSettings(
   league: EspnLeagueApiResponse,
 ): NormalizedPostseasonSettings | undefined {
@@ -518,6 +604,9 @@ function normalizePostseasonSettings(
   const playoffTeamCount = positiveInteger(
     league.settings?.scheduleSettings?.playoffTeamCount,
   );
+  const playoffMatchupPeriodLength = positiveInteger(
+    league.settings?.scheduleSettings?.playoffMatchupPeriodLength,
+  );
   const settings: NormalizedPostseasonSettings = {
     ...(regularSeasonEnd
       ? {
@@ -528,6 +617,7 @@ function normalizePostseasonSettings(
       : {}),
     ...(championshipScoringPeriod ? { championshipScoringPeriod } : {}),
     ...(playoffTeamCount ? { playoffTeamCount } : {}),
+    ...(playoffMatchupPeriodLength ? { playoffMatchupPeriodLength } : {}),
   };
 
   return Object.keys(settings).length > 0 ? settings : undefined;
@@ -540,7 +630,9 @@ function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
     toInteger(league.scoringPeriodId) ??
     toInteger(league.status?.latestScoringPeriod) ??
     0;
+  const acquisitionSettings = normalizeAcquisitionSettings(league);
   const postseason = normalizePostseasonSettings(league);
+  const rosterSettings = normalizeRosterSettings(league);
 
   return {
     provider: ESPN_PROVIDER_ID,
@@ -556,7 +648,9 @@ function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
       0,
     currentScoringPeriod,
     status: normalizeLeagueStatus(league),
+    ...(acquisitionSettings ? { acquisitionSettings } : {}),
     ...(postseason ? { postseason } : {}),
+    ...(rosterSettings ? { rosterSettings } : {}),
   };
 }
 
@@ -695,7 +789,7 @@ function normalizeMatchupWinner(winner?: string): NormalizedMatchupWinner {
 }
 
 function normalizeMatchupStatus(
-  matchup: EspnMatchup,
+  matchup: EspnHeadToHeadMatchup,
   league: EspnLeagueApiResponse,
 ): NormalizedMatchupStatus {
   const winner = normalizeMatchupWinner(matchup.winner);
@@ -724,7 +818,7 @@ function normalizeMatchupStatus(
 }
 
 function matchupPeriodIdsFromSettings(
-  matchup: EspnMatchup,
+  matchup: EspnHeadToHeadMatchup,
   league: EspnLeagueApiResponse,
 ): number[] {
   const matchupPeriod = toInteger(matchup.matchupPeriodId);
@@ -738,7 +832,7 @@ function matchupPeriodIdsFromSettings(
 }
 
 function matchupSideScoringPeriods(
-  side: EspnMatchup["home"] | EspnMatchup["away"],
+  side: EspnHeadToHeadMatchup["home"] | EspnHeadToHeadMatchup["away"],
 ): number[] {
   return sortedUniquePositiveIntegers(
     Object.keys(side.pointsByScoringPeriod ?? {}).map((key) => toInteger(key)),
@@ -746,7 +840,7 @@ function matchupSideScoringPeriods(
 }
 
 function matchupScoringPeriods(
-  matchup: EspnMatchup,
+  matchup: EspnHeadToHeadMatchup,
   league: EspnLeagueApiResponse,
 ): number[] {
   const matchupPeriod = toInteger(matchup.matchupPeriodId);
@@ -760,7 +854,7 @@ function matchupScoringPeriods(
 }
 
 function matchupWindow(
-  matchups: readonly EspnMatchup[],
+  matchups: readonly EspnHeadToHeadMatchup[],
   league: EspnLeagueApiResponse,
 ): { periodStart: number; scoringPeriodSpan: number } {
   const periods = sortedUniquePositiveIntegers(
@@ -775,14 +869,32 @@ function matchupWindow(
   };
 }
 
-function matchupGroupKey(matchup: EspnMatchup): string {
-  const providerId = String(toInteger(matchup.id) ?? matchup.id);
+function matchupProviderId(matchup: EspnHeadToHeadMatchup): string {
+  const explicitId =
+    matchup.id === undefined
+      ? undefined
+      : String(toInteger(matchup.id) ?? matchup.id);
+  if (explicitId) {
+    return explicitId;
+  }
+
   const matchupPeriod = toInteger(matchup.matchupPeriodId) ?? 0;
-  return `${providerId}:${matchupPeriod}`;
+  const homeTeamId = String(
+    toInteger(matchup.home.teamId) ?? matchup.home.teamId,
+  );
+  const awayTeamId = String(
+    toInteger(matchup.away.teamId) ?? matchup.away.teamId,
+  );
+  return `${matchupPeriod}:${homeTeamId}:${awayTeamId}`;
+}
+
+function matchupGroupKey(matchup: EspnHeadToHeadMatchup): string {
+  const matchupPeriod = toInteger(matchup.matchupPeriodId) ?? 0;
+  return `${matchupProviderId(matchup)}:${matchupPeriod}`;
 }
 
 function matchupMatchesScoringPeriod(
-  matchups: readonly EspnMatchup[],
+  matchups: readonly EspnHeadToHeadMatchup[],
   league: EspnLeagueApiResponse,
   scoringPeriod: number,
 ): boolean {
@@ -792,9 +904,9 @@ function matchupMatchesScoringPeriod(
 }
 
 function latestMatchupRow(
-  matchups: readonly EspnMatchup[],
+  matchups: readonly EspnHeadToHeadMatchup[],
   league: EspnLeagueApiResponse,
-): EspnMatchup {
+): EspnHeadToHeadMatchup {
   const sorted = [...matchups].sort((left, right) => {
     const leftPeriods = matchupScoringPeriods(left, league);
     const rightPeriods = matchupScoringPeriods(right, league);
@@ -804,10 +916,12 @@ function latestMatchupRow(
       leftEnd - rightEnd ||
       (toInteger(left.scoringPeriodId) ?? 0) -
         (toInteger(right.scoringPeriodId) ?? 0) ||
-      String(toInteger(left.id) ?? left.id).localeCompare(
-        String(toInteger(right.id) ?? right.id),
+      matchupProviderId(left).localeCompare(
+        matchupProviderId(right),
         undefined,
-        { numeric: true },
+        {
+          numeric: true,
+        },
       )
     );
   });
@@ -819,12 +933,12 @@ function latestMatchupRow(
 }
 
 function normalizeMatchup(
-  matchups: readonly EspnMatchup[],
+  matchups: readonly EspnHeadToHeadMatchup[],
   leagueRef: ProviderLeagueRef,
   league: EspnLeagueApiResponse,
 ): NormalizedMatchup {
   const matchup = latestMatchupRow(matchups, league);
-  const providerId = String(toInteger(matchup.id) ?? matchup.id);
+  const providerId = matchupProviderId(matchup);
   const scoringPeriod = toInteger(matchup.matchupPeriodId) ?? 0;
   const window = matchupWindow(matchups, league);
   const homeTeamId = String(
@@ -859,14 +973,23 @@ function normalizeMatchup(
   };
 }
 
+function isHeadToHeadMatchup(
+  matchup: EspnMatchup,
+): matchup is EspnHeadToHeadMatchup {
+  return matchup.away !== undefined;
+}
+
 function normalizeScheduleMatchups(
   schedule: readonly EspnMatchup[],
   leagueRef: ProviderLeagueRef,
   league: EspnLeagueApiResponse,
   scoringPeriod?: number,
 ): NormalizedMatchup[] {
-  const grouped = new Map<string, EspnMatchup[]>();
+  const grouped = new Map<string, EspnHeadToHeadMatchup[]>();
   for (const matchup of schedule) {
+    if (!isHeadToHeadMatchup(matchup)) {
+      continue;
+    }
     const key = matchupGroupKey(matchup);
     grouped.set(key, [...(grouped.get(key) ?? []), matchup]);
   }

@@ -752,12 +752,25 @@ export const leagueSeasonSettings = pgTable(
     provider: fantasyProvider("provider").notNull(),
     leagueProviderId: text("league_provider_id").notNull(),
     season: integer("season").notNull(),
+    leagueSize: integer("league_size").notNull().default(0),
     matchupPeriodCount: integer("matchup_period_count").notNull().default(1),
     regularSeasonEndScoringPeriod: integer("regular_season_end_scoring_period"),
     playoffStartScoringPeriod: integer("playoff_start_scoring_period"),
     championshipScoringPeriod: integer("championship_scoring_period"),
     playoffTeamCount: integer("playoff_team_count"),
+    playoffMatchupPeriodLength: integer("playoff_matchup_period_length"),
+    scoringType: text("scoring_type").notNull().default("unknown"),
     scoringSettings: jsonb("scoring_settings")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    lineupSlotCounts: jsonb("lineup_slot_counts")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    acquisitionType: text("acquisition_type"),
+    acquisitionBudget: integer("acquisition_budget"),
+    acquisitionSettings: jsonb("acquisition_settings")
       .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
@@ -789,6 +802,18 @@ export const leagueSeasonSettings = pgTable(
     check(
       "league_season_settings_matchup_period_count_positive",
       sql`${table.matchupPeriodCount} >= 1`,
+    ),
+    check(
+      "league_season_settings_league_size_nonnegative",
+      sql`${table.leagueSize} >= 0`,
+    ),
+    check(
+      "league_season_settings_playoff_matchup_period_length_positive",
+      sql`${table.playoffMatchupPeriodLength} is null or ${table.playoffMatchupPeriodLength} >= 1`,
+    ),
+    check(
+      "league_season_settings_acquisition_budget_nonnegative",
+      sql`${table.acquisitionBudget} is null or ${table.acquisitionBudget} >= 0`,
     ),
   ],
 );

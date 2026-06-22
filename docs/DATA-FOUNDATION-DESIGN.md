@@ -77,8 +77,9 @@ Three grains, matching the **dimension-vs-fact** distinction:
 
 2. **Per-season settings + summary** — one row per season: the **settings that applied that year**
    (size, playoff team count, playoff matchup length, roster/lineup slots, scoring, acquisition type) plus season
-   totals. NEW: persist ESPN `mSettings` per season (today only fragments are persisted). This is where the user
-   **confirms the auto-proposed era boundaries, the 2-week-playoff span, and the bye rule**.
+   totals. EXISTS: `league_season_settings` now persists ESPN `mSettings` schedule/roster/scoring/acquisition
+   fields per season. This is where the user **confirms the auto-proposed era boundaries, the 2-week-playoff span,
+   and the bye rule**.
 
 3. **Week-by-week / matchup facts** — the granular cells: each team's weekly score, opponent, result, span.
    EXISTS: weekly stats, matchups, `scoring_period_span`. Editable per cell.
@@ -190,13 +191,20 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | Records engine (`recomputeLeagueStatistics`) + catalog + lens | **EXISTS** — re-point to the pushed snapshot; lens → view-only |
 | Steward/commissioner role + `/curation/*` APIs | **EXISTS** — the permission model |
 | Per-matchup `scoring_period_span`, ESPN `matchup_period_count` | **EXISTS (partial)** — extend with settings-driven auto-detect |
+| Persist per-season `mSettings` | **EXISTS** — `league_season_settings` stores league size, schedule, roster slots, scoring, and acquisition fields |
 | **Data page** (the 3-grain editable tables) | **NEW** |
 | **Edit-scope** (this-year vs all-years) | **NEW** |
 | **Save/Push state machine + pushed snapshot** | **NEW** — the core addition |
 | **Change feed + red/green diff view** | **NEW** (built on the ledger) |
-| **Persist per-season `mSettings`** + era/span auto-proposal | **NEW** |
+| **Era/span auto-proposal from settings** | **NEW** |
 | **Record-book display rule** (one representation/person) | **NEW** |
 | **General fantasy-stats substrate (B)** | **NEW** |
+
+**T1 data-model note:** `league_season_settings` remains the per-season settings table and was extended rather than
+replaced. It now stores `league_size`, `matchup_period_count`, regular/playoff/championship scoring periods,
+`playoff_matchup_period_length`, `playoff_team_count`, `scoring_type`, full `scoring_settings`, `lineup_slot_counts`,
+`acquisition_type`, `acquisition_budget`, full `acquisition_settings`, and existing keeper flags/settings. Rows are
+league-scoped with RLS and keyed by `(league_id, provider, league_provider_id, season)`.
 
 ---
 

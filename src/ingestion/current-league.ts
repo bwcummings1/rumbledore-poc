@@ -533,19 +533,27 @@ function finalStandingHashPayload(standing: NormalizedFinalStanding) {
 
 function leagueSeasonSettingsHashPayload(league: NormalizedLeague) {
   return {
+    acquisitionBudget: league.acquisitionSettings?.acquisitionBudget ?? null,
+    acquisitionSettings: league.acquisitionSettings ?? {},
+    acquisitionType: league.acquisitionSettings?.acquisitionType ?? null,
     championshipScoringPeriod:
       league.postseason?.championshipScoringPeriod ?? null,
     isDynastyLeague: league.keeperSettings?.isDynasty ?? false,
     isKeeperLeague: league.keeperSettings?.isKeeper ?? false,
     keeperSettings: league.keeperSettings ?? {},
     leagueProviderId: league.providerId,
+    leagueSize: league.size,
+    lineupSlotCounts: league.rosterSettings?.lineupSlotCounts ?? {},
     matchupPeriodCount: league.postseason?.matchupPeriodCount ?? 1,
+    playoffMatchupPeriodLength:
+      league.postseason?.playoffMatchupPeriodLength ?? null,
     playoffStartScoringPeriod:
       league.postseason?.playoffStartScoringPeriod ?? null,
     playoffTeamCount: league.postseason?.playoffTeamCount ?? null,
     provider: league.provider,
     regularSeasonEndScoringPeriod:
       league.postseason?.regularSeasonEndScoringPeriod ?? null,
+    scoringType: league.scoringType,
     scoringSettings: league.scoringSettings ?? {},
     season: league.season,
   };
@@ -557,16 +565,23 @@ function leagueSeasonSettingsRowHashPayload(
   row: LeagueSeasonSettingsUpsertRow,
 ) {
   return {
+    acquisitionBudget: row.acquisitionBudget ?? null,
+    acquisitionSettings: row.acquisitionSettings ?? {},
+    acquisitionType: row.acquisitionType ?? null,
     championshipScoringPeriod: row.championshipScoringPeriod ?? null,
     isDynastyLeague: row.isDynastyLeague ?? false,
     isKeeperLeague: row.isKeeperLeague ?? false,
     keeperSettings: row.keeperSettings ?? {},
     leagueProviderId: row.leagueProviderId,
+    leagueSize: row.leagueSize ?? 0,
+    lineupSlotCounts: row.lineupSlotCounts ?? {},
     matchupPeriodCount: row.matchupPeriodCount ?? 1,
+    playoffMatchupPeriodLength: row.playoffMatchupPeriodLength ?? null,
     playoffStartScoringPeriod: row.playoffStartScoringPeriod ?? null,
     playoffTeamCount: row.playoffTeamCount ?? null,
     provider: row.provider,
     regularSeasonEndScoringPeriod: row.regularSeasonEndScoringPeriod ?? null,
+    scoringType: row.scoringType ?? "unknown",
     scoringSettings: row.scoringSettings ?? {},
     season: row.season,
   };
@@ -579,14 +594,22 @@ async function preserveStickySeasonSettingEdits(
 ): Promise<LeagueSeasonSettingsUpsertRow> {
   const [existing] = await tx
     .select({
+      acquisitionBudget: leagueSeasonSettings.acquisitionBudget,
+      acquisitionSettings: leagueSeasonSettings.acquisitionSettings,
+      acquisitionType: leagueSeasonSettings.acquisitionType,
       championshipScoringPeriod: leagueSeasonSettings.championshipScoringPeriod,
       id: leagueSeasonSettings.id,
       keeperSettings: leagueSeasonSettings.keeperSettings,
+      leagueSize: leagueSeasonSettings.leagueSize,
+      lineupSlotCounts: leagueSeasonSettings.lineupSlotCounts,
       matchupPeriodCount: leagueSeasonSettings.matchupPeriodCount,
+      playoffMatchupPeriodLength:
+        leagueSeasonSettings.playoffMatchupPeriodLength,
       playoffStartScoringPeriod: leagueSeasonSettings.playoffStartScoringPeriod,
       playoffTeamCount: leagueSeasonSettings.playoffTeamCount,
       regularSeasonEndScoringPeriod:
         leagueSeasonSettings.regularSeasonEndScoringPeriod,
+      scoringType: leagueSeasonSettings.scoringType,
       scoringSettings: leagueSeasonSettings.scoringSettings,
       season: leagueSeasonSettings.season,
     })
@@ -646,6 +669,9 @@ async function preserveStickySeasonSettingEdits(
     }
     apply();
   };
+  preserve("league_size", row.leagueSize ?? 0, existing.leagueSize, () => {
+    next.leagueSize = existing.leagueSize;
+  });
   preserve(
     "matchup_period_count",
     row.matchupPeriodCount ?? 1,
@@ -661,6 +687,14 @@ async function preserveStickySeasonSettingEdits(
     () => {
       next.regularSeasonEndScoringPeriod =
         existing.regularSeasonEndScoringPeriod;
+    },
+  );
+  preserve(
+    "playoff_matchup_period_length",
+    row.playoffMatchupPeriodLength ?? null,
+    existing.playoffMatchupPeriodLength,
+    () => {
+      next.playoffMatchupPeriodLength = existing.playoffMatchupPeriodLength;
     },
   );
   preserve(
@@ -688,11 +722,51 @@ async function preserveStickySeasonSettingEdits(
     },
   );
   preserve(
+    "scoring_type",
+    row.scoringType ?? "unknown",
+    existing.scoringType,
+    () => {
+      next.scoringType = existing.scoringType;
+    },
+  );
+  preserve(
     "scoring_settings",
     row.scoringSettings ?? {},
     existing.scoringSettings,
     () => {
       next.scoringSettings = existing.scoringSettings;
+    },
+  );
+  preserve(
+    "lineup_slot_counts",
+    row.lineupSlotCounts ?? {},
+    existing.lineupSlotCounts,
+    () => {
+      next.lineupSlotCounts = existing.lineupSlotCounts;
+    },
+  );
+  preserve(
+    "acquisition_type",
+    row.acquisitionType ?? null,
+    existing.acquisitionType,
+    () => {
+      next.acquisitionType = existing.acquisitionType;
+    },
+  );
+  preserve(
+    "acquisition_budget",
+    row.acquisitionBudget ?? null,
+    existing.acquisitionBudget,
+    () => {
+      next.acquisitionBudget = existing.acquisitionBudget;
+    },
+  );
+  preserve(
+    "acquisition_settings",
+    row.acquisitionSettings ?? {},
+    existing.acquisitionSettings,
+    () => {
+      next.acquisitionSettings = existing.acquisitionSettings;
     },
   );
   preserve(
@@ -1305,6 +1379,9 @@ async function upsertLeagueSeasonSettings(
   }
 
   let row: LeagueSeasonSettingsUpsertRow = {
+    acquisitionBudget: league.acquisitionSettings?.acquisitionBudget ?? null,
+    acquisitionSettings: league.acquisitionSettings ?? {},
+    acquisitionType: league.acquisitionSettings?.acquisitionType ?? null,
     championshipScoringPeriod:
       league.postseason?.championshipScoringPeriod ?? null,
     contentHash: stableContentHash(leagueSeasonSettingsHashPayload(league)),
@@ -1313,13 +1390,18 @@ async function upsertLeagueSeasonSettings(
     keeperSettings: league.keeperSettings ?? {},
     leagueId,
     leagueProviderId: league.providerId,
+    leagueSize: league.size,
+    lineupSlotCounts: league.rosterSettings?.lineupSlotCounts ?? {},
     matchupPeriodCount: league.postseason?.matchupPeriodCount ?? 1,
+    playoffMatchupPeriodLength:
+      league.postseason?.playoffMatchupPeriodLength ?? null,
     playoffStartScoringPeriod:
       league.postseason?.playoffStartScoringPeriod ?? null,
     playoffTeamCount: league.postseason?.playoffTeamCount ?? null,
     provider: league.provider,
     regularSeasonEndScoringPeriod:
       league.postseason?.regularSeasonEndScoringPeriod ?? null,
+    scoringType: league.scoringType,
     scoringSettings: league.scoringSettings ?? {},
     season: league.season,
   };
@@ -1336,15 +1418,22 @@ async function upsertLeagueSeasonSettings(
         leagueSeasonSettings.season,
       ],
       set: {
+        acquisitionBudget: sql`excluded.acquisition_budget`,
+        acquisitionSettings: sql`excluded.acquisition_settings`,
+        acquisitionType: sql`excluded.acquisition_type`,
         championshipScoringPeriod: sql`excluded.championship_scoring_period`,
         contentHash: sql`excluded.content_hash`,
         isDynastyLeague: sql`excluded.is_dynasty_league`,
         isKeeperLeague: sql`excluded.is_keeper_league`,
         keeperSettings: sql`excluded.keeper_settings`,
+        leagueSize: sql`excluded.league_size`,
+        lineupSlotCounts: sql`excluded.lineup_slot_counts`,
         matchupPeriodCount: sql`excluded.matchup_period_count`,
+        playoffMatchupPeriodLength: sql`excluded.playoff_matchup_period_length`,
         playoffStartScoringPeriod: sql`excluded.playoff_start_scoring_period`,
         playoffTeamCount: sql`excluded.playoff_team_count`,
         regularSeasonEndScoringPeriod: sql`excluded.regular_season_end_scoring_period`,
+        scoringType: sql`excluded.scoring_type`,
         scoringSettings: sql`excluded.scoring_settings`,
         updatedAt: sql`now()`,
       },

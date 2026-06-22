@@ -453,7 +453,33 @@ describe("stableContentHash", () => {
 describe("syncCurrentLeague", () => {
   it("upserts the ESPN 95050 fixture and no-ops on a second identical sync", async () => {
     const providerLeagueId = `${marker}-95050-idempotent`;
-    const provider = providerFor(leagueFixtureFor(providerLeagueId));
+    const fixture = leagueFixtureFor(providerLeagueId);
+    Object.assign(fixture.settings.scheduleSettings, {
+      playoffMatchupPeriodLength: 1,
+    });
+    Object.assign(fixture.settings as Record<string, unknown>, {
+      acquisitionSettings: {
+        acquisitionBudget: 100,
+        acquisitionType: "FREE_AGENT_BUDGET",
+      },
+      rosterSettings: {
+        lineupSlotCounts: {
+          "0": 1,
+          "2": 2,
+          "4": 2,
+          "6": 1,
+          "16": 1,
+          "17": 1,
+          "20": 7,
+          "23": 1,
+        },
+      },
+      scoringSettings: {
+        scoringItems: [{ points: 0.1, statId: 3 }],
+        scoringType: "H2H_POINTS",
+      },
+    });
+    const provider = providerFor(fixture);
 
     const first = await syncCurrentLeague({
       db: handle.db,
@@ -488,6 +514,36 @@ describe("syncCurrentLeague", () => {
     expect(firstRows.members).toHaveLength(16);
     expect(firstRows.matchups).toHaveLength(84);
     expect(firstRows.rosterEntries).toHaveLength(0);
+    expect(firstRows.settings).toHaveLength(1);
+    expect(firstRows.settings[0]).toMatchObject({
+      acquisitionBudget: 100,
+      acquisitionSettings: {
+        acquisitionBudget: 100,
+        acquisitionType: "FREE_AGENT_BUDGET",
+      },
+      acquisitionType: "FREE_AGENT_BUDGET",
+      lineupSlotCounts: {
+        "0": 1,
+        "2": 2,
+        "4": 2,
+        "6": 1,
+        "16": 1,
+        "17": 1,
+        "20": 7,
+        "23": 1,
+      },
+      leagueSize: 12,
+      matchupPeriodCount: 14,
+      playoffMatchupPeriodLength: 1,
+      playoffTeamCount: 6,
+      regularSeasonEndScoringPeriod: 14,
+      scoringSettings: {
+        scoringItems: [{ points: 0.1, statId: 3 }],
+        scoringType: "H2H_POINTS",
+      },
+      scoringType: "H2H_POINTS",
+      season: 2026,
+    });
     expect(
       Object.fromEntries(
         firstRows.coverage.map((row) => [
@@ -546,6 +602,8 @@ describe("syncCurrentLeague", () => {
     });
     expect(firstRows.teams[0].contentHash).toMatch(/^[a-f0-9]{64}$/);
     const firstTeamUpdatedAt = firstRows.teams[0].updatedAt.toISOString();
+    const firstSettingsUpdatedAt =
+      firstRows.settings[0].updatedAt.toISOString();
 
     const second = await syncCurrentLeague({
       db: handle.db,
@@ -580,6 +638,9 @@ describe("syncCurrentLeague", () => {
     expect(secondRows.matchups).toHaveLength(84);
     expect(secondRows.teams[0].updatedAt.toISOString()).toBe(
       firstTeamUpdatedAt,
+    );
+    expect(secondRows.settings[0].updatedAt.toISOString()).toBe(
+      firstSettingsUpdatedAt,
     );
   });
 

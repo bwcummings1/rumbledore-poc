@@ -351,6 +351,20 @@
       "when": 1781534000000,
       "tag": "0049_commissioner_handoff_member_target",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781537600000,
+      "tag": "0050_league_season_settings_full_payload",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1781541200000,
+      "tag": "0051_league_season_settings_league_size",
+      "breakpoints": true
     }
   ]
 }

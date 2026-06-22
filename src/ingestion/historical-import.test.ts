@@ -85,7 +85,42 @@ function bundleFor(
   return {
     league: {
       ...ref,
+      acquisitionSettings: {
+        acquisitionBudget: 100,
+        acquisitionType:
+          season <= 2012 ? "WAIVERS_TRADITIONAL" : "FREE_AGENT_BUDGET",
+        source: "fixture",
+      },
       currentScoringPeriod: 14,
+      rosterSettings: {
+        lineupSlotCounts:
+          season <= 2012
+            ? {
+                "0": 1,
+                "2": 2,
+                "4": 2,
+                "6": 1,
+                "7": 1,
+                "16": 1,
+                "17": 1,
+                "20": 6,
+              }
+            : {
+                "0": 1,
+                "2": 2,
+                "4": 2,
+                "6": 1,
+                "16": 1,
+                "17": 1,
+                "20": 7,
+                "23": 1,
+              },
+        source: "fixture",
+      },
+      scoringSettings: {
+        scoringItems: [{ points: 0.1, statId: 3 }],
+        scoringType: "H2H_POINTS",
+      },
       scoringType: "H2H_POINTS",
       season,
       size: ref.size ?? 2,
@@ -93,6 +128,7 @@ function bundleFor(
       postseason: {
         championshipScoringPeriod: 3,
         matchupPeriodCount: 1,
+        playoffMatchupPeriodLength: season <= 2012 ? 2 : 1,
         playoffStartScoringPeriod: 2,
         playoffTeamCount: 2,
         regularSeasonEndScoringPeriod: 1,
@@ -380,11 +416,34 @@ describe("importLeagueHistory", () => {
     expect(rows.finalStandings).toHaveLength(4);
     expect(rows.seasonSettings).toHaveLength(2);
     expect(rows.seasonSettings[0]).toMatchObject({
+      acquisitionBudget: 100,
+      acquisitionSettings: {
+        acquisitionBudget: 100,
+        acquisitionType: "FREE_AGENT_BUDGET",
+      },
+      acquisitionType: "FREE_AGENT_BUDGET",
       championshipScoringPeriod: 3,
+      lineupSlotCounts: {
+        "0": 1,
+        "2": 2,
+        "4": 2,
+        "6": 1,
+        "16": 1,
+        "17": 1,
+        "20": 7,
+        "23": 1,
+      },
+      leagueSize: 2,
       matchupPeriodCount: 1,
+      playoffMatchupPeriodLength: 1,
       playoffStartScoringPeriod: 2,
       playoffTeamCount: 2,
       regularSeasonEndScoringPeriod: 1,
+      scoringSettings: {
+        scoringItems: [{ points: 0.1, statId: 3 }],
+        scoringType: "H2H_POINTS",
+      },
+      scoringType: "H2H_POINTS",
       season: 2024,
     });
     expect(rows.transactions).toHaveLength(2);
@@ -631,6 +690,57 @@ describe("importLeagueHistory", () => {
       nextSeason: null,
       seasonsCompleted: 10,
       seasonsTotal: 10,
+    });
+  });
+
+  it("imports a 16-season explicit history request in one run", async () => {
+    const ref = fixtureRef("sixteen-seasons");
+    const provider = providerFor();
+    const requestedSeasons = Array.from(
+      { length: 16 },
+      (_, index) => 2025 - index,
+    );
+
+    const result = await importLeagueHistory({
+      db: handle.db,
+      provider: provider.provider,
+      ref,
+      seasons: requestedSeasons,
+      session: fixtureSession,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(provider.calls).toEqual(requestedSeasons);
+    expect(result.value.seasons).toEqual({
+      requested: requestedSeasons,
+      imported: requestedSeasons,
+      skipped: [],
+    });
+    expect(result.value.checkpoint).toMatchObject({
+      status: "completed",
+      lastCompletedSeason: 2010,
+      nextSeason: null,
+      seasonsCompleted: 16,
+      seasonsTotal: 16,
+    });
+
+    const rows = await selectHistoricalRows(result.value.league.id);
+    expect(rows.seasonSettings).toHaveLength(16);
+    expect(rows.seasonSettings.map((row) => row.season)).toEqual(
+      [...requestedSeasons].reverse(),
+    );
+    expect(
+      rows.seasonSettings.find((row) => row.season === 2011),
+    ).toMatchObject({
+      acquisitionType: "WAIVERS_TRADITIONAL",
+      lineupSlotCounts: {
+        "0": 1,
+        "7": 1,
+        "20": 6,
+      },
+      playoffMatchupPeriodLength: 2,
+      scoringType: "H2H_POINTS",
     });
   });
 

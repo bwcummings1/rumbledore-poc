@@ -78,6 +78,10 @@ A task is not "done" until all seven hold:
 - *Tests:* settings parsed + persisted per season; cap handles 16 seasons; provider normalization of each setting group.
 - *Verify:* re-import 95050 clean → summary shows settings rows for all 16 seasons (the era signatures we pulled).
 - *Docs:* design-doc EXISTS/NEW map + data-model note; PROGRESS; handoff T1.
+- *T1 completion note (2026-06-22):* ✅ Completed on `ws/t1-settings` by NavyHill. The table already existed, so T1
+  extended `league_season_settings` instead of creating a parallel table. The explicit season-list clamp now allows
+  16 seasons in one historical import while keeping a 25-season hard bound. Verification artifact:
+  `.orchestration/import-summary.md`.
 
 **T2 — Names ingestion fix + clean-DB isolation** (depends: T1)
 - *Goal:* persons get **real** names (ESPN returns `displayName`/`firstName`/`lastName` for current *and* history);
@@ -150,7 +154,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 ## E. Status tracker
 | Task | Agent | Status |
 |---|---|---|
-| T1 settings persistence + cap | — | ☐ pending |
+| T1 settings persistence + cap | NavyHill | ✅ complete |
 | T2 names + clean-DB | — | ☐ |
 | T3 byes + span | — | ☐ |
 | T4 curated-state model | — | ☐ |

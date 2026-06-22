@@ -1,7 +1,27 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-18 — **Increment 1 (specs 36–41) DELIVERED + HARDENED on branch `review/increment-1`** (data curation foundation, record-book lenses, commissioner/edit/public-ledger, News+Arena environments, news pipeline + general↔personal wire toggle, ambient agent + WizKit tier). Built via the orchestrated 3-track model (`ORCHESTRATION.md`) across 3 Codex accounts, then hardened per `specs/42` after a 4-dimension audit: **3 critical correctness bugs fixed** (multi-week span math, hollow sliced records, ESPN span ingestion) + **CI-honesty gaps closed** (the fixture oracle now RUNS in CI — vendored, scrubbed — and the RLS canary covers the 3 new tables; the shell test harness repaired). Final integrated gates green: **typecheck/lint/build, test 953✓/5 skipped, ubs 0-critical**; oracle + `navigation-shell` tests verified running, not skipping. (Deferred MED/LOW polish: `specs/42` H1-12..H1-17.) Then **owner UI/UX review fixes applied** per `specs/43` (6 critiques: page titles → uppercase Michroma at card scale; default route → `/news` for signed-in users; notification badge un-clipped; league-home + arena rebuilt as in-page top-card section-nav via a shared `section-tabs` component). Gates green; `docs/screenshots/*` refreshed. **Posture changed (owner): everything now commits/pushes/merges to `main`** — `review/increment-1` was merged to `main`. Then `specs/44` round-2 fixes applied on `main` (#7 league-home + arena section nav now reuse the league-feed `TabLinks`-at-bottom-of-top-card pattern, `SectionTabs` removed; #8 wire toggle moved to the top bar right of search as a compact icon toggle); gates green (test 958✓/5 skipped), screenshots refreshed, **screenshot-verified by orchestrator**. **`main` (head `b64af8f`) is the live, up-to-date branch.**
+Keep it current. Last updated: 2026-06-22 — **Data Foundation T1 complete on `ws/t1-settings`**: per-season
+`league_season_settings` now persists ESPN `mSettings` schedule, roster-slot, scoring, acquisition, and league-size
+fields for current and historical imports; explicit historical season requests can import 16 seasons in one run
+(hard-bounded at 25); `.orchestration/import-summary.md` verifies the real 95050 league has settings rows for all
+16 seasons with the expected size, playoff-length, regular-week, and OP/FLEX era signatures. Prior state: **Increment
+1 (specs 36–41) DELIVERED + HARDENED on branch `review/increment-1`** (data curation foundation, record-book lenses,
+commissioner/edit/public-ledger, News+Arena environments, news pipeline + general↔personal wire toggle, ambient
+agent + WizKit tier). Built via the orchestrated 3-track model (`ORCHESTRATION.md`) across 3 Codex accounts, then
+hardened per `specs/42` after a 4-dimension audit: **3 critical correctness bugs fixed** (multi-week span math,
+hollow sliced records, ESPN span ingestion) + **CI-honesty gaps closed** (the fixture oracle now RUNS in CI — vendored,
+scrubbed — and the RLS canary covers the 3 new tables; the shell test harness repaired). Final integrated gates green:
+**typecheck/lint/build, test 953✓/5 skipped, ubs 0-critical**; oracle + `navigation-shell` tests verified running,
+not skipping. (Deferred MED/LOW polish: `specs/42` H1-12..H1-17.) Then **owner UI/UX review fixes applied** per
+`specs/43` (6 critiques: page titles → uppercase Michroma at card scale; default route → `/news` for signed-in users;
+notification badge un-clipped; league-home + arena rebuilt as in-page top-card section-nav via a shared
+`section-tabs` component). Gates green; `docs/screenshots/*` refreshed. **Posture changed (owner): everything now
+commits/pushes/merges to `main`** — `review/increment-1` was merged to `main`. Then `specs/44` round-2 fixes applied
+on `main` (#7 league-home + arena section nav now reuse the league-feed `TabLinks`-at-bottom-of-top-card pattern,
+`SectionTabs` removed; #8 wire toggle moved to the top bar right of search as a compact icon toggle); gates green
+(test 958✓/5 skipped), screenshots refreshed, **screenshot-verified by orchestrator**. **`main` (head `b64af8f`) is
+the live, up-to-date branch.**
 
 ---
 
@@ -67,6 +87,11 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 
 ## 7. Current state & next steps (build + Scope hardening complete 2026-06-16)
 All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are built on `rebuild/foundation`, with gates kept as commit backpressure (typecheck/lint/test/build/ubs; DB-backed tests against local Postgres). See §8 for the build log and `docs/HISTORY.md` for the trajectory + independent review.
+- **Data Foundation T1 delivered (2026-06-22):** `league_season_settings` now captures `league_size`,
+  matchup/regular/playoff/championship schedule fields, `playoff_matchup_period_length`, playoff teams, scoring type
+  + full scoring JSON, lineup slot counts, acquisition type/budget + full acquisition JSON, and keeper fields. ESPN
+  current sync and `leagueHistory` both persist it idempotently; explicit 16-season history requests are no longer
+  clamped to 10. Real verification for league 95050 is in `.orchestration/import-summary.md`.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
@@ -74,6 +99,10 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
 - **Next:** wire real service keys, complete the remaining hardening Icebox item(s), and do a human UX pass on the front-end.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-22: Data Foundation T1 landed — per-season ESPN settings now persist to `league_season_settings` for
+  current and historical imports, explicit 16-season history requests import in one run, and live 95050 verification
+  confirms 16 settings rows plus the expected 2013 size, 2011–2012 playoff-length, 2021 regular-week, and OP/FLEX
+  signatures.
 - 2026-06-16: Audit-hardening docs reconciled — `docs/PROGRESS.md` and `docs/HISTORY.md` now mark fixed review bugs resolved and reflect completed Scope hardening.
 - 2026-06-16: Spend-guard fallback coverage landed — rolling-24h TTL expiry is now covered for memory and Redis counters, and guarded Anthropic, Tavily, Voyage, Odds, SportsDataIO, and central-news unavailable paths fall back to deterministic mocks under tests.
 - 2026-06-16: Records catalog coverage landed — `records-catalog.ts` now has a direct seeded multi-season fixture test suite covering standings reconciliation, deterministic tied record ordering, H2H mirror ledgers, cross-season streaks, championship summaries, keeper milestones, and co-owner identity separation.
