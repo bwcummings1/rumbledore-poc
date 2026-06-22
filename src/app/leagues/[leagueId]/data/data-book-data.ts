@@ -4,6 +4,10 @@ import { withLeagueContext } from "@/db/rls";
 import {
   fantasyMatchups,
   identityMappings,
+  leagueCurationCheckpoints,
+  leagueCurationSeasonPushes,
+  leagueCurationSeasonStates,
+  leagueDataEdits,
   leagueSeasonSettings,
   leagues,
   persons,
@@ -45,6 +49,24 @@ type MatchupRow = Pick<
   | "scoringPeriodSpan"
   | "season"
   | "status"
+>;
+type CurationCheckpointRow = typeof leagueCurationCheckpoints.$inferSelect;
+type CurationSeasonPushRow = Pick<
+  typeof leagueCurationSeasonPushes.$inferSelect,
+  | "checkpointId"
+  | "createdAt"
+  | "id"
+  | "latestEditId"
+  | "markerEditId"
+  | "season"
+>;
+type CurationSeasonStateRow = Pick<
+  typeof leagueCurationSeasonStates.$inferSelect,
+  "finalizedAt" | "finalizedByUserId" | "mode" | "reason" | "season"
+>;
+type LeagueDataEditMarkerRow = Pick<
+  typeof leagueDataEdits.$inferSelect,
+  "afterValue" | "createdAt" | "field" | "id" | "targetId" | "targetKind"
 >;
 
 export type DataBookGrain = "people" | "settings" | "weeks";
@@ -119,7 +141,48 @@ export interface DataBookSeason {
   weeks: DataBookWeekRow[];
 }
 
+export type DataBookCurationMode = "finalized" | "live";
+
+export interface DataBookCheckpointOption {
+  createdAt: string;
+  id: string;
+  label: string | null;
+  latestEditId: string | null;
+  markerEditId: string | null;
+  note: string | null;
+  seasons: number[];
+}
+
+export interface DataBookSeasonCurationState {
+  activeCheckpointId: string | null;
+  activeCheckpointLabel: string | null;
+  autoSuggestFinalize: boolean;
+  finalizedAt: string | null;
+  finalizedByUserId: string | null;
+  hasSavedUnpushed: boolean;
+  hasUnsavedDraft: boolean;
+  isPushed: boolean;
+  latestPushAt: string | null;
+  latestPushCheckpointId: string | null;
+  latestPushId: string | null;
+  mode: DataBookCurationMode;
+  providerComplete: boolean;
+  reason: string | null;
+  season: number;
+}
+
+export interface DataBookCurationState {
+  activeCheckpoint: DataBookCheckpointOption | null;
+  checkpoints: DataBookCheckpointOption[];
+  hasSavedUnpushed: boolean;
+  hasUnsavedDraft: boolean;
+  pushedSeasons: number;
+  seasons: DataBookSeasonCurationState[];
+  totalSeasons: number;
+}
+
 export interface DataBookPageData {
+  curation: DataBookCurationState;
   league: DataBookLeagueSummary;
   seasons: DataBookSeason[];
 }
@@ -152,6 +215,151 @@ function formatMaybeNumber(value: number | null | undefined): string {
 
 function formatBoolean(value: boolean): string {
   return value ? "Yes" : "No";
+}
+
+function iso(value: Date): string {
+  return value.toISOString();
+}
+
+function checkpointOption(
+  row: CurationCheckpointRow,
+): DataBookCheckpointOption {
+  return {
+    createdAt: iso(row.createdAt),
+    id: row.id,
+    label: row.label,
+    latestEditId: row.latestEditId,
+    markerEditId: row.markerEditId,
+    note: row.note,
+    seasons: row.seasons,
+  };
+}
+
+function afterValueRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function activeCheckpointIdFromMarker(
+  row: LeagueDataEditMarkerRow,
+): string | null {
+  if (
+    row.targetKind === "curation_checkpoint" &&
+    row.field === "checkpoint_restore"
+  ) {
+    const checkpointId = afterValueRecord(row.afterValue).checkpointId;
+    return typeof checkpointId === "string" ? checkpointId : null;
+  }
+  if (
+    row.targetKind === "curation_checkpoint" &&
+    row.field === "checkpoint_save"
+  ) {
+    return row.targetId;
+  }
+  return null;
+}
+
+function isCheckpointMarker(row: LeagueDataEditMarkerRow): boolean {
+  return activeCheckpointIdFromMarker(row) !== null;
+}
+
+function isDraftMutationMarker(row: LeagueDataEditMarkerRow): boolean {
+  return (
+    row.targetKind !== "curation_checkpoint" &&
+    row.targetKind !== "curation_push"
+  );
+}
+
+function lastIndexWhere<T>(
+  values: readonly T[],
+  predicate: (value: T) => boolean,
+): number {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (predicate(values[index] as T)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function buildCurationState(input: {
+  checkpointRows: readonly CurationCheckpointRow[];
+  editRows: readonly LeagueDataEditMarkerRow[];
+  league: LeagueRow;
+  pushRows: readonly CurationSeasonPushRow[];
+  seasonStateRows: readonly CurationSeasonStateRow[];
+  seasons: readonly DataBookSeason[];
+}): DataBookCurationState {
+  const checkpoints = input.checkpointRows.map(checkpointOption);
+  const checkpointById = new Map(checkpoints.map((row) => [row.id, row]));
+  const activeMarkerIndex = lastIndexWhere(input.editRows, isCheckpointMarker);
+  const activeMarker =
+    activeMarkerIndex >= 0 ? input.editRows[activeMarkerIndex] : null;
+  const activeCheckpointId = activeMarker
+    ? activeCheckpointIdFromMarker(activeMarker)
+    : null;
+  const activeCheckpoint = activeCheckpointId
+    ? (checkpointById.get(activeCheckpointId) ?? null)
+    : null;
+  const latestDraftMutationIndex = lastIndexWhere(
+    input.editRows,
+    isDraftMutationMarker,
+  );
+  const hasUnsavedDraft = latestDraftMutationIndex > activeMarkerIndex;
+  const latestPushBySeason = new Map<number, CurationSeasonPushRow>();
+  for (const row of input.pushRows) {
+    if (!latestPushBySeason.has(row.season)) {
+      latestPushBySeason.set(row.season, row);
+    }
+  }
+  const stateBySeason = new Map(
+    input.seasonStateRows.map((row) => [row.season, row]),
+  );
+  const curationSeasons = input.seasons.map((season) => {
+    const state = stateBySeason.get(season.season);
+    const mode = state?.mode ?? "live";
+    const latestPush = latestPushBySeason.get(season.season) ?? null;
+    const providerComplete =
+      season.season < input.league.season ||
+      (season.season === input.league.season &&
+        input.league.status === "complete");
+    const activeCheckpointCoversSeason =
+      activeCheckpoint?.seasons.includes(season.season) ?? false;
+    const pushedFromActiveCheckpoint =
+      activeCheckpoint !== null &&
+      latestPush?.checkpointId === activeCheckpoint.id;
+    const hasSavedUnpushed =
+      activeCheckpointCoversSeason && !pushedFromActiveCheckpoint;
+
+    return {
+      activeCheckpointId: activeCheckpoint?.id ?? null,
+      activeCheckpointLabel: activeCheckpoint?.label ?? null,
+      autoSuggestFinalize: providerComplete && mode === "live",
+      finalizedAt: state?.finalizedAt ? iso(state.finalizedAt) : null,
+      finalizedByUserId: state?.finalizedByUserId ?? null,
+      hasSavedUnpushed,
+      hasUnsavedDraft,
+      isPushed: latestPush !== null,
+      latestPushAt: latestPush ? iso(latestPush.createdAt) : null,
+      latestPushCheckpointId: latestPush?.checkpointId ?? null,
+      latestPushId: latestPush?.id ?? null,
+      mode,
+      providerComplete,
+      reason: state?.reason ?? null,
+      season: season.season,
+    };
+  });
+
+  return {
+    activeCheckpoint,
+    checkpoints,
+    hasSavedUnpushed: curationSeasons.some((season) => season.hasSavedUnpushed),
+    hasUnsavedDraft,
+    pushedSeasons: curationSeasons.filter((season) => season.isPushed).length,
+    seasons: curationSeasons,
+    totalSeasons: curationSeasons.length,
+  };
 }
 
 const ESPN_LINEUP_SLOT_LABELS: Readonly<Record<string, string>> = {
@@ -673,11 +881,66 @@ export async function getLeagueDataBookData(
         asc(fantasyMatchups.id),
       );
 
+    const checkpointRows = await tx
+      .select()
+      .from(leagueCurationCheckpoints)
+      .where(eq(leagueCurationCheckpoints.leagueId, input.leagueId))
+      .orderBy(
+        desc(leagueCurationCheckpoints.createdAt),
+        desc(leagueCurationCheckpoints.id),
+      );
+
+    const pushRows = await tx
+      .select({
+        checkpointId: leagueCurationSeasonPushes.checkpointId,
+        createdAt: leagueCurationSeasonPushes.createdAt,
+        id: leagueCurationSeasonPushes.id,
+        latestEditId: leagueCurationSeasonPushes.latestEditId,
+        markerEditId: leagueCurationSeasonPushes.markerEditId,
+        season: leagueCurationSeasonPushes.season,
+      })
+      .from(leagueCurationSeasonPushes)
+      .where(eq(leagueCurationSeasonPushes.leagueId, input.leagueId))
+      .orderBy(
+        desc(leagueCurationSeasonPushes.season),
+        desc(leagueCurationSeasonPushes.createdAt),
+        desc(leagueCurationSeasonPushes.id),
+      );
+
+    const seasonStateRows = await tx
+      .select({
+        finalizedAt: leagueCurationSeasonStates.finalizedAt,
+        finalizedByUserId: leagueCurationSeasonStates.finalizedByUserId,
+        mode: leagueCurationSeasonStates.mode,
+        reason: leagueCurationSeasonStates.reason,
+        season: leagueCurationSeasonStates.season,
+      })
+      .from(leagueCurationSeasonStates)
+      .where(eq(leagueCurationSeasonStates.leagueId, input.leagueId))
+      .orderBy(desc(leagueCurationSeasonStates.season));
+
+    const editRows = await tx
+      .select({
+        afterValue: leagueDataEdits.afterValue,
+        createdAt: leagueDataEdits.createdAt,
+        field: leagueDataEdits.field,
+        id: leagueDataEdits.id,
+        targetId: leagueDataEdits.targetId,
+        targetKind: leagueDataEdits.targetKind,
+      })
+      .from(leagueDataEdits)
+      .where(eq(leagueDataEdits.leagueId, input.leagueId))
+      .orderBy(asc(leagueDataEdits.createdAt), asc(leagueDataEdits.id));
+
     return {
+      checkpointRows,
+      editRows,
       mappingRows,
       matchupRows,
       personRows,
+      pushRows,
       seasonRows,
+      seasonStateRows,
       settingsRows,
       teamRows,
       weeklyRows,
@@ -714,6 +977,14 @@ export async function getLeagueDataBookData(
 
   return {
     data: {
+      curation: buildCurationState({
+        checkpointRows: scoped.checkpointRows,
+        editRows: scoped.editRows,
+        league,
+        pushRows: scoped.pushRows,
+        seasonStateRows: scoped.seasonStateRows,
+        seasons,
+      }),
       league: toLeagueSummary(league),
       seasons,
     },

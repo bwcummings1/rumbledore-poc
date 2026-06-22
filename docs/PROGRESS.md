@@ -1,8 +1,13 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **Data Foundation complete through T7 on `ws/t7-edit-ledger`**:
-T7 added the Edit Ledger / Change Log as its own league navigation destination at `/leagues/[leagueId]/ledger`.
+Keep it current. Last updated: 2026-06-23 — **Data Foundation complete through T8 on `ws/t8-save-push`**:
+T8 extended the Data Book with steward-only save/restore/push controls, persisted per-season live/finalized mode,
+and explicit state indicators for unsaved draft edits, saved-but-unpushed checkpoints, and pushed canonical snapshots.
+`SAVE` calls `/curation/checkpoints` and remains a restorable draft checkpoint; `PUSH` calls `/curation/push` and
+promotes a saved checkpoint into the canonical per-season snapshot without re-pointing Records yet. Finalized seasons
+are curate-and-push and show locked-until-pushed language; live seasons stream provider updates and show an
+auto-finalize suggestion when provider data reports the season complete. Prior T7 state: T7 added the Edit Ledger / Change Log as its own league navigation destination at `/leagues/[leagueId]/ledger`.
 It reads the existing `league_data_edits` timeline, including T4's checkpoint-save and season-push marker rows,
 joins actor display names when available, and renders newest-first notification-style entries. Each row expands
 with keyboard-accessible button semantics into a red/green diff using non-color `[-] Before` / `[+] After` labels,
@@ -161,6 +166,13 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   navigation peer between Data Book and Records. It renders the read-only curation change log from existing ledger
   rows, including edits, checkpoint saves, and season pushes, with newest-first expandable rows and accessible
   before/after diff panels. The steward public-ledger drawer reuses the same feed component.
+- **Data Foundation T8 delivered (2026-06-23):** the Data Book now owns the save/push state machine UI. Stewards can
+  save checkpoints, restore prior checkpoints, push the selected finalized season, push all finalized saved seasons,
+  and toggle a season between live-stream and finalized curate-and-push mode. A new RLS-scoped
+  `league_curation_season_states` table stores the explicit owner-finalized state. The Data Book masthead shows
+  per-season and overall indicators for unsaved draft edits, saved-but-unpushed checkpoints, and pushed canonical
+  snapshots; push confirmation dialogs preserve the T4 per-season composition invariant. Records still read live
+  materialized stats until T9 re-points them to `composeCanonicalSnapshot`.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).

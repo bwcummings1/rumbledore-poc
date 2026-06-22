@@ -181,6 +181,139 @@ async function seedEditLedgerActivity(page: Page, leagueId: string) {
   }
 }
 
+async function applyVisibleRealNameEdit(page: Page, value: string) {
+  const editButton = page
+    .locator('button[aria-label^="Edit real name"]:visible')
+    .first();
+  await editButton.waitFor({ timeout: 15_000 });
+  const confirmButton = page
+    .locator('button[aria-label^="Confirm real name"]:visible')
+    .first();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await editButton.evaluate((button: HTMLElement) => button.click());
+    try {
+      await confirmButton.waitFor({ timeout: 2_000 });
+      break;
+    } catch {
+      await page.waitForTimeout(500);
+    }
+  }
+  const editForm = page
+    .locator("form")
+    .filter({
+      has: page.locator('button[aria-label^="Confirm real name"]:visible'),
+    })
+    .first();
+  await editForm.locator("input").first().fill(value, { timeout: 15_000 });
+  await confirmButton.evaluate((button: HTMLElement) => button.click());
+  await page
+    .getByRole("dialog", { name: "Apply data edit" })
+    .waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Apply draft edit" }).click();
+  await page.getByText("Draft change").waitFor({ timeout: 15_000 });
+}
+
+async function seedDataBookSavePushState(page: Page, leagueId: string) {
+  const dataRoute = `/leagues/${leagueId}/data`;
+  try {
+    await page.goto(dataRoute, { waitUntil: "networkidle", timeout: 30_000 });
+  } catch {
+    /* live routes may keep realtime handles open; continue with visible UI */
+  }
+  await page.waitForTimeout(900);
+
+  await applyVisibleRealNameEdit(page, "Screenshot Saved Steward");
+  const saved = await page.request.post(
+    `/api/leagues/${leagueId}/curation/checkpoints`,
+    {
+      data: {
+        label: "Screenshot saved draft",
+        note: "Screenshot harness saved state",
+      },
+    },
+  );
+  if (!saved.ok()) {
+    throw new Error(`checkpoint state seed failed: ${saved.status()}`);
+  }
+
+  const mode = await page.request.post(
+    `/api/leagues/${leagueId}/curation/seasons/2026/mode`,
+    {
+      data: {
+        mode: "finalized",
+        reason: "Screenshot harness finalized current season",
+      },
+    },
+  );
+  if (!mode.ok()) {
+    throw new Error(`season mode seed failed: ${mode.status()}`);
+  }
+
+  const pushCurrent = await page.request.post(
+    `/api/leagues/${leagueId}/curation/push`,
+    {
+      data: {
+        action: "push",
+        reason: "Screenshot harness pushed baseline",
+        season: 2026,
+      },
+    },
+  );
+  if (!pushCurrent.ok()) {
+    throw new Error(`current-season push seed failed: ${pushCurrent.status()}`);
+  }
+
+  await applyVisibleRealNameEdit(page, "Screenshot Saved Unpushed Steward");
+  const savedUnpushed = await page.request.post(
+    `/api/leagues/${leagueId}/curation/checkpoints`,
+    {
+      data: {
+        label: "Screenshot unpushed draft",
+        note: "Screenshot harness saved-unpushed state",
+      },
+    },
+  );
+  if (!savedUnpushed.ok()) {
+    throw new Error(
+      `saved-unpushed checkpoint seed failed: ${savedUnpushed.status()}`,
+    );
+  }
+
+  await applyVisibleRealNameEdit(page, "Screenshot Unsaved Steward");
+}
+
+async function shootDataBookPushConfirm(
+  page: Page,
+  vp: string,
+  name: string,
+  route: string,
+) {
+  try {
+    await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
+  } catch {
+    /* live routes may keep realtime handles open; screenshot anyway */
+  }
+  await page.waitForTimeout(900);
+  await page.getByRole("button", { exact: true, name: "Save" }).click();
+  await page.getByText("Checkpoint saved").waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Push 2026" }).click();
+  await page
+    .getByRole("dialog", { name: "Push saved season" })
+    .waitFor({ timeout: 15_000 });
+
+  const dir = path.join(OUT, vp);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    await page.screenshot({
+      path: path.join(dir, `${name}.png`),
+      fullPage: true,
+    });
+    console.log(`  ok ${vp}/${name}.png`);
+  } catch (e) {
+    console.log(`  FAIL ${vp}/${name}: ${(e as Error).message}`);
+  }
+}
+
 async function shootEditLedgerExpanded(
   page: Page,
   vp: string,
@@ -261,6 +394,7 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
   const homeHref = (await homeLink.getAttribute("href")) ?? "";
   const leagueId = homeHref.split("/").pop() ?? "";
   console.log(`seeded league home: ${homeHref}`);
+  await seedDataBookSavePushState(page, leagueId);
 
   // Pass B — populated league screens.
   const leagueRoutes: Array<[string, string]> = [
@@ -283,6 +417,12 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
       page,
       vp.name,
       "17-data-book-scope-prompt",
+      `/leagues/${leagueId}/data`,
+    );
+    await shootDataBookPushConfirm(
+      page,
+      vp.name,
+      "17-data-book-push-confirm",
       `/leagues/${leagueId}/data`,
     );
   }

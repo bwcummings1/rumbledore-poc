@@ -12,6 +12,7 @@ import {
   identityMappings,
   leagueCurationCheckpoints,
   leagueCurationSeasonPushes,
+  leagueCurationSeasonStates,
   leagueDataEdits,
   leagueGroupingSeasons,
   leagueSeasonGroupings,
@@ -30,6 +31,7 @@ import {
   pushAllCurationSeasons,
   pushCurationSeason,
   restoreCurationCheckpoint,
+  setCurationSeasonMode,
 } from "./index";
 
 const marker = `curated-${randomUUID()}`;
@@ -617,7 +619,13 @@ describe("curated-state service", () => {
          from pg_class
         where relname = any($1::text[])
         order by relname`,
-      [["league_curation_checkpoints", "league_curation_season_pushes"]],
+      [
+        [
+          "league_curation_checkpoints",
+          "league_curation_season_pushes",
+          "league_curation_season_states",
+        ],
+      ],
     );
     expect(rlsRows.rows).toEqual([
       {
@@ -628,6 +636,11 @@ describe("curated-state service", () => {
       {
         relforcerowsecurity: true,
         relname: "league_curation_season_pushes",
+        relrowsecurity: true,
+      },
+      {
+        relforcerowsecurity: true,
+        relname: "league_curation_season_states",
         relrowsecurity: true,
       },
     ]);
@@ -721,6 +734,48 @@ describe("curated-state service", () => {
     expect(composed.seasons).toEqual([2011, 2012]);
     expect(composedTeamName(composed, 2011)).toBe("Alice 2011");
     expect(composedTeamName(composed, 2012)).toBe("Pushed 2012");
+  });
+
+  it("persists the explicit finalized season mode toggle", async () => {
+    const seeded = await seedCuratedLeague("season-mode");
+
+    const finalized = await setCurationSeasonMode(handle.db, {
+      actorUserId: seeded.actorUserId,
+      leagueId: seeded.leagueId,
+      mode: "finalized",
+      reason: "provider season complete",
+      season: 2012,
+    });
+    expect(finalized).toMatchObject({
+      finalizedByUserId: seeded.actorUserId,
+      mode: "finalized",
+      reason: "provider season complete",
+      season: 2012,
+    });
+    expect(finalized.finalizedAt).not.toBeNull();
+
+    const live = await setCurationSeasonMode(handle.db, {
+      actorUserId: seeded.actorUserId,
+      leagueId: seeded.leagueId,
+      mode: "live",
+      reason: "season reopened",
+      season: 2012,
+    });
+    expect(live).toMatchObject({
+      finalizedAt: null,
+      finalizedByUserId: null,
+      mode: "live",
+      reason: "season reopened",
+      season: 2012,
+    });
+
+    const rows = await withLeagueContext(handle.db, seeded.leagueId, (tx) =>
+      tx
+        .select()
+        .from(leagueCurationSeasonStates)
+        .where(eq(leagueCurationSeasonStates.leagueId, seeded.leagueId)),
+    );
+    expect(rows).toHaveLength(1);
   });
 
   it("pushAll promotes every season in the saved checkpoint composition", async () => {

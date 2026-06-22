@@ -1311,6 +1311,53 @@ export const leagueCurationSeasonPushes = pgTable(
   ],
 );
 
+export const leagueCurationSeasonStates = pgTable(
+  "league_curation_season_states",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    mode: text("mode").$type<"finalized" | "live">().notNull().default("live"),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    finalizedByUserId: uuid("finalized_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("league_curation_season_states_unique").on(
+      table.leagueId,
+      table.season,
+    ),
+    index("league_curation_season_states_league_mode_idx").on(
+      table.leagueId,
+      table.mode,
+      table.season,
+    ),
+    pgPolicy("league_curation_season_states_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "league_curation_season_states_mode_valid",
+      sql`${table.mode} IN ('live', 'finalized')`,
+    ),
+    check(
+      "league_curation_season_states_season_valid",
+      sql`${table.season} >= 1900 AND ${table.season} <= 2200`,
+    ),
+  ],
+);
+
 // ── Statistics, identity resolution, and record book (league-scoped) ───────
 
 export interface PersonOwnerHistoryEntry {
