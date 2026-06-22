@@ -202,7 +202,7 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | **Data page** (the 3-grain editable tables) | **NEW** |
 | **Edit-scope** (this-year vs all-years) | **EXISTS (service/API)** — `applyCuratedDataEdit` smart-defaults real names to all-years and team names to this-year-only; UI prompt is T6/T8 |
 | **Save/Push state machine + pushed snapshot** | **EXISTS (service/API)** — append-only checkpoints + per-season pushes; record-book read switch remains T9 |
-| **Change feed + red/green diff view** | **NEW** (built on the ledger) |
+| **Change feed + red/green diff view** | **EXISTS** — `/leagues/[leagueId]/ledger` renders edits, saves, and pushes from the ledger |
 | **Era/span auto-proposal from settings** | **NEW** |
 | **Record-book display rule** (one representation/person) | **NEW** |
 | **General fantasy-stats substrate (B)** | **NEW** |

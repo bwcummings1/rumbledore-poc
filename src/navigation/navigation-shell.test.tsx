@@ -224,6 +224,7 @@ describe("NavigationShellView", () => {
       "The Press",
       "Bet",
       "Data Book",
+      "Edit Ledger",
       "Records",
       "Lore",
       "Members",
@@ -233,6 +234,11 @@ describe("NavigationShellView", () => {
         .getByRole("link", { name: "Data Book" })
         .getAttribute("href"),
     ).toBe("/leagues/league-a/data");
+    expect(
+      within(tabs)
+        .getByRole("link", { name: "Edit Ledger" })
+        .getAttribute("href"),
+    ).toBe("/leagues/league-a/ledger");
     expect(
       within(tabs)
         .getByRole("link", { name: "The Press" })
