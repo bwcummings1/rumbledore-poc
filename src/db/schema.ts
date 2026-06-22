@@ -130,6 +130,8 @@ export const leagueDataEditTargetKind = pgEnum("league_data_edit_target_kind", [
   "season_setting",
   "grouping",
   "member",
+  "curation_checkpoint",
+  "curation_push",
 ]);
 
 export const leagueDataEditClass = pgEnum("league_data_edit_class", [
@@ -1101,6 +1103,7 @@ export const leagueDataEdits = pgTable(
     beforeValue: jsonb("before_value").$type<unknown>(),
     afterValue: jsonb("after_value").$type<unknown>(),
     editClass: leagueDataEditClass("edit_class").notNull(),
+    scope: text("scope").$type<"all_years" | "this_year_only" | null>(),
     reason: text("reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -1122,6 +1125,10 @@ export const leagueDataEdits = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+    check(
+      "league_data_edits_scope_valid",
+      sql`${table.scope} IS NULL OR ${table.scope} IN ('all_years', 'this_year_only')`,
+    ),
   ],
 );
 
@@ -1201,6 +1208,106 @@ export const leagueGroupingSeasons = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+  ],
+);
+
+export const leagueCurationCheckpoints = pgTable(
+  "league_curation_checkpoints",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    markerEditId: uuid("marker_edit_id").references(() => leagueDataEdits.id, {
+      onDelete: "set null",
+    }),
+    latestEditId: uuid("latest_edit_id").references(() => leagueDataEdits.id, {
+      onDelete: "set null",
+    }),
+    label: text("label"),
+    note: text("note"),
+    seasons: jsonb("seasons").$type<number[]>().notNull(),
+    editIds: jsonb("edit_ids").$type<string[]>().notNull(),
+    snapshotHash: text("snapshot_hash").notNull(),
+    snapshot: jsonb("snapshot")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("league_curation_checkpoints_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("league_curation_checkpoints_marker_idx").on(
+      table.leagueId,
+      table.markerEditId,
+    ),
+    pgPolicy("league_curation_checkpoints_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const leagueCurationSeasonPushes = pgTable(
+  "league_curation_season_pushes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    checkpointId: uuid("checkpoint_id").references(
+      () => leagueCurationCheckpoints.id,
+      { onDelete: "set null" },
+    ),
+    markerEditId: uuid("marker_edit_id").references(() => leagueDataEdits.id, {
+      onDelete: "set null",
+    }),
+    latestEditId: uuid("latest_edit_id").references(() => leagueDataEdits.id, {
+      onDelete: "set null",
+    }),
+    season: integer("season").notNull(),
+    reason: text("reason"),
+    editIds: jsonb("edit_ids").$type<string[]>().notNull(),
+    snapshotHash: text("snapshot_hash").notNull(),
+    snapshot: jsonb("snapshot")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("league_curation_season_pushes_league_season_created_idx").on(
+      table.leagueId,
+      table.season,
+      table.createdAt,
+    ),
+    index("league_curation_season_pushes_checkpoint_idx").on(
+      table.leagueId,
+      table.checkpointId,
+    ),
+    pgPolicy("league_curation_season_pushes_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "league_curation_season_pushes_season_valid",
+      sql`${table.season} >= 1900 AND ${table.season} <= 2200`,
+    ),
   ],
 );
 

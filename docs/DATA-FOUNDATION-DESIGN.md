@@ -97,9 +97,16 @@ Three grains, matching the **dimension-vs-fact** distinction:
    (working edits)    (restorable; not yet         (the record book
                        in the record book)           reads this)
 ```
-- **Save** = a checkpoint of the curated state. Restorable later if you realize a past edit was wrong.
-- **Push** = promotes the saved state to the snapshot the record book computes from. **Saved ≠ pushed**: edits never
-  appear in the record book until pushed.
+- **SAVE = a working checkpoint.** Persists the current draft of curated data; restorable later; **NOT visible to the
+  record book**. (Mental model: committing to a working branch — "I changed things but I'm not done / stepping away
+  without losing work.") **Keep ALL checkpoints** (cheap; they're ledger-anchored markers).
+- **PUSH = promote to the canonical version the record book reads.** (Mental model: merge to main — "this is correct
+  and complete now.") **Saved ≠ pushed**: edits never reach the record book until pushed.
+- **Per-season push, with a hard INVARIANT — "all data is always accounted for":** pushing one season promotes THAT
+  season's curated state into the canonical snapshot **without dropping/orphaning any other season**. The canonical
+  pushed state = the **composition of every season's latest-pushed version**. Pushing 2012 must leave 2011's (and
+  every other season's) pushed contribution intact; no season can ever fall out of the composed snapshot. A
+  "push all" convenience promotes every season's current saved state at once.
 - **Live vs. curated hybrid:** the **in-progress season streams in live** (auto-updates); **finalized seasons are
   curate-and-push** (locked until you push). Agreed posture.
 
@@ -193,8 +200,8 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | Per-matchup `scoring_period_span`, ESPN `matchup_period_count` | **EXISTS (partial)** — extend with settings-driven auto-detect |
 | Persist per-season `mSettings` | **EXISTS** — `league_season_settings` stores league size, schedule, roster slots, scoring, and acquisition fields |
 | **Data page** (the 3-grain editable tables) | **NEW** |
-| **Edit-scope** (this-year vs all-years) | **NEW** |
-| **Save/Push state machine + pushed snapshot** | **NEW** — the core addition |
+| **Edit-scope** (this-year vs all-years) | **EXISTS (service/API)** — `applyCuratedDataEdit` smart-defaults real names to all-years and team names to this-year-only; UI prompt is T6/T8 |
+| **Save/Push state machine + pushed snapshot** | **EXISTS (service/API)** — append-only checkpoints + per-season pushes; record-book read switch remains T9 |
 | **Change feed + red/green diff view** | **NEW** (built on the ledger) |
 | **Era/span auto-proposal from settings** | **NEW** |
 | **Record-book display rule** (one representation/person) | **NEW** |
@@ -217,6 +224,11 @@ weekly `bye` results. Bye scores count toward PF and scoring records while W/L/T
 and game-final content skip the no-opponent side by default. Playoff matchup spans are derived from
 `league_season_settings.playoff_matchup_period_length`; stored settings are authoritative for playoff windows, so
 2011-2012 playoff matchups store span=2 and over-broad ESPN windows are clamped to that setting.
+
+**T4 curated-state note:** `league_curation_checkpoints` stores every save as a whole-league draft snapshot anchored
+by a `league_data_edits` marker. `league_curation_season_pushes` stores every push as an append-only per-season
+version anchored by a push marker. `composeCanonicalSnapshot(leagueId)` returns the composition of each season's
+latest pushed version; it is the future T9 record-book input and is not wired into current record reads yet.
 
 ---
 

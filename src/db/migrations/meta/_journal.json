@@ -372,6 +372,13 @@
       "when": 1781544800000,
       "tag": "0052_bye_matchups",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1781548400000,
+      "tag": "0053_curated_state",
+      "breakpoints": true
     }
   ]
 }

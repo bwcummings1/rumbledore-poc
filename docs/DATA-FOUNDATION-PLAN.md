@@ -128,6 +128,12 @@ A task is not "done" until all seven hold:
   scope** (this-year vs all-years), built on `league_data_edits`. Per-season push (default #3). Keep-all checkpoints (#4).
 - *Files:* migration (checkpoint/snapshot tables or markers), `src/curation/*` or `src/stats/*` services, the curation API.
 - *Tests:* edit with each scope; save creates a restorable checkpoint; push promotes a per-season snapshot; ledger rows.
+- *T4 completion note (2026-06-22):* ✅ Completed on `ws/t4-curated-state` by TanElm. Added append-only,
+  RLS-scoped `league_curation_checkpoints` and `league_curation_season_pushes`, ledger marker target kinds for saves
+  and pushes, scoped edit metadata, `applyCuratedDataEdit`, save/list/restore checkpoint services, per-season
+  `pushCurationSeason`, `pushAllCurationSeasons`, and `composeCanonicalSnapshot`. The record book is **not** re-pointed
+  yet; T9 consumes the composed pushed snapshot. Focused service/API tests cover smart scope defaults, overrides,
+  checkpoint restore/retention, per-season push invariants, pushAll composition, and saved-not-pushed invisibility.
 
 **T5 — Data Book (read view)** (depends: T4) — **separate nav destination**
 - *Goal:* the Data Book page showing the 3 grains (People · per-season Settings+summary · week-by-week facts) as
@@ -170,7 +176,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T1 settings persistence + cap | NavyHill | ✅ complete |
 | T2 names + clean-DB | RedJay | ✅ complete |
 | T3 byes + span | Codex | ✅ complete |
-| T4 curated-state model | — | ☐ |
+| T4 curated-state model | TanElm | ✅ complete |
 | T5 Data Book (read) | — | ☐ |
 | T6 editable cells + scope | — | ☐ |
 | T7 Edit Ledger | — | ☐ |
