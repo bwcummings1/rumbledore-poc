@@ -454,6 +454,40 @@ describe("curated-state service", () => {
     ]);
   });
 
+  it("writes scoped dimension edit ledger rows with before and after values", async () => {
+    const seeded = await seedCuratedLeague("scope-ledger");
+    const team2012 = seeded.aliceTeamSeasonBySeason.get(2012);
+    if (!team2012) {
+      throw new Error("expected 2012 team season");
+    }
+
+    await applyCuratedDataEdit(handle.db, {
+      actorUserId: seeded.actorUserId,
+      editClass: "cosmetic",
+      field: "team_name",
+      leagueId: seeded.leagueId,
+      reason: "Data Book scope prompt",
+      scope: "this_year_only",
+      season: 2012,
+      targetId: team2012,
+      targetKind: "team_season",
+      value: "Alice Scoped Ledger",
+    });
+
+    const ledger = await dataEditRows(seeded.leagueId);
+    expect(ledger).toContainEqual(
+      expect.objectContaining({
+        afterValue: "Alice Scoped Ledger",
+        beforeValue: "Alice 2012",
+        field: "team_name",
+        reason: "Data Book scope prompt",
+        scope: "this_year_only",
+        targetId: team2012,
+        targetKind: "team_season",
+      }),
+    );
+  });
+
   it("saves restorable checkpoints and retains all checkpoint rows", async () => {
     const seeded = await seedCuratedLeague("checkpoint-restore");
     const team2012 = seeded.aliceTeamSeasonBySeason.get(2012);

@@ -127,6 +127,48 @@ describe("POST /api/leagues/[leagueId]/curation/edits", () => {
     expect(applyCuratedDataEdit).not.toHaveBeenCalled();
   });
 
+  it("passes this-year-only scope and season to scoped dimension edits", async () => {
+    mockAccess();
+    const teamSeasonId = "00000000-0000-4000-8000-000000000005";
+    mocks.applyCuratedDataEdit.mockResolvedValue({
+      afterValue: "Fixture 2012",
+      affectedTargetIds: [teamSeasonId],
+      beforeValue: "Fixture Old",
+      editId: "00000000-0000-4000-8000-000000000006",
+      editIds: ["00000000-0000-4000-8000-000000000006"],
+      recompute: { matchups: 0, records: 8 },
+      scope: "this_year_only",
+    });
+
+    const response = await POST(
+      request({
+        editClass: "cosmetic",
+        field: "team_name",
+        reason: "season-specific team brand",
+        scope: "this_year_only",
+        season: 2012,
+        targetId: teamSeasonId,
+        targetKind: "team_season",
+        value: "Fixture 2012",
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(applyCuratedDataEdit).toHaveBeenCalledWith(mocks.db, {
+      actorUserId: userId,
+      editClass: "cosmetic",
+      field: "team_name",
+      leagueId,
+      reason: "season-specific team brand",
+      scope: "this_year_only",
+      season: 2012,
+      targetId: teamSeasonId,
+      targetKind: "team_season",
+      value: "Fixture 2012",
+    });
+  });
+
   it("returns role guard errors before applying", async () => {
     mocks.requireLeagueRole.mockResolvedValue({
       error: new AppError({

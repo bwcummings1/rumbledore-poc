@@ -88,13 +88,17 @@ export interface DataBookWeekRow {
   managerName: string;
   matchupId: string;
   opponent: string;
+  opponentPersonId: string | null;
   opponentTeamName: string | null;
+  opponentTeamSeasonId: string | null;
+  personId: string | null;
   pointsAgainst: number;
   pointsFor: number;
   result: "bye" | "loss" | "tie" | "win";
   scoringPeriod: number;
   span: number;
   teamName: string;
+  teamSeasonId: string;
   weeklyRank: number;
 }
 
@@ -502,13 +506,17 @@ function buildWeekRows(input: {
           row.result === "bye"
             ? "BYE"
             : (opponentPerson?.canonicalName ?? "Unknown opponent"),
+        opponentPersonId: row.opponentPersonId,
         opponentTeamName: opponentTeam?.teamName ?? null,
+        opponentTeamSeasonId: opponentRow?.teamSeasonId ?? null,
+        personId: row.personId,
         pointsAgainst: row.pointsAgainst,
         pointsFor: row.pointsFor,
         result: row.result,
         scoringPeriod: row.scoringPeriod,
         span: row.scoringPeriodSpan,
         teamName: team?.teamName ?? "Unknown team",
+        teamSeasonId: row.teamSeasonId,
         weeklyRank: row.weeklyRank,
       };
     })
