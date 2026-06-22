@@ -66,19 +66,37 @@ async function shootDataBookScopePrompt(
     /* some pages keep a live connection open; screenshot anyway */
   }
   await page.waitForTimeout(900);
-  await page
-    .locator('button[aria-label^="Edit real name"]')
+  const editButton = page
+    .locator('button[aria-label^="Edit real name"]:visible')
+    .first();
+  await editButton.waitFor({ timeout: 15_000 });
+  const confirmButton = page
+    .locator('button[aria-label^="Confirm real name"]:visible')
+    .first();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await editButton.evaluate((button: HTMLElement) => button.click());
+    try {
+      await confirmButton.waitFor({ timeout: 2_000 });
+      break;
+    } catch {
+      await page.waitForTimeout(500);
+    }
+  }
+  await confirmButton.waitFor({ timeout: 15_000 });
+  const editForm = page
+    .locator("form")
+    .filter({
+      has: page.locator('button[aria-label^="Confirm real name"]:visible'),
+    })
+    .first();
+  await editForm
+    .locator("input")
     .first()
-    .click({ timeout: 15_000 });
+    .fill("Screenshot Steward", { timeout: 15_000 });
+  await confirmButton.evaluate((button: HTMLElement) => button.click());
   await page
-    .getByLabel(/real name for/i)
-    .first()
-    .fill("Screenshot Steward");
-  await page
-    .getByRole("button", { name: /Confirm real name for/i })
-    .first()
-    .click();
-  await page.getByRole("dialog", { name: "Apply data edit" }).waitFor();
+    .getByRole("dialog", { name: "Apply data edit" })
+    .waitFor({ timeout: 15_000 });
 
   const dir = path.join(OUT, vp);
   fs.mkdirSync(dir, { recursive: true });
