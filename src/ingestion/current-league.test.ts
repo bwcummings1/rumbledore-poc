@@ -16,7 +16,9 @@ import {
   fantasyTransactions,
   leagueSeasonSettings,
   leagues,
+  persons,
   statsCalculations,
+  teamSeasons,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
@@ -366,6 +368,16 @@ async function selectIngestedRows(leagueId: string) {
       .from(fantasyMembers)
       .where(eq(fantasyMembers.leagueId, leagueId))
       .orderBy(asc(fantasyMembers.providerMemberId));
+    const personRows = await tx
+      .select()
+      .from(persons)
+      .where(eq(persons.leagueId, leagueId))
+      .orderBy(asc(persons.canonicalName));
+    const teamSeasonRows = await tx
+      .select()
+      .from(teamSeasons)
+      .where(eq(teamSeasons.leagueId, leagueId))
+      .orderBy(asc(teamSeasons.season), asc(teamSeasons.providerTeamId));
     const matchups = await tx
       .select()
       .from(fantasyMatchups)
@@ -404,9 +416,11 @@ async function selectIngestedRows(leagueId: string) {
       league,
       matchups,
       members,
+      persons: personRows,
       rosterEntries,
       settings,
       teams,
+      teamSeasons: teamSeasonRows,
       transactions,
     };
   });
@@ -479,6 +493,21 @@ describe("syncCurrentLeague", () => {
         scoringType: "H2H_POINTS",
       },
     });
+    const displayNameMember = fixture.members.find(
+      (member) => member.id === "member-12",
+    );
+    const fallbackNameMember = fixture.members.find(
+      (member) => member.id === "member-01",
+    );
+    if (!displayNameMember || !fallbackNameMember) {
+      throw new Error("expected current member fixtures were not found");
+    }
+    displayNameMember.displayName = "Real Display Manager";
+    displayNameMember.firstName = "Ignored";
+    displayNameMember.lastName = "Display";
+    fallbackNameMember.displayName = " ";
+    fallbackNameMember.firstName = "Fallback";
+    fallbackNameMember.lastName = "Current Manager";
     const provider = providerFor(fixture);
 
     const first = await syncCurrentLeague({
@@ -513,6 +542,24 @@ describe("syncCurrentLeague", () => {
     expect(firstRows.teams).toHaveLength(12);
     expect(firstRows.members).toHaveLength(16);
     expect(firstRows.matchups).toHaveLength(84);
+    expect(firstRows.persons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ canonicalName: "Fallback Current Manager" }),
+        expect.objectContaining({ canonicalName: "Real Display Manager" }),
+      ]),
+    );
+    expect(firstRows.teamSeasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ownerNames: ["Real Display Manager"],
+          providerTeamId: "1",
+        }),
+        expect.objectContaining({
+          ownerNames: ["Fallback Current Manager"],
+          providerTeamId: "8",
+        }),
+      ]),
+    );
     expect(firstRows.rosterEntries).toHaveLength(0);
     expect(firstRows.settings).toHaveLength(1);
     expect(firstRows.settings[0]).toMatchObject({
@@ -585,7 +632,7 @@ describe("syncCurrentLeague", () => {
     });
     expect(firstRows.members[0]).toMatchObject({
       providerMemberId: "member-01",
-      displayName: "Fixture Manager 01",
+      displayName: "Fallback Current Manager",
       role: "member",
     });
     expect(firstRows.matchups[0]).toMatchObject({

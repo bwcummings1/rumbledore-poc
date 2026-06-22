@@ -19,7 +19,6 @@ import {
   members,
   persons,
   seasonStatistics,
-  teamSeasons,
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
@@ -320,42 +319,31 @@ describe("getLeagueHomeData", () => {
       if (!fantasyMember) {
         throw new Error("fixture member was not found");
       }
+      const [mapping] = await tx
+        .select({ personId: identityMappings.personId })
+        .from(identityMappings)
+        .where(
+          and(
+            eq(identityMappings.leagueId, leagueId),
+            eq(identityMappings.provider, team.provider),
+            eq(identityMappings.providerTeamId, team.providerTeamId),
+            eq(identityMappings.season, team.season),
+          ),
+        )
+        .limit(1);
+      if (!mapping) {
+        throw new Error("activation identity mapping was not found");
+      }
       const [person] = await tx
-        .insert(persons)
-        .values({
-          canonicalName: fantasyMember.displayName,
-          leagueId,
-        })
-        .returning({ id: persons.id });
+        .select({ id: persons.id })
+        .from(persons)
+        .where(
+          and(eq(persons.leagueId, leagueId), eq(persons.id, mapping.personId)),
+        )
+        .limit(1);
       if (!person) {
-        throw new Error("activation person was not inserted");
+        throw new Error("activation person was not found");
       }
-      const [teamSeason] = await tx
-        .insert(teamSeasons)
-        .values({
-          fantasyTeamId: team.id,
-          leagueId,
-          leagueProviderId: team.leagueProviderId,
-          ownerMemberIds: team.ownerMemberIds,
-          ownerNames: [fantasyMember.displayName],
-          provider: team.provider,
-          providerTeamId: team.providerTeamId,
-          season: team.season,
-          teamName: team.name,
-        })
-        .returning({ id: teamSeasons.id });
-      if (!teamSeason) {
-        throw new Error("activation team-season was not inserted");
-      }
-      await tx.insert(identityMappings).values({
-        leagueId,
-        leagueProviderId: team.leagueProviderId,
-        personId: person.id,
-        provider: team.provider,
-        providerTeamId: team.providerTeamId,
-        season: team.season,
-        teamSeasonId: teamSeason.id,
-      });
       await tx.insert(seasonStatistics).values([
         {
           leagueId,

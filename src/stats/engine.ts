@@ -524,6 +524,106 @@ function canonicalNameFor(teamSeason: TeamSeasonRow): string {
   return teamSeason.ownerNames[0] ?? teamSeason.teamName;
 }
 
+function preferredCanonicalName(
+  mappedSeasons: readonly TeamSeasonRow[],
+): string | null {
+  for (const teamSeason of [...mappedSeasons].sort(
+    (left, right) =>
+      right.season - left.season ||
+      compareStable(left.providerTeamId, right.providerTeamId),
+  )) {
+    const ownerName = sortedUnique(teamSeason.ownerNames)[0];
+    if (ownerName) {
+      return ownerName;
+    }
+  }
+  return null;
+}
+
+async function manuallyNamedPersonIds(
+  tx: LeagueScopedTx,
+  leagueId: string,
+): Promise<Set<string>> {
+  const curationRows = await tx
+    .select({ personId: leagueDataEdits.targetId })
+    .from(leagueDataEdits)
+    .where(
+      and(
+        eq(leagueDataEdits.leagueId, leagueId),
+        eq(leagueDataEdits.targetKind, "person"),
+        eq(leagueDataEdits.field, "canonical_name"),
+      ),
+    );
+  const stewardRows = await tx
+    .select({ personId: identityAuditLog.personId })
+    .from(identityAuditLog)
+    .where(
+      and(
+        eq(identityAuditLog.leagueId, leagueId),
+        eq(identityAuditLog.action, "rename"),
+        sql`${identityAuditLog.actorUserId} is not null`,
+      ),
+    );
+
+  return new Set([
+    ...curationRows.map((row) => row.personId),
+    ...stewardRows
+      .map((row) => row.personId)
+      .filter((personId): personId is string => Boolean(personId)),
+  ]);
+}
+
+async function refreshCanonicalNames({
+  leagueId,
+  mappings,
+  personRows,
+  teamSeasonById,
+  tx,
+}: {
+  leagueId: string;
+  mappings: readonly IdentityMappingRow[];
+  personRows: readonly (typeof persons.$inferSelect)[];
+  teamSeasonById: ReadonlyMap<string, TeamSeasonRow>;
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  const manualNames = await manuallyNamedPersonIds(tx, leagueId);
+  const seasonsByPersonId = new Map<string, TeamSeasonRow[]>();
+  for (const mapping of mappings) {
+    const teamSeason = teamSeasonById.get(mapping.teamSeasonId);
+    if (!teamSeason) {
+      continue;
+    }
+    const existing = seasonsByPersonId.get(mapping.personId) ?? [];
+    existing.push(teamSeason);
+    seasonsByPersonId.set(mapping.personId, existing);
+  }
+
+  for (const person of personRows) {
+    if (manualNames.has(person.id)) {
+      continue;
+    }
+    const canonicalName = preferredCanonicalName(
+      seasonsByPersonId.get(person.id) ?? [],
+    );
+    if (!canonicalName || canonicalName === person.canonicalName) {
+      continue;
+    }
+
+    await tx
+      .update(persons)
+      .set({ canonicalName, updatedAt: new Date() })
+      .where(eq(persons.id, person.id));
+    await tx.insert(identityAuditLog).values({
+      action: "rename",
+      afterState: { canonicalName },
+      beforeState: { canonicalName: person.canonicalName },
+      leagueId,
+      personId: person.id,
+      reason: "provider owner name refresh",
+    });
+  }
+}
+
 async function loadTeamSeasonFacts(tx: LeagueScopedTx, leagueId: string) {
   const teams = await tx
     .select({
@@ -811,6 +911,17 @@ export async function resolveLeagueIdentities(
       .select()
       .from(identityMappings)
       .where(eq(identityMappings.leagueId, input.leagueId));
+    const finalPersonRows = await tx
+      .select()
+      .from(persons)
+      .where(eq(persons.leagueId, input.leagueId));
+    await refreshCanonicalNames({
+      leagueId: input.leagueId,
+      mappings: finalMappings,
+      personRows: finalPersonRows,
+      teamSeasonById,
+      tx,
+    });
     await refreshOwnerHistory({
       mappings: finalMappings,
       teamSeasonById,
@@ -3203,6 +3314,8 @@ export async function recomputeChangedMatchupStatistics(
   db: Db,
   input: { leagueId: string; matchupIds: readonly string[] },
 ): Promise<ChangedMatchupRecomputeSummary> {
+  await resolveLeagueIdentities(db, { leagueId: input.leagueId });
+
   const matchupIds = sortedUnique(input.matchupIds);
   if (matchupIds.length === 0) {
     return {
@@ -3254,8 +3367,6 @@ export async function recomputeChangedMatchupStatistics(
       weeklyStatistics: 0,
     };
   }
-
-  await resolveLeagueIdentities(db, { leagueId: input.leagueId });
 
   return withLeagueContext(db, input.leagueId, async (tx) => {
     const state = await buildStatsComputationState(tx, input.leagueId);

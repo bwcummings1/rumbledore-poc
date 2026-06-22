@@ -206,14 +206,22 @@ replaced. It now stores `league_size`, `matchup_period_count`, regular/playoff/c
 `acquisition_type`, `acquisition_budget`, full `acquisition_settings`, and existing keeper flags/settings. Rows are
 league-scoped with RLS and keyed by `(league_id, provider, league_provider_id, season)`.
 
+**T2 identity note:** provider owner names now flow through `fantasy_members` → `team_season.owner_names` →
+`persons.canonical_name` during identity resolution. Existing non-manual person names refresh from the latest mapped
+owner name; user/steward canonical-name edits remain sticky. The real import harness resets only the target ESPN
+league, runs current + historical import plus stats recompute, and writes a league-scoped Persons summary so fixture
+league names cannot contaminate verification.
+
 ---
 
 ## 7. The four data-quality fixes fold in here
 They aren't separate patches — they're the Data page's first real content / the first things you curate:
 1. **Byes** — captured as a one-sided fact (score counts, no W/L/T default); bye-aware coverage; optional
    "count byes as wins" toggle = a Data-layer setting. Clears the false integrity failures blocking the record book.
-2. **Names** — fixed by the ingestion (ESPN *does* return real names) + the People grid + edit-scope; clean the
-   fixture-DB contamination.
+2. **Names** — EXISTS for ingestion + clean verification: ESPN member `displayName`/`firstName`+`lastName` values
+   persist through identity resolution to non-manual `persons.canonical_name`, and the clean real-import summary is
+   scoped to league 95050 so fixture-league `Fixture Manager NN` rows do not bleed in. The People grid + edit-scope
+   UI remains future Data page work.
 3. **Multi-week span** (the "325" record) — auto-detected from `playoffMatchupPeriodLength` (=2 for 2011–2012) and
    editable in the per-season grid.
 4. **Settings ingest** — persist per-season `mSettings` and use them to auto-propose eras/spans.
