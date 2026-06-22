@@ -212,19 +212,26 @@ owner name; user/steward canonical-name edits remain sticky. The real import har
 league, runs current + historical import plus stats recompute, and writes a league-scoped Persons summary so fixture
 league names cannot contaminate verification.
 
+**T3 bye/span note:** ESPN one-sided schedule rows now persist as nullable-away `fantasy_matchups` and materialize
+weekly `bye` results. Bye scores count toward PF and scoring records while W/L/T, H2H, streaks, all-play comparisons,
+and game-final content skip the no-opponent side by default. Playoff matchup spans are derived from
+`league_season_settings.playoff_matchup_period_length`; stored settings are authoritative for playoff windows, so
+2011-2012 playoff matchups store span=2 and over-broad ESPN windows are clamped to that setting.
+
 ---
 
 ## 7. The four data-quality fixes fold in here
 They aren't separate patches — they're the Data page's first real content / the first things you curate:
-1. **Byes** — captured as a one-sided fact (score counts, no W/L/T default); bye-aware coverage; optional
-   "count byes as wins" toggle = a Data-layer setting. Clears the false integrity failures blocking the record book.
-2. **Names** — EXISTS for ingestion + clean verification: ESPN member `displayName`/`firstName`+`lastName` values
+1. ✅ **Byes** — captured as a one-sided fact (score counts, no W/L/T default); bye-aware coverage; optional
+   "count byes as wins" toggle = a Data-layer setting. The false integrity failures blocking the record book are
+   cleared in clean 95050 verification.
+2. ✅ **Names** — EXISTS for ingestion + clean verification: ESPN member `displayName`/`firstName`+`lastName` values
    persist through identity resolution to non-manual `persons.canonical_name`, and the clean real-import summary is
    scoped to league 95050 so fixture-league `Fixture Manager NN` rows do not bleed in. The People grid + edit-scope
    UI remains future Data page work.
-3. **Multi-week span** (the "325" record) — auto-detected from `playoffMatchupPeriodLength` (=2 for 2011–2012) and
-   editable in the per-season grid.
-4. **Settings ingest** — persist per-season `mSettings` and use them to auto-propose eras/spans.
+3. ✅ **Multi-week span** (the "325" record) — auto-detected from `playoffMatchupPeriodLength` (=2 for 2011-2012) and
+   editable in the per-season grid. The 325 two-week playoff total is excluded from single-week records.
+4. ✅ **Settings ingest** — persist per-season `mSettings` and use them to auto-propose eras/spans.
 
 ---
 

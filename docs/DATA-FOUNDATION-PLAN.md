@@ -114,6 +114,12 @@ A task is not "done" until all seven hold:
   single-week record (or correctly flagged span=2).
 - *Docs:* PROGRESS; design-doc fixes §7 ✅; handoff T3. **(Substrate checkpoint: orchestrator reviews the full clean
   summary with the owner before Phase 2.)**
+- *T3 completion note (2026-06-22):* ✅ Completed on `ws/t3-byes-span`. ESPN one-sided schedule rows now persist as
+  nullable-away `fantasy_matchups`; stats materialize weekly `bye` rows whose PF counts but W/L/T/H2H/streaks do not.
+  `schedule_coverage` accepts expected playoff byes, playoff spans are derived/clamped from
+  `league_season_settings.playoff_matchup_period_length`, and the real 95050 clean import reports 0 integrity failures,
+  72 record rows, 15 aggregate rows, 2011/2012 span=2 rows, and highest single-week score 198.4 by w hardy in 2020
+  week 16 instead of the 325 two-week playoff total.
 
 ### Phase 2 — Data layer + the pipeline (verify one-season-first on 2012)
 
@@ -163,7 +169,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 |---|---|---|
 | T1 settings persistence + cap | NavyHill | ✅ complete |
 | T2 names + clean-DB | RedJay | ✅ complete |
-| T3 byes + span | — | ☐ |
+| T3 byes + span | Codex | ✅ complete |
 | T4 curated-state model | — | ☐ |
 | T5 Data Book (read) | — | ☐ |
 | T6 editable cells + scope | — | ☐ |

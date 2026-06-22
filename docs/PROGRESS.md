@@ -1,14 +1,19 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-22 — **Data Foundation T2 complete on `ws/t2-names`**: provider-derived
-member display names now refresh non-manual `persons.canonical_name` values during identity resolution, targeted
-current sync resolves identities even when no finalized matchup rows changed, and the real-league import harness now
-runs a full stats recompute plus a league-scoped Persons summary. Clean 95050 verification shows 14 real person
-identities across 188 team seasons/mappings, max identity span 16 seasons, and no `Fixture Manager NN` bleed from the
-fixture league. Prior T1 state: per-season `league_season_settings` persists ESPN `mSettings` schedule, roster-slot,
-scoring, acquisition, and league-size fields for current and historical imports; explicit historical season requests
-can import 16 seasons in one run (hard-bounded at 25). Prior state: **Increment
+Keep it current. Last updated: 2026-06-22 — **Data Foundation substrate complete through T3 on `ws/t3-byes-span`**:
+bye weeks now persist as one-sided matchup facts (`away_team_provider_id NULL`) whose scores count toward PF and
+single-week scoring records without awarding W/L/T by default; ESPN one-sided schedule rows are no longer filtered
+out. `schedule_coverage` is bye-aware and clean 95050 verification now reports **0 integrity failures**. Playoff
+matchup spans are derived from `league_season_settings.playoff_matchup_period_length`; 2011-2012 playoff matchups
+store span=2, including over-broad ESPN windows clamped to the setting, so the 325 two-week playoff total is no
+longer the single-week record. The real import artifact shows 72 record rows, 15 record-book aggregate rows, and the
+current highest single-week score is 198.4 by w hardy in 2020 week 16. Prior T2 state: provider-derived member
+display names refresh non-manual `persons.canonical_name` values during identity resolution, targeted current sync
+resolves identities even when no finalized matchup rows changed, and the real-league import harness writes a
+league-scoped Persons summary. Prior T1 state: per-season `league_season_settings` persists ESPN `mSettings`
+schedule, roster-slot, scoring, acquisition, and league-size fields for current and historical imports; explicit
+historical season requests can import 16 seasons in one run (hard-bounded at 25). Prior state: **Increment
 1 (specs 36–41) DELIVERED + HARDENED on branch `review/increment-1`** (data curation foundation, record-book lenses,
 commissioner/edit/public-ledger, News+Arena environments, news pipeline + general↔personal wire toggle, ambient
 agent + WizKit tier). Built via the orchestrated 3-track model (`ORCHESTRATION.md`) across 3 Codex accounts, then
@@ -101,13 +106,25 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   15 historical seasons, recomputes stats, and writes a league-scoped Persons section. The latest summary has 14 real
   identities, 188 team seasons/mappings, max identity span 16, and no `Fixture Manager NN` names. The 13 remaining
   integrity failures are the known bye/coverage issue owned by T3.
+- **Data Foundation T3 delivered (2026-06-22):** bye weeks are stored as one-sided matchup facts and weekly `bye`
+  results; bye PF feeds season/scoring records while W/L/T, streaks, H2H, all-play comparisons, and game-final content
+  skip the no-opponent side. ESPN one-sided rows are preserved, `schedule_coverage` treats expected playoff byes as
+  coverage rather than gaps, and span derivation now uses `league_season_settings.playoff_matchup_period_length` for
+  playoff windows. Clean 95050 verification has 0 `schedule_coverage` failures, 0 total integrity failures, 72 all-time
+  record rows, 15 record-book aggregate rows, 2011/2012 span=2 playoff rows (10 each), and the single-week score record
+  is now 198.4 by w hardy in 2020 week 16 instead of the 325 two-week 2012 playoff total. **T1+T2+T3 substrate is
+  complete; Phase 2 can build the Data layer/push pipeline on this substrate after the owner checkpoint.**
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Next:** wire real service keys, complete the remaining hardening Icebox item(s), and do a human UX pass on the front-end.
+- **Next:** owner checkpoint on the clean T1+T2+T3 substrate summary, then Phase 2 starts with T4 curated-state
+  data model and the save/push pipeline.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-22: Data Foundation T3 landed — ESPN byes persist as one-sided facts with `weekly_statistics.result='bye'`,
+  span derivation uses per-season playoff settings, `schedule_coverage` is bye-aware, and clean 95050 verification has
+  0 integrity failures with the 325 playoff total excluded from single-week records.
 - 2026-06-22: Data Foundation T2 landed — person canonical names now refresh from provider owner names without
   overwriting manual/steward renames, targeted current sync resolves identities on no-matchup-change runs, and the
   real 95050 import summary is league-scoped with a Persons section (14 real identities, 188 mappings/team seasons,
