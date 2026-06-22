@@ -81,6 +81,7 @@ describe("navigation scope taxonomy", () => {
       "Home",
       "The Press",
       "Bet",
+      "Data Book",
       "Records",
       "Lore",
       "Members",
@@ -91,6 +92,7 @@ describe("navigation scope taxonomy", () => {
       "/leagues/league-1",
       "/leagues/league-1/press",
       "/leagues/league-1/bet",
+      "/leagues/league-1/data",
       "/leagues/league-1/records",
       "/leagues/league-1/lore",
       "/leagues/league-1/members",
@@ -200,6 +202,11 @@ describe("deriveActiveNavigationState", () => {
       scope: "league",
       sectionId: "bet",
     });
+    expect(deriveActiveNavigationState("/leagues/abc/data")).toMatchObject({
+      leagueId: "abc",
+      scope: "league",
+      sectionId: "data",
+    });
     expect(deriveActiveNavigationState("/leagues/abc/records")).toMatchObject({
       leagueId: "abc",
       scope: "league",
@@ -275,6 +282,9 @@ describe("league navigation hrefs", () => {
     expect(getLeagueSectionHref("league 1", "press")).toBe(
       "/leagues/league%201/press",
     );
+    expect(getLeagueSectionHref("league 1", "data")).toBe(
+      "/leagues/league%201/data",
+    );
     expect(getLeagueSectionHref("league 1", "lore")).toBe(
       "/leagues/league%201/lore",
     );
@@ -284,6 +294,12 @@ describe("league navigation hrefs", () => {
     const active = deriveActiveNavigationState("/leagues/current/records");
 
     expect(getLeagueSwitchHref("next", active)).toBe("/leagues/next/records");
+    expect(
+      getLeagueSwitchHref(
+        "next",
+        deriveActiveNavigationState("/leagues/current/data"),
+      ),
+    ).toBe("/leagues/next/data");
     expect(
       getLeagueSwitchHref(
         "next",

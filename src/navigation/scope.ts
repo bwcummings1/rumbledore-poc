@@ -12,6 +12,7 @@ export type LeagueSectionId =
   | "home"
   | "press"
   | "bet"
+  | "data"
   | "records"
   | "lore"
   | "members";
@@ -27,6 +28,7 @@ export type ArenaSectionId =
   | "rules";
 
 export type NavigationIconName =
+  | "database"
   | "home"
   | "landmark"
   | "newspaper"
@@ -136,6 +138,13 @@ export const LEAGUE_NAVIGATION_SECTIONS = [
     id: "bet",
     label: "Bet",
     pathSegment: "bet",
+    scope: "league",
+  },
+  {
+    icon: "database",
+    id: "data",
+    label: "Data Book",
+    pathSegment: "data",
     scope: "league",
   },
   {

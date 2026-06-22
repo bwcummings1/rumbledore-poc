@@ -111,6 +111,7 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
     ["13-press", `/leagues/${leagueId}/press`],
     ["14-lore", `/leagues/${leagueId}/lore`],
     ["15-members", `/leagues/${leagueId}/members`],
+    ["17-data-book", `/leagues/${leagueId}/data`],
   ];
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
