@@ -140,6 +140,12 @@ A task is not "done" until all seven hold:
   tables, **one season at a time via a year dropdown** (`select.tsx`); nav = league-feed `TabLinks`-at-bottom-of-top-card
   pattern (reuse `PublicationMasthead`/`TabLinks`). Read-only this task. Responsive (3 viewports). §4 posture is law.
 - *Tests + screenshots* (desktop/tablet/mobile). Orchestrator reviews PNGs.
+- *T5 completion note (2026-06-22):* ✅ Completed on `ws/t5-data-book` by NobleSnow. Added `/leagues/[leagueId]/data`
+  as a separate shell navigation destination, extended `PublicationMasthead` with an optional controls slot while
+  keeping `TabLinks` at the bottom, and implemented the read-only Data Book over live draft tables rather than
+  `composeCanonicalSnapshot`. The view shows People, Settings, and Weeks grains one season at a time via the shared
+  `Select`, uses AUSPEX DataTable/mobile-card fallbacks, handles clean empty seasons with plain table empty states,
+  and adds component/a11y tests plus screenshot harness coverage.
 
 **T6 — Editable cells + edit-scope UI + ledger writes** (depends: T5)
 - *Goal:* make cells editable (permissioned); the **scope prompt** on dimension edits (smart-defaulted); every edit →
@@ -177,7 +183,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T2 names + clean-DB | RedJay | ✅ complete |
 | T3 byes + span | Codex | ✅ complete |
 | T4 curated-state model | TanElm | ✅ complete |
-| T5 Data Book (read) | — | ☐ |
+| T5 Data Book (read) | NobleSnow | ✅ complete |
 | T6 editable cells + scope | — | ☐ |
 | T7 Edit Ledger | — | ☐ |
 | T8 save/push state machine | — | ☐ |

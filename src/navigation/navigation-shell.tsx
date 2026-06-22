@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CircleUserRound,
   Clock3,
+  Database,
   Home,
   Landmark,
   Newspaper,
@@ -114,6 +115,7 @@ const NAVIGATION_SHELL_HIDDEN_SEGMENTS = new Set([
 ]);
 
 const NAVIGATION_ICON_COMPONENTS = {
+  database: Database,
   "book-open": BookOpen,
   home: Home,
   landmark: Landmark,

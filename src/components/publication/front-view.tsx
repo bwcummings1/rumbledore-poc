@@ -3,18 +3,18 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { TabLinks } from "@/components/ui/tabs";
+import {
+  type TabButtonItem,
+  type TabLinkItem,
+  TabLinks,
+} from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { PublicationStory } from "./story";
 import { PublicationStoryCard } from "./story-card";
 
 export type { PublicationStory } from "./story";
 
-export interface PublicationNavItem {
-  active: boolean;
-  href: string;
-  label: string;
-}
+export type PublicationNavItem = TabButtonItem | TabLinkItem;
 
 export interface PublicationActionLink {
   href: string;
@@ -39,6 +39,7 @@ export interface PublicationFrontEmptyState {
 
 interface PublicationMastheadProps {
   actions?: PublicationActionLink[];
+  controls?: ReactNode;
   deck: string;
   eyebrow: string;
   navAriaLabel: string;
@@ -58,6 +59,7 @@ interface PublicationFrontLayoutProps {
 
 export function PublicationMasthead({
   actions = [],
+  controls,
   deck,
   eyebrow,
   navAriaLabel,
@@ -102,6 +104,9 @@ export function PublicationMasthead({
           </p>
         </div>
       </div>
+      {controls ? (
+        <div className="border-t border-[var(--hair)] pt-3">{controls}</div>
+      ) : null}
       <TabLinks ariaLabel={navAriaLabel} items={navItems} />
     </header>
   );
