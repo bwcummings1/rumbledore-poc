@@ -130,7 +130,45 @@ Three grains, matching the **dimension-vs-fact** distinction:
 
 ---
 
-## 4. The General Fantasy-Stats substrate (B)
+## 4. UI/UX & navigation posture (cross-cutting — non-negotiable)
+
+> The same design posture as the current app applies to every surface here. Agents do **not** get to cram features
+> onto one page or invent layouts. This has been the single most common failure mode (the mid-page `SectionTabs`
+> card, the arena "cluster") and is called out explicitly so it can't recur.
+
+**4.1 Features are separate destinations, not one crammed page.** Each of these is its **own** navigable feature,
+reached from the league nav — never stacked onto a single screen:
+- **Data Book** — the editable per-season data tables (substrate A).
+- **Record Book** — the read-only computed records (the projection).
+- **Edit Ledger / Change Log** — the chronological feed of saved + pushed edits with red/green diffs.
+
+Keeping them as distinct destinations *is* what stops the data, the records, and the audit trail from blurring in
+the UI the way they blurred in the model (§1).
+
+**4.2 Within a feature, use the established pattern — never a mid-page button-card.** Sub-sections use the
+**league-feed pattern**: a top header card with the section nav as `TabLinks` **at the bottom of that card**
+(`src/components/publication/front-view.tsx` → `PublicationMasthead`/`TabLinks`; `league-feed-view.tsx`). Reuse those
+components. Do **not** reintroduce a `SectionTabs`-style mid-page panel, and do **not** cluster unrelated features on
+one screen.
+
+**4.3 Year switching in the Data Book is a dropdown.** With many seasons stored, the Data Book shows **one season's
+table at a time**, switched via a **year dropdown** (reuse `src/components/ui/select.tsx`) — not every year dumped on
+one page. Adapts to volume: a 1–2 season league can show inline; a 16-season league uses the dropdown.
+
+**4.4 Responsive across all sizes.** Every surface works at desktop / tablet / mobile (the screenshot harness's three
+viewports). Dense data tables get responsive treatment (horizontal scroll / priority columns on mobile), never a
+broken or overflowing grid.
+
+**4.5 Design-system fidelity.** AUSPEX tokens, Michroma headings (`heading-auspex`), Saira display, panel/cell styles,
+the token-contract test. Reuse existing components; **extend** them rather than forking parallel ones.
+
+**4.6 Hard rule for agents (enforces the above).** Every UI agent MUST (a) read the referenced existing patterns
+before building, (b) reuse the existing components, and (c) have its **rendered output reviewed via screenshots
+before merge**. No context-free building, no cramming. The orchestrator enforces this each round.
+
+---
+
+## 5. The General Fantasy-Stats substrate (B)
 
 - League-agnostic NFL data (players, team stats, weekly box scores, schedules). **Ingested, never user-edited.**
 - Same substrate discipline: rigid shape, **provenance** (source + fetch time), integrity checks, graceful
@@ -142,7 +180,7 @@ Three grains, matching the **dimension-vs-fact** distinction:
 
 ---
 
-## 5. Mapping to what exists
+## 6. Mapping to what exists
 
 | Piece | Status |
 |---|---|
@@ -162,7 +200,7 @@ Three grains, matching the **dimension-vs-fact** distinction:
 
 ---
 
-## 6. The four data-quality fixes fold in here
+## 7. The four data-quality fixes fold in here
 They aren't separate patches — they're the Data page's first real content / the first things you curate:
 1. **Byes** — captured as a one-sided fact (score counts, no W/L/T default); bye-aware coverage; optional
    "count byes as wins" toggle = a Data-layer setting. Clears the false integrity failures blocking the record book.
@@ -174,7 +212,7 @@ They aren't separate patches — they're the Data page's first real content / th
 
 ---
 
-## 7. Proposed build sequence (after this doc is agreed)
+## 8. Proposed build sequence (after this doc is agreed)
 1. **Substrate**: persist per-season settings + facts cleanly (incl. byes); fix names ingestion + clean fixture data.
 2. **Data page — read view** of the 3 grains (no editing yet) verified against the real league.
 3. **Editable cells + edit-scope** + ledger writes.
@@ -189,7 +227,7 @@ Each phase = file-disjoint specs + orchestrated agents + **verification against 
 
 ---
 
-## 8. Open decisions for owner review
+## 9. Open decisions for owner review
 1. **Record-book display rule** — default to *most-recent team name + real name*? Or a per-person canonical you pick?
 2. **Live-vs-curated boundary** — confirm: active season auto-updates; a season becomes curate-and-push once
    finalized. Who/what marks a season "finalized" — automatic on season end, or an explicit owner action?
