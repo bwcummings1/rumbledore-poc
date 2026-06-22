@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { requireLeagueRole } from "@/auth/guards";
+import { type LeagueRole, requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import {
@@ -22,6 +22,17 @@ export const metadata: Metadata = {
 interface LeagueDataBookPageProps {
   params: Promise<{ leagueId: string }>;
   searchParams?: Promise<LeagueDeepLinkSearchParams>;
+}
+
+function canEditDataBook(role: LeagueRole): boolean {
+  switch (role) {
+    case "commissioner":
+    case "data_steward":
+    case "league_admin":
+      return true;
+    case "member":
+      return false;
+  }
 }
 
 export default async function LeagueDataBookPage({
@@ -63,7 +74,12 @@ export default async function LeagueDataBookPage({
 
   switch (result.status) {
     case "ready":
-      return <DataBookView data={result.data} />;
+      return (
+        <DataBookView
+          canEditData={canEditDataBook(access.value.role)}
+          data={result.data}
+        />
+      );
     case "not_found":
       notFound();
   }

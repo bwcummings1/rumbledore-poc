@@ -151,6 +151,13 @@ A task is not "done" until all seven hold:
 - *Goal:* make cells editable (permissioned); the **scope prompt** on dimension edits (smart-defaulted); every edit →
   `league_data_edits` with before/after. No record-book effect yet (saved ≠ pushed).
 - *Tests + screenshots.*
+- *T6 completion note (2026-06-22):* ✅ Completed on `ws/t6-editable-cells` by CoralBridge. Extended the existing
+  Data Book view rather than forking it: People rows now allow steward-level inline edits for `person.canonical_name`
+  and `team_season.team_name`, Weeks exposes team-name edits where team names appear, and non-stewards remain
+  read-only. The scope prompt uses shared AUSPEX dialog/input/select/button primitives, smart-defaults real names to
+  all-years and team names to this-year-only, lets the steward override, and posts to `/curation/edits` with the chosen
+  `scope` plus `season` for this-year-only. The draft Data Book updates locally and marks affected cells as Draft;
+  save/push controls and ledger browsing remain T8/T7 scope.
 
 **T7 — Edit Ledger / Change Log** (depends: T6) — **separate nav destination**
 - *Goal:* a chronological feed of saves + pushes (single-line entries); click → **red/green before/after diff**.
@@ -184,7 +191,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T3 byes + span | Codex | ✅ complete |
 | T4 curated-state model | TanElm | ✅ complete |
 | T5 Data Book (read) | NobleSnow | ✅ complete |
-| T6 editable cells + scope | — | ☐ |
+| T6 editable cells + scope | CoralBridge | ✅ complete |
 | T7 Edit Ledger | — | ☐ |
 | T8 save/push state machine | — | ☐ |
 | T9 record-book re-point | — | ☐ |

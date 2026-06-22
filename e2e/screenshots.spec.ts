@@ -54,6 +54,63 @@ async function shoot(page: Page, vp: string, name: string, route: string) {
   }
 }
 
+async function shootDataBookScopePrompt(
+  page: Page,
+  vp: string,
+  name: string,
+  route: string,
+) {
+  try {
+    await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
+  } catch {
+    /* some pages keep a live connection open; screenshot anyway */
+  }
+  await page.waitForTimeout(900);
+  const editButton = page
+    .locator('button[aria-label^="Edit real name"]:visible')
+    .first();
+  await editButton.waitFor({ timeout: 15_000 });
+  const confirmButton = page
+    .locator('button[aria-label^="Confirm real name"]:visible')
+    .first();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await editButton.evaluate((button: HTMLElement) => button.click());
+    try {
+      await confirmButton.waitFor({ timeout: 2_000 });
+      break;
+    } catch {
+      await page.waitForTimeout(500);
+    }
+  }
+  await confirmButton.waitFor({ timeout: 15_000 });
+  const editForm = page
+    .locator("form")
+    .filter({
+      has: page.locator('button[aria-label^="Confirm real name"]:visible'),
+    })
+    .first();
+  await editForm
+    .locator("input")
+    .first()
+    .fill("Screenshot Steward", { timeout: 15_000 });
+  await confirmButton.evaluate((button: HTMLElement) => button.click());
+  await page
+    .getByRole("dialog", { name: "Apply data edit" })
+    .waitFor({ timeout: 15_000 });
+
+  const dir = path.join(OUT, vp);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    await page.screenshot({
+      path: path.join(dir, `${name}.png`),
+      fullPage: true,
+    });
+    console.log(`  ok ${vp}/${name}.png`);
+  } catch (e) {
+    console.log(`  FAIL ${vp}/${name}: ${(e as Error).message}`);
+  }
+}
+
 test("capture UI screenshots at mobile/tablet/desktop", async ({
   page,
 }, testInfo) => {
@@ -117,5 +174,11 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
     await page.setViewportSize({ width: vp.width, height: vp.height });
     for (const [name, route] of leagueRoutes)
       await shoot(page, vp.name, name, route);
+    await shootDataBookScopePrompt(
+      page,
+      vp.name,
+      "17-data-book-scope-prompt",
+      `/leagues/${leagueId}/data`,
+    );
   }
 });
