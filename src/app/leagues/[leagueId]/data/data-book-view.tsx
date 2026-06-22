@@ -1,20 +1,28 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   BookOpen,
   Check,
   Database,
   Edit3,
+  LockKeyhole,
+  Radio,
+  RotateCcw,
+  Save,
+  Upload,
   Users,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { postJson } from "@/app/onboarding/client-http";
 import {
   PublicationMasthead,
   type PublicationNavItem,
 } from "@/components/publication/front-view";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { DataCardRow } from "@/components/ui/data-card-table";
 import { Dialog } from "@/components/ui/dialog";
@@ -29,10 +37,14 @@ import {
   SignedValue,
 } from "@/components/ui/table";
 import type {
+  DataBookCheckpointOption,
+  DataBookCurationMode,
+  DataBookCurationState,
   DataBookGrain,
   DataBookPageData,
   DataBookPersonRow,
   DataBookSeason,
+  DataBookSeasonCurationState,
   DataBookSettingRow,
   DataBookWeekRow,
 } from "./data-book-data";
@@ -71,6 +83,32 @@ interface CuratedEditResponse {
   scope?: CuratedEditScope;
 }
 
+interface CheckpointMutationResponse {
+  checkpoint: DataBookCheckpointOption;
+}
+
+interface CurationSeasonPushResponse {
+  push?: DataBookSeasonPushSummary;
+  pushes?: DataBookSeasonPushSummary[];
+}
+
+interface DataBookSeasonPushSummary {
+  checkpointId: string | null;
+  createdAt: string;
+  id: string;
+  season: number;
+}
+
+interface CurationSeasonModeResponse {
+  state: {
+    finalizedAt: string | null;
+    finalizedByUserId: string | null;
+    mode: DataBookCurationMode;
+    reason: string | null;
+    season: number;
+  };
+}
+
 interface EditableCellRequest {
   edit: EditableDimension;
   nextValue: string;
@@ -104,6 +142,20 @@ function formatNumber(value: number, digits = 2): string {
     maximumFractionDigits: digits,
     minimumFractionDigits: 0,
   }).format(value);
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) {
+    return "never";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function shortId(value: string | null): string {
+  return value ? value.slice(0, 8) : "-";
 }
 
 function resultTone(result: DataBookWeekRow["result"]): StatusTone {
@@ -152,6 +204,132 @@ function selectedSeasonOrFallback(
 
 function scopeLabel(scope: CuratedEditScope): string {
   return scope === "all_years" ? "all-years" : "this-year-only";
+}
+
+function curationForSeason(
+  curation: DataBookCurationState,
+  season: number,
+): DataBookSeasonCurationState {
+  return (
+    curation.seasons.find((entry) => entry.season === season) ?? {
+      activeCheckpointId: curation.activeCheckpoint?.id ?? null,
+      activeCheckpointLabel: curation.activeCheckpoint?.label ?? null,
+      autoSuggestFinalize: false,
+      finalizedAt: null,
+      finalizedByUserId: null,
+      hasSavedUnpushed: false,
+      hasUnsavedDraft: curation.hasUnsavedDraft,
+      isPushed: false,
+      latestPushAt: null,
+      latestPushCheckpointId: null,
+      latestPushId: null,
+      mode: "live",
+      providerComplete: false,
+      reason: null,
+      season,
+    }
+  );
+}
+
+function checkpointLabel(checkpoint: DataBookCheckpointOption): string {
+  const label =
+    checkpoint.label?.trim() || `checkpoint ${shortId(checkpoint.id)}`;
+  return `${label} / ${formatTimestamp(checkpoint.createdAt)}`;
+}
+
+function recomputeCurationSummary(
+  state: DataBookCurationState,
+): DataBookCurationState {
+  return {
+    ...state,
+    hasSavedUnpushed: state.seasons.some((season) => season.hasSavedUnpushed),
+    pushedSeasons: state.seasons.filter((season) => season.isPushed).length,
+    totalSeasons: state.seasons.length,
+  };
+}
+
+function markCheckpointActive(
+  state: DataBookCurationState,
+  checkpoint: DataBookCheckpointOption,
+): DataBookCurationState {
+  const checkpoints = [
+    checkpoint,
+    ...state.checkpoints.filter((entry) => entry.id !== checkpoint.id),
+  ];
+  const next = {
+    ...state,
+    activeCheckpoint: checkpoint,
+    checkpoints,
+    hasUnsavedDraft: false,
+    seasons: state.seasons.map((season) => {
+      const checkpointCoversSeason = checkpoint.seasons.includes(season.season);
+      const pushedFromCheckpoint =
+        season.latestPushCheckpointId === checkpoint.id;
+      return {
+        ...season,
+        activeCheckpointId: checkpoint.id,
+        activeCheckpointLabel: checkpoint.label,
+        hasSavedUnpushed: checkpointCoversSeason && !pushedFromCheckpoint,
+        hasUnsavedDraft: false,
+        isPushed: season.latestPushId !== null,
+      };
+    }),
+  };
+  return recomputeCurationSummary(next);
+}
+
+function markSeasonPushed(
+  state: DataBookCurationState,
+  push: DataBookSeasonPushSummary,
+): DataBookCurationState {
+  const next = {
+    ...state,
+    seasons: state.seasons.map((season) =>
+      season.season === push.season
+        ? {
+            ...season,
+            hasSavedUnpushed: false,
+            isPushed: true,
+            latestPushAt: push.createdAt,
+            latestPushCheckpointId: push.checkpointId,
+            latestPushId: push.id,
+          }
+        : season,
+    ),
+  };
+  return recomputeCurationSummary(next);
+}
+
+function markPushes(
+  state: DataBookCurationState,
+  pushes: readonly DataBookSeasonPushSummary[],
+): DataBookCurationState {
+  return pushes.reduce(
+    (current, push) => markSeasonPushed(current, push),
+    state,
+  );
+}
+
+function markSeasonMode(
+  state: DataBookCurationState,
+  response: CurationSeasonModeResponse["state"],
+): DataBookCurationState {
+  return {
+    ...state,
+    seasons: state.seasons.map((season) =>
+      season.season === response.season
+        ? {
+            ...season,
+            autoSuggestFinalize:
+              season.providerComplete && response.mode === "live",
+            finalizedAt: response.finalizedAt,
+            finalizedByUserId: response.finalizedByUserId,
+            mode: response.mode,
+            reason: response.reason,
+          }
+        : season,
+    ),
+  };
 }
 
 function draftCellKey(
@@ -366,6 +544,344 @@ function SeasonControl({
         value={String(season.season)}
       />
     </div>
+  );
+}
+
+function ModePill({ state }: { state: DataBookSeasonCurationState }) {
+  if (state.mode === "finalized") {
+    return (
+      <StatusPill icon={<LockKeyhole />} tone="warning">
+        Curate + push
+      </StatusPill>
+    );
+  }
+  return (
+    <StatusPill icon={<Radio />} tone="live">
+      Live stream
+    </StatusPill>
+  );
+}
+
+function SeasonCurationPills({
+  state,
+}: {
+  state: DataBookSeasonCurationState;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <ModePill state={state} />
+      {state.hasUnsavedDraft ? (
+        <StatusPill icon={<AlertTriangle />} tone="warning">
+          Unsaved draft
+        </StatusPill>
+      ) : null}
+      {state.hasSavedUnpushed ? (
+        <StatusPill icon={<Save />} tone="info">
+          Saved not pushed
+        </StatusPill>
+      ) : null}
+      {state.isPushed ? (
+        <StatusPill icon={<Upload />} tone="success">
+          Pushed canonical
+        </StatusPill>
+      ) : null}
+      {!state.hasUnsavedDraft && !state.hasSavedUnpushed && !state.isPushed ? (
+        <StatusPill showDot={false} tone="neutral">
+          Not saved
+        </StatusPill>
+      ) : null}
+    </div>
+  );
+}
+
+function seasonCurationMessage(state: DataBookSeasonCurationState): string {
+  if (state.mode === "live") {
+    return state.autoSuggestFinalize
+      ? "Provider data reports this season complete; mark it finalized when the owner is ready to curate and push."
+      : "This season streams live from provider updates and is not locked behind curation push.";
+  }
+  if (state.hasUnsavedDraft) {
+    return "Finalized season is locked to the last pushed snapshot; save the current draft before pushing.";
+  }
+  if (state.hasSavedUnpushed) {
+    return "Finalized season has a saved draft that is not visible to the Record Book until pushed.";
+  }
+  if (state.isPushed) {
+    return "Finalized season has a pushed canonical snapshot ready for the Record Book boundary.";
+  }
+  return "Finalized season is curate-and-push; save a checkpoint before pushing canonical data.";
+}
+
+function OverallCurationPills({
+  curation,
+}: {
+  curation: DataBookCurationState;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <StatusPill tone={curation.hasUnsavedDraft ? "warning" : "neutral"}>
+        Overall draft {curation.hasUnsavedDraft ? "unsaved" : "saved"}
+      </StatusPill>
+      <StatusPill tone={curation.hasSavedUnpushed ? "info" : "neutral"}>
+        Overall saved {curation.hasSavedUnpushed ? "unpushed" : "clear"}
+      </StatusPill>
+      <StatusPill tone={curation.pushedSeasons > 0 ? "success" : "neutral"}>
+        {curation.pushedSeasons}/{curation.totalSeasons} pushed
+      </StatusPill>
+    </div>
+  );
+}
+
+type PushIntent =
+  | { action: "push"; season: number }
+  | { action: "pushAll"; season: null };
+
+function CurationControls({
+  busyAction,
+  canEditData,
+  curation,
+  error,
+  message,
+  onOpenPushDialog,
+  onRestore,
+  onSave,
+  onSeasonModeChange,
+  restoreCheckpointId,
+  selectedSeasonState,
+  setRestoreCheckpointId,
+}: {
+  busyAction: string | null;
+  canEditData: boolean;
+  curation: DataBookCurationState;
+  error: string | null;
+  message: string | null;
+  onOpenPushDialog: (intent: PushIntent) => void;
+  onRestore: () => void;
+  onSave: () => void;
+  onSeasonModeChange: (mode: DataBookCurationMode) => void;
+  restoreCheckpointId: string;
+  selectedSeasonState: DataBookSeasonCurationState;
+  setRestoreCheckpointId: (checkpointId: string) => void;
+}) {
+  const hasCheckpoints = curation.checkpoints.length > 0;
+  const pushDisabled =
+    busyAction !== null ||
+    selectedSeasonState.hasUnsavedDraft ||
+    !selectedSeasonState.activeCheckpointId ||
+    selectedSeasonState.mode === "live";
+  const pushAllDisabled =
+    busyAction !== null ||
+    curation.hasUnsavedDraft ||
+    !curation.activeCheckpoint ||
+    !curation.hasSavedUnpushed ||
+    curation.seasons.some((season) => season.mode === "live");
+
+  return (
+    <div className="grid gap-3">
+      <div className="cell grid gap-3 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-xs uppercase tracking-[0.14em] text-ink-4">
+              Save / push state
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {seasonCurationMessage(selectedSeasonState)}
+            </p>
+          </div>
+          <SeasonCurationPills state={selectedSeasonState} />
+        </div>
+        <OverallCurationPills curation={curation} />
+        <div className="grid gap-1 font-mono text-xs text-muted-foreground sm:grid-cols-3">
+          <span>
+            Active save:{" "}
+            <span className="text-foreground">
+              {curation.activeCheckpoint
+                ? checkpointLabel(curation.activeCheckpoint)
+                : "none"}
+            </span>
+          </span>
+          <span>
+            Selected push:{" "}
+            <span className="text-foreground">
+              {formatTimestamp(selectedSeasonState.latestPushAt)}
+            </span>
+          </span>
+          <span>
+            Push source:{" "}
+            <span className="text-foreground">
+              {shortId(selectedSeasonState.latestPushCheckpointId)}
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {selectedSeasonState.autoSuggestFinalize ? (
+        <Alert tone="warn" title="Provider reports season complete">
+          Mark the season finalized to switch it from live streaming into
+          curate-and-push mode.
+        </Alert>
+      ) : null}
+      {message ? <Alert tone="ok">{message}</Alert> : null}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+
+      {canEditData ? (
+        <div className="grid gap-2 lg:grid-cols-[minmax(13rem,1fr)_auto_auto_auto_auto] lg:items-end">
+          <div className="grid gap-2">
+            <label
+              className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3"
+              htmlFor="data-book-restore-checkpoint"
+            >
+              Restore checkpoint
+            </label>
+            <Select
+              disabled={!hasCheckpoints || busyAction !== null}
+              id="data-book-restore-checkpoint"
+              onValueChange={setRestoreCheckpointId}
+              options={
+                hasCheckpoints
+                  ? curation.checkpoints.map((checkpoint) => ({
+                      label: checkpointLabel(checkpoint),
+                      value: checkpoint.id,
+                    }))
+                  : [{ label: "No saved checkpoints", value: "" }]
+              }
+              value={restoreCheckpointId}
+            />
+          </div>
+          <Button
+            disabled={busyAction !== null}
+            loading={busyAction === "save"}
+            loadingLabel="Saving checkpoint"
+            onClick={onSave}
+            type="button"
+            variant="steel"
+          >
+            <Save data-icon="inline-start" />
+            Save
+          </Button>
+          <Button
+            disabled={!hasCheckpoints || busyAction !== null}
+            loading={busyAction === "restore"}
+            loadingLabel="Restoring checkpoint"
+            onClick={onRestore}
+            type="button"
+            variant="ghost"
+          >
+            <RotateCcw data-icon="inline-start" />
+            Restore
+          </Button>
+          <Button
+            disabled={pushDisabled}
+            onClick={() =>
+              onOpenPushDialog({
+                action: "push",
+                season: selectedSeasonState.season,
+              })
+            }
+            type="button"
+          >
+            <Upload data-icon="inline-start" />
+            Push {selectedSeasonState.season}
+          </Button>
+          <Button
+            disabled={pushAllDisabled}
+            onClick={() =>
+              onOpenPushDialog({ action: "pushAll", season: null })
+            }
+            type="button"
+            variant="amber"
+          >
+            <Upload data-icon="inline-start" />
+            Push all
+          </Button>
+          <Button
+            className="lg:col-start-2"
+            disabled={busyAction !== null}
+            loading={busyAction === "mode"}
+            loadingLabel="Changing season mode"
+            onClick={() =>
+              onSeasonModeChange(
+                selectedSeasonState.mode === "finalized" ? "live" : "finalized",
+              )
+            }
+            type="button"
+            variant={
+              selectedSeasonState.mode === "finalized" ? "ghost" : "steel"
+            }
+          >
+            {selectedSeasonState.mode === "finalized" ? (
+              <Radio data-icon="inline-start" />
+            ) : (
+              <LockKeyhole data-icon="inline-start" />
+            )}
+            {selectedSeasonState.mode === "finalized"
+              ? "Return live"
+              : "Mark finalized"}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PushConfirmDialog({
+  busy,
+  error,
+  intent,
+  onCancel,
+  onConfirm,
+}: {
+  busy: boolean;
+  error: string | null;
+  intent: PushIntent | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isPushAll = intent?.action === "pushAll";
+  return (
+    <Dialog
+      description={
+        isPushAll
+          ? "Promote every season from the active saved checkpoint. The canonical snapshot composes per-season pushes."
+          : `Promote ${intent?.season ?? "the selected"} season from the active saved checkpoint. Other pushed seasons remain in the canonical snapshot.`
+      }
+      error={error}
+      footer={
+        <>
+          <Button
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+            variant="ghost"
+          >
+            Cancel
+          </Button>
+          <Button
+            loading={busy}
+            loadingLabel={isPushAll ? "Pushing all seasons" : "Pushing season"}
+            onClick={onConfirm}
+            type="button"
+          >
+            {isPushAll ? "Confirm push all" : "Confirm push"}
+          </Button>
+        </>
+      }
+      loading={busy}
+      onOpenChange={(open) => {
+        if (!open && !busy) {
+          onCancel();
+        }
+      }}
+      open={intent !== null}
+      title={isPushAll ? "Push all saved seasons" : "Push saved season"}
+    >
+      <div className="cell grid gap-2 p-3 text-sm text-muted-foreground">
+        <p>
+          Push is the canonical boundary. Saved checkpoints remain restorable,
+          but the Record Book will only read pushed snapshots after T9.
+        </p>
+      </div>
+    </Dialog>
   );
 }
 
@@ -1098,8 +1614,10 @@ export function DataBookView({
   canEditData?: boolean;
   data: DataBookPageData;
 }) {
+  const router = useRouter();
   const [activeGrain, setActiveGrain] = useState<DataBookGrain>("people");
   const [draftData, setDraftData] = useState(data);
+  const [curationState, setCurationState] = useState(data.curation);
   const initialSeason = draftData.seasons[0]?.season ?? draftData.league.season;
   const [selectedSeason, setSelectedSeason] = useState(initialSeason);
   const [pendingEdit, setPendingEdit] = useState<PendingDimensionEdit | null>(
@@ -1113,8 +1631,32 @@ export function DataBookView({
     () => new Set(),
   );
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
+  const [curationMessage, setCurationMessage] = useState<string | null>(null);
+  const [curationError, setCurationError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [restoreCheckpointId, setRestoreCheckpointId] = useState(
+    data.curation.activeCheckpoint?.id ??
+      data.curation.checkpoints[0]?.id ??
+      "",
+  );
+  const [pushIntent, setPushIntent] = useState<PushIntent | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
   const season = selectedSeasonOrFallback(draftData.seasons, selectedSeason);
   const editApiUrl = `/api/leagues/${draftData.league.id}/curation/edits`;
+  const checkpointsApiUrl = `/api/leagues/${draftData.league.id}/curation/checkpoints`;
+  const pushApiUrl = `/api/leagues/${draftData.league.id}/curation/push`;
+  const selectedSeasonState = curationForSeason(curationState, season.season);
+
+  useEffect(() => {
+    if (
+      curationState.checkpoints.length > 0 &&
+      !curationState.checkpoints.some(
+        (checkpoint) => checkpoint.id === restoreCheckpointId,
+      )
+    ) {
+      setRestoreCheckpointId(curationState.checkpoints[0]?.id ?? "");
+    }
+  }, [curationState.checkpoints, restoreCheckpointId]);
 
   function isDraftCell(
     targetKind: "person" | "team_season",
@@ -1176,11 +1718,153 @@ export function DataBookView({
           resolvedResponse.scope,
         ).toLowerCase()} draft edit. It is not pushed to the Record Book yet.`,
       );
+      setCurationState((currentState) => ({
+        ...currentState,
+        hasUnsavedDraft: true,
+        seasons: currentState.seasons.map((entry) => ({
+          ...entry,
+          hasUnsavedDraft: true,
+        })),
+      }));
+      setCurationMessage(null);
       setPendingEdit(null);
     } catch (cause) {
       setEditError(cause instanceof Error ? cause.message : "Edit failed");
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  async function saveCheckpoint() {
+    if (busyAction) {
+      return;
+    }
+    setBusyAction("save");
+    setCurationError(null);
+    setCurationMessage(null);
+    try {
+      const response = await postJson<CheckpointMutationResponse>(
+        checkpointsApiUrl,
+        {
+          label: `Data Book save ${season.season}`,
+          note: `Saved ${season.season} draft from Data Book`,
+        },
+      );
+      setCurationState((current) =>
+        markCheckpointActive(current, response.checkpoint),
+      );
+      setRestoreCheckpointId(response.checkpoint.id);
+      setCurationMessage(
+        "Checkpoint saved. Draft changes remain out of the canonical Record Book until pushed.",
+      );
+    } catch (cause) {
+      setCurationError(
+        cause instanceof Error ? cause.message : "Checkpoint save failed",
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function restoreCheckpoint() {
+    if (busyAction || !restoreCheckpointId) {
+      return;
+    }
+    setBusyAction("restore");
+    setCurationError(null);
+    setCurationMessage(null);
+    try {
+      const response = await postJson<CheckpointMutationResponse>(
+        `${checkpointsApiUrl}/${restoreCheckpointId}/restore`,
+        {
+          reason: "Restored checkpoint from Data Book",
+        },
+      );
+      setCurationState((current) =>
+        markCheckpointActive(current, response.checkpoint),
+      );
+      setDraftCellKeys(new Set());
+      setDraftMessage(null);
+      setCurationMessage("Checkpoint restored. Refreshing draft tables.");
+      router.refresh();
+    } catch (cause) {
+      setCurationError(
+        cause instanceof Error ? cause.message : "Checkpoint restore failed",
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function confirmPush() {
+    if (busyAction || !pushIntent) {
+      return;
+    }
+    const intent = pushIntent;
+    setBusyAction(intent.action);
+    setPushError(null);
+    setCurationError(null);
+    setCurationMessage(null);
+    try {
+      const response = await postJson<CurationSeasonPushResponse>(pushApiUrl, {
+        action: intent.action,
+        checkpointId: curationState.activeCheckpoint?.id,
+        reason:
+          intent.action === "pushAll"
+            ? "Pushed all saved seasons from Data Book"
+            : `Pushed ${intent.season} saved season from Data Book`,
+        ...(intent.action === "push" ? { season: intent.season } : {}),
+      });
+      const pushes =
+        intent.action === "pushAll"
+          ? (response.pushes ?? [])
+          : response.push
+            ? [response.push]
+            : [];
+      setCurationState((current) => markPushes(current, pushes));
+      setPushIntent(null);
+      setCurationMessage(
+        intent.action === "pushAll"
+          ? "All saved seasons were pushed into the canonical snapshot."
+          : `${intent.season} was pushed into the canonical snapshot.`,
+      );
+    } catch (cause) {
+      setPushError(cause instanceof Error ? cause.message : "Push failed");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function changeSeasonMode(mode: DataBookCurationMode) {
+    if (busyAction) {
+      return;
+    }
+    setBusyAction("mode");
+    setCurationError(null);
+    setCurationMessage(null);
+    try {
+      const response = await postJson<CurationSeasonModeResponse>(
+        `/api/leagues/${draftData.league.id}/curation/seasons/${season.season}/mode`,
+        {
+          mode,
+          reason:
+            mode === "finalized"
+              ? "Marked finalized from Data Book"
+              : "Returned season to live mode from Data Book",
+        },
+      );
+      setCurationState((current) => markSeasonMode(current, response.state));
+      setCurationMessage(
+        mode === "finalized"
+          ? `${season.season} is now curate-and-push.`
+          : `${season.season} is back in live streaming mode.`,
+      );
+    } catch (cause) {
+      setCurationError(
+        cause instanceof Error ? cause.message : "Season mode change failed",
+      );
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -1219,11 +1903,30 @@ export function DataBookView({
           },
         ]}
         controls={
-          <SeasonControl
-            onSeasonChange={setSelectedSeason}
-            season={season}
-            seasons={draftData.seasons}
-          />
+          <div className="grid gap-4 xl:grid-cols-[minmax(12rem,14rem)_minmax(0,1fr)]">
+            <SeasonControl
+              onSeasonChange={setSelectedSeason}
+              season={season}
+              seasons={draftData.seasons}
+            />
+            <CurationControls
+              busyAction={busyAction}
+              canEditData={canEditData}
+              curation={curationState}
+              error={curationError}
+              message={curationMessage}
+              onOpenPushDialog={(intent) => {
+                setPushError(null);
+                setPushIntent(intent);
+              }}
+              onRestore={restoreCheckpoint}
+              onSave={saveCheckpoint}
+              onSeasonModeChange={changeSeasonMode}
+              restoreCheckpointId={restoreCheckpointId}
+              selectedSeasonState={selectedSeasonState}
+              setRestoreCheckpointId={setRestoreCheckpointId}
+            />
+          </div>
         }
         deck={`${draftData.league.provider.toUpperCase()} ${draftData.league.providerLeagueId}. Live draft tables for data curation, displayed one season at a time.`}
         eyebrow="DATA BOOK"
@@ -1265,6 +1968,18 @@ export function DataBookView({
         reason={editReason}
         scope={editScope}
         setReason={setEditReason}
+      />
+      <PushConfirmDialog
+        busy={busyAction === "push" || busyAction === "pushAll"}
+        error={pushError}
+        intent={pushIntent}
+        onCancel={() => {
+          if (busyAction === null) {
+            setPushIntent(null);
+            setPushError(null);
+          }
+        }}
+        onConfirm={confirmPush}
       />
     </main>
   );

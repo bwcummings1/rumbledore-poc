@@ -7,8 +7,20 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { DataBookPageData, DataBookSeason } from "./data-book-data";
+import type {
+  DataBookCurationState,
+  DataBookPageData,
+  DataBookSeason,
+} from "./data-book-data";
 import { DataBookView } from "./data-book-view";
+
+const router = vi.hoisted(() => ({
+  refresh: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
 
 const leagueId = "00000000-0000-4000-8000-000000000001";
 
@@ -30,7 +42,63 @@ function season(overrides: Partial<DataBookSeason>): DataBookSeason {
   };
 }
 
+function curationState(
+  overrides: Partial<DataBookCurationState> = {},
+): DataBookCurationState {
+  const base: DataBookCurationState = {
+    activeCheckpoint: null,
+    checkpoints: [],
+    hasSavedUnpushed: false,
+    hasUnsavedDraft: false,
+    pushedSeasons: 0,
+    seasons: [
+      {
+        activeCheckpointId: null,
+        activeCheckpointLabel: null,
+        autoSuggestFinalize: false,
+        finalizedAt: null,
+        finalizedByUserId: null,
+        hasSavedUnpushed: false,
+        hasUnsavedDraft: false,
+        isPushed: false,
+        latestPushAt: null,
+        latestPushCheckpointId: null,
+        latestPushId: null,
+        mode: "live",
+        providerComplete: false,
+        reason: null,
+        season: 2026,
+      },
+      {
+        activeCheckpointId: null,
+        activeCheckpointLabel: null,
+        autoSuggestFinalize: true,
+        finalizedAt: null,
+        finalizedByUserId: null,
+        hasSavedUnpushed: false,
+        hasUnsavedDraft: false,
+        isPushed: false,
+        latestPushAt: null,
+        latestPushCheckpointId: null,
+        latestPushId: null,
+        mode: "live",
+        providerComplete: true,
+        reason: null,
+        season: 2025,
+      },
+    ],
+    totalSeasons: 2,
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    seasons: overrides.seasons ?? base.seasons,
+  };
+}
+
 const data: DataBookPageData = {
+  curation: curationState(),
   league: {
     id: leagueId,
     name: "NHS Alumni Annual",
@@ -218,6 +286,7 @@ const data: DataBookPageData = {
 
 afterEach(() => {
   cleanup();
+  router.refresh.mockClear();
   vi.restoreAllMocks();
 });
 
@@ -233,6 +302,12 @@ function mockEditResponse(response: unknown) {
 function requestBody(fetchMock: ReturnType<typeof mockEditResponse>) {
   const body = fetchMock.mock.calls.at(-1)?.[1]?.body;
   return JSON.parse(String(body)) as Record<string, unknown>;
+}
+
+function requestBodies(fetchMock: ReturnType<typeof mockEditResponse>) {
+  return fetchMock.mock.calls.map((call) =>
+    JSON.parse(String(call[1]?.body)),
+  ) as Array<Record<string, unknown>>;
 }
 
 test("Data Book renders the People grain for the selected season", () => {
@@ -487,6 +562,334 @@ test("team-name scope can be overridden to all years", async () => {
   expect(screen.getAllByText("Alpha Dynasty").length).toBeGreaterThan(0);
 });
 
+test("curation indicators show unsaved, saved-unpushed, and pushed state", () => {
+  render(
+    <DataBookView
+      data={{
+        ...data,
+        curation: curationState({
+          activeCheckpoint: {
+            createdAt: "2026-06-23T00:00:00.000Z",
+            id: "checkpoint-2026",
+            label: "Saved review",
+            latestEditId: "edit-1",
+            markerEditId: "marker-1",
+            note: null,
+            seasons: [2026, 2025],
+          },
+          checkpoints: [
+            {
+              createdAt: "2026-06-23T00:00:00.000Z",
+              id: "checkpoint-2026",
+              label: "Saved review",
+              latestEditId: "edit-1",
+              markerEditId: "marker-1",
+              note: null,
+              seasons: [2026, 2025],
+            },
+          ],
+          hasSavedUnpushed: true,
+          hasUnsavedDraft: true,
+          pushedSeasons: 1,
+          seasons: [
+            {
+              activeCheckpointId: "checkpoint-2026",
+              activeCheckpointLabel: "Saved review",
+              autoSuggestFinalize: false,
+              finalizedAt: "2026-06-23T00:00:00.000Z",
+              finalizedByUserId: "user-1",
+              hasSavedUnpushed: true,
+              hasUnsavedDraft: true,
+              isPushed: false,
+              latestPushAt: null,
+              latestPushCheckpointId: null,
+              latestPushId: null,
+              mode: "finalized",
+              providerComplete: true,
+              reason: null,
+              season: 2026,
+            },
+            {
+              activeCheckpointId: "checkpoint-2026",
+              activeCheckpointLabel: "Saved review",
+              autoSuggestFinalize: false,
+              finalizedAt: "2026-06-23T00:00:00.000Z",
+              finalizedByUserId: "user-1",
+              hasSavedUnpushed: false,
+              hasUnsavedDraft: true,
+              isPushed: true,
+              latestPushAt: "2026-06-23T00:05:00.000Z",
+              latestPushCheckpointId: "checkpoint-2026",
+              latestPushId: "push-2025",
+              mode: "finalized",
+              providerComplete: true,
+              reason: null,
+              season: 2025,
+            },
+          ],
+        }),
+      }}
+    />,
+  );
+
+  expect(screen.getByText("Unsaved draft")).toBeDefined();
+  expect(screen.getByText("Saved not pushed")).toBeDefined();
+  expect(screen.getByText("Overall draft unsaved")).toBeDefined();
+  expect(screen.getByText("Overall saved unpushed")).toBeDefined();
+
+  fireEvent.change(screen.getByLabelText("Data Book season"), {
+    target: { value: "2025" },
+  });
+  expect(screen.getByText("Pushed canonical")).toBeDefined();
+});
+
+test("save creates a checkpoint through the curation checkpoint API", async () => {
+  const fetchMock = mockEditResponse({
+    checkpoint: {
+      createdAt: "2026-06-23T00:00:00.000Z",
+      id: "checkpoint-save",
+      label: "Data Book save 2026",
+      latestEditId: "edit-1",
+      markerEditId: "marker-1",
+      note: "Saved 2026 draft from Data Book",
+      seasons: [2026, 2025],
+    },
+  });
+  render(<DataBookView canEditData={true} data={data} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/curation/checkpoints",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(requestBody(fetchMock)).toMatchObject({
+    label: "Data Book save 2026",
+    note: "Saved 2026 draft from Data Book",
+  });
+  await waitFor(() => {
+    expect(
+      screen.getByText(
+        "Checkpoint saved. Draft changes remain out of the canonical Record Book until pushed.",
+      ),
+    ).toBeDefined();
+  });
+  expect(screen.getByText("Saved not pushed")).toBeDefined();
+});
+
+test("restore calls the selected checkpoint restore API and refreshes the route", async () => {
+  const checkpoint = {
+    createdAt: "2026-06-23T00:00:00.000Z",
+    id: "00000000-0000-4000-8000-000000000003",
+    label: "Before bad edit",
+    latestEditId: "edit-1",
+    markerEditId: "marker-1",
+    note: null,
+    seasons: [2026, 2025],
+  };
+  const fetchMock = mockEditResponse({ checkpoint });
+  render(
+    <DataBookView
+      canEditData={true}
+      data={{
+        ...data,
+        curation: curationState({
+          activeCheckpoint: checkpoint,
+          checkpoints: [checkpoint],
+        }),
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/curation/checkpoints/00000000-0000-4000-8000-000000000003/restore",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(requestBody(fetchMock)).toMatchObject({
+    reason: "Restored checkpoint from Data Book",
+  });
+  await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+});
+
+test("push season and push all call the push API with the correct arguments", async () => {
+  const checkpoint = {
+    createdAt: "2026-06-23T00:00:00.000Z",
+    id: "00000000-0000-4000-8000-000000000003",
+    label: "Ready",
+    latestEditId: "edit-1",
+    markerEditId: "marker-1",
+    note: null,
+    seasons: [2026, 2025],
+  };
+  const fetchMock = vi.spyOn(globalThis, "fetch");
+  fetchMock
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          push: {
+            checkpointId: checkpoint.id,
+            createdAt: "2026-06-23T00:01:00.000Z",
+            id: "push-2026",
+            season: 2026,
+          },
+        }),
+        { headers: { "content-type": "application/json" }, status: 200 },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          pushes: [
+            {
+              checkpointId: checkpoint.id,
+              createdAt: "2026-06-23T00:02:00.000Z",
+              id: "push-2026-b",
+              season: 2026,
+            },
+            {
+              checkpointId: checkpoint.id,
+              createdAt: "2026-06-23T00:02:00.000Z",
+              id: "push-2025-b",
+              season: 2025,
+            },
+          ],
+        }),
+        { headers: { "content-type": "application/json" }, status: 200 },
+      ),
+    );
+  const finalizedCuration = curationState({
+    activeCheckpoint: checkpoint,
+    checkpoints: [checkpoint],
+    hasSavedUnpushed: true,
+    seasons: [
+      {
+        activeCheckpointId: checkpoint.id,
+        activeCheckpointLabel: "Ready",
+        autoSuggestFinalize: false,
+        finalizedAt: "2026-06-23T00:00:00.000Z",
+        finalizedByUserId: "user-1",
+        hasSavedUnpushed: true,
+        hasUnsavedDraft: false,
+        isPushed: false,
+        latestPushAt: null,
+        latestPushCheckpointId: null,
+        latestPushId: null,
+        mode: "finalized",
+        providerComplete: true,
+        reason: null,
+        season: 2026,
+      },
+      {
+        activeCheckpointId: checkpoint.id,
+        activeCheckpointLabel: "Ready",
+        autoSuggestFinalize: false,
+        finalizedAt: "2026-06-23T00:00:00.000Z",
+        finalizedByUserId: "user-1",
+        hasSavedUnpushed: true,
+        hasUnsavedDraft: false,
+        isPushed: false,
+        latestPushAt: null,
+        latestPushCheckpointId: null,
+        latestPushId: null,
+        mode: "finalized",
+        providerComplete: true,
+        reason: null,
+        season: 2025,
+      },
+    ],
+  });
+  render(
+    <DataBookView
+      canEditData={true}
+      data={{ ...data, curation: finalizedCuration }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Push 2026" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm push" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+  fireEvent.click(screen.getByRole("button", { name: "Push all" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm push all" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+  expect(fetchMock.mock.calls[0]?.[0]).toBe(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/curation/push",
+  );
+  expect(requestBodies(fetchMock)[0]).toMatchObject({
+    action: "push",
+    checkpointId: checkpoint.id,
+    season: 2026,
+  });
+  expect(requestBodies(fetchMock)[1]).toMatchObject({
+    action: "pushAll",
+    checkpointId: checkpoint.id,
+  });
+});
+
+test("finalized toggle changes a season from live to curate-and-push with provider-complete suggestion", async () => {
+  const fetchMock = mockEditResponse({
+    state: {
+      finalizedAt: "2026-06-23T00:00:00.000Z",
+      finalizedByUserId: "user-1",
+      mode: "finalized",
+      reason: "Marked finalized from Data Book",
+      season: 2026,
+    },
+  });
+  render(
+    <DataBookView
+      canEditData={true}
+      data={{
+        ...data,
+        curation: curationState({
+          seasons: [
+            {
+              activeCheckpointId: null,
+              activeCheckpointLabel: null,
+              autoSuggestFinalize: true,
+              finalizedAt: null,
+              finalizedByUserId: null,
+              hasSavedUnpushed: false,
+              hasUnsavedDraft: false,
+              isPushed: false,
+              latestPushAt: null,
+              latestPushCheckpointId: null,
+              latestPushId: null,
+              mode: "live",
+              providerComplete: true,
+              reason: null,
+              season: 2026,
+            },
+            ...curationState().seasons.filter((entry) => entry.season !== 2026),
+          ],
+        }),
+        league: { ...data.league, status: "complete" },
+      }}
+    />,
+  );
+
+  expect(screen.getByText("Provider reports season complete")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Mark finalized" }));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/curation/seasons/2026/mode",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(requestBody(fetchMock)).toMatchObject({
+    mode: "finalized",
+    reason: "Marked finalized from Data Book",
+  });
+  await waitFor(() => {
+    expect(screen.getByText("Curate + push")).toBeDefined();
+  });
+});
+
 test("non-stewards see the Data Book as read-only", () => {
   render(<DataBookView canEditData={false} data={data} />);
 
@@ -496,4 +899,8 @@ test("non-stewards see the Data Book as read-only", () => {
   expect(
     screen.queryByRole("button", { name: /Edit team name for/i }),
   ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Push 2026" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Mark finalized" })).toBeNull();
 });

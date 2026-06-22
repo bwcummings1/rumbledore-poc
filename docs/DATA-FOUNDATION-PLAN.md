@@ -174,6 +174,13 @@ A task is not "done" until all seven hold:
 - *Goal:* the gate — **Save** (checkpoint) and **Push** (per-season snapshot the record book reads); finalized-season
   semantics (#2); live current season vs curated history.
 - *Tests* (state transitions; saved-not-pushed invisibility to records).
+- *T8 completion note (2026-06-23):* ✅ Completed on `ws/t8-save-push` by CloudyGoose. Extended the existing Data
+  Book masthead with steward-only Save, Restore, Push season, Push all, and live/finalized mode controls. Added
+  RLS-scoped `league_curation_season_states` for the owner-finalized trigger, plus a steward-gated season-mode API.
+  The Data Book now shows per-season and overall indicators for unsaved draft edits, saved-but-unpushed checkpoints,
+  and pushed canonical snapshots; live seasons show provider-complete finalization suggestions, finalized seasons show
+  locked-until-pushed posture, and push confirmations call T4's per-season/pushAll APIs without re-pointing Records.
+  Component, route, DB service, and screenshot harness coverage were added.
 
 **T9 — Record Book re-point + display rule** (depends: T8) — the load-bearing boundary
 - *Goal:* re-point `recomputeLeagueStatistics`/the record book to compute from the **pushed snapshot only** (read-only
@@ -200,7 +207,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T5 Data Book (read) | NobleSnow | ✅ complete |
 | T6 editable cells + scope | CoralBridge | ✅ complete |
 | T7 Edit Ledger | RusticPrairie | ✅ complete |
-| T8 save/push state machine | — | ☐ |
+| T8 save/push state machine | CloudyGoose | ✅ complete |
 | T9 record-book re-point | — | ☐ |
 | T10 era auto-proposal | — | ☐ |
 | T11 records catalog | — | ☐ |
