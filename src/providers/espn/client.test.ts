@@ -72,6 +72,12 @@ function fixtureSession(overrides: Partial<EspnSession> = {}): EspnSession {
   };
 }
 
+function fixtureSettings(
+  fixture: typeof leagueFixture,
+): Record<string, unknown> {
+  return fixture.settings as Record<string, unknown>;
+}
+
 function twoWeekEspnMatchupFixture() {
   const fixture = structuredClone(leagueFixture);
   Object.assign(fixture.settings.scheduleSettings, {
@@ -327,6 +333,82 @@ describe("ESPN current league client", () => {
     });
   });
 
+  it("normalizes modern ESPN mSettings groups including FLEX and acquisition type", async () => {
+    const fixture = structuredClone(leagueFixture);
+    Object.assign(fixture.settings.scheduleSettings, {
+      matchupPeriodCount: "14",
+      playoffMatchupPeriodLength: "1",
+      playoffTeamCount: "6",
+    });
+    Object.assign(fixtureSettings(fixture), {
+      acquisitionSettings: {
+        acquisitionBudget: "100",
+        acquisitionType: "FREE_AGENT_BUDGET",
+        minimumBid: 1,
+      },
+      rosterSettings: {
+        lineupSlotCounts: {
+          "0": "1",
+          "2": "2",
+          "4": "2",
+          "6": "1",
+          "16": "1",
+          "17": "1",
+          "20": "7",
+          "23": "1",
+        },
+      },
+      scoringSettings: {
+        scoringItems: [
+          { points: 0.1, statId: 3 },
+          { points: 6, statId: 25 },
+        ],
+        scoringType: "H2H_POINTS",
+      },
+    });
+    const { fetch } = createCapturingFetch(jsonResponse(fixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getLeague(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toMatchObject({
+      acquisitionSettings: {
+        acquisitionBudget: 100,
+        acquisitionType: "FREE_AGENT_BUDGET",
+        minimumBid: 1,
+        source: "espn.settings.acquisitionSettings",
+      },
+      postseason: {
+        matchupPeriodCount: 14,
+        playoffMatchupPeriodLength: 1,
+        playoffTeamCount: 6,
+        regularSeasonEndScoringPeriod: 14,
+      },
+      rosterSettings: {
+        lineupSlotCounts: {
+          "0": 1,
+          "2": 2,
+          "4": 2,
+          "6": 1,
+          "16": 1,
+          "17": 1,
+          "20": 7,
+          "23": 1,
+        },
+        source: "espn.settings.rosterSettings",
+      },
+      scoringSettings: {
+        scoringItems: [
+          { points: 0.1, statId: 3 },
+          { points: 6, statId: 25 },
+        ],
+        scoringType: "H2H_POINTS",
+      },
+    });
+  });
+
   it("normalizes 12 ESPN teams with owner member links", async () => {
     const { fetch } = createCapturingFetch(jsonResponse(leagueFixture));
     const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
@@ -394,6 +476,25 @@ describe("ESPN current league client", () => {
       awayScore: 0,
       winner: "unknown",
       status: "scheduled",
+    });
+  });
+
+  it("derives a stable matchup id when ESPN omits schedule row ids", async () => {
+    const fixture = structuredClone(leagueFixture);
+    const firstMatchup = fixture.schedule[0] as { id?: unknown };
+    delete firstMatchup.id;
+    const { fetch } = createCapturingFetch(jsonResponse(fixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getMatchups(fixtureSession(), leagueRef, 1);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0]).toMatchObject({
+      providerId: "1:7:5",
+      scoringPeriod: 1,
+      homeTeamRef: { providerId: "7" },
+      awayTeamRef: { providerId: "5" },
     });
   });
 
@@ -524,6 +625,80 @@ describe("ESPN current league client", () => {
     );
   });
 
+  it("normalizes a 2011 OP and two-week playoff settings shape from history", async () => {
+    const historyFixture = structuredClone(leagueFixture);
+    historyFixture.seasonId = 2011;
+    historyFixture.scoringPeriodId = 15;
+    historyFixture.status.finalScoringPeriod = 16;
+    historyFixture.status.isExpired = true;
+    historyFixture.status.isActive = false;
+    Object.assign(historyFixture.settings, { size: "10" });
+    Object.assign(historyFixture.settings.scheduleSettings, {
+      matchupPeriodCount: "13",
+      playoffMatchupPeriodLength: "2",
+      playoffTeamCount: "4",
+    });
+    Object.assign(fixtureSettings(historyFixture), {
+      acquisitionSettings: {
+        acquisitionBudget: "100",
+        acquisitionType: "WAIVERS_TRADITIONAL",
+      },
+      rosterSettings: {
+        lineupSlotCounts: {
+          "0": "1",
+          "2": "2",
+          "4": "2",
+          "6": "1",
+          "7": "1",
+          "16": "1",
+          "17": "1",
+          "20": "6",
+        },
+      },
+      scoringSettings: {
+        scoringItems: [{ points: 6, statId: 25 }],
+        scoringType: "H2H_POINTS",
+      },
+    });
+    const { fetch } = createCapturingFetch(jsonResponse([historyFixture]));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getHistory(fixtureSession(), leagueRef, {
+      seasons: [2011],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0].league).toMatchObject({
+      acquisitionSettings: {
+        acquisitionBudget: 100,
+        acquisitionType: "WAIVERS_TRADITIONAL",
+      },
+      postseason: {
+        championshipScoringPeriod: 16,
+        matchupPeriodCount: 13,
+        playoffMatchupPeriodLength: 2,
+        playoffStartScoringPeriod: 14,
+        playoffTeamCount: 4,
+        regularSeasonEndScoringPeriod: 13,
+      },
+      rosterSettings: {
+        lineupSlotCounts: {
+          "0": 1,
+          "2": 2,
+          "4": 2,
+          "6": 1,
+          "7": 1,
+          "16": 1,
+          "17": 1,
+          "20": 6,
+        },
+      },
+      scoringType: "H2H_POINTS",
+      size: 10,
+    });
+  });
+
   it("normalizes ESPN history two-week schedule rows into one span-aware matchup", async () => {
     const { fetch } = createCapturingFetch(
       jsonResponse([twoWeekEspnMatchupFixture()]),
@@ -547,6 +722,31 @@ describe("ESPN current league client", () => {
       winner: "home",
       status: "final",
     });
+  });
+
+  it("skips one-sided ESPN history rows until bye ingestion is implemented", async () => {
+    const historyFixture = structuredClone(leagueFixture);
+    historyFixture.seasonId = 2025;
+    historyFixture.schedule.push({
+      home: {
+        pointsByScoringPeriod: { "14": 88 },
+        teamId: 1,
+        totalPoints: 88,
+      },
+      matchupPeriodId: 14,
+      scoringPeriodId: 14,
+      winner: "UNDECIDED",
+    } as unknown as (typeof historyFixture.schedule)[number]);
+    const { fetch } = createCapturingFetch(jsonResponse([historyFixture]));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getHistory(fixtureSession(), leagueRef, {
+      seasons: [2025],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0].matchups).toHaveLength(84);
   });
 
   it("marks regular-season fallback final standings as low confidence", async () => {

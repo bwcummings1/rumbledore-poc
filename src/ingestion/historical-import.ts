@@ -43,6 +43,9 @@ export interface HistoricalImportInput<Session extends FantasyProviderSession> {
   realtime?: RealtimePublisher;
 }
 
+const DEFAULT_HISTORY_SEASON_LIMIT = 10;
+const MAX_HISTORY_SEASON_LIMIT = 25;
+
 export interface HistoricalImportResult {
   league: {
     id: string;
@@ -174,7 +177,10 @@ function normalizeRequestedSeasons({
   maxSeasons?: number;
   seasons?: number[];
 }): number[] {
-  const limit = Math.max(1, Math.min(10, maxSeasons ?? 10));
+  const requestedLimit =
+    maxSeasons ??
+    (seasons?.length ? seasons.length : DEFAULT_HISTORY_SEASON_LIMIT);
+  const limit = Math.max(1, Math.min(MAX_HISTORY_SEASON_LIMIT, requestedLimit));
   const requested =
     seasons && seasons.length > 0
       ? seasons

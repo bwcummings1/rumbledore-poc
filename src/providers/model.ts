@@ -92,6 +92,8 @@ export interface NormalizedKeeperSettings extends NormalizedJsonObject {
 
 export interface NormalizedLeague extends ProviderLeagueRef {
   scoringType: string;
+  acquisitionSettings?: NormalizedAcquisitionSettings;
+  rosterSettings?: NormalizedRosterSettings;
   scoringSettings?: NormalizedJsonObject;
   size: number;
   currentScoringPeriod: number;
@@ -100,9 +102,19 @@ export interface NormalizedLeague extends ProviderLeagueRef {
   postseason?: NormalizedPostseasonSettings;
 }
 
+export interface NormalizedAcquisitionSettings extends NormalizedJsonObject {
+  acquisitionBudget?: number;
+  acquisitionType?: string;
+}
+
+export interface NormalizedRosterSettings extends NormalizedJsonObject {
+  lineupSlotCounts?: Record<string, number>;
+}
+
 export interface NormalizedPostseasonSettings {
   championshipScoringPeriod?: number;
   matchupPeriodCount?: number;
+  playoffMatchupPeriodLength?: number;
   playoffStartScoringPeriod?: number;
   playoffTeamCount?: number;
   regularSeasonEndScoringPeriod?: number;
