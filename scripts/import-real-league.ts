@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 type EnvMap = Record<string, string | undefined>;
 
@@ -60,15 +60,18 @@ async function main(): Promise<void> {
   const { parseEnv } = await import("../src/core/env/schema");
   const { createDb } = await import("../src/db/client");
   const { migrateSerialized } = await import("../src/db/test-support");
-  const { withLeagueContext } = await import("../src/db/rls");
-  const { leagueSeasonSettings, leagues } = await import("../src/db/schema");
+  const { leagues } = await import("../src/db/schema");
   const { syncCurrentLeague } = await import("../src/ingestion/current-league");
   const { importLeagueHistory } = await import(
     "../src/ingestion/historical-import"
   );
+  const { loadImportSummaryData } = await import(
+    "../src/ingestion/import-summary"
+  );
   const { createEspnDiscoveryProvider } = await import(
     "../src/providers/espn/client"
   );
+  const { recomputeLeagueStatistics } = await import("../src/stats/engine");
 
   const env = parseEnv(process.env);
   const leagueId = env.espn.testLeagueId ?? 95050;
@@ -133,31 +136,14 @@ async function main(): Promise<void> {
       throw history.error;
     }
 
-    const rows = await withLeagueContext(
+    const stats = await recomputeLeagueStatistics(handle.db, {
+      leagueId: current.value.league.id,
+    });
+    const summary = await loadImportSummaryData(
       handle.db,
       current.value.league.id,
-      async (tx) =>
-        tx
-          .select({
-            acquisitionBudget: leagueSeasonSettings.acquisitionBudget,
-            acquisitionType: leagueSeasonSettings.acquisitionType,
-            championshipScoringPeriod:
-              leagueSeasonSettings.championshipScoringPeriod,
-            leagueSize: leagueSeasonSettings.leagueSize,
-            lineupSlotCounts: leagueSeasonSettings.lineupSlotCounts,
-            matchupPeriodCount: leagueSeasonSettings.matchupPeriodCount,
-            playoffMatchupPeriodLength:
-              leagueSeasonSettings.playoffMatchupPeriodLength,
-            playoffTeamCount: leagueSeasonSettings.playoffTeamCount,
-            regularSeasonEndScoringPeriod:
-              leagueSeasonSettings.regularSeasonEndScoringPeriod,
-            scoringType: leagueSeasonSettings.scoringType,
-            season: leagueSeasonSettings.season,
-          })
-          .from(leagueSeasonSettings)
-          .where(eq(leagueSeasonSettings.leagueId, current.value.league.id))
-          .orderBy(asc(leagueSeasonSettings.season)),
     );
+    const rows = summary.seasonSettings;
 
     const bySeason = new Map(rows.map((row) => [row.season, row]));
     const season2011 = bySeason.get(2011);
@@ -166,6 +152,13 @@ async function main(): Promise<void> {
     const season2020 = bySeason.get(2020);
     const season2021 = bySeason.get(2021);
     const season2026 = bySeason.get(currentSeason);
+    const maxPersonSeasons = Math.max(
+      0,
+      ...summary.persons.map((person) => person.mappedSeasons.length),
+    );
+    const fixtureNamedPersons = summary.persons.filter((person) =>
+      /^Fixture Manager \d+$/i.test(person.canonicalName),
+    );
     const checks = [
       {
         label: `settings rows present for ${totalSeasons} seasons`,
@@ -193,6 +186,19 @@ async function main(): Promise<void> {
           slotCount(season2011?.lineupSlotCounts, "7") > 0 &&
           slotCount(season2026?.lineupSlotCounts, "23") > 0,
       },
+      {
+        label:
+          "persons list is scoped to imported league and has no fixture managers",
+        pass: fixtureNamedPersons.length === 0,
+      },
+      {
+        label: "person identities collapse across historical seasons",
+        pass: summary.persons.length >= 10 && summary.persons.length <= 24,
+      },
+      {
+        label: "at least one identity spans ten or more seasons",
+        pass: maxPersonSeasons >= 10,
+      },
     ];
     const summaryLines = [
       "# Real League Import Summary",
@@ -202,7 +208,7 @@ async function main(): Promise<void> {
       `- Historical seasons requested in one import: ${historySeasons.join(", ")}`,
       `- Settings rows: ${rows.length}`,
       "",
-      "## Settings Era Checks",
+      "## Verification Checks",
       "",
       ...checks.map((check) => `- ${passFail(check.pass)} - ${check.label}`),
       "",
@@ -226,6 +232,25 @@ async function main(): Promise<void> {
           ].join(" | ")} |`,
       ),
       "",
+      "## Persons",
+      "",
+      `- Persons: ${summary.persons.length}`,
+      `- Team seasons: ${summary.teamSeasons}`,
+      `- Identity mappings: ${summary.identityMappings}`,
+      `- Max seasons on one identity: ${maxPersonSeasons}`,
+      "",
+      "| Person | Seasons | Owner Names | Team Names |",
+      "|---|---:|---|---|",
+      ...summary.persons.map(
+        (person) =>
+          `| ${[
+            person.canonicalName,
+            person.mappedSeasons.join(", "),
+            person.ownerNames.join(", "),
+            person.teamNames.join(", "),
+          ].join(" | ")} |`,
+      ),
+      "",
       "## Import Stats",
       "",
       `- Current teams changed/total: ${current.value.teams.changed}/${current.value.teams.total}`,
@@ -234,6 +259,9 @@ async function main(): Promise<void> {
       `- Historical skipped seasons: ${history.value.seasons.skipped.join(", ") || "(none)"}`,
       `- Historical teams changed/total: ${history.value.teams.changed}/${history.value.teams.total}`,
       `- Historical matchups changed/total: ${history.value.matchups.changed}/${history.value.matchups.total}`,
+      `- Stats weekly rows: ${stats.weeklyStatistics}`,
+      `- Stats season rows: ${stats.seasonStatistics}`,
+      `- Stats integrity failures: ${stats.integrityFailures}`,
     ];
 
     mkdirSync(".orchestration", { recursive: true });

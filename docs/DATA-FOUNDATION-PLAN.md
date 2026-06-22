@@ -93,6 +93,13 @@ A task is not "done" until all seven hold:
   no fixture bleed.
 - *Verify:* clean re-import → summary "Persons" lists **real names**, not "Fixture Manager NN".
 - *Docs:* PROGRESS; handoff T2 (note the fixture-isolation approach).
+- *T2 completion note (2026-06-22):* ✅ Completed on `ws/t2-names` by RedJay. Root cause: `persons.canonical_name`
+  was only set when a person row was first created, and targeted current-sync recompute returned before identity
+  resolution when no finalized matchup rows changed. Fix: identity resolution now refreshes non-manual canonical
+  names from the latest mapped provider owner names, targeted recompute always runs identity resolution, and the real
+  import harness runs a full stats recompute before writing a league-scoped Persons summary. Clean 95050 verification
+  shows 14 real identities, 188 team seasons/mappings, max identity span 16, and no `Fixture Manager NN` rows. The
+  remaining 13 integrity failures are T3's bye/coverage scope.
 
 **T3 — Byes + multi-week span** (depends: T2)
 - *Goal:* (a) capture a **bye** as a one-sided fact — score counts toward PF/scoring records, **no W/L/T by default**;
@@ -155,7 +162,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | Task | Agent | Status |
 |---|---|---|
 | T1 settings persistence + cap | NavyHill | ✅ complete |
-| T2 names + clean-DB | — | ☐ |
+| T2 names + clean-DB | RedJay | ✅ complete |
 | T3 byes + span | — | ☐ |
 | T4 curated-state model | — | ☐ |
 | T5 Data Book (read) | — | ☐ |

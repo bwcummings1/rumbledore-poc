@@ -1024,6 +1024,98 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("refreshes stale fixture canonical names from mapped owner names across historical seasons", async () => {
+    const { leagueId } = await seedStatsLeague("real-names");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    let rows = await selectStatsRows(leagueId);
+    const alex2024 = rows.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2024,
+    );
+    const alex2025 = rows.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    if (!alex2024 || !alex2025) {
+      throw new Error("expected Alex historical mappings were not found");
+    }
+    expect(alex2025.personId).toBe(alex2024.personId);
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .update(persons)
+        .set({ canonicalName: "Fixture Manager 01", updatedAt: new Date() })
+        .where(eq(persons.id, alex2024.personId));
+      await tx
+        .update(fantasyMembers)
+        .set({
+          contentHash: `${marker}-real-names-2024`,
+          displayName: "Alex Historical Manager",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(fantasyMembers.leagueId, leagueId),
+            eq(fantasyMembers.providerMemberId, "owner-alex"),
+            eq(fantasyMembers.season, 2024),
+          ),
+        );
+      await tx
+        .update(fantasyMembers)
+        .set({
+          contentHash: `${marker}-real-names-2025`,
+          displayName: "Alex Current Manager",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(fantasyMembers.leagueId, leagueId),
+            eq(fantasyMembers.providerMemberId, "owner-alex"),
+            eq(fantasyMembers.season, 2025),
+          ),
+        );
+    });
+
+    const targeted = await recomputeChangedMatchupStatistics(handle.db, {
+      leagueId,
+      matchupIds: [],
+    });
+    expect(targeted).toMatchObject({
+      records: 0,
+      seasonStatistics: 0,
+      weeklyStatistics: 0,
+    });
+
+    rows = await selectStatsRows(leagueId);
+    const refreshedAlex = rows.personRows.find(
+      (row) => row.id === alex2024.personId,
+    );
+    expect(refreshedAlex?.canonicalName).toBe("Alex Current Manager");
+    expect(rows.personRows.map((row) => row.canonicalName)).not.toContain(
+      "Fixture Manager 01",
+    );
+    expect(rows.personRows).toHaveLength(5);
+
+    const refreshedAlex2024 = rows.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2024,
+    );
+    const refreshedAlex2025 = rows.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2025,
+    );
+    expect(refreshedAlex2024?.personId).toBe(alex2024.personId);
+    expect(refreshedAlex2025?.personId).toBe(alex2024.personId);
+    expect(
+      rows.teamSeasonRows.find(
+        (row) => row.providerTeamId === "1" && row.season === 2024,
+      )?.ownerNames,
+    ).toEqual(["Alex Historical Manager"]);
+    expect(
+      rows.teamSeasonRows.find(
+        (row) => row.providerTeamId === "1" && row.season === 2025,
+      )?.ownerNames,
+    ).toEqual(["Alex Current Manager"]);
+  });
+
   it("applies general person edits once, records them in the unified ledger, and refreshes scoped records", async () => {
     const { leagueId } = await seedStatsLeague("curation-person");
     const actorUserId = await seedActor("curation-person-actor");
