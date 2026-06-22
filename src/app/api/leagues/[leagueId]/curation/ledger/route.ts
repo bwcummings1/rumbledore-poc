@@ -18,6 +18,8 @@ const ledgerTargetKindSchema = z
     "season_setting",
     "grouping",
     "member",
+    "curation_checkpoint",
+    "curation_push",
     "integrity_check",
   ])
   .optional();

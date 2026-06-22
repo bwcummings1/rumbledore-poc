@@ -162,6 +162,13 @@ A task is not "done" until all seven hold:
 **T7 — Edit Ledger / Change Log** (depends: T6) — **separate nav destination**
 - *Goal:* a chronological feed of saves + pushes (single-line entries); click → **red/green before/after diff**.
 - *Tests + screenshots.*
+- *T7 completion note (2026-06-23):* ✅ Completed on `ws/t7-edit-ledger` by RusticPrairie. Added
+  `/leagues/[leagueId]/ledger` as a separate league nav destination between Data Book and Records, backed by existing
+  `league_data_edits` rows including checkpoint-save and season-push markers. The shared `EditLedgerFeed` renders
+  newest-first single-line activity rows for edits/saves/pushes; each row expands into tokenized coral/jade
+  before/after panels with non-color `[-] Before` / `[+] After` cues and metadata for field, scope, actor, timestamp,
+  target, reason, and covered seasons. The steward public-ledger preview/drawer now reuses that renderer. No
+  save/push controls were added; T8 owns those actions.
 
 **T8 — Save + Push state machine** (depends: T7)
 - *Goal:* the gate — **Save** (checkpoint) and **Push** (per-season snapshot the record book reads); finalized-season
@@ -192,7 +199,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T4 curated-state model | TanElm | ✅ complete |
 | T5 Data Book (read) | NobleSnow | ✅ complete |
 | T6 editable cells + scope | CoralBridge | ✅ complete |
-| T7 Edit Ledger | — | ☐ |
+| T7 Edit Ledger | RusticPrairie | ✅ complete |
 | T8 save/push state machine | — | ☐ |
 | T9 record-book re-point | — | ☐ |
 | T10 era auto-proposal | — | ☐ |

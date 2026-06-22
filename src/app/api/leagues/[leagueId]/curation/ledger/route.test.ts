@@ -29,6 +29,7 @@ vi.mock("@/stats", async (importOriginal) => {
 const leagueId = "00000000-0000-4000-8000-000000000001";
 const personId = "00000000-0000-4000-8000-000000000002";
 const integrityCheckId = "00000000-0000-4000-8000-000000000004";
+const pushId = "00000000-0000-4000-8000-000000000006";
 
 function routeContext() {
   return { params: Promise.resolve({ leagueId }) };
@@ -152,6 +153,51 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
       limit: 100,
       targetId: integrityCheckId,
       targetKind: "integrity_check",
+    });
+  });
+
+  it("accepts curation marker ledger filters", async () => {
+    mocks.requireLeagueRole.mockResolvedValue({
+      ok: true,
+      value: {
+        leagueId,
+        role: "member",
+        session: { user: { id: personId } },
+        userId: personId,
+      },
+    });
+    mocks.listUnifiedDataLedger.mockResolvedValue([
+      {
+        actorUserId: personId,
+        afterValue: { pushId, season: 2012 },
+        beforeValue: null,
+        createdAt: "2026-06-22T13:00:00.000Z",
+        editClass: "substantive",
+        field: "season_push",
+        id: "00000000-0000-4000-8000-000000000007",
+        reason: "2012 verified",
+        source: "league_data_edit",
+        targetId: pushId,
+        targetKind: "curation_push",
+      },
+    ]);
+
+    const response = await GET(
+      new Request(
+        `https://rumbledore.test/api/leagues/${leagueId}/curation/ledger?targetKind=curation_push&targetId=${pushId}`,
+      ),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      entries: [{ field: "season_push", targetKind: "curation_push" }],
+    });
+    expect(listUnifiedDataLedger).toHaveBeenCalledWith(mocks.db, {
+      leagueId,
+      limit: 100,
+      targetId: pushId,
+      targetKind: "curation_push",
     });
   });
 });

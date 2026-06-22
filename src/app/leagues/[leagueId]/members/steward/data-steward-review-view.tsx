@@ -23,6 +23,7 @@ import {
   onboardingPanelError,
   postJson,
 } from "@/app/onboarding/client-http";
+import { EditLedgerFeed } from "@/components/curation/edit-ledger-feed";
 import { Banner } from "@/components/ui/banner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -104,19 +105,6 @@ function detailPreview(detail: Record<string, unknown>): string {
   return JSON.stringify(detail);
 }
 
-function compactJson(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "none";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return JSON.stringify(value);
-}
-
 function splitOwnerNames(value: string): string[] {
   return [...new Set(value.split(",").map((entry) => entry.trim()))].filter(
     Boolean,
@@ -125,23 +113,6 @@ function splitOwnerNames(value: string): string[] {
 
 function seasonsLabel(seasons: readonly number[]): string {
   return seasons.length > 0 ? seasons.join(", ") : "No seasons";
-}
-
-function ledgerSourceLabel(source: UnifiedLedgerEntry["source"]): string {
-  switch (source) {
-    case "data_correction_audit":
-      return "Integrity audit";
-    case "identity_audit":
-      return "Identity audit";
-    case "league_data_edit":
-      return "Data edit";
-  }
-}
-
-function ledgerTone(
-  editClass: UnifiedLedgerEntry["editClass"],
-): "neutral" | "warning" {
-  return editClass === "substantive" ? "warning" : "neutral";
 }
 
 function entityOptions(curation: DataCurationSummary) {
@@ -714,33 +685,12 @@ export function DataStewardReviewView({
                 Inspect
               </Button>
             </div>
-            {ledgerEntries.length > 0 ? (
-              <div className="grid gap-2">
-                {ledgerEntries.slice(0, 3).map((entry) => (
-                  <article className="cell grid gap-2 p-3" key={entry.id}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-display text-sm font-medium">
-                        {ledgerSourceLabel(entry.source)} · {entry.field}
-                      </p>
-                      <StatusPill tone={ledgerTone(entry.editClass)}>
-                        {entry.editClass}
-                      </StatusPill>
-                    </div>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {new Date(entry.createdAt).toLocaleString()}
-                    </p>
-                    <p className="line-clamp-2 break-words font-mono text-xs text-muted-foreground">
-                      {compactJson(entry.beforeValue)} →{" "}
-                      {compactJson(entry.afterValue)}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="No ledger entries">
-                This league has no recorded data edits yet.
-              </EmptyState>
-            )}
+            <EditLedgerFeed
+              emptyBody="This league has no recorded data edits yet."
+              emptyTitle="No ledger entries"
+              entries={ledgerEntries}
+              maxEntries={3}
+            />
           </section>
 
           {curationState.access.canEditData ? (
@@ -1103,47 +1053,11 @@ export function DataStewardReviewView({
             open={ledgerOpen}
             title="Public Data Ledger"
           >
-            {ledgerEntries.length > 0 ? (
-              <div className="grid gap-3">
-                {ledgerEntries.map((entry) => (
-                  <article className="cell grid gap-2 p-3" key={entry.id}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-display text-sm font-medium">
-                        {entry.targetKind} · {entry.field}
-                      </p>
-                      <StatusPill tone={ledgerTone(entry.editClass)}>
-                        {entry.editClass}
-                      </StatusPill>
-                    </div>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {ledgerSourceLabel(entry.source)} ·{" "}
-                      {new Date(entry.createdAt).toLocaleString()}
-                    </p>
-                    <KVList
-                      items={[
-                        {
-                          label: "Before",
-                          value: compactJson(entry.beforeValue),
-                        },
-                        {
-                          label: "After",
-                          value: compactJson(entry.afterValue),
-                        },
-                        { label: "Reason", value: entry.reason ?? "none" },
-                        {
-                          label: "Actor",
-                          value: entry.actorUserId ?? "system",
-                        },
-                      ]}
-                    />
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="No ledger entries">
-                This league has no recorded data edits yet.
-              </EmptyState>
-            )}
+            <EditLedgerFeed
+              emptyBody="This league has no recorded data edits yet."
+              emptyTitle="No ledger entries"
+              entries={ledgerEntries}
+            />
           </Sheet>
         </>
       ) : null}

@@ -13,6 +13,7 @@ export type LeagueSectionId =
   | "press"
   | "bet"
   | "data"
+  | "ledger"
   | "records"
   | "lore"
   | "members";
@@ -145,6 +146,13 @@ export const LEAGUE_NAVIGATION_SECTIONS = [
     id: "data",
     label: "Data Book",
     pathSegment: "data",
+    scope: "league",
+  },
+  {
+    icon: "scroll-text",
+    id: "ledger",
+    label: "Edit Ledger",
+    pathSegment: "ledger",
     scope: "league",
   },
   {
