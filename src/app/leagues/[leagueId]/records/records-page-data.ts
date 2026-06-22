@@ -152,7 +152,7 @@ export interface ManagerWeeklyHighlight {
   opponentPersonId: string | null;
   pointsAgainst: number;
   pointsFor: number;
-  result: "loss" | "tie" | "win";
+  result: "bye" | "loss" | "tie" | "win";
   scoringPeriod: number;
   season: number;
 }
@@ -794,7 +794,9 @@ function toWeeklyHighlight(
 ): ManagerWeeklyHighlight {
   return {
     matchupId: row.matchupId,
-    opponentName: personName(personNames, row.opponentPersonId),
+    opponentName: row.opponentPersonId
+      ? personName(personNames, row.opponentPersonId)
+      : null,
     opponentPersonId: row.opponentPersonId,
     pointsAgainst: row.pointsAgainst,
     pointsFor: row.pointsFor,

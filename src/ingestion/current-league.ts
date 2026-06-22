@@ -148,7 +148,7 @@ interface TransactionUpsertResult {
 
 type MatchupUpsertRow = {
   awayScore: number;
-  awayTeamProviderId: string;
+  awayTeamProviderId: string | null;
   contentHash: string;
   homeScore: number;
   homeTeamProviderId: string;
@@ -164,6 +164,7 @@ type MatchupUpsertRow = {
   status: NormalizedMatchup["status"];
   winner: NormalizedMatchup["winner"];
 };
+type LeagueSeasonSettingsRow = typeof leagueSeasonSettings.$inferSelect;
 
 type FinalizedStateRegressionNote = {
   detail: Record<string, unknown> & { dedupeKey: string };
@@ -351,8 +352,8 @@ function memberHashPayload(member: NormalizedMember) {
 
 function matchupHashPayload(matchup: NormalizedMatchup) {
   return {
-    awayScore: matchup.awayScore,
-    awayTeamProviderId: matchup.awayTeamRef.providerId,
+    awayScore: matchup.awayScore ?? 0,
+    awayTeamProviderId: matchup.awayTeamRef?.providerId ?? null,
     homeScore: matchup.homeScore,
     homeTeamProviderId: matchup.homeTeamRef.providerId,
     kind: matchup.kind ?? "head_to_head",
@@ -385,6 +386,52 @@ function matchupRowHashPayload(row: MatchupUpsertRow) {
     status: row.status,
     winner: row.winner,
   };
+}
+
+function positiveSpan(value: number | null | undefined): number {
+  return Number.isInteger(value) && value !== undefined && value !== null
+    ? Math.max(1, value)
+    : 1;
+}
+
+function settingPlayoffStart(
+  setting: LeagueSeasonSettingsRow | undefined,
+): number | null {
+  return (
+    setting?.playoffStartScoringPeriod ??
+    (setting?.matchupPeriodCount ? setting.matchupPeriodCount + 1 : null)
+  );
+}
+
+function isSettingDerivedPlayoffMatchup(
+  matchup: Pick<NormalizedMatchup, "periodStart" | "scoringPeriod">,
+  setting: LeagueSeasonSettingsRow | undefined,
+): boolean {
+  const playoffStart = settingPlayoffStart(setting);
+  if (!playoffStart) {
+    return false;
+  }
+  const windowStart = matchup.periodStart ?? matchup.scoringPeriod;
+  const championshipPeriod = setting?.championshipScoringPeriod ?? null;
+  return (
+    windowStart >= playoffStart &&
+    (championshipPeriod === null || windowStart <= championshipPeriod)
+  );
+}
+
+function settingDerivedScoringPeriodSpan(
+  matchup: NormalizedMatchup,
+  setting: LeagueSeasonSettingsRow | undefined,
+): number {
+  const providerSpan = positiveSpan(matchup.scoringPeriodSpan);
+  const playoffSpan = positiveSpan(setting?.playoffMatchupPeriodLength);
+  if (
+    playoffSpan <= providerSpan ||
+    !isSettingDerivedPlayoffMatchup(matchup, setting)
+  ) {
+    return providerSpan;
+  }
+  return playoffSpan;
 }
 
 async function preserveStickyMatchupEdits(
@@ -1236,9 +1283,27 @@ async function upsertMatchups(
     return { changedIds: [], scoringPeriods: [], stats: stats(0, 0) };
   }
 
+  const matchupSeasons = [
+    ...new Set(matchups.map((matchup) => matchup.season)),
+  ].sort((left, right) => left - right);
+  const settingsRows =
+    matchupSeasons.length === 0
+      ? []
+      : await tx
+          .select()
+          .from(leagueSeasonSettings)
+          .where(
+            and(
+              eq(leagueSeasonSettings.leagueId, leagueId),
+              inArray(leagueSeasonSettings.season, matchupSeasons),
+            ),
+          );
+  const settingsBySeason = new Map(
+    settingsRows.map((setting) => [setting.season, setting]),
+  );
   let rows: MatchupUpsertRow[] = matchups.map((matchup) => ({
-    awayScore: matchup.awayScore,
-    awayTeamProviderId: matchup.awayTeamRef.providerId,
+    awayScore: matchup.awayScore ?? 0,
+    awayTeamProviderId: matchup.awayTeamRef?.providerId ?? null,
     contentHash: stableContentHash(matchupHashPayload(matchup)),
     homeScore: matchup.homeScore,
     homeTeamProviderId: matchup.homeTeamRef.providerId,
@@ -1249,10 +1314,17 @@ async function upsertMatchups(
     provider: matchup.provider,
     providerMatchupId: matchup.providerId,
     scoringPeriod: matchup.scoringPeriod,
-    scoringPeriodSpan: matchup.scoringPeriodSpan ?? 1,
+    scoringPeriodSpan: settingDerivedScoringPeriodSpan(
+      matchup,
+      settingsBySeason.get(matchup.season),
+    ),
     season: matchup.season,
     status: matchup.status,
     winner: matchup.winner,
+  }));
+  rows = rows.map((row) => ({
+    ...row,
+    contentHash: stableContentHash(matchupRowHashPayload(row)),
   }));
   rows = await preserveStickyMatchupEdits(tx, leagueId, rows);
   const regressionNotes = await finalizedMatchupRegressionNotes(
@@ -1624,16 +1696,16 @@ export async function persistNormalizedLeagueRows({
     );
     const teamStats = await upsertTeams(tx, leagueId, teams);
     const memberStats = await upsertMembers(tx, leagueId, members);
+    const leagueSeasonSettingsStats = await upsertLeagueSeasonSettings(
+      tx,
+      leagueId,
+      league,
+    );
     const matchupUpsert = await upsertMatchups(tx, leagueId, matchups);
     const finalStandingStats = await upsertFinalStandings(
       tx,
       leagueId,
       finalStandings,
-    );
-    const leagueSeasonSettingsStats = await upsertLeagueSeasonSettings(
-      tx,
-      leagueId,
-      league,
     );
     const rosterStats = await upsertRosterEntries(
       tx,

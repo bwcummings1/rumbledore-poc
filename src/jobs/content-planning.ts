@@ -813,9 +813,30 @@ export async function planGameFinalContent({
       };
     }
 
+    const awayTeamProviderId = matchup.awayTeamProviderId;
+    if (!awayTeamProviderId) {
+      return {
+        game: {
+          gameId: matchup.gameId,
+          leagueId: matchup.leagueId,
+          scoringPeriod: matchup.scoringPeriod,
+          season: matchup.season,
+          triggerReasons: [],
+        },
+        nflWeekState: resolvedNflWeekState,
+        planned: [],
+        skippedEntitlement: null,
+        skippedReason: "game_has_bye",
+      };
+    }
+
     const teamProviderIds = [
-      ...new Set([matchup.homeTeamProviderId, matchup.awayTeamProviderId]),
+      ...new Set([matchup.homeTeamProviderId, awayTeamProviderId]),
     ];
+    const twoSidedMatchup: GameFinalMatchup = {
+      ...matchup,
+      awayTeamProviderId,
+    };
     const teamRows =
       teamProviderIds.length > 0
         ? await tx
@@ -835,13 +856,13 @@ export async function planGameFinalContent({
         : [];
     const teams = new Map(teamRows.map((team) => [team.providerTeamId, team]));
     const triggerReasons = gameFinalTriggerReasons({
-      matchup,
+      matchup: twoSidedMatchup,
       milestoneKeys: data.milestoneKeys ?? [],
       teams,
       weekState: resolvedNflWeekState,
     });
     const triggerKey = gameFinalTriggerKey({
-      matchup,
+      matchup: twoSidedMatchup,
       now: resolvedNow,
       weekState: resolvedNflWeekState,
     });

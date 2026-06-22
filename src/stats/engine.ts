@@ -62,7 +62,16 @@ type IdentityMappingRow = typeof identityMappings.$inferSelect;
 type ProviderFinalStandingRow = typeof providerFinalStandings.$inferSelect;
 type LeagueSeasonSettingsRow = typeof leagueSeasonSettings.$inferSelect;
 type DataIntegrityCheckInsert = typeof dataIntegrityChecks.$inferInsert;
-type WeeklyResult = "win" | "loss" | "tie";
+type PlayoffIntegritySetting = Pick<
+  LeagueSeasonSettingsRow,
+  | "championshipScoringPeriod"
+  | "matchupPeriodCount"
+  | "playoffMatchupPeriodLength"
+  | "playoffStartScoringPeriod"
+  | "playoffTeamCount"
+>;
+type DecidedWeeklyResult = "win" | "loss" | "tie";
+type WeeklyResult = DecidedWeeklyResult | "bye";
 
 interface ResolvedIdentityState {
   ownerMemberIds: Set<string>;
@@ -90,7 +99,7 @@ interface WeeklyFact {
   margin: number;
   matchupKind: NormalizedMatchupKind;
   matchupId: string;
-  opponentPersonId: string;
+  opponentPersonId: string | null;
   personId: string;
   periodStart: number | null;
   pointsAgainst: number;
@@ -110,7 +119,7 @@ interface SeasonStat {
   avgPointsAgainst: number;
   avgPointsFor: number;
   currentStreakLength: number;
-  currentStreakType: WeeklyResult | null;
+  currentStreakType: DecidedWeeklyResult | null;
   divisionWinner: boolean;
   expectedWins: number;
   computedRank: number;
@@ -939,7 +948,7 @@ export async function resolveLeagueIdentities(
 function toWeeklyResult(
   pointsFor: number,
   pointsAgainst: number,
-): WeeklyResult {
+): DecidedWeeklyResult {
   if (pointsFor > pointsAgainst) {
     return "win";
   }
@@ -947,6 +956,12 @@ function toWeeklyResult(
     return "loss";
   }
   return "tie";
+}
+
+function isDecidedWeeklyResult(
+  result: WeeklyResult,
+): result is DecidedWeeklyResult {
+  return result !== "bye";
 }
 
 async function loadFinalMatchups(tx: LeagueScopedTx, leagueId: string) {
@@ -1097,10 +1112,13 @@ function hasPlayoffField({
   homeTeamProviderId,
   playoffTeamIds,
 }: {
-  awayTeamProviderId: string;
+  awayTeamProviderId: string | null;
   homeTeamProviderId: string;
   playoffTeamIds: ReadonlySet<string>;
 }): boolean {
+  if (!awayTeamProviderId) {
+    return playoffTeamIds.size === 0 || playoffTeamIds.has(homeTeamProviderId);
+  }
   return (
     playoffTeamIds.size === 0 ||
     (playoffTeamIds.has(homeTeamProviderId) &&
@@ -1240,19 +1258,27 @@ function buildWeeklyFacts({
     const homeMapping = mappingByIdentity.get(
       identityKey(matchup.homeTeamProviderId, matchup.season),
     );
-    const awayMapping = mappingByIdentity.get(
-      identityKey(matchup.awayTeamProviderId, matchup.season),
-    );
-    if (!homeMapping || !awayMapping) {
+    if (!homeMapping) {
       continue;
     }
     const homeTeamSeason = teamSeasonByIdentity.get(
       identityKey(matchup.homeTeamProviderId, matchup.season),
     );
-    const awayTeamSeason = teamSeasonByIdentity.get(
-      identityKey(matchup.awayTeamProviderId, matchup.season),
-    );
-    if (!homeTeamSeason || !awayTeamSeason) {
+    if (!homeTeamSeason) {
+      continue;
+    }
+    const awayMapping = matchup.awayTeamProviderId
+      ? mappingByIdentity.get(
+          identityKey(matchup.awayTeamProviderId, matchup.season),
+        )
+      : undefined;
+    const awayTeamSeason = matchup.awayTeamProviderId
+      ? teamSeasonByIdentity.get(
+          identityKey(matchup.awayTeamProviderId, matchup.season),
+        )
+      : undefined;
+    const isBye = matchup.awayTeamProviderId === null;
+    if (!isBye && (!awayMapping || !awayTeamSeason)) {
       continue;
     }
 
@@ -1273,18 +1299,21 @@ function buildWeeklyFacts({
       margin: round(homeScore - awayScore, 2),
       matchupKind: matchup.kind,
       matchupId: matchup.id,
-      opponentPersonId: awayMapping.personId,
+      opponentPersonId: awayMapping?.personId ?? null,
       personId: homeMapping.personId,
       periodStart,
-      pointsAgainst: awayScore,
+      pointsAgainst: isBye ? 0 : awayScore,
       pointsFor: homeScore,
-      result: toWeeklyResult(homeScore, awayScore),
+      result: isBye ? "bye" : toWeeklyResult(homeScore, awayScore),
       scoringPeriod: matchup.scoringPeriod,
       scoringPeriodSpan,
       season: matchup.season,
       teamSeasonId: homeTeamSeason.id,
       weeklyRank: 0,
     });
+    if (isBye || !awayMapping || !awayTeamSeason) {
+      continue;
+    }
     facts.push({
       isBottomScorer: false,
       isChampionship: flags.isChampionship,
@@ -1444,7 +1473,9 @@ function buildSeasonStats(
         scoringFactsByPerson.set(fact.personId, fact);
       }
     }
-    const scoringFacts = [...scoringFactsByPerson.values()];
+    const scoringFacts = [...scoringFactsByPerson.values()].filter((fact) =>
+      isDecidedWeeklyResult(fact.result),
+    );
 
     for (const fact of scoringFacts) {
       const key = `${fact.personId}:${fact.season}`;
@@ -1483,8 +1514,13 @@ function buildSeasonStats(
     );
     const [personId, seasonRaw] = teamKey.split(":");
     const season = Number(seasonRaw);
-    const games = sorted.length;
+    const decided = sorted.filter((fact) => isDecidedWeeklyResult(fact.result));
+    const games = decided.length;
     const scoringPeriods = sorted.reduce(
+      (sum, fact) => sum + Math.max(1, fact.scoringPeriodSpan),
+      0,
+    );
+    const pointsAgainstScoringPeriods = decided.reduce(
       (sum, fact) => sum + Math.max(1, fact.scoringPeriodSpan),
       0,
     );
@@ -1496,17 +1532,20 @@ function buildSeasonStats(
       2,
     );
     const pointsAgainst = round(
-      sorted.reduce((sum, fact) => sum + fact.pointsAgainst, 0),
+      decided.reduce((sum, fact) => sum + fact.pointsAgainst, 0),
       2,
     );
     const scoresFor = sorted.map((fact) => fact.pointsFor);
-    const scoresAgainst = sorted.map((fact) => fact.pointsAgainst);
+    const scoresAgainst = decided.map((fact) => fact.pointsAgainst);
     let longestWinStreak = 0;
     let longestLossStreak = 0;
-    let currentStreakType: WeeklyResult | null = null;
+    let currentStreakType: DecidedWeeklyResult | null = null;
     let currentStreakLength = 0;
 
     for (const fact of sorted) {
+      if (!isDecidedWeeklyResult(fact.result)) {
+        continue;
+      }
       if (fact.result === currentStreakType) {
         currentStreakLength += 1;
       } else {
@@ -1534,7 +1573,10 @@ function buildSeasonStats(
       allPlayLosses: allPlayRow.losses,
       allPlayTies: allPlayRow.ties,
       allPlayWins: allPlayRow.wins,
-      avgPointsAgainst: round(pointsAgainst / Math.max(1, scoringPeriods), 2),
+      avgPointsAgainst: round(
+        pointsAgainst / Math.max(1, pointsAgainstScoringPeriods),
+        2,
+      ),
       avgPointsFor: round(pointsFor / Math.max(1, scoringPeriods), 2),
       currentStreakLength,
       currentStreakType,
@@ -1643,6 +1685,9 @@ function headToHeadRows(
 
   for (const fact of facts) {
     if (fact.matchupKind !== "head_to_head") {
+      continue;
+    }
+    if (!fact.opponentPersonId) {
       continue;
     }
     if (compareStable(fact.personId, fact.opponentPersonId) > 0) {
@@ -1808,8 +1853,11 @@ function recordEvents({
   headToHead: readonly HeadToHeadRow[];
   seasonRows: readonly SeasonStat[];
 }): RecordEvent[] {
-  const winners = facts.filter((fact) => fact.result === "win");
-  const losers = facts.filter((fact) => fact.result === "loss");
+  const singlePeriodFacts = facts.filter(
+    (fact) => scoringWindowSpan(fact) === 1,
+  );
+  const winners = singlePeriodFacts.filter((fact) => fact.result === "win");
+  const losers = singlePeriodFacts.filter((fact) => fact.result === "loss");
   const weeklySort = (fact: WeeklyFact) =>
     [
       fact.season,
@@ -1889,12 +1937,12 @@ function recordEvents({
   return [
     ...currentRecordEvents(
       "highest_single_week_score",
-      facts.map(singleWeek),
+      singlePeriodFacts.map(singleWeek),
       "max",
     ),
     ...currentRecordEvents(
       "lowest_single_week_score",
-      facts.filter((fact) => fact.pointsFor > 0).map(singleWeek),
+      singlePeriodFacts.filter((fact) => fact.pointsFor > 0).map(singleWeek),
       "min",
     ),
     ...currentRecordEvents(
@@ -2241,6 +2289,102 @@ function seasonKeys(values: Iterable<number>): number[] {
     .sort((left, right) => left - right);
 }
 
+function nextPowerOfTwo(value: number): number {
+  if (value <= 1) {
+    return 1;
+  }
+  let power = 1;
+  while (power < value) {
+    power *= 2;
+  }
+  return power;
+}
+
+function expectedPlayoffByeCount(playoffTeamCount: number | null): number {
+  if (!playoffTeamCount || playoffTeamCount <= 0) {
+    return 0;
+  }
+  const bracketSize = nextPowerOfTwo(playoffTeamCount);
+  return bracketSize === playoffTeamCount ? 0 : bracketSize - playoffTeamCount;
+}
+
+function playoffStartForSetting(
+  setting: PlayoffIntegritySetting | undefined,
+): number | null {
+  return (
+    setting?.playoffStartScoringPeriod ??
+    (setting?.matchupPeriodCount ? setting.matchupPeriodCount + 1 : null)
+  );
+}
+
+function isMatchupInSettingPlayoffSpan({
+  matchup,
+  setting,
+}: {
+  matchup: Pick<
+    Awaited<ReturnType<typeof loadFinalMatchups>>[number],
+    "periodStart" | "scoringPeriod"
+  >;
+  setting: PlayoffIntegritySetting | undefined;
+}): boolean {
+  const playoffStart = playoffStartForSetting(setting);
+  if (!playoffStart) {
+    return false;
+  }
+  const windowStart = matchup.periodStart ?? matchup.scoringPeriod;
+  const championshipPeriod = setting?.championshipScoringPeriod ?? null;
+  return (
+    windowStart >= playoffStart &&
+    (championshipPeriod === null || windowStart <= championshipPeriod)
+  );
+}
+
+function expectedByeTeamIdsForWindow({
+  missingTeamIds,
+  setting,
+  standings,
+  windowStart,
+}: {
+  missingTeamIds: readonly string[];
+  setting: PlayoffIntegritySetting | undefined;
+  standings: readonly Pick<
+    ProviderFinalStandingRow,
+    "finalRank" | "playoffSeed" | "providerTeamId"
+  >[];
+  windowStart: number;
+}): Set<string> {
+  const playoffStart = playoffStartForSetting(setting);
+  if (!playoffStart || windowStart !== playoffStart) {
+    return new Set();
+  }
+  const byeCount = expectedPlayoffByeCount(setting?.playoffTeamCount ?? null);
+  if (byeCount <= 0 || missingTeamIds.length === 0) {
+    return new Set();
+  }
+  const missing = new Set(missingTeamIds);
+  const seeded = standings
+    .filter((standing) => (standing.playoffSeed ?? 0) > 0)
+    .sort(
+      (left, right) =>
+        (left.playoffSeed ?? Number.MAX_SAFE_INTEGER) -
+          (right.playoffSeed ?? Number.MAX_SAFE_INTEGER) ||
+        left.finalRank - right.finalRank ||
+        compareStable(left.providerTeamId, right.providerTeamId),
+    );
+  const ranked = [...standings]
+    .filter((standing) => standing.finalRank > 0)
+    .sort(
+      (left, right) =>
+        left.finalRank - right.finalRank ||
+        compareStable(left.providerTeamId, right.providerTeamId),
+    );
+  const candidates = (seeded.length > 0 ? seeded : ranked)
+    .slice(0, byeCount)
+    .map((standing) => standing.providerTeamId)
+    .filter((providerTeamId) => missing.has(providerTeamId));
+  return new Set(candidates);
+}
+
 async function buildDataIntegrityCheckDrafts(
   tx: LeagueScopedTx,
   leagueId: string,
@@ -2277,6 +2421,7 @@ async function buildDataIntegrityCheckDrafts(
   const finalStandingRows = await tx
     .select({
       finalRank: providerFinalStandings.finalRank,
+      playoffSeed: providerFinalStandings.playoffSeed,
       providerTeamId: providerFinalStandings.providerTeamId,
       rankConfidence: providerFinalStandings.rankConfidence,
       rankSource: providerFinalStandings.rankSource,
@@ -2339,7 +2484,12 @@ async function buildDataIntegrityCheckDrafts(
   const settingsRows = await tx
     .select({
       id: leagueSeasonSettings.id,
+      championshipScoringPeriod: leagueSeasonSettings.championshipScoringPeriod,
       matchupPeriodCount: leagueSeasonSettings.matchupPeriodCount,
+      playoffMatchupPeriodLength:
+        leagueSeasonSettings.playoffMatchupPeriodLength,
+      playoffStartScoringPeriod: leagueSeasonSettings.playoffStartScoringPeriod,
+      playoffTeamCount: leagueSeasonSettings.playoffTeamCount,
       season: leagueSeasonSettings.season,
     })
     .from(leagueSeasonSettings)
@@ -2601,6 +2751,16 @@ async function buildDataIntegrityCheckDrafts(
     teamIds.add(row.providerTeamId);
     teamIdsBySeason.set(row.season, teamIds);
   }
+  const settingsByCoverageSeason = new Map(
+    settingsRows.map((row) => [row.season, row]),
+  );
+  const standingsByCoverageSeason = new Map<number, typeof finalStandingRows>();
+  for (const row of finalStandingRows) {
+    standingsByCoverageSeason.set(row.season, [
+      ...(standingsByCoverageSeason.get(row.season) ?? []),
+      row,
+    ]);
+  }
   const matchupsBySeasonWindow = new Map<
     string,
     {
@@ -2628,16 +2788,28 @@ async function buildDataIntegrityCheckDrafts(
     const seenTeamIds = new Set<string>();
     for (const row of rows) {
       seenTeamIds.add(row.homeTeamProviderId);
-      seenTeamIds.add(row.awayTeamProviderId);
+      if (row.awayTeamProviderId) {
+        seenTeamIds.add(row.awayTeamProviderId);
+      }
     }
     const missingTeamIds = [...expectedTeamIds]
       .filter((providerTeamId) => !seenTeamIds.has(providerTeamId))
       .sort(compareStable);
-    if (missingTeamIds.length > 0) {
+    const expectedByeTeamIds = expectedByeTeamIdsForWindow({
+      missingTeamIds,
+      setting: settingsByCoverageSeason.get(season),
+      standings: standingsByCoverageSeason.get(season) ?? [],
+      windowStart,
+    });
+    const unexpectedMissingTeamIds = missingTeamIds.filter(
+      (providerTeamId) => !expectedByeTeamIds.has(providerTeamId),
+    );
+    if (unexpectedMissingTeamIds.length > 0) {
       scheduleBySeason.set(season, [
         ...(scheduleBySeason.get(season) ?? []),
         {
-          missingTeamIds,
+          expectedByeTeamIds: [...expectedByeTeamIds].sort(compareStable),
+          missingTeamIds: unexpectedMissingTeamIds,
           scoringPeriod: windowStart,
           scoringPeriodSpan: windowSpan,
         },
@@ -2825,8 +2997,8 @@ async function buildDataIntegrityCheckDrafts(
     status: checkStatus(groupingCoverageIssues),
   });
 
-  const settingPeriodCountBySeason = new Map(
-    settingsRows.map((row) => [row.season, row.matchupPeriodCount]),
+  const spanSettingsBySeason = new Map(
+    settingsRows.map((row) => [row.season, row]),
   );
   const spanEditTargets = new Set(
     editRows
@@ -2853,11 +3025,18 @@ async function buildDataIntegrityCheckDrafts(
         scoringPeriodSpan: matchup.scoringPeriodSpan,
       });
     }
-    const settingPeriodCount =
-      settingPeriodCountBySeason.get(matchup.season) ?? 1;
+    const spanSetting = spanSettingsBySeason.get(matchup.season);
+    const settingAllowsSpan =
+      spanSetting !== undefined &&
+      (spanSetting.playoffMatchupPeriodLength ?? 1) >=
+        matchup.scoringPeriodSpan &&
+      isMatchupInSettingPlayoffSpan({
+        matchup,
+        setting: spanSetting,
+      });
     if (
       matchup.scoringPeriodSpan > 1 &&
-      settingPeriodCount <= 1 &&
+      !settingAllowsSpan &&
       !spanEditTargets.has(matchup.id)
     ) {
       issues.push({
@@ -3384,6 +3563,9 @@ export async function recomputeChangedMatchupStatistics(
 
     for (const matchup of finalizedTargets) {
       if (matchup.kind !== "head_to_head") {
+        continue;
+      }
+      if (!matchup.awayTeamProviderId) {
         continue;
       }
       const homeMapping = mappingByIdentity.get(

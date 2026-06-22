@@ -364,6 +364,377 @@ async function seedStatsLeague(tag: string): Promise<SeededStatsLeague> {
   return { leagueId: league.id, providerLeagueId };
 }
 
+async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
+  const providerLeagueId = `${marker}-${tag}`;
+  const season = 2026;
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      currentScoringPeriod: 2,
+      name: `${marker} ${tag}`,
+      provider: "espn",
+      providerLeagueId,
+      scoringType: "H2H_POINTS",
+      season,
+      size: 6,
+      sport: "ffl",
+      status: "complete",
+    })
+    .returning();
+  if (!league) {
+    throw new Error("bye stats test league was not created");
+  }
+
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    await tx.insert(leagueSeasonSettings).values({
+      championshipScoringPeriod: 2,
+      contentHash: `${marker}-${tag}-settings`,
+      leagueId: league.id,
+      leagueProviderId: providerLeagueId,
+      matchupPeriodCount: 1,
+      playoffMatchupPeriodLength: 1,
+      playoffStartScoringPeriod: 2,
+      playoffTeamCount: 6,
+      provider: "espn",
+      regularSeasonEndScoringPeriod: 1,
+      season,
+    });
+
+    for (const teamId of ["1", "2", "3", "4", "5", "6"]) {
+      const ownerId = `owner-${teamId}`;
+      await tx.insert(fantasyMembers).values({
+        contentHash: `${marker}-${tag}-${ownerId}`,
+        displayName: `Bye Manager ${teamId}`,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMemberId: ownerId,
+        role: "member",
+        season,
+      });
+      await tx.insert(fantasyTeams).values({
+        abbrev: `B${teamId}`,
+        contentHash: `${marker}-${tag}-team-${teamId}`,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        losses: 0,
+        name: `Bye Team ${teamId}`,
+        ownerMemberIds: [ownerId],
+        pointsAgainst: 0,
+        pointsFor: 0,
+        provider: "espn",
+        providerTeamId: teamId,
+        season,
+        ties: 0,
+        wins: 0,
+      });
+    }
+
+    await tx.insert(providerFinalStandings).values([
+      {
+        contentHash: `${marker}-${tag}-standing-1`,
+        finalRank: 3,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        losses: 0,
+        playoffSeed: 1,
+        pointsAgainst: 90,
+        pointsFor: 305,
+        provider: "espn",
+        providerTeamId: "1",
+        season,
+        ties: 0,
+        wins: 1,
+      },
+      {
+        contentHash: `${marker}-${tag}-standing-2`,
+        finalRank: 4,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        losses: 0,
+        playoffSeed: 2,
+        pointsAgainst: 80,
+        pointsFor: 240,
+        provider: "espn",
+        providerTeamId: "2",
+        season,
+        ties: 0,
+        wins: 1,
+      },
+      ...[
+        ["3", 1, 3],
+        ["6", 2, 6],
+        ["4", 5, 4],
+        ["5", 6, 5],
+      ].map(([providerTeamId, finalRank, playoffSeed]) => ({
+        contentHash: `${marker}-${tag}-standing-${providerTeamId}`,
+        finalRank: Number(finalRank),
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        losses: 0,
+        playoffSeed: Number(playoffSeed),
+        pointsAgainst: 0,
+        pointsFor: 0,
+        provider: "espn" as const,
+        providerTeamId: String(providerTeamId),
+        season,
+        ties: 0,
+        wins: 0,
+      })),
+    ]);
+
+    await tx.insert(fantasyMatchups).values([
+      {
+        awayScore: 90,
+        awayTeamProviderId: "6",
+        contentHash: `${marker}-${tag}-week1-a`,
+        homeScore: 100,
+        homeTeamProviderId: "1",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "week1-a",
+        scoringPeriod: 1,
+        season,
+        status: "final",
+        winner: "home",
+      },
+      {
+        awayScore: 80,
+        awayTeamProviderId: "5",
+        contentHash: `${marker}-${tag}-week1-b`,
+        homeScore: 110,
+        homeTeamProviderId: "2",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "week1-b",
+        scoringPeriod: 1,
+        season,
+        status: "final",
+        winner: "home",
+      },
+      {
+        awayScore: 85,
+        awayTeamProviderId: "4",
+        contentHash: `${marker}-${tag}-week1-c`,
+        homeScore: 95,
+        homeTeamProviderId: "3",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "week1-c",
+        scoringPeriod: 1,
+        season,
+        status: "final",
+        winner: "home",
+      },
+      {
+        awayScore: 0,
+        awayTeamProviderId: null,
+        contentHash: `${marker}-${tag}-week2-bye-1`,
+        homeScore: 205,
+        homeTeamProviderId: "1",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "week2-bye-1",
+        scoringPeriod: 2,
+        season,
+        status: "final",
+        winner: "unknown",
+      },
+      {
+        awayScore: 0,
+        awayTeamProviderId: null,
+        contentHash: `${marker}-${tag}-week2-bye-2`,
+        homeScore: 130,
+        homeTeamProviderId: "2",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "week2-bye-2",
+        scoringPeriod: 2,
+        season,
+        status: "final",
+        winner: "unknown",
+      },
+      {
+        awayScore: 100,
+        awayTeamProviderId: "6",
+        contentHash: `${marker}-${tag}-week2-a`,
+        homeScore: 120,
+        homeTeamProviderId: "3",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "week2-a",
+        scoringPeriod: 2,
+        season,
+        status: "final",
+        winner: "home",
+      },
+      {
+        awayScore: 105,
+        awayTeamProviderId: "5",
+        contentHash: `${marker}-${tag}-week2-b`,
+        homeScore: 115,
+        homeTeamProviderId: "4",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "week2-b",
+        scoringPeriod: 2,
+        season,
+        status: "final",
+        winner: "home",
+      },
+    ]);
+  });
+
+  return { leagueId: league.id, providerLeagueId };
+}
+
+async function seedSpanRecordLeague(tag: string): Promise<SeededStatsLeague> {
+  const providerLeagueId = `${marker}-${tag}`;
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      currentScoringPeriod: 15,
+      name: `${marker} ${tag}`,
+      provider: "espn",
+      providerLeagueId,
+      scoringType: "H2H_POINTS",
+      season: 2012,
+      size: 2,
+      sport: "ffl",
+      status: "complete",
+    })
+    .returning();
+  if (!league) {
+    throw new Error("span record test league was not created");
+  }
+
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    for (const season of [2011, 2012]) {
+      await tx.insert(leagueSeasonSettings).values({
+        championshipScoringPeriod: 15,
+        contentHash: `${marker}-${tag}-settings-${season}`,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        matchupPeriodCount: 13,
+        playoffMatchupPeriodLength: 2,
+        playoffStartScoringPeriod: 14,
+        playoffTeamCount: 2,
+        provider: "espn",
+        regularSeasonEndScoringPeriod: 13,
+        season,
+      });
+      for (const teamId of ["1", "2"]) {
+        const ownerId = `span-owner-${teamId}`;
+        await tx
+          .insert(fantasyMembers)
+          .values({
+            contentHash: `${marker}-${tag}-${season}-${ownerId}`,
+            displayName: `Span Manager ${teamId}`,
+            leagueId: league.id,
+            leagueProviderId: providerLeagueId,
+            provider: "espn",
+            providerMemberId: ownerId,
+            role: "member",
+            season,
+          })
+          .onConflictDoNothing();
+        await tx.insert(fantasyTeams).values({
+          abbrev: `S${teamId}`,
+          contentHash: `${marker}-${tag}-team-${season}-${teamId}`,
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          name: `Span Team ${teamId}`,
+          ownerMemberIds: [ownerId],
+          pointsAgainst: 0,
+          pointsFor: 0,
+          provider: "espn",
+          providerTeamId: teamId,
+          season,
+          ties: 0,
+          wins: 0,
+        });
+      }
+    }
+
+    await tx.insert(fantasyMatchups).values([
+      {
+        awayScore: 100,
+        awayTeamProviderId: "2",
+        contentHash: `${marker}-${tag}-2011-week1`,
+        homeScore: 210,
+        homeTeamProviderId: "1",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "2011-week1",
+        scoringPeriod: 1,
+        season: 2011,
+        status: "final",
+        winner: "home",
+      },
+      {
+        awayScore: 300,
+        awayTeamProviderId: "2",
+        contentHash: `${marker}-${tag}-2011-playoff`,
+        homeScore: 325,
+        homeTeamProviderId: "1",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        periodStart: 14,
+        provider: "espn",
+        providerMatchupId: "2011-playoff",
+        scoringPeriod: 14,
+        scoringPeriodSpan: 2,
+        season: 2011,
+        status: "final",
+        winner: "home",
+      },
+      {
+        awayScore: 100,
+        awayTeamProviderId: "1",
+        contentHash: `${marker}-${tag}-2012-week1`,
+        homeScore: 220,
+        homeTeamProviderId: "2",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMatchupId: "2012-week1",
+        scoringPeriod: 1,
+        season: 2012,
+        status: "final",
+        winner: "home",
+      },
+      {
+        awayScore: 280,
+        awayTeamProviderId: "2",
+        contentHash: `${marker}-${tag}-2012-playoff`,
+        homeScore: 325,
+        homeTeamProviderId: "1",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        periodStart: 14,
+        provider: "espn",
+        providerMatchupId: "2012-playoff",
+        scoringPeriod: 14,
+        scoringPeriodSpan: 2,
+        season: 2012,
+        status: "final",
+        winner: "home",
+      },
+    ]);
+  });
+
+  return { leagueId: league.id, providerLeagueId };
+}
+
 async function seedActor(tag: string): Promise<string> {
   const [user] = await handle.db
     .insert(users)
@@ -1022,6 +1393,141 @@ describe("recomputeLeagueStatistics", () => {
       length: 1,
       personId: drew2024.personId,
     });
+  });
+
+  it("records bye scores without crediting a win, loss, tie, or H2H game", async () => {
+    const { leagueId } = await seedByeStatsLeague("bye-scoring");
+
+    const stats = await recomputeLeagueStatistics(handle.db, { leagueId });
+    const rows = await selectStatsRows(leagueId);
+    const mapping = rows.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2026,
+    );
+    if (!mapping) {
+      throw new Error("expected bye team mapping");
+    }
+
+    const byeWeekly = rows.weeklyRows.find(
+      (row) =>
+        row.personId === mapping.personId &&
+        row.season === 2026 &&
+        row.scoringPeriod === 2,
+    );
+    expect(byeWeekly).toMatchObject({
+      opponentPersonId: null,
+      pointsAgainst: 0,
+      pointsFor: 205,
+      result: "bye",
+    });
+    expect(
+      rows.seasonRows.find(
+        (row) => row.personId === mapping.personId && row.season === 2026,
+      ),
+    ).toMatchObject({
+      avgPointsAgainst: 90,
+      avgPointsFor: 152.5,
+      losses: 0,
+      pointsAgainst: 90,
+      pointsFor: 305,
+      ties: 0,
+      wins: 1,
+    });
+    expect(
+      rows.h2hRows.some(
+        (row) =>
+          row.season === 2026 &&
+          [row.personAId, row.personBId].includes(mapping.personId) &&
+          row.meetings > 1,
+      ),
+    ).toBe(false);
+    expect(rows.recordRows).toContainEqual(
+      expect.objectContaining({
+        holderPersonId: mapping.personId,
+        isCurrent: true,
+        recordType: "highest_single_week_score",
+        scoringPeriod: 2,
+        season: 2026,
+        value: 205,
+      }),
+    );
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "schedule_coverage",
+        season: 2026,
+        status: "pass",
+      }),
+    );
+    expect(stats.integrityFailures).toBe(0);
+  });
+
+  it("excludes two-week playoff totals from single-week records and divides averages by span", async () => {
+    const { leagueId } = await seedSpanRecordLeague("span-records");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+
+    const rows = await selectStatsRows(leagueId);
+    const team1 = rows.mappingRows.find(
+      (row) => row.providerTeamId === "1" && row.season === 2011,
+    );
+    if (!team1) {
+      throw new Error("expected 2011 span team mapping");
+    }
+
+    expect(
+      rows.weeklyRows.filter(
+        (row) => row.season >= 2011 && row.scoringPeriod === 14,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pointsFor: 325,
+          scoringPeriodSpan: 2,
+          season: 2011,
+        }),
+        expect.objectContaining({
+          pointsFor: 325,
+          scoringPeriodSpan: 2,
+          season: 2012,
+        }),
+      ]),
+    );
+    const currentHighScore = rows.recordRows.find(
+      (row) => row.recordType === "highest_single_week_score" && row.isCurrent,
+    );
+    expect(currentHighScore).toMatchObject({
+      season: 2012,
+      scoringPeriod: 1,
+      value: 220,
+    });
+    expect(
+      rows.recordRows.some(
+        (row) =>
+          row.recordType === "highest_single_week_score" && row.value === 325,
+      ),
+    ).toBe(false);
+    expect(
+      rows.seasonRows.find(
+        (row) => row.personId === team1.personId && row.season === 2011,
+      ),
+    ).toMatchObject({
+      avgPointsFor: 178.33,
+      pointsFor: 535,
+      wins: 2,
+    });
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "matchup_span_sanity",
+        season: 2011,
+        status: "pass",
+      }),
+    );
+    expect(rows.integrityRows).toContainEqual(
+      expect.objectContaining({
+        checkKey: "matchup_span_sanity",
+        season: 2012,
+        status: "pass",
+      }),
+    );
   });
 
   it("refreshes stale fixture canonical names from mapped owner names across historical seasons", async () => {
@@ -1823,10 +2329,13 @@ describe("recomputeLeagueStatistics", () => {
 
     await withLeagueContext(handle.db, leagueId, async (tx) => {
       await tx.insert(leagueSeasonSettings).values({
+        championshipScoringPeriod: 3,
         contentHash: `${marker}-window-key-settings-2025`,
         leagueId,
         leagueProviderId: providerLeagueId,
         matchupPeriodCount: 2,
+        playoffMatchupPeriodLength: 2,
+        playoffStartScoringPeriod: 2,
         provider: "espn",
         season: 2025,
       });
@@ -1859,6 +2368,7 @@ describe("recomputeLeagueStatistics", () => {
       }
       return mapping;
     };
+    const alex2024 = mappingFor("1", 2024);
     const alex2025 = mappingFor("1", 2025);
     const casey2025 = mappingFor("2", 2025);
     const drew2025 = mappingFor("3", 2025);
@@ -1888,10 +2398,10 @@ describe("recomputeLeagueStatistics", () => {
       (row) => row.recordType === "highest_single_week_score" && row.isCurrent,
     );
     expect(currentHighScore).toMatchObject({
-      holderPersonId: casey2025.personId,
-      scoringPeriod: 2,
-      season: 2025,
-      value: 120,
+      holderPersonId: alex2024.personId,
+      scoringPeriod: 1,
+      season: 2024,
+      value: 110,
     });
 
     const alexDrewAllTime = rows.h2hRows.find(
@@ -1911,10 +2421,10 @@ describe("recomputeLeagueStatistics", () => {
       limit: 20,
     });
     expect(catalog.highLow.highestScores[0]).toMatchObject({
-      personId: casey2025.personId,
-      scoringPeriod: 2,
-      season: 2025,
-      value: 120,
+      personId: alex2024.personId,
+      scoringPeriod: 1,
+      season: 2024,
+      value: 110,
     });
     expect(
       catalog.headToHead.allTimePairs.find(

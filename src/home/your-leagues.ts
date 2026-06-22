@@ -340,9 +340,15 @@ function buildMatchup(input: {
     input.teams.map((team) => [team.providerTeamId, team]),
   );
   const homeTeam = teamsByProviderId.get(selected.homeTeamProviderId);
-  const awayTeam = teamsByProviderId.get(selected.awayTeamProviderId);
+  const awayTeam = selected.awayTeamProviderId
+    ? teamsByProviderId.get(selected.awayTeamProviderId)
+    : undefined;
   const homeName = homeTeam?.name ?? `Team ${selected.homeTeamProviderId}`;
-  const awayName = awayTeam?.name ?? `Team ${selected.awayTeamProviderId}`;
+  const awayName =
+    awayTeam?.name ??
+    (selected.awayTeamProviderId
+      ? `Team ${selected.awayTeamProviderId}`
+      : "BYE");
   const userSide = input.userTeamProviderId
     ? matchupSideForTeam(selected, input.userTeamProviderId)
     : null;
@@ -351,7 +357,7 @@ function buildMatchup(input: {
     away: {
       isUserTeam: userSide === "away",
       name: awayName,
-      providerTeamId: selected.awayTeamProviderId,
+      providerTeamId: selected.awayTeamProviderId ?? "bye",
       score: selected.awayScore,
     },
     home: {
@@ -436,15 +442,25 @@ function matchupSideForTeam(
   providerTeamId: string,
 ): "home" | "away" | null {
   return (
-    new Map<string, "home" | "away">([
-      [matchup.homeTeamProviderId, "home"],
-      [matchup.awayTeamProviderId, "away"],
-    ]).get(providerTeamId) ?? null
+    new Map<string, "home" | "away">(
+      [
+        [matchup.homeTeamProviderId, "home"] as const,
+        matchup.awayTeamProviderId
+          ? ([matchup.awayTeamProviderId, "away"] as const)
+          : null,
+      ].filter(
+        (entry): entry is readonly [string, "home" | "away"] => entry !== null,
+      ),
+    ).get(providerTeamId) ?? null
   );
 }
 
 function matchupTeamIds(matchup: MatchupRow): ReadonlySet<string> {
-  return new Set([matchup.homeTeamProviderId, matchup.awayTeamProviderId]);
+  return new Set(
+    [matchup.homeTeamProviderId, matchup.awayTeamProviderId].filter(
+      (providerTeamId): providerTeamId is string => providerTeamId !== null,
+    ),
+  );
 }
 
 function providerMemberIdsByProvider(

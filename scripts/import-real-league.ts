@@ -159,6 +159,25 @@ async function main(): Promise<void> {
     const fixtureNamedPersons = summary.persons.filter((person) =>
       /^Fixture Manager \d+$/i.test(person.canonicalName),
     );
+    const scheduleCoverageFailures = summary.integrityChecks.filter(
+      (check) =>
+        check.checkKey === "schedule_coverage" && check.status !== "pass",
+    );
+    const integrityFailures = summary.integrityChecks.filter(
+      (check) => check.status !== "pass",
+    );
+    const recordBookMaterialized =
+      stats.records > 0 &&
+      stats.recordBookAggregates > 0 &&
+      summary.recordCounts.allTimeRecords > 0 &&
+      summary.recordCounts.recordBookAllTimeStandings > 0;
+    const currentSingleWeekRecord = summary.singleWeekRecord;
+    const singleWeekRecordExcludes325 =
+      currentSingleWeekRecord !== null && currentSingleWeekRecord.value !== 325;
+    const playoffSpansApplied = [2011, 2012].every((season) => {
+      const span = summary.spanRows.find((row) => row.season === season);
+      return span !== undefined && span.count > 0 && span.maxScore >= 325;
+    });
     const checks = [
       {
         label: `settings rows present for ${totalSeasons} seasons`,
@@ -199,6 +218,22 @@ async function main(): Promise<void> {
         label: "at least one identity spans ten or more seasons",
         pass: maxPersonSeasons >= 10,
       },
+      {
+        label: "schedule_coverage integrity checks all pass",
+        pass: scheduleCoverageFailures.length === 0,
+      },
+      {
+        label: "record book materialized records and aggregates",
+        pass: recordBookMaterialized,
+      },
+      {
+        label: "single-week score record excludes the 2-week 325",
+        pass: singleWeekRecordExcludes325,
+      },
+      {
+        label: "2011-2012 playoff matchups are stored with span=2",
+        pass: playoffSpansApplied,
+      },
     ];
     const summaryLines = [
       "# Real League Import Summary",
@@ -207,10 +242,54 @@ async function main(): Promise<void> {
       `- Current season synced: ${currentSeason}`,
       `- Historical seasons requested in one import: ${historySeasons.join(", ")}`,
       `- Settings rows: ${rows.length}`,
+      `- Integrity failures: ${integrityFailures.length}`,
+      `- Record rows: ${summary.recordCounts.allTimeRecords}`,
+      `- Record book aggregate rows: ${stats.recordBookAggregates}`,
       "",
       "## Verification Checks",
       "",
       ...checks.map((check) => `- ${passFail(check.pass)} - ${check.label}`),
+      "",
+      "## Integrity",
+      "",
+      `- schedule_coverage failures: ${scheduleCoverageFailures.length}`,
+      `- total integrity failures: ${integrityFailures.length}`,
+      ...(integrityFailures.length === 0
+        ? ["- All integrity checks PASS."]
+        : integrityFailures.map(
+            (check) =>
+              `- ${check.status.toUpperCase()} - ${check.checkKey} season ${
+                check.season ?? "all"
+              }: ${JSON.stringify(check.detail)}`,
+          )),
+      "",
+      "## Record Book",
+      "",
+      `- All-time records rows: ${summary.recordCounts.allTimeRecords}`,
+      `- Record book all-time standings rows: ${summary.recordCounts.recordBookAllTimeStandings}`,
+      `- Record book milestone rows: ${summary.recordCounts.recordBookMilestones}`,
+      `- Stats records written/updated: ${stats.records}`,
+      `- Stats aggregate rows written/updated: ${stats.recordBookAggregates}`,
+      `- Current highest single-week score: ${
+        currentSingleWeekRecord
+          ? `${currentSingleWeekRecord.value} by ${
+              currentSingleWeekRecord.holderName ?? "unknown"
+            } in ${currentSingleWeekRecord.season} week ${
+              currentSingleWeekRecord.scoringPeriod
+            }`
+          : "(none)"
+      }`,
+      `- 325 excluded as single-week record: ${passFail(
+        singleWeekRecordExcludes325,
+      )}`,
+      "",
+      "## Multi-Week Spans",
+      "",
+      "| Season | Span=2 matchup rows | Max stored span=2 score |",
+      "|---:|---:|---:|",
+      ...summary.spanRows.map(
+        (row) => `| ${row.season} | ${row.count} | ${row.maxScore} |`,
+      ),
       "",
       "## Season Settings",
       "",
@@ -276,7 +355,7 @@ async function main(): Promise<void> {
     );
     if (failed.length > 0) {
       throw new Error(
-        `Real-league settings verification failed: ${failed
+        `Real-league import verification failed: ${failed
           .map((check) => check.label)
           .join("; ")}`,
       );
