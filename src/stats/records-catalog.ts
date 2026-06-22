@@ -824,7 +824,9 @@ function derivedSeasonRowsFromWeeklyRows(
       }
     }
 
-    const scoringRows = [...scoringRowsByPerson.values()];
+    const scoringRows = [...scoringRowsByPerson.values()].filter(
+      (row) => row.result !== "bye",
+    );
     for (const row of scoringRows) {
       const key = personSeasonKey(row.personId, row.season);
       const entry = allPlay.get(key) ?? {
@@ -860,6 +862,7 @@ function derivedSeasonRowsFromWeeklyRows(
     const [personId, seasonRaw] = key.split(":");
     const season = Number(seasonRaw);
     const sorted = [...groupedRows].sort(compareWeeklyAscending);
+    const decided = sorted.filter((row) => row.result !== "bye");
     const wins = sorted.filter((row) => row.result === "win").length;
     const losses = sorted.filter((row) => row.result === "loss").length;
     const ties = sorted.filter((row) => row.result === "tie").length;
@@ -868,15 +871,19 @@ function derivedSeasonRowsFromWeeklyRows(
       4,
     );
     const pointsAgainst = round(
-      sorted.reduce((sum, row) => sum + row.pointsAgainst, 0),
+      decided.reduce((sum, row) => sum + row.pointsAgainst, 0),
       4,
     );
     const scoringPeriods = sorted.reduce(
       (sum, row) => sum + Math.max(1, row.scoringPeriodSpan),
       0,
     );
+    const pointsAgainstScoringPeriods = decided.reduce(
+      (sum, row) => sum + Math.max(1, row.scoringPeriodSpan),
+      0,
+    );
     const scoresFor = sorted.map((row) => row.pointsFor);
-    const scoresAgainst = sorted.map((row) => row.pointsAgainst);
+    const scoresAgainst = decided.map((row) => row.pointsAgainst);
     const games = wins + losses + ties;
     const positiveScores = scoresFor.filter((score) => score > 0);
     let currentStreakLength = 0;
@@ -885,6 +892,9 @@ function derivedSeasonRowsFromWeeklyRows(
     let longestWinStreak = 0;
 
     for (const row of sorted) {
+      if (row.result === "bye") {
+        continue;
+      }
       if (row.result === currentStreakType) {
         currentStreakLength += 1;
       } else {
@@ -913,7 +923,9 @@ function derivedSeasonRowsFromWeeklyRows(
       allPlayTies: allPlayRow.ties,
       allPlayWins: allPlayRow.wins,
       avgPointsAgainst:
-        scoringPeriods > 0 ? round(pointsAgainst / scoringPeriods, 4) : 0,
+        pointsAgainstScoringPeriods > 0
+          ? round(pointsAgainst / pointsAgainstScoringPeriods, 4)
+          : 0,
       avgPointsFor:
         scoringPeriods > 0 ? round(pointsFor / scoringPeriods, 4) : 0,
       createdAt: now,
@@ -966,7 +978,11 @@ function bestStreaks(
 ): StreakCatalogEntry[] {
   const rowsByPerson = new Map<string, WeeklyStatisticsRow[]>();
   for (const row of weeklyRows) {
-    if (row.matchupKind !== "head_to_head") {
+    if (
+      row.matchupKind !== "head_to_head" ||
+      !row.opponentPersonId ||
+      row.result === "bye"
+    ) {
       continue;
     }
     rowsByPerson.set(row.personId, [
@@ -1648,7 +1664,7 @@ function addPlayoffFact(
     current.playoffWins += 1;
   } else if (row.result === "loss") {
     current.playoffLosses += 1;
-  } else {
+  } else if (row.result === "tie") {
     current.playoffTies += 1;
   }
 
@@ -1667,7 +1683,7 @@ function addPlayoffFact(
     current.championshipGameWins += 1;
   } else if (row.result === "loss") {
     current.championshipGameLosses += 1;
-  } else {
+  } else if (row.result === "tie") {
     current.championshipGameTies += 1;
   }
 }
@@ -2282,12 +2298,20 @@ export function buildRecordsCatalog(input: {
             row.season === 0 || input.lens?.seasonSet?.includes(row.season),
         )
       : (input.headToHeadRows ?? []);
-  const headToHeadRows = weeklyRows.filter(
-    (row) => row.matchupKind === "head_to_head",
+  const singlePeriodRows = weeklyRows.filter(
+    (row) => scoringWindowSpan(row) === 1,
   );
-  const winners = headToHeadRows.filter((row) => row.result === "win");
-  const losers = weeklyRows.filter((row) => row.result === "loss");
-  const scoredRows = weeklyRows.filter((row) => row.pointsFor > 0);
+  const headToHeadRows = weeklyRows.filter(
+    (row) => row.matchupKind === "head_to_head" && row.opponentPersonId,
+  );
+  const singlePeriodHeadToHeadRows = singlePeriodRows.filter(
+    (row) => row.matchupKind === "head_to_head" && row.opponentPersonId,
+  );
+  const winners = singlePeriodHeadToHeadRows.filter(
+    (row) => row.result === "win",
+  );
+  const losers = singlePeriodRows.filter((row) => row.result === "loss");
+  const scoredRows = singlePeriodRows.filter((row) => row.pointsFor > 0);
 
   return {
     allTimeStandings:
@@ -2340,7 +2364,7 @@ export function buildRecordsCatalog(input: {
         limit,
       ),
       highestScores: weeklyTop(
-        weeklyRows,
+        singlePeriodRows,
         "highest_single_week_score",
         input.personNames,
         "max",

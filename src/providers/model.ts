@@ -164,9 +164,9 @@ export interface NormalizedMatchup extends SeasonScopedProviderEntityRef {
   scoringPeriodSpan?: number;
   kind?: NormalizedMatchupKind;
   homeTeamRef: SeasonScopedProviderEntityRef;
-  awayTeamRef: SeasonScopedProviderEntityRef;
+  awayTeamRef?: SeasonScopedProviderEntityRef;
   homeScore: number;
-  awayScore: number;
+  awayScore?: number;
   winner: NormalizedMatchupWinner;
   status: NormalizedMatchupStatus;
 }

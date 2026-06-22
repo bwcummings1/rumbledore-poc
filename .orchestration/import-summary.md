@@ -4,6 +4,9 @@
 - Current season synced: 2026
 - Historical seasons requested in one import: 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011
 - Settings rows: 16
+- Integrity failures: 0
+- Record rows: 72
+- Record book aggregate rows: 15
 
 ## Verification Checks
 
@@ -15,6 +18,33 @@
 - PASS - persons list is scoped to imported league and has no fixture managers
 - PASS - person identities collapse across historical seasons
 - PASS - at least one identity spans ten or more seasons
+- PASS - schedule_coverage integrity checks all pass
+- PASS - record book materialized records and aggregates
+- PASS - single-week score record excludes the 2-week 325
+- PASS - 2011-2012 playoff matchups are stored with span=2
+
+## Integrity
+
+- schedule_coverage failures: 0
+- total integrity failures: 0
+- All integrity checks PASS.
+
+## Record Book
+
+- All-time records rows: 72
+- Record book all-time standings rows: 14
+- Record book milestone rows: 1
+- Stats records written/updated: 72
+- Stats aggregate rows written/updated: 15
+- Current highest single-week score: 198.4 by w hardy in 2020 week 16
+- 325 excluded as single-week record: PASS
+
+## Multi-Week Spans
+
+| Season | Span=2 matchup rows | Max stored span=2 score |
+|---:|---:|---:|
+| 2011 | 10 | 309 |
+| 2012 | 10 | 325 |
 
 ## Season Settings
 
@@ -68,7 +98,7 @@
 - Historical imported seasons: 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011
 - Historical skipped seasons: (none)
 - Historical teams changed/total: 176/176
-- Historical matchups changed/total: 1415/1415
-- Stats weekly rows: 2830
+- Historical matchups changed/total: 1441/1441
+- Stats weekly rows: 2856
 - Stats season rows: 176
-- Stats integrity failures: 13
+- Stats integrity failures: 0

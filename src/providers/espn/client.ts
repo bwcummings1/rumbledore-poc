@@ -287,9 +287,7 @@ type EspnLeagueHistoryApiResponse = z.infer<
   typeof leagueHistoryApiResponseSchema
 >;
 type EspnMatchup = z.infer<typeof espnMatchupSchema>;
-type EspnHeadToHeadMatchup = EspnMatchup & {
-  away: NonNullable<EspnMatchup["away"]>;
-};
+type EspnHeadToHeadMatchup = EspnMatchup;
 type EspnMember = z.infer<typeof espnMemberSchema>;
 type EspnTeam = z.infer<typeof espnTeamSchema>;
 type NormalizedEspnCookies = Pick<EspnSession, "espn_s2" | "swid">;
@@ -802,7 +800,17 @@ function normalizeMatchupStatus(
     toInteger(league.scoringPeriodId) ??
     toInteger(league.status?.latestScoringPeriod);
   const homeScore = toNumber(matchup.home.totalPoints) ?? 0;
-  const awayScore = toNumber(matchup.away.totalPoints) ?? 0;
+  const awayScore = toNumber(matchup.away?.totalPoints) ?? 0;
+  const hasAway = matchup.away !== undefined;
+  if (
+    !hasAway &&
+    (league.status?.isExpired ||
+      league.status?.isActive === false ||
+      (currentScoringPeriod !== undefined &&
+        scoringPeriod < currentScoringPeriod))
+  ) {
+    return "final";
+  }
 
   if (
     currentScoringPeriod !== undefined &&
@@ -835,7 +843,7 @@ function matchupSideScoringPeriods(
   side: EspnHeadToHeadMatchup["home"] | EspnHeadToHeadMatchup["away"],
 ): number[] {
   return sortedUniquePositiveIntegers(
-    Object.keys(side.pointsByScoringPeriod ?? {}).map((key) => toInteger(key)),
+    Object.keys(side?.pointsByScoringPeriod ?? {}).map((key) => toInteger(key)),
   );
 }
 
@@ -883,7 +891,7 @@ function matchupProviderId(matchup: EspnHeadToHeadMatchup): string {
     toInteger(matchup.home.teamId) ?? matchup.home.teamId,
   );
   const awayTeamId = String(
-    toInteger(matchup.away.teamId) ?? matchup.away.teamId,
+    toInteger(matchup.away?.teamId) ?? matchup.away?.teamId ?? "bye",
   );
   return `${matchupPeriod}:${homeTeamId}:${awayTeamId}`;
 }
@@ -944,9 +952,11 @@ function normalizeMatchup(
   const homeTeamId = String(
     toInteger(matchup.home.teamId) ?? matchup.home.teamId,
   );
-  const awayTeamId = String(
-    toInteger(matchup.away.teamId) ?? matchup.away.teamId,
-  );
+  const awayTeamId =
+    matchup.away === undefined
+      ? undefined
+      : String(toInteger(matchup.away.teamId) ?? matchup.away.teamId);
+  const isBye = awayTeamId === undefined;
 
   return {
     provider: ESPN_PROVIDER_ID,
@@ -961,22 +971,26 @@ function normalizeMatchup(
       providerId: homeTeamId,
       season: leagueRef.season,
     },
-    awayTeamRef: {
-      provider: ESPN_PROVIDER_ID,
-      providerId: awayTeamId,
-      season: leagueRef.season,
-    },
+    ...(awayTeamId
+      ? {
+          awayTeamRef: {
+            provider: ESPN_PROVIDER_ID,
+            providerId: awayTeamId,
+            season: leagueRef.season,
+          },
+        }
+      : {}),
     homeScore: toNumber(matchup.home.totalPoints) ?? 0,
-    awayScore: toNumber(matchup.away.totalPoints) ?? 0,
-    winner: normalizeMatchupWinner(matchup.winner),
+    ...(awayTeamId
+      ? { awayScore: toNumber(matchup.away?.totalPoints) ?? 0 }
+      : {}),
+    winner: isBye ? "unknown" : normalizeMatchupWinner(matchup.winner),
     status: normalizeMatchupStatus(matchup, league),
   };
 }
 
-function isHeadToHeadMatchup(
-  matchup: EspnMatchup,
-): matchup is EspnHeadToHeadMatchup {
-  return matchup.away !== undefined;
+function isMatchupFact(matchup: EspnMatchup): matchup is EspnHeadToHeadMatchup {
+  return matchup.home !== undefined;
 }
 
 function normalizeScheduleMatchups(
@@ -987,7 +1001,7 @@ function normalizeScheduleMatchups(
 ): NormalizedMatchup[] {
   const grouped = new Map<string, EspnHeadToHeadMatchup[]>();
   for (const matchup of schedule) {
-    if (!isHeadToHeadMatchup(matchup)) {
+    if (!isMatchupFact(matchup)) {
       continue;
     }
     const key = matchupGroupKey(matchup);

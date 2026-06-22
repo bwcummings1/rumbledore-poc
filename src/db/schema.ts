@@ -188,6 +188,7 @@ export const identityAuditAction = pgEnum("identity_audit_action", [
 ]);
 
 export const statisticsResult = pgEnum("statistics_result", [
+  "bye",
   "win",
   "loss",
   "tie",
@@ -656,7 +657,7 @@ export const fantasyMatchups = pgTable(
     scoringPeriodSpan: integer("scoring_period_span").notNull().default(1),
     kind: fantasyMatchupKind("kind").notNull().default("head_to_head"),
     homeTeamProviderId: text("home_team_provider_id").notNull(),
-    awayTeamProviderId: text("away_team_provider_id").notNull(),
+    awayTeamProviderId: text("away_team_provider_id"),
     homeScore: doublePrecision("home_score").notNull().default(0),
     awayScore: doublePrecision("away_score").notNull().default(0),
     winner: fantasyMatchupWinner("winner").notNull().default("unknown"),

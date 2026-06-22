@@ -33,7 +33,10 @@ import {
 } from "@/providers/model";
 import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import leagueFixture from "../../test/fixtures/espn/league-95050-2026.json";
-import { syncCurrentLeague } from "./current-league";
+import {
+  persistNormalizedLeagueRows,
+  syncCurrentLeague,
+} from "./current-league";
 import { stableContentHash } from "./hash";
 
 const marker = `ingesttest-${randomUUID()}`;
@@ -689,6 +692,177 @@ describe("syncCurrentLeague", () => {
     expect(secondRows.settings[0].updatedAt.toISOString()).toBe(
       firstSettingsUpdatedAt,
     );
+  });
+
+  it("persists ESPN bye rows with no opponent and derives playoff span from season settings", async () => {
+    const providerLeagueId = `${marker}-bye-span`;
+    const fixture = leagueFixtureFor(providerLeagueId);
+    fixture.status.isActive = false;
+    fixture.status.isExpired = true;
+    Object.assign(fixture.settings.scheduleSettings, {
+      matchupPeriodCount: "14",
+      playoffMatchupPeriodLength: "2",
+      playoffTeamCount: "6",
+    });
+    fixture.status.finalScoringPeriod = 17;
+    fixture.schedule.push({
+      home: {
+        pointsByScoringPeriod: { "15": 132.5 },
+        teamId: 1,
+        totalPoints: 132.5,
+      },
+      matchupPeriodId: 15,
+      scoringPeriodId: 15,
+      winner: "UNDECIDED",
+    } as unknown as (typeof fixture.schedule)[number]);
+
+    const result = await syncCurrentLeague({
+      db: handle.db,
+      provider: providerFor(fixture),
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value.matchups).toEqual({
+      total: 85,
+      changed: 85,
+      unchanged: 0,
+    });
+
+    const rows = await selectIngestedRows(result.value.league.id);
+    const bye = rows.matchups.find(
+      (row) => row.providerMatchupId === "15:1:bye",
+    );
+    expect(bye).toMatchObject({
+      awayScore: 0,
+      awayTeamProviderId: null,
+      homeScore: 132.5,
+      homeTeamProviderId: "1",
+      periodStart: 15,
+      scoringPeriod: 15,
+      scoringPeriodSpan: 2,
+      status: "final",
+      winner: "unknown",
+    });
+    expect(rows.settings[0]).toMatchObject({
+      matchupPeriodCount: 14,
+      playoffMatchupPeriodLength: 2,
+      playoffStartScoringPeriod: 15,
+    });
+  });
+
+  it("derives 2011-2012 playoff matchup spans from persisted season settings", async () => {
+    const providerLeagueId = `${marker}-2011-2012-spans`;
+    const [league] = await handle.db
+      .insert(leagues)
+      .values({
+        currentScoringPeriod: 15,
+        name: `${marker} span seasons`,
+        provider: "espn",
+        providerLeagueId,
+        scoringType: "H2H_POINTS",
+        season: 2012,
+        size: 2,
+        sport: "ffl",
+        status: "complete",
+      })
+      .returning({ id: leagues.id });
+    if (!league) {
+      throw new Error("span test league was not created");
+    }
+
+    for (const season of [2011, 2012]) {
+      await persistNormalizedLeagueRows({
+        db: handle.db,
+        league: {
+          provider: "espn",
+          providerId: providerLeagueId,
+          season,
+          sport: "ffl",
+          name: `Span ${season}`,
+          scoringType: "H2H_POINTS",
+          scoringSettings: {},
+          size: 2,
+          currentScoringPeriod: 15,
+          status: "complete",
+          postseason: {
+            championshipScoringPeriod: 15,
+            matchupPeriodCount: 13,
+            playoffMatchupPeriodLength: 2,
+            playoffStartScoringPeriod: 14,
+            playoffTeamCount: 2,
+            regularSeasonEndScoringPeriod: 13,
+          },
+        },
+        leagueId: league.id,
+        matchups: [
+          {
+            provider: "espn",
+            providerId: `${season}-playoff`,
+            leagueProviderId: providerLeagueId,
+            season,
+            scoringPeriod: 14,
+            periodStart: 14,
+            scoringPeriodSpan: season === 2012 ? 3 : 1,
+            homeTeamRef: { provider: "espn", providerId: "1", season },
+            awayTeamRef: { provider: "espn", providerId: "2", season },
+            homeScore: 325,
+            awayScore: 300,
+            winner: "home",
+            status: "final",
+          },
+        ],
+        members: [],
+        teams: [
+          {
+            provider: "espn",
+            providerId: "1",
+            leagueProviderId: providerLeagueId,
+            season,
+            name: `Span Home ${season}`,
+            abbrev: "HME",
+            ownerMemberIds: [],
+            record: {
+              wins: 1,
+              losses: 0,
+              ties: 0,
+              pointsFor: 325,
+              pointsAgainst: 300,
+            },
+          },
+          {
+            provider: "espn",
+            providerId: "2",
+            leagueProviderId: providerLeagueId,
+            season,
+            name: `Span Away ${season}`,
+            abbrev: "AWY",
+            ownerMemberIds: [],
+            record: {
+              wins: 0,
+              losses: 1,
+              ties: 0,
+              pointsFor: 300,
+              pointsAgainst: 325,
+            },
+          },
+        ],
+      });
+    }
+
+    const rows = await selectIngestedRows(league.id);
+    expect(
+      rows.matchups.map((row) => [
+        row.season,
+        row.providerMatchupId,
+        row.scoringPeriodSpan,
+      ]),
+    ).toEqual([
+      [2011, "2011-playoff", 2],
+      [2012, "2012-playoff", 2],
+    ]);
   });
 
   it("persists current transactions and no-ops on an identical re-ingest", async () => {

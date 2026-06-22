@@ -30,7 +30,6 @@ const OLD_LEAGUE_FIXTURE_ROOT = existsSync(VENDORED_OLD_LEAGUE_FIXTURE_ROOT)
   : EXTERNAL_OLD_LEAGUE_FIXTURE_ROOT;
 const oldLeagueFixtureIt = existsSync(OLD_LEAGUE_FIXTURE_ROOT) ? it : it.skip;
 const OLD_MANAGER_01 = "Old Manager 01";
-const OLD_MANAGER_11 = "Old Manager 11";
 const OLD_MANAGER_12 = "Old Manager 12";
 const PEOPLE = {
   alpha: "person-alpha-shared",
@@ -864,6 +863,43 @@ describe("buildRecordsCatalog", () => {
     );
   });
 
+  it("counts playoff bye scoring without crediting playoff ties", () => {
+    const byeRow = weeklyRow({
+      isPlayoff: true,
+      matchupId: "playoff-bye",
+      opponentPersonId: null,
+      personId: PEOPLE.alpha,
+      pointsAgainst: 0,
+      pointsFor: 205,
+      result: "bye",
+      scoringPeriod: 15,
+      season: 2026,
+    });
+    const catalog = buildRecordsCatalog({
+      personNames,
+      seasonRows: [],
+      weeklyRows: [byeRow],
+    });
+
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      personId: PEOPLE.alpha,
+      scoringPeriod: 15,
+      season: 2026,
+      value: 205,
+    });
+    expect(catalog.championships.managerRecords[0]).toMatchObject({
+      championshipGameLosses: 0,
+      championshipGameTies: 0,
+      championshipGameWins: 0,
+      personId: PEOPLE.alpha,
+      playoffLosses: 0,
+      playoffPointsAgainst: 0,
+      playoffPointsFor: 205,
+      playoffTies: 0,
+      playoffWins: 0,
+    });
+  });
+
   it("keeps co-owner identities separate and mirrors H2H ledgers across tied series", () => {
     const { catalog } = buildSeededCatalog();
 
@@ -1141,15 +1177,9 @@ describe("buildRecordsCatalog", () => {
         seasonRows: [],
         weeklyRows,
       });
-      expect(
-        laterTwelveTeamEraPlayoffCatalog.highLow.highestScores[0],
-      ).toMatchObject({
-        personId: oldLeaguePersonId(OLD_MANAGER_11),
-        personName: OLD_MANAGER_11,
-        scoringPeriod: 16,
-        season: 2022,
-        value: 247.5,
-      });
+      expect(laterTwelveTeamEraPlayoffCatalog.highLow.highestScores).toEqual(
+        [],
+      );
     },
   );
 });

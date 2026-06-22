@@ -335,14 +335,20 @@ function buildCurrentMatchups(
     )
     .map((matchup) => {
       const homeTeam = teamsByProviderId.get(matchup.homeTeamProviderId);
-      const awayTeam = teamsByProviderId.get(matchup.awayTeamProviderId);
+      const awayTeam = matchup.awayTeamProviderId
+        ? teamsByProviderId.get(matchup.awayTeamProviderId)
+        : undefined;
       return {
         away: {
-          abbrev: awayTeam?.abbrev ?? matchup.awayTeamProviderId,
+          abbrev: awayTeam?.abbrev ?? matchup.awayTeamProviderId ?? "BYE",
           isWinner: matchup.winner === "away",
-          name: awayTeam?.name ?? `Team ${matchup.awayTeamProviderId}`,
+          name:
+            awayTeam?.name ??
+            (matchup.awayTeamProviderId
+              ? `Team ${matchup.awayTeamProviderId}`
+              : "BYE"),
           score: matchup.awayScore,
-          teamId: matchup.awayTeamProviderId,
+          teamId: matchup.awayTeamProviderId ?? "bye",
         },
         home: {
           abbrev: homeTeam?.abbrev ?? matchup.homeTeamProviderId,

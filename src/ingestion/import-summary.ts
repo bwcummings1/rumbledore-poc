@@ -1,10 +1,15 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  allTimeRecords,
+  dataIntegrityChecks,
+  fantasyMatchups,
   identityMappings,
   leagueSeasonSettings,
   persons,
+  recordBookAllTimeStandings,
+  recordBookMilestones,
   teamSeasons,
 } from "@/db/schema";
 
@@ -29,10 +34,40 @@ export interface ImportSummarySeasonSettings {
   season: number;
 }
 
+export interface ImportSummaryIntegrityCheck {
+  checkKey: string;
+  detail: Record<string, unknown>;
+  season: number | null;
+  status: string;
+}
+
+export interface ImportSummaryRecordCounts {
+  allTimeRecords: number;
+  recordBookAllTimeStandings: number;
+  recordBookMilestones: number;
+}
+
+export interface ImportSummarySingleWeekRecord {
+  holderName: string | null;
+  scoringPeriod: number | null;
+  season: number | null;
+  value: number;
+}
+
+export interface ImportSummarySpanRow {
+  count: number;
+  maxScore: number;
+  season: number;
+}
+
 export interface ImportSummaryData {
   identityMappings: number;
+  integrityChecks: ImportSummaryIntegrityCheck[];
   persons: ImportSummaryPerson[];
+  recordCounts: ImportSummaryRecordCounts;
   seasonSettings: ImportSummarySeasonSettings[];
+  singleWeekRecord: ImportSummarySingleWeekRecord | null;
+  spanRows: ImportSummarySpanRow[];
   teamSeasons: number;
 }
 
@@ -85,6 +120,9 @@ export async function loadImportSummaryData(
       .from(persons)
       .where(eq(persons.leagueId, leagueId))
       .orderBy(asc(persons.canonicalName), asc(persons.id));
+    const personNameById = new Map(
+      personRows.map((person) => [person.id, person.canonicalName]),
+    );
 
     const mappingRows = await tx
       .select({
@@ -118,8 +156,75 @@ export async function loadImportSummaryData(
       mappingsByPersonId.set(mapping.personId, existing);
     }
 
+    const integrityChecks = await tx
+      .select({
+        checkKey: dataIntegrityChecks.checkKey,
+        detail: dataIntegrityChecks.detail,
+        season: dataIntegrityChecks.season,
+        status: dataIntegrityChecks.status,
+      })
+      .from(dataIntegrityChecks)
+      .where(eq(dataIntegrityChecks.leagueId, leagueId))
+      .orderBy(
+        asc(dataIntegrityChecks.checkKey),
+        asc(dataIntegrityChecks.season),
+      );
+    const recordRows = await tx
+      .select({
+        holderPersonId: allTimeRecords.holderPersonId,
+        isCurrent: allTimeRecords.isCurrent,
+        recordType: allTimeRecords.recordType,
+        scoringPeriod: allTimeRecords.scoringPeriod,
+        season: allTimeRecords.season,
+        value: allTimeRecords.value,
+      })
+      .from(allTimeRecords)
+      .where(eq(allTimeRecords.leagueId, leagueId));
+    const currentSingleWeek = recordRows
+      .filter(
+        (row) =>
+          row.recordType === "highest_single_week_score" && row.isCurrent,
+      )
+      .sort((left, right) => right.value - left.value)[0];
+    const allTimeStandingRows = await tx
+      .select({ id: recordBookAllTimeStandings.id })
+      .from(recordBookAllTimeStandings)
+      .where(eq(recordBookAllTimeStandings.leagueId, leagueId));
+    const milestoneRows = await tx
+      .select({ id: recordBookMilestones.id })
+      .from(recordBookMilestones)
+      .where(eq(recordBookMilestones.leagueId, leagueId));
+    const spanMatchups = await tx
+      .select({
+        awayScore: fantasyMatchups.awayScore,
+        homeScore: fantasyMatchups.homeScore,
+        season: fantasyMatchups.season,
+      })
+      .from(fantasyMatchups)
+      .where(
+        and(
+          eq(fantasyMatchups.leagueId, leagueId),
+          inArray(fantasyMatchups.season, [2011, 2012]),
+          eq(fantasyMatchups.scoringPeriodSpan, 2),
+        ),
+      );
+    const spanRows = [2011, 2012].map((season) => {
+      const rows = spanMatchups.filter((row) => row.season === season);
+      return {
+        count: rows.length,
+        maxScore:
+          rows.length === 0
+            ? 0
+            : Math.max(
+                ...rows.flatMap((row) => [row.homeScore, row.awayScore]),
+              ),
+        season,
+      };
+    });
+
     return {
       identityMappings: mappingRows.length,
+      integrityChecks,
       persons: personRows.map((person) => {
         const mappings = mappingsByPersonId.get(person.id) ?? [];
         const mappedTeamSeasons = mappings
@@ -136,7 +241,23 @@ export async function loadImportSummaryData(
           teamNames: sortedUnique(mappedTeamSeasons.map((row) => row.teamName)),
         };
       }),
+      recordCounts: {
+        allTimeRecords: recordRows.length,
+        recordBookAllTimeStandings: allTimeStandingRows.length,
+        recordBookMilestones: milestoneRows.length,
+      },
       seasonSettings,
+      singleWeekRecord: currentSingleWeek
+        ? {
+            holderName: currentSingleWeek.holderPersonId
+              ? (personNameById.get(currentSingleWeek.holderPersonId) ?? null)
+              : null,
+            scoringPeriod: currentSingleWeek.scoringPeriod,
+            season: currentSingleWeek.season,
+            value: currentSingleWeek.value,
+          }
+        : null,
+      spanRows,
       teamSeasons: teamSeasonRows.length,
     };
   });

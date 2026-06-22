@@ -724,9 +724,11 @@ describe("ESPN current league client", () => {
     });
   });
 
-  it("skips one-sided ESPN history rows until bye ingestion is implemented", async () => {
+  it("normalizes one-sided ESPN history rows as bye scoring facts", async () => {
     const historyFixture = structuredClone(leagueFixture);
     historyFixture.seasonId = 2025;
+    historyFixture.status.isActive = false;
+    historyFixture.status.isExpired = true;
     historyFixture.schedule.push({
       home: {
         pointsByScoringPeriod: { "14": 88 },
@@ -746,7 +748,20 @@ describe("ESPN current league client", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw result.error;
-    expect(result.value[0].matchups).toHaveLength(84);
+    expect(result.value[0].matchups).toHaveLength(85);
+    const bye = result.value[0].matchups.at(-1);
+    expect(bye?.awayScore).toBeUndefined();
+    expect(bye?.awayTeamRef).toBeUndefined();
+    expect(bye).toMatchObject({
+      homeScore: 88,
+      homeTeamRef: { provider: "espn", providerId: "1", season: 2025 },
+      periodStart: 14,
+      providerId: "14:1:bye",
+      scoringPeriod: 14,
+      scoringPeriodSpan: 1,
+      status: "final",
+      winner: "unknown",
+    });
   });
 
   it("marks regular-season fallback final standings as low confidence", async () => {

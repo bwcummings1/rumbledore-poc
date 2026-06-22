@@ -143,6 +143,17 @@ describe("loadImportSummaryData", () => {
       teamNames: ["Real Team"],
     });
     expect(summary.identityMappings).toBe(1);
+    expect(summary.integrityChecks).toEqual([]);
+    expect(summary.recordCounts).toEqual({
+      allTimeRecords: 0,
+      recordBookAllTimeStandings: 0,
+      recordBookMilestones: 0,
+    });
+    expect(summary.singleWeekRecord).toBeNull();
+    expect(summary.spanRows).toEqual([
+      { count: 0, maxScore: 0, season: 2011 },
+      { count: 0, maxScore: 0, season: 2012 },
+    ]);
     expect(summary.teamSeasons).toBe(1);
 
     const fixtureSummary = await loadImportSummaryData(handle.db, fixture.id);

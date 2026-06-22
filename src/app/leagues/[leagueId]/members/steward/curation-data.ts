@@ -186,10 +186,11 @@ async function loadCurationRows(
     return {
       matchupSpans: matchupRows.map((row) => ({
         awayScore: row.awayScore,
-        awayTeamName:
-          teamNameBySeasonProvider.get(
-            teamLookupKey(row.season, row.awayTeamProviderId),
-          ) ?? `Team ${row.awayTeamProviderId}`,
+        awayTeamName: row.awayTeamProviderId
+          ? (teamNameBySeasonProvider.get(
+              teamLookupKey(row.season, row.awayTeamProviderId),
+            ) ?? `Team ${row.awayTeamProviderId}`)
+          : "BYE",
         homeScore: row.homeScore,
         homeTeamName:
           teamNameBySeasonProvider.get(
