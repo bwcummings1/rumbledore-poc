@@ -5,9 +5,28 @@ export {
   transferCommissionerRole,
 } from "./commissioner";
 export {
+  type ComposedCanonicalSnapshot,
+  type CuratedLeagueSnapshot,
+  type CuratedSeasonSnapshot,
+  type CurationCheckpoint,
+  type CurationCheckpointSummary,
+  type CurationSeasonPush,
+  composeCanonicalSnapshot,
+  createCurationCheckpoint,
+  listCurationCheckpoints,
+  pushAllCurationSeasons,
+  pushCurationSeason,
+  restoreCurationCheckpoint,
+} from "./curated-state";
+export {
+  type ApplyCuratedDataEditInput,
+  type ApplyCuratedDataEditResult,
   type ApplyLeagueDataEditInput,
   type ApplyLeagueDataEditResult,
+  applyCuratedDataEdit,
   applyLeagueDataEdit,
+  type CuratedEditScope,
+  type CuratedEditScopeInput,
   confirmLeagueSeasonGrouping,
   detectSeasonGroupingProposals,
   groupingConfigIsEquivalent,

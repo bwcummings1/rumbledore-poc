@@ -78,6 +78,7 @@ const curationSummary: DataCurationSummary = {
       field: "canonical_name",
       id: "00000000-0000-4000-8000-000000000501",
       reason: "spelling",
+      scope: null,
       source: "league_data_edit",
       targetId: "00000000-0000-4000-8000-000000000601",
       targetKind: "person",
@@ -123,6 +124,17 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
+function parseRequestBody(body: BodyInit | null | undefined): unknown {
+  if (!body) {
+    return null;
+  }
+  try {
+    return JSON.parse(String(body));
+  } catch {
+    return null;
+  }
+}
 
 test("data steward review view posts review actions and updates local state", async () => {
   const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -257,7 +269,7 @@ test("commissioners can submit curation edits, era confirms, and handoff actions
       return new Response(
         JSON.stringify({
           ok: true,
-          requestBody: init?.body ? JSON.parse(String(init.body)) : null,
+          requestBody: parseRequestBody(init?.body),
         }),
         {
           headers: { "content-type": "application/json" },

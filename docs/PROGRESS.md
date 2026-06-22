@@ -1,7 +1,14 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-22 — **Data Foundation substrate complete through T3 on `ws/t3-byes-span`**:
+Keep it current. Last updated: 2026-06-22 — **Data Foundation complete through T4 on `ws/t4-curated-state`**:
+T4 added the curated-state service/API layer: every save is an append-only whole-league checkpoint anchored by a
+`league_data_edits` marker; every push is an append-only per-season pushed version; `composeCanonicalSnapshot(leagueId)`
+returns the composition of each season's latest pushed version so pushing 2012 preserves 2011 and every other
+previously pushed season. `applyCuratedDataEdit` now implements the dimension edit-scope primitive (real name smart
+default = all-years; team name smart default = this-year-only; both overridable) and writes scoped ledger rows with
+before/after. Saved checkpoints remain invisible to the composed canonical snapshot until pushed; the current Record
+Book is **not** re-pointed yet (T9). Prior T3 substrate state:
 bye weeks now persist as one-sided matchup facts (`away_team_provider_id NULL`) whose scores count toward PF and
 single-week scoring records without awarding W/L/T by default; ESPN one-sided schedule rows are no longer filtered
 out. `schedule_coverage` is bye-aware and clean 95050 verification now reports **0 integrity failures**. Playoff
@@ -114,14 +121,24 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   record rows, 15 record-book aggregate rows, 2011/2012 span=2 playoff rows (10 each), and the single-week score record
   is now 198.4 by w hardy in 2020 week 16 instead of the 325 two-week 2012 playoff total. **T1+T2+T3 substrate is
   complete; Phase 2 can build the Data layer/push pipeline on this substrate after the owner checkpoint.**
+- **Data Foundation T4 delivered (2026-06-22):** curated-state schema/service/API now exists. `league_curation_checkpoints`
+  keeps all saved draft snapshots, `league_curation_season_pushes` keeps all per-season pushed versions, and
+  `composeCanonicalSnapshot` composes the latest pushed version for each season so no pushed season can fall out when
+  another season is pushed. Scoped edits are ledgered through `applyCuratedDataEdit`; save/restore, push, and pushAll
+  are exposed under `/api/leagues/[leagueId]/curation/*`. T9 still owns re-pointing record-book reads to this composed
+  snapshot.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Next:** owner checkpoint on the clean T1+T2+T3 substrate summary, then Phase 2 starts with T4 curated-state
-  data model and the save/push pipeline.
+- **Next:** T5 can build the Data Book read UI on live draft tables, T8 can wire save/push controls to the new
+  curation APIs, and T9 can re-point record-book reads to `composeCanonicalSnapshot`.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-22: Data Foundation T4 landed — append-only curated checkpoints and per-season pushes now back the
+  save/push state machine, scoped dimension edits are ledgered with smart defaults/overrides, and
+  `composeCanonicalSnapshot` preserves every season's latest pushed contribution while keeping saved-only edits
+  invisible.
 - 2026-06-22: Data Foundation T3 landed — ESPN byes persist as one-sided facts with `weekly_statistics.result='bye'`,
   span derivation uses per-season playoff settings, `schedule_coverage` is bye-aware, and clean 95050 verification has
   0 integrity failures with the 325 playoff total excluded from single-week records.

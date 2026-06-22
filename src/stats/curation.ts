@@ -5,6 +5,7 @@ import {
   dataCorrectionAuditLog,
   fantasyMatchups,
   identityAuditLog,
+  identityMappings,
   type LeagueSeasonGroupingConfig,
   leagueDataEdits,
   leagueGroupingSeasons,
@@ -15,12 +16,17 @@ import {
   teamSeasons,
   weeklyStatistics,
 } from "@/db/schema";
-import { recomputeChangedMatchupStatistics } from "./engine";
+import {
+  recomputeChangedMatchupStatistics,
+  recomputeLeagueStatistics,
+} from "./engine";
 import { refreshRecordBookAggregates } from "./records-catalog";
 
 type LeagueDataEditInsert = typeof leagueDataEdits.$inferInsert;
 export type LeagueDataEditTargetKind = LeagueDataEditInsert["targetKind"];
 export type LeagueDataEditClass = LeagueDataEditInsert["editClass"];
+export type CuratedEditScope = "all_years" | "this_year_only";
+export type CuratedEditScopeInput = CuratedEditScope | "smart";
 export type UnifiedLedgerTargetKind =
   | LeagueDataEditTargetKind
   | "integrity_check";
@@ -31,6 +37,7 @@ export interface ApplyLeagueDataEditInput {
   field: string;
   leagueId: string;
   reason?: string;
+  scope?: CuratedEditScope;
   targetId: string;
   targetKind: LeagueDataEditTargetKind;
   value: unknown;
@@ -46,6 +53,18 @@ export interface ApplyLeagueDataEditResult {
   };
 }
 
+export interface ApplyCuratedDataEditInput
+  extends Omit<ApplyLeagueDataEditInput, "scope"> {
+  scope?: CuratedEditScopeInput;
+  season?: number;
+}
+
+export interface ApplyCuratedDataEditResult extends ApplyLeagueDataEditResult {
+  affectedTargetIds: string[];
+  editIds: string[];
+  scope: CuratedEditScope;
+}
+
 export interface UnifiedLedgerEntry {
   actorUserId: string | null;
   afterValue: unknown;
@@ -56,6 +75,7 @@ export interface UnifiedLedgerEntry {
   id: string;
   reason: string | null;
   source: "league_data_edit" | "identity_audit" | "data_correction_audit";
+  scope: CuratedEditScope | null;
   targetId: string | null;
   targetKind: string;
 }
@@ -208,6 +228,7 @@ async function writeDataEdit(
       field: input.field,
       leagueId: input.leagueId,
       reason: input.reason ?? null,
+      scope: input.scope ?? null,
       targetId: input.targetId,
       targetKind: input.targetKind,
     })
@@ -782,6 +803,349 @@ export async function applyLeagueDataEdit(
   };
 }
 
+function resolveCuratedEditScope(input: ApplyCuratedDataEditInput) {
+  if (input.scope && input.scope !== "smart") {
+    return input.scope;
+  }
+  if (input.targetKind === "person" && input.field === "canonical_name") {
+    return "all_years" as const;
+  }
+  if (input.targetKind === "team_season" && input.field === "team_name") {
+    return "this_year_only" as const;
+  }
+  return "this_year_only" as const;
+}
+
+function requireScopeSeason(input: ApplyCuratedDataEditInput): number {
+  if (!Number.isInteger(input.season)) {
+    throw new Error("season is required for this-year-only dimension edits");
+  }
+  return Number(input.season);
+}
+
+async function applyPersonNameForOneSeason(
+  db: Db,
+  input: ApplyCuratedDataEditInput,
+): Promise<ApplyCuratedDataEditResult> {
+  const season = requireScopeSeason(input);
+  const afterName = requireString(input.value, input.field);
+  const applied = await withLeagueContext(db, input.leagueId, async (tx) => {
+    const [person] = await tx
+      .select()
+      .from(persons)
+      .where(
+        and(
+          eq(persons.leagueId, input.leagueId),
+          eq(persons.id, input.targetId),
+        ),
+      )
+      .limit(1);
+    if (!person) {
+      throw new Error("person was not found");
+    }
+
+    const mappedRows = await tx
+      .select()
+      .from(identityMappings)
+      .where(
+        and(
+          eq(identityMappings.leagueId, input.leagueId),
+          eq(identityMappings.personId, input.targetId),
+        ),
+      );
+    const targetSeasonMappings = mappedRows.filter(
+      (mapping) => mapping.season === season,
+    );
+    if (targetSeasonMappings.length === 0) {
+      throw new Error(`person has no mapped team-season for ${season}`);
+    }
+
+    const otherSeasonMappings = mappedRows.filter(
+      (mapping) => mapping.season !== season,
+    );
+    if (otherSeasonMappings.length === 0) {
+      await tx
+        .update(persons)
+        .set({ canonicalName: afterName, updatedAt: new Date() })
+        .where(eq(persons.id, person.id));
+      const editId = await writeDataEdit(tx, {
+        ...input,
+        afterValue: afterName,
+        beforeValue: person.canonicalName,
+        scope: "this_year_only",
+      });
+      const records = await recordScopedRecordsRefresh(tx, {
+        field: input.field,
+        leagueId: input.leagueId,
+        targetId: input.targetId,
+        targetKind: input.targetKind,
+        trigger: "curated_scoped_person_name",
+      });
+      return {
+        afterValue: afterName,
+        beforeValue: person.canonicalName,
+        editIds: [editId],
+        newPersonId: person.id,
+        records,
+        targetTeamSeasonIds: targetSeasonMappings.map(
+          (mapping) => mapping.teamSeasonId,
+        ),
+      };
+    }
+
+    const [scopedPerson] = await tx
+      .insert(persons)
+      .values({
+        canonicalName: afterName,
+        leagueId: input.leagueId,
+        ownerHistory: person.ownerHistory,
+      })
+      .returning({ id: persons.id });
+    if (!scopedPerson) {
+      throw new Error("scoped person was not created");
+    }
+
+    await tx
+      .update(identityMappings)
+      .set({
+        confidence: 1,
+        method: "manual",
+        personId: scopedPerson.id,
+        resolvedBy: input.actorUserId,
+        updatedAt: new Date(),
+      })
+      .where(
+        inArray(
+          identityMappings.id,
+          targetSeasonMappings.map((mapping) => mapping.id),
+        ),
+      );
+
+    await tx.insert(identityAuditLog).values(
+      targetSeasonMappings.map((mapping) => ({
+        action: "remap" as const,
+        actorUserId: input.actorUserId,
+        afterState: {
+          canonicalName: afterName,
+          personId: scopedPerson.id,
+          scope: "this_year_only",
+          season,
+          teamSeasonId: mapping.teamSeasonId,
+        },
+        beforeState: {
+          canonicalName: person.canonicalName,
+          personId: person.id,
+          season,
+          teamSeasonId: mapping.teamSeasonId,
+        },
+        leagueId: input.leagueId,
+        personId: scopedPerson.id,
+        reason:
+          input.reason ??
+          "this-year-only real-name edit split a season mapping",
+        teamSeasonId: mapping.teamSeasonId,
+      })),
+    );
+
+    const beforeValue = {
+      canonicalName: person.canonicalName,
+      personId: person.id,
+      season,
+      teamSeasonIds: targetSeasonMappings.map(
+        (mapping) => mapping.teamSeasonId,
+      ),
+    };
+    const afterValue = {
+      canonicalName: afterName,
+      personId: scopedPerson.id,
+      season,
+      teamSeasonIds: targetSeasonMappings.map(
+        (mapping) => mapping.teamSeasonId,
+      ),
+    };
+    const editId = await writeDataEdit(tx, {
+      ...input,
+      afterValue,
+      beforeValue,
+      scope: "this_year_only",
+      targetId: scopedPerson.id,
+    });
+    return {
+      afterValue,
+      beforeValue,
+      editIds: [editId],
+      newPersonId: scopedPerson.id,
+      records: 0,
+      targetTeamSeasonIds: targetSeasonMappings.map(
+        (mapping) => mapping.teamSeasonId,
+      ),
+    };
+  });
+
+  const recompute = await recomputeLeagueStatistics(db, {
+    leagueId: input.leagueId,
+  });
+
+  return {
+    afterValue: applied.afterValue,
+    affectedTargetIds: [applied.newPersonId, ...applied.targetTeamSeasonIds],
+    beforeValue: applied.beforeValue,
+    editId: applied.editIds[0] as string,
+    editIds: applied.editIds,
+    recompute: {
+      matchups: recompute.weeklyStatistics,
+      records:
+        applied.records + recompute.records + recompute.recordBookAggregates,
+    },
+    scope: "this_year_only",
+  };
+}
+
+async function applyTeamNameForAllYears(
+  db: Db,
+  input: ApplyCuratedDataEditInput,
+): Promise<ApplyCuratedDataEditResult> {
+  const afterName = requireString(input.value, input.field);
+  const applied = await withLeagueContext(db, input.leagueId, async (tx) => {
+    const [targetTeam] = await tx
+      .select()
+      .from(teamSeasons)
+      .where(
+        and(
+          eq(teamSeasons.leagueId, input.leagueId),
+          eq(teamSeasons.id, input.targetId),
+        ),
+      )
+      .limit(1);
+    if (!targetTeam) {
+      throw new Error("team-season was not found");
+    }
+
+    const [targetMapping] = await tx
+      .select()
+      .from(identityMappings)
+      .where(
+        and(
+          eq(identityMappings.leagueId, input.leagueId),
+          eq(identityMappings.teamSeasonId, targetTeam.id),
+        ),
+      )
+      .limit(1);
+
+    let affectedRows = [targetTeam];
+    if (targetMapping) {
+      const personMappings = await tx
+        .select({ teamSeasonId: identityMappings.teamSeasonId })
+        .from(identityMappings)
+        .where(
+          and(
+            eq(identityMappings.leagueId, input.leagueId),
+            eq(identityMappings.personId, targetMapping.personId),
+          ),
+        );
+      const mappedTeamSeasonIds = personMappings.map(
+        (mapping) => mapping.teamSeasonId,
+      );
+      if (mappedTeamSeasonIds.length > 0) {
+        affectedRows = await tx
+          .select()
+          .from(teamSeasons)
+          .where(
+            and(
+              eq(teamSeasons.leagueId, input.leagueId),
+              inArray(teamSeasons.id, mappedTeamSeasonIds),
+            ),
+          )
+          .orderBy(asc(teamSeasons.season), asc(teamSeasons.id));
+      }
+    }
+
+    const editIds: string[] = [];
+    for (const row of affectedRows) {
+      await tx
+        .update(teamSeasons)
+        .set({ teamName: afterName, updatedAt: new Date() })
+        .where(eq(teamSeasons.id, row.id));
+      const editId = await writeDataEdit(tx, {
+        ...input,
+        afterValue: afterName,
+        beforeValue: row.teamName,
+        scope: "all_years",
+        targetId: row.id,
+        targetKind: "team_season",
+      });
+      editIds.push(editId);
+    }
+
+    const records = await recordScopedRecordsRefresh(tx, {
+      field: input.field,
+      leagueId: input.leagueId,
+      targetId: input.targetId,
+      targetKind: "team_season",
+      trigger: "curated_scoped_team_name",
+    });
+
+    return {
+      afterValue: afterName,
+      beforeValue:
+        affectedRows.length === 1
+          ? affectedRows[0]?.teamName
+          : affectedRows.map((row) => ({
+              targetId: row.id,
+              teamName: row.teamName,
+            })),
+      editIds,
+      records,
+      targetIds: affectedRows.map((row) => row.id),
+    };
+  });
+
+  return {
+    afterValue: applied.afterValue,
+    affectedTargetIds: applied.targetIds,
+    beforeValue: applied.beforeValue,
+    editId: applied.editIds[0] as string,
+    editIds: applied.editIds,
+    recompute: {
+      matchups: 0,
+      records: applied.records,
+    },
+    scope: "all_years",
+  };
+}
+
+export async function applyCuratedDataEdit(
+  db: Db,
+  input: ApplyCuratedDataEditInput,
+): Promise<ApplyCuratedDataEditResult> {
+  const scope = resolveCuratedEditScope(input);
+  if (
+    input.targetKind === "person" &&
+    input.field === "canonical_name" &&
+    scope === "this_year_only"
+  ) {
+    return applyPersonNameForOneSeason(db, input);
+  }
+  if (
+    input.targetKind === "team_season" &&
+    input.field === "team_name" &&
+    scope === "all_years"
+  ) {
+    return applyTeamNameForAllYears(db, input);
+  }
+
+  const edit = await applyLeagueDataEdit(db, {
+    ...input,
+    scope,
+  });
+  return {
+    ...edit,
+    affectedTargetIds: [input.targetId],
+    editIds: [edit.editId],
+    scope,
+  };
+}
+
 function groupingConfigForSeason(
   season: number,
   descriptors: ReadonlyMap<number, SeasonDescriptor>,
@@ -1320,6 +1684,7 @@ export async function listUnifiedDataLedger(
         field: row.field,
         id: row.id,
         reason: row.reason,
+        scope: row.scope,
         source: "league_data_edit" as const,
         targetId: row.targetId,
         targetKind: row.targetKind,
@@ -1333,6 +1698,7 @@ export async function listUnifiedDataLedger(
         field: row.action,
         id: row.id,
         reason: row.reason,
+        scope: null,
         source: "identity_audit" as const,
         targetId: row.personId ?? row.teamSeasonId,
         targetKind: row.personId ? "person" : "team_season",
@@ -1346,6 +1712,7 @@ export async function listUnifiedDataLedger(
         field: row.action,
         id: row.id,
         reason: row.reason,
+        scope: null,
         source: "data_correction_audit" as const,
         targetId: row.integrityCheckId,
         targetKind: "integrity_check",

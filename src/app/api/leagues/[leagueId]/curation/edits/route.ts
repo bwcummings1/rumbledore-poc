@@ -4,7 +4,7 @@ import { recordApiHandler } from "@/core/metrics";
 import { AppError, ok, toAppError } from "@/core/result";
 import { getDb } from "@/db";
 import { errorJson, readJsonBody, resultJson } from "@/onboarding/http";
-import { applyLeagueDataEdit } from "@/stats";
+import { applyCuratedDataEdit } from "@/stats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +15,8 @@ const curationEditSchema = z.object({
   editClass: z.enum(["cosmetic", "substantive"]),
   field: z.string().trim().min(1).max(120),
   reason: z.string().trim().min(1).max(500).optional(),
+  scope: z.enum(["smart", "all_years", "this_year_only"]).optional(),
+  season: z.number().int().min(1900).max(2200).optional(),
   targetId: z.uuid(),
   targetKind: z.enum([
     "person",
@@ -66,12 +68,14 @@ async function curationEditsPost(
   try {
     return resultJson(
       ok(
-        await applyLeagueDataEdit(db, {
+        await applyCuratedDataEdit(db, {
           actorUserId: access.value.userId,
           editClass: parsed.data.editClass,
           field: parsed.data.field,
           leagueId,
           reason: parsed.data.reason,
+          scope: parsed.data.scope,
+          season: parsed.data.season,
           targetId: parsed.data.targetId,
           targetKind: parsed.data.targetKind,
           value: parsed.data.value,

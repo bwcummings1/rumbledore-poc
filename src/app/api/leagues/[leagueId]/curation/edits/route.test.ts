@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requireLeagueRole } from "@/auth/guards";
 import { AppError } from "@/core/result";
-import { applyLeagueDataEdit } from "@/stats";
+import { applyCuratedDataEdit } from "@/stats";
 import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({
-  applyLeagueDataEdit: vi.fn(),
+  applyCuratedDataEdit: vi.fn(),
   db: {},
   requireLeagueRole: vi.fn(),
 }));
@@ -22,7 +22,7 @@ vi.mock("@/stats", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/stats")>();
   return {
     ...actual,
-    applyLeagueDataEdit: mocks.applyLeagueDataEdit,
+    applyCuratedDataEdit: mocks.applyCuratedDataEdit,
   };
 });
 
@@ -64,11 +64,14 @@ afterEach(() => {
 describe("POST /api/leagues/[leagueId]/curation/edits", () => {
   it("requires data-steward access and applies a general edit", async () => {
     mockAccess();
-    mocks.applyLeagueDataEdit.mockResolvedValue({
+    mocks.applyCuratedDataEdit.mockResolvedValue({
       afterValue: "Fixture Manager",
+      affectedTargetIds: [personId],
       beforeValue: "Fixture Manger",
       editId: "00000000-0000-4000-8000-000000000004",
+      editIds: ["00000000-0000-4000-8000-000000000004"],
       recompute: { matchups: 0, records: 8 },
+      scope: "all_years",
     });
 
     const response = await POST(
@@ -76,6 +79,7 @@ describe("POST /api/leagues/[leagueId]/curation/edits", () => {
         editClass: "cosmetic",
         field: "canonical_name",
         reason: "spelling",
+        scope: "all_years",
         targetId: personId,
         targetKind: "person",
         value: "Fixture Manager",
@@ -91,12 +95,14 @@ describe("POST /api/leagues/[leagueId]/curation/edits", () => {
     expect(requireLeagueRole).toHaveBeenCalledWith(
       expect.objectContaining({ minRole: "data_steward" }),
     );
-    expect(applyLeagueDataEdit).toHaveBeenCalledWith(mocks.db, {
+    expect(applyCuratedDataEdit).toHaveBeenCalledWith(mocks.db, {
       actorUserId: userId,
       editClass: "cosmetic",
       field: "canonical_name",
       leagueId,
       reason: "spelling",
+      scope: "all_years",
+      season: undefined,
       targetId: personId,
       targetKind: "person",
       value: "Fixture Manager",
@@ -118,7 +124,7 @@ describe("POST /api/leagues/[leagueId]/curation/edits", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(applyLeagueDataEdit).not.toHaveBeenCalled();
+    expect(applyCuratedDataEdit).not.toHaveBeenCalled();
   });
 
   it("returns role guard errors before applying", async () => {
@@ -143,6 +149,6 @@ describe("POST /api/leagues/[leagueId]/curation/edits", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(applyLeagueDataEdit).not.toHaveBeenCalled();
+    expect(applyCuratedDataEdit).not.toHaveBeenCalled();
   });
 });
