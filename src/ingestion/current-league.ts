@@ -424,14 +424,15 @@ function settingDerivedScoringPeriodSpan(
   setting: LeagueSeasonSettingsRow | undefined,
 ): number {
   const providerSpan = positiveSpan(matchup.scoringPeriodSpan);
-  const playoffSpan = positiveSpan(setting?.playoffMatchupPeriodLength);
+  const explicitPlayoffSpan = setting?.playoffMatchupPeriodLength;
   if (
-    playoffSpan <= providerSpan ||
+    explicitPlayoffSpan === undefined ||
+    explicitPlayoffSpan === null ||
     !isSettingDerivedPlayoffMatchup(matchup, setting)
   ) {
     return providerSpan;
   }
-  return playoffSpan;
+  return positiveSpan(explicitPlayoffSpan);
 }
 
 async function preserveStickyMatchupEdits(

@@ -174,10 +174,13 @@ async function main(): Promise<void> {
     const currentSingleWeekRecord = summary.singleWeekRecord;
     const singleWeekRecordExcludes325 =
       currentSingleWeekRecord !== null && currentSingleWeekRecord.value !== 325;
-    const playoffSpansApplied = [2011, 2012].every((season) => {
-      const span = summary.spanRows.find((row) => row.season === season);
-      return span !== undefined && span.count > 0 && span.maxScore >= 325;
-    });
+    const playoffSpansApplied = [2011, 2012].every(
+      (season) =>
+        (summary.spanRows.find((row) => row.season === season)?.count ?? 0) > 0,
+    );
+    const twoWeek325Stored =
+      (summary.spanRows.find((row) => row.season === 2012)?.maxScore ?? 0) >=
+      325;
     const checks = [
       {
         label: `settings rows present for ${totalSeasons} seasons`,
@@ -232,7 +235,7 @@ async function main(): Promise<void> {
       },
       {
         label: "2011-2012 playoff matchups are stored with span=2",
-        pass: playoffSpansApplied,
+        pass: playoffSpansApplied && twoWeek325Stored,
       },
     ];
     const summaryLines = [

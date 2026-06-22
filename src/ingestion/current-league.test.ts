@@ -805,7 +805,7 @@ describe("syncCurrentLeague", () => {
             season,
             scoringPeriod: 14,
             periodStart: 14,
-            scoringPeriodSpan: 1,
+            scoringPeriodSpan: season === 2012 ? 3 : 1,
             homeTeamRef: { provider: "espn", providerId: "1", season },
             awayTeamRef: { provider: "espn", providerId: "2", season },
             homeScore: 325,
