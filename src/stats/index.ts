@@ -34,10 +34,12 @@ export {
   type LeagueDataEditTargetKind,
   listLeagueSeasonGroupings,
   listUnifiedDataLedger,
+  listUnifiedDataLedgerPage,
   type PersistedSeasonGrouping,
   proposeLeagueSeasonGroupings,
   type SeasonGroupingProposal,
   type UnifiedLedgerEntry,
+  type UnifiedLedgerPage,
 } from "./curation";
 export {
   type CurationSeasonMode,

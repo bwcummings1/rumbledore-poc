@@ -1,8 +1,15 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **Data Foundation Phase 2 complete through T9 on
-`ws/t9-record-repoint`**: the Record Book is now a read-only projection of the pushed canonical state. Records load
+Keep it current. Last updated: 2026-06-23 — **UI-Polish-1 owner review fixes on
+`ws/ui1-databook-ledger-polish`**: the Data Book masthead is compact again, with the year picker plus small
+Save/Publish actions relocated to the `{season} {grain}` section toolbar and the detailed curation state tucked into
+a collapsed "Curation details" disclosure. The Edit Ledger is now server-paginated (`limit`/`offset`, default page
+size 25) and renders entries inside a contained panel with page controls at the bottom. Remaining Record Book
+duplicate-key paths were hardened; the screenshot run log reports `grep -c 'same key' /tmp/ui1-screenshots.log` =
+`0`. Refreshed review PNGs: `docs/screenshots/{mobile,tablet,desktop}/10-records.png`, `17-data-book.png`,
+`18-edit-ledger.png`, and `18-edit-ledger-expanded.png`. Prior state: **Data Foundation Phase 2 complete through T9
+on `ws/t9-record-repoint`**: the Record Book is now a read-only projection of the pushed canonical state. Records load
 `composeCanonicalSnapshot(db, { leagueId })`, the composition of each season's latest pushed version, and derive the
 catalog/page data from those pushed snapshots instead of live draft/materialized facts. Saved-but-unpushed edits are
 invisible to Records; a league with no pushed seasons shows "No pushed data yet — push from the Data Book." Person

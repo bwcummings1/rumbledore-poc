@@ -3,9 +3,10 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { EditLedgerFeed } from "./edit-ledger-feed";
 import type { EditLedgerEntry } from "./edit-ledger-types";
 
@@ -71,6 +72,7 @@ const entries: readonly EditLedgerEntry[] = [
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 test("renders edit, save, and push entries newest first", () => {
@@ -120,6 +122,9 @@ test("empty ledger activity degrades gracefully", () => {
   expect(
     screen.getByText("This league has no recorded curation activity yet."),
   ).toBeDefined();
+  expect(
+    screen.getByText("No curation activity yet").closest(".cell"),
+  ).toBeDefined();
 });
 
 test("expandable rows expose button state and labelled regions", () => {
@@ -139,4 +144,53 @@ test("expandable rows expose button state and labelled regions", () => {
     name: /Edited person canonical_name/,
   });
   expect(region.getAttribute("id")).toBe(controls);
+});
+
+test("paginated ledger fetches pages from the server and marks the current page", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        entries: [entries[0]],
+        pagination: {
+          hasMore: false,
+          limit: 2,
+          offset: 2,
+          page: 2,
+          pageCount: 2,
+          total: 3,
+        },
+      }),
+      { headers: { "content-type": "application/json" }, status: 200 },
+    ),
+  );
+  render(
+    <EditLedgerFeed
+      entries={entries.slice(1)}
+      initialPagination={{
+        hasMore: true,
+        limit: 2,
+        offset: 0,
+        page: 1,
+        pageCount: 2,
+        total: 3,
+      }}
+      leagueId="00000000-0000-4000-8000-000000000001"
+    />,
+  );
+
+  expect(screen.getByText("Page 1 of 2 / 3 entries")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/00000000-0000-4000-8000-000000000001/curation/ledger?limit=2&offset=2",
+      expect.objectContaining({ method: "GET" }),
+    ),
+  );
+  await waitFor(() => {
+    expect(screen.getByText("Page 2 of 2 / 3 entries")).toBeDefined();
+  });
+  expect(
+    screen.getByRole("button", { name: "Page 2" }).getAttribute("aria-current"),
+  ).toBe("page");
 });

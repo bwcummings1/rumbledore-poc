@@ -611,8 +611,20 @@ function RecordsSection({ data }: { data: LeagueHomeData }) {
       </div>
       {featured.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          {featured.map((record) => (
-            <RecordTile key={record.id} record={record} />
+          {featured.map((record, index) => (
+            <RecordTile
+              key={[
+                record.id,
+                record.recordType,
+                record.holderName ?? "unknown",
+                record.opponentName ?? "none",
+                record.season ?? "career",
+                record.scoringPeriod ?? "all",
+                record.value,
+                index,
+              ].join(":")}
+              record={record}
+            />
           ))}
         </div>
       ) : (

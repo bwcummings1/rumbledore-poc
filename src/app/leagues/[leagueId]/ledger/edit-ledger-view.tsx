@@ -51,7 +51,7 @@ export function EditLedgerView({
         eyebrow="EDIT LEDGER"
         navAriaLabel="Data layer destinations"
         navItems={dataNavItems(data.league.id)}
-        sectionLabel={`${data.entries.length} entries`}
+        sectionLabel={`${data.pagination.total} entries`}
         title={`${data.league.name} Edit Ledger`}
       />
 
@@ -71,7 +71,11 @@ export function EditLedgerView({
             pushes show the covered seasons and checkpoint markers.
           </p>
         </div>
-        <EditLedgerFeed entries={data.entries} />
+        <EditLedgerFeed
+          entries={data.entries}
+          initialPagination={data.pagination}
+          leagueId={data.league.id}
+        />
       </section>
     </main>
   );

@@ -41,7 +41,7 @@ function DataCardTable({
       data-slot="data-card-table"
       {...props}
     >
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <li
           aria-label={textFromNode(row.title)}
           className={cn(
@@ -52,7 +52,7 @@ function DataCardTable({
           )}
           data-selected={row.selected ? "true" : undefined}
           data-slot="data-card-row"
-          key={row.id}
+          key={`${row.id}:${index}`}
         >
           <div className="flex items-start gap-3">
             {row.leading ? <div className="shrink-0">{row.leading}</div> : null}
