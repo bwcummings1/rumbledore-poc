@@ -220,3 +220,10 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T10 era auto-proposal | — | ☐ |
 | T11 records catalog | — | ☐ |
 | T12 general-stats substrate | — | ☐ |
+
+## Phase 3 — launched 2026-06-23 (specs detailed in .orchestration/prompts/prompt-T10|T11|T12.md)
+- Phase 1 (T1-T3 substrate) + Phase 2 (T4-T9 data layer) + UI1 (ledger pagination/data-book toolbar) + UI2 (League Data|Records nav-IA) all merged to main.
+- T10 (cx3): auto-propose eras from league_season_settings → confirm-in-Data (Data Book); confirmed groupings feed the existing Record Book lens. Era infra (league_season_groupings + confirmLeagueSeasonGrouping + /curation/groupings) already exists; T10 adds the detector + UI.
+- T11 (cx2): expand records-catalog into categories (All-time/Regular/Playoff/H2H/Achievements/Lowlights-worst) rendered as SECTIONS inside the Records destination; reads pushed snapshot; legacy catalog if provided.
+- T12 (cx3): general-stats substrate B (league-agnostic NFL players/stats/schedule, non-editable, provenance+integrity, mock/$0) + consumer/enrichment read API for the AI writers.
+- Sequential; UI tasks (T10 Data Book, T11 Records) → orchestrator reviews screenshots before merge. After T12 → report Phase 3 complete.
