@@ -2080,6 +2080,255 @@ export const statsCalculations = pgTable(
   ],
 );
 
+// ── General NFL stats substrate (cross-league; background reference data) ─
+
+export const nflPlayers = pgTable(
+  "nfl_players",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: text("source").notNull(),
+    sourcePlayerId: text("source_player_id").notNull(),
+    fullName: text("full_name").notNull(),
+    position: text("position").notNull(),
+    team: text("team").notNull(),
+    fantasyProviderIds: jsonb("fantasy_provider_ids")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("nfl_players_source_player_unique").on(
+      table.source,
+      table.sourcePlayerId,
+    ),
+    index("nfl_players_name_idx").on(table.fullName),
+    index("nfl_players_team_position_idx").on(table.team, table.position),
+    check("nfl_players_source_nonempty", sql`length(${table.source}) > 0`),
+    check(
+      "nfl_players_source_player_id_nonempty",
+      sql`length(${table.sourcePlayerId}) > 0`,
+    ),
+    check("nfl_players_full_name_nonempty", sql`length(${table.fullName}) > 0`),
+    check("nfl_players_position_nonempty", sql`length(${table.position}) > 0`),
+    check("nfl_players_team_nonempty", sql`length(${table.team}) > 0`),
+  ],
+);
+
+export const nflSchedule = pgTable(
+  "nfl_schedule",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: text("source").notNull(),
+    sourceGameId: text("source_game_id").notNull(),
+    season: integer("season").notNull(),
+    week: integer("week").notNull(),
+    gameTime: timestamp("game_time", { withTimezone: true }).notNull(),
+    awayTeam: text("away_team").notNull(),
+    homeTeam: text("home_team").notNull(),
+    status: text("status")
+      .$type<"scheduled" | "in_progress" | "final">()
+      .notNull(),
+    awayScore: integer("away_score"),
+    homeScore: integer("home_score"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("nfl_schedule_source_game_unique").on(
+      table.source,
+      table.sourceGameId,
+    ),
+    index("nfl_schedule_season_week_idx").on(table.season, table.week),
+    index("nfl_schedule_team_week_idx").on(
+      table.season,
+      table.week,
+      table.homeTeam,
+      table.awayTeam,
+    ),
+    check("nfl_schedule_source_nonempty", sql`length(${table.source}) > 0`),
+    check(
+      "nfl_schedule_source_game_id_nonempty",
+      sql`length(${table.sourceGameId}) > 0`,
+    ),
+    check(
+      "nfl_schedule_season_valid",
+      sql`${table.season} >= 1900 AND ${table.season} <= 2200`,
+    ),
+    check("nfl_schedule_week_positive", sql`${table.week} >= 1`),
+    check(
+      "nfl_schedule_away_team_nonempty",
+      sql`length(${table.awayTeam}) > 0`,
+    ),
+    check(
+      "nfl_schedule_home_team_nonempty",
+      sql`length(${table.homeTeam}) > 0`,
+    ),
+    check(
+      "nfl_schedule_distinct_teams",
+      sql`${table.awayTeam} <> ${table.homeTeam}`,
+    ),
+    check(
+      "nfl_schedule_status_valid",
+      sql`${table.status} IN ('scheduled', 'in_progress', 'final')`,
+    ),
+    check(
+      "nfl_schedule_scores_valid",
+      sql`(${table.awayScore} IS NULL OR ${table.awayScore} >= 0) AND (${table.homeScore} IS NULL OR ${table.homeScore} >= 0)`,
+    ),
+  ],
+);
+
+export const nflTeamStats = pgTable(
+  "nfl_team_stats",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: text("source").notNull(),
+    sourceGameId: text("source_game_id").notNull(),
+    season: integer("season").notNull(),
+    week: integer("week").notNull(),
+    team: text("team").notNull(),
+    opponentTeam: text("opponent_team").notNull(),
+    isHome: boolean("is_home").notNull(),
+    pointsFor: integer("points_for").notNull(),
+    pointsAgainst: integer("points_against").notNull(),
+    passingYards: integer("passing_yards").notNull().default(0),
+    passingTouchdowns: integer("passing_touchdowns").notNull().default(0),
+    rushingYards: integer("rushing_yards").notNull().default(0),
+    rushingTouchdowns: integer("rushing_touchdowns").notNull().default(0),
+    receivingYards: integer("receiving_yards").notNull().default(0),
+    receivingTouchdowns: integer("receiving_touchdowns").notNull().default(0),
+    turnovers: integer("turnovers").notNull().default(0),
+    sacks: integer("sacks").notNull().default(0),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("nfl_team_stats_source_team_week_unique").on(
+      table.source,
+      table.season,
+      table.week,
+      table.team,
+    ),
+    index("nfl_team_stats_game_idx").on(table.source, table.sourceGameId),
+    index("nfl_team_stats_team_season_idx").on(table.team, table.season),
+    check("nfl_team_stats_source_nonempty", sql`length(${table.source}) > 0`),
+    check(
+      "nfl_team_stats_source_game_id_nonempty",
+      sql`length(${table.sourceGameId}) > 0`,
+    ),
+    check(
+      "nfl_team_stats_season_valid",
+      sql`${table.season} >= 1900 AND ${table.season} <= 2200`,
+    ),
+    check("nfl_team_stats_week_positive", sql`${table.week} >= 1`),
+    check("nfl_team_stats_team_nonempty", sql`length(${table.team}) > 0`),
+    check(
+      "nfl_team_stats_opponent_nonempty",
+      sql`length(${table.opponentTeam}) > 0`,
+    ),
+    check(
+      "nfl_team_stats_distinct_teams",
+      sql`${table.team} <> ${table.opponentTeam}`,
+    ),
+    check(
+      "nfl_team_stats_nonnegative",
+      sql`${table.pointsFor} >= 0 AND ${table.pointsAgainst} >= 0 AND ${table.passingTouchdowns} >= 0 AND ${table.rushingTouchdowns} >= 0 AND ${table.receivingTouchdowns} >= 0 AND ${table.turnovers} >= 0 AND ${table.sacks} >= 0`,
+    ),
+  ],
+);
+
+export const nflPlayerWeekStats = pgTable(
+  "nfl_player_week_stats",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    playerId: uuid("player_id")
+      .notNull()
+      .references(() => nflPlayers.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    sourcePlayerId: text("source_player_id").notNull(),
+    season: integer("season").notNull(),
+    week: integer("week").notNull(),
+    team: text("team").notNull(),
+    opponentTeam: text("opponent_team").notNull(),
+    sourceGameId: text("source_game_id").notNull(),
+    passingYards: integer("passing_yards").notNull().default(0),
+    passingTouchdowns: integer("passing_touchdowns").notNull().default(0),
+    interceptions: integer("interceptions").notNull().default(0),
+    rushingYards: integer("rushing_yards").notNull().default(0),
+    rushingTouchdowns: integer("rushing_touchdowns").notNull().default(0),
+    receptions: integer("receptions").notNull().default(0),
+    targets: integer("targets").notNull().default(0),
+    receivingYards: integer("receiving_yards").notNull().default(0),
+    receivingTouchdowns: integer("receiving_touchdowns").notNull().default(0),
+    fantasyPoints: numeric("fantasy_points", {
+      mode: "number",
+      precision: 10,
+      scale: 2,
+    })
+      .notNull()
+      .default(0),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("nfl_player_week_stats_source_week_unique").on(
+      table.source,
+      table.season,
+      table.week,
+      table.sourcePlayerId,
+    ),
+    index("nfl_player_week_stats_player_idx").on(table.playerId),
+    index("nfl_player_week_stats_team_week_idx").on(
+      table.team,
+      table.season,
+      table.week,
+    ),
+    index("nfl_player_week_stats_game_idx").on(
+      table.source,
+      table.sourceGameId,
+    ),
+    check(
+      "nfl_player_week_stats_source_nonempty",
+      sql`length(${table.source}) > 0`,
+    ),
+    check(
+      "nfl_player_week_stats_source_player_id_nonempty",
+      sql`length(${table.sourcePlayerId}) > 0`,
+    ),
+    check(
+      "nfl_player_week_stats_source_game_id_nonempty",
+      sql`length(${table.sourceGameId}) > 0`,
+    ),
+    check(
+      "nfl_player_week_stats_season_valid",
+      sql`${table.season} >= 1900 AND ${table.season} <= 2200`,
+    ),
+    check("nfl_player_week_stats_week_positive", sql`${table.week} >= 1`),
+    check(
+      "nfl_player_week_stats_team_nonempty",
+      sql`length(${table.team}) > 0`,
+    ),
+    check(
+      "nfl_player_week_stats_opponent_nonempty",
+      sql`length(${table.opponentTeam}) > 0`,
+    ),
+    check(
+      "nfl_player_week_stats_distinct_teams",
+      sql`${table.team} <> ${table.opponentTeam}`,
+    ),
+    check(
+      "nfl_player_week_stats_nonnegative",
+      sql`${table.passingTouchdowns} >= 0 AND ${table.interceptions} >= 0 AND ${table.rushingTouchdowns} >= 0 AND ${table.receptions} >= 0 AND ${table.targets} >= 0 AND ${table.receivingTouchdowns} >= 0`,
+    ),
+  ],
+);
+
 // ── Paper betting central catalog (cross-league; no restrictive RLS) ──────
 
 export const bettingEvents = pgTable(

@@ -187,8 +187,11 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
   degradation — but **no curation UI** and **no push gate** (it's background).
 - **Consumers:** the AI writers / bloggers / News pipeline (their factual grounding), and **enrichment** of the
   league data (e.g., attaching real player names/positions to roster facts).
-- Mostly NEW. Designed alongside A so they share the substrate primitives (ingest contracts, provenance, integrity)
-  rather than diverging.
+- EXISTS as of T12. The first implementation is mock/$0 and internal only: central tables `nfl_players`,
+  `nfl_schedule`, `nfl_team_stats`, and `nfl_player_week_stats` store typed facts with `source`, `fetched_at`, and
+  `content_hash` provenance. `src/general-stats` owns the mock fixture parser, pre-ingest integrity checks,
+  idempotent upsert, and read-only lookup/enrichment API. The News/AI generation flow is not wired to B yet; later
+  consumers should depend on that API rather than reading tables directly.
 
 ---
 
@@ -209,7 +212,7 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | **Change feed + red/green diff view** | **EXISTS** — `/leagues/[leagueId]/ledger` renders edits, saves, and pushes from the ledger |
 | **Era/span auto-proposal from settings** | **EXISTS** — settings-signature detector + Data Book Settings UI for confirm/adjust/dismiss |
 | **Record-book display rule** (one representation/person) | **EXISTS** — latest pushed team name + real name |
-| **General fantasy-stats substrate (B)** | **NEW** |
+| **General fantasy-stats substrate (B)** | **EXISTS** — central non-RLS NFL reference tables + mock ingest/integrity + read-only consumer/enrichment API (`src/general-stats`) |
 
 **T1 data-model note:** `league_season_settings` remains the per-season settings table and was extended rather than
 replaced. It now stores `league_size`, `matchup_period_count`, regular/playoff/championship scoring periods,
@@ -249,6 +252,13 @@ the Data Book Settings grain surfaces proposed/confirmed eras with Confirm, Adju
 builds the category payload from pushed snapshot rows only. Regular/playoff category sets are derived from the lens
 segment rather than defining data; achievements and lowlights include weekly, season, career, championship, and margin
 records while preserving bye and multi-week-span rules from the stats substrate.
+
+**T12 general-stats note:** substrate B is a separate league-agnostic store, not a curated league-data extension.
+`nfl_players` carries source player ids plus fantasy-provider id mappings for enrichment; `nfl_schedule`,
+`nfl_team_stats`, and `nfl_player_week_stats` carry season/week facts. All rows are shared reference data with
+`source`, `fetched_at`, and `content_hash`; no `league_id`, RLS policy, ledger, curation UI, or push gate applies.
+The committed mock fixture is the only source today, and `MOCK_GENERAL_STATS=false` is rejected until a real provider is
+chosen deliberately.
 
 ---
 

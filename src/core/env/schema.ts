@@ -41,6 +41,8 @@ export interface NewsConfig {
   rss: NewsRssConfig;
 }
 
+export type GeneralStatsConfig = { mock: true };
+
 /**
  * Google OAuth is the social-login stub (spec 02 §8): with no creds Better
  * Auth gets placeholder values so the provider routes exist; real creds drop
@@ -264,6 +266,7 @@ const baseSchema = z.object({
   INGESTION_POLL_POLICY_JSON: z.string().trim().min(1).optional(),
   NEWS_RSS_FEED_URLS: z.string().trim().min(1).optional(),
   MOCK_NEWS_RSS: stringbool.optional(),
+  MOCK_GENERAL_STATS: stringbool.optional(),
   SPEND_GUARD_WINDOW: z.enum(SPEND_GUARD_WINDOWS).default("total-run"),
   SPEND_GUARD_ANTHROPIC_TOKENS: z.coerce
     .number()
@@ -361,6 +364,7 @@ export interface Env {
     inngest: InngestConfig;
   };
   entitlements: EntitlementsConfig;
+  generalStats: GeneralStatsConfig;
   ingestion: IngestionConfig;
   ai: AiConfig;
   news: NewsConfig;
@@ -608,6 +612,16 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     }
   }
 
+  const generalStatsFlag =
+    "MOCK_GENERAL_STATS" in present
+      ? stringbool.safeParse(present.MOCK_GENERAL_STATS)
+      : undefined;
+  if (generalStatsFlag?.success && generalStatsFlag.data === false) {
+    problems.push(
+      "✖ MOCK_GENERAL_STATS=false is not supported yet; T12 only provides the mock/$0 general-stats source\n  → at MOCK_GENERAL_STATS",
+    );
+  }
+
   if (!base.success || problems.length > 0) {
     throw new Error(
       `Invalid environment configuration:\n${problems.join("\n")}`,
@@ -808,6 +822,7 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
           DEFAULT_ENTITLEMENT_CAPS.maxPremiumLeaguesPerUser,
       },
     },
+    generalStats: { mock: true },
     ingestion: {
       pollPolicyConfig: ingestionPollPolicyConfig,
     },

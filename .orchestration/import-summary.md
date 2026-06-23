@@ -178,3 +178,31 @@
 - PASS - achievements category has high marks
 - PASS - lowlights category has worst records
 - PASS - new lowlight current records are present
+
+## T12 Substrate B
+
+- Source: mock-nfl-general-stats (mock/$0)
+- First ingest changed rows: players 4/4, schedule 4/4, team stats 8/8, player week stats 8/8
+- Persisted rows: players 4, schedule 4, team stats 8, player week stats 8
+- Idempotent second ingest changed rows: players 0, schedule 0, team stats 0, player week stats 0
+- Provenance sample: mock-nfl-general-stats fetched_at=2026-06-23T10:26:57.088Z
+
+### Consumer Samples
+
+- Player by source id: Patrick Mahomes QB KC
+- Player by provider id: CeeDee Lamb WR DAL
+- Name lookup: Justin Jefferson
+- Patrick Mahomes week 2 fantasy points: 27.78
+- DAL week 2 points: 30
+- KC schedule rows: 2
+- Enrichment: Patrick Mahomes QB via provider_id
+
+### T12 Checks
+
+- PASS - fixture integrity passes
+- PASS - mock ingest populated all four B tables
+- PASS - second ingest is idempotent for unchanged facts
+- PASS - provenance source and fetched_at are present
+- PASS - player/provider/name reads resolve expected players
+- PASS - week/team/schedule reads return typed facts
+- PASS - roster enrichment maps provider player id to identity

@@ -219,6 +219,12 @@ owner's recovered legacy catalog when available.
   `docs/screenshots/{mobile,tablet,desktop}/10-records-t11-categories.png`.
 **T12 — General fantasy-stats substrate (B)** — league-agnostic NFL stats ingest (mock/$0), provenance + integrity,
 consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (file-disjoint).*
+- *T12 completion note (2026-06-23):* ✅ Completed on `ws/t12-general-stats-substrate` by AzureLotus. Added central
+  non-RLS substrate-B tables `nfl_players`, `nfl_schedule`, `nfl_team_stats`, and `nfl_player_week_stats`, each with
+  source/fetch-time/content-hash provenance. Added a committed mock NFL 2026 fixture, parser, pre-ingest integrity
+  checks, idempotent mock upsert, read-only player/team/schedule/stat consumers, and roster-fact enrichment by
+  provider player id or name. `MOCK_GENERAL_STATS=false` is rejected until a real source is deliberately wired. The
+  verifier appends `.orchestration/import-summary.md`; no News/AI generation flow was wired in T12.
 
 ---
 
@@ -236,11 +242,11 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T9 record-book re-point | HazySpring | ✅ complete |
 | T10 era auto-proposal | CrimsonThrush | ✅ complete |
 | T11 records catalog | OrangeGrove | ✅ complete |
-| T12 general-stats substrate | — | ☐ |
+| T12 general-stats substrate | AzureLotus | ✅ complete |
 
 ## Phase 3 — launched 2026-06-23 (specs detailed in .orchestration/prompts/prompt-T10|T11|T12.md)
 - Phase 1 (T1-T3 substrate) + Phase 2 (T4-T9 data layer) + UI1 (ledger pagination/data-book toolbar) + UI2 (League Data|Records nav-IA) all merged to main.
 - T10 (cx3): auto-propose eras from league_season_settings → confirm-in-Data (Data Book); confirmed groupings feed the existing Record Book lens. Era infra (league_season_groupings + confirmLeagueSeasonGrouping + /curation/groupings) already exists; T10 adds the detector + UI.
 - T11 (cx2): ✅ expanded records-catalog into categories (All-time/Regular/Playoff/H2H/Achievements/Lowlights-worst) rendered as SECTIONS inside the Records destination; reads pushed snapshot; no legacy catalog file was present.
-- T12 (cx3): general-stats substrate B (league-agnostic NFL players/stats/schedule, non-editable, provenance+integrity, mock/$0) + consumer/enrichment read API for the AI writers.
-- Sequential; UI tasks (T10 Data Book, T11 Records) → orchestrator reviews screenshots before merge. After T12 → report Phase 3 complete.
+- T12 (cx3): ✅ general-stats substrate B (league-agnostic NFL players/stats/schedule, non-editable, provenance+integrity, mock/$0) + consumer/enrichment read API for the AI writers.
+- Sequential; UI tasks (T10 Data Book, T11 Records) → orchestrator reviews screenshots before merge. T12 completes Phase 3.
