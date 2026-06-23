@@ -4,21 +4,31 @@ import { recordApiHandler } from "@/core/metrics";
 import { AppError, ok, toAppError } from "@/core/result";
 import { getDb } from "@/db";
 import { errorJson, readJsonBody, resultJson } from "@/onboarding/http";
-import { confirmLeagueSeasonGrouping } from "@/stats";
+import {
+  confirmLeagueSeasonGrouping,
+  dismissLeagueSeasonGrouping,
+} from "@/stats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_GROUPING_BODY_BYTES = 16_384;
 
-const groupingActionSchema = z.object({
-  action: z.literal("confirm"),
-  config: z.record(z.string(), z.unknown()).optional(),
-  groupingId: z.uuid(),
-  name: z.string().trim().min(1).max(120).optional(),
-  reason: z.string().trim().min(1).max(500).optional(),
-  seasons: z.array(z.number().int().min(1900).max(2200)).min(1).max(100),
-});
+const groupingActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("confirm"),
+    config: z.record(z.string(), z.unknown()).optional(),
+    groupingId: z.uuid(),
+    name: z.string().trim().min(1).max(120).optional(),
+    reason: z.string().trim().min(1).max(500).optional(),
+    seasons: z.array(z.number().int().min(1900).max(2200)).min(1).max(100),
+  }),
+  z.object({
+    action: z.literal("dismiss"),
+    groupingId: z.uuid(),
+    reason: z.string().trim().min(1).max(500).optional(),
+  }),
+]);
 
 interface CurationGroupingsRouteContext {
   params: Promise<{ leagueId: string }>;
@@ -34,7 +44,7 @@ async function curationGroupingsPost(
     db,
     headers: request.headers,
     leagueId,
-    minRole: "commissioner",
+    minRole: "data_steward",
   });
   if (!access.ok) {
     return errorJson(access.error);
@@ -57,15 +67,23 @@ async function curationGroupingsPost(
   }
 
   try {
-    const grouping = await confirmLeagueSeasonGrouping(db, {
-      actorUserId: access.value.userId,
-      config: parsed.data.config,
-      groupingId: parsed.data.groupingId,
-      leagueId,
-      name: parsed.data.name,
-      reason: parsed.data.reason,
-      seasons: parsed.data.seasons,
-    });
+    const grouping =
+      parsed.data.action === "confirm"
+        ? await confirmLeagueSeasonGrouping(db, {
+            actorUserId: access.value.userId,
+            config: parsed.data.config,
+            groupingId: parsed.data.groupingId,
+            leagueId,
+            name: parsed.data.name,
+            reason: parsed.data.reason,
+            seasons: parsed.data.seasons,
+          })
+        : await dismissLeagueSeasonGrouping(db, {
+            actorUserId: access.value.userId,
+            groupingId: parsed.data.groupingId,
+            leagueId,
+            reason: parsed.data.reason,
+          });
     return resultJson(ok({ grouping }));
   } catch (error) {
     return errorJson(

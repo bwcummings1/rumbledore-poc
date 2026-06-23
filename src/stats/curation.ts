@@ -93,13 +93,28 @@ export interface SeasonGroupingProposal {
   kind: string;
   name: string;
   ordinal: number;
+  rationale: string;
   seasons: number[];
 }
+
+export type SeasonGroupingStatus = "proposed" | "confirmed" | "dismissed";
 
 export interface PersistedSeasonGrouping extends SeasonGroupingProposal {
   confirmedByUserId: string | null;
   id: string;
-  status: "proposed" | "confirmed";
+  status: SeasonGroupingStatus;
+}
+
+export interface SeasonGroupingSettingsDescriptor {
+  leagueSize?: number | null;
+  lineupSlotCounts?: Record<string, number> | null;
+  matchupPeriodCount?: number | null;
+  playoffMatchupPeriodLength?: number | null;
+  playoffTeamCount?: number | null;
+  regularSeasonEndScoringPeriod?: number | null;
+  scoringType?: string | null;
+  season: number;
+  teamCount?: number | null;
 }
 
 function compareStable(left: string, right: string): number {
@@ -1153,96 +1168,379 @@ export async function applyCuratedDataEdit(
   };
 }
 
-function groupingConfigForSeason(
-  season: number,
-  descriptors: ReadonlyMap<number, SeasonDescriptor>,
-): LeagueSeasonGroupingConfig {
-  const descriptor = descriptors.get(season);
+interface EraFormatSignature {
+  leagueSize: number | null;
+  lineupFingerprint: string;
+  lineupMode: "flex" | "hybrid" | "op" | "standard";
+  lineupSlotCounts: Record<string, number>;
+  playoffMatchupPeriodLength: number | null;
+  playoffTeamCount: number | null;
+  regularSeasonWeeks: number | null;
+  scoringType: string;
+}
+
+interface EraDescriptor extends SeasonGroupingSettingsDescriptor {
+  signature: EraFormatSignature;
+}
+
+type EraBoundaryReason =
+  | "team_count_change"
+  | "playoff_matchup_length_change"
+  | "playoff_team_count_change"
+  | "regular_season_week_count_change"
+  | "roster_lineup_slot_counts_change";
+
+const BOUNDARY_REASON_LABELS: Record<EraBoundaryReason, string> = {
+  playoff_matchup_length_change: "playoff matchup length",
+  playoff_team_count_change: "playoff team count",
+  regular_season_week_count_change: "regular-season week count",
+  roster_lineup_slot_counts_change: "lineup slot counts",
+  team_count_change: "team count",
+};
+
+const OP_LINEUP_SLOTS = ["7", "24"] as const;
+const FLEX_LINEUP_SLOT = "23";
+
+function positiveIntegerOrNull(
+  value: number | null | undefined,
+): number | null {
+  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : null;
+}
+
+function normalizeLineupSlotCounts(
+  value: Record<string, number> | null | undefined,
+): Record<string, number> {
+  const entries = Object.entries(value ?? {})
+    .map(([slot, count]) => [slot, Number(count)] as const)
+    .filter(([, count]) => Number.isFinite(count) && count > 0)
+    .sort(([left], [right]) => compareStable(left, right));
+  return Object.fromEntries(entries);
+}
+
+function lineupSlotCount(
+  counts: Readonly<Record<string, number>>,
+  slots: readonly string[],
+): number {
+  return slots.reduce((sum, slot) => sum + (counts[slot] ?? 0), 0);
+}
+
+function lineupMode(
+  counts: Readonly<Record<string, number>>,
+): EraFormatSignature["lineupMode"] {
+  const opCount = lineupSlotCount(counts, OP_LINEUP_SLOTS);
+  const flexCount = lineupSlotCount(counts, [FLEX_LINEUP_SLOT]);
+  if (opCount > 0 && flexCount > 0) {
+    return "hybrid";
+  }
+  if (opCount > 0) {
+    return "op";
+  }
+  if (flexCount > 0) {
+    return "flex";
+  }
+  return "standard";
+}
+
+function regularSeasonWeeksFor(
+  descriptor: SeasonGroupingSettingsDescriptor,
+): number | null {
+  return (
+    positiveIntegerOrNull(descriptor.regularSeasonEndScoringPeriod) ??
+    positiveIntegerOrNull(descriptor.matchupPeriodCount)
+  );
+}
+
+function signatureForDescriptor(
+  descriptor: SeasonGroupingSettingsDescriptor,
+): EraFormatSignature {
+  const lineupSlotCounts = normalizeLineupSlotCounts(
+    descriptor.lineupSlotCounts,
+  );
   return {
-    format_type: descriptor?.formatType ?? "traditional",
-    member_count_hint: descriptor?.memberCount ?? undefined,
-    roster_format: descriptor?.rosterFormat ?? undefined,
-    scoring_format: descriptor?.scoringFormat ?? undefined,
+    leagueSize:
+      positiveIntegerOrNull(descriptor.leagueSize) ??
+      positiveIntegerOrNull(descriptor.teamCount),
+    lineupFingerprint: stableJson(lineupSlotCounts),
+    lineupMode: lineupMode(lineupSlotCounts),
+    lineupSlotCounts,
+    playoffMatchupPeriodLength: positiveIntegerOrNull(
+      descriptor.playoffMatchupPeriodLength,
+    ),
+    playoffTeamCount: positiveIntegerOrNull(descriptor.playoffTeamCount),
+    regularSeasonWeeks: regularSeasonWeeksFor(descriptor),
+    scoringType: descriptor.scoringType?.trim() || "H2H_POINTS",
   };
 }
 
-interface SeasonDescriptor {
-  formatType: string;
-  memberCount: number;
-  ownerFingerprint: string;
-  rosterFormat: unknown;
-  rosterFingerprint: string;
-  scoringFormat: unknown;
-  scoringFingerprint: string;
+function eraDescriptors(
+  descriptors: Iterable<SeasonGroupingSettingsDescriptor>,
+): Map<number, EraDescriptor> {
+  const bySeason = new Map<number, SeasonGroupingSettingsDescriptor>();
+  for (const descriptor of descriptors) {
+    if (!Number.isInteger(descriptor.season)) {
+      continue;
+    }
+    bySeason.set(descriptor.season, descriptor);
+  }
+  return new Map(
+    [...bySeason.values()]
+      .sort((left, right) => left.season - right.season)
+      .map((descriptor) => [
+        descriptor.season,
+        { ...descriptor, signature: signatureForDescriptor(descriptor) },
+      ]),
+  );
+}
+
+function formatMaybeInteger(value: number | null): string {
+  return value === null ? "unknown" : String(value);
+}
+
+function playoffLengthLabel(value: number | null): string {
+  if (value === null) {
+    return "unknown playoff length";
+  }
+  return value === 1 ? "1-week playoffs" : `${value}-week playoffs`;
+}
+
+function lineupModeLabel(mode: EraFormatSignature["lineupMode"]): string {
+  switch (mode) {
+    case "flex":
+      return "FLEX lineup";
+    case "hybrid":
+      return "OP/FLEX hybrid lineup";
+    case "op":
+      return "OP lineup";
+    case "standard":
+      return "standard lineup";
+  }
+}
+
+function signatureSummary(signature: EraFormatSignature): string {
+  return [
+    `${formatMaybeInteger(signature.leagueSize)} teams`,
+    playoffLengthLabel(signature.playoffMatchupPeriodLength),
+    `${formatMaybeInteger(signature.playoffTeamCount)} playoff teams`,
+    `${formatMaybeInteger(signature.regularSeasonWeeks)} regular-season weeks`,
+    lineupModeLabel(signature.lineupMode),
+  ].join(", ");
+}
+
+function valueLabel(value: number | null): string {
+  return value === null ? "unknown" : String(value);
+}
+
+function formatValuesDiffer<T>(previous: T, next: T): boolean {
+  return !Object.is(previous, next);
+}
+
+function formatValuesMatch<T>(previous: T, next: T): boolean {
+  return Object.is(previous, next);
 }
 
 function descriptorChanges(
-  previous: SeasonDescriptor,
-  next: SeasonDescriptor,
-): string[] {
-  const changes: string[] = [];
-  if (previous.memberCount !== next.memberCount) {
-    changes.push("member_count_change");
+  previous: EraDescriptor,
+  next: EraDescriptor,
+): EraBoundaryReason[] {
+  const changes: EraBoundaryReason[] = [];
+  if (
+    formatValuesDiffer(previous.signature.leagueSize, next.signature.leagueSize)
+  ) {
+    changes.push("team_count_change");
   }
-  if (previous.ownerFingerprint !== next.ownerFingerprint) {
-    changes.push("member_set_change");
+  if (
+    formatValuesDiffer(
+      previous.signature.playoffMatchupPeriodLength,
+      next.signature.playoffMatchupPeriodLength,
+    )
+  ) {
+    changes.push("playoff_matchup_length_change");
   }
-  if (previous.rosterFingerprint !== next.rosterFingerprint) {
-    changes.push("roster_change");
+  if (
+    formatValuesDiffer(
+      previous.signature.playoffTeamCount,
+      next.signature.playoffTeamCount,
+    )
+  ) {
+    changes.push("playoff_team_count_change");
   }
-  if (previous.scoringFingerprint !== next.scoringFingerprint) {
-    changes.push("scoring_change");
+  if (
+    formatValuesDiffer(
+      previous.signature.regularSeasonWeeks,
+      next.signature.regularSeasonWeeks,
+    )
+  ) {
+    changes.push("regular_season_week_count_change");
   }
-  if (previous.formatType !== next.formatType) {
-    changes.push("format_change");
+  if (
+    formatValuesDiffer(
+      previous.signature.lineupFingerprint,
+      next.signature.lineupFingerprint,
+    )
+  ) {
+    changes.push("roster_lineup_slot_counts_change");
   }
   return changes;
 }
 
-function settingFormatType(scoringSettings: Record<string, unknown>): string {
-  const value = scoringSettings.format_type ?? scoringSettings.formatType;
-  return typeof value === "string" && value.trim() ? value : "traditional";
+function reasonChangeDetail(
+  reason: EraBoundaryReason,
+  previous: EraDescriptor,
+  next: EraDescriptor,
+): string {
+  switch (reason) {
+    case "team_count_change":
+      return `team count changed ${valueLabel(previous.signature.leagueSize)} -> ${valueLabel(next.signature.leagueSize)}`;
+    case "playoff_matchup_length_change":
+      return `playoff matchup length changed ${valueLabel(previous.signature.playoffMatchupPeriodLength)} -> ${valueLabel(next.signature.playoffMatchupPeriodLength)} week(s)`;
+    case "playoff_team_count_change":
+      return `playoff field changed ${valueLabel(previous.signature.playoffTeamCount)} -> ${valueLabel(next.signature.playoffTeamCount)} teams`;
+    case "regular_season_week_count_change":
+      return `regular season changed ${valueLabel(previous.signature.regularSeasonWeeks)} -> ${valueLabel(next.signature.regularSeasonWeeks)} weeks`;
+    case "roster_lineup_slot_counts_change":
+      if (
+        formatValuesMatch(
+          previous.signature.lineupMode,
+          next.signature.lineupMode,
+        )
+      ) {
+        return `lineup slot counts changed within ${lineupModeLabel(next.signature.lineupMode)}`;
+      }
+      return `lineup slots changed from ${lineupModeLabel(previous.signature.lineupMode)} to ${lineupModeLabel(next.signature.lineupMode)}`;
+  }
 }
 
-function settingRosterFormat(
-  scoringSettings: Record<string, unknown>,
-): unknown {
-  for (const key of [
-    "roster_format",
-    "rosterFormat",
-    "rosterSlots",
-    "lineupSlots",
-  ]) {
-    const value = scoringSettings[key];
-    if (value !== null && value !== undefined) {
-      return value;
-    }
+function seasonRangeLabel(
+  seasons: readonly number[],
+  allSeasons: readonly number[],
+): string {
+  const first = seasons[0] ?? 0;
+  const last = seasons.at(-1) ?? first;
+  if (first === last) {
+    return String(first);
   }
-  return null;
+  return last === allSeasons.at(-1) ? `${first}-present` : `${first}-${last}`;
+}
+
+function proposalName(input: {
+  allSeasons: readonly number[];
+  changes: readonly EraBoundaryReason[];
+  descriptor: EraDescriptor;
+  seasons: readonly number[];
+}): string {
+  const signature = input.descriptor.signature;
+  const range = seasonRangeLabel(input.seasons, input.allSeasons);
+  if (input.changes.includes("team_count_change") && signature.leagueSize) {
+    return `${signature.leagueSize}-team era (${range})`;
+  }
+  if (
+    input.changes.includes("playoff_matchup_length_change") &&
+    signature.playoffMatchupPeriodLength
+  ) {
+    return `${signature.playoffMatchupPeriodLength}-week playoffs (${range})`;
+  }
+  if (input.changes.includes("roster_lineup_slot_counts_change")) {
+    return `${lineupModeLabel(signature.lineupMode)} era (${range})`;
+  }
+  if (
+    input.changes.includes("regular_season_week_count_change") &&
+    signature.regularSeasonWeeks
+  ) {
+    return `${signature.regularSeasonWeeks}-week regular season (${range})`;
+  }
+  if (
+    input.changes.includes("playoff_team_count_change") &&
+    signature.playoffTeamCount
+  ) {
+    return `${signature.playoffTeamCount}-team playoff field (${range})`;
+  }
+  if (
+    signature.playoffMatchupPeriodLength &&
+    signature.playoffMatchupPeriodLength > 1
+  ) {
+    return `${signature.playoffMatchupPeriodLength}-week playoffs (${range})`;
+  }
+  if (signature.leagueSize) {
+    return `${signature.leagueSize}-team era (${range})`;
+  }
+  return `Era ${range}`;
+}
+
+function proposalRationale(input: {
+  changes: readonly EraBoundaryReason[];
+  current: EraDescriptor;
+  previous: EraDescriptor | null;
+  seasons: readonly number[];
+}): string {
+  const range =
+    input.seasons.length === 1
+      ? `${input.seasons[0]} shares`
+      : `${input.seasons[0]}-${input.seasons.at(-1)} share`;
+  const summary = signatureSummary(input.current.signature);
+  if (!input.previous || input.changes.length === 0) {
+    return `${range} ${summary}.`;
+  }
+  const changeText = input.changes
+    .map((reason) =>
+      reasonChangeDetail(
+        reason,
+        input.previous as EraDescriptor,
+        input.current,
+      ),
+    )
+    .join("; ");
+  return `Boundary starts at ${input.current.season}: ${changeText}. ${range} ${summary}.`;
+}
+
+function groupingConfigForDescriptor(
+  descriptor: EraDescriptor,
+  rationale: string,
+): LeagueSeasonGroupingConfig {
+  return {
+    format_type: "traditional",
+    member_count_hint: descriptor.signature.leagueSize ?? undefined,
+    notes: rationale,
+    roster_format: {
+      lineup_mode: descriptor.signature.lineupMode,
+      lineup_slot_counts: descriptor.signature.lineupSlotCounts,
+    },
+    scoring_format: {
+      playoff_matchup_period_length:
+        descriptor.signature.playoffMatchupPeriodLength,
+      playoff_team_count: descriptor.signature.playoffTeamCount,
+      regular_season_weeks: descriptor.signature.regularSeasonWeeks,
+      scoring_type: descriptor.signature.scoringType,
+    },
+  };
 }
 
 export function detectSeasonGroupingProposals(input: {
-  descriptors: ReadonlyMap<number, SeasonDescriptor>;
+  descriptors: Iterable<SeasonGroupingSettingsDescriptor>;
   kind?: string;
 }): SeasonGroupingProposal[] {
-  const seasons = sortedUniqueNumbers(input.descriptors.keys());
+  const descriptorMap = eraDescriptors(input.descriptors);
+  const seasons = sortedUniqueNumbers(descriptorMap.keys());
   if (seasons.length <= 1) {
     return [];
   }
 
-  const groups: { changes: string[]; seasons: number[] }[] = [
-    { changes: [], seasons: [seasons[0] as number] },
-  ];
-  for (const season of seasons.slice(1)) {
-    const previousSeason = seasons[seasons.indexOf(season) - 1] as number;
-    const previous = input.descriptors.get(previousSeason);
-    const current = input.descriptors.get(season);
+  const groups: Array<{
+    changes: EraBoundaryReason[];
+    previous: EraDescriptor | null;
+    seasons: number[];
+  }> = [{ changes: [], previous: null, seasons: [seasons[0] as number] }];
+
+  for (let index = 1; index < seasons.length; index += 1) {
+    const season = seasons[index] as number;
+    const previousSeason = seasons[index - 1] as number;
+    const previous = descriptorMap.get(previousSeason);
+    const current = descriptorMap.get(season);
     if (!previous || !current) {
       continue;
     }
     const changes = descriptorChanges(previous, current);
     if (changes.length > 0) {
-      groups.push({ changes, seasons: [season] });
+      groups.push({ changes, previous, seasons: [season] });
     } else {
       groups.at(-1)?.seasons.push(season);
     }
@@ -1253,30 +1551,60 @@ export function detectSeasonGroupingProposals(input: {
   }
 
   const kind = input.kind ?? "era";
-  return groups.map((group, index) => ({
-    config: groupingConfigForSeason(
-      group.seasons[0] as number,
-      input.descriptors,
-    ),
-    derivedFrom: {
-      boundaryReasons: group.changes,
-      firstSeason: group.seasons[0],
-      lastSeason: group.seasons.at(-1),
-    },
-    kind,
-    name: `${kind === "era" ? "Era" : "Grouping"} ${index + 1}`,
-    ordinal: index + 1,
-    seasons: group.seasons,
-  }));
+  return groups.map((group, index) => {
+    const firstSeason = group.seasons[0] as number;
+    const descriptor = descriptorMap.get(firstSeason);
+    if (!descriptor) {
+      throw new Error(`season descriptor was not found for ${firstSeason}`);
+    }
+    const rationale = proposalRationale({
+      changes: group.changes,
+      current: descriptor,
+      previous: group.previous,
+      seasons: group.seasons,
+    });
+    return {
+      config: groupingConfigForDescriptor(descriptor, rationale),
+      derivedFrom: {
+        boundaryReasons: group.changes,
+        boundaryReasonLabels: group.changes.map(
+          (reason) => BOUNDARY_REASON_LABELS[reason],
+        ),
+        firstSeason,
+        lastSeason: group.seasons.at(-1),
+        rationale,
+        signature: descriptor.signature,
+        source: "league_season_settings",
+      },
+      kind,
+      name: proposalName({
+        allSeasons: seasons,
+        changes: group.changes,
+        descriptor,
+        seasons: group.seasons,
+      }),
+      ordinal: index + 1,
+      rationale,
+      seasons: group.seasons,
+    };
+  });
 }
 
 async function loadSeasonDescriptors(
   tx: LeagueScopedTx,
   leagueId: string,
-): Promise<Map<number, SeasonDescriptor>> {
+): Promise<SeasonGroupingSettingsDescriptor[]> {
   const settingsRows = await tx
     .select({
-      scoringSettings: leagueSeasonSettings.scoringSettings,
+      leagueSize: leagueSeasonSettings.leagueSize,
+      lineupSlotCounts: leagueSeasonSettings.lineupSlotCounts,
+      matchupPeriodCount: leagueSeasonSettings.matchupPeriodCount,
+      playoffMatchupPeriodLength:
+        leagueSeasonSettings.playoffMatchupPeriodLength,
+      playoffTeamCount: leagueSeasonSettings.playoffTeamCount,
+      regularSeasonEndScoringPeriod:
+        leagueSeasonSettings.regularSeasonEndScoringPeriod,
+      scoringType: leagueSeasonSettings.scoringType,
       season: leagueSeasonSettings.season,
     })
     .from(leagueSeasonSettings)
@@ -1284,54 +1612,42 @@ async function loadSeasonDescriptors(
     .orderBy(asc(leagueSeasonSettings.season));
   const teamRows = await tx
     .select({
-      ownerMemberIds: teamSeasons.ownerMemberIds,
-      ownerNames: teamSeasons.ownerNames,
+      providerTeamId: teamSeasons.providerTeamId,
       season: teamSeasons.season,
     })
     .from(teamSeasons)
     .where(eq(teamSeasons.leagueId, leagueId))
     .orderBy(asc(teamSeasons.season));
+
   const settingsBySeason = new Map(
-    settingsRows.map((row) => [row.season, row.scoringSettings]),
+    settingsRows.map((row) => [row.season, row]),
   );
-  const teamsBySeason = new Map<number, typeof teamRows>();
+  const teamsBySeason = new Map<number, Set<string>>();
   for (const row of teamRows) {
-    teamsBySeason.set(row.season, [
-      ...(teamsBySeason.get(row.season) ?? []),
-      row,
-    ]);
+    const teams = teamsBySeason.get(row.season) ?? new Set<string>();
+    teams.add(row.providerTeamId);
+    teamsBySeason.set(row.season, teams);
   }
 
   const seasons = sortedUniqueNumbers([
     ...settingsRows.map((row) => row.season),
     ...teamRows.map((row) => row.season),
   ]);
-  const descriptors = new Map<number, SeasonDescriptor>();
-  for (const season of seasons) {
-    const scoringSettings = settingsBySeason.get(season) ?? {};
-    const teams = teamsBySeason.get(season) ?? [];
-    const owners = teams.flatMap((team) =>
-      team.ownerMemberIds.length > 0 ? team.ownerMemberIds : team.ownerNames,
-    );
-    const rosterFormat = settingRosterFormat(scoringSettings);
-    const scoringFormat = {
-      ...scoringSettings,
-      lineupSlots: undefined,
-      rosterFormat: undefined,
-      rosterSlots: undefined,
-      roster_format: undefined,
+  return seasons.map((season) => {
+    const settings = settingsBySeason.get(season);
+    return {
+      leagueSize: settings?.leagueSize ?? null,
+      lineupSlotCounts: settings?.lineupSlotCounts ?? {},
+      matchupPeriodCount: settings?.matchupPeriodCount ?? null,
+      playoffMatchupPeriodLength: settings?.playoffMatchupPeriodLength ?? null,
+      playoffTeamCount: settings?.playoffTeamCount ?? null,
+      regularSeasonEndScoringPeriod:
+        settings?.regularSeasonEndScoringPeriod ?? null,
+      scoringType: settings?.scoringType ?? null,
+      season,
+      teamCount: teamsBySeason.get(season)?.size ?? null,
     };
-    descriptors.set(season, {
-      formatType: settingFormatType(scoringSettings),
-      memberCount: teams.length,
-      ownerFingerprint: [...new Set(owners)].sort(compareStable).join("\u001f"),
-      rosterFormat,
-      rosterFingerprint: stableJson(rosterFormat),
-      scoringFormat,
-      scoringFingerprint: stableJson(scoringFormat),
-    });
-  }
-  return descriptors;
+  });
 }
 
 async function groupingWithSeasons(
@@ -1378,6 +1694,10 @@ async function groupingWithSeasons(
     kind: row.kind,
     name: row.name,
     ordinal: row.ordinal,
+    rationale:
+      typeof row.derivedFrom.rationale === "string"
+        ? row.derivedFrom.rationale
+        : (row.config.notes ?? "Owner-defined season grouping."),
     seasons: seasonRows
       .filter((season) => season.groupingId === row.id)
       .map((season) => season.season),
@@ -1395,7 +1715,9 @@ async function validateConfirmedGroupingSeasons(
   },
 ): Promise<void> {
   const descriptors = await loadSeasonDescriptors(tx, input.leagueId);
-  const knownSeasons = new Set(descriptors.keys());
+  const knownSeasons = new Set(
+    descriptors.map((descriptor) => descriptor.season),
+  );
   const unknownSeasons = input.seasons.filter(
     (season) => !knownSeasons.has(season),
   );
@@ -1529,6 +1851,9 @@ export async function confirmLeagueSeasonGrouping(
     if (!before) {
       throw new Error("season grouping was not found");
     }
+    if (before.status === "dismissed") {
+      throw new Error("dismissed season groupings cannot be confirmed");
+    }
     const seasons = sortedUniqueNumbers(input.seasons);
     await validateConfirmedGroupingSeasons(tx, {
       groupingId: input.groupingId,
@@ -1599,6 +1924,65 @@ export async function confirmLeagueSeasonGrouping(
       targetKind: "grouping",
       trigger: "season_grouping_confirmed",
     });
+    return after;
+  });
+}
+
+export async function dismissLeagueSeasonGrouping(
+  db: Db,
+  input: {
+    actorUserId: string;
+    groupingId: string;
+    leagueId: string;
+    reason?: string;
+  },
+): Promise<PersistedSeasonGrouping> {
+  return withLeagueContext(db, input.leagueId, async (tx) => {
+    const [before] = await groupingWithSeasons(tx, input.leagueId, [
+      input.groupingId,
+    ]);
+    if (!before) {
+      throw new Error("season grouping was not found");
+    }
+    if (before.status !== "proposed") {
+      throw new Error("only proposed season groupings can be dismissed");
+    }
+
+    await tx
+      .update(leagueSeasonGroupings)
+      .set({ status: "dismissed" })
+      .where(
+        and(
+          eq(leagueSeasonGroupings.leagueId, input.leagueId),
+          eq(leagueSeasonGroupings.id, input.groupingId),
+        ),
+      );
+
+    const [after] = await groupingWithSeasons(tx, input.leagueId, [
+      input.groupingId,
+    ]);
+    if (!after) {
+      throw new Error("dismissed season grouping was not found");
+    }
+
+    await tx.insert(leagueDataEdits).values({
+      actorUserId: input.actorUserId,
+      afterValue: {
+        seasons: after.seasons,
+        status: after.status,
+      },
+      beforeValue: {
+        seasons: before.seasons,
+        status: before.status,
+      },
+      editClass: "cosmetic",
+      field: "grouping_dismissal",
+      leagueId: input.leagueId,
+      reason: input.reason ?? "dismissed season grouping proposal",
+      targetId: input.groupingId,
+      targetKind: "grouping",
+    });
+
     return after;
   });
 }

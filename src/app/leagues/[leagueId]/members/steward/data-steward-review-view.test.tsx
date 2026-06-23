@@ -64,6 +64,7 @@ const curationSummary: DataCurationSummary = {
       kind: "era",
       name: "Era 2",
       ordinal: 2,
+      rationale: "Settings changed at the 2013 boundary.",
       seasons: [2013, 2014],
       status: "proposed",
     },

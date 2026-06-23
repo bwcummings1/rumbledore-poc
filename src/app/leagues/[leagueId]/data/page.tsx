@@ -70,16 +70,15 @@ export default async function LeagueDataBookPage({
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
-  const result = await getLeagueDataBookData(db, { leagueId });
+  const canEditData = canEditDataBook(access.value.role);
+  const result = await getLeagueDataBookData(db, {
+    canManageEras: canEditData,
+    leagueId,
+  });
 
   switch (result.status) {
     case "ready":
-      return (
-        <DataBookView
-          canEditData={canEditDataBook(access.value.role)}
-          data={result.data}
-        />
-      );
+      return <DataBookView canEditData={canEditData} data={result.data} />;
     case "not_found":
       notFound();
   }

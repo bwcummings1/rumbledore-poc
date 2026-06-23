@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requireLeagueRole } from "@/auth/guards";
 import { AppError } from "@/core/result";
-import { confirmLeagueSeasonGrouping } from "@/stats";
+import {
+  confirmLeagueSeasonGrouping,
+  dismissLeagueSeasonGrouping,
+} from "@/stats";
 import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({
   confirmLeagueSeasonGrouping: vi.fn(),
+  dismissLeagueSeasonGrouping: vi.fn(),
   db: {},
   requireLeagueRole: vi.fn(),
 }));
@@ -23,6 +27,7 @@ vi.mock("@/stats", async (importOriginal) => {
   return {
     ...actual,
     confirmLeagueSeasonGrouping: mocks.confirmLeagueSeasonGrouping,
+    dismissLeagueSeasonGrouping: mocks.dismissLeagueSeasonGrouping,
   };
 });
 
@@ -62,7 +67,7 @@ afterEach(() => {
 });
 
 describe("POST /api/leagues/[leagueId]/curation/groupings", () => {
-  it("requires commissioner access and confirms adjusted seasons", async () => {
+  it("requires data steward access and confirms adjusted seasons", async () => {
     mockAccess();
     mocks.confirmLeagueSeasonGrouping.mockResolvedValue({
       config: { format_type: "traditional" },
@@ -92,7 +97,7 @@ describe("POST /api/leagues/[leagueId]/curation/groupings", () => {
       grouping: { id: groupingId, seasons: [2013, 2015], status: "confirmed" },
     });
     expect(requireLeagueRole).toHaveBeenCalledWith(
-      expect.objectContaining({ minRole: "commissioner" }),
+      expect.objectContaining({ minRole: "data_steward" }),
     );
     expect(confirmLeagueSeasonGrouping).toHaveBeenCalledWith(mocks.db, {
       actorUserId: userId,
@@ -105,7 +110,44 @@ describe("POST /api/leagues/[leagueId]/curation/groupings", () => {
     });
   });
 
-  it("rejects non-commissioners before confirm", async () => {
+  it("dismisses proposed groupings", async () => {
+    mockAccess();
+    mocks.dismissLeagueSeasonGrouping.mockResolvedValue({
+      config: { format_type: "traditional" },
+      confirmedByUserId: null,
+      derivedFrom: {},
+      id: groupingId,
+      kind: "era",
+      name: "2-week playoffs",
+      ordinal: 1,
+      rationale: "Dismissed by steward.",
+      seasons: [2011, 2012],
+      status: "dismissed",
+    });
+
+    const response = await POST(
+      request({
+        action: "dismiss",
+        groupingId,
+        reason: "not useful",
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      grouping: { id: groupingId, status: "dismissed" },
+    });
+    expect(dismissLeagueSeasonGrouping).toHaveBeenCalledWith(mocks.db, {
+      actorUserId: userId,
+      groupingId,
+      leagueId,
+      reason: "not useful",
+    });
+    expect(confirmLeagueSeasonGrouping).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-stewards before confirm", async () => {
     mocks.requireLeagueRole.mockResolvedValue({
       error: new AppError({
         code: "LEAGUE_FORBIDDEN",
@@ -122,5 +164,6 @@ describe("POST /api/leagues/[leagueId]/curation/groupings", () => {
 
     expect(response.status).toBe(403);
     expect(confirmLeagueSeasonGrouping).not.toHaveBeenCalled();
+    expect(dismissLeagueSeasonGrouping).not.toHaveBeenCalled();
   });
 });

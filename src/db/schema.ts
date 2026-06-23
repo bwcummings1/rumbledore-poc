@@ -141,7 +141,7 @@ export const leagueDataEditClass = pgEnum("league_data_edit_class", [
 
 export const leagueSeasonGroupingStatus = pgEnum(
   "league_season_grouping_status",
-  ["proposed", "confirmed"],
+  ["proposed", "confirmed", "dismissed"],
 );
 
 export const onboardingCredentialStatus = pgEnum(

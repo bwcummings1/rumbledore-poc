@@ -122,3 +122,29 @@
 - PASS - pushed 2012 score edit became the record-book high score
 - PASS - pushing 2012 preserved every other pushed season
 - PASS - display rule collapsed to latest team name plus real name
+
+## T10 Era Proposals
+
+- League DB id: 466e2035-6c78-451a-b517-bcc5accae436
+- Proposed eras: 6
+- Confirmed for screenshot lens: 12-team era (2013-2014) (2013, 2014)
+- Pushed seasons after confirmation: 16
+
+### Detector Checks
+
+- PASS - detector proposes the 2011-2012 2-week playoff era
+- PASS - detector proposes a 2013 team-count boundary
+- PASS - detector proposes the OP-to-FLEX lineup boundary
+- PASS - detector proposes the playoff-team-count boundary
+- PASS - detector proposes the 2021 regular-season-week boundary
+- PASS - detector does not propose regular/playoff segments as eras
+- PASS - confirmed grouping is present in the pushed snapshot
+
+### Proposals
+
+- PROPOSED - 2-week playoffs (2011-2012): 2011, 2012 - 2011-2012 share 10 teams, 2-week playoffs, 4 playoff teams, 13 regular-season weeks, OP lineup.
+- CONFIRMED - 12-team era (2013-2014): 2013, 2014 - Boundary starts at 2013: team count changed 10 -> 12; playoff matchup length changed 2 -> 1 week(s); playoff field changed 4 -> 6 teams; lineup slot counts changed within OP lineup. 2013-2014 share 12 teams, 1-week playoffs, 6 playoff teams, 13 regular-season weeks, OP lineup.
+- PROPOSED - OP lineup era (2015): 2015 - Boundary starts at 2015: lineup slot counts changed within OP lineup. 2015 shares 12 teams, 1-week playoffs, 6 playoff teams, 13 regular-season weeks, OP lineup.
+- PROPOSED - OP/FLEX hybrid lineup era (2016-2019): 2016, 2017, 2018, 2019 - Boundary starts at 2016: lineup slots changed from OP lineup to OP/FLEX hybrid lineup. 2016-2019 share 12 teams, 1-week playoffs, 6 playoff teams, 13 regular-season weeks, OP/FLEX hybrid lineup.
+- PROPOSED - FLEX lineup era (2020): 2020 - Boundary starts at 2020: lineup slots changed from OP/FLEX hybrid lineup to FLEX lineup. 2020 shares 12 teams, 1-week playoffs, 6 playoff teams, 13 regular-season weeks, FLEX lineup.
+- PROPOSED - 14-week regular season (2021-present): 2021, 2022, 2023, 2024, 2025, 2026 - Boundary starts at 2021: regular season changed 13 -> 14 weeks. 2021-2026 share 12 teams, 1-week playoffs, 6 playoff teams, 14 regular-season weeks, FLEX lineup.

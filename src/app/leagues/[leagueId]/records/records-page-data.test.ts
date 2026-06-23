@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -20,7 +21,9 @@ import {
 import { migrateSerialized } from "@/db/test-support";
 import {
   applyCuratedDataEdit,
+  confirmLeagueSeasonGrouping,
   createCurationCheckpoint,
+  proposeLeagueSeasonGroupings,
   pushAllCurationSeasons,
   pushCurationSeason,
 } from "@/stats";
@@ -523,6 +526,59 @@ describe("records page pushed snapshot read model", () => {
     expect(highestScoreRecord(result.data)).toMatchObject({
       season: 2011,
       value: 110,
+    });
+  });
+
+  it("surfaces confirmed detector proposals as pushed Record Book era pills", async () => {
+    const seeded = await seedRecordsLeague("confirmed-proposal-lens");
+
+    await withLeagueContext(handle.db, seeded.leagueId, async (tx) => {
+      await tx
+        .update(leagueSeasonSettings)
+        .set({ leagueSize: 4 })
+        .where(
+          and(
+            eq(leagueSeasonSettings.leagueId, seeded.leagueId),
+            eq(leagueSeasonSettings.season, 2012),
+          ),
+        );
+    });
+
+    const proposals = await proposeLeagueSeasonGroupings(handle.db, {
+      leagueId: seeded.leagueId,
+    });
+    const proposal = proposals.find((candidate) =>
+      candidate.seasons.includes(2012),
+    );
+    if (!proposal) {
+      throw new Error("expected detector proposal for 2012");
+    }
+    const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
+      actorUserId: seeded.actorUserId,
+      groupingId: proposal.id,
+      leagueId: seeded.leagueId,
+      name: "Expanded era",
+      reason: "records page integration",
+      seasons: proposal.seasons,
+    });
+    await pushBaseline(seeded);
+
+    const result = await getLeagueRecordsPageData(handle.db, {
+      leagueId: seeded.leagueId,
+      lens: { groupingId: confirmed.id, segment: "both" },
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(result.data.lens.groupings).toEqual([
+      expect.objectContaining({ name: "Expanded era", seasons: [2012] }),
+    ]);
+    expect(result.data.lens.groupingId).toBe(confirmed.id);
+    expect(highestScoreRecord(result.data)).toMatchObject({
+      season: 2012,
+      value: 120,
     });
   });
 });

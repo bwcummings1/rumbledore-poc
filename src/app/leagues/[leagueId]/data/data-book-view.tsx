@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   BookOpen,
+  CalendarCheck,
   Check,
   ChevronDown,
   Database,
@@ -38,6 +39,7 @@ import type {
   DataBookCheckpointOption,
   DataBookCurationMode,
   DataBookCurationState,
+  DataBookEraProposal,
   DataBookGrain,
   DataBookPageData,
   DataBookPersonRow,
@@ -88,6 +90,10 @@ interface CheckpointMutationResponse {
 interface CurationSeasonPushResponse {
   push?: DataBookSeasonPushSummary;
   pushes?: DataBookSeasonPushSummary[];
+}
+
+interface GroupingMutationResponse {
+  grouping: DataBookEraProposal;
 }
 
 interface DataBookSeasonPushSummary {
@@ -175,6 +181,31 @@ function resultLabel(result: DataBookWeekRow["result"]): string {
 
 function seasonLabel(season: DataBookSeason): string {
   return `${season.season}`;
+}
+
+function seasonRangeLabel(seasons: readonly number[]): string {
+  if (seasons.length === 0) {
+    return "No seasons";
+  }
+  if (seasons.length === 1) {
+    return String(seasons[0]);
+  }
+  return `${seasons[0]}-${seasons[seasons.length - 1]}`;
+}
+
+function seasonCsv(seasons: readonly number[]): string {
+  return seasons.join(", ");
+}
+
+function parseSeasonCsv(value: string): number[] {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((entry) => Number(entry.trim()))
+        .filter((entry) => Number.isInteger(entry)),
+    ),
+  ].sort((left, right) => left - right);
 }
 
 function selectedSeasonOrFallback(
@@ -1637,6 +1668,187 @@ function SettingsTable({ season }: { season: DataBookSeason }) {
   );
 }
 
+function EraProposalCard({
+  busy,
+  canEditData,
+  onConfirm,
+  onDismiss,
+  proposal,
+}: {
+  busy: boolean;
+  canEditData: boolean;
+  onConfirm: (input: {
+    groupingId: string;
+    name: string;
+    seasons: number[];
+  }) => void;
+  onDismiss: (proposal: DataBookEraProposal) => void;
+  proposal: DataBookEraProposal;
+}) {
+  const [adjusting, setAdjusting] = useState(false);
+  const [name, setName] = useState(proposal.name);
+  const [seasons, setSeasons] = useState(seasonCsv(proposal.seasons));
+  const parsedSeasons = parseSeasonCsv(seasons);
+  const canMutate = canEditData && proposal.status === "proposed";
+
+  useEffect(() => {
+    setName(proposal.name);
+    setSeasons(seasonCsv(proposal.seasons));
+  }, [proposal.name, proposal.seasons]);
+
+  return (
+    <article className="cell grid gap-3 p-3 sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-sm font-medium text-foreground">
+            {proposal.name}
+          </p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {seasonRangeLabel(proposal.seasons)}
+          </p>
+        </div>
+        <StatusPill
+          tone={proposal.status === "confirmed" ? "success" : "warning"}
+        >
+          {proposal.status}
+        </StatusPill>
+      </div>
+      <p className="text-sm text-muted-foreground">{proposal.rationale}</p>
+
+      {adjusting ? (
+        <div className="grid gap-3 rounded-control border border-[var(--hair)] bg-[var(--panel)] p-3">
+          <Field controlId={`era-${proposal.id}-name`} label="Era name">
+            <Input
+              id={`era-${proposal.id}-name`}
+              onChange={(event) => setName(event.currentTarget.value)}
+              value={name}
+            />
+          </Field>
+          <Field
+            controlId={`era-${proposal.id}-seasons`}
+            hint="Comma-separated seasons; the confirmed grouping can be adjusted before saving."
+            label="Seasons"
+          >
+            <Input
+              id={`era-${proposal.id}-seasons`}
+              onChange={(event) => setSeasons(event.currentTarget.value)}
+              value={seasons}
+            />
+          </Field>
+        </div>
+      ) : null}
+
+      {canMutate ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={busy || parsedSeasons.length === 0 || !name.trim()}
+            loading={busy}
+            loadingLabel="Confirming era"
+            onClick={() =>
+              onConfirm({
+                groupingId: proposal.id,
+                name: name.trim() || proposal.name,
+                seasons: parsedSeasons,
+              })
+            }
+            size="sm"
+            type="button"
+            variant="steel"
+          >
+            <Check data-icon="inline-start" />
+            Confirm
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={() => setAdjusting((current) => !current)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Edit3 data-icon="inline-start" />
+            {adjusting ? "Close adjust" : "Adjust"}
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={() => onDismiss(proposal)}
+            size="sm"
+            type="button"
+            variant="danger"
+          >
+            <X data-icon="inline-start" />
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function EraProposalPanel({
+  busyId,
+  canEditData,
+  error,
+  message,
+  onConfirm,
+  onDismiss,
+  proposals,
+}: {
+  busyId: string | null;
+  canEditData: boolean;
+  error: string | null;
+  message: string | null;
+  onConfirm: (input: {
+    groupingId: string;
+    name: string;
+    seasons: number[];
+  }) => void;
+  onDismiss: (proposal: DataBookEraProposal) => void;
+  proposals: readonly DataBookEraProposal[];
+}) {
+  const visible = proposals.filter(
+    (proposal) => proposal.status !== "dismissed",
+  );
+  if (visible.length === 0) {
+    return null;
+  }
+
+  return (
+    <section
+      aria-label="Era proposals"
+      className="panel grid gap-4 p-4"
+      data-slot="era-proposals"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="eyebrow text-primary">Eras</p>
+          <h3 className="heading-auspex text-base leading-tight">
+            Settings-derived groupings
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Confirmed eras are data definitions; save and push them before the
+            Record Book lens reflects them.
+          </p>
+        </div>
+        <CalendarCheck aria-hidden="true" className="size-5 text-primary" />
+      </div>
+      {message ? <Alert tone="ok">{message}</Alert> : null}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {visible.map((proposal) => (
+          <EraProposalCard
+            busy={busyId === proposal.id}
+            canEditData={canEditData}
+            key={proposal.id}
+            onConfirm={onConfirm}
+            onDismiss={onDismiss}
+            proposal={proposal}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function WeeksTable({
   canEditData,
   isDraftCell,
@@ -1725,6 +1937,7 @@ export function DataBookView({
   const [activeGrain, setActiveGrain] = useState<DataBookGrain>("people");
   const [draftData, setDraftData] = useState(data);
   const [curationState, setCurationState] = useState(data.curation);
+  const [eraProposals, setEraProposals] = useState(data.eraProposals);
   const initialSeason = draftData.seasons[0]?.season ?? draftData.league.season;
   const [selectedSeason, setSelectedSeason] = useState(initialSeason);
   const [pendingEdit, setPendingEdit] = useState<PendingDimensionEdit | null>(
@@ -1748,9 +1961,13 @@ export function DataBookView({
   );
   const [pushIntent, setPushIntent] = useState<PushIntent | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [eraBusyId, setEraBusyId] = useState<string | null>(null);
+  const [eraMessage, setEraMessage] = useState<string | null>(null);
+  const [eraError, setEraError] = useState<string | null>(null);
   const season = selectedSeasonOrFallback(draftData.seasons, selectedSeason);
   const editApiUrl = `/api/leagues/${draftData.league.id}/curation/edits`;
   const checkpointsApiUrl = `/api/leagues/${draftData.league.id}/curation/checkpoints`;
+  const groupingApiUrl = `/api/leagues/${draftData.league.id}/curation/groupings`;
   const pushApiUrl = `/api/leagues/${draftData.league.id}/curation/push`;
   const selectedSeasonState = curationForSeason(curationState, season.season);
 
@@ -1975,6 +2192,86 @@ export function DataBookView({
     }
   }
 
+  async function confirmEraProposal(input: {
+    groupingId: string;
+    name: string;
+    seasons: number[];
+  }) {
+    if (eraBusyId) {
+      return;
+    }
+    setEraBusyId(input.groupingId);
+    setEraError(null);
+    setEraMessage(null);
+    try {
+      const response = await postJson<GroupingMutationResponse>(
+        groupingApiUrl,
+        {
+          action: "confirm",
+          groupingId: input.groupingId,
+          name: input.name,
+          reason: "Confirmed era proposal from Data Book",
+          seasons: input.seasons,
+        },
+      );
+      setEraProposals((current) =>
+        current.map((proposal) =>
+          proposal.id === input.groupingId ? response.grouping : proposal,
+        ),
+      );
+      setCurationState((currentState) => ({
+        ...currentState,
+        hasUnsavedDraft: true,
+        seasons: currentState.seasons.map((entry) => ({
+          ...entry,
+          hasUnsavedDraft: true,
+        })),
+      }));
+      setEraMessage(
+        `${response.grouping.name} confirmed. Save and push the affected seasons before Records can use it.`,
+      );
+    } catch (cause) {
+      setEraError(
+        cause instanceof Error ? cause.message : "Era confirm failed",
+      );
+    } finally {
+      setEraBusyId(null);
+    }
+  }
+
+  async function dismissEraProposal(proposal: DataBookEraProposal) {
+    if (eraBusyId) {
+      return;
+    }
+    setEraBusyId(proposal.id);
+    setEraError(null);
+    setEraMessage(null);
+    try {
+      const response = await postJson<GroupingMutationResponse>(
+        groupingApiUrl,
+        {
+          action: "dismiss",
+          groupingId: proposal.id,
+          reason: "Dismissed era proposal from Data Book",
+        },
+      );
+      setEraProposals((current) =>
+        current
+          .map((candidate) =>
+            candidate.id === proposal.id ? response.grouping : candidate,
+          )
+          .filter((candidate) => candidate.status !== "dismissed"),
+      );
+      setEraMessage(`${proposal.name} dismissed.`);
+    } catch (cause) {
+      setEraError(
+        cause instanceof Error ? cause.message : "Era dismiss failed",
+      );
+    } finally {
+      setEraBusyId(null);
+    }
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
       <LeagueDataMasthead
@@ -2024,6 +2321,17 @@ export function DataBookView({
             setRestoreCheckpointId={setRestoreCheckpointId}
           />
           {draftMessage ? <DataBookDraftNotice message={draftMessage} /> : null}
+          {activeGrain === "settings" ? (
+            <EraProposalPanel
+              busyId={eraBusyId}
+              canEditData={canEditData}
+              error={eraError}
+              message={eraMessage}
+              onConfirm={confirmEraProposal}
+              onDismiss={dismissEraProposal}
+              proposals={eraProposals}
+            />
+          ) : null}
           <ActiveGrain
             activeGrain={activeGrain}
             canEditData={canEditData}
