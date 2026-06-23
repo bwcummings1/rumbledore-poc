@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
@@ -16,6 +16,7 @@ import {
   leagueGroupingSeasons,
   leagueSeasonGroupings,
   leagueSeasonSettings,
+  leagues,
   type PersonOwnerHistoryEntry,
   persons,
   providerFinalStandings,
@@ -25,6 +26,7 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import type { NormalizedMatchupKind } from "@/providers";
+import type { FantasyProviderId } from "@/providers/ids";
 import { identityNameSimilarity } from "./fuzzy";
 import { refreshRecordBookAggregates } from "./records-catalog";
 
@@ -624,7 +626,10 @@ async function refreshCanonicalNames({
   }
 
   for (const person of personRows) {
-    if (manualNames.has(person.id)) {
+    if (
+      manualNames.has(person.id) &&
+      !PLACEHOLDER_CANONICAL_NAME.test(person.canonicalName)
+    ) {
       continue;
     }
     const canonicalName = preferredCanonicalName(
@@ -814,6 +819,33 @@ async function refreshOwnerHistory({
   }
 }
 
+async function deleteUnmappedPersons({
+  leagueId,
+  mappings,
+  tx,
+}: {
+  leagueId: string;
+  mappings: readonly IdentityMappingRow[];
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  const mappedPersonIds = sortedUnique(
+    mappings.map((mapping) => mapping.personId),
+  );
+  if (mappedPersonIds.length === 0) {
+    await tx.delete(persons).where(eq(persons.leagueId, leagueId));
+    return;
+  }
+
+  await tx
+    .delete(persons)
+    .where(
+      and(
+        eq(persons.leagueId, leagueId),
+        notInArray(persons.id, mappedPersonIds),
+      ),
+    );
+}
+
 export async function resolveLeagueIdentities(
   db: Db,
   input: { leagueId: string },
@@ -855,9 +887,6 @@ export async function resolveLeagueIdentities(
       }
     }
 
-    let createdPersons = 0;
-    let changedMappings = 0;
-
     for (const teamSeason of seasonRows) {
       const existing = mappingByTeamSeasonId.get(teamSeason.id);
       if (existing) {
@@ -883,7 +912,6 @@ export async function resolveLeagueIdentities(
         personId = created.id;
         confidence = 1;
         method = "auto";
-        createdPersons += 1;
         states.set(personId, {
           ownerMemberIds: new Set(),
           ownerNames: new Set(),
@@ -923,7 +951,6 @@ export async function resolveLeagueIdentities(
       if (!mapping) {
         throw new Error("identity mapping was not created");
       }
-      changedMappings += 1;
       mappingByTeamSeasonId.set(teamSeason.id, mapping);
       const state = states.get(personId);
       if (!state) {
@@ -936,6 +963,11 @@ export async function resolveLeagueIdentities(
       .select()
       .from(identityMappings)
       .where(eq(identityMappings.leagueId, input.leagueId));
+    await deleteUnmappedPersons({
+      leagueId: input.leagueId,
+      mappings: finalMappings,
+      tx,
+    });
     const finalPersonRows = await tx
       .select()
       .from(persons)
@@ -955,8 +987,8 @@ export async function resolveLeagueIdentities(
 
     return {
       mappings: finalMappings.length,
-      persons: personRows.length + createdPersons,
-      teamSeasons: seasonRows.length + changedMappings * 0,
+      persons: finalPersonRows.length,
+      teamSeasons: seasonRows.length,
     };
   });
 }
@@ -2481,6 +2513,47 @@ function checkStatus(
   return issues.length > 0 ? "fail" : "pass";
 }
 
+const ESPN_BRACED_GUID =
+  /^\{[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}$/;
+const PLACEHOLDER_CANONICAL_NAME =
+  /^(Fixture Manager\b.*|Screenshot .* Steward)$/i;
+
+function realProviderLeagueNamespace(
+  provider: FantasyProviderId,
+  providerLeagueId: string,
+): boolean {
+  switch (provider) {
+    case "espn":
+    case "sleeper":
+      return /^\d+$/.test(providerLeagueId);
+    case "yahoo":
+      return /^\d+\.l\.\d+$/.test(providerLeagueId);
+  }
+}
+
+function providerMemberIdIsValid(
+  provider: FantasyProviderId,
+  providerMemberId: string,
+): boolean {
+  switch (provider) {
+    case "espn":
+      return ESPN_BRACED_GUID.test(providerMemberId);
+    case "sleeper":
+    case "yahoo":
+      return providerMemberId.trim().length > 0;
+  }
+}
+
+function providerMemberIdRule(provider: FantasyProviderId): string {
+  switch (provider) {
+    case "espn":
+      return "braced_guid";
+    case "sleeper":
+    case "yahoo":
+      return "non_empty";
+  }
+}
+
 function seasonKeys(values: Iterable<number>): number[] {
   return [...new Set(values)]
     .filter((season) => Number.isInteger(season))
@@ -2587,6 +2660,14 @@ async function buildDataIntegrityCheckDrafts(
   tx: LeagueScopedTx,
   leagueId: string,
 ): Promise<DataIntegrityCheckDraft[]> {
+  const [leagueRow] = await tx
+    .select({
+      provider: leagues.provider,
+      providerLeagueId: leagues.providerLeagueId,
+    })
+    .from(leagues)
+    .where(eq(leagues.id, leagueId))
+    .limit(1);
   const weeklyRows = await tx
     .select({
       id: weeklyStatistics.id,
@@ -2629,7 +2710,9 @@ async function buildDataIntegrityCheckDrafts(
     .where(eq(providerFinalStandings.leagueId, leagueId));
   const mappingRows = await tx
     .select({
+      leagueProviderId: identityMappings.leagueProviderId,
       personId: identityMappings.personId,
+      provider: identityMappings.provider,
       providerTeamId: identityMappings.providerTeamId,
       season: identityMappings.season,
       teamSeasonId: identityMappings.teamSeasonId,
@@ -2639,6 +2722,10 @@ async function buildDataIntegrityCheckDrafts(
   const teamSeasonRows = await tx
     .select({
       id: teamSeasons.id,
+      leagueProviderId: teamSeasons.leagueProviderId,
+      ownerMemberIds: teamSeasons.ownerMemberIds,
+      ownerNames: teamSeasons.ownerNames,
+      provider: teamSeasons.provider,
       providerTeamId: teamSeasons.providerTeamId,
       season: teamSeasons.season,
     })
@@ -2646,6 +2733,9 @@ async function buildDataIntegrityCheckDrafts(
     .where(eq(teamSeasons.leagueId, leagueId));
   const teamRows = await tx
     .select({
+      leagueProviderId: fantasyTeams.leagueProviderId,
+      ownerMemberIds: fantasyTeams.ownerMemberIds,
+      provider: fantasyTeams.provider,
       providerTeamId: fantasyTeams.providerTeamId,
       season: fantasyTeams.season,
     })
@@ -2718,11 +2808,134 @@ async function buildDataIntegrityCheckDrafts(
     .from(leagueDataEdits)
     .where(eq(leagueDataEdits.leagueId, leagueId));
   const personRows = await tx
-    .select({ id: persons.id })
+    .select({ canonicalName: persons.canonicalName, id: persons.id })
     .from(persons)
     .where(eq(persons.leagueId, leagueId));
+  const memberRows = await tx
+    .select({
+      displayName: fantasyMembers.displayName,
+      leagueProviderId: fantasyMembers.leagueProviderId,
+      provider: fantasyMembers.provider,
+      providerMemberId: fantasyMembers.providerMemberId,
+      season: fantasyMembers.season,
+    })
+    .from(fantasyMembers)
+    .where(eq(fantasyMembers.leagueId, leagueId));
 
   const drafts: DataIntegrityCheckDraft[] = [];
+  const contaminationIssues: Record<string, unknown>[] = [];
+  if (
+    leagueRow &&
+    realProviderLeagueNamespace(leagueRow.provider, leagueRow.providerLeagueId)
+  ) {
+    for (const member of memberRows) {
+      if (!providerMemberIdIsValid(member.provider, member.providerMemberId)) {
+        contaminationIssues.push({
+          displayName: member.displayName,
+          provider: member.provider,
+          providerLeagueId: member.leagueProviderId,
+          providerMemberId: member.providerMemberId,
+          reason: "invalid_provider_member_id",
+          rule: providerMemberIdRule(member.provider),
+          season: member.season,
+        });
+      }
+      if (PLACEHOLDER_CANONICAL_NAME.test(member.displayName)) {
+        contaminationIssues.push({
+          displayName: member.displayName,
+          provider: member.provider,
+          providerLeagueId: member.leagueProviderId,
+          providerMemberId: member.providerMemberId,
+          reason: "placeholder_member_name",
+          season: member.season,
+        });
+      }
+    }
+
+    for (const person of personRows) {
+      if (PLACEHOLDER_CANONICAL_NAME.test(person.canonicalName)) {
+        contaminationIssues.push({
+          canonicalName: person.canonicalName,
+          personId: person.id,
+          reason: "placeholder_canonical_name",
+        });
+      }
+    }
+
+    const teamSeasonById = new Map(teamSeasonRows.map((row) => [row.id, row]));
+    const mappedTeamSeasonsByPersonId = new Map<
+      string,
+      typeof teamSeasonRows
+    >();
+    for (const mapping of mappingRows) {
+      const teamSeason = teamSeasonById.get(mapping.teamSeasonId);
+      if (!teamSeason) {
+        continue;
+      }
+      mappedTeamSeasonsByPersonId.set(mapping.personId, [
+        ...(mappedTeamSeasonsByPersonId.get(mapping.personId) ?? []),
+        teamSeason,
+      ]);
+    }
+    for (const [personId, mappedTeamSeasons] of mappedTeamSeasonsByPersonId) {
+      const invalidOwnerIds: string[] = [];
+      const validOwnerIds: string[] = [];
+      const placeholderOwnerNames: string[] = [];
+      for (const teamSeason of mappedTeamSeasons) {
+        for (const ownerId of teamSeason.ownerMemberIds) {
+          if (providerMemberIdIsValid(teamSeason.provider, ownerId)) {
+            validOwnerIds.push(ownerId);
+          } else {
+            invalidOwnerIds.push(ownerId);
+          }
+        }
+        placeholderOwnerNames.push(
+          ...teamSeason.ownerNames.filter((name) =>
+            PLACEHOLDER_CANONICAL_NAME.test(name),
+          ),
+        );
+      }
+      if (invalidOwnerIds.length > 0) {
+        contaminationIssues.push({
+          invalidOwnerMemberIds: sortedUnique(invalidOwnerIds),
+          personId,
+          reason:
+            validOwnerIds.length > 0
+              ? "mixed_real_and_invalid_provider_member_ids"
+              : "invalid_mapped_provider_member_ids",
+          validOwnerMemberIds: sortedUnique(validOwnerIds),
+        });
+      }
+      if (placeholderOwnerNames.length > 0) {
+        contaminationIssues.push({
+          ownerNames: sortedUnique(placeholderOwnerNames),
+          personId,
+          reason: "placeholder_mapped_owner_name",
+        });
+      }
+    }
+  }
+  drafts.push({
+    checkKey: "provider_identity_contamination",
+    detail: {
+      checkedMembers: memberRows.length,
+      checkedPersons: personRows.length,
+      checkedTeamSeasons: teamSeasonRows.length,
+      issues: contaminationIssues,
+      provider: leagueRow?.provider ?? null,
+      providerLeagueId: leagueRow?.providerLeagueId ?? null,
+      rule:
+        leagueRow &&
+        realProviderLeagueNamespace(
+          leagueRow.provider,
+          leagueRow.providerLeagueId,
+        )
+          ? providerMemberIdRule(leagueRow.provider)
+          : "reserved_or_unknown_provider_namespace",
+    },
+    season: null,
+    status: checkStatus(contaminationIssues),
+  });
 
   const seasonStatsByPersonSeason = new Map(
     seasonRows.map((row) => [`${row.personId}:${row.season}`, row]),
@@ -3330,6 +3543,21 @@ async function runDataIntegrityChecksInContext(
   const drafts = await buildDataIntegrityCheckDrafts(tx, leagueId);
   if (drafts.length === 0) {
     return { checks: 0, failures: 0 };
+  }
+
+  for (const draft of drafts) {
+    await tx
+      .delete(dataIntegrityChecks)
+      .where(
+        and(
+          eq(dataIntegrityChecks.leagueId, leagueId),
+          eq(dataIntegrityChecks.checkKey, draft.checkKey),
+          draft.season === null
+            ? sql`${dataIntegrityChecks.season} is null`
+            : eq(dataIntegrityChecks.season, draft.season),
+          inArray(dataIntegrityChecks.status, ["pass", "fail"]),
+        ),
+      );
   }
 
   await tx.insert(dataIntegrityChecks).values(

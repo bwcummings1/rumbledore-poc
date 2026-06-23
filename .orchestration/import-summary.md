@@ -206,3 +206,40 @@
 - PASS - player/provider/name reads resolve expected players
 - PASS - week/team/schedule reads return typed facts
 - PASS - roster enrichment maps provider player id to identity
+
+## T13 import-integrity
+
+- Verified at: 2026-06-23T19:33:28.514Z
+- Real provider identity: ESPN 95050, season 2026
+
+### Fresh/empty DB
+
+- Fresh database: rumbledore_t13_1782243187371_4019768
+- Imported league id: 023e5f5c-0a27-4421-9501-3b975c8fc63a
+- Settings rows: 16
+- Persons: 14
+- Fantasy members: 219
+- Team seasons: 188
+- PASS - all 16 settings seasons imported
+- PASS - no invalid ESPN member ids
+- PASS - no Fixture/Screenshot member names
+- PASS - no Fixture/Screenshot canonical person names
+- PASS - provider_identity_contamination invariant passes
+- PASS - all integrity checks pass
+- PASS - re-import counts are stable
+
+### Contaminated -> clean dev DB
+
+- Dev league id: 466e2035-6c78-451a-b517-bcc5accae436
+- Pre-existing invalid members: 0
+- Contaminated invalid members before clean: 1
+- Contaminated placeholder members before clean: 1
+- Invalid members after clean: 0
+- Placeholder members after clean: 0
+- Placeholder persons after clean: 0
+- PASS - contamination was present before clean path
+- PASS - invalid member ids removed
+- PASS - placeholder member rows removed
+- PASS - placeholder canonical persons removed
+- PASS - provider_identity_contamination invariant passes after clean
+- Real person samples after clean: bradwcummings, bsarto5, Burch 16, espn52782328, garrettreno36, GucciMane1733, Mark Kent Anderson, maverick_fan2007

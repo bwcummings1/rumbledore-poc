@@ -367,19 +367,19 @@ function normalizeFanLeagues(fan: EspnFanApiResponse): ProviderLeagueRef[] {
     }
 
     for (const group of entry.groups ?? []) {
-      const groupId = toInteger(group.groupId);
-      if (!groupId) {
+      const providerId = providerIdFromValue(group.groupId);
+      if (!providerId) {
         continue;
       }
 
-      const providerId = String(groupId);
       const key = `${season}:${providerId}`;
       leaguesByKey.set(key, {
         provider: ESPN_PROVIDER_ID,
         providerId,
         season,
         sport: "ffl",
-        name: group.groupName ?? entry.name ?? `ESPN Fantasy League ${groupId}`,
+        name:
+          group.groupName ?? entry.name ?? `ESPN Fantasy League ${providerId}`,
         ...(entry.entryId === undefined
           ? {}
           : {
@@ -542,6 +542,16 @@ function normalizeLineupSlotCounts(
   );
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function providerIdFromValue(
+  value: string | number | undefined,
+): string | null {
+  if (value === undefined) {
+    return null;
+  }
+  const providerId = String(toInteger(value) ?? value).trim();
+  return providerId.length > 0 ? providerId : null;
 }
 
 function normalizeRosterSettings(

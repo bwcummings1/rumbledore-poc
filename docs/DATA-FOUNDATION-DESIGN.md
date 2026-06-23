@@ -260,6 +260,17 @@ records while preserving bye and multi-week-span rules from the stats substrate.
 The committed mock fixture is the only source today, and `MOCK_GENERAL_STATS=false` is rejected until a real provider is
 chosen deliberately.
 
+**T13 import-integrity note:** provider import is now convergent by construction. For every fetched provider season,
+the import upserts the fresh payload and then reconciles that same `(league, season)` by deleting stale/foreign
+members and teams whose provider ids are absent from the payload. Other seasons are never touched by that reconciliation
+step. Identity resolution reruns afterward, deletes orphan mappings/people left behind by reconciliation, and refreshes
+known placeholder canonical names (`Fixture Manager...`, `Screenshot ... Steward`) even if a stale manual/steward edit
+had made the placeholder sticky. Test and screenshot fixtures must use reserved non-real provider league namespaces
+such as `fixture-espn-95050`, never plausible real ids like `95050`, and must clean those leagues after e2e use.
+`data_integrity_check` now includes `provider_identity_contamination`: real ESPN namespaces require braced GUID member
+ids, known placeholder names fail, mixed real+invalid provider identities fail, and the integrity runner replaces stale
+unreviewed pass/fail rows on rerun so a clean import can clear an older failure.
+
 ---
 
 ## 7. The four data-quality fixes fold in here
@@ -268,9 +279,9 @@ They aren't separate patches — they're the Data page's first real content / th
    "count byes as wins" toggle = a Data-layer setting. The false integrity failures blocking the record book are
    cleared in clean 95050 verification.
 2. ✅ **Names** — EXISTS for ingestion + clean verification: ESPN member `displayName`/`firstName`+`lastName` values
-   persist through identity resolution to non-manual `persons.canonical_name`, and the clean real-import summary is
-   scoped to league 95050 so fixture-league `Fixture Manager NN` rows do not bleed in. The People grid + edit-scope
-   UI remains future Data page work.
+   persist through identity resolution to non-manual `persons.canonical_name`, current/history imports reconcile away
+   stale provider-member rows for fetched seasons, and `provider_identity_contamination` blocks invalid ids or fixture
+   placeholder names in real provider namespaces. The People grid + edit-scope UI remains future Data page work.
 3. ✅ **Multi-week span** (the "325" record) — auto-detected from `playoffMatchupPeriodLength` (=2 for 2011-2012) and
    editable in the per-season grid. The 325 two-week playoff total is excluded from single-week records.
 4. ✅ **Settings ingest** — persist per-season `mSettings` and use them to auto-propose eras/spans.

@@ -109,6 +109,7 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "matchup_span_sanity",
   "data_edit_ledger_completeness",
   "sticky_edit_conflict",
+  "provider_identity_contamination",
 ]);
 
 export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [

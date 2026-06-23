@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { parseEnv } from "../src/core/env/schema";
 import { createDb } from "../src/db/client";
-import { users } from "../src/db/schema";
+import { leagues, users } from "../src/db/schema";
+import { FIXTURE_ESPN_PROVIDER_LEAGUE_ID } from "../src/onboarding/fixture-espn";
 
 const runMarker = `e2e-${randomUUID()}`;
 
@@ -42,6 +43,9 @@ async function signUpAndIn(page: Page, testInfo: TestInfo) {
 test.afterAll(async () => {
   const handle = createDb(parseEnv(process.env).databaseUrl);
   try {
+    await handle.db
+      .delete(leagues)
+      .where(eq(leagues.providerLeagueId, FIXTURE_ESPN_PROVIDER_LEAGUE_ID));
     await handle.db
       .delete(users)
       .where(sql`${users.email} = ${`${runMarker}@example.com`}`);

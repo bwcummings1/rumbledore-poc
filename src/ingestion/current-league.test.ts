@@ -14,6 +14,7 @@ import {
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
+  identityMappings,
   leagueSeasonSettings,
   leagues,
   persons,
@@ -32,6 +33,7 @@ import {
   type ProviderLeagueRef,
 } from "@/providers/model";
 import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
+import { resolveLeagueIdentities } from "@/stats";
 import leagueFixture from "../../test/fixtures/espn/league-95050-2026.json";
 import {
   persistNormalizedLeagueRows,
@@ -692,6 +694,170 @@ describe("syncCurrentLeague", () => {
     expect(secondRows.settings[0].updatedAt.toISOString()).toBe(
       firstSettingsUpdatedAt,
     );
+  });
+
+  it("reconciles stale members and team seasons for the imported season only", async () => {
+    const providerLeagueId = `${marker}-reconcile`;
+    const fixture = leagueFixtureFor(providerLeagueId);
+    const provider = providerFor(fixture);
+
+    const first = await syncCurrentLeague({
+      db: handle.db,
+      provider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw first.error;
+
+    await withLeagueContext(handle.db, first.value.league.id, async (tx) => {
+      await tx.insert(fantasyMembers).values([
+        {
+          contentHash: stableContentHash({
+            displayName: "Fixture Manager 99",
+            providerMemberId: "stale-member-2026",
+          }),
+          displayName: "Fixture Manager 99",
+          leagueId: first.value.league.id,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMemberId: "stale-member-2026",
+          role: "member",
+          season: 2026,
+        },
+        {
+          contentHash: stableContentHash({
+            displayName: "Prior Season Manager",
+            providerMemberId: "stale-member-2025",
+          }),
+          displayName: "Prior Season Manager",
+          leagueId: first.value.league.id,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMemberId: "stale-member-2025",
+          role: "member",
+          season: 2025,
+        },
+      ]);
+      await tx.insert(fantasyTeams).values([
+        {
+          abbrev: "S26",
+          contentHash: stableContentHash({
+            name: "Stale Fixture Team",
+            providerTeamId: "999",
+            season: 2026,
+          }),
+          leagueId: first.value.league.id,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          name: "Stale Fixture Team",
+          ownerMemberIds: ["stale-member-2026"],
+          pointsAgainst: 0,
+          pointsFor: 0,
+          provider: "espn",
+          providerTeamId: "999",
+          season: 2026,
+          ties: 0,
+          wins: 0,
+        },
+        {
+          abbrev: "S25",
+          contentHash: stableContentHash({
+            name: "Prior Season Team",
+            providerTeamId: "998",
+            season: 2025,
+          }),
+          leagueId: first.value.league.id,
+          leagueProviderId: providerLeagueId,
+          losses: 0,
+          name: "Prior Season Team",
+          ownerMemberIds: ["stale-member-2025"],
+          pointsAgainst: 0,
+          pointsFor: 0,
+          provider: "espn",
+          providerTeamId: "998",
+          season: 2025,
+          ties: 0,
+          wins: 0,
+        },
+      ]);
+    });
+    await resolveLeagueIdentities(handle.db, {
+      leagueId: first.value.league.id,
+    });
+
+    const contaminated = await selectIngestedRows(first.value.league.id);
+    expect(
+      contaminated.teamSeasons.some(
+        (row) => row.providerTeamId === "999" && row.season === 2026,
+      ),
+    ).toBe(true);
+    expect(
+      contaminated.persons.map((person) => person.canonicalName),
+    ).toContain("Fixture Manager 99");
+
+    const second = await syncCurrentLeague({
+      db: handle.db,
+      provider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw second.error;
+
+    const reconciled = await selectIngestedRows(first.value.league.id);
+    expect(
+      reconciled.members.some(
+        (row) => row.providerMemberId === "stale-member-2026",
+      ),
+    ).toBe(false);
+    expect(
+      reconciled.teams.some(
+        (row) => row.providerTeamId === "999" && row.season === 2026,
+      ),
+    ).toBe(false);
+    expect(
+      reconciled.teamSeasons.some(
+        (row) => row.providerTeamId === "999" && row.season === 2026,
+      ),
+    ).toBe(false);
+    expect(
+      reconciled.persons.map((person) => person.canonicalName),
+    ).not.toContain("Fixture Manager 99");
+    expect(
+      reconciled.members.some(
+        (row) => row.providerMemberId === "stale-member-2025",
+      ),
+    ).toBe(true);
+    expect(
+      reconciled.teamSeasons.some(
+        (row) => row.providerTeamId === "998" && row.season === 2025,
+      ),
+    ).toBe(true);
+    expect(reconciled.persons.map((person) => person.canonicalName)).toContain(
+      "Prior Season Manager",
+    );
+
+    const mappings = await withLeagueContext(
+      handle.db,
+      first.value.league.id,
+      (tx) =>
+        tx
+          .select()
+          .from(identityMappings)
+          .where(eq(identityMappings.leagueId, first.value.league.id)),
+    );
+    expect(
+      mappings.some(
+        (row) => row.providerTeamId === "999" && row.season === 2026,
+      ),
+    ).toBe(false);
+    expect(
+      mappings.some(
+        (row) => row.providerTeamId === "998" && row.season === 2025,
+      ),
+    ).toBe(true);
   });
 
   it("persists ESPN bye rows with no opponent and derives playoff span from season settings", async () => {

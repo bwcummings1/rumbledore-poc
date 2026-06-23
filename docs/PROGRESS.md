@@ -1,7 +1,18 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **Data Foundation T12 on
+Keep it current. Last updated: 2026-06-23 — **Task T13 on
+`ws/t13-import-clean-guarantee`**: provider imports now have a general clean-import guarantee. Fixture ESPN data uses
+the reserved non-real provider league id `fixture-espn-95050` instead of colliding with real ESPN league `95050`, and
+the onboarding/screenshot e2e seeds delete that reserved league after use. Current and historical imports now
+reconcile each fetched `(league, season)` to the fresh provider truth, removing stale/foreign `fantasy_members`,
+`fantasy_teams`, `team_season`, orphan `identity_mapping`, and orphan `persons` rows for that season only. Identity
+resolution refreshes known placeholder canonical names even if an old manual edit exists. A new
+`provider_identity_contamination` data-integrity check gates real provider namespaces: ESPN real imports require
+braced GUID member ids, known fixture/screenshot placeholder names fail, mixed real+invalid identities fail, and stale
+pass/fail integrity snapshots are replaced on rerun. Verification in `.orchestration/import-summary.md` proves both a
+fresh empty DB import and contaminated-to-clean dev DB reconciliation for real league 95050, with stable re-import
+counts and zero placeholder/invalid residue. Prior state: **Data Foundation T12 on
 `ws/t12-general-stats-substrate`**: the league-agnostic general fantasy-stats substrate B now exists as shared,
 non-editable NFL reference data. New central tables `nfl_players`, `nfl_schedule`, `nfl_team_stats`, and
 `nfl_player_week_stats` store typed player identity, schedule, team box-score, and player-week facts with
@@ -249,6 +260,12 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   source/fetch-time/content-hash provenance; the committed mock fixture ingests idempotently after integrity checks;
   and `src/general-stats` provides read-only player/team/schedule/stat lookups plus roster-fact enrichment. Verification
   is in `.orchestration/import-summary.md`; live News/AI wiring remains future consumer work.
+- **Task T13 delivered (2026-06-23):** imports converge per season to the provider payload. The ESPN fixture offender
+  now lives in a reserved non-real namespace and cleans up after e2e runs; current and historical import paths delete
+  stale member/team rows only for fetched seasons, then re-resolve identities and remove orphan people. The new
+  `provider_identity_contamination` integrity invariant blocks real-provider leagues with invalid member ids or known
+  placeholder names. The T13 verifier proves fresh 95050 import, re-import idempotency, and contaminated-to-clean dev
+  DB reconciliation with no 95050-specific product code.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
@@ -257,6 +274,9 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   need it.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-23: Task T13 landed — provider imports now reconcile each fetched season to provider truth, test fixtures
+  use a reserved non-real ESPN namespace, and the `provider_identity_contamination` invariant gates invalid ids and
+  placeholder identities. Fresh and contaminated 95050 verification passed.
 - 2026-06-23: Data Foundation T12 landed — substrate B now stores league-agnostic NFL players, schedule, team box
   scores, and player-week stats in central provenance-stamped tables, ingests the committed mock/$0 fixture
   idempotently after integrity checks, and exposes `src/general-stats` read/enrichment APIs for future News/AI

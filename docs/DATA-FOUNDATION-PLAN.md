@@ -226,6 +226,21 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
   provider player id or name. `MOCK_GENERAL_STATS=false` is rejected until a real source is deliberately wired. The
   verifier appends `.orchestration/import-summary.md`; no News/AI generation flow was wired in T12.
 
+### Phase 4 — Import-integrity hardening
+**T13 — Clean import guarantee + provider identity invariant** (post-T12 hardening)
+- *Goal:* make clean imports a general invariant, not a one-league cleanup. Fixtures must not collide with real
+  provider namespaces; current/history imports must reconcile each fetched season to provider truth; integrity checks
+  must fail real-provider leagues with invalid ids or placeholder identities.
+- *T13 completion note (2026-06-23):* ✅ Completed on `ws/t13-import-clean-guarantee` by SilentFinch. The ESPN fixture
+  offender now retargets to reserved provider league id `fixture-espn-95050` and e2e screenshot/onboarding specs clean
+  it up after use. `persistNormalizedLeagueRows` accepts per-class reconciliation seasons; current and historical
+  imports delete stale/foreign `fantasy_members`, `fantasy_teams`, and `team_season` rows for fetched seasons only,
+  then re-run identity resolution so orphan mappings/people are removed and placeholder canonical names refresh.
+  Added `provider_identity_contamination` to `data_integrity_check`; real ESPN namespaces require braced GUID member
+  ids and fail known `Fixture Manager...` / `Screenshot ... Steward` contamination. Functional verification in
+  `.orchestration/import-summary.md` proves fresh empty DB import, re-import idempotency, and contaminated-to-clean dev
+  DB reconciliation for ESPN 95050 with no product-code special case.
+
 ---
 
 ## E. Status tracker
@@ -243,6 +258,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T10 era auto-proposal | CrimsonThrush | ✅ complete |
 | T11 records catalog | OrangeGrove | ✅ complete |
 | T12 general-stats substrate | AzureLotus | ✅ complete |
+| T13 import-clean guarantee | SilentFinch | ✅ complete |
 
 ## Phase 3 — launched 2026-06-23 (specs detailed in .orchestration/prompts/prompt-T10|T11|T12.md)
 - Phase 1 (T1-T3 substrate) + Phase 2 (T4-T9 data layer) + UI1 (ledger pagination/data-book toolbar) + UI2 (League Data|Records nav-IA) all merged to main.
@@ -250,3 +266,9 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 - T11 (cx2): ✅ expanded records-catalog into categories (All-time/Regular/Playoff/H2H/Achievements/Lowlights-worst) rendered as SECTIONS inside the Records destination; reads pushed snapshot; no legacy catalog file was present.
 - T12 (cx3): ✅ general-stats substrate B (league-agnostic NFL players/stats/schedule, non-editable, provenance+integrity, mock/$0) + consumer/enrichment read API for the AI writers.
 - Sequential; UI tasks (T10 Data Book, T11 Records) → orchestrator reviews screenshots before merge. T12 completes Phase 3.
+
+## Phase 4 — completed 2026-06-23
+- T13 (cx2): provider imports now reconcile fetched seasons to provider truth, fixture/e2e data uses reserved non-real
+  provider namespaces, and real-provider identity contamination is a first-class integrity failure. This hardening is
+  the foundation for future provider/player-depth imports: add provider-specific id-format rules before enabling a
+  real namespace, keep fixture namespaces visibly non-real, and preserve per-season reconciliation boundaries.
