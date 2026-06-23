@@ -6,6 +6,7 @@ import {
   type FantasyProviderCapabilities,
   type FantasyProviderSession,
   type NormalizedAcquisitionSettings,
+  type NormalizedDraftPick,
   type NormalizedFinalStanding,
   type NormalizedLeague,
   type NormalizedMatchup,
@@ -13,7 +14,9 @@ import {
   type NormalizedMatchupWinner,
   type NormalizedMember,
   type NormalizedMemberRole,
+  type NormalizedPlayer,
   type NormalizedPostseasonSettings,
+  type NormalizedRoster,
   type NormalizedRosterSettings,
   type NormalizedSeasonBundle,
   type NormalizedTeam,
@@ -60,6 +63,8 @@ export type EspnProvider = Pick<
   | "getLeague"
   | "getMatchups"
   | "getMembers"
+  | "getDraftPicks"
+  | "getRosters"
   | "getTeams"
   | "getTransactions"
   | "id"
@@ -77,6 +82,63 @@ const ESPN_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 const BRACED_SWID = /^\{[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}$/;
 const UNBRACED_SWID = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
+const ESPN_POSITION_BY_ID: Record<number, string> = {
+  0: "QB",
+  1: "TQB",
+  2: "RB",
+  3: "WR",
+  4: "TE",
+  5: "K",
+  16: "D/ST",
+};
+const ESPN_LINEUP_SLOT_BY_ID: Record<number, string> = {
+  0: "QB",
+  2: "RB",
+  4: "WR",
+  6: "TE",
+  7: "OP",
+  16: "D/ST",
+  17: "K",
+  20: "BE",
+  21: "IR",
+  23: "FLEX",
+  24: "ER",
+};
+const ESPN_PRO_TEAM_BY_ID: Record<number, string> = {
+  0: "FA",
+  1: "ATL",
+  2: "BUF",
+  3: "CHI",
+  4: "CIN",
+  5: "CLE",
+  6: "DAL",
+  7: "DEN",
+  8: "DET",
+  9: "GB",
+  10: "TEN",
+  11: "IND",
+  12: "KC",
+  13: "LV",
+  14: "LAR",
+  15: "MIA",
+  16: "MIN",
+  17: "NE",
+  18: "NO",
+  19: "NYG",
+  20: "NYJ",
+  21: "PHI",
+  22: "ARI",
+  23: "PIT",
+  24: "LAC",
+  25: "SF",
+  26: "SEA",
+  27: "TB",
+  28: "WSH",
+  29: "CAR",
+  30: "JAX",
+  33: "BAL",
+  34: "HOU",
+};
 
 export const ESPN_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
   authKind: "cookie",
@@ -84,10 +146,10 @@ export const ESPN_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
     league: "full",
     teams: "full",
     members: "full",
-    rosters: "none",
+    rosters: "partial",
     matchups: "full",
     final_standings: "partial",
-    transactions: "none",
+    transactions: "partial",
     history: "partial",
     divisions: "partial",
     keeper_dynasty: "none",
@@ -95,8 +157,8 @@ export const ESPN_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
   },
   requiresOAuth: false,
   supportsHistory: true,
-  supportsRosters: false,
-  supportsTransactions: false,
+  supportsRosters: true,
+  supportsTransactions: true,
 };
 
 const numericValue = z.union([z.number(), z.string()]);
@@ -340,6 +402,56 @@ function toNumber(value: string | number | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function recordValue(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined;
+}
+
+function recordArray(value: unknown, key: string): Record<string, unknown>[] {
+  const nested = recordValue(value, key);
+  return Array.isArray(nested) ? nested.filter(isRecord) : [];
+}
+
+function numberFromUnknown(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return undefined;
+}
+
+function booleanFromUnknown(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function positiveProviderId(value: unknown): string | undefined {
+  const numeric = numberFromUnknown(value);
+  if (numeric !== undefined && numeric !== 0 && numeric !== -1) {
+    return String(Math.trunc(numeric));
+  }
+  const stringValue = stringFromUnknown(value);
+  if (!stringValue || stringValue === "0" || stringValue === "-1") {
+    return undefined;
+  }
+  return stringValue;
+}
+
 function sortedUniquePositiveIntegers(
   values: Iterable<number | undefined>,
 ): number[] {
@@ -429,10 +541,12 @@ function currentLeagueApiUrl({
 
 function historyLeagueApiUrl({
   ref,
+  scoringPeriod,
   season,
   views,
 }: {
   ref: ProviderLeagueRef;
+  scoringPeriod?: number;
   season: number;
   views: string[];
 }): string {
@@ -442,6 +556,9 @@ function historyLeagueApiUrl({
   );
 
   url.searchParams.set("seasonId", String(season));
+  if (scoringPeriod !== undefined) {
+    url.searchParams.set("scoringPeriodId", String(scoringPeriod));
+  }
   for (const view of views) {
     url.searchParams.append("view", view);
   }
@@ -457,6 +574,30 @@ function espnHeaders(session: Pick<EspnSession, "espn_s2" | "swid">) {
     "x-fantasy-source": "kona",
     "x-fantasy-platform": "kona",
     "X-Personalization-Source": "ESPN.com - FAM",
+  };
+}
+
+function scheduleFilterHeader(scoringPeriod: number): Record<string, string> {
+  return {
+    "x-fantasy-filter": JSON.stringify({
+      schedule: {
+        filterMatchupPeriodIds: {
+          value: [scoringPeriod],
+        },
+      },
+    }),
+  };
+}
+
+function transactionFilterHeader(): Record<string, string> {
+  return {
+    "x-fantasy-filter": JSON.stringify({
+      transactions: {
+        filterType: {
+          value: ["FREEAGENT", "WAIVER", "WAIVER_ERROR"],
+        },
+      },
+    }),
   };
 }
 
@@ -1027,6 +1168,574 @@ function normalizeScheduleMatchups(
     .map((matchups) => normalizeMatchup(matchups, leagueRef, league));
 }
 
+function normalizeEspnPlayer(
+  value: unknown,
+  league: ProviderLeagueRef,
+  fallbackId?: unknown,
+): NormalizedPlayer | undefined {
+  const player = isRecord(recordValue(value, "player"))
+    ? recordValue(value, "player")
+    : isRecord(recordValue(value, "playerPoolEntry"))
+      ? recordValue(recordValue(value, "playerPoolEntry"), "player")
+      : value;
+  if (!isRecord(player)) {
+    const providerId = positiveProviderId(fallbackId);
+    if (!providerId) {
+      return undefined;
+    }
+    return {
+      provider: ESPN_PROVIDER_ID,
+      providerId,
+      leagueProviderId: league.providerId,
+      fullName: `ESPN Player ${providerId}`,
+      position: "unknown",
+    };
+  }
+
+  const providerId =
+    positiveProviderId(recordValue(player, "id")) ??
+    positiveProviderId(fallbackId);
+  if (!providerId) {
+    return undefined;
+  }
+  const defaultPositionId = numberFromUnknown(
+    recordValue(player, "defaultPositionId"),
+  );
+  const proTeamId = numberFromUnknown(recordValue(player, "proTeamId"));
+  const fullName =
+    stringFromUnknown(recordValue(player, "fullName")) ??
+    [recordValue(player, "firstName"), recordValue(player, "lastName")]
+      .map(stringFromUnknown)
+      .filter(Boolean)
+      .join(" ")
+      .trim() ??
+    `ESPN Player ${providerId}`;
+  const injuryStatus = stringFromUnknown(recordValue(player, "injuryStatus"));
+  const injured = booleanFromUnknown(recordValue(player, "injured"));
+
+  return {
+    provider: ESPN_PROVIDER_ID,
+    providerId,
+    leagueProviderId: league.providerId,
+    fullName: fullName || `ESPN Player ${providerId}`,
+    position:
+      (defaultPositionId === undefined
+        ? undefined
+        : ESPN_POSITION_BY_ID[defaultPositionId]) ?? "unknown",
+    ...(proTeamId === undefined
+      ? {}
+      : { proTeam: ESPN_PRO_TEAM_BY_ID[proTeamId] }),
+    ...(injuryStatus || injured !== undefined
+      ? { status: injuryStatus ?? (injured ? "injured" : "active") }
+      : {}),
+    metadata: {
+      ...(defaultPositionId === undefined ? {} : { defaultPositionId }),
+      ...(proTeamId === undefined ? {} : { proTeamId }),
+      eligibleSlots: recordValue(player, "eligibleSlots") ?? [],
+    },
+  };
+}
+
+function playerMapFromLeague(
+  league: EspnLeagueApiResponse,
+  ref: ProviderLeagueRef,
+): Map<string, NormalizedPlayer> {
+  const players = recordArray(league, "players")
+    .map((row) => normalizeEspnPlayer(row, ref, recordValue(row, "id")))
+    .filter((player): player is NormalizedPlayer => Boolean(player));
+  return new Map(players.map((player) => [player.providerId, player]));
+}
+
+function statAppliedTotal(
+  playerRecord: Record<string, unknown>,
+  scoringPeriod: number,
+  statSourceId: number,
+): number | undefined {
+  for (const stat of recordArray(playerRecord, "stats")) {
+    const source = numberFromUnknown(recordValue(stat, "statSourceId"));
+    if (source !== statSourceId) {
+      continue;
+    }
+    const period = numberFromUnknown(recordValue(stat, "scoringPeriodId"));
+    if (period !== undefined && period !== scoringPeriod && period !== 0) {
+      continue;
+    }
+    const appliedTotal = numberFromUnknown(recordValue(stat, "appliedTotal"));
+    if (appliedTotal !== undefined) {
+      return appliedTotal;
+    }
+  }
+  return undefined;
+}
+
+function normalizeRosterEntry(
+  entry: Record<string, unknown>,
+  league: ProviderLeagueRef,
+  scoringPeriod: number,
+): NormalizedRoster["entries"][number] | undefined {
+  const playerPoolEntry = recordValue(entry, "playerPoolEntry");
+  const playerRecord = isRecord(playerPoolEntry)
+    ? recordValue(playerPoolEntry, "player")
+    : undefined;
+  const player =
+    normalizeEspnPlayer(
+      isRecord(playerRecord) ? playerRecord : entry,
+      league,
+      recordValue(entry, "playerId"),
+    ) ?? normalizeEspnPlayer(entry, league, recordValue(entry, "playerId"));
+  if (!player) {
+    return undefined;
+  }
+  const lineupSlotId = numberFromUnknown(recordValue(entry, "lineupSlotId"));
+  const slot =
+    (lineupSlotId === undefined
+      ? undefined
+      : ESPN_LINEUP_SLOT_BY_ID[lineupSlotId]) ?? "unknown";
+  const poolApplied = isRecord(playerPoolEntry)
+    ? numberFromUnknown(recordValue(playerPoolEntry, "appliedStatTotal"))
+    : undefined;
+  const actualPoints =
+    (isRecord(playerRecord)
+      ? statAppliedTotal(playerRecord, scoringPeriod, 0)
+      : undefined) ??
+    poolApplied ??
+    numberFromUnknown(recordValue(entry, "appliedStatTotal"));
+  const projectedPoints = isRecord(playerRecord)
+    ? statAppliedTotal(playerRecord, scoringPeriod, 1)
+    : undefined;
+
+  return {
+    actualPoints,
+    projectedPoints,
+    started:
+      lineupSlotId === undefined ? false : ![20, 21, 24].includes(lineupSlotId),
+    player,
+    playerRef: {
+      provider: ESPN_PROVIDER_ID,
+      providerId: player.providerId,
+    },
+    slot,
+    status:
+      stringFromUnknown(recordValue(entry, "status")) ??
+      stringFromUnknown(recordValue(entry, "injuryStatus")) ??
+      "unknown",
+    points: actualPoints,
+    metadata: {
+      ...(lineupSlotId === undefined ? {} : { lineupSlotId }),
+      injuryStatus: recordValue(entry, "injuryStatus") ?? null,
+    },
+  };
+}
+
+function rosterRecordFromSide(
+  side: unknown,
+): Record<string, unknown> | undefined {
+  const current = recordValue(side, "rosterForCurrentScoringPeriod");
+  if (isRecord(current)) {
+    return current;
+  }
+  const matchup = recordValue(side, "rosterForMatchupPeriod");
+  if (isRecord(matchup)) {
+    return matchup;
+  }
+  const delayed = recordValue(side, "rosterForMatchupPeriodDelayed");
+  return isRecord(delayed) ? delayed : undefined;
+}
+
+function normalizeRostersFromSchedule(
+  league: EspnLeagueApiResponse,
+  ref: ProviderLeagueRef,
+  scoringPeriod: number,
+): NormalizedRoster[] {
+  const rosters = new Map<string, NormalizedRoster>();
+  for (const matchup of league.schedule ?? []) {
+    for (const sideKey of ["home", "away"] as const) {
+      const side = recordValue(matchup, sideKey);
+      const teamId = positiveProviderId(recordValue(side, "teamId"));
+      const rosterRecord = rosterRecordFromSide(side);
+      if (!teamId || !rosterRecord) {
+        continue;
+      }
+      const entries = recordArray(rosterRecord, "entries")
+        .map((entry) => normalizeRosterEntry(entry, ref, scoringPeriod))
+        .filter((entry): entry is NormalizedRoster["entries"][number] =>
+          Boolean(entry),
+        );
+      rosters.set(`${teamId}:${scoringPeriod}`, {
+        teamRef: {
+          provider: ESPN_PROVIDER_ID,
+          providerId: teamId,
+          season: ref.season,
+        },
+        season: ref.season,
+        scoringPeriod,
+        entries,
+      });
+    }
+  }
+  return [...rosters.values()].sort((left, right) =>
+    left.teamRef.providerId.localeCompare(right.teamRef.providerId, undefined, {
+      numeric: true,
+    }),
+  );
+}
+
+function withoutRosterEntryScores(
+  entry: NormalizedRoster["entries"][number],
+): NormalizedRoster["entries"][number] {
+  return {
+    ...entry,
+    actualPoints: undefined,
+    points: undefined,
+    projectedPoints: undefined,
+  };
+}
+
+function normalizeRostersFromTeams(
+  league: EspnLeagueApiResponse,
+  ref: ProviderLeagueRef,
+  scoringPeriod: number,
+): NormalizedRoster[] {
+  return (league.teams ?? [])
+    .map((team) => {
+      const teamRecord = team as Record<string, unknown>;
+      const rosterRecord = recordValue(teamRecord, "roster");
+      const teamId = positiveProviderId(team.id);
+      if (!teamId || !isRecord(rosterRecord)) {
+        return undefined;
+      }
+      return {
+        teamRef: {
+          provider: ESPN_PROVIDER_ID,
+          providerId: teamId,
+          season: ref.season,
+        },
+        season: ref.season,
+        scoringPeriod,
+        entries: recordArray(rosterRecord, "entries")
+          .map((entry) => normalizeRosterEntry(entry, ref, scoringPeriod))
+          .map((entry) =>
+            entry === undefined ? undefined : withoutRosterEntryScores(entry),
+          )
+          .filter((entry): entry is NormalizedRoster["entries"][number] =>
+            Boolean(entry),
+          ),
+      };
+    })
+    .filter((roster): roster is NormalizedRoster => Boolean(roster));
+}
+
+function rosterLineupLooksSparse(
+  rosters: readonly NormalizedRoster[],
+): boolean {
+  const entries = rosters.flatMap((roster) => roster.entries);
+  if (entries.length === 0) {
+    return false;
+  }
+  const slots = new Set(entries.map((entry) => entry.slot));
+  return (
+    slots.size <= 1 &&
+    [...slots].every((slot) => slot === "QB" || slot === "unknown")
+  );
+}
+
+function canUseScoredRosterFallback(code: string): boolean {
+  switch (code) {
+    case "PROVIDER_PARSE_ERROR":
+    case "PROVIDER_NOT_FOUND":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function shouldRetryTransactionsUnfiltered(code: string): boolean {
+  switch (code) {
+    case "PROVIDER_PARSE_ERROR":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function mergeRosterLineupDetails({
+  lineupRosters,
+  scoredRosters,
+}: {
+  lineupRosters: readonly NormalizedRoster[];
+  scoredRosters: readonly NormalizedRoster[];
+}): NormalizedRoster[] {
+  const byKey = new Map<string, NormalizedRoster>();
+  for (const roster of scoredRosters) {
+    byKey.set(
+      `${roster.teamRef.providerId}:${roster.season}:${roster.scoringPeriod}`,
+      roster,
+    );
+  }
+
+  for (const lineupRoster of lineupRosters) {
+    const key = `${lineupRoster.teamRef.providerId}:${lineupRoster.season}:${lineupRoster.scoringPeriod}`;
+    const scoredRoster = byKey.get(key);
+    if (!scoredRoster) {
+      byKey.set(key, lineupRoster);
+      continue;
+    }
+
+    const entriesByPlayer = new Map(
+      lineupRoster.entries.map((entry) => [entry.playerRef.providerId, entry]),
+    );
+    const mergedEntries = new Map<
+      string,
+      NormalizedRoster["entries"][number]
+    >();
+    for (const lineupEntry of lineupRoster.entries) {
+      mergedEntries.set(lineupEntry.playerRef.providerId, lineupEntry);
+    }
+    for (const scoredEntry of scoredRoster.entries) {
+      const lineupEntry = entriesByPlayer.get(scoredEntry.playerRef.providerId);
+      mergedEntries.set(scoredEntry.playerRef.providerId, {
+        ...(lineupEntry ?? scoredEntry),
+        actualPoints: scoredEntry.actualPoints ?? lineupEntry?.actualPoints,
+        isKeeper: scoredEntry.isKeeper ?? lineupEntry?.isKeeper,
+        metadata: {
+          ...(lineupEntry?.metadata ?? {}),
+          ...(scoredEntry.metadata ?? {}),
+        },
+        player: scoredEntry.player ?? lineupEntry?.player,
+        playerRef: scoredEntry.playerRef,
+        points: scoredEntry.points ?? lineupEntry?.points,
+        projectedPoints:
+          scoredEntry.projectedPoints ?? lineupEntry?.projectedPoints,
+        status: scoredEntry.status ?? lineupEntry?.status ?? "unknown",
+      });
+    }
+    byKey.set(key, {
+      ...scoredRoster,
+      entries: [...mergedEntries.values()].sort((left, right) => {
+        if (left.started !== right.started) {
+          return left.started ? -1 : 1;
+        }
+        return (
+          left.slot.localeCompare(right.slot) ||
+          left.playerRef.providerId.localeCompare(
+            right.playerRef.providerId,
+            undefined,
+            { numeric: true },
+          )
+        );
+      }),
+    });
+  }
+
+  return [...byKey.values()].sort(
+    (left, right) =>
+      left.season - right.season ||
+      left.scoringPeriod - right.scoringPeriod ||
+      left.teamRef.providerId.localeCompare(
+        right.teamRef.providerId,
+        undefined,
+        {
+          numeric: true,
+        },
+      ),
+  );
+}
+
+function normalizeDraftPicks(
+  league: EspnLeagueApiResponse,
+  ref: ProviderLeagueRef,
+): NormalizedDraftPick[] {
+  const playerById = playerMapFromLeague(league, ref);
+  const draftDetail = recordValue(league, "draftDetail");
+  const picks: NormalizedDraftPick[] = [];
+
+  for (const pick of recordArray(draftDetail, "picks")) {
+    const round = numberFromUnknown(recordValue(pick, "roundId"));
+    const teamId = positiveProviderId(recordValue(pick, "teamId"));
+    const pickId =
+      positiveProviderId(recordValue(pick, "id")) ??
+      [
+        round,
+        numberFromUnknown(recordValue(pick, "roundPickNumber")),
+        numberFromUnknown(recordValue(pick, "overallPickNumber")),
+        teamId,
+      ]
+        .filter((part) => part !== undefined)
+        .join(":");
+    if (!round || !teamId || !pickId) {
+      continue;
+    }
+    const providerPlayerId = positiveProviderId(recordValue(pick, "playerId"));
+    const player =
+      providerPlayerId === undefined
+        ? undefined
+        : playerById.get(providerPlayerId);
+    const isKeeper =
+      booleanFromUnknown(recordValue(pick, "keeper")) ??
+      booleanFromUnknown(recordValue(pick, "reservedForKeeper"));
+    const auctionValue = numberFromUnknown(recordValue(pick, "bidAmount"));
+    picks.push({
+      provider: ESPN_PROVIDER_ID,
+      providerId: pickId,
+      leagueProviderId: ref.providerId,
+      season: ref.season,
+      round,
+      ...(numberFromUnknown(recordValue(pick, "overallPickNumber")) ===
+      undefined
+        ? {}
+        : {
+            pickOverall: numberFromUnknown(
+              recordValue(pick, "overallPickNumber"),
+            ),
+          }),
+      ...(numberFromUnknown(recordValue(pick, "roundPickNumber")) === undefined
+        ? {}
+        : {
+            pickInRound: numberFromUnknown(
+              recordValue(pick, "roundPickNumber"),
+            ),
+          }),
+      teamRef: {
+        provider: ESPN_PROVIDER_ID,
+        providerId: teamId,
+        season: ref.season,
+      },
+      ...(providerPlayerId
+        ? {
+            playerRef: {
+              provider: ESPN_PROVIDER_ID,
+              providerId: providerPlayerId,
+            },
+          }
+        : {}),
+      ...(player ? { player } : {}),
+      ...(isKeeper === undefined ? {} : { isKeeper }),
+      ...(auctionValue === undefined ? {} : { auctionValue }),
+      metadata: {
+        lineupSlotId: recordValue(pick, "lineupSlotId") ?? null,
+        nominatingTeamId: recordValue(pick, "nominatingTeamId") ?? null,
+        owningTeamIds: recordValue(pick, "owningTeamIds") ?? [],
+      },
+    });
+  }
+
+  return picks;
+}
+
+function normalizeTransactions(
+  league: EspnLeagueApiResponse,
+  ref: ProviderLeagueRef,
+): NormalizedTransaction[] {
+  const transactions: NormalizedTransaction[] = [];
+
+  for (const transaction of recordArray(league, "transactions")) {
+    const transactionId =
+      positiveProviderId(recordValue(transaction, "id")) ??
+      stringFromUnknown(recordValue(transaction, "transactionId"));
+    const typeValue = stringFromUnknown(recordValue(transaction, "type"));
+    const processDate =
+      numberFromUnknown(recordValue(transaction, "processDate")) ??
+      numberFromUnknown(recordValue(transaction, "proposedDate")) ??
+      numberFromUnknown(recordValue(transaction, "date"));
+    const items = recordArray(transaction, "items");
+    const playerRefs: NormalizedTransaction["playerRefs"] = items
+      .map((item) => positiveProviderId(recordValue(item, "playerId")))
+      .filter((id): id is string => Boolean(id))
+      .map((providerId) => ({ provider: ESPN_PROVIDER_ID, providerId }));
+    const teamIds = [
+      positiveProviderId(recordValue(transaction, "teamId")),
+      ...items.flatMap((item) => [
+        positiveProviderId(recordValue(item, "teamId")),
+        positiveProviderId(recordValue(item, "fromTeamId")),
+        positiveProviderId(recordValue(item, "toTeamId")),
+      ]),
+    ].filter((id): id is string => Boolean(id));
+    if (playerRefs.length === 0 && teamIds.length === 0) {
+      continue;
+    }
+    const teamRefs: NormalizedTransaction["teamRefs"] = [
+      ...new Set(teamIds),
+    ].map((providerId) => ({
+      provider: ESPN_PROVIDER_ID,
+      providerId,
+      season: ref.season,
+    }));
+    const normalizedType = normalizeTransactionType(typeValue, items);
+    const fallbackId = [
+      normalizedType,
+      processDate ?? "unknown-date",
+      ...teamIds,
+      ...playerRefs.map((player) => player.providerId),
+    ].join(":");
+    const scoringPeriod = numberFromUnknown(
+      recordValue(transaction, "scoringPeriodId"),
+    );
+    transactions.push({
+      provider: ESPN_PROVIDER_ID,
+      providerId: transactionId ?? fallbackId,
+      leagueProviderId: ref.providerId,
+      season: ref.season,
+      type: normalizedType,
+      teamRefs,
+      playerRefs: [
+        ...new Map(
+          playerRefs.map((player) => [player.providerId, player]),
+        ).values(),
+      ],
+      ...(scoringPeriod === undefined ? {} : { scoringPeriod }),
+      timestamp:
+        processDate === undefined
+          ? new Date(Date.UTC(ref.season, 0, 1))
+          : new Date(processDate),
+      details: {
+        bidAmount: recordValue(transaction, "bidAmount") ?? null,
+        status: recordValue(transaction, "status") ?? null,
+        rawType: typeValue ?? null,
+        items: items.map((item) => ({
+          type: recordValue(item, "type") ?? null,
+          playerId: recordValue(item, "playerId") ?? null,
+          fromTeamId: recordValue(item, "fromTeamId") ?? null,
+          toTeamId: recordValue(item, "toTeamId") ?? null,
+        })),
+      },
+    });
+  }
+
+  return transactions;
+}
+
+function normalizeTransactionType(
+  typeValue: string | undefined,
+  items: readonly Record<string, unknown>[],
+): NormalizedTransaction["type"] {
+  const value = typeValue?.toUpperCase();
+  if (value?.includes("TRADE")) {
+    return "trade";
+  }
+  if (value?.includes("WAIVER")) {
+    return "waiver";
+  }
+  if (value?.includes("ADD") || value?.includes("FREEAGENT")) {
+    return "add";
+  }
+  if (value?.includes("DROP")) {
+    return "drop";
+  }
+  const itemTypes = items
+    .map((item) => stringFromUnknown(recordValue(item, "type"))?.toUpperCase())
+    .filter(Boolean);
+  if (itemTypes.includes("TRADED")) {
+    return "trade";
+  }
+  if (itemTypes.includes("ADDED")) {
+    return "add";
+  }
+  if (itemTypes.includes("DROPPED")) {
+    return "drop";
+  }
+  return "unknown";
+}
+
 function finalStandingsFromTeams(
   teams: readonly NormalizedTeam[],
   sourceTeams: readonly EspnTeam[] = [],
@@ -1161,6 +1870,85 @@ function normalizeHistoryBundle(
     finalStandings: finalStandingsFromTeams(teams, league.teams ?? []),
     transactions: [],
   };
+}
+
+function scoringPeriodsForLeague(league: NormalizedLeague): number[] {
+  const finalPeriod =
+    league.postseason?.championshipScoringPeriod ??
+    league.postseason?.regularSeasonEndScoringPeriod ??
+    league.currentScoringPeriod;
+  if (!Number.isInteger(finalPeriod) || finalPeriod <= 0) {
+    return [];
+  }
+  return Array.from({ length: finalPeriod }, (_, index) => index + 1);
+}
+
+function matchupPeriodForScoringPeriod(
+  league: EspnLeagueApiResponse,
+  scoringPeriod: number,
+): number {
+  const settings = recordValue(league, "settings");
+  const scheduleSettings = recordValue(settings, "scheduleSettings");
+  const matchupPeriods = recordValue(scheduleSettings, "matchupPeriods");
+  if (!isRecord(matchupPeriods)) {
+    return scoringPeriod;
+  }
+
+  for (const [matchupPeriod, scoringPeriods] of Object.entries(
+    matchupPeriods,
+  )) {
+    if (
+      Array.isArray(scoringPeriods) &&
+      scoringPeriods
+        .map(numberFromUnknown)
+        .some((period) => period === scoringPeriod)
+    ) {
+      return numberFromUnknown(matchupPeriod) ?? scoringPeriod;
+    }
+  }
+
+  return scoringPeriod;
+}
+
+function mergeRosterLists(
+  left: readonly NormalizedRoster[],
+  right: readonly NormalizedRoster[],
+): NormalizedRoster[] {
+  const byKey = new Map<string, NormalizedRoster>();
+  for (const roster of [...left, ...right]) {
+    byKey.set(
+      `${roster.teamRef.providerId}:${roster.season}:${roster.scoringPeriod}`,
+      roster,
+    );
+  }
+  return [...byKey.values()].sort(
+    (leftRoster, rightRoster) =>
+      leftRoster.season - rightRoster.season ||
+      leftRoster.scoringPeriod - rightRoster.scoringPeriod ||
+      leftRoster.teamRef.providerId.localeCompare(
+        rightRoster.teamRef.providerId,
+        undefined,
+        { numeric: true },
+      ),
+  );
+}
+
+function playersFromRosters(
+  rosters: readonly NormalizedRoster[],
+): NormalizedPlayer[] {
+  const byProviderId = new Map<string, NormalizedPlayer>();
+  for (const roster of rosters) {
+    for (const entry of roster.entries) {
+      if (entry.player) {
+        byProviderId.set(entry.player.providerId, entry.player);
+      }
+    }
+  }
+  return [...byProviderId.values()].sort((left, right) =>
+    left.providerId.localeCompare(right.providerId, undefined, {
+      numeric: true,
+    }),
+  );
 }
 
 function createSession(
@@ -1304,11 +2092,115 @@ export class EspnDiscoveryClient {
     return ok(matchups);
   }
 
+  async getRosters(
+    session: EspnSession,
+    ref: ProviderLeagueRef,
+    scoringPeriod?: number,
+  ): Promise<ProviderResult<NormalizedRoster[]>> {
+    const requestedScoringPeriod = scoringPeriod ?? 1;
+    const boxscore = await this.fetchCurrentLeagueApi({
+      extraHeaders: scheduleFilterHeader(requestedScoringPeriod),
+      ref,
+      resource: "league-rosters",
+      scoringPeriod: requestedScoringPeriod,
+      session,
+      views: ["mBoxscore", "mMatchupScore", "mScoreboard", "kona_player_info"],
+    });
+    if (!boxscore.ok) {
+      return boxscore;
+    }
+
+    const boxscoreRosters = normalizeRostersFromSchedule(
+      boxscore.value,
+      ref,
+      requestedScoringPeriod,
+    );
+    if (boxscoreRosters.some((roster) => roster.entries.length > 0)) {
+      if (!rosterLineupLooksSparse(boxscoreRosters)) {
+        return ok(boxscoreRosters);
+      }
+      const lineupRoster = await this.fetchCurrentLeagueApi({
+        ref,
+        resource: "league-rosters",
+        scoringPeriod: requestedScoringPeriod,
+        session,
+        views: ["mRoster", "kona_player_info"],
+      });
+      if (lineupRoster.ok) {
+        return ok(
+          mergeRosterLineupDetails({
+            lineupRosters: normalizeRostersFromTeams(
+              lineupRoster.value,
+              ref,
+              requestedScoringPeriod,
+            ),
+            scoredRosters: boxscoreRosters,
+          }),
+        );
+      }
+      if (!canUseScoredRosterFallback(lineupRoster.error.code)) {
+        return lineupRoster;
+      }
+      return ok(boxscoreRosters);
+    }
+
+    const roster = await this.fetchCurrentLeagueApi({
+      ref,
+      resource: "league-rosters",
+      scoringPeriod: requestedScoringPeriod,
+      session,
+      views: ["mRoster", "kona_player_info"],
+    });
+    if (!roster.ok) {
+      return roster;
+    }
+    return ok(
+      normalizeRostersFromTeams(roster.value, ref, requestedScoringPeriod),
+    );
+  }
+
+  async getDraftPicks(
+    session: EspnSession,
+    ref: ProviderLeagueRef,
+  ): Promise<ProviderResult<NormalizedDraftPick[]>> {
+    const league = await this.fetchCurrentLeagueApi({
+      ref,
+      resource: "league-draft",
+      session,
+      views: ["mDraftDetail", "kona_player_info"],
+    });
+    if (!league.ok) {
+      return league;
+    }
+    return ok(normalizeDraftPicks(league.value, ref));
+  }
+
   async getTransactions(
-    _session: EspnSession,
-    _ref: ProviderLeagueRef,
+    session: EspnSession,
+    ref: ProviderLeagueRef,
+    scoringPeriod?: number,
   ): Promise<ProviderResult<NormalizedTransaction[]>> {
-    return ok([]);
+    let league = await this.fetchCurrentLeagueApi({
+      extraHeaders: transactionFilterHeader(),
+      ref,
+      resource: "league-transactions",
+      scoringPeriod,
+      session,
+      views: ["mTransactions2"],
+    });
+    if (!league.ok && shouldRetryTransactionsUnfiltered(league.error.code)) {
+      league = await this.fetchCurrentLeagueApi({
+        ref,
+        resource: "league-transactions",
+        scoringPeriod,
+        session,
+        views: ["mTransactions2"],
+      });
+    }
+    if (!league.ok) {
+      return league;
+    }
+    return ok(normalizeTransactions(league.value, ref));
   }
 
   async getHistory(
@@ -1341,7 +2233,126 @@ export class EspnDiscoveryClient {
       }
 
       for (const league of history.value) {
-        bundles.push(normalizeHistoryBundle(league, ref));
+        const bundle = normalizeHistoryBundle(league, ref);
+        const seasonRef = {
+          ...ref,
+          name: bundle.league.name,
+          season: bundle.league.season,
+          size: bundle.league.size,
+        };
+        let rosters: NormalizedRoster[] = [];
+        for (const scoringPeriod of scoringPeriodsForLeague(bundle.league)) {
+          const matchupPeriod = matchupPeriodForScoringPeriod(
+            league,
+            scoringPeriod,
+          );
+          const boxscore = await this.fetchHistoricalLeagueApi({
+            extraHeaders: scheduleFilterHeader(matchupPeriod),
+            ref: seasonRef,
+            resource: "league-history-rosters",
+            scoringPeriod,
+            season: bundle.league.season,
+            session,
+            views: [
+              "mBoxscore",
+              "mMatchupScore",
+              "mScoreboard",
+              "kona_player_info",
+            ],
+          });
+          if (!boxscore.ok) {
+            return err(boxscore.error);
+          }
+          const [historyLeague] = boxscore.value;
+          if (historyLeague) {
+            let periodRosters = normalizeRostersFromSchedule(
+              historyLeague,
+              seasonRef,
+              scoringPeriod,
+            );
+            if (rosterLineupLooksSparse(periodRosters)) {
+              const lineupRoster = await this.fetchHistoricalLeagueApi({
+                ref: seasonRef,
+                resource: "league-history-roster-lineup",
+                scoringPeriod,
+                season: bundle.league.season,
+                session,
+                views: ["mRoster", "kona_player_info"],
+              });
+              if (lineupRoster.ok && lineupRoster.value[0]) {
+                periodRosters = mergeRosterLineupDetails({
+                  lineupRosters: normalizeRostersFromTeams(
+                    lineupRoster.value[0],
+                    seasonRef,
+                    scoringPeriod,
+                  ),
+                  scoredRosters: periodRosters,
+                });
+              } else if (
+                !lineupRoster.ok &&
+                !canUseScoredRosterFallback(lineupRoster.error.code)
+              ) {
+                return err(lineupRoster.error);
+              }
+            }
+            rosters = mergeRosterLists(rosters, periodRosters);
+          }
+        }
+
+        const draft = await this.fetchHistoricalLeagueApi({
+          ref: seasonRef,
+          resource: "league-history-draft",
+          season: bundle.league.season,
+          session,
+          views: ["mDraftDetail", "kona_player_info"],
+        });
+        if (!draft.ok) {
+          return err(draft.error);
+        }
+        const draftLeague = draft.value[0];
+        const draftPicks = draftLeague
+          ? normalizeDraftPicks(draftLeague, seasonRef)
+          : [];
+
+        let transactions = await this.fetchHistoricalLeagueApi({
+          extraHeaders: transactionFilterHeader(),
+          ref: seasonRef,
+          resource: "league-history-transactions",
+          season: bundle.league.season,
+          session,
+          views: ["mTransactions2"],
+        });
+        if (
+          !transactions.ok &&
+          shouldRetryTransactionsUnfiltered(transactions.error.code)
+        ) {
+          transactions = await this.fetchHistoricalLeagueApi({
+            ref: seasonRef,
+            resource: "league-history-transactions",
+            season: bundle.league.season,
+            session,
+            views: ["mTransactions2"],
+          });
+        }
+        if (!transactions.ok) {
+          if (!canUseScoredRosterFallback(transactions.error.code)) {
+            return err(transactions.error);
+          }
+        }
+        const transactionLeague = transactions.ok
+          ? transactions.value[0]
+          : undefined;
+        const transactionRows = transactionLeague
+          ? normalizeTransactions(transactionLeague, seasonRef)
+          : [];
+
+        bundles.push({
+          ...bundle,
+          draftPicks,
+          players: playersFromRosters(rosters),
+          rosters,
+          transactions: transactionRows,
+        });
       }
     }
 
@@ -1383,12 +2394,14 @@ export class EspnDiscoveryClient {
   }
 
   private async fetchCurrentLeagueApi({
+    extraHeaders,
     ref,
     resource,
     scoringPeriod,
     session,
     views,
   }: {
+    extraHeaders?: Record<string, string>;
     ref: ProviderLeagueRef;
     resource: string;
     scoringPeriod?: number;
@@ -1401,7 +2414,7 @@ export class EspnDiscoveryClient {
           currentLeagueApiUrl({ ref, scoringPeriod, views }),
           {
             cache: "no-store",
-            headers: espnHeaders(session),
+            headers: { ...espnHeaders(session), ...(extraHeaders ?? {}) },
             method: "GET",
             signal: AbortSignal.timeout(this.timeoutMs),
           },
@@ -1428,14 +2441,18 @@ export class EspnDiscoveryClient {
   }
 
   private async fetchHistoricalLeagueApi({
+    extraHeaders,
     ref,
     resource,
+    scoringPeriod,
     season,
     session,
     views,
   }: {
+    extraHeaders?: Record<string, string>;
     ref: ProviderLeagueRef;
     resource: string;
+    scoringPeriod?: number;
     season: number;
     session: EspnSession;
     views: string[];
@@ -1443,10 +2460,10 @@ export class EspnDiscoveryClient {
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       try {
         const response = await this.fetchImpl(
-          historyLeagueApiUrl({ ref, season, views }),
+          historyLeagueApiUrl({ ref, scoringPeriod, season, views }),
           {
             cache: "no-store",
-            headers: espnHeaders(session),
+            headers: { ...espnHeaders(session), ...(extraHeaders ?? {}) },
             method: "GET",
             signal: AbortSignal.timeout(this.timeoutMs),
           },
@@ -1581,11 +2598,15 @@ export function createEspnDiscoveryProvider(
     discoverLeagues: (session) => client.discoverLeagues(session),
     getHistory: (session, ref, options) =>
       client.getHistory(session, ref, options),
+    getDraftPicks: (session, ref) => client.getDraftPicks(session, ref),
     getLeague: (session, ref) => client.getLeague(session, ref),
     getMatchups: (session, ref, scoringPeriod) =>
       client.getMatchups(session, ref, scoringPeriod),
     getMembers: (session, ref) => client.getMembers(session, ref),
+    getRosters: (session, ref, scoringPeriod) =>
+      client.getRosters(session, ref, scoringPeriod),
     getTeams: (session, ref) => client.getTeams(session, ref),
-    getTransactions: (session, ref) => client.getTransactions(session, ref),
+    getTransactions: (session, ref, scoringPeriod) =>
+      client.getTransactions(session, ref, scoringPeriod),
   };
 }

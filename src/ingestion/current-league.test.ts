@@ -9,8 +9,10 @@ import { withLeagueContext } from "@/db/rls";
 import {
   dataCoverage,
   dataIntegrityChecks,
+  fantasyDraftPicks,
   fantasyMatchups,
   fantasyMembers,
+  fantasyPlayers,
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
@@ -219,10 +221,22 @@ function rosterCapableProviderFor(
           scoringPeriod: 1,
           entries: [
             {
-              playerRef: { provider: "espn" as const, providerId: "player-1" },
+              actualPoints: 24.2,
+              player: {
+                provider: "espn" as const,
+                providerId: "101",
+                leagueProviderId: providerLeagueId,
+                fullName: "Roster Player One",
+                position: "QB",
+                proTeam: "ATL",
+                status: "active",
+              },
+              playerRef: { provider: "espn" as const, providerId: "101" },
               slot: "QB",
+              started: true,
               status: "active",
               points: 24.2,
+              projectedPoints: 25.1,
             },
           ],
         },
@@ -254,9 +268,10 @@ function transactionCapableProviderFor(
         {
           details: { priority: 3, source: "current-sync-fixture" },
           leagueProviderId: providerLeagueId,
-          playerRefs: [{ provider: "espn" as const, providerId: "player-1" }],
+          playerRefs: [{ provider: "espn" as const, providerId: "101" }],
           provider: "espn" as const,
           providerId: `${providerLeagueId}-transaction-1`,
+          scoringPeriod: 1,
           season: 2026,
           teamRefs: [
             { provider: "espn" as const, providerId: "1", season: 2026 },
@@ -396,6 +411,16 @@ async function selectIngestedRows(leagueId: string) {
       .from(fantasyRosterEntries)
       .where(eq(fantasyRosterEntries.leagueId, leagueId))
       .orderBy(asc(fantasyRosterEntries.providerPlayerId));
+    const players = await tx
+      .select()
+      .from(fantasyPlayers)
+      .where(eq(fantasyPlayers.leagueId, leagueId))
+      .orderBy(asc(fantasyPlayers.providerPlayerId));
+    const draftPicks = await tx
+      .select()
+      .from(fantasyDraftPicks)
+      .where(eq(fantasyDraftPicks.leagueId, leagueId))
+      .orderBy(asc(fantasyDraftPicks.providerPickId));
     const transactions = await tx
       .select()
       .from(fantasyTransactions)
@@ -422,6 +447,8 @@ async function selectIngestedRows(leagueId: string) {
       matchups,
       members,
       persons: personRows,
+      players,
+      draftPicks,
       rosterEntries,
       settings,
       teams,
@@ -612,8 +639,12 @@ describe("syncCurrentLeague", () => {
       teams: { capability: "full", itemCount: 12, status: "complete" },
       members: { capability: "full", itemCount: 16, status: "complete" },
       matchups: { capability: "full", itemCount: 84, status: "complete" },
-      rosters: { capability: "none", itemCount: 0, status: "unavailable" },
-      transactions: { capability: "none", itemCount: 0, status: "unavailable" },
+      rosters: { capability: "partial", itemCount: 0, status: "unavailable" },
+      transactions: {
+        capability: "partial",
+        itemCount: 0,
+        status: "unavailable",
+      },
       history: { capability: "partial", itemCount: 0, status: "stale" },
       scoring_detail: {
         capability: "partial",
@@ -1092,6 +1123,134 @@ describe("syncCurrentLeague", () => {
     expect(second.value.changedTransactions).toEqual([]);
   });
 
+  it("persists and reconciles draft picks, transactions, and player identities", async () => {
+    const providerLeagueId = `${marker}-player-depth-persist`;
+    const [league] = await handle.db
+      .insert(leagues)
+      .values({
+        currentScoringPeriod: 1,
+        name: `${marker} player depth`,
+        provider: "espn",
+        providerLeagueId,
+        scoringType: "H2H_POINTS",
+        season: 2026,
+        size: 2,
+        sport: "ffl",
+        status: "in_season",
+      })
+      .returning({ id: leagues.id });
+    if (!league) {
+      throw new Error("player-depth test league was not created");
+    }
+
+    await persistNormalizedLeagueRows({
+      db: handle.db,
+      draftPicks: [
+        {
+          leagueProviderId: providerLeagueId,
+          pickInRound: 1,
+          pickOverall: 1,
+          player: {
+            provider: "espn",
+            providerId: "201",
+            leagueProviderId: providerLeagueId,
+            fullName: "Draft Player One",
+            position: "WR",
+            proTeam: "DAL",
+          },
+          playerRef: { provider: "espn", providerId: "201" },
+          provider: "espn",
+          providerId: "draft-1",
+          round: 1,
+          season: 2026,
+          teamRef: { provider: "espn", providerId: "1", season: 2026 },
+        },
+      ],
+      league: {
+        provider: "espn",
+        providerId: providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+        name: "Player Depth",
+        scoringType: "H2H_POINTS",
+        scoringSettings: {},
+        size: 2,
+        currentScoringPeriod: 1,
+        status: "in_season",
+      },
+      leagueId: league.id,
+      matchups: [],
+      members: [],
+      reconcileSeasons: {
+        draftPicks: [2026],
+        transactions: [2026],
+      },
+      teams: [],
+      transactions: [
+        {
+          details: { source: "player-depth-test" },
+          leagueProviderId: providerLeagueId,
+          playerRefs: [{ provider: "espn", providerId: "201" }],
+          provider: "espn",
+          providerId: "tx-1",
+          scoringPeriod: 1,
+          season: 2026,
+          teamRefs: [{ provider: "espn", providerId: "1", season: 2026 }],
+          timestamp: new Date("2026-09-11T12:00:00.000Z"),
+          type: "add",
+        },
+      ],
+    });
+
+    const firstRows = await selectIngestedRows(league.id);
+    expect(firstRows.players).toHaveLength(1);
+    expect(firstRows.players[0]).toMatchObject({
+      fullName: "Draft Player One",
+      providerPlayerId: "201",
+    });
+    expect(firstRows.draftPicks).toHaveLength(1);
+    expect(firstRows.draftPicks[0]).toMatchObject({
+      providerPickId: "draft-1",
+      providerPlayerId: "201",
+    });
+    expect(firstRows.transactions[0]).toMatchObject({
+      providerTransactionId: "tx-1",
+      scoringPeriod: 1,
+    });
+
+    await persistNormalizedLeagueRows({
+      db: handle.db,
+      draftPicks: [],
+      league: {
+        provider: "espn",
+        providerId: providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+        name: "Player Depth",
+        scoringType: "H2H_POINTS",
+        scoringSettings: {},
+        size: 2,
+        currentScoringPeriod: 1,
+        status: "in_season",
+      },
+      leagueId: league.id,
+      leagueProviderId: providerLeagueId,
+      matchups: [],
+      members: [],
+      reconcileSeasons: {
+        draftPicks: [2026],
+        transactions: [2026],
+      },
+      teams: [],
+      transactions: [],
+    });
+
+    const repeatedRows = await selectIngestedRows(league.id);
+    expect(repeatedRows.draftPicks).toHaveLength(0);
+    expect(repeatedRows.transactions).toHaveLength(0);
+    expect(repeatedRows.players).toHaveLength(0);
+  });
+
   it("uses explicit data classes to avoid broad provider fetches", async () => {
     const providerLeagueId = `${marker}-narrow-current`;
     const fullProvider = rosterCapableProviderFor(providerLeagueId);
@@ -1256,11 +1415,21 @@ describe("syncCurrentLeague", () => {
     expect(rows.rosterEntries[0]).toMatchObject({
       leagueProviderId: providerLeagueId,
       providerTeamId: "1",
-      providerPlayerId: "player-1",
+      providerPlayerId: "101",
       scoringPeriod: 1,
       slot: "QB",
       status: "active",
       points: 24.2,
+      actualPoints: 24.2,
+      projectedPoints: 25.1,
+      started: true,
+    });
+    expect(rows.players).toHaveLength(1);
+    expect(rows.players[0]).toMatchObject({
+      fullName: "Roster Player One",
+      position: "QB",
+      providerPlayerId: "101",
+      proTeam: "ATL",
     });
     const rosterCoverage = rows.coverage.find(
       (coverage) => coverage.dataClass === "rosters",
@@ -1269,6 +1438,66 @@ describe("syncCurrentLeague", () => {
       capability: "full",
       itemCount: 1,
       status: "complete",
+    });
+
+    const replacementProvider = {
+      ...rosterCapableProviderFor(providerLeagueId),
+      async getRosters() {
+        return ok([
+          {
+            teamRef: {
+              provider: "espn" as const,
+              providerId: "1",
+              season: 2026,
+            },
+            season: 2026,
+            scoringPeriod: 1,
+            entries: [
+              {
+                actualPoints: 31.4,
+                player: {
+                  provider: "espn" as const,
+                  providerId: "102",
+                  leagueProviderId: providerLeagueId,
+                  fullName: "Roster Player Two",
+                  position: "RB",
+                  proTeam: "BUF",
+                  status: "active",
+                },
+                playerRef: {
+                  provider: "espn" as const,
+                  providerId: "102",
+                },
+                points: 31.4,
+                projectedPoints: 18.2,
+                slot: "RB",
+                started: true,
+                status: "active",
+              },
+            ],
+          },
+        ]);
+      },
+    };
+    const repeated = await syncCurrentLeague({
+      db: handle.db,
+      provider: replacementProvider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+    expect(repeated.ok).toBe(true);
+    if (!repeated.ok) throw repeated.error;
+
+    const repeatedRows = await selectIngestedRows(synced.value.league.id);
+    expect(repeatedRows.rosterEntries).toHaveLength(1);
+    expect(repeatedRows.rosterEntries[0]).toMatchObject({
+      providerPlayerId: "102",
+      actualPoints: 31.4,
+    });
+    expect(repeatedRows.players).toHaveLength(1);
+    expect(repeatedRows.players[0]).toMatchObject({
+      fullName: "Roster Player Two",
+      providerPlayerId: "102",
     });
   });
 

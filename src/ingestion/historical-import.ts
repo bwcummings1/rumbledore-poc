@@ -62,6 +62,9 @@ export interface HistoricalImportResult {
   teams: EntitySyncStats;
   members: EntitySyncStats;
   matchups: EntitySyncStats;
+  players: EntitySyncStats;
+  rosters: EntitySyncStats;
+  draftPicks: EntitySyncStats;
   finalStandings: EntitySyncStats;
   transactions: EntitySyncStats;
   checkpoint: {
@@ -626,16 +629,22 @@ async function persistBundle({
 }) {
   return persistNormalizedLeagueRows({
     db,
+    draftPicks: bundle.draftPicks ?? [],
     finalStandings: bundle.finalStandings,
     league: bundle.league,
     leagueId,
     leagueProviderId: bundle.league.providerId,
     matchups: bundle.matchups,
     members: bundle.members,
+    players: bundle.players ?? [],
     reconcileSeasons: {
+      ...(bundle.draftPicks ? { draftPicks: [bundle.league.season] } : {}),
       members: [bundle.league.season],
+      ...(bundle.rosters ? { rosters: [bundle.league.season] } : {}),
       teams: [bundle.league.season],
+      transactions: [bundle.league.season],
     },
+    rosters: bundle.rosters ?? [],
     teams: bundle.teams,
     transactions: bundle.transactions,
   });
@@ -650,11 +659,32 @@ function coverageForBundle(
     members: { itemCount: bundle.members.length },
     matchups: { itemCount: bundle.matchups.length },
     final_standings: { itemCount: bundle.finalStandings.length },
-    transactions: { itemCount: bundle.transactions.length },
+    transactions: {
+      itemCount: bundle.transactions.length,
+      ...(bundle.transactions.length === 0
+        ? { status: "unavailable" as const }
+        : {}),
+    },
+    rosters: {
+      details: { rosterCount: bundle.rosters?.length ?? 0 },
+      itemCount:
+        bundle.rosters?.reduce(
+          (total, roster) => total + roster.entries.length,
+          0,
+        ) ?? 0,
+      status:
+        (bundle.rosters?.reduce(
+          (total, roster) => total + roster.entries.length,
+          0,
+        ) ?? 0) > 0
+          ? "partial"
+          : "unavailable",
+    },
     history: { itemCount: 1 },
     ...edgeCaseCoverageObservations({
       finalStandings: bundle.finalStandings,
       league: bundle.league,
+      rosters: bundle.rosters ?? [],
       scoringDetailSource: "history.league.scoringSettings",
       teams: bundle.teams,
     }),
@@ -717,6 +747,9 @@ export async function importLeagueHistory<
       teams: emptyStats(),
       members: emptyStats(),
       matchups: emptyStats(),
+      players: emptyStats(),
+      rosters: emptyStats(),
+      draftPicks: emptyStats(),
       finalStandings: emptyStats(),
       transactions: emptyStats(),
       checkpoint: {
@@ -758,6 +791,9 @@ export async function importLeagueHistory<
   let teams = emptyStats();
   let members = emptyStats();
   let matchups = emptyStats();
+  let players = emptyStats();
+  let rosters = emptyStats();
+  let draftPicks = emptyStats();
   let finalStandings = emptyStats();
   let transactions = emptyStats();
   let latestCheckpoint = activeCheckpoint;
@@ -840,6 +876,9 @@ export async function importLeagueHistory<
       teams = addStats(teams, persisted.teamStats);
       members = addStats(members, persisted.memberStats);
       matchups = addStats(matchups, persisted.matchupStats);
+      players = addStats(players, persisted.playerStats);
+      rosters = addStats(rosters, persisted.rosterStats);
+      draftPicks = addStats(draftPicks, persisted.draftPickStats);
       finalStandings = addStats(finalStandings, persisted.finalStandingStats);
       transactions = addStats(transactions, persisted.transactionStats);
       await recordDataCoverage({
@@ -895,6 +934,9 @@ export async function importLeagueHistory<
     teams,
     members,
     matchups,
+    players,
+    rosters,
+    draftPicks,
     finalStandings,
     transactions,
     checkpoint: {
