@@ -189,6 +189,30 @@ const data: DataBookPageData = {
           pointsAgainst: 131.32,
           pointsFor: 144.2,
           result: "win",
+          roster: [
+            {
+              actualPoints: 28.4,
+              id: "roster-2026-1-a",
+              playerName: "Bijan Robinson",
+              position: "RB",
+              projectedPoints: 17.1,
+              proTeam: "ATL",
+              slot: "RB",
+              started: true,
+              status: "active",
+            },
+            {
+              actualPoints: 8.2,
+              id: "roster-2026-1-b",
+              playerName: "Bench Receiver",
+              position: "WR",
+              projectedPoints: 6.4,
+              proTeam: "TB",
+              slot: "BE",
+              started: false,
+              status: "active",
+            },
+          ],
           scoringPeriod: 1,
           span: 1,
           teamName: "Alpha Current",
@@ -209,6 +233,7 @@ const data: DataBookPageData = {
           pointsAgainst: 144.2,
           pointsFor: 131.32,
           result: "loss",
+          roster: [],
           scoringPeriod: 1,
           span: 1,
           teamName: "Beta Current",
@@ -229,6 +254,7 @@ const data: DataBookPageData = {
           pointsAgainst: 0,
           pointsFor: 155.1,
           result: "bye",
+          roster: [],
           scoringPeriod: 2,
           span: 1,
           teamName: "Alpha Current",
@@ -285,6 +311,7 @@ const data: DataBookPageData = {
           pointsAgainst: 0,
           pointsFor: 325,
           result: "bye",
+          roster: [],
           scoringPeriod: 15,
           span: 2,
           teamName: "Alpha Throwback",
@@ -386,6 +413,11 @@ test("Data Book switches grains with the secondary selector", () => {
   });
   expect(within(weeksTable).getAllByText("W1").length).toBeGreaterThan(0);
   expect(within(weeksTable).getAllByText("BYE").length).toBeGreaterThan(0);
+  expect(
+    screen.getByRole("region", { name: "Alex Manager week 1 roster" }),
+  ).toBeDefined();
+  expect(screen.getByText("Bijan Robinson")).toBeDefined();
+  expect(screen.getByText("28.4")).toBeDefined();
 });
 
 test("Settings grain confirms adjusted era proposals", async () => {

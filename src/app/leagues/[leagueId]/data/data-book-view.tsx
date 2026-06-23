@@ -1459,11 +1459,15 @@ function weekColumns({
   canEditData,
   isDraftCell,
   onStartEdit,
+  onSelectWeek,
+  selectedWeekId,
   season,
 }: {
   canEditData: boolean;
   isDraftCell: DraftCellLookup;
   onStartEdit: (request: EditableCellRequest) => void;
+  onSelectWeek: (weekId: string) => void;
+  selectedWeekId: string | null;
   season: DataBookSeason;
 }): readonly DataTableColumn<DataBookWeekRow>[] {
   return [
@@ -1539,6 +1543,26 @@ function weekColumns({
       header: "PA",
       id: "points-against",
       priority: "desktop",
+    },
+    {
+      align: "right",
+      cell: (row) =>
+        row.roster.length > 0 ? (
+          <Button
+            aria-label={`Show ${row.managerName} week ${row.scoringPeriod} roster`}
+            onClick={() => onSelectWeek(row.id)}
+            size="xs"
+            type="button"
+            variant={row.id === selectedWeekId ? "primary" : "ghost"}
+          >
+            <BookOpen aria-hidden="true" className="size-3.5" />
+            {row.roster.length}
+          </Button>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        ),
+      header: "Roster",
+      id: "roster",
     },
   ];
 }
@@ -1849,6 +1873,101 @@ function EraProposalPanel({
   );
 }
 
+function rosterPoints(value: number | null): string {
+  return value === null ? "-" : formatNumber(value);
+}
+
+function WeekRosterPanel({ week }: { week: DataBookWeekRow | null }) {
+  if (!week || week.roster.length === 0) {
+    return (
+      <div className="cell p-4">
+        <EmptyState title="No roster rows for this team-week">
+          Imported player rows will appear here for the selected team-week.
+        </EmptyState>
+      </div>
+    );
+  }
+
+  const starters = week.roster.filter((entry) => entry.started);
+  const bench = week.roster.filter((entry) => !entry.started);
+  const starterPoints = starters.reduce(
+    (total, entry) => total + (entry.actualPoints ?? 0),
+    0,
+  );
+
+  return (
+    <section
+      aria-label={`${week.managerName} week ${week.scoringPeriod} roster`}
+      className="cell overflow-hidden p-0"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--hair)] px-3 py-2 sm:px-4">
+        <div className="min-w-0">
+          <p className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3">
+            Selected roster
+          </p>
+          <h3 className="truncate text-sm font-semibold text-foreground">
+            W{week.scoringPeriod} / {week.managerName}
+          </h3>
+          <p className="text-xs text-muted-foreground">{week.teamName}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <StatusPill tone="success">{starters.length} starters</StatusPill>
+          <StatusPill tone="neutral">{bench.length} bench</StatusPill>
+          <StatusPill tone="info">
+            {formatNumber(starterPoints)} lineup pts
+          </StatusPill>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b border-[var(--hair)] bg-[var(--panel-muted)] text-left font-mono text-xs uppercase tracking-[0.12em] text-ink-3">
+            <tr>
+              <th className="px-3 py-2 font-medium sm:px-4">Slot</th>
+              <th className="px-3 py-2 font-medium sm:px-4">Player</th>
+              <th className="px-3 py-2 text-right font-medium sm:px-4">
+                Actual
+              </th>
+              <th className="px-3 py-2 text-right font-medium sm:px-4">Proj</th>
+            </tr>
+          </thead>
+          <tbody>
+            {week.roster.map((entry) => (
+              <tr
+                className="border-b border-[var(--hair)] last:border-b-0"
+                key={entry.id}
+              >
+                <td className="px-3 py-2 sm:px-4">
+                  <span className="font-mono text-xs text-ink-3">
+                    {entry.slot}
+                  </span>
+                </td>
+                <td className="px-3 py-2 sm:px-4">
+                  <div className="min-w-44">
+                    <span className="font-medium text-foreground">
+                      {entry.playerName}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {[entry.position, entry.proTeam, entry.status]
+                        .filter(Boolean)
+                        .join(" / ")}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-right font-mono sm:px-4">
+                  {rosterPoints(entry.actualPoints)}
+                </td>
+                <td className="px-3 py-2 text-right font-mono text-muted-foreground sm:px-4">
+                  {rosterPoints(entry.projectedPoints)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function WeeksTable({
   canEditData,
   isDraftCell,
@@ -1860,21 +1979,44 @@ function WeeksTable({
   onStartEdit: (request: EditableCellRequest) => void;
   season: DataBookSeason;
 }) {
+  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(
+    season.weeks.find((week) => week.roster.length > 0)?.id ??
+      season.weeks[0]?.id ??
+      null,
+  );
+  useEffect(() => {
+    setSelectedWeekId(
+      season.weeks.find((week) => week.roster.length > 0)?.id ??
+        season.weeks[0]?.id ??
+        null,
+    );
+  }, [season.weeks]);
+  const selectedWeek =
+    season.weeks.find((week) => week.id === selectedWeekId) ??
+    season.weeks.find((week) => week.roster.length > 0) ??
+    season.weeks[0] ??
+    null;
+
   return (
-    <DataTable
-      ariaLabel={`${season.season} Data Book weeks`}
-      caption="Team-week matchup facts for the selected season"
-      columns={weekColumns({
-        canEditData,
-        isDraftCell,
-        onStartEdit,
-        season,
-      })}
-      empty="No weekly facts have been materialized for this season."
-      getRowId={(row) => row.id}
-      getRowName={(row) => `${row.managerName} week ${row.scoringPeriod}`}
-      rows={season.weeks}
-    />
+    <div className="grid gap-3">
+      <DataTable
+        ariaLabel={`${season.season} Data Book weeks`}
+        caption="Team-week matchup facts for the selected season"
+        columns={weekColumns({
+          canEditData,
+          isDraftCell,
+          onSelectWeek: setSelectedWeekId,
+          onStartEdit,
+          selectedWeekId,
+          season,
+        })}
+        empty="No weekly facts have been materialized for this season."
+        getRowId={(row) => row.id}
+        getRowName={(row) => `${row.managerName} week ${row.scoringPeriod}`}
+        rows={season.weeks}
+      />
+      <WeekRosterPanel week={selectedWeek} />
+    </div>
   );
 }
 
