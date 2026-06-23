@@ -58,8 +58,21 @@ function HeldRecords({
       title="Current records held"
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        {records.map((record) => (
-          <article className="cell grid gap-3 p-4" key={record.id}>
+        {records.map((record, index) => (
+          <article
+            className="cell grid gap-3 p-4"
+            key={[
+              "held-record",
+              record.id,
+              record.recordType,
+              record.holderPersonId ?? "unknown",
+              record.opponentPersonId ?? "none",
+              record.season ?? "career",
+              record.scoringPeriod ?? "all",
+              record.value,
+              index,
+            ].join(":")}
+          >
             <div className="mb-2 flex items-center justify-between gap-3">
               <h3 className="font-display text-base font-medium">
                 {record.label}
@@ -106,10 +119,10 @@ function WeeklyList({
     <div className="cell p-4">
       <h3 className="font-display text-sm font-medium">{title}</h3>
       <ol className="mt-3 grid gap-2">
-        {rows.slice(0, 5).map((row) => (
+        {rows.slice(0, 5).map((row, index) => (
           <li
             className="flex items-start justify-between gap-3"
-            key={`${row.matchupId}-${row.season}-${row.scoringPeriod}`}
+            key={`${row.matchupId}-${row.season}-${row.scoringPeriod}-${row.result}-${row.opponentPersonId ?? "bye"}-${index}`}
           >
             <div>
               <p className="text-sm font-medium">
@@ -249,17 +262,17 @@ export function ManagerRecordsView({ data }: { data: ManagerRecordsPageData }) {
                   Placement ledger
                 </h3>
                 <ol className="mt-3 grid gap-2">
-                  {data.placements.map((placement) => (
+                  {data.placements.map((placement, index) => (
                     <li
                       className="flex flex-wrap items-center justify-between gap-3 text-sm"
-                      key={placement.season}
+                      key={`${placement.season}-${index}`}
                     >
                       <span className="metric">{placement.season}</span>
                       <div className="flex flex-wrap gap-1.5">
-                        {placement.roles.map((role) => (
+                        {placement.roles.map((role, roleIndex) => (
                           <Edge
                             eyebrow="finish"
-                            key={`${placement.season}-${role}`}
+                            key={`${placement.season}-${role}-${roleIndex}`}
                             tone="positive"
                             value={role}
                           />

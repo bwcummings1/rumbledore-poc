@@ -45,10 +45,10 @@ function MeetingList({
     <section className="grid gap-3">
       <h2 className="heading-auspex text-lg">{title}</h2>
       <div className="grid gap-3 sm:grid-cols-2">
-        {rows.slice(0, 6).map((row) => (
+        {rows.slice(0, 6).map((row, index) => (
           <article
             className="cell grid gap-3 p-4"
-            key={`${row.matchupId}-${row.season}-${row.scoringPeriod}`}
+            key={`${row.matchupId}-${row.season}-${row.scoringPeriod}-${row.winnerPersonId ?? "tie"}-${index}`}
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium">{formatMeetingContext(row)}</p>
