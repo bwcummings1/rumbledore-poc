@@ -1,25 +1,19 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
-import { withLeagueContext } from "@/db/rls";
 import {
-  allTimeRecords,
-  championshipRecords,
-  dataIntegrityChecks,
-  headToHeadRecords,
-  leagueGroupingSeasons,
-  leagueSeasonGroupings,
+  type championshipRecords,
+  type leagueSeasonGroupings,
   leagues,
   type PersonOwnerHistoryEntry,
-  persons,
-  recordBookAllTimeStandings,
-  recordBookMilestones,
-  seasonStatistics,
-  weeklyStatistics,
+  type seasonStatistics,
+  type weeklyStatistics,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
 import {
   type BlowoutCatalogEntry,
   buildRecordsCatalog,
+  type ComposedCanonicalSnapshot,
+  composeCanonicalSnapshot,
   type HeadToHeadPairCatalogEntry,
   type ManagerChampionshipRecord,
   type ManagerHeadToHeadLedgerEntry,
@@ -33,6 +27,7 @@ import {
 } from "@/stats";
 
 const DETAIL_LIMIT = 8;
+const SNAPSHOT_ROW_DATE = new Date(0);
 
 type LeagueRow = Pick<
   typeof leagues.$inferSelect,
@@ -45,28 +40,13 @@ type LeagueRow = Pick<
   | "size"
   | "status"
 >;
-type PersonRow = Pick<
-  typeof persons.$inferSelect,
-  "canonicalName" | "id" | "ownerHistory"
->;
 type SeasonStatisticsRow = typeof seasonStatistics.$inferSelect;
 type WeeklyStatisticsRow = typeof weeklyStatistics.$inferSelect;
 type ChampionshipRecordRow = typeof championshipRecords.$inferSelect;
-type HeadToHeadRecordRow = typeof headToHeadRecords.$inferSelect;
-type RecordBookAllTimeStandingRow =
-  typeof recordBookAllTimeStandings.$inferSelect;
-type RecordBookMilestoneRow = typeof recordBookMilestones.$inferSelect;
-type AllTimeRecordRow = Pick<
-  typeof allTimeRecords.$inferSelect,
-  | "holderPersonId"
-  | "id"
-  | "opponentPersonId"
-  | "previousRecordId"
-  | "recordType"
-  | "scoringPeriod"
-  | "season"
-  | "value"
->;
+
+interface RecordsPersonRow extends RecordsPersonSummary {
+  canonicalName: string;
+}
 
 export interface RecordsLeagueSummary {
   id: string;
@@ -209,16 +189,11 @@ export interface HeadToHeadRecordsPageData extends RecordsPageData {
 }
 
 interface RecordsSourceData {
-  allTimeStandingRows: RecordBookAllTimeStandingRow[];
   catalog: RecordsCatalog;
   championshipRows: ChampionshipRecordRow[];
-  currentRecordRows: AllTimeRecordRow[];
-  headToHeadRows: HeadToHeadRecordRow[];
   league: RecordsLeagueSummary;
   lens: RecordsLensSelection;
-  milestoneRows: RecordBookMilestoneRow[];
-  personRows: PersonRow[];
-  previousRecordRows: AllTimeRecordRow[];
+  personRows: RecordsPersonRow[];
   seasonRows: SeasonStatisticsRow[];
   weeklyRows: WeeklyStatisticsRow[];
 }
@@ -317,27 +292,288 @@ function groupingFormatType(
     : "traditional";
 }
 
-function toGroupingOptions(
-  groupingRows: Pick<
-    typeof leagueSeasonGroupings.$inferSelect,
-    "config" | "id" | "kind" | "name" | "ordinal"
-  >[],
-  seasonRows: Pick<
-    typeof leagueGroupingSeasons.$inferSelect,
-    "groupingId" | "season"
-  >[],
+function seasonSpanFromSeasons(seasons: readonly number[]): string | null {
+  if (seasons.length === 0) {
+    return null;
+  }
+  const sorted = [...seasons].sort((left, right) => left - right);
+  const first = sorted[0] ?? 0;
+  const last = sorted.at(-1) ?? first;
+  return first === last ? String(first) : `${first}-${last}`;
+}
+
+function displayNameFor(input: {
+  canonicalName: string;
+  teamName: string | null;
+}): string {
+  return input.teamName
+    ? `${input.teamName} (${input.canonicalName})`
+    : input.canonicalName;
+}
+
+function personRowsFromSnapshot(
+  snapshot: ComposedCanonicalSnapshot,
+): RecordsPersonRow[] {
+  const latestPersonById = new Map<
+    string,
+    ComposedCanonicalSnapshot["persons"][number]
+  >();
+  for (const person of [...snapshot.persons].sort(
+    (left, right) =>
+      left.snapshotSeason - right.snapshotSeason ||
+      compareStable(left.canonicalName, right.canonicalName) ||
+      compareStable(left.id, right.id),
+  )) {
+    latestPersonById.set(person.id, person);
+  }
+
+  const teamSeasonsById = new Map(
+    snapshot.teamSeasons.map((teamSeason) => [teamSeason.id, teamSeason]),
+  );
+  const latestTeamByPersonId = new Map<
+    string,
+    ComposedCanonicalSnapshot["teamSeasons"][number]
+  >();
+  const seasonsByPersonId = new Map<string, number[]>();
+  const ownerNamesByPersonId = new Map<string, string[]>();
+
+  for (const mapping of snapshot.identityMappings) {
+    const teamSeason = teamSeasonsById.get(mapping.teamSeasonId);
+    if (!teamSeason) {
+      continue;
+    }
+    seasonsByPersonId.set(mapping.personId, [
+      ...(seasonsByPersonId.get(mapping.personId) ?? []),
+      teamSeason.season,
+    ]);
+    ownerNamesByPersonId.set(mapping.personId, [
+      ...(ownerNamesByPersonId.get(mapping.personId) ?? []),
+      ...teamSeason.ownerNames,
+    ]);
+
+    const current = latestTeamByPersonId.get(mapping.personId);
+    if (
+      !current ||
+      teamSeason.season > current.season ||
+      (teamSeason.season === current.season &&
+        compareStable(teamSeason.id, current.id) > 0)
+    ) {
+      latestTeamByPersonId.set(mapping.personId, teamSeason);
+    }
+  }
+
+  return [...latestPersonById.values()]
+    .map((person) => {
+      const ownerNames = uniqueSorted([
+        ...ownerNamesFor(person.ownerHistory),
+        ...(ownerNamesByPersonId.get(person.id) ?? []),
+      ]);
+      const seasons = seasonsByPersonId.get(person.id) ?? [];
+      const pushedSpan = seasonSpanFromSeasons(seasons);
+      return {
+        canonicalName: person.canonicalName,
+        id: person.id,
+        name: displayNameFor({
+          canonicalName: person.canonicalName,
+          teamName: latestTeamByPersonId.get(person.id)?.teamName ?? null,
+        }),
+        ownerHistory: person.ownerHistory,
+        ownerNames,
+        seasonSpan: pushedSpan ?? seasonSpanFor(person.ownerHistory),
+      };
+    })
+    .sort(
+      (left, right) =>
+        compareStable(left.name, right.name) ||
+        compareStable(left.id, right.id),
+    );
+}
+
+function groupingOptionsFromSnapshot(
+  snapshot: ComposedCanonicalSnapshot,
 ): RecordsGroupingOption[] {
-  return groupingRows.map((row) => ({
-    formatType: groupingFormatType(row.config),
+  const byId = new Map<
+    string,
+    {
+      row: ComposedCanonicalSnapshot["groupings"][number];
+      seasons: Set<number>;
+    }
+  >();
+
+  for (const row of snapshot.groupings) {
+    if (
+      row.status !== "confirmed" ||
+      !row.seasons.includes(row.snapshotSeason)
+    ) {
+      continue;
+    }
+    const current = byId.get(row.id);
+    if (!current) {
+      byId.set(row.id, { row, seasons: new Set([row.snapshotSeason]) });
+      continue;
+    }
+    current.seasons.add(row.snapshotSeason);
+    if (row.snapshotSeason >= current.row.snapshotSeason) {
+      current.row = row;
+    }
+  }
+
+  return [...byId.values()]
+    .map(({ row, seasons }) => ({
+      formatType: groupingFormatType(row.config),
+      id: row.id,
+      kind: row.kind,
+      name: row.name,
+      ordinal: row.ordinal,
+      seasons: [...seasons].sort((left, right) => left - right),
+    }))
+    .sort(
+      (left, right) =>
+        compareStable(left.kind, right.kind) ||
+        left.ordinal - right.ordinal ||
+        compareStable(left.name, right.name) ||
+        compareStable(left.id, right.id),
+    );
+}
+
+function dateFromSnapshot(value: string | undefined): Date {
+  return value ? new Date(value) : SNAPSHOT_ROW_DATE;
+}
+
+function weeklyRowsFromSnapshot(
+  snapshot: ComposedCanonicalSnapshot,
+): WeeklyStatisticsRow[] {
+  return snapshot.weeklyStatistics.map((row) => ({
+    createdAt: dateFromSnapshot(row.createdAt),
     id: row.id,
-    kind: row.kind,
-    name: row.name,
-    ordinal: row.ordinal,
-    seasons: seasonRows
-      .filter((season) => season.groupingId === row.id)
-      .map((season) => season.season)
-      .sort((left, right) => left - right),
+    isBottomScorer: row.isBottomScorer,
+    isChampionship: row.isChampionship,
+    isPlayoff: row.isPlayoff,
+    isTopScorer: row.isTopScorer,
+    leagueId: snapshot.leagueId,
+    margin: row.margin,
+    matchupId: row.matchupId,
+    matchupKind: row.matchupKind,
+    opponentPersonId: row.opponentPersonId,
+    periodStart: row.periodStart,
+    personId: row.personId,
+    pointsAgainst: row.pointsAgainst,
+    pointsFor: row.pointsFor,
+    result: row.result,
+    scoringPeriod: row.scoringPeriod,
+    scoringPeriodSpan: row.scoringPeriodSpan,
+    season: row.season,
+    teamSeasonId: row.teamSeasonId,
+    updatedAt: dateFromSnapshot(row.updatedAt ?? row.createdAt),
+    weeklyRank: row.weeklyRank,
   }));
+}
+
+function regularSeasonWinnerPersonId(
+  rows: readonly WeeklyStatisticsRow[],
+  season: number,
+): string | null {
+  const standings = new Map<
+    string,
+    { losses: number; pointsFor: number; ties: number; wins: number }
+  >();
+  for (const row of rows) {
+    if (row.season !== season || row.isPlayoff || row.result === "bye") {
+      continue;
+    }
+    const current = standings.get(row.personId) ?? {
+      losses: 0,
+      pointsFor: 0,
+      ties: 0,
+      wins: 0,
+    };
+    current.wins += row.result === "win" ? 1 : 0;
+    current.losses += row.result === "loss" ? 1 : 0;
+    current.ties += row.result === "tie" ? 1 : 0;
+    current.pointsFor = round(current.pointsFor + row.pointsFor, 4);
+    standings.set(row.personId, current);
+  }
+
+  return (
+    [...standings.entries()].sort((left, right) => {
+      const leftWinPct =
+        left[1].wins + left[1].losses + left[1].ties > 0
+          ? (left[1].wins + left[1].ties * 0.5) /
+            (left[1].wins + left[1].losses + left[1].ties)
+          : 0;
+      const rightWinPct =
+        right[1].wins + right[1].losses + right[1].ties > 0
+          ? (right[1].wins + right[1].ties * 0.5) /
+            (right[1].wins + right[1].losses + right[1].ties)
+          : 0;
+      return (
+        rightWinPct - leftWinPct ||
+        right[1].pointsFor - left[1].pointsFor ||
+        compareStable(left[0], right[0])
+      );
+    })[0]?.[0] ?? null
+  );
+}
+
+function championshipRowsFromWeeklyRows(
+  rows: readonly WeeklyStatisticsRow[],
+): ChampionshipRecordRow[] {
+  const byMatchup = new Map<string, WeeklyStatisticsRow[]>();
+  for (const row of rows) {
+    if (
+      !row.isChampionship ||
+      row.matchupKind !== "head_to_head" ||
+      !row.opponentPersonId
+    ) {
+      continue;
+    }
+    const key = `${row.season}:${row.periodStart ?? row.scoringPeriod}:${row.matchupId}`;
+    byMatchup.set(key, [...(byMatchup.get(key) ?? []), row]);
+  }
+
+  const bySeason = new Map<number, WeeklyStatisticsRow[]>();
+  for (const matchupRows of byMatchup.values()) {
+    const first = matchupRows[0];
+    if (!first || matchupRows.length < 2) {
+      continue;
+    }
+    const current = bySeason.get(first.season);
+    if (
+      !current ||
+      (first.periodStart ?? first.scoringPeriod) >
+        (current[0]?.periodStart ?? current[0]?.scoringPeriod ?? 0) ||
+      ((first.periodStart ?? first.scoringPeriod) ===
+        (current[0]?.periodStart ?? current[0]?.scoringPeriod ?? 0) &&
+        compareStable(first.matchupId, current[0]?.matchupId ?? "") > 0)
+    ) {
+      bySeason.set(first.season, matchupRows);
+    }
+  }
+
+  return [...bySeason.entries()]
+    .map(([season, matchupRows]) => {
+      const sorted = [...matchupRows].sort(
+        (left, right) =>
+          right.pointsFor - left.pointsFor ||
+          compareStable(left.personId, right.personId),
+      );
+      const champion = sorted[0] ?? null;
+      const runnerUp = sorted[1] ?? null;
+      return {
+        championshipScore: champion?.pointsFor ?? null,
+        championPersonId: champion?.personId ?? null,
+        createdAt: SNAPSHOT_ROW_DATE,
+        id: `pushed-championship-${season}`,
+        leagueId: champion?.leagueId ?? runnerUp?.leagueId ?? "",
+        regularSeasonWinnerPersonId: regularSeasonWinnerPersonId(rows, season),
+        runnerUpPersonId: runnerUp?.personId ?? null,
+        runnerUpScore: runnerUp?.pointsFor ?? null,
+        season,
+        thirdPlacePersonId: null,
+        updatedAt: SNAPSHOT_ROW_DATE,
+      } satisfies ChampionshipRecordRow;
+    })
+    .sort((left, right) => left.season - right.season);
 }
 
 function resolveLensSelection(
@@ -380,13 +616,13 @@ function toLeagueSummary(row: LeagueRow): RecordsLeagueSummary {
   };
 }
 
-function toPersonSummary(row: PersonRow): RecordsPersonSummary {
+function toPersonSummary(row: RecordsPersonRow): RecordsPersonSummary {
   return {
     id: row.id,
-    name: row.canonicalName,
+    name: row.name,
     ownerHistory: row.ownerHistory,
-    ownerNames: ownerNamesFor(row.ownerHistory),
-    seasonSpan: seasonSpanFor(row.ownerHistory),
+    ownerNames: row.ownerNames,
+    seasonSpan: row.seasonSpan,
   };
 }
 
@@ -395,42 +631,6 @@ function personName(
   personId: string | null,
 ): string | null {
   return personId ? (personNames.get(personId) ?? "Unknown manager") : null;
-}
-
-function toCurrentRecordEntry(
-  row: AllTimeRecordRow,
-  personNames: ReadonlyMap<string, string>,
-  previousById: ReadonlyMap<string, AllTimeRecordRow>,
-): CurrentRecordBookEntry {
-  const previous = row.previousRecordId
-    ? (previousById.get(row.previousRecordId) ?? null)
-    : null;
-  return {
-    holderName: personName(personNames, row.holderPersonId),
-    holderPersonId: row.holderPersonId,
-    id: row.id,
-    label: recordLabel(row.recordType),
-    opponentName: personName(personNames, row.opponentPersonId),
-    opponentPersonId: row.opponentPersonId,
-    previousHolderName: personName(
-      personNames,
-      previous?.holderPersonId ?? null,
-    ),
-    previousRecordId: row.previousRecordId,
-    previousValue: previous?.value ?? null,
-    recordType: row.recordType as RecordType,
-    scoringPeriod: row.scoringPeriod,
-    season: row.season,
-    value: row.value,
-  };
-}
-
-function lensIsDefault(lens: RecordsLensSelection): boolean {
-  return (
-    lens.segment === "both" &&
-    lens.groupingId === null &&
-    lens.seasonSet.length === 0
-  );
 }
 
 function lensRecordId(
@@ -862,6 +1062,7 @@ function filterChampionshipRowsByLens(
 
 function derivedSeasonRowsFromWeeklyRows(
   rows: readonly WeeklyStatisticsRow[],
+  championshipRows: readonly ChampionshipRecordRow[] = [],
 ): SeasonStatisticsRow[] {
   const grouped = new Map<string, WeeklyStatisticsRow[]>();
   for (const row of rows) {
@@ -871,10 +1072,14 @@ function derivedSeasonRowsFromWeeklyRows(
     ]);
   }
 
-  const now = new Date(0);
+  const championshipBySeason = new Map(
+    championshipRows.map((row) => [row.season, row]),
+  );
+  const now = SNAPSHOT_ROW_DATE;
   return [...grouped.entries()].map(([key, groupedRows]) => {
     const [personId, seasonRaw] = key.split(":");
     const season = Number(seasonRaw);
+    const championship = championshipBySeason.get(season) ?? null;
     const wins = groupedRows.filter((row) => row.result === "win").length;
     const losses = groupedRows.filter((row) => row.result === "loss").length;
     const ties = groupedRows.filter((row) => row.result === "tie").length;
@@ -894,6 +1099,22 @@ function derivedSeasonRowsFromWeeklyRows(
     const scoresAgainst = groupedRows.map((row) => row.pointsAgainst);
     const positiveScores = scoresFor.filter((score) => score > 0);
     const games = wins + losses + ties;
+    const finalPlacement =
+      championship?.championPersonId === personId
+        ? "champ"
+        : championship?.runnerUpPersonId === personId
+          ? "runner_up"
+          : championship?.thirdPlacePersonId === personId
+            ? "third"
+            : "out";
+    const finalRank =
+      finalPlacement === "champ"
+        ? 1
+        : finalPlacement === "runner_up"
+          ? 2
+          : finalPlacement === "third"
+            ? 3
+            : 0;
 
     return {
       allPlayLosses: losses,
@@ -908,8 +1129,8 @@ function derivedSeasonRowsFromWeeklyRows(
       currentStreakType: null,
       divisionWinner: false,
       expectedWins: wins,
-      finalPlacement: "out",
-      finalRank: 0,
+      finalPlacement,
+      finalRank,
       highestScore: scoresFor.length > 0 ? round(Math.max(...scoresFor), 4) : 0,
       id: `records-lens-season-${season}-${personId}`,
       leagueId: groupedRows[0]?.leagueId ?? "",
@@ -919,13 +1140,16 @@ function derivedSeasonRowsFromWeeklyRows(
       lowestScore:
         positiveScores.length > 0 ? round(Math.min(...positiveScores), 4) : 0,
       luck: 0,
-      madeChampionship: false,
+      madeChampionship:
+        championship?.championPersonId === personId ||
+        championship?.runnerUpPersonId === personId,
       madePlayoffs: groupedRows.some((row) => row.isPlayoff),
       medianPointsAgainst:
         scoresAgainst.length > 0 ? round(median(scoresAgainst), 4) : 0,
       medianPointsFor: scoresFor.length > 0 ? round(median(scoresFor), 4) : 0,
       personId: personId ?? "",
-      playoffSeed: null,
+      playoffSeed:
+        championship?.regularSeasonWinnerPersonId === personId ? 1 : null,
       pointDifferential: round(pointsFor - pointsAgainst, 4),
       pointsAgainst,
       pointsFor,
@@ -953,12 +1177,16 @@ function median(values: readonly number[]): number {
 
 function seasonRowsForLens(
   rows: readonly SeasonStatisticsRow[],
+  championshipRows: readonly ChampionshipRecordRow[],
   weeklyRows: readonly WeeklyStatisticsRow[],
   lens: RecordsLensSelection,
 ): SeasonStatisticsRow[] {
   return lens.segment === "both"
     ? filterSeasonRowsByLens(rows, lens)
-    : derivedSeasonRowsFromWeeklyRows(weeklyRows);
+    : derivedSeasonRowsFromWeeklyRows(
+        weeklyRows,
+        filterChampionshipRowsByLens(championshipRows, lens),
+      );
 }
 
 function topWeeklyHighlights(
@@ -1013,22 +1241,14 @@ function managerPlacements(
 
 function toRecordsPageData(source: RecordsSourceData): RecordsPageData {
   const personNames = new Map(
-    source.personRows.map((person) => [person.id, person.canonicalName]),
+    source.personRows.map((person) => [person.id, person.name]),
   );
-  const previousById = new Map(
-    source.previousRecordRows.map((record) => [record.id, record]),
+  const currentRecords = derivedCurrentRecords(
+    source.catalog,
+    source.seasonRows,
+    source.lens,
+    personNames,
   );
-  const currentRecords =
-    lensIsDefault(source.lens) && source.currentRecordRows.length > 0
-      ? source.currentRecordRows.map((row) =>
-          toCurrentRecordEntry(row, personNames, previousById),
-        )
-      : derivedCurrentRecords(
-          source.catalog,
-          source.seasonRows,
-          source.lens,
-          personNames,
-        );
 
   return {
     catalog: source.catalog,
@@ -1062,228 +1282,49 @@ async function loadRecordsSourceData(
     return { status: "not_found" };
   }
 
-  const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
-    const unresolvedFailures = await tx
-      .select({ id: dataIntegrityChecks.id })
-      .from(dataIntegrityChecks)
-      .where(
-        and(
-          eq(dataIntegrityChecks.leagueId, input.leagueId),
-          eq(dataIntegrityChecks.status, "fail"),
-        ),
-      )
-      .limit(1);
-
-    const personRows = await tx
-      .select({
-        canonicalName: persons.canonicalName,
-        id: persons.id,
-        ownerHistory: persons.ownerHistory,
-      })
-      .from(persons)
-      .where(eq(persons.leagueId, input.leagueId))
-      .orderBy(asc(persons.canonicalName), asc(persons.id));
-    const groupingRows = await tx
-      .select({
-        config: leagueSeasonGroupings.config,
-        id: leagueSeasonGroupings.id,
-        kind: leagueSeasonGroupings.kind,
-        name: leagueSeasonGroupings.name,
-        ordinal: leagueSeasonGroupings.ordinal,
-      })
-      .from(leagueSeasonGroupings)
-      .where(
-        and(
-          eq(leagueSeasonGroupings.leagueId, input.leagueId),
-          eq(leagueSeasonGroupings.status, "confirmed"),
-        ),
-      )
-      .orderBy(
-        asc(leagueSeasonGroupings.kind),
-        asc(leagueSeasonGroupings.ordinal),
-        asc(leagueSeasonGroupings.name),
-        asc(leagueSeasonGroupings.id),
-      );
-    const groupingSeasonRows =
-      groupingRows.length > 0
-        ? await tx
-            .select({
-              groupingId: leagueGroupingSeasons.groupingId,
-              season: leagueGroupingSeasons.season,
-            })
-            .from(leagueGroupingSeasons)
-            .where(
-              and(
-                eq(leagueGroupingSeasons.leagueId, input.leagueId),
-                inArray(
-                  leagueGroupingSeasons.groupingId,
-                  groupingRows.map((row) => row.id),
-                ),
-              ),
-            )
-            .orderBy(asc(leagueGroupingSeasons.season))
-        : [];
-    const lens = resolveLensSelection(
-      input.lens,
-      toGroupingOptions(groupingRows, groupingSeasonRows),
-    );
-
-    if (unresolvedFailures.length > 0) {
-      const emptyCatalog = buildRecordsCatalog({
-        championshipRows: [],
-        headToHeadRows: [],
-        limit: input.limit,
-        lens: toRecordBookLens(lens),
-        personNames: new Map(
-          personRows.map((person) => [person.id, person.canonicalName]),
-        ),
-        seasonRows: [],
-        weeklyRows: [],
-      });
-      return {
-        catalog: { ...emptyCatalog, integrityBlocked: true },
-        allTimeStandingRows: [],
-        championshipRows: [],
-        currentRecordRows: [],
-        headToHeadRows: [],
-        lens,
-        milestoneRows: [],
-        personRows,
-        previousRecordRows: [],
-        seasonRows: [],
-        weeklyRows: [],
-      };
-    }
-
-    const seasonRows = await tx
-      .select()
-      .from(seasonStatistics)
-      .where(eq(seasonStatistics.leagueId, input.leagueId))
-      .orderBy(asc(seasonStatistics.season), asc(seasonStatistics.personId));
-    const championshipRows = await tx
-      .select()
-      .from(championshipRecords)
-      .where(eq(championshipRecords.leagueId, input.leagueId))
-      .orderBy(asc(championshipRecords.season));
-    const headToHeadRows = await tx
-      .select()
-      .from(headToHeadRecords)
-      .where(eq(headToHeadRecords.leagueId, input.leagueId))
-      .orderBy(
-        asc(headToHeadRecords.season),
-        asc(headToHeadRecords.personAId),
-        asc(headToHeadRecords.personBId),
-      );
-    const weeklyRows = await tx
-      .select()
-      .from(weeklyStatistics)
-      .where(eq(weeklyStatistics.leagueId, input.leagueId))
-      .orderBy(
-        asc(weeklyStatistics.season),
-        asc(weeklyStatistics.scoringPeriod),
-        asc(weeklyStatistics.matchupId),
-        asc(weeklyStatistics.personId),
-      );
-    const currentRecordRows = await tx
-      .select({
-        holderPersonId: allTimeRecords.holderPersonId,
-        id: allTimeRecords.id,
-        opponentPersonId: allTimeRecords.opponentPersonId,
-        previousRecordId: allTimeRecords.previousRecordId,
-        recordType: allTimeRecords.recordType,
-        scoringPeriod: allTimeRecords.scoringPeriod,
-        season: allTimeRecords.season,
-        value: allTimeRecords.value,
-      })
-      .from(allTimeRecords)
-      .where(
-        and(
-          eq(allTimeRecords.leagueId, input.leagueId),
-          eq(allTimeRecords.isCurrent, true),
-        ),
-      )
-      .orderBy(asc(allTimeRecords.recordType), asc(allTimeRecords.id));
-
-    const previousRecordIds = uniqueSorted(
-      currentRecordRows.flatMap((record) =>
-        record.previousRecordId ? [record.previousRecordId] : [],
-      ),
-    );
-    const previousRecordRows =
-      previousRecordIds.length > 0
-        ? await tx
-            .select({
-              holderPersonId: allTimeRecords.holderPersonId,
-              id: allTimeRecords.id,
-              opponentPersonId: allTimeRecords.opponentPersonId,
-              previousRecordId: allTimeRecords.previousRecordId,
-              recordType: allTimeRecords.recordType,
-              scoringPeriod: allTimeRecords.scoringPeriod,
-              season: allTimeRecords.season,
-              value: allTimeRecords.value,
-            })
-            .from(allTimeRecords)
-            .where(
-              and(
-                eq(allTimeRecords.leagueId, input.leagueId),
-                inArray(allTimeRecords.id, previousRecordIds),
-              ),
-            )
-        : [];
-
-    const personNames = new Map(
-      personRows.map((person) => [person.id, person.canonicalName]),
-    );
-    const allTimeStandingRows = await tx
-      .select()
-      .from(recordBookAllTimeStandings)
-      .where(eq(recordBookAllTimeStandings.leagueId, input.leagueId))
-      .orderBy(
-        asc(recordBookAllTimeStandings.rank),
-        asc(recordBookAllTimeStandings.personId),
-      );
-    const milestoneRows = await tx
-      .select()
-      .from(recordBookMilestones)
-      .where(eq(recordBookMilestones.leagueId, input.leagueId))
-      .orderBy(
-        asc(recordBookMilestones.milestoneType),
-        asc(recordBookMilestones.milestoneKey),
-      );
-    const weeklyRowsForLens = filterWeeklyRowsByLens(weeklyRows, lens);
-    const seasonRowsForSelectedLens = seasonRowsForLens(
-      seasonRows,
-      weeklyRowsForLens,
-      lens,
-    );
-    const championshipRowsForLens = filterChampionshipRowsByLens(
-      championshipRows,
-      lens,
-    );
-    return {
-      catalog: buildRecordsCatalog({
-        allTimeStandingRows,
-        championshipRows: championshipRowsForLens,
-        headToHeadRows,
-        lens: toRecordBookLens(lens),
-        limit: input.limit,
-        milestoneRows,
-        personNames,
-        seasonRows,
-        weeklyRows,
-      }),
-      allTimeStandingRows,
-      championshipRows: championshipRowsForLens,
-      currentRecordRows,
-      headToHeadRows,
-      lens,
-      milestoneRows,
-      personRows,
-      previousRecordRows,
-      seasonRows: seasonRowsForSelectedLens,
-      weeklyRows: weeklyRowsForLens,
-    };
+  const snapshot = await composeCanonicalSnapshot(db, {
+    leagueId: input.leagueId,
   });
+  const personRows = personRowsFromSnapshot(snapshot);
+  const personNames = new Map(
+    personRows.map((person) => [person.id, person.name]),
+  );
+  const lens = resolveLensSelection(
+    input.lens,
+    groupingOptionsFromSnapshot(snapshot),
+  );
+  const weeklyRows = weeklyRowsFromSnapshot(snapshot);
+  const championshipRows = championshipRowsFromWeeklyRows(weeklyRows);
+  const seasonRows = derivedSeasonRowsFromWeeklyRows(
+    weeklyRows,
+    championshipRows,
+  );
+  const weeklyRowsForLens = filterWeeklyRowsByLens(weeklyRows, lens);
+  const championshipRowsForLens = filterChampionshipRowsByLens(
+    championshipRows,
+    lens,
+  );
+  const seasonRowsForSelectedLens = seasonRowsForLens(
+    seasonRows,
+    championshipRows,
+    weeklyRowsForLens,
+    lens,
+  );
+  const scoped: Omit<RecordsSourceData, "league"> = {
+    catalog: buildRecordsCatalog({
+      championshipRows: championshipRowsForLens,
+      lens: toRecordBookLens(lens),
+      limit: input.limit,
+      personNames,
+      seasonRows,
+      weeklyRows,
+    }),
+    championshipRows: championshipRowsForLens,
+    lens,
+    personRows,
+    seasonRows: seasonRowsForSelectedLens,
+    weeklyRows: weeklyRowsForLens,
+  };
 
   return {
     data: {
@@ -1327,7 +1368,7 @@ export async function getManagerRecordsPageData(
 
   const pageData = toRecordsPageData(source.data);
   const personNames = new Map(
-    source.data.personRows.map((row) => [row.id, row.canonicalName]),
+    source.data.personRows.map((row) => [row.id, row.name]),
   );
   const weeklyRows = source.data.weeklyRows.filter(
     (row) => row.personId === input.personId,

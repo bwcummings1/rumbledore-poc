@@ -5,7 +5,7 @@
 - Historical seasons requested in one import: 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011
 - Settings rows: 16
 - Integrity failures: 0
-- Record rows: 72
+- Record rows: 69
 - Record book aggregate rows: 15
 
 ## Verification Checks
@@ -31,10 +31,10 @@
 
 ## Record Book
 
-- All-time records rows: 72
+- All-time records rows: 69
 - Record book all-time standings rows: 14
 - Record book milestone rows: 1
-- Stats records written/updated: 72
+- Stats records written/updated: 69
 - Stats aggregate rows written/updated: 15
 - Current highest single-week score: 198.4 by w hardy in 2020 week 16
 - 325 excluded as single-week record: PASS
@@ -102,3 +102,23 @@
 - Stats weekly rows: 2856
 - Stats season rows: 176
 - Stats integrity failures: 0
+
+## T9 Vertical Slice
+
+- League row: NHS Alumni Annual (fe9369ac-d3bf-4d4c-8bc4-6e04a637efa5)
+- Baseline pushed seasons: 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026
+- 2012 edit target: week 8, 179 -> 249
+- Before push highest weekly score: 198.4 (2020 week 16)
+- Saved-not-pushed highest weekly score: 198.4
+- After 2012 push highest weekly score: 249 (2012 week 8)
+- Display sample: The Truman Show (truman1109)
+- Data-defined era options on pushed snapshot: 0
+
+## T9 Checks
+
+- PASS - nothing pushed shows empty record-book data
+- PASS - baseline push composed every imported season
+- PASS - saved 2012 score edit stayed invisible before push
+- PASS - pushed 2012 score edit became the record-book high score
+- PASS - pushing 2012 preserved every other pushed season
+- PASS - display rule collapsed to latest team name plus real name

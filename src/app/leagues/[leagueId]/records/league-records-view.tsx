@@ -329,10 +329,10 @@ function CompactList({
     <div className="cell p-4">
       <h3 className="font-display text-sm font-medium">{title}</h3>
       <ol className="mt-3 grid gap-2">
-        {items.slice(0, 5).map((item) => (
+        {items.slice(0, 5).map((item, index) => (
           <li
             className="flex items-start justify-between gap-3"
-            key={item.label}
+            key={`${item.label}-${item.context}-${item.value}-${index}`}
           >
             <div>
               <p className="text-sm font-medium">{item.label}</p>
@@ -778,10 +778,13 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
       ) : null}
 
       {!data.catalog.integrityBlocked && !hasTrustedRecordData(data) ? (
-        <EmptyState className="p-5" title="No records calculated yet">
+        <EmptyState
+          className="p-5"
+          title={"No pushed data yet \u2014 push from the Data Book"}
+        >
           <p>
-            Historical import and stats recompute will populate this page with
-            the league's all-time marks.
+            Saved checkpoints remain draft-only until a steward pushes a
+            canonical snapshot.
           </p>
         </EmptyState>
       ) : null}
