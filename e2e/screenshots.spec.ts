@@ -5,6 +5,11 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
+import { eq, sql } from "drizzle-orm";
+import { parseEnv } from "../src/core/env/schema";
+import { createDb } from "../src/db/client";
+import { leagues, users } from "../src/db/schema";
+import { FIXTURE_ESPN_PROVIDER_LEAGUE_ID } from "../src/onboarding/fixture-espn";
 
 const runMarker = `shots-${randomUUID()}`;
 const OUT = "docs/screenshots";
@@ -43,6 +48,20 @@ async function signUpAndIn(page: Page, testInfo: TestInfo) {
     headers,
   });
 }
+
+test.afterAll(async () => {
+  const handle = createDb(parseEnv(process.env).databaseUrl);
+  try {
+    await handle.db
+      .delete(leagues)
+      .where(eq(leagues.providerLeagueId, FIXTURE_ESPN_PROVIDER_LEAGUE_ID));
+    await handle.db
+      .delete(users)
+      .where(sql`${users.email} = ${`${runMarker}@example.com`}`);
+  } finally {
+    await handle.pool.end();
+  }
+});
 
 async function shoot(page: Page, vp: string, name: string, route: string) {
   if (!shouldShoot(name)) {

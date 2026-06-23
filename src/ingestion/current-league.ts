@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { logger } from "@/core/logging";
 import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -15,6 +15,7 @@ import {
   leagueSeasonSettings,
   leagues,
   providerFinalStandings,
+  teamSeasons,
 } from "@/db/schema";
 import type {
   DataCoverageStatus,
@@ -95,6 +96,10 @@ export interface PersistNormalizedLeagueRowsInput {
   leagueProviderId?: string;
   matchups: readonly NormalizedMatchup[];
   members: readonly NormalizedMember[];
+  reconcileSeasons?: {
+    members?: readonly number[];
+    teams?: readonly number[];
+  };
   rosters?: readonly NormalizedRoster[];
   teams: readonly NormalizedTeam[];
   transactions?: readonly NormalizedTransaction[];
@@ -1275,6 +1280,181 @@ async function upsertMembers(
   return stats(rows.length, changed.length);
 }
 
+function seasonsForFreshRows<T extends { season: number }>(
+  rows: readonly T[],
+  explicit?: readonly number[],
+): number[] {
+  return [...new Set([...(explicit ?? []), ...rows.map((row) => row.season)])]
+    .filter((season) => Number.isInteger(season) && season > 0)
+    .sort((left, right) => left - right);
+}
+
+function idsForSeason<T extends { season: number }>(
+  rows: readonly T[],
+  season: number,
+  idFor: (row: T) => string,
+): string[] {
+  return sortedUnique(
+    rows.filter((row) => row.season === season).map((row) => idFor(row)),
+  );
+}
+
+async function reconcileImportedMembers({
+  leagueId,
+  leagueProviderId,
+  members,
+  seasons,
+  tx,
+}: {
+  leagueId: string;
+  leagueProviderId: string;
+  members: readonly NormalizedMember[];
+  seasons: readonly number[];
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  for (const season of seasons) {
+    const provider = members.find(
+      (member) => member.season === season,
+    )?.provider;
+    if (!provider) {
+      continue;
+    }
+    const providerMemberIds = idsForSeason(
+      members,
+      season,
+      (member) => member.providerId,
+    );
+    if (providerMemberIds.length === 0) {
+      await tx
+        .delete(fantasyMembers)
+        .where(
+          and(
+            eq(fantasyMembers.leagueId, leagueId),
+            eq(fantasyMembers.provider, provider),
+            eq(fantasyMembers.leagueProviderId, leagueProviderId),
+            eq(fantasyMembers.season, season),
+          ),
+        );
+      continue;
+    }
+
+    await tx
+      .delete(fantasyMembers)
+      .where(
+        and(
+          eq(fantasyMembers.leagueId, leagueId),
+          eq(fantasyMembers.provider, provider),
+          eq(fantasyMembers.leagueProviderId, leagueProviderId),
+          eq(fantasyMembers.season, season),
+          notInArray(fantasyMembers.providerMemberId, providerMemberIds),
+        ),
+      );
+  }
+}
+
+async function reconcileImportedTeams({
+  leagueId,
+  leagueProviderId,
+  teams,
+  seasons,
+  tx,
+}: {
+  leagueId: string;
+  leagueProviderId: string;
+  seasons: readonly number[];
+  teams: readonly NormalizedTeam[];
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  for (const season of seasons) {
+    const provider = teams.find((team) => team.season === season)?.provider;
+    if (!provider) {
+      continue;
+    }
+    const providerTeamIds = idsForSeason(
+      teams,
+      season,
+      (team) => team.providerId,
+    );
+    if (providerTeamIds.length === 0) {
+      await tx
+        .delete(fantasyTeams)
+        .where(
+          and(
+            eq(fantasyTeams.leagueId, leagueId),
+            eq(fantasyTeams.provider, provider),
+            eq(fantasyTeams.leagueProviderId, leagueProviderId),
+            eq(fantasyTeams.season, season),
+          ),
+        );
+      await tx
+        .delete(teamSeasons)
+        .where(
+          and(
+            eq(teamSeasons.leagueId, leagueId),
+            eq(teamSeasons.provider, provider),
+            eq(teamSeasons.leagueProviderId, leagueProviderId),
+            eq(teamSeasons.season, season),
+          ),
+        );
+      continue;
+    }
+
+    await tx
+      .delete(fantasyTeams)
+      .where(
+        and(
+          eq(fantasyTeams.leagueId, leagueId),
+          eq(fantasyTeams.provider, provider),
+          eq(fantasyTeams.leagueProviderId, leagueProviderId),
+          eq(fantasyTeams.season, season),
+          notInArray(fantasyTeams.providerTeamId, providerTeamIds),
+        ),
+      );
+    await tx
+      .delete(teamSeasons)
+      .where(
+        and(
+          eq(teamSeasons.leagueId, leagueId),
+          eq(teamSeasons.provider, provider),
+          eq(teamSeasons.leagueProviderId, leagueProviderId),
+          eq(teamSeasons.season, season),
+          notInArray(teamSeasons.providerTeamId, providerTeamIds),
+        ),
+      );
+  }
+}
+
+async function reconcileImportedProviderTruth({
+  leagueId,
+  leagueProviderId,
+  members,
+  reconcileSeasons,
+  teams,
+  tx,
+}: {
+  leagueId: string;
+  leagueProviderId: string;
+  members: readonly NormalizedMember[];
+  reconcileSeasons?: PersistNormalizedLeagueRowsInput["reconcileSeasons"];
+  teams: readonly NormalizedTeam[];
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  await reconcileImportedMembers({
+    leagueId,
+    leagueProviderId,
+    members,
+    seasons: seasonsForFreshRows(members, reconcileSeasons?.members),
+    tx,
+  });
+  await reconcileImportedTeams({
+    leagueId,
+    leagueProviderId,
+    seasons: seasonsForFreshRows(teams, reconcileSeasons?.teams),
+    teams,
+    tx,
+  });
+}
+
 async function upsertMatchups(
   tx: LeagueScopedTx,
   leagueId: string,
@@ -1675,6 +1855,7 @@ export async function persistNormalizedLeagueRows({
   leagueProviderId,
   matchups,
   members,
+  reconcileSeasons,
   rosters = [],
   teams,
   transactions = [],
@@ -1697,6 +1878,14 @@ export async function persistNormalizedLeagueRows({
     );
     const teamStats = await upsertTeams(tx, leagueId, teams);
     const memberStats = await upsertMembers(tx, leagueId, members);
+    await reconcileImportedProviderTruth({
+      leagueId,
+      leagueProviderId: resolvedLeagueProviderId,
+      members,
+      reconcileSeasons,
+      teams,
+      tx,
+    });
     const leagueSeasonSettingsStats = await upsertLeagueSeasonSettings(
       tx,
       leagueId,
@@ -2079,6 +2268,14 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     leagueProviderId: leagueValue?.providerId ?? ref.providerId,
     matchups: matchups.value,
     members: members.value,
+    reconcileSeasons: {
+      ...(shouldFetchMembers
+        ? { members: [leagueValue?.season ?? ref.season] }
+        : {}),
+      ...(shouldFetchTeams
+        ? { teams: [leagueValue?.season ?? ref.season] }
+        : {}),
+    },
     rosters,
     teams: teams.value,
     transactions,

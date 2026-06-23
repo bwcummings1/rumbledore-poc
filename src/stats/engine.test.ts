@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -49,6 +49,7 @@ import {
   mergePersons,
   recomputeChangedMatchupStatistics,
   recomputeLeagueStatistics,
+  resolveLeagueIdentities,
   runDataIntegrityChecks,
   splitPerson,
 } from "./engine";
@@ -61,6 +62,7 @@ import {
 } from "./steward";
 
 const marker = `statstest-${randomUUID()}`;
+const numericIntegrityProviderLeagueIds = new Set<string>();
 const VENDORED_OLD_LEAGUE_FIXTURE_ROOT = join(
   process.cwd(),
   "src/stats/__fixtures__/old-league",
@@ -361,6 +363,126 @@ async function seedStatsLeague(tag: string): Promise<SeededStatsLeague> {
       });
     }
   });
+
+  return { leagueId: league.id, providerLeagueId };
+}
+
+function espnGuid(index: number): string {
+  return `{00000000-0000-4000-8000-${String(index).padStart(12, "0")}}`;
+}
+
+function numericProviderLeagueId(): string {
+  const value = Number.parseInt(
+    randomUUID().replaceAll("-", "").slice(0, 8),
+    16,
+  );
+  return String(100_000 + (value % 900_000));
+}
+
+async function seedProviderIdentityIntegrityLeague({
+  contaminated,
+  tag,
+}: {
+  contaminated: boolean;
+  tag: string;
+}): Promise<SeededStatsLeague> {
+  const providerLeagueId = numericProviderLeagueId();
+  numericIntegrityProviderLeagueIds.add(providerLeagueId);
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      currentScoringPeriod: 1,
+      name: `${marker} ${tag}`,
+      provider: "espn",
+      providerLeagueId,
+      scoringType: "H2H_POINTS",
+      season: 2026,
+      size: 2,
+      sport: "ffl",
+      status: "complete",
+    })
+    .returning();
+  if (!league) {
+    throw new Error("provider identity integrity league was not created");
+  }
+
+  const memberOne = contaminated ? "member-01" : espnGuid(1);
+  const memberTwo = espnGuid(2);
+  const managerOne = contaminated ? "Fixture Manager 01" : "Clean Manager One";
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    await tx.insert(fantasyMembers).values([
+      {
+        contentHash: `${marker}-${tag}-member-1`,
+        displayName: managerOne,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMemberId: memberOne,
+        role: "member",
+        season: 2026,
+      },
+      {
+        contentHash: `${marker}-${tag}-member-2`,
+        displayName: "Clean Manager Two",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        provider: "espn",
+        providerMemberId: memberTwo,
+        role: "member",
+        season: 2026,
+      },
+    ]);
+    await tx.insert(fantasyTeams).values([
+      {
+        abbrev: "C1",
+        contentHash: `${marker}-${tag}-team-1`,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        losses: 0,
+        name: "Clean Team One",
+        ownerMemberIds: [memberOne],
+        pointsAgainst: 90,
+        pointsFor: 100,
+        provider: "espn",
+        providerTeamId: "1",
+        season: 2026,
+        ties: 0,
+        wins: 1,
+      },
+      {
+        abbrev: "C2",
+        contentHash: `${marker}-${tag}-team-2`,
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        losses: 1,
+        name: "Clean Team Two",
+        ownerMemberIds: [memberTwo],
+        pointsAgainst: 100,
+        pointsFor: 90,
+        provider: "espn",
+        providerTeamId: "2",
+        season: 2026,
+        ties: 0,
+        wins: 0,
+      },
+    ]);
+    await tx.insert(fantasyMatchups).values({
+      awayScore: 90,
+      awayTeamProviderId: "2",
+      contentHash: `${marker}-${tag}-matchup-1`,
+      homeScore: 100,
+      homeTeamProviderId: "1",
+      leagueId: league.id,
+      leagueProviderId: providerLeagueId,
+      provider: "espn",
+      providerMatchupId: "1",
+      scoringPeriod: 1,
+      season: 2026,
+      status: "final",
+      winner: "home",
+    });
+  });
+  await resolveLeagueIdentities(handle.db, { leagueId: league.id });
 
   return { leagueId: league.id, providerLeagueId };
 }
@@ -1170,6 +1292,15 @@ afterAll(async () => {
   await handle.db
     .delete(leagues)
     .where(sql`${leagues.providerLeagueId} like ${`${marker}-%`}`);
+  if (numericIntegrityProviderLeagueIds.size > 0) {
+    await handle.db
+      .delete(leagues)
+      .where(
+        inArray(leagues.providerLeagueId, [
+          ...numericIntegrityProviderLeagueIds,
+        ]),
+      );
+  }
   await handle.pool.end();
 });
 
@@ -1598,6 +1729,16 @@ describe("recomputeLeagueStatistics", () => {
         .update(persons)
         .set({ canonicalName: "Fixture Manager 01", updatedAt: new Date() })
         .where(eq(persons.id, alex2024.personId));
+      await tx.insert(leagueDataEdits).values({
+        afterValue: "Fixture Manager 01",
+        beforeValue: "Alex Manager",
+        editClass: "substantive",
+        field: "canonical_name",
+        leagueId,
+        reason: "screenshot fixture contamination should not stay sticky",
+        targetId: alex2024.personId,
+        targetKind: "person",
+      });
       await tx
         .update(fantasyMembers)
         .set({
@@ -3270,6 +3411,66 @@ describe("recomputeLeagueStatistics", () => {
     const catalog = await getLeagueRecordsCatalog(handle.db, { leagueId });
     expect(catalog.integrityBlocked).toBe(true);
     expect(catalog.championships.seasons).toEqual([]);
+  });
+
+  it("flags provider identity contamination in real ESPN namespaces", async () => {
+    const contaminated = await seedProviderIdentityIntegrityLeague({
+      contaminated: true,
+      tag: "provider-contaminated",
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, {
+      leagueId: contaminated.leagueId,
+    });
+    expect(integrity.failures).toBeGreaterThanOrEqual(1);
+
+    const rows = await selectStatsRows(contaminated.leagueId);
+    const providerFailure = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "provider_identity_contamination" &&
+        row.status === "fail",
+    );
+    expect(providerFailure?.detail).toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          providerMemberId: "member-01",
+          reason: "invalid_provider_member_id",
+          rule: "braced_guid",
+        }),
+        expect.objectContaining({
+          reason: "placeholder_canonical_name",
+        }),
+      ]),
+      provider: "espn",
+      providerLeagueId: contaminated.providerLeagueId,
+      rule: "braced_guid",
+    });
+  });
+
+  it("passes provider identity contamination checks for clean real ESPN member ids", async () => {
+    const clean = await seedProviderIdentityIntegrityLeague({
+      contaminated: false,
+      tag: "provider-clean",
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, {
+      leagueId: clean.leagueId,
+    });
+    expect(integrity.failures).toBe(0);
+
+    const rows = await selectStatsRows(clean.leagueId);
+    const providerCheck = rows.integrityRows.find(
+      (row) => row.checkKey === "provider_identity_contamination",
+    );
+    expect(providerCheck).toMatchObject({
+      status: "pass",
+      detail: expect.objectContaining({
+        issues: [],
+        provider: "espn",
+        providerLeagueId: clean.providerLeagueId,
+        rule: "braced_guid",
+      }),
+    });
   });
 
   it("persists division winners and keeps median rows out of H2H records", async () => {

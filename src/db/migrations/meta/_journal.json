@@ -400,6 +400,13 @@
       "when": 1781559200000,
       "tag": "0056_general_stats_substrate",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1781562800000,
+      "tag": "0057_provider_identity_contamination",
+      "breakpoints": true
     }
   ]
 }

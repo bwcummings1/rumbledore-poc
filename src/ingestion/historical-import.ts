@@ -21,6 +21,7 @@ import {
   REALTIME_EVENTS,
   type RealtimePublisher,
 } from "@/realtime";
+import { resolveLeagueIdentities } from "@/stats";
 import {
   type DataCoverageObservationMap,
   type EntitySyncStats,
@@ -631,6 +632,10 @@ async function persistBundle({
     leagueProviderId: bundle.league.providerId,
     matchups: bundle.matchups,
     members: bundle.members,
+    reconcileSeasons: {
+      members: [bundle.league.season],
+      teams: [bundle.league.season],
+    },
     teams: bundle.teams,
     transactions: bundle.transactions,
   });
@@ -869,6 +874,10 @@ export async function importLeagueHistory<
       requestedSeasons: seasons,
       skippedSeasons: skipped,
     });
+  }
+
+  if (imported.length > 0) {
+    await resolveLeagueIdentities(db, { leagueId: league.id });
   }
 
   return ok({
