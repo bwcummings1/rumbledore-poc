@@ -327,10 +327,23 @@ test("Data Book renders the People grain for the selected season", () => {
   expect(
     screen.getByRole("heading", {
       level: 1,
-      name: "NHS Alumni Annual Data Book",
+      name: "NHS Alumni Annual League Data",
     }),
   ).toBeDefined();
-  expect(screen.getByText("DATA BOOK")).toBeDefined();
+  expect(screen.getByText("LEAGUE DATA")).toBeDefined();
+  const mastheadNav = screen.getByRole("navigation", {
+    name: "League Data sections navigation",
+  });
+  expect(
+    within(mastheadNav)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent),
+  ).toEqual(["Data Book", "Edit Ledger"]);
+  expect(
+    within(mastheadNav)
+      .getByRole("tab", { name: "Data Book" })
+      .getAttribute("aria-current"),
+  ).toBe("page");
   const table = screen.getByRole("table", {
     name: "2026 Data Book people",
   });
@@ -340,10 +353,10 @@ test("Data Book renders the People grain for the selected season", () => {
   expect(within(table).getByText("Bailey Manager")).toBeDefined();
 });
 
-test("Data Book switches grains with the masthead tabs", () => {
+test("Data Book switches grains with the secondary selector", () => {
   render(<DataBookView data={data} />);
 
-  fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
 
   const settingsTable = screen.getByRole("table", {
     name: "2026 Data Book settings",
@@ -354,7 +367,7 @@ test("Data Book switches grains with the masthead tabs", () => {
     screen.queryByRole("table", { name: "2026 Data Book people" }),
   ).toBeNull();
 
-  fireEvent.click(screen.getByRole("tab", { name: "Weeks" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Weeks" }));
 
   const weeksTable = screen.getByRole("table", {
     name: "2026 Data Book weeks",
@@ -377,7 +390,7 @@ test("Data Book year dropdown changes the displayed season", () => {
   expect(within(peopleTable).getByText("Alpha Throwback")).toBeDefined();
   expect(screen.queryByText("Alpha Current")).toBeNull();
 
-  fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
   expect(
     within(
       screen.getByRole("table", { name: "2025 Data Book settings" }),
@@ -413,7 +426,7 @@ test("Data Book degrades to plain empty tables for a clean league", () => {
     ).length,
   ).toBeGreaterThan(0);
 
-  fireEvent.click(screen.getByRole("tab", { name: "Weeks" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Weeks" }));
 
   expect(
     screen.getAllByText(
@@ -426,13 +439,39 @@ test("Data Book exposes labelled navigation and 44px controls", () => {
   render(<DataBookView data={data} />);
 
   expect(
-    screen.getByRole("navigation", { name: "Data Book grains navigation" }),
+    screen.getByRole("navigation", {
+      name: "League Data sections navigation",
+    }),
+  ).toBeDefined();
+  const mastheadNav = screen.getByRole("navigation", {
+    name: "League Data sections navigation",
+  });
+  expect(
+    within(mastheadNav)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent),
+  ).toEqual(["Data Book", "Edit Ledger"]);
+  expect(
+    within(mastheadNav)
+      .getByRole("tab", { name: "Edit Ledger" })
+      .getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/ledger");
+
+  const grainSelector = document.querySelector(
+    '[data-slot="data-book-grain-selector"]',
+  ) as HTMLElement | null;
+  expect(grainSelector).toBeDefined();
+  expect(
+    screen.getByRole("radiogroup", { name: "Data Book grain" }),
   ).toBeDefined();
   const yearSelect = screen.getByLabelText("Data Book season");
   expect(yearSelect.className).toContain("min-h-11");
 
-  for (const tab of screen.getAllByRole("tab")) {
+  for (const tab of within(mastheadNav).getAllByRole("tab")) {
     expect(tab.className).toContain("min-h-11");
+  }
+  for (const option of screen.getAllByRole("radio")) {
+    expect(option.className).toContain("min-h-11");
   }
 });
 

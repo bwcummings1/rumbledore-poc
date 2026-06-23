@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { type Page, type TestInfo, test } from "@playwright/test";
+import { expect, type Page, type TestInfo, test } from "@playwright/test";
 
 const runMarker = `shots-${randomUUID()}`;
 const OUT = "docs/screenshots";
@@ -314,8 +314,9 @@ async function shootDataBookPushConfirm(
   }
   await page.waitForTimeout(900);
   await page.getByRole("button", { exact: true, name: "Save" }).click();
-  await page.getByText("Checkpoint saved").waitFor({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Publish 2026" }).click();
+  const publishButton = page.getByRole("button", { name: "Publish 2026" });
+  await expect(publishButton).toBeEnabled({ timeout: 15_000 });
+  await publishButton.click();
   await page
     .getByRole("dialog", { name: "Push saved season" })
     .waitFor({ timeout: 15_000 });

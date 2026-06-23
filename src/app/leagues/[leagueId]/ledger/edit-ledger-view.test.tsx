@@ -48,19 +48,19 @@ test("Edit Ledger view uses the masthead destination tabs and renders activity",
   expect(
     screen.getByRole("heading", {
       level: 1,
-      name: "NHS Alumni Annual Edit Ledger",
+      name: "NHS Alumni Annual League Data",
     }),
   ).toBeDefined();
-  expect(screen.getByText("EDIT LEDGER")).toBeDefined();
+  expect(screen.getByText("LEAGUE DATA")).toBeDefined();
 
   const nav = screen.getByRole("navigation", {
-    name: "Data layer destinations navigation",
+    name: "League Data sections navigation",
   });
   expect(
     within(nav)
       .getAllByRole("tab")
       .map((tab) => tab.textContent),
-  ).toEqual(["Data Book", "Edit Ledger", "Records"]);
+  ).toEqual(["Data Book", "Edit Ledger"]);
   expect(
     within(nav)
       .getByRole("tab", { name: "Edit Ledger" })

@@ -81,8 +81,7 @@ describe("navigation scope taxonomy", () => {
       "Home",
       "The Press",
       "Bet",
-      "Data Book",
-      "Edit Ledger",
+      "League Data",
       "Records",
       "Lore",
       "Members",
@@ -94,11 +93,13 @@ describe("navigation scope taxonomy", () => {
       "/leagues/league-1/press",
       "/leagues/league-1/bet",
       "/leagues/league-1/data",
-      "/leagues/league-1/ledger",
       "/leagues/league-1/records",
       "/leagues/league-1/lore",
       "/leagues/league-1/members",
     ]);
+    expect(
+      LEAGUE_NAVIGATION_SECTIONS.map((section) => section.label),
+    ).not.toContain("Edit Ledger");
 
     expectNoProviderSections(LEAGUE_NAVIGATION_SECTIONS);
   });

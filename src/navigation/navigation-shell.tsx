@@ -959,8 +959,7 @@ function NavigationItem({
   readonly compact: boolean;
   readonly item: NavigationShellItem;
 }) {
-  const isActive =
-    activeState.scope === item.scope && activeState.sectionId === item.id;
+  const isActive = isNavigationItemActive(activeState, item);
   const Icon = NAVIGATION_ICON_COMPONENTS[item.icon];
   const href =
     activeState.scope === "league" && item.scope === "global"
@@ -994,6 +993,27 @@ function NavigationItem({
       </span>
     </Link>
   );
+}
+
+function isNavigationItemActive(
+  activeState: ActiveNavigationState,
+  item: NavigationShellItem,
+): boolean {
+  if (activeState.scope !== item.scope) {
+    return false;
+  }
+
+  if (activeState.scope === "league" && item.scope === "league") {
+    return leagueShellSectionId(activeState.sectionId) === item.id;
+  }
+
+  return activeState.sectionId === item.id;
+}
+
+function leagueShellSectionId(
+  sectionId: Extract<ActiveNavigationState, { scope: "league" }>["sectionId"],
+) {
+  return sectionId === "ledger" ? "data" : sectionId;
 }
 
 function ShellBreadcrumbs({
@@ -2946,8 +2966,11 @@ function buildBreadcrumbItems(
 
   const leagueLabel = activeLeague?.name ?? "League";
   const leagueHref = getLeagueSectionHref(activeState.leagueId, "home");
+  const activeLeagueShellSectionId = leagueShellSectionId(
+    activeState.sectionId,
+  );
   const section = LEAGUE_NAVIGATION_SECTIONS.find(
-    (candidate) => candidate.id === activeState.sectionId,
+    (candidate) => candidate.id === activeLeagueShellSectionId,
   );
 
   if (!section || section.id === "home") {
