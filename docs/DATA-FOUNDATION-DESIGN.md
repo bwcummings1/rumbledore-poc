@@ -81,8 +81,11 @@ Three grains, matching the **dimension-vs-fact** distinction:
    fields per season. This is where the user **confirms the auto-proposed era boundaries, the 2-week-playoff span,
    and the bye rule**.
 
-3. **Week-by-week / matchup facts** — the granular cells: each team's weekly score, opponent, result, span.
-   EXISTS: weekly stats, matchups, `scoring_period_span`. Editable per cell.
+3. **Week-by-week / matchup facts** — the granular cells: each team's weekly score, opponent, result, span, and now
+   the selected team-week roster. EXISTS: weekly stats, matchups, `scoring_period_span`, plus player-depth substrate A
+   tables (`fantasy_players`, player-linked `fantasy_roster_entries`, `fantasy_draft_picks`, and
+   `fantasy_transactions`). Roster rows carry player identity, lineup slot, starter/bench state, and actual/projected
+   points where the provider exposes weekly box-score points.
 
 ### 2.2 Editing model
 - **Editable cells** in a table that looks like the system (AUSPEX), not literally Excel — columns/rows you can scan
@@ -212,6 +215,7 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | **Change feed + red/green diff view** | **EXISTS** — `/leagues/[leagueId]/ledger` renders edits, saves, and pushes from the ledger |
 | **Era/span auto-proposal from settings** | **EXISTS** — settings-signature detector + Data Book Settings UI for confirm/adjust/dismiss |
 | **Record-book display rule** (one representation/person) | **EXISTS** — latest pushed team name + real name |
+| **League player-depth substrate (A)** | **EXISTS** — ESPN player identities, roster entries, lineup slots, draft picks, and transaction rows when exposed |
 | **General fantasy-stats substrate (B)** | **EXISTS** — central non-RLS NFL reference tables + mock ingest/integrity + read-only consumer/enrichment API (`src/general-stats`) |
 
 **T1 data-model note:** `league_season_settings` remains the per-season settings table and was extended rather than
@@ -270,6 +274,18 @@ such as `fixture-espn-95050`, never plausible real ids like `95050`, and must cl
 `data_integrity_check` now includes `provider_identity_contamination`: real ESPN namespaces require braced GUID member
 ids, known placeholder names fail, mixed real+invalid provider identities fail, and the integrity runner replaces stale
 unreviewed pass/fail rows on rerun so a clean import can clear an older failure.
+
+**T14 player-depth note:** substrate A now stores player-level league facts without depending on substrate B. ESPN
+current/history imports request `mBoxscore`/`mMatchupScore`, `mScoreboard`, `mRoster`, `kona_player_info`,
+`mDraftDetail`, and `mTransactions2`. `fantasy_players` is the league-scoped provider-player identity table and may
+optionally point at `nfl_players` when B has a mapping; missing B mappings never block import. `fantasy_roster_entries`
+now links to `fantasy_players` and stores season/scoring-period/team/player, lineup slot, `started`, actual/projected
+points where ESPN exposes weekly box-score scoring, and keeper/metadata. `fantasy_draft_picks` stores round/pick/team
+and player identity. `fantasy_transactions` remains the provider activity table and now carries optional
+`scoring_period`; ESPN 95050 returned no real transaction rows through `mTransactions2`, but parser/persistence tests
+cover representative add/drop/trade payloads. T13-style reconciliation applies per fetched season to roster entries,
+draft picks, transactions, and orphan fantasy players. Integrity adds `roster_coverage` and `player_points_rollup`;
+rollup checks only complete single-period starter rows and records provider-incomplete rows as skipped detail.
 
 ---
 
