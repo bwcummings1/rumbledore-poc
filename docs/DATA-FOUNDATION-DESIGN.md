@@ -127,12 +127,13 @@ Three grains, matching the **dimension-vs-fact** distinction:
 ## 3. The Record Book (read-only projection)
 
 - **Reads the pushed snapshot only.** Pure projection — "scripts run on the stored, curated data, organized nicely."
-  STRUCTURAL CHANGE: re-point the records engine (EXISTS: `recomputeLeagueStatistics`) to compute from the **pushed
-  snapshot**, not live facts. *(This is the single most important boundary to get right.)*
+  EXISTS: the Record Book loader now computes from `composeCanonicalSnapshot(db, { leagueId })`, the composition of
+  every season's latest pushed version, not live draft/materialized facts. Saved checkpoints are invisible until a
+  steward pushes the relevant season.
 - **Receives** era/segment definitions from the Data layer; never defines them. The lens (segment × era pills,
-  EXISTS) stays — demoted to a pure **view** control over data-defined eras.
-- **Display rule (NEW):** collapses per-year variance to **one representation per person** — default **most-recent
-  team name + the person's real name** — so a serial-renamer shows as one entry, not ten.
+  EXISTS) stays — demoted to a pure **view** control over data-defined eras from the pushed snapshot.
+- **Display rule:** EXISTS — collapses per-year variance to **one representation per person**: **most-recent pushed
+  team name + the person's real name**, so a serial-renamer shows as one entry, not ten.
 - **Records catalog:** EXISTS in basic form. To expand into categories — **H2H / playoff / regular-season /
   achievements / "worst" records** — and slot the owner's recovered legacy catalog in when found.
 
@@ -195,16 +196,16 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | Edit ledger (`league_data_edits`) | **EXISTS** — reuse as the change-feed backbone |
 | Eras/groupings (`league_season_groupings`) | **EXISTS** — becomes "defined in Data layer" |
 | Integrity checks (`data_integrity_check`) | **EXISTS** — surface in the Data page as flags to resolve |
-| Records engine (`recomputeLeagueStatistics`) + catalog + lens | **EXISTS** — re-point to the pushed snapshot; lens → view-only |
+| Records engine (`recomputeLeagueStatistics`) + catalog + lens | **EXISTS** — Record Book computes from `composeCanonicalSnapshot`; lens → view-only |
 | Steward/commissioner role + `/curation/*` APIs | **EXISTS** — the permission model |
 | Per-matchup `scoring_period_span`, ESPN `matchup_period_count` | **EXISTS (partial)** — extend with settings-driven auto-detect |
 | Persist per-season `mSettings` | **EXISTS** — `league_season_settings` stores league size, schedule, roster slots, scoring, and acquisition fields |
 | **Data page** (the 3-grain editable tables) | **NEW** |
 | **Edit-scope** (this-year vs all-years) | **EXISTS (service/API)** — `applyCuratedDataEdit` smart-defaults real names to all-years and team names to this-year-only; UI prompt is T6/T8 |
-| **Save/Push state machine + pushed snapshot** | **EXISTS (service/API)** — append-only checkpoints + per-season pushes; record-book read switch remains T9 |
+| **Save/Push state machine + pushed snapshot** | **EXISTS (service/API + Record Book consumer)** — append-only checkpoints + per-season pushes; Records read only pushed composition |
 | **Change feed + red/green diff view** | **EXISTS** — `/leagues/[leagueId]/ledger` renders edits, saves, and pushes from the ledger |
 | **Era/span auto-proposal from settings** | **NEW** |
-| **Record-book display rule** (one representation/person) | **NEW** |
+| **Record-book display rule** (one representation/person) | **EXISTS** — latest pushed team name + real name |
 | **General fantasy-stats substrate (B)** | **NEW** |
 
 **T1 data-model note:** `league_season_settings` remains the per-season settings table and was extended rather than
@@ -228,7 +229,12 @@ and game-final content skip the no-opponent side by default. Playoff matchup spa
 **T4 curated-state note:** `league_curation_checkpoints` stores every save as a whole-league draft snapshot anchored
 by a `league_data_edits` marker. `league_curation_season_pushes` stores every push as an append-only per-season
 version anchored by a push marker. `composeCanonicalSnapshot(leagueId)` returns the composition of each season's
-latest pushed version; it is the future T9 record-book input and is not wired into current record reads yet.
+latest pushed version.
+
+**T9 record-book projection note:** the Record Book now reads `composeCanonicalSnapshot(db, { leagueId })` directly
+and derives records from the pushed weekly/team/person/settings/grouping snapshots. A league with no pushed seasons
+renders an explicit empty state instead of falling back to live facts. Pushing a single season replaces only that
+season's contribution in the composed Record Book input while preserving every other pushed season.
 
 ---
 

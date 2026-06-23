@@ -2313,11 +2313,17 @@ export function buildRecordsCatalog(input: {
   const losers = singlePeriodRows.filter((row) => row.result === "loss");
   const scoredRows = singlePeriodRows.filter((row) => row.pointsFor > 0);
 
+  const hasMaterializedAllTimeStandings =
+    input.allTimeStandingRows !== undefined &&
+    input.allTimeStandingRows.length > 0;
+  const hasMaterializedHeadToHeadRows =
+    input.headToHeadRows !== undefined && input.headToHeadRows.length > 0;
+
   return {
     allTimeStandings:
-      defaultLens && input.allTimeStandingRows
+      defaultLens && hasMaterializedAllTimeStandings
         ? materializedAllTimeStandings(
-            input.allTimeStandingRows,
+            input.allTimeStandingRows ?? [],
             input.personNames,
           )
         : buildAllTimeStandings(
@@ -2347,9 +2353,13 @@ export function buildRecordsCatalog(input: {
       seasonRows,
       weeklyRows,
     }),
-    headToHead: defaultLens
-      ? buildHeadToHeadCatalog(headToHeadRecordRows, input.personNames)
-      : buildHeadToHeadCatalogFromWeeklyRows(headToHeadRows, input.personNames),
+    headToHead:
+      defaultLens && hasMaterializedHeadToHeadRows
+        ? buildHeadToHeadCatalog(headToHeadRecordRows, input.personNames)
+        : buildHeadToHeadCatalogFromWeeklyRows(
+            headToHeadRows,
+            input.personNames,
+          ),
     highLow: {
       bestScoresInLosses: weeklyTop(
         losers,

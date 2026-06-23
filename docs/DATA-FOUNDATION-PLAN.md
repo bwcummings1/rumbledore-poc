@@ -187,6 +187,14 @@ A task is not "done" until all seven hold:
   projection); **display rule** = most-recent team name + real name (#1); lens demoted to a view over data-defined eras.
 - *Tests + screenshots* + **one-season vertical-slice verify**: edit→save→push 2012 → record book reflects exactly the
   pushed state; confirm it then scales to all 16. **(Orchestrator + owner review before Phase 3.)**
+- *T9 completion note (2026-06-23):* ✅ Completed on `ws/t9-record-repoint` by HazySpring. The Records loader now
+  computes from `composeCanonicalSnapshot(db, { leagueId })`, i.e. the union of each season's latest pushed version,
+  and no longer reads live/materialized draft facts for the Record Book projection. Saved checkpoints remain invisible
+  until pushed; nothing-pushed leagues render the explicit "No pushed data yet - push from the Data Book" empty state.
+  Person display collapses to one row per person using the latest pushed team name plus canonical real name, and the
+  segment/era lens reads confirmed groupings from the pushed snapshot as view-only controls. Real 95050 verification
+  proved the 2012 edit/save/push boundary across all 16 seasons and wrote `.orchestration/import-summary.md`;
+  screenshots are `docs/screenshots/{mobile,tablet,desktop}/10-records-t9-pushed.png`.
 
 ### Phase 3 — Expansion (after the pipeline is proven)
 **T10 — Era/span auto-proposal from settings** (confirm-in-Data UI). 
@@ -208,7 +216,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T6 editable cells + scope | CoralBridge | ✅ complete |
 | T7 Edit Ledger | RusticPrairie | ✅ complete |
 | T8 save/push state machine | CloudyGoose | ✅ complete |
-| T9 record-book re-point | — | ☐ |
+| T9 record-book re-point | HazySpring | ✅ complete |
 | T10 era auto-proposal | — | ☐ |
 | T11 records catalog | — | ☐ |
 | T12 general-stats substrate | — | ☐ |

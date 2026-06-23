@@ -1,13 +1,20 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **Data Foundation complete through T8 on `ws/t8-save-push`**:
-T8 extended the Data Book with steward-only save/restore/push controls, persisted per-season live/finalized mode,
+Keep it current. Last updated: 2026-06-23 — **Data Foundation Phase 2 complete through T9 on
+`ws/t9-record-repoint`**: the Record Book is now a read-only projection of the pushed canonical state. Records load
+`composeCanonicalSnapshot(db, { leagueId })`, the composition of each season's latest pushed version, and derive the
+catalog/page data from those pushed snapshots instead of live draft/materialized facts. Saved-but-unpushed edits are
+invisible to Records; a league with no pushed seasons shows "No pushed data yet — push from the Data Book." Person
+display collapses to one row per person using the latest pushed team name plus the person's canonical real name, and
+segment/era pills remain view-only over data-defined pushed groupings. Real 95050 verification proved
+data→edit→save→push→record on 2012 while preserving all 16 pushed seasons; screenshots captured
+`docs/screenshots/{mobile,tablet,desktop}/10-records-t9-pushed.png`. Prior T8 state: T8 extended the Data Book with steward-only save/restore/push controls, persisted per-season live/finalized mode,
 and explicit state indicators for unsaved draft edits, saved-but-unpushed checkpoints, and pushed canonical snapshots.
 `SAVE` calls `/curation/checkpoints` and remains a restorable draft checkpoint; `PUSH` calls `/curation/push` and
-promotes a saved checkpoint into the canonical per-season snapshot without re-pointing Records yet. Finalized seasons
-are curate-and-push and show locked-until-pushed language; live seasons stream provider updates and show an
-auto-finalize suggestion when provider data reports the season complete. Prior T7 state: T7 added the Edit Ledger / Change Log as its own league navigation destination at `/leagues/[leagueId]/ledger`.
+promotes a saved checkpoint into the canonical per-season snapshot. Finalized seasons are curate-and-push and show
+locked-until-pushed language; live seasons stream provider updates and show an auto-finalize suggestion when provider
+data reports the season complete. Prior T7 state: T7 added the Edit Ledger / Change Log as its own league navigation destination at `/leagues/[leagueId]/ledger`.
 It reads the existing `league_data_edits` timeline, including T4's checkpoint-save and season-push marker rows,
 joins actor display names when available, and renders newest-first notification-style entries. Each row expands
 with keyboard-accessible button semantics into a red/green diff using non-color `[-] Before` / `[+] After` labels,
@@ -171,16 +178,26 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   and toggle a season between live-stream and finalized curate-and-push mode. A new RLS-scoped
   `league_curation_season_states` table stores the explicit owner-finalized state. The Data Book masthead shows
   per-season and overall indicators for unsaved draft edits, saved-but-unpushed checkpoints, and pushed canonical
-  snapshots; push confirmation dialogs preserve the T4 per-season composition invariant. Records still read live
-  materialized stats until T9 re-points them to `composeCanonicalSnapshot`.
+  snapshots; push confirmation dialogs preserve the T4 per-season composition invariant.
+- **Data Foundation T9 delivered (2026-06-23):** the Record Book now reads pushed canonical state only via
+  `composeCanonicalSnapshot(db, { leagueId })` and derives records from pushed person/team/weekly/settings/grouping
+  snapshots. Saved checkpoints do not affect Records until pushed, and nothing-pushed leagues render the explicit
+  Data Book push empty state instead of falling back to live facts. The display rule is latest pushed team name plus
+  real name, one row per person; era/segment controls are view-only over confirmed groupings present in the pushed
+  data. Real 95050 verification reset/imported 16 seasons, pushed a baseline, edited a 2012 weekly score 179→249,
+  saved a checkpoint, confirmed Records still showed the prior 198.4 high score, pushed only 2012, then confirmed
+  Records showed 249 while preserving all pushed seasons. Artifact: `.orchestration/import-summary.md`.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Next:** T8 can wire save/push controls to the curation APIs, and T9 can re-point record-book reads to
-  `composeCanonicalSnapshot`.
+- **Next:** Phase 3 builds on the proven pushed projection: T10 proposes eras from settings into the Data layer, T11
+  expands the records catalog, and T12 adds the general fantasy-stats substrate B.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-23: Data Foundation T9 landed — Record Book reads `composeCanonicalSnapshot` pushed seasons only; saved
+  edits stay draft-only until push; nothing-pushed leagues get the Data Book push empty state; person display uses
+  latest pushed team name plus real name; the 2012 real-league vertical slice proved data→edit→save→push→record.
 - 2026-06-23: Data Foundation T7 landed — `/leagues/[leagueId]/ledger` is now a separate Edit Ledger destination
   with a shared expandable feed for data edits, checkpoint saves, and season pushes; rows show accessible
   `[-] Before` / `[+] After` red/green diffs and the steward public-ledger drawer reuses the same renderer.

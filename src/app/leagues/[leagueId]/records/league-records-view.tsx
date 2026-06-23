@@ -306,19 +306,42 @@ function RecordSection({
   return (
     <Section id={id} title={title}>
       <div className="grid gap-3 sm:grid-cols-2">
-        {records.map((record) => (
-          <RecordCard data={data} key={record.id} record={record} />
+        {records.map((record, index) => (
+          <RecordCard
+            data={data}
+            key={recordCardKey(record, index)}
+            record={record}
+          />
         ))}
       </div>
     </Section>
   );
 }
 
+function recordCardKey(record: CurrentRecordBookEntry, index: number): string {
+  return [
+    "record",
+    record.id,
+    record.recordType,
+    record.holderPersonId ?? "unknown",
+    record.opponentPersonId ?? "none",
+    record.season ?? "career",
+    record.scoringPeriod ?? "all",
+    record.value,
+    index,
+  ].join(":");
+}
+
 function CompactList({
   items,
   title,
 }: {
-  items: readonly { context: string; label: string; value: string }[];
+  items: readonly {
+    context: string;
+    id: string;
+    label: string;
+    value: string;
+  }[];
   title: string;
 }) {
   if (items.length === 0) {
@@ -329,10 +352,10 @@ function CompactList({
     <div className="cell p-4">
       <h3 className="font-display text-sm font-medium">{title}</h3>
       <ol className="mt-3 grid gap-2">
-        {items.slice(0, 5).map((item) => (
+        {items.slice(0, 5).map((item, index) => (
           <li
             className="flex items-start justify-between gap-3"
-            key={item.label}
+            key={`${item.id}-${index}`}
           >
             <div>
               <p className="text-sm font-medium">{item.label}</p>
@@ -356,6 +379,7 @@ function HighLowSection({ data }: { data: RecordsPageData }) {
         <CompactList
           items={highLow.highestScores.map((row) => ({
             context: `${row.season} - Week ${row.scoringPeriod}`,
+            id: `highest-week-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
             label: row.personName,
             value: formatNumber(row.value),
           }))}
@@ -364,6 +388,7 @@ function HighLowSection({ data }: { data: RecordsPageData }) {
         <CompactList
           items={highLow.lowestScores.map((row) => ({
             context: `${row.season} - Week ${row.scoringPeriod}`,
+            id: `lowest-week-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
             label: row.personName,
             value: formatNumber(row.value),
           }))}
@@ -372,6 +397,7 @@ function HighLowSection({ data }: { data: RecordsPageData }) {
         <CompactList
           items={highLow.highestCombinedMatchups.map((row) => ({
             context: `${row.personName} vs ${row.opponentName ?? "unknown"} - ${row.season}`,
+            id: `highest-combined-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
             label: "Highest combined",
             value: formatNumber(row.value),
           }))}
@@ -380,6 +406,7 @@ function HighLowSection({ data }: { data: RecordsPageData }) {
         <CompactList
           items={highLow.bestScoresInLosses.map((row) => ({
             context: `${row.season} - Week ${row.scoringPeriod}`,
+            id: `best-loss-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
             label: row.personName,
             value: formatNumber(row.value),
           }))}
@@ -388,6 +415,7 @@ function HighLowSection({ data }: { data: RecordsPageData }) {
         <CompactList
           items={highLow.worstScoresInWins.map((row) => ({
             context: `${row.season} - Week ${row.scoringPeriod}`,
+            id: `worst-win-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
             label: row.personName,
             value: formatNumber(row.value),
           }))}
@@ -406,6 +434,7 @@ function StreaksAndBlowouts({ data }: { data: RecordsPageData }) {
         <CompactList
           items={streaks.longestWins.map((row) => ({
             context: `${row.startSeason} W${row.startScoringPeriod} to ${row.endSeason} W${row.endScoringPeriod}`,
+            id: `win-streak-${row.personId}-${row.startSeason}-${row.startScoringPeriod}-${row.endSeason}-${row.endScoringPeriod}`,
             label: row.personName,
             value: `${row.length}`,
           }))}
@@ -414,6 +443,7 @@ function StreaksAndBlowouts({ data }: { data: RecordsPageData }) {
         <CompactList
           items={streaks.longestLosses.map((row) => ({
             context: `${row.startSeason} W${row.startScoringPeriod} to ${row.endSeason} W${row.endScoringPeriod}`,
+            id: `loss-streak-${row.personId}-${row.startSeason}-${row.startScoringPeriod}-${row.endSeason}-${row.endScoringPeriod}`,
             label: row.personName,
             value: `${row.length}`,
           }))}
@@ -436,6 +466,7 @@ function StreaksAndBlowouts({ data }: { data: RecordsPageData }) {
               season: row.season,
               value: row.margin,
             }),
+            id: `biggest-blowout-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
             label: row.personName,
             value: formatNumber(row.margin),
           }))}
@@ -444,6 +475,7 @@ function StreaksAndBlowouts({ data }: { data: RecordsPageData }) {
         <CompactList
           items={blowouts.narrowestWins.map((row) => ({
             context: `${row.season} - Week ${row.scoringPeriod}`,
+            id: `closest-win-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
             label: row.personName,
             value: formatNumber(row.margin),
           }))}
@@ -501,6 +533,7 @@ function Championships({ data }: { data: RecordsPageData }) {
         <CompactList
           items={championships.managerRecords.map((row) => ({
             context: `${row.runnerUps} runner-up - ${row.playoffAppearances} playoff trips`,
+            id: `title-count-${row.personId}`,
             label: row.personName,
             value: `${row.championships}`,
           }))}
@@ -532,10 +565,10 @@ function RivalryList({
     <div className="cell p-4">
       <h3 className="text-sm font-medium">{title}</h3>
       <ol className="mt-3 grid gap-2">
-        {pairs.slice(0, 4).map((pair) => (
+        {pairs.slice(0, 4).map((pair, index) => (
           <li
             className="grid gap-1"
-            key={`${pair.personA.personId}-${pair.personB.personId}`}
+            key={`${pair.personA.personId}-${pair.personB.personId}-${pair.season}-${index}`}
           >
             <Link
               className="text-sm font-medium underline-offset-4 hover:underline"
@@ -644,8 +677,11 @@ function KeeperMilestones({ data }: { data: RecordsPageData }) {
       title="Draft and keeper milestones"
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        {keeper.entries.slice(0, 6).map((entry) => (
-          <article className="cell p-4" key={entry.milestoneKey}>
+        {keeper.entries.slice(0, 6).map((entry, index) => (
+          <article
+            className="cell p-4"
+            key={`${entry.milestoneType}-${entry.milestoneKey}-${entry.personId ?? "league"}-${entry.season ?? "all"}-${index}`}
+          >
             <p className="text-xs uppercase text-muted-foreground">
               {entry.milestoneType.replaceAll("_", " ")}
             </p>
@@ -778,10 +814,13 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
       ) : null}
 
       {!data.catalog.integrityBlocked && !hasTrustedRecordData(data) ? (
-        <EmptyState className="p-5" title="No records calculated yet">
+        <EmptyState
+          className="p-5"
+          title={"No pushed data yet \u2014 push from the Data Book"}
+        >
           <p>
-            Historical import and stats recompute will populate this page with
-            the league's all-time marks.
+            Saved checkpoints remain draft-only until a steward pushes a
+            canonical snapshot.
           </p>
         </EmptyState>
       ) : null}

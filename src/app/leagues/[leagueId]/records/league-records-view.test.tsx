@@ -229,7 +229,9 @@ test("league records view renders an empty state", () => {
     />,
   );
 
-  expect(screen.getByText("No records calculated yet")).toBeDefined();
+  expect(
+    screen.getByText("No pushed data yet \u2014 push from the Data Book"),
+  ).toBeDefined();
 });
 
 test("league records view renders era lens controls when confirmed groupings exist", () => {
