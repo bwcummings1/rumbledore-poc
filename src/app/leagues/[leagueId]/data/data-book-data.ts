@@ -16,6 +16,11 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import {
+  listLeagueSeasonGroupings,
+  type PersistedSeasonGrouping,
+  proposeLeagueSeasonGroupings,
+} from "@/stats";
 
 type LeagueRow = Pick<
   typeof leagues.$inferSelect,
@@ -181,8 +186,19 @@ export interface DataBookCurationState {
   totalSeasons: number;
 }
 
+export interface DataBookEraProposal {
+  id: string;
+  kind: string;
+  name: string;
+  ordinal: number;
+  rationale: string;
+  seasons: number[];
+  status: PersistedSeasonGrouping["status"];
+}
+
 export interface DataBookPageData {
   curation: DataBookCurationState;
+  eraProposals: DataBookEraProposal[];
   league: DataBookLeagueSummary;
   seasons: DataBookSeason[];
 }
@@ -446,6 +462,18 @@ function toLeagueSummary(league: LeagueRow): DataBookLeagueSummary {
     season: league.season,
     size: league.size,
     status: league.status,
+  };
+}
+
+function toEraProposal(grouping: PersistedSeasonGrouping): DataBookEraProposal {
+  return {
+    id: grouping.id,
+    kind: grouping.kind,
+    name: grouping.name,
+    ordinal: grouping.ordinal,
+    rationale: grouping.rationale,
+    seasons: grouping.seasons,
+    status: grouping.status,
   };
 }
 
@@ -775,7 +803,7 @@ function buildSeasonData(input: {
 
 export async function getLeagueDataBookData(
   db: Db,
-  input: { leagueId: string },
+  input: { canManageEras?: boolean; leagueId: string },
 ): Promise<DataBookResult> {
   const [league] = await db
     .select({
@@ -974,6 +1002,9 @@ export async function getLeagueDataBookData(
       weeklyRows: scoped.weeklyRows,
     }),
   );
+  const groupings = input.canManageEras
+    ? await proposeLeagueSeasonGroupings(db, { leagueId: input.leagueId })
+    : await listLeagueSeasonGroupings(db, { leagueId: input.leagueId });
 
   return {
     data: {
@@ -985,6 +1016,10 @@ export async function getLeagueDataBookData(
         seasonStateRows: scoped.seasonStateRows,
         seasons,
       }),
+      eraProposals: groupings
+        .filter((grouping) => grouping.kind === "era")
+        .filter((grouping) => grouping.status !== "dismissed")
+        .map(toEraProposal),
       league: toLeagueSummary(league),
       seasons,
     },

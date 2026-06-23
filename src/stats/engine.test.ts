@@ -41,6 +41,7 @@ import { migrateSerialized } from "@/db/test-support";
 import {
   applyLeagueDataEdit,
   confirmLeagueSeasonGrouping,
+  dismissLeagueSeasonGrouping,
   listUnifiedDataLedger,
   proposeLeagueSeasonGroupings,
 } from "./curation";
@@ -807,7 +808,16 @@ async function seedOldLeagueGroupingOracle(
         contentHash: `${marker}-${tag}-settings-${season}`,
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
+        leagueSize: season < 2013 ? 10 : 12,
+        lineupSlotCounts:
+          season < 2020
+            ? { "0": 1, "2": 2, "4": 2, "6": 1, "7": 1 }
+            : { "0": 1, "2": 2, "4": 2, "6": 1, "23": 1 },
+        matchupPeriodCount: season < 2021 ? 13 : 14,
+        playoffMatchupPeriodLength: season < 2013 ? 2 : 1,
+        playoffTeamCount: season < 2020 ? 4 : 6,
         provider: "espn",
+        regularSeasonEndScoringPeriod: season < 2021 ? 13 : 14,
         scoringSettings: {
           format_type: "traditional",
           roster_format: rosterFormat,
@@ -1982,8 +1992,40 @@ describe("recomputeLeagueStatistics", () => {
   });
 
   it("proposes and confirms optional season groupings, then lenses records by the confirmed season set", async () => {
-    const { leagueId } = await seedStatsLeague("curation-groupings");
+    const { leagueId, providerLeagueId } =
+      await seedStatsLeague("curation-groupings");
     const actorUserId = await seedActor("curation-groupings-actor");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(leagueSeasonSettings).values([
+        {
+          contentHash: `${marker}-curation-groupings-settings-2024`,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          leagueSize: 4,
+          lineupSlotCounts: { "0": 1, "2": 2, "4": 2, "7": 1 },
+          matchupPeriodCount: 13,
+          playoffMatchupPeriodLength: 2,
+          playoffTeamCount: 4,
+          provider: "espn",
+          regularSeasonEndScoringPeriod: 13,
+          season: 2024,
+        },
+        {
+          contentHash: `${marker}-curation-groupings-settings-2025`,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          leagueSize: 4,
+          lineupSlotCounts: { "0": 1, "2": 2, "4": 2, "23": 1 },
+          matchupPeriodCount: 14,
+          playoffMatchupPeriodLength: 1,
+          playoffTeamCount: 4,
+          provider: "espn",
+          regularSeasonEndScoringPeriod: 14,
+          season: 2025,
+        },
+      ]);
+    });
 
     await recomputeLeagueStatistics(handle.db, { leagueId });
     const before = await selectStatsRows(leagueId);
@@ -2051,6 +2093,16 @@ describe("recomputeLeagueStatistics", () => {
         seasons: [2024, 2025],
       }),
     ).rejects.toThrow("overlaps confirmed era season(s): 2025");
+    const dismissed = await dismissLeagueSeasonGrouping(handle.db, {
+      actorUserId,
+      groupingId: firstEra.id,
+      leagueId,
+      reason: "not needed after steward review",
+    });
+    expect(dismissed).toMatchObject({
+      seasons: [2024],
+      status: "dismissed",
+    });
 
     const after = await selectStatsRows(leagueId);
     expect(after.groupingRows).toHaveLength(2);
@@ -2064,6 +2116,13 @@ describe("recomputeLeagueStatistics", () => {
       expect.objectContaining({
         field: "grouping_confirmation",
         targetId: secondEra.id,
+        targetKind: "grouping",
+      }),
+    );
+    expect(after.dataEditRows).toContainEqual(
+      expect.objectContaining({
+        field: "grouping_dismissal",
+        targetId: firstEra.id,
         targetKind: "grouping",
       }),
     );
@@ -2163,34 +2222,35 @@ describe("recomputeLeagueStatistics", () => {
         leagueId,
       });
       expect(proposals.map((proposal) => proposal.seasons)).toEqual([
-        [2011],
-        [2012],
+        [2011, 2012],
         [2013, 2014, 2015, 2016, 2017, 2018, 2019],
-        [2020, 2021, 2022, 2023],
+        [2020],
+        [2021, 2022, 2023],
       ]);
+      expect(proposals[0]?.name).toBe("2-week playoffs (2011-2012)");
       expect(proposals[1]?.derivedFrom).toMatchObject({
-        boundaryReasons: expect.arrayContaining(["member_set_change"]),
+        boundaryReasons: expect.arrayContaining([
+          "team_count_change",
+          "playoff_matchup_length_change",
+        ]),
       });
       expect(proposals[2]?.derivedFrom).toMatchObject({
         boundaryReasons: expect.arrayContaining([
-          "member_count_change",
-          "member_set_change",
+          "playoff_team_count_change",
+          "roster_lineup_slot_counts_change",
         ]),
       });
       expect(proposals[3]?.derivedFrom).toMatchObject({
-        boundaryReasons: expect.arrayContaining([
-          "member_set_change",
-          "roster_change",
-        ]),
+        boundaryReasons: ["regular_season_week_count_change"],
       });
 
-      const thirdProposal = proposals[2];
-      if (!thirdProposal) {
+      const secondProposal = proposals[1];
+      if (!secondProposal) {
         throw new Error("expected the 2013-2019 old-league era proposal");
       }
       const confirmed = await confirmLeagueSeasonGrouping(handle.db, {
         actorUserId,
-        groupingId: thirdProposal.id,
+        groupingId: secondProposal.id,
         leagueId,
         name: "Owner-picked composite era",
         reason: "old fixture oracle exercises arbitrary season sets",
@@ -2204,7 +2264,7 @@ describe("recomputeLeagueStatistics", () => {
 
       const ledger = await listUnifiedDataLedger(handle.db, {
         leagueId,
-        targetId: thirdProposal.id,
+        targetId: secondProposal.id,
         targetKind: "grouping",
       });
       expect(ledger[0]).toMatchObject({
@@ -2214,7 +2274,7 @@ describe("recomputeLeagueStatistics", () => {
         }),
         field: "grouping_confirmation",
         source: "league_data_edit",
-        targetId: thirdProposal.id,
+        targetId: secondProposal.id,
         targetKind: "grouping",
       });
     },

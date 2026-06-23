@@ -99,6 +99,18 @@ function curationState(
 
 const data: DataBookPageData = {
   curation: curationState(),
+  eraProposals: [
+    {
+      id: "00000000-0000-4000-8000-000000000010",
+      kind: "era",
+      name: "12-team era (2026-present)",
+      ordinal: 1,
+      rationale:
+        "Boundary starts at 2026: team count changed 10 -> 12. 2026 shares 12 teams, 1-week playoffs, 6 playoff teams, 14 regular-season weeks, FLEX lineup.",
+      seasons: [2026],
+      status: "proposed",
+    },
+  ],
   league: {
     id: leagueId,
     name: "NHS Alumni Annual",
@@ -376,6 +388,75 @@ test("Data Book switches grains with the secondary selector", () => {
   expect(within(weeksTable).getAllByText("BYE").length).toBeGreaterThan(0);
 });
 
+test("Settings grain confirms adjusted era proposals", async () => {
+  const fetchMock = mockEditResponse({
+    grouping: {
+      ...data.eraProposals[0],
+      name: "Owner era",
+      seasons: [2026],
+      status: "confirmed",
+    },
+  });
+  render(<DataBookView canEditData={true} data={data} />);
+
+  fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
+
+  expect(screen.getByRole("region", { name: "Era proposals" })).toBeDefined();
+  expect(screen.getByText("12-team era (2026-present)")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Adjust" }));
+  fireEvent.change(screen.getByLabelText("Era name"), {
+    target: { value: "Owner era" },
+  });
+  fireEvent.change(screen.getByLabelText("Seasons"), {
+    target: { value: "2026" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/curation/groupings",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(requestBody(fetchMock)).toMatchObject({
+    action: "confirm",
+    groupingId: "00000000-0000-4000-8000-000000000010",
+    name: "Owner era",
+    reason: "Confirmed era proposal from Data Book",
+    seasons: [2026],
+  });
+
+  await waitFor(() => expect(screen.getByText("confirmed")).toBeDefined());
+  expect(
+    screen.getByText(
+      "Owner era confirmed. Save and push the affected seasons before Records can use it.",
+    ),
+  ).toBeDefined();
+});
+
+test("Settings grain dismisses proposed eras", async () => {
+  const fetchMock = mockEditResponse({
+    grouping: {
+      ...data.eraProposals[0],
+      status: "dismissed",
+    },
+  });
+  render(<DataBookView canEditData={true} data={data} />);
+
+  fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(requestBody(fetchMock)).toMatchObject({
+    action: "dismiss",
+    groupingId: "00000000-0000-4000-8000-000000000010",
+    reason: "Dismissed era proposal from Data Book",
+  });
+  await waitFor(() => {
+    expect(screen.queryByText("12-team era (2026-present)")).toBeNull();
+  });
+  expect(screen.queryByRole("region", { name: "Era proposals" })).toBeNull();
+});
+
 test("Data Book year dropdown changes the displayed season", () => {
   render(<DataBookView data={data} />);
 
@@ -403,6 +484,7 @@ test("Data Book degrades to plain empty tables for a clean league", () => {
     <DataBookView
       data={{
         ...data,
+        eraProposals: [],
         seasons: [
           season({
             season: 2026,

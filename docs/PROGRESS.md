@@ -1,12 +1,20 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **UI-Polish-2 owner IA fixes on
-`ws/ui2-league-data-nav`**: the left-rail data IA is now two relevant destinations, **League Data** and **Records**.
-League Data points to `/leagues/[leagueId]/data` and is active for both `/data` and `/ledger`; the standalone
-left-rail Edit Ledger item is gone. Data Book and Edit Ledger now share the same League Data `PublicationMasthead`
-with bottom tabs `[Data Book | Edit Ledger]`, while the People/Settings/Weeks selector moved into Data Book content as
-a secondary segmented control. Refreshed full screenshot set:
+Keep it current. Last updated: 2026-06-23 — **Data Foundation T10 on
+`ws/t10-era-autopropose`**: the Data Book Settings grain now auto-surfaces era proposals derived from persisted
+`league_season_settings` signatures (league size, playoff length/count, regular-season weeks, and lineup slot counts).
+Stewards can Confirm, Adjust name/seasons, or Dismiss; dismissed proposals are durable, confirmed proposals remain
+data-layer draft definitions until save/push, and the existing Record Book lens picks them up only from the pushed
+snapshot. Real 95050 verification produced six proposals, confirmed `12-team era (2013-2014)`, pushed all 16 seasons,
+and wrote `.orchestration/import-summary.md`; screenshots captured
+`docs/screenshots/{mobile,tablet,desktop}/17-data-book-t10-era-proposals.png` and
+`10-records-t10-era-lens.png` with duplicate-key grep = `0`.
+Prior state: **UI-Polish-2 owner IA fixes on `ws/ui2-league-data-nav`**: the left-rail data IA is now two relevant
+destinations, **League Data** and **Records**. League Data points to `/leagues/[leagueId]/data` and is active for both
+`/data` and `/ledger`; the standalone left-rail Edit Ledger item is gone. Data Book and Edit Ledger now share the same
+League Data `PublicationMasthead` with bottom tabs `[Data Book | Edit Ledger]`, while the People/Settings/Weeks
+selector moved into Data Book content as a secondary segmented control. Refreshed full screenshot set:
 `docs/screenshots/{mobile,tablet,desktop}/`, including `17-data-book.png`, `18-edit-ledger.png`, and
 `18-edit-ledger-expanded.png`; `/tmp/ui2-screenshots.log` reports `grep -c 'same key'` = `0`.
 Prior state: **UI-Polish-1 owner review fixes on `ws/ui1-databook-ledger-polish`**: the Data Book masthead is compact
@@ -200,14 +208,25 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   data. Real 95050 verification reset/imported 16 seasons, pushed a baseline, edited a 2012 weekly score 179→249,
   saved a checkpoint, confirmed Records still showed the prior 198.4 high score, pushed only 2012, then confirmed
   Records showed 249 while preserving all pushed seasons. Artifact: `.orchestration/import-summary.md`.
+- **Data Foundation T10 delivered (2026-06-23):** era proposals now come from a pure settings-signature detector over
+  `league_season_settings` plus season structure: team-count boundaries, playoff matchup length, playoff team count,
+  regular-season week count, and normalized lineup slot changes (including OP-to-FLEX). Single-format leagues get zero
+  proposals, and regular/playoff segments are not proposed as eras. The Data Book Settings grain shows proposed and
+  confirmed eras with Confirm, Adjust, and Dismiss controls gated at `data_steward`; dismissed proposals persist via
+  `league_season_grouping_status='dismissed'`. Confirmed groupings still need save/push before Records receives them.
+  Real 95050 verification produced six proposals, confirmed `12-team era (2013-2014)`, pushed all 16 seasons, and
+  screenshot-verified the Data Book proposal UI plus Record Book lens pill.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Next:** Phase 3 builds on the proven pushed projection: T10 proposes eras from settings into the Data layer, T11
-  expands the records catalog, and T12 adds the general fantasy-stats substrate B.
+- **Next:** Phase 3 continues with T11 records catalog expansion, then T12 general fantasy-stats substrate B.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-23: Data Foundation T10 landed — settings-derived era proposals now surface in the Data Book Settings grain
+  with Confirm/Adjust/Dismiss, durable dismissal status, `data_steward`-gated grouping API actions, and pushed
+  confirmed groupings reflected by the existing Record Book era lens. Real 95050 verification and T10 screenshots
+  passed.
 - 2026-06-23: UI-Polish-2 owner IA fix landed — the league rail now exposes **League Data** as the single data
   destination plus **Records** as its own destination; `/data` and `/ledger` share a League Data masthead with
   `[Data Book | Edit Ledger]` tabs, and the Data Book People/Settings/Weeks grain selector is now a secondary

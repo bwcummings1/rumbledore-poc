@@ -198,6 +198,14 @@ A task is not "done" until all seven hold:
 
 ### Phase 3 — Expansion (after the pipeline is proven)
 **T10 — Era/span auto-proposal from settings** (confirm-in-Data UI). 
+- *T10 completion note (2026-06-23):* ✅ Completed on `ws/t10-era-autopropose` by CrimsonThrush. Added the
+  settings-signature era detector over `league_season_settings`/season structure, persisted proposed groupings with
+  human names/rationales, added durable `dismissed` grouping status, and moved confirm/adjust/dismiss into the Data
+  Book Settings grain under League Data. Confirm/dismiss are `data_steward` gated through
+  `/api/leagues/[leagueId]/curation/groupings`; confirmed groupings remain draft data until save/push, then appear in
+  the existing Record Book lens. Real 95050 verification wrote `.orchestration/import-summary.md` and screenshots are
+  `docs/screenshots/{mobile,tablet,desktop}/17-data-book-t10-era-proposals.png` plus
+  `10-records-t10-era-lens.png`.
 **T11 — Records catalog expansion** — categories (H2H / playoff / regular / achievements / **worst**); slot in the
 owner's recovered legacy catalog when available. 
 **T12 — General fantasy-stats substrate (B)** — league-agnostic NFL stats ingest (mock/$0), provenance + integrity,
@@ -217,7 +225,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T7 Edit Ledger | RusticPrairie | ✅ complete |
 | T8 save/push state machine | CloudyGoose | ✅ complete |
 | T9 record-book re-point | HazySpring | ✅ complete |
-| T10 era auto-proposal | — | ☐ |
+| T10 era auto-proposal | CrimsonThrush | ✅ complete |
 | T11 records catalog | — | ☐ |
 | T12 general-stats substrate | — | ☐ |
 

@@ -118,9 +118,10 @@ Three grains, matching the **dimension-vs-fact** distinction:
 ### 2.5 Eras / segments are DEFINED here
 - The Data layer is where you define timelines: era boundaries, regular-vs-playoff segmentation, multi-week spans,
   bye handling. EXISTS: `league_season_groupings`.
-- **Auto-proposed from settings, confirmed by you.** We can read era boundaries straight from `mSettings`
-  (team-count change, playoff length, roster OP→FLEX, reg-season week count) and *propose* them; you confirm/adjust
-  in the Data page. Smart, not presumptuous.
+- **Auto-proposed from settings, confirmed by you. EXISTS.** The detector reads persisted `league_season_settings`
+  signatures (team-count change, playoff length/count, roster OP→FLEX, regular-season week count) and proposes
+  contiguous era groupings in the Data Book Settings grain. A steward can confirm, adjust name/seasons before
+  confirming, or dismiss; confirmed groupings still need save/push before the Record Book lens receives them.
 
 ---
 
@@ -205,7 +206,7 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | **Edit-scope** (this-year vs all-years) | **EXISTS (service/API)** — `applyCuratedDataEdit` smart-defaults real names to all-years and team names to this-year-only; UI prompt is T6/T8 |
 | **Save/Push state machine + pushed snapshot** | **EXISTS (service/API + Record Book consumer)** — append-only checkpoints + per-season pushes; Records read only pushed composition |
 | **Change feed + red/green diff view** | **EXISTS** — `/leagues/[leagueId]/ledger` renders edits, saves, and pushes from the ledger |
-| **Era/span auto-proposal from settings** | **NEW** |
+| **Era/span auto-proposal from settings** | **EXISTS** — settings-signature detector + Data Book Settings UI for confirm/adjust/dismiss |
 | **Record-book display rule** (one representation/person) | **EXISTS** — latest pushed team name + real name |
 | **General fantasy-stats substrate (B)** | **NEW** |
 
@@ -236,6 +237,12 @@ latest pushed version.
 and derives records from the pushed weekly/team/person/settings/grouping snapshots. A league with no pushed seasons
 renders an explicit empty state instead of falling back to live facts. Pushing a single season replaces only that
 season's contribution in the composed Record Book input while preserving every other pushed season.
+
+**T10 era-proposal note:** `detectSeasonGroupingProposals` now proposes eras only from settings/structure signatures:
+league size, playoff matchup length, playoff team count, regular-season week count, and normalized lineup slot counts.
+It does not propose regular/playoff segments as eras. `league_season_grouping_status` now includes `dismissed`, and
+the Data Book Settings grain surfaces proposed/confirmed eras with Confirm, Adjust, and Dismiss controls gated at
+`data_steward`.
 
 ---
 

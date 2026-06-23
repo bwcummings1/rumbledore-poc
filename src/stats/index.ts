@@ -29,6 +29,7 @@ export {
   type CuratedEditScopeInput,
   confirmLeagueSeasonGrouping,
   detectSeasonGroupingProposals,
+  dismissLeagueSeasonGrouping,
   groupingConfigIsEquivalent,
   type LeagueDataEditClass,
   type LeagueDataEditTargetKind,
@@ -38,6 +39,8 @@ export {
   type PersistedSeasonGrouping,
   proposeLeagueSeasonGroupings,
   type SeasonGroupingProposal,
+  type SeasonGroupingSettingsDescriptor,
+  type SeasonGroupingStatus,
   type UnifiedLedgerEntry,
   type UnifiedLedgerPage,
 } from "./curation";
