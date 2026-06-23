@@ -8,11 +8,21 @@ import { type Page, type TestInfo, test } from "@playwright/test";
 
 const runMarker = `shots-${randomUUID()}`;
 const OUT = "docs/screenshots";
+const requestedScreenshots = new Set(
+  (process.env.SCREENSHOT_FILTER ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean),
+);
 const viewports = [
   { name: "mobile", width: 390, height: 844 },
   { name: "tablet", width: 834, height: 1112 },
   { name: "desktop", width: 1440, height: 900 },
 ];
+
+function shouldShoot(name: string) {
+  return requestedScreenshots.size === 0 || requestedScreenshots.has(name);
+}
 
 async function signUpAndIn(page: Page, testInfo: TestInfo) {
   const baseUrl = String(testInfo.project.use.baseURL ?? "");
@@ -35,6 +45,9 @@ async function signUpAndIn(page: Page, testInfo: TestInfo) {
 }
 
 async function shoot(page: Page, vp: string, name: string, route: string) {
+  if (!shouldShoot(name)) {
+    return;
+  }
   try {
     await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
   } catch {
@@ -60,6 +73,9 @@ async function shootDataBookScopePrompt(
   name: string,
   route: string,
 ) {
+  if (!shouldShoot(name)) {
+    return;
+  }
   try {
     await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
   } catch {
@@ -288,6 +304,9 @@ async function shootDataBookPushConfirm(
   name: string,
   route: string,
 ) {
+  if (!shouldShoot(name)) {
+    return;
+  }
   try {
     await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
   } catch {
@@ -296,7 +315,7 @@ async function shootDataBookPushConfirm(
   await page.waitForTimeout(900);
   await page.getByRole("button", { exact: true, name: "Save" }).click();
   await page.getByText("Checkpoint saved").waitFor({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Push 2026" }).click();
+  await page.getByRole("button", { name: "Publish 2026" }).click();
   await page
     .getByRole("dialog", { name: "Push saved season" })
     .waitFor({ timeout: 15_000 });
@@ -320,6 +339,9 @@ async function shootEditLedgerExpanded(
   name: string,
   route: string,
 ) {
+  if (!shouldShoot(name)) {
+    return;
+  }
   try {
     await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
   } catch {

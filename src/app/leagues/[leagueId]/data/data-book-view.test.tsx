@@ -310,6 +310,17 @@ function requestBodies(fetchMock: ReturnType<typeof mockEditResponse>) {
   ) as Array<Record<string, unknown>>;
 }
 
+function openCurationDetails(): HTMLDetailsElement {
+  const details = screen
+    .getByText("Curation details")
+    .closest("details") as HTMLDetailsElement | null;
+  if (!details) {
+    throw new Error("Curation details disclosure was not rendered");
+  }
+  fireEvent.click(details.querySelector("summary") ?? details);
+  return details;
+}
+
 test("Data Book renders the People grain for the selected season", () => {
   render(<DataBookView data={data} />);
 
@@ -423,6 +434,41 @@ test("Data Book exposes labelled navigation and 44px controls", () => {
   for (const tab of screen.getAllByRole("tab")) {
     expect(tab.className).toContain("min-h-11");
   }
+});
+
+test("Data Book renders curation controls as a compact section toolbar", () => {
+  render(<DataBookView canEditData={true} data={data} />);
+
+  const toolbar = document.querySelector(
+    '[data-slot="data-book-toolbar"]',
+  ) as HTMLElement | null;
+  expect(toolbar).toBeDefined();
+  expect(
+    within(toolbar as HTMLElement).getByRole("heading", {
+      level: 2,
+      name: "2026 People",
+    }),
+  ).toBeDefined();
+  expect(
+    within(toolbar as HTMLElement).getByLabelText("Data Book season"),
+  ).toBe(screen.getByLabelText("Data Book season"));
+  expect(within(toolbar as HTMLElement).getByText("2 teams")).toBeDefined();
+  expect(
+    within(toolbar as HTMLElement).getByText("3 team-weeks"),
+  ).toBeDefined();
+  expect(
+    within(toolbar as HTMLElement).getByRole("button", { name: "Save" }),
+  ).toBeDefined();
+  expect(
+    within(toolbar as HTMLElement).getByRole("button", {
+      name: "Publish 2026",
+    }),
+  ).toBeDefined();
+
+  const details = screen
+    .getByText("Curation details")
+    .closest("details") as HTMLDetailsElement | null;
+  expect(details?.open).toBe(false);
 });
 
 test("real-name edits default to all years and render as draft changes", async () => {
@@ -632,6 +678,7 @@ test("curation indicators show unsaved, saved-unpushed, and pushed state", () =>
     />,
   );
 
+  openCurationDetails();
   expect(screen.getByText("Unsaved draft")).toBeDefined();
   expect(screen.getByText("Saved not pushed")).toBeDefined();
   expect(screen.getByText("Overall draft unsaved")).toBeDefined();
@@ -660,6 +707,7 @@ test("save creates a checkpoint through the curation checkpoint API", async () =
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  openCurationDetails();
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/leagues/00000000-0000-4000-8000-000000000001/curation/checkpoints",
     expect.objectContaining({ method: "POST" }),
@@ -702,6 +750,7 @@ test("restore calls the selected checkpoint restore API and refreshes the route"
     />,
   );
 
+  openCurationDetails();
   fireEvent.click(screen.getByRole("button", { name: "Restore" }));
 
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -809,10 +858,11 @@ test("push season and push all call the push API with the correct arguments", as
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Push 2026" }));
+  fireEvent.click(screen.getByRole("button", { name: "Publish 2026" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm push" }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
+  openCurationDetails();
   fireEvent.click(screen.getByRole("button", { name: "Push all" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm push all" }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
@@ -873,6 +923,7 @@ test("finalized toggle changes a season from live to curate-and-push with provid
     />,
   );
 
+  openCurationDetails();
   expect(screen.getByText("Provider reports season complete")).toBeDefined();
   fireEvent.click(screen.getByRole("button", { name: "Mark finalized" }));
 
@@ -902,5 +953,6 @@ test("non-stewards see the Data Book as read-only", () => {
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Push 2026" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Publish 2026" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Mark finalized" })).toBeNull();
 });

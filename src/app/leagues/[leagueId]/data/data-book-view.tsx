@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
+  ChevronDown,
   Database,
   Edit3,
   LockKeyhole,
@@ -516,18 +517,26 @@ function draftKeysForEdit(
 }
 
 function SeasonControl({
+  compact = false,
   onSeasonChange,
   season,
   seasons,
 }: {
+  compact?: boolean;
   onSeasonChange: (season: number) => void;
   season: DataBookSeason;
   seasons: readonly DataBookSeason[];
 }) {
   return (
-    <div className="grid gap-2 sm:max-w-56">
+    <div
+      className={compact ? "min-w-28 sm:max-w-36" : "grid gap-2 sm:max-w-56"}
+    >
       <label
-        className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3"
+        className={
+          compact
+            ? "sr-only"
+            : "font-mono text-xs uppercase tracking-[0.14em] text-ink-3"
+        }
         htmlFor="data-book-season"
       >
         Season
@@ -541,6 +550,7 @@ function SeasonControl({
           label: seasonLabel(option),
           value: String(option.season),
         }))}
+        triggerClassName={compact ? "py-1 text-xs" : undefined}
         value={String(season.season)}
       />
     </div>
@@ -636,7 +646,7 @@ type PushIntent =
   | { action: "push"; season: number }
   | { action: "pushAll"; season: null };
 
-function CurationControls({
+function CurationDetails({
   busyAction,
   canEditData,
   curation,
@@ -644,7 +654,6 @@ function CurationControls({
   message,
   onOpenPushDialog,
   onRestore,
-  onSave,
   onSeasonModeChange,
   restoreCheckpointId,
   selectedSeasonState,
@@ -657,18 +666,12 @@ function CurationControls({
   message: string | null;
   onOpenPushDialog: (intent: PushIntent) => void;
   onRestore: () => void;
-  onSave: () => void;
   onSeasonModeChange: (mode: DataBookCurationMode) => void;
   restoreCheckpointId: string;
   selectedSeasonState: DataBookSeasonCurationState;
   setRestoreCheckpointId: (checkpointId: string) => void;
 }) {
   const hasCheckpoints = curation.checkpoints.length > 0;
-  const pushDisabled =
-    busyAction !== null ||
-    selectedSeasonState.hasUnsavedDraft ||
-    !selectedSeasonState.activeCheckpointId ||
-    selectedSeasonState.mode === "live";
   const pushAllDisabled =
     busyAction !== null ||
     curation.hasUnsavedDraft ||
@@ -677,150 +680,151 @@ function CurationControls({
     curation.seasons.some((season) => season.mode === "live");
 
   return (
-    <div className="grid gap-3">
-      <div className="cell grid gap-3 p-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="font-mono text-xs uppercase tracking-[0.14em] text-ink-4">
-              Save / push state
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {seasonCurationMessage(selectedSeasonState)}
-            </p>
+    <details
+      className="cell group overflow-hidden p-0"
+      data-slot="data-book-curation-details"
+    >
+      <summary className="grid min-h-11 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 outline-none transition-[background-color,box-shadow] hover:bg-primary/5 focus-visible:shadow-[var(--focus-ring-shadow)] sm:px-4">
+        <span className="min-w-0">
+          <span className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3">
+            Curation details
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+            Save state, restore checkpoints, season mode, and push-all controls
+          </span>
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className="size-4 text-ink-3 transition-transform group-open:rotate-180 group-open:text-primary"
+        />
+      </summary>
+
+      <div className="grid gap-3 border-t border-[var(--hair)] p-3 sm:p-4">
+        <div className="grid gap-3 rounded-control border border-[var(--hair)] bg-[var(--panel)] p-3 shadow-[var(--bevel)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-mono text-xs uppercase tracking-[0.14em] text-ink-4">
+                Save / push state
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {seasonCurationMessage(selectedSeasonState)}
+              </p>
+            </div>
+            <SeasonCurationPills state={selectedSeasonState} />
           </div>
-          <SeasonCurationPills state={selectedSeasonState} />
+          <OverallCurationPills curation={curation} />
+          <div className="grid gap-1 font-mono text-xs text-muted-foreground sm:grid-cols-3">
+            <span>
+              Active save:{" "}
+              <span className="text-foreground">
+                {curation.activeCheckpoint
+                  ? checkpointLabel(curation.activeCheckpoint)
+                  : "none"}
+              </span>
+            </span>
+            <span>
+              Selected push:{" "}
+              <span className="text-foreground">
+                {formatTimestamp(selectedSeasonState.latestPushAt)}
+              </span>
+            </span>
+            <span>
+              Push source:{" "}
+              <span className="text-foreground">
+                {shortId(selectedSeasonState.latestPushCheckpointId)}
+              </span>
+            </span>
+          </div>
         </div>
-        <OverallCurationPills curation={curation} />
-        <div className="grid gap-1 font-mono text-xs text-muted-foreground sm:grid-cols-3">
-          <span>
-            Active save:{" "}
-            <span className="text-foreground">
-              {curation.activeCheckpoint
-                ? checkpointLabel(curation.activeCheckpoint)
-                : "none"}
-            </span>
-          </span>
-          <span>
-            Selected push:{" "}
-            <span className="text-foreground">
-              {formatTimestamp(selectedSeasonState.latestPushAt)}
-            </span>
-          </span>
-          <span>
-            Push source:{" "}
-            <span className="text-foreground">
-              {shortId(selectedSeasonState.latestPushCheckpointId)}
-            </span>
-          </span>
-        </div>
-      </div>
 
-      {selectedSeasonState.autoSuggestFinalize ? (
-        <Alert tone="warn" title="Provider reports season complete">
-          Mark the season finalized to switch it from live streaming into
-          curate-and-push mode.
-        </Alert>
-      ) : null}
-      {message ? <Alert tone="ok">{message}</Alert> : null}
-      {error ? <Alert tone="danger">{error}</Alert> : null}
+        {selectedSeasonState.autoSuggestFinalize ? (
+          <Alert tone="warn" title="Provider reports season complete">
+            Mark the season finalized to switch it from live streaming into
+            curate-and-push mode.
+          </Alert>
+        ) : null}
+        {message ? <Alert tone="ok">{message}</Alert> : null}
+        {error ? <Alert tone="danger">{error}</Alert> : null}
 
-      {canEditData ? (
-        <div className="grid gap-2 lg:grid-cols-[minmax(13rem,1fr)_auto_auto_auto_auto] lg:items-end">
-          <div className="grid gap-2">
-            <label
-              className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3"
-              htmlFor="data-book-restore-checkpoint"
-            >
-              Restore checkpoint
-            </label>
-            <Select
+        {canEditData ? (
+          <div className="grid gap-2 lg:grid-cols-[minmax(13rem,1fr)_auto_auto] lg:items-end">
+            <div className="grid gap-2">
+              <label
+                className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3"
+                htmlFor="data-book-restore-checkpoint"
+              >
+                Restore checkpoint
+              </label>
+              <Select
+                disabled={!hasCheckpoints || busyAction !== null}
+                id="data-book-restore-checkpoint"
+                onValueChange={setRestoreCheckpointId}
+                options={
+                  hasCheckpoints
+                    ? curation.checkpoints.map((checkpoint) => ({
+                        label: checkpointLabel(checkpoint),
+                        value: checkpoint.id,
+                      }))
+                    : [{ label: "No saved checkpoints", value: "" }]
+                }
+                value={restoreCheckpointId}
+              />
+            </div>
+            <Button
               disabled={!hasCheckpoints || busyAction !== null}
-              id="data-book-restore-checkpoint"
-              onValueChange={setRestoreCheckpointId}
-              options={
-                hasCheckpoints
-                  ? curation.checkpoints.map((checkpoint) => ({
-                      label: checkpointLabel(checkpoint),
-                      value: checkpoint.id,
-                    }))
-                  : [{ label: "No saved checkpoints", value: "" }]
+              loading={busyAction === "restore"}
+              loadingLabel="Restoring checkpoint"
+              onClick={onRestore}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <RotateCcw data-icon="inline-start" />
+              Restore
+            </Button>
+            <Button
+              disabled={busyAction !== null}
+              loading={busyAction === "mode"}
+              loadingLabel="Changing season mode"
+              onClick={() =>
+                onSeasonModeChange(
+                  selectedSeasonState.mode === "finalized"
+                    ? "live"
+                    : "finalized",
+                )
               }
-              value={restoreCheckpointId}
-            />
+              size="sm"
+              type="button"
+              variant={
+                selectedSeasonState.mode === "finalized" ? "ghost" : "steel"
+              }
+            >
+              {selectedSeasonState.mode === "finalized" ? (
+                <Radio data-icon="inline-start" />
+              ) : (
+                <LockKeyhole data-icon="inline-start" />
+              )}
+              {selectedSeasonState.mode === "finalized"
+                ? "Return live"
+                : "Mark finalized"}
+            </Button>
+            <Button
+              className="lg:col-start-2"
+              disabled={pushAllDisabled}
+              onClick={() =>
+                onOpenPushDialog({ action: "pushAll", season: null })
+              }
+              size="sm"
+              type="button"
+              variant="amber"
+            >
+              <Upload data-icon="inline-start" />
+              Push all
+            </Button>
           </div>
-          <Button
-            disabled={busyAction !== null}
-            loading={busyAction === "save"}
-            loadingLabel="Saving checkpoint"
-            onClick={onSave}
-            type="button"
-            variant="steel"
-          >
-            <Save data-icon="inline-start" />
-            Save
-          </Button>
-          <Button
-            disabled={!hasCheckpoints || busyAction !== null}
-            loading={busyAction === "restore"}
-            loadingLabel="Restoring checkpoint"
-            onClick={onRestore}
-            type="button"
-            variant="ghost"
-          >
-            <RotateCcw data-icon="inline-start" />
-            Restore
-          </Button>
-          <Button
-            disabled={pushDisabled}
-            onClick={() =>
-              onOpenPushDialog({
-                action: "push",
-                season: selectedSeasonState.season,
-              })
-            }
-            type="button"
-          >
-            <Upload data-icon="inline-start" />
-            Push {selectedSeasonState.season}
-          </Button>
-          <Button
-            disabled={pushAllDisabled}
-            onClick={() =>
-              onOpenPushDialog({ action: "pushAll", season: null })
-            }
-            type="button"
-            variant="amber"
-          >
-            <Upload data-icon="inline-start" />
-            Push all
-          </Button>
-          <Button
-            className="lg:col-start-2"
-            disabled={busyAction !== null}
-            loading={busyAction === "mode"}
-            loadingLabel="Changing season mode"
-            onClick={() =>
-              onSeasonModeChange(
-                selectedSeasonState.mode === "finalized" ? "live" : "finalized",
-              )
-            }
-            type="button"
-            variant={
-              selectedSeasonState.mode === "finalized" ? "ghost" : "steel"
-            }
-          >
-            {selectedSeasonState.mode === "finalized" ? (
-              <Radio data-icon="inline-start" />
-            ) : (
-              <LockKeyhole data-icon="inline-start" />
-            )}
-            {selectedSeasonState.mode === "finalized"
-              ? "Return live"
-              : "Mark finalized"}
-          </Button>
-        </div>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
+    </details>
   );
 }
 
@@ -887,32 +891,93 @@ function PushConfirmDialog({
 
 function GrainSummary({
   activeGrain,
+  busyAction,
+  canEditData,
+  onOpenPushDialog,
+  onSave,
+  onSeasonChange,
   season,
+  seasons,
+  selectedSeasonState,
 }: {
   activeGrain: DataBookGrain;
+  busyAction: string | null;
+  canEditData: boolean;
+  onOpenPushDialog: (intent: PushIntent) => void;
+  onSave: () => void;
+  onSeasonChange: (season: number) => void;
   season: DataBookSeason;
+  seasons: readonly DataBookSeason[];
+  selectedSeasonState: DataBookSeasonCurationState;
 }) {
   const active = grains.find((grain) => grain.value === activeGrain);
+  const publishDisabled =
+    busyAction !== null ||
+    selectedSeasonState.hasUnsavedDraft ||
+    !selectedSeasonState.activeCheckpointId ||
+    selectedSeasonState.mode === "live";
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <p className="eyebrow text-primary">{active?.label ?? "Data"}</p>
-        <h2 className="heading-auspex text-lg leading-tight">
-          {season.season} {active?.label ?? "Data"}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {active?.deck ?? "Imported league data for this season."}
-        </p>
+    <div className="cell grid gap-3 p-3 sm:p-4" data-slot="data-book-toolbar">
+      <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:items-center">
+        <SeasonControl
+          compact={true}
+          onSeasonChange={onSeasonChange}
+          season={season}
+          seasons={seasons}
+        />
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <p className="eyebrow text-primary">{active?.label ?? "Data"}</p>
+            <h2 className="heading-auspex text-lg leading-tight">
+              {season.season} {active?.label ?? "Data"}
+            </h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <StatusPill tone="info">{season.summary.teams} teams</StatusPill>
+            <StatusPill tone="neutral">
+              {season.summary.teamWeekFacts} team-weeks
+            </StatusPill>
+            <StatusPill tone="neutral">
+              {formatNumber(season.summary.seasonTotalPoints)} PF
+            </StatusPill>
+          </div>
+        </div>
+        {canEditData ? (
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <Button
+              disabled={busyAction !== null}
+              loading={busyAction === "save"}
+              loadingLabel="Saving checkpoint"
+              onClick={onSave}
+              size="sm"
+              type="button"
+              variant="steel"
+            >
+              <Save data-icon="inline-start" />
+              Save
+            </Button>
+            <Button
+              aria-label={`Publish ${selectedSeasonState.season}`}
+              disabled={publishDisabled}
+              onClick={() =>
+                onOpenPushDialog({
+                  action: "push",
+                  season: selectedSeasonState.season,
+                })
+              }
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <Upload data-icon="inline-start" />
+              Publish
+            </Button>
+          </div>
+        ) : null}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <StatusPill tone="info">{season.summary.teams} teams</StatusPill>
-        <StatusPill tone="neutral">
-          {season.summary.teamWeekFacts} team-weeks
-        </StatusPill>
-        <StatusPill tone="neutral">
-          {formatNumber(season.summary.seasonTotalPoints)} PF
-        </StatusPill>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        {active?.deck ?? "Imported league data for this season."}
+      </p>
     </div>
   );
 }
@@ -1902,32 +1967,6 @@ export function DataBookView({
             label: "Records",
           },
         ]}
-        controls={
-          <div className="grid gap-4 xl:grid-cols-[minmax(12rem,14rem)_minmax(0,1fr)]">
-            <SeasonControl
-              onSeasonChange={setSelectedSeason}
-              season={season}
-              seasons={draftData.seasons}
-            />
-            <CurationControls
-              busyAction={busyAction}
-              canEditData={canEditData}
-              curation={curationState}
-              error={curationError}
-              message={curationMessage}
-              onOpenPushDialog={(intent) => {
-                setPushError(null);
-                setPushIntent(intent);
-              }}
-              onRestore={restoreCheckpoint}
-              onSave={saveCheckpoint}
-              onSeasonModeChange={changeSeasonMode}
-              restoreCheckpointId={restoreCheckpointId}
-              selectedSeasonState={selectedSeasonState}
-              setRestoreCheckpointId={setRestoreCheckpointId}
-            />
-          </div>
-        }
         deck={`${draftData.league.provider.toUpperCase()} ${draftData.league.providerLeagueId}. Live draft tables for data curation, displayed one season at a time.`}
         eyebrow="DATA BOOK"
         navAriaLabel="Data Book grains"
@@ -1942,7 +1981,36 @@ export function DataBookView({
         </EmptyState>
       ) : (
         <section className="grid gap-4" aria-live="polite">
-          <GrainSummary activeGrain={activeGrain} season={season} />
+          <GrainSummary
+            activeGrain={activeGrain}
+            busyAction={busyAction}
+            canEditData={canEditData}
+            onOpenPushDialog={(intent) => {
+              setPushError(null);
+              setPushIntent(intent);
+            }}
+            onSave={saveCheckpoint}
+            onSeasonChange={setSelectedSeason}
+            season={season}
+            seasons={draftData.seasons}
+            selectedSeasonState={selectedSeasonState}
+          />
+          <CurationDetails
+            busyAction={busyAction}
+            canEditData={canEditData}
+            curation={curationState}
+            error={curationError}
+            message={curationMessage}
+            onOpenPushDialog={(intent) => {
+              setPushError(null);
+              setPushIntent(intent);
+            }}
+            onRestore={restoreCheckpoint}
+            onSeasonModeChange={changeSeasonMode}
+            restoreCheckpointId={restoreCheckpointId}
+            selectedSeasonState={selectedSeasonState}
+            setRestoreCheckpointId={setRestoreCheckpointId}
+          />
           {draftMessage ? <DataBookDraftNotice message={draftMessage} /> : null}
           <ActiveGrain
             activeGrain={activeGrain}
