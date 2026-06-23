@@ -135,8 +135,9 @@ Three grains, matching the **dimension-vs-fact** distinction:
   EXISTS) stays — demoted to a pure **view** control over data-defined eras from the pushed snapshot.
 - **Display rule:** EXISTS — collapses per-year variance to **one representation per person**: **most-recent pushed
   team name + the person's real name**, so a serial-renamer shows as one entry, not ten.
-- **Records catalog:** EXISTS in basic form. To expand into categories — **H2H / playoff / regular-season /
-  achievements / "worst" records** — and slot the owner's recovered legacy catalog in when found.
+- **Records catalog:** EXISTS in expanded owner-facing form. Typed category metadata drives All-time, Regular season,
+  Playoff, Head-to-head, Achievements, and Lowlights sections, including worst/lowlight records alongside high marks.
+  No recovered legacy catalog file was present during T11; the typed registry is the extension point when one appears.
 
 ---
 
@@ -198,7 +199,7 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | Edit ledger (`league_data_edits`) | **EXISTS** — reuse as the change-feed backbone |
 | Eras/groupings (`league_season_groupings`) | **EXISTS** — becomes "defined in Data layer" |
 | Integrity checks (`data_integrity_check`) | **EXISTS** — surface in the Data page as flags to resolve |
-| Records engine (`recomputeLeagueStatistics`) + catalog + lens | **EXISTS** — Record Book computes from `composeCanonicalSnapshot`; lens → view-only |
+| Records engine (`recomputeLeagueStatistics`) + catalog + lens | **EXISTS** — Record Book computes from `composeCanonicalSnapshot`; lens → view-only; category registry covers All-time/Regular/Playoff/H2H/Achievements/Lowlights |
 | Steward/commissioner role + `/curation/*` APIs | **EXISTS** — the permission model |
 | Per-matchup `scoring_period_span`, ESPN `matchup_period_count` | **EXISTS (partial)** — extend with settings-driven auto-detect |
 | Persist per-season `mSettings` | **EXISTS** — `league_season_settings` stores league size, schedule, roster slots, scoring, and acquisition fields |
@@ -244,6 +245,11 @@ It does not propose regular/playoff segments as eras. `league_season_grouping_st
 the Data Book Settings grain surfaces proposed/confirmed eras with Confirm, Adjust, and Dismiss controls gated at
 `data_steward`.
 
+**T11 records-catalog note:** `src/stats/records-catalog.ts` now owns a typed category registry for the Record Book and
+builds the category payload from pushed snapshot rows only. Regular/playoff category sets are derived from the lens
+segment rather than defining data; achievements and lowlights include weekly, season, career, championship, and margin
+records while preserving bye and multi-week-span rules from the stats substrate.
+
 ---
 
 ## 7. The four data-quality fixes fold in here
@@ -269,7 +275,8 @@ They aren't separate patches — they're the Data page's first real content / th
 5. **Save (checkpoint) + Push (snapshot)** state machine.
 6. **Re-point the record book** to the pushed snapshot; lens → view-only; display rule.
 7. **Era/span auto-proposal** from settings (confirm-in-Data).
-8. **Expand the records catalog** (categories + the recovered legacy set).
+8. ✅ **Expand the records catalog** (categories + the recovered legacy set). The recovered legacy set was not present,
+   so T11 shipped the rich default registry and kept it extensible.
 9. **General fantasy-stats substrate (B)** — can proceed in parallel once the substrate contracts are set.
 
 Each phase = file-disjoint specs + orchestrated agents + **verification against the real league** before moving on.

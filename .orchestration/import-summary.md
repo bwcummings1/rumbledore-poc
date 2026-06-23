@@ -148,3 +148,33 @@
 - PROPOSED - OP/FLEX hybrid lineup era (2016-2019): 2016, 2017, 2018, 2019 - Boundary starts at 2016: lineup slots changed from OP lineup to OP/FLEX hybrid lineup. 2016-2019 share 12 teams, 1-week playoffs, 6 playoff teams, 13 regular-season weeks, OP/FLEX hybrid lineup.
 - PROPOSED - FLEX lineup era (2020): 2020 - Boundary starts at 2020: lineup slots changed from OP/FLEX hybrid lineup to FLEX lineup. 2020 shares 12 teams, 1-week playoffs, 6 playoff teams, 13 regular-season weeks, FLEX lineup.
 - PROPOSED - 14-week regular season (2021-present): 2021, 2022, 2023, 2024, 2025, 2026 - Boundary starts at 2021: regular season changed 13 -> 14 weeks. 2021-2026 share 12 teams, 1-week playoffs, 6 playoff teams, 14 regular-season weeks, FLEX lineup.
+
+## T11 Records Catalog
+
+- League row: NHS Alumni Annual (466e2035-6c78-451a-b517-bcc5accae436)
+- Lens: both, cumulative
+- All-time rows: 14
+- Regular standings rows: 14
+- Playoff standings rows: 14
+- H2H rivalry rows: 86
+- Achievement high-season rows: 10
+- Lowlight biggest-loss rows: 10
+
+### Sample Records
+
+- Regular leader: Monroe BALLERS (zachlawrence09) 8-5-0, PF 1,624
+- Playoff leader: KOO KIDS NABERHOOD (ZachKirksey21) 12-5-0, PF 2,271.10
+- H2H sample: The Truman Show (truman1109) vs Ray's  Boom Boom Room (GucciMane1733), 34 meetings
+- Highest weekly score: 198.40 (Started From Tha Bottom (w hardy), 2020, week 16)
+- Lowest weekly score: 38 (Mrs. Brown's Art Class (MONROE_REBS), 2014, week 16)
+- Biggest loss: 138.20 (LACES OUT MARINO (Burch 16), 2015, week 15)
+- Biggest loss list: LACES OUT MARINO (Burch 16) lost by 138.20 in 2015 week 15
+
+### T11 Checks
+
+- PASS - regular-season category has standings
+- PASS - playoff category has postseason rows
+- PASS - head-to-head category has rivalries
+- PASS - achievements category has high marks
+- PASS - lowlights category has worst records
+- PASS - new lowlight current records are present

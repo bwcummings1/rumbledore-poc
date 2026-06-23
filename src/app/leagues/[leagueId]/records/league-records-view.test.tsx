@@ -9,6 +9,21 @@ const managerBId = "00000000-0000-4000-8000-000000000202";
 
 const data: RecordsPageData = {
   catalog: {
+    achievements: {
+      highestScoringSeasons: [],
+      longestWinStreaks: [],
+      mostRegularSeasonTitles: [],
+      mostRunnerUps: [],
+      mostTitles: [],
+      mostTopScoringWeeks: [
+        {
+          personId: managerAId,
+          personName: "Fixture Manager 12",
+          recordType: "most_top_scoring_weeks",
+          value: 4,
+        },
+      ],
+    },
     allTimeStandings: [
       {
         avgPointsAgainst: 101.8,
@@ -44,9 +59,37 @@ const data: RecordsPageData = {
         worstSeason: null,
       },
     ],
-    blowouts: { biggest: [], narrowestWins: [] },
+    blowouts: {
+      biggest: [],
+      biggestLosses: [],
+      narrowestLosses: [],
+      narrowestWins: [],
+    },
     championships: {
-      managerRecords: [],
+      managerRecords: [
+        {
+          bestFinish: null,
+          championshipAppearances: 2,
+          championshipGameLosses: 1,
+          championshipGamePointsAgainst: 240,
+          championshipGamePointsFor: 260,
+          championshipGameTies: 0,
+          championshipGameWins: 1,
+          championships: 1,
+          personId: managerAId,
+          personName: "Fixture Manager 12",
+          playoffAppearances: 3,
+          playoffLosses: 2,
+          playoffPointsAgainst: 470,
+          playoffPointsFor: 510,
+          playoffTies: 0,
+          playoffWins: 4,
+          regularSeasonTitles: 1,
+          runnerUps: 1,
+          seasons: 3,
+          thirdPlaces: 0,
+        },
+      ],
       seasons: [
         {
           champion: {
@@ -105,6 +148,15 @@ const data: RecordsPageData = {
           ties: 0,
         },
       ],
+      longestStreaks: [
+        {
+          holder: { personId: managerBId, personName: "Fixture Manager 15" },
+          length: 3,
+          meetings: 9,
+          opponent: { personId: managerAId, personName: "Fixture Manager 12" },
+          season: 0,
+        },
+      ],
       managerLedgers: [],
       seasonPairs: [],
     },
@@ -116,12 +168,98 @@ const data: RecordsPageData = {
       worstScoresInWins: [],
     },
     integrityBlocked: false,
+    lowlights: {
+      biggestLosses: [],
+      lowestScoringSeasons: [],
+      mostBottomScoringWeeks: [],
+      mostLastPlaceFinishes: [
+        {
+          personId: managerBId,
+          personName: "Fixture Manager 15",
+          recordType: "most_last_place_finishes",
+          value: 2,
+        },
+      ],
+      narrowestLosses: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
+    },
     milestones: {
       keeper: {
         entries: [],
         status: "unavailable",
         summary: null,
       },
+    },
+    playoff: {
+      highestScoringAverages: [],
+      highestScoringSeasons: [],
+      lowestScoringSeasons: [],
+      mostPointsAgainstSeasons: [],
+      standings: [
+        {
+          avgPointsAgainst: 117.5,
+          avgPointsFor: 127.5,
+          bottomScoringWeeks: 0,
+          games: 6,
+          losses: 2,
+          personId: managerAId,
+          personName: "Fixture Manager 12",
+          pointDifferential: 40,
+          pointsAgainst: 470,
+          pointsFor: 510,
+          rank: 1,
+          seasons: 3,
+          ties: 0,
+          topScoringWeeks: 1,
+          winPercentage: 0.6667,
+          wins: 4,
+        },
+      ],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
+    },
+    regularSeason: {
+      highestScoringAverages: [],
+      highestScoringSeasons: [
+        {
+          losses: 2,
+          personId: managerAId,
+          personName: "Fixture Manager 12",
+          pointsAgainst: 1200,
+          pointsFor: 1510.4,
+          recordType: "most_points_for_season",
+          season: 2025,
+          ties: 0,
+          value: 1510.4,
+          winPercentage: 0.8462,
+          wins: 11,
+        },
+      ],
+      lowestScoringSeasons: [],
+      mostPointsAgainstSeasons: [],
+      standings: [
+        {
+          avgPointsAgainst: 101.8,
+          avgPointsFor: 111.2,
+          bottomScoringWeeks: 0,
+          games: 30,
+          losses: 10,
+          personId: managerAId,
+          personName: "Fixture Manager 12",
+          pointDifferential: 338.2,
+          pointsAgainst: 3000,
+          pointsFor: 3338.2,
+          rank: 1,
+          seasons: 3,
+          ties: 0,
+          topScoringWeeks: 4,
+          winPercentage: 0.6667,
+          wins: 20,
+        },
+      ],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
     },
     streaks: { longestLosses: [], longestWins: [] },
   },
@@ -183,9 +321,7 @@ test("league records view renders structured record book sections", () => {
       name: "NHS Alumni Annual record book",
     }),
   ).toBeDefined();
-  expect(
-    screen.getByRole("heading", { name: "All-time standings" }),
-  ).toBeDefined();
+  expect(screen.getByRole("heading", { name: "All-time" })).toBeDefined();
   expect(
     screen
       .getAllByRole("link", { name: "Fixture Manager 12" })[0]
@@ -196,7 +332,11 @@ test("league records view renders structured record book sections", () => {
   ).toBeDefined();
   expect(screen.getByText("Previous")).toBeDefined();
   expect(screen.getByText("Fixture Manager 15 at 166.70")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Rivalries" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Regular season" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Playoff" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Head-to-head" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Achievements" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Lowlights" })).toBeDefined();
   expect(
     screen
       .getAllByRole("link", {
@@ -204,8 +344,8 @@ test("league records view renders structured record book sections", () => {
       })[0]
       .getAttribute("href"),
   ).toBe(`/leagues/${leagueId}/records/h2h/${managerAId}/${managerBId}`);
-  expect(screen.getByText("Keeper milestones unavailable")).toBeDefined();
-  expect(screen.getByRole("link", { name: "Regular" })).toBeDefined();
+  expect(screen.getByText("Most last-place finishes")).toBeDefined();
+  expect(screen.getByRole("tab", { name: "Regular" })).toBeDefined();
   expect(screen.queryByText("Era")).toBeNull();
 });
 
@@ -220,6 +360,7 @@ test("league records view renders an empty state", () => {
           championships: { managerRecords: [], seasons: [] },
           headToHead: {
             allTimePairs: [],
+            longestStreaks: [],
             managerLedgers: [],
             seasonPairs: [],
           },

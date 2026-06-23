@@ -1,7 +1,17 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **Data Foundation T10 on
+Keep it current. Last updated: 2026-06-23 — **Data Foundation T11 on
+`ws/t11-records-catalog`**: the Record Book catalog is expanded into typed categories (All-time, Regular, Playoff,
+Head-to-head, Achievements, Lowlights) while still reading only `composeCanonicalSnapshot` pushed data. The Records
+page now uses the league-feed `PublicationMasthead`/`TabLinks` pattern for category section anchors, with the
+segment×era lens kept as a view control inside the top card. New record types cover playoff leaders, runner-ups,
+regular-season titles, top/bottom scoring weeks, worst career/season win%, lowest season average, biggest/narrowest
+losses, most last-place finishes, and related lowlights. Real 95050 verification appended `.orchestration/import-summary.md`
+with sample records (for example highest weekly score 198.40, lowest weekly score 38, biggest loss 138.20), and
+screenshots were captured at `docs/screenshots/{mobile,tablet,desktop}/10-records-t11-categories.png` with duplicate-key
+grep = `0`.
+Prior state: **Data Foundation T10 on
 `ws/t10-era-autopropose`**: the Data Book Settings grain now auto-surfaces era proposals derived from persisted
 `league_season_settings` signatures (league size, playoff length/count, regular-season weeks, and lineup slot counts).
 Stewards can Confirm, Adjust name/seasons, or Dismiss; dismissed proposals are durable, confirmed proposals remain
@@ -216,13 +226,23 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   `league_season_grouping_status='dismissed'`. Confirmed groupings still need save/push before Records receives them.
   Real 95050 verification produced six proposals, confirmed `12-team era (2013-2014)`, pushed all 16 seasons, and
   screenshot-verified the Data Book proposal UI plus Record Book lens pill.
+- **Data Foundation T11 delivered (2026-06-23):** the pushed-snapshot Record Book catalog now exposes owner-facing
+  categories for All-time, Regular season, Playoff, Head-to-head, Achievements, and Lowlights. The catalog adds
+  playoff record leaders, H2H streak summaries, top/bottom weekly milestone counts, most last-place finishes, worst
+  win-rate/average records, lowest PF season, biggest/narrowest losses, and category registry metadata used by the
+  page. The Records page renders those categories as sections under a `PublicationMasthead` section-anchor tab row,
+  with the existing segment×confirmed-era lens preserved as a view control. Real 95050 verification and T11 screenshots
+  passed.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Next:** Phase 3 continues with T11 records catalog expansion, then T12 general fantasy-stats substrate B.
+- **Next:** Phase 3 continues with T12 general fantasy-stats substrate B.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-23: Data Foundation T11 landed — Records now renders category sections for All-time, Regular season,
+  Playoff, Head-to-head, Achievements, and Lowlights from a typed pushed-snapshot catalog, including new worst/lowlight
+  records. Real 95050 verification and T11 screenshots passed with duplicate-key grep = 0.
 - 2026-06-23: Data Foundation T10 landed — settings-derived era proposals now surface in the Data Book Settings grain
   with Confirm/Adjust/Dismiss, durable dismissal status, `data_steward`-gated grouping API actions, and pushed
   confirmed groupings reflected by the existing Record Book era lens. Real 95050 verification and T10 screenshots

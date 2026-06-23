@@ -9,6 +9,14 @@ const managerBId = "00000000-0000-4000-8000-000000000202";
 
 const data: ManagerRecordsPageData = {
   catalog: {
+    achievements: {
+      highestScoringSeasons: [],
+      longestWinStreaks: [],
+      mostRegularSeasonTitles: [],
+      mostRunnerUps: [],
+      mostTitles: [],
+      mostTopScoringWeeks: [],
+    },
     allTimeStandings: [
       {
         avgPointsAgainst: 101.8,
@@ -35,10 +43,16 @@ const data: ManagerRecordsPageData = {
         worstSeason: null,
       },
     ],
-    blowouts: { biggest: [], narrowestWins: [] },
+    blowouts: {
+      biggest: [],
+      biggestLosses: [],
+      narrowestLosses: [],
+      narrowestWins: [],
+    },
     championships: { managerRecords: [], seasons: [] },
     headToHead: {
       allTimePairs: [],
+      longestStreaks: [],
       managerLedgers: [],
       seasonPairs: [],
     },
@@ -50,12 +64,39 @@ const data: ManagerRecordsPageData = {
       worstScoresInWins: [],
     },
     integrityBlocked: false,
+    lowlights: {
+      biggestLosses: [],
+      lowestScoringSeasons: [],
+      mostBottomScoringWeeks: [],
+      mostLastPlaceFinishes: [],
+      narrowestLosses: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
+    },
     milestones: {
       keeper: {
         entries: [],
         status: "unavailable",
         summary: null,
       },
+    },
+    playoff: {
+      highestScoringAverages: [],
+      highestScoringSeasons: [],
+      lowestScoringSeasons: [],
+      mostPointsAgainstSeasons: [],
+      standings: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
+    },
+    regularSeason: {
+      highestScoringAverages: [],
+      highestScoringSeasons: [],
+      lowestScoringSeasons: [],
+      mostPointsAgainstSeasons: [],
+      standings: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
     },
     streaks: { longestLosses: [], longestWins: [] },
   },
