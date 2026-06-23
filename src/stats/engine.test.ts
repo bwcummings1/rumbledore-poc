@@ -3729,6 +3729,162 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("checks roster coverage and skips rollup comparison for partial player scores", async () => {
+    const { leagueId, providerLeagueId } =
+      await seedStatsLeague("player-rollup");
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(dataCoverage).values({
+        capability: "partial",
+        dataClass: "rosters",
+        itemCount: 10,
+        leagueId,
+        provider: "espn",
+        providerLeagueId,
+        season: 2025,
+        status: "partial",
+      });
+      await tx.insert(fantasyRosterEntries).values([
+        {
+          actualPoints: 40,
+          contentHash: `${marker}-player-rollup-1a`,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-1a",
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2025,
+          slot: "QB",
+          started: true,
+          status: "active",
+        },
+        {
+          actualPoints: 40,
+          contentHash: `${marker}-player-rollup-1b`,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-1b",
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2025,
+          slot: "RB",
+          started: true,
+          status: "active",
+        },
+        {
+          actualPoints: 50,
+          contentHash: `${marker}-player-rollup-2a`,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-2a",
+          providerTeamId: "2",
+          scoringPeriod: 1,
+          season: 2025,
+          slot: "QB",
+          started: true,
+          status: "active",
+        },
+        {
+          contentHash: `${marker}-player-rollup-2b`,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-2b",
+          providerTeamId: "2",
+          scoringPeriod: 1,
+          season: 2025,
+          slot: "RB",
+          started: true,
+          status: "active",
+        },
+        ...[
+          ["3", 1, 80],
+          ["4", 1, 70],
+          ["1", 2, 95],
+          ["3", 2, 96],
+          ["2", 2, 120],
+          ["4", 2, 110],
+        ].map(([providerTeamId, scoringPeriod, actualPoints]) => ({
+          actualPoints: Number(actualPoints),
+          contentHash: `${marker}-player-rollup-${providerTeamId}-${scoringPeriod}`,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn" as const,
+          providerPlayerId: `rollup-${providerTeamId}-${scoringPeriod}`,
+          providerTeamId: String(providerTeamId),
+          scoringPeriod: Number(scoringPeriod),
+          season: 2025,
+          slot: "QB",
+          started: true,
+          status: "active",
+        })),
+      ]);
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    let rows = await selectStatsRows(leagueId);
+    const failedRollup = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "player_points_rollup" &&
+        row.season === 2025 &&
+        row.status === "fail",
+    );
+    expect(failedRollup?.detail).toMatchObject({
+      checkedTeamWeeks: 7,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          providerTeamId: "1",
+          rosterPoints: 80,
+          scoringPeriod: 1,
+          teamPoints: 100,
+        }),
+      ]),
+      skippedTeamWeeks: expect.arrayContaining([
+        expect.objectContaining({
+          providerTeamId: "2",
+          reason: "partial_started_player_points",
+          scoringPeriod: 1,
+        }),
+      ]),
+    });
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .update(fantasyRosterEntries)
+        .set({ actualPoints: 60 })
+        .where(
+          and(
+            eq(fantasyRosterEntries.leagueId, leagueId),
+            eq(fantasyRosterEntries.providerPlayerId, "rollup-1a"),
+          ),
+        );
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, { leagueId });
+    expect(integrity.failures).toBe(0);
+    rows = await selectStatsRows(leagueId);
+    const passingRollup = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "player_points_rollup" &&
+        row.season === 2025 &&
+        row.status === "pass",
+    );
+    expect(passingRollup?.detail).toMatchObject({
+      checkedTeamWeeks: 7,
+      issues: [],
+      skippedTeamWeeks: expect.arrayContaining([
+        expect.objectContaining({
+          providerTeamId: "2",
+          reason: "partial_started_player_points",
+          scoringPeriod: 1,
+        }),
+      ]),
+    });
+  });
+
   it("flags grouping coverage, span sanity, and data-edit ledger completeness failures", async () => {
     const { leagueId } = await seedStatsLeague("integrity-uncovered");
 

@@ -110,6 +110,8 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "data_edit_ledger_completeness",
   "sticky_edit_conflict",
   "provider_identity_contamination",
+  "roster_coverage",
+  "player_points_rollup",
 ]);
 
 export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [
@@ -822,6 +824,53 @@ export const leagueSeasonSettings = pgTable(
   ],
 );
 
+export const fantasyPlayers = pgTable(
+  "fantasy_players",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    providerPlayerId: text("provider_player_id").notNull(),
+    fullName: text("full_name").notNull(),
+    position: text("position").notNull().default("unknown"),
+    proTeam: text("pro_team"),
+    status: text("status"),
+    nflPlayerId: uuid("nfl_player_id"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_players_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.providerPlayerId,
+    ),
+    index("fantasy_players_league_name_idx").on(table.leagueId, table.fullName),
+    index("fantasy_players_nfl_player_idx").on(table.nflPlayerId),
+    pgPolicy("fantasy_players_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "fantasy_players_provider_player_nonempty",
+      sql`length(${table.providerPlayerId}) > 0`,
+    ),
+    check(
+      "fantasy_players_full_name_nonempty",
+      sql`length(${table.fullName}) > 0`,
+    ),
+  ],
+);
+
 export const fantasyRosterEntries = pgTable(
   "fantasy_roster_entries",
   {
@@ -833,11 +882,18 @@ export const fantasyRosterEntries = pgTable(
     leagueProviderId: text("league_provider_id").notNull(),
     providerTeamId: text("provider_team_id").notNull(),
     providerPlayerId: text("provider_player_id").notNull(),
+    fantasyPlayerId: uuid("fantasy_player_id").references(
+      () => fantasyPlayers.id,
+      { onDelete: "set null" },
+    ),
     season: integer("season").notNull(),
     scoringPeriod: integer("scoring_period").notNull(),
     slot: text("slot").notNull().default("unknown"),
     status: text("status").notNull().default("unknown"),
     points: doublePrecision("points"),
+    actualPoints: doublePrecision("actual_points"),
+    projectedPoints: doublePrecision("projected_points"),
+    started: boolean("started").notNull().default(false),
     isKeeper: boolean("is_keeper").notNull().default(false),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()
@@ -862,11 +918,67 @@ export const fantasyRosterEntries = pgTable(
       table.scoringPeriod,
       table.providerTeamId,
     ),
+    index("fantasy_roster_entries_player_idx").on(table.fantasyPlayerId),
     pgPolicy("fantasy_roster_entries_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+  ],
+);
+
+export const fantasyDraftPicks = pgTable(
+  "fantasy_draft_picks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    providerPickId: text("provider_pick_id").notNull(),
+    season: integer("season").notNull(),
+    round: integer("round").notNull(),
+    pickOverall: integer("pick_overall"),
+    pickInRound: integer("pick_in_round"),
+    providerTeamId: text("provider_team_id").notNull(),
+    providerPlayerId: text("provider_player_id"),
+    fantasyPlayerId: uuid("fantasy_player_id").references(
+      () => fantasyPlayers.id,
+      { onDelete: "set null" },
+    ),
+    isKeeper: boolean("is_keeper").notNull().default(false),
+    auctionValue: integer("auction_value"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_draft_picks_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.season,
+      table.providerPickId,
+    ),
+    index("fantasy_draft_picks_league_season_idx").on(
+      table.leagueId,
+      table.season,
+    ),
+    index("fantasy_draft_picks_player_idx").on(table.fantasyPlayerId),
+    pgPolicy("fantasy_draft_picks_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "fantasy_draft_picks_provider_pick_nonempty",
+      sql`length(${table.providerPickId}) > 0`,
+    ),
+    check("fantasy_draft_picks_round_positive", sql`${table.round} >= 1`),
   ],
 );
 
@@ -881,6 +993,7 @@ export const fantasyTransactions = pgTable(
     leagueProviderId: text("league_provider_id").notNull(),
     providerTransactionId: text("provider_transaction_id").notNull(),
     season: integer("season").notNull(),
+    scoringPeriod: integer("scoring_period"),
     type: text("type").notNull().default("unknown"),
     teamProviderIds: jsonb("team_provider_ids")
       .$type<string[]>()
@@ -3821,8 +3934,12 @@ export type NewFantasyMatchup = typeof fantasyMatchups.$inferInsert;
 export type ProviderFinalStanding = typeof providerFinalStandings.$inferSelect;
 export type NewProviderFinalStanding =
   typeof providerFinalStandings.$inferInsert;
+export type FantasyPlayer = typeof fantasyPlayers.$inferSelect;
+export type NewFantasyPlayer = typeof fantasyPlayers.$inferInsert;
 export type FantasyRosterEntry = typeof fantasyRosterEntries.$inferSelect;
 export type NewFantasyRosterEntry = typeof fantasyRosterEntries.$inferInsert;
+export type FantasyDraftPick = typeof fantasyDraftPicks.$inferSelect;
+export type NewFantasyDraftPick = typeof fantasyDraftPicks.$inferInsert;
 export type FantasyTransaction = typeof fantasyTransactions.$inferSelect;
 export type NewFantasyTransaction = typeof fantasyTransactions.$inferInsert;
 export type HistoricalImportCheckpoint =

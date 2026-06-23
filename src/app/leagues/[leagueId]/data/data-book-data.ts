@@ -3,6 +3,8 @@ import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   fantasyMatchups,
+  fantasyPlayers,
+  fantasyRosterEntries,
   identityMappings,
   leagueCurationCheckpoints,
   leagueCurationSeasonPushes,
@@ -45,6 +47,32 @@ type IdentityMappingRow = Pick<
 type SeasonSettingsRow = typeof leagueSeasonSettings.$inferSelect;
 type SeasonStatisticsRow = typeof seasonStatistics.$inferSelect;
 type WeeklyStatisticsRow = typeof weeklyStatistics.$inferSelect;
+type RosterEntryRow = Pick<
+  typeof fantasyRosterEntries.$inferSelect,
+  | "actualPoints"
+  | "id"
+  | "leagueProviderId"
+  | "points"
+  | "projectedPoints"
+  | "provider"
+  | "providerPlayerId"
+  | "providerTeamId"
+  | "scoringPeriod"
+  | "season"
+  | "slot"
+  | "started"
+  | "status"
+>;
+type FantasyPlayerRow = Pick<
+  typeof fantasyPlayers.$inferSelect,
+  | "fullName"
+  | "leagueProviderId"
+  | "position"
+  | "proTeam"
+  | "provider"
+  | "providerPlayerId"
+  | "status"
+>;
 type MatchupRow = Pick<
   typeof fantasyMatchups.$inferSelect,
   | "awayTeamProviderId"
@@ -108,6 +136,18 @@ export interface DataBookSettingRow {
   value: string;
 }
 
+export interface DataBookRosterEntry {
+  actualPoints: number | null;
+  id: string;
+  playerName: string;
+  position: string;
+  projectedPoints: number | null;
+  proTeam: string | null;
+  slot: string;
+  started: boolean;
+  status: string;
+}
+
 export interface DataBookWeekRow {
   id: string;
   isChampionship: boolean;
@@ -122,6 +162,7 @@ export interface DataBookWeekRow {
   pointsAgainst: number;
   pointsFor: number;
   result: "bye" | "loss" | "tie" | "win";
+  roster: DataBookRosterEntry[];
   scoringPeriod: number;
   span: number;
   teamName: string;
@@ -697,9 +738,49 @@ function buildSettingRows(input: {
   ];
 }
 
+function rosterPlayerIdentityKey(row: {
+  leagueProviderId: string;
+  provider: FantasyProviderId;
+  providerPlayerId: string;
+}): string {
+  return `${row.provider}:${row.leagueProviderId}:${row.providerPlayerId}`;
+}
+
+function toDataBookRosterEntry(
+  entry: RosterEntryRow,
+  playerByIdentity: ReadonlyMap<string, FantasyPlayerRow>,
+): DataBookRosterEntry {
+  const player = playerByIdentity.get(rosterPlayerIdentityKey(entry)) ?? null;
+  return {
+    actualPoints: entry.actualPoints ?? entry.points,
+    id: entry.id,
+    playerName: player?.fullName ?? `Player ${entry.providerPlayerId}`,
+    position: player?.position ?? "unknown",
+    projectedPoints: entry.projectedPoints,
+    proTeam: player?.proTeam ?? null,
+    slot: entry.slot,
+    started: entry.started,
+    status: player?.status ?? entry.status,
+  };
+}
+
+function compareRosterEntries(
+  left: DataBookRosterEntry,
+  right: DataBookRosterEntry,
+): number {
+  return (
+    Number(right.started) - Number(left.started) ||
+    compareText(left.slot, right.slot) ||
+    compareText(left.position, right.position) ||
+    compareText(left.playerName, right.playerName)
+  );
+}
+
 function buildWeekRows(input: {
   mappingByTeamSeason: ReadonlyMap<string, IdentityMappingRow>;
   personById: ReadonlyMap<string, PersonRow>;
+  playerByIdentity: ReadonlyMap<string, FantasyPlayerRow>;
+  rosterRows: readonly RosterEntryRow[];
   season: number;
   teamById: ReadonlyMap<string, TeamSeasonRow>;
   weeklyRows: readonly WeeklyStatisticsRow[];
@@ -709,6 +790,16 @@ function buildWeekRows(input: {
   for (const row of rows) {
     rowsByMatchup.set(row.matchupId, [
       ...(rowsByMatchup.get(row.matchupId) ?? []),
+      row,
+    ]);
+  }
+  const rosterRowsByTeamWeek = new Map<string, RosterEntryRow[]>();
+  for (const row of input.rosterRows.filter(
+    (entry) => entry.season === input.season,
+  )) {
+    const key = `${row.providerTeamId}:${row.scoringPeriod}`;
+    rosterRowsByTeamWeek.set(key, [
+      ...(rosterRowsByTeamWeek.get(key) ?? []),
       row,
     ]);
   }
@@ -731,6 +822,14 @@ function buildWeekRows(input: {
       const opponentTeam = opponentRow
         ? (input.teamById.get(opponentRow.teamSeasonId) ?? null)
         : null;
+      const roster = team
+        ? (rosterRowsByTeamWeek
+            .get(`${team.providerTeamId}:${row.scoringPeriod}`)
+            ?.map((entry) =>
+              toDataBookRosterEntry(entry, input.playerByIdentity),
+            )
+            .sort(compareRosterEntries) ?? [])
+        : [];
 
       return {
         id: row.id,
@@ -749,6 +848,7 @@ function buildWeekRows(input: {
         pointsAgainst: row.pointsAgainst,
         pointsFor: row.pointsFor,
         result: row.result,
+        roster,
         scoringPeriod: row.scoringPeriod,
         span: row.scoringPeriodSpan,
         teamName: team?.teamName ?? "Unknown team",
@@ -769,6 +869,8 @@ function buildSeasonData(input: {
   mappingByTeamSeason: ReadonlyMap<string, IdentityMappingRow>;
   matchupRows: readonly MatchupRow[];
   personById: ReadonlyMap<string, PersonRow>;
+  playerByIdentity: ReadonlyMap<string, FantasyPlayerRow>;
+  rosterRows: readonly RosterEntryRow[];
   season: number;
   seasonRows: readonly SeasonStatisticsRow[];
   settingsBySeason: ReadonlyMap<number, SeasonSettingsRow>;
@@ -891,6 +993,49 @@ export async function getLeagueDataBookData(
         asc(weeklyStatistics.personId),
       );
 
+    const playerRows = await tx
+      .select({
+        fullName: fantasyPlayers.fullName,
+        leagueProviderId: fantasyPlayers.leagueProviderId,
+        position: fantasyPlayers.position,
+        proTeam: fantasyPlayers.proTeam,
+        provider: fantasyPlayers.provider,
+        providerPlayerId: fantasyPlayers.providerPlayerId,
+        status: fantasyPlayers.status,
+      })
+      .from(fantasyPlayers)
+      .where(eq(fantasyPlayers.leagueId, input.leagueId))
+      .orderBy(
+        asc(fantasyPlayers.fullName),
+        asc(fantasyPlayers.providerPlayerId),
+      );
+
+    const rosterRows = await tx
+      .select({
+        actualPoints: fantasyRosterEntries.actualPoints,
+        id: fantasyRosterEntries.id,
+        leagueProviderId: fantasyRosterEntries.leagueProviderId,
+        points: fantasyRosterEntries.points,
+        projectedPoints: fantasyRosterEntries.projectedPoints,
+        provider: fantasyRosterEntries.provider,
+        providerPlayerId: fantasyRosterEntries.providerPlayerId,
+        providerTeamId: fantasyRosterEntries.providerTeamId,
+        scoringPeriod: fantasyRosterEntries.scoringPeriod,
+        season: fantasyRosterEntries.season,
+        slot: fantasyRosterEntries.slot,
+        started: fantasyRosterEntries.started,
+        status: fantasyRosterEntries.status,
+      })
+      .from(fantasyRosterEntries)
+      .where(eq(fantasyRosterEntries.leagueId, input.leagueId))
+      .orderBy(
+        desc(fantasyRosterEntries.season),
+        asc(fantasyRosterEntries.scoringPeriod),
+        asc(fantasyRosterEntries.providerTeamId),
+        asc(fantasyRosterEntries.slot),
+        asc(fantasyRosterEntries.providerPlayerId),
+      );
+
     const matchupRows = await tx
       .select({
         awayTeamProviderId: fantasyMatchups.awayTeamProviderId,
@@ -966,7 +1111,9 @@ export async function getLeagueDataBookData(
       mappingRows,
       matchupRows,
       personRows,
+      playerRows,
       pushRows,
+      rosterRows,
       seasonRows,
       seasonStateRows,
       settingsRows,
@@ -984,6 +1131,9 @@ export async function getLeagueDataBookData(
   const mappingByTeamSeason = new Map<string, IdentityMappingRow>(
     scoped.mappingRows.map((row) => [row.teamSeasonId, row]),
   );
+  const playerByIdentity = new Map<string, FantasyPlayerRow>(
+    scoped.playerRows.map((row) => [rosterPlayerIdentityKey(row), row]),
+  );
   const settingsBySeason = new Map<number, SeasonSettingsRow>(
     scoped.settingsRows.map((row) => [row.season, row]),
   );
@@ -994,6 +1144,8 @@ export async function getLeagueDataBookData(
       mappingByTeamSeason,
       matchupRows: scoped.matchupRows,
       personById,
+      playerByIdentity,
+      rosterRows: scoped.rosterRows,
       season,
       seasonRows: scoped.seasonRows,
       settingsBySeason,

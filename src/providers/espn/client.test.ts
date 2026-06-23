@@ -46,6 +46,24 @@ function createCapturingFetch(response: Response): {
     calls,
     fetch: async (input, init) => {
       calls.push({ init, url: input.toString() });
+      return response.clone();
+    },
+  };
+}
+
+function createSequenceFetch(responses: Response[]): {
+  calls: { init: RequestInit | undefined; url: string }[];
+  fetch: EspnFetch;
+} {
+  const calls: { init: RequestInit | undefined; url: string }[] = [];
+  return {
+    calls,
+    fetch: async (input, init) => {
+      calls.push({ init, url: input.toString() });
+      const response = responses.shift();
+      if (!response) {
+        throw new Error(`No fixture response queued for ${input.toString()}`);
+      }
       return response;
     },
   };
@@ -125,6 +143,121 @@ function twoWeekEspnMatchupFixture() {
   return fixture;
 }
 
+function playerPoolEntry({
+  appliedStatTotal = 18.4,
+  lineupSlotId = 2,
+  playerId = 4430807,
+  projected = 17.1,
+} = {}) {
+  return {
+    injuryStatus: "ACTIVE",
+    lineupSlotId,
+    playerId,
+    playerPoolEntry: {
+      appliedStatTotal,
+      player: {
+        active: true,
+        defaultPositionId: 2,
+        eligibleSlots: [2, 20, 21],
+        firstName: "Bijan",
+        fullName: "Bijan Robinson",
+        id: playerId,
+        injured: false,
+        injuryStatus: "ACTIVE",
+        lastName: "Robinson",
+        proTeamId: 1,
+        stats: [
+          {
+            appliedTotal: appliedStatTotal,
+            scoringPeriodId: 1,
+            statSourceId: 0,
+          },
+          {
+            appliedTotal: projected,
+            scoringPeriodId: 1,
+            statSourceId: 1,
+          },
+        ],
+      },
+    },
+    status: "NORMAL",
+  };
+}
+
+function playerDepthLeagueFixture() {
+  const fixture = structuredClone(leagueFixture);
+  fixture.scoringPeriodId = 1;
+  fixture.schedule = [
+    {
+      home: {
+        rosterForCurrentScoringPeriod: {
+          entries: [
+            playerPoolEntry(),
+            playerPoolEntry({
+              appliedStatTotal: 4,
+              lineupSlotId: 20,
+              playerId: 1234,
+              projected: 6,
+            }),
+          ],
+        },
+        teamId: 1,
+        totalPoints: 18.4,
+      },
+      id: 1,
+      matchupPeriodId: 1,
+      scoringPeriodId: 1,
+      winner: "HOME",
+    },
+  ] as unknown as typeof fixture.schedule;
+  Object.assign(fixture, {
+    draftDetail: {
+      picks: [
+        {
+          bidAmount: 0,
+          id: 1,
+          keeper: false,
+          overallPickNumber: 1,
+          playerId: 4430807,
+          roundId: 1,
+          roundPickNumber: 1,
+          teamId: 1,
+        },
+      ],
+    },
+    players: [
+      {
+        id: 4430807,
+        player: playerPoolEntry().playerPoolEntry.player,
+      },
+    ],
+    transactions: [
+      {
+        id: 99,
+        items: [{ playerId: 4430807, teamId: 1, type: "ADDED" }],
+        processDate: Date.UTC(2026, 8, 1),
+        scoringPeriodId: 1,
+        teamId: 1,
+        type: "FREEAGENT",
+      },
+    ],
+  });
+  return fixture;
+}
+
+function historicalPlayerDepthFixture() {
+  const fixture = playerDepthLeagueFixture();
+  fixture.seasonId = 2012;
+  fixture.scoringPeriodId = 1;
+  fixture.status.finalScoringPeriod = 1;
+  fixture.status.isExpired = true;
+  fixture.status.isActive = false;
+  const home = fixture.schedule[0].home as Record<string, unknown>;
+  home.rosterForMatchupPeriod = home.rosterForCurrentScoringPeriod;
+  delete home.rosterForCurrentScoringPeriod;
+  return fixture;
+}
+
 describe("ESPN Fan API discovery client", () => {
   it("authenticates cookie credentials against the Fan API", async () => {
     const { calls, fetch } = createCapturingFetch(jsonResponse(fanApiFixture));
@@ -160,10 +293,10 @@ describe("ESPN Fan API discovery client", () => {
           league: "full",
           teams: "full",
           members: "full",
-          rosters: "none",
+          rosters: "partial",
           matchups: "full",
           final_standings: "partial",
-          transactions: "none",
+          transactions: "partial",
           history: "partial",
           divisions: "partial",
           keeper_dynasty: "none",
@@ -171,8 +304,8 @@ describe("ESPN Fan API discovery client", () => {
         },
         requiresOAuth: false,
         supportsHistory: true,
-        supportsRosters: false,
-        supportsTransactions: false,
+        supportsRosters: true,
+        supportsTransactions: true,
       },
     });
     await expect(
@@ -181,6 +314,8 @@ describe("ESPN Fan API discovery client", () => {
     expect(provider.getLeague).toBeTypeOf("function");
     expect(provider.getTeams).toBeTypeOf("function");
     expect(provider.getMembers).toBeTypeOf("function");
+    expect(provider.getRosters).toBeTypeOf("function");
+    expect(provider.getDraftPicks).toBeTypeOf("function");
     expect(provider.getMatchups).toBeTypeOf("function");
     expect(provider.getHistory).toBeTypeOf("function");
   });
@@ -515,6 +650,97 @@ describe("ESPN current league client", () => {
     );
   });
 
+  it("normalizes ESPN player box-score roster rows", async () => {
+    const { calls, fetch } = createCapturingFetch(
+      jsonResponse(playerDepthLeagueFixture()),
+    );
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getRosters(fixtureSession(), leagueRef, 1);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]).toMatchObject({
+      teamRef: { provider: "espn", providerId: "1", season: 2026 },
+      scoringPeriod: 1,
+      entries: [
+        {
+          actualPoints: 18.4,
+          projectedPoints: 17.1,
+          slot: "RB",
+          started: true,
+          player: {
+            fullName: "Bijan Robinson",
+            position: "RB",
+            proTeam: "ATL",
+            providerId: "4430807",
+          },
+        },
+        {
+          actualPoints: 4,
+          slot: "BE",
+          started: false,
+        },
+      ],
+    });
+    expect(calls[0].url).toContain("view=mMatchupScore");
+    expect(calls[0].url).toContain("view=mScoreboard");
+    expect(calls[0].url).toContain("scoringPeriodId=1");
+    expect(calls[0].init?.headers).toMatchObject({
+      "x-fantasy-filter": JSON.stringify({
+        schedule: { filterMatchupPeriodIds: { value: [1] } },
+      }),
+    });
+  });
+
+  it("normalizes ESPN draft picks and transactions", async () => {
+    const { fetch: draftFetch } = createCapturingFetch(
+      jsonResponse(playerDepthLeagueFixture()),
+    );
+    const draftClient = createEspnDiscoveryClient({
+      fetch: draftFetch,
+      retryDelayMs: 0,
+    });
+
+    const draft = await draftClient.getDraftPicks(fixtureSession(), leagueRef);
+
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) throw draft.error;
+    expect(draft.value[0]).toMatchObject({
+      providerId: "1",
+      round: 1,
+      pickOverall: 1,
+      pickInRound: 1,
+      teamRef: { providerId: "1" },
+      playerRef: { providerId: "4430807" },
+      player: { fullName: "Bijan Robinson" },
+    });
+
+    const { fetch: transactionFetch } = createCapturingFetch(
+      jsonResponse(playerDepthLeagueFixture()),
+    );
+    const transactionClient = createEspnDiscoveryClient({
+      fetch: transactionFetch,
+      retryDelayMs: 0,
+    });
+    const transactions = await transactionClient.getTransactions(
+      fixtureSession(),
+      leagueRef,
+      1,
+    );
+
+    expect(transactions.ok).toBe(true);
+    if (!transactions.ok) throw transactions.error;
+    expect(transactions.value[0]).toMatchObject({
+      providerId: "99",
+      scoringPeriod: 1,
+      type: "add",
+      teamRefs: [{ providerId: "1", season: 2026 }],
+      playerRefs: [{ providerId: "4430807" }],
+    });
+  });
+
   it("keeps ESPN two-week matchup windows when filtering by raw scoring period", async () => {
     const { fetch } = createCapturingFetch(
       jsonResponse(twoWeekEspnMatchupFixture()),
@@ -623,6 +849,47 @@ describe("ESPN current league client", () => {
     expect(calls[0].url).toBe(
       "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/95050?seasonId=2025&view=mSettings&view=mTeam&view=mStandings&view=mMembers&view=mMatchup&view=mMatchupScore",
     );
+  });
+
+  it("normalizes historical player-depth rows from rosterForMatchupPeriod", async () => {
+    const historyFixture = historicalPlayerDepthFixture();
+    const { calls, fetch } = createSequenceFetch([
+      jsonResponse([historyFixture]),
+      jsonResponse([historyFixture]),
+      jsonResponse([historyFixture]),
+      jsonResponse([historyFixture]),
+    ]);
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getHistory(fixtureSession(), leagueRef, {
+      seasons: [2012],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0].rosters?.[0]).toMatchObject({
+      season: 2012,
+      scoringPeriod: 1,
+    });
+    expect(result.value[0].rosters?.[0]?.entries[0]).toMatchObject({
+      actualPoints: 18.4,
+      slot: "RB",
+      started: true,
+      player: { fullName: "Bijan Robinson", providerId: "4430807" },
+    });
+    expect(result.value[0].draftPicks?.[0]).toMatchObject({
+      playerRef: { providerId: "4430807" },
+    });
+    expect(result.value[0].transactions[0]).toMatchObject({
+      type: "add",
+      playerRefs: [{ providerId: "4430807" }],
+    });
+    expect(calls[1].url).toContain("scoringPeriodId=1");
+    expect(calls[1].init?.headers).toMatchObject({
+      "x-fantasy-filter": JSON.stringify({
+        schedule: { filterMatchupPeriodIds: { value: [1] } },
+      }),
+    });
   });
 
   it("normalizes a 2011 OP and two-week playoff settings shape from history", async () => {

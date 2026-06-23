@@ -259,6 +259,7 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T11 records catalog | OrangeGrove | ✅ complete |
 | T12 general-stats substrate | AzureLotus | ✅ complete |
 | T13 import-clean guarantee | SilentFinch | ✅ complete |
+| T14 player-depth league data | NobleHawk | ✅ complete |
 
 ## Phase 3 — launched 2026-06-23 (specs detailed in .orchestration/prompts/prompt-T10|T11|T12.md)
 - Phase 1 (T1-T3 substrate) + Phase 2 (T4-T9 data layer) + UI1 (ledger pagination/data-book toolbar) + UI2 (League Data|Records nav-IA) all merged to main.
@@ -272,3 +273,15 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
   provider namespaces, and real-provider identity contamination is a first-class integrity failure. This hardening is
   the foundation for future provider/player-depth imports: add provider-specific id-format rules before enabling a
   real namespace, keep fixture namespaces visibly non-real, and preserve per-season reconciliation boundaries.
+
+## Phase 5 — completed 2026-06-23
+- T14 (cx3): league-scoped player-depth substrate A is now implemented for ESPN current/history imports. The adapter
+  requests player box score, roster, player-info, draft, and transaction views; preserves real ESPN player ids
+  including negative D/ST ids; merges sparse historical box-score rows with roster lineup slots; and normalizes
+  fantasy players, roster entries, draft picks, and transaction payloads. Schema adds `fantasy_players`,
+  `fantasy_draft_picks`, player-linked roster entries, and transaction scoring periods with RLS/FORCE RLS. Ingest
+  reconciles roster/draft/transaction/player-depth rows per fetched season, and Data Book Weeks now shows a selected
+  team-week roster with slots, starter/bench, and player points where ESPN exposes them. Integrity adds
+  `roster_coverage` and `player_points_rollup`; real 95050 verification imported 2012 week 8 and passed idempotent
+  replay + integrity. ESPN 95050 exposed zero transaction rows via `mTransactions2`, so transaction UI/records should
+  treat rows as opportunistic until another league/provider proves real activity.

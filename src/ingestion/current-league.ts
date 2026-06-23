@@ -6,14 +6,17 @@ import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   dataCoverage,
   dataIntegrityChecks,
+  fantasyDraftPicks,
   fantasyMatchups,
   fantasyMembers,
+  fantasyPlayers,
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
   leagueDataEdits,
   leagueSeasonSettings,
   leagues,
+  nflPlayers,
   providerFinalStandings,
   teamSeasons,
 } from "@/db/schema";
@@ -22,10 +25,12 @@ import type {
   FantasyProvider,
   FantasyProviderCapabilities,
   FantasyProviderSession,
+  NormalizedDraftPick,
   NormalizedFinalStanding,
   NormalizedLeague,
   NormalizedMatchup,
   NormalizedMember,
+  NormalizedPlayer,
   NormalizedRoster,
   NormalizedTeam,
   NormalizedTransaction,
@@ -49,7 +54,9 @@ export type CurrentLeagueProvider<Session extends FantasyProviderSession> =
     FantasyProvider<unknown, Session>,
     "capabilities" | "getLeague" | "getMatchups" | "getMembers" | "getTeams"
   > &
-    Partial<Pick<FantasyProvider<unknown, Session>, "getRosters">> &
+    Partial<
+      Pick<FantasyProvider<unknown, Session>, "getDraftPicks" | "getRosters">
+    > &
     Pick<FantasyProvider<unknown, Session>, "getTransactions">;
 
 export interface EntitySyncStats {
@@ -84,21 +91,28 @@ export interface CurrentLeagueSyncResult {
   teams: EntitySyncStats;
   members: EntitySyncStats;
   matchups: EntitySyncStats;
+  players?: EntitySyncStats;
   rosters: EntitySyncStats;
+  draftPicks?: EntitySyncStats;
   transactions: EntitySyncStats;
 }
 
 export interface PersistNormalizedLeagueRowsInput {
   db: Db;
   finalStandings?: readonly NormalizedFinalStanding[];
+  draftPicks?: readonly NormalizedDraftPick[];
   league?: NormalizedLeague;
   leagueId: string;
   leagueProviderId?: string;
   matchups: readonly NormalizedMatchup[];
   members: readonly NormalizedMember[];
+  players?: readonly NormalizedPlayer[];
   reconcileSeasons?: {
+    draftPicks?: readonly number[];
     members?: readonly number[];
+    rosters?: readonly number[];
     teams?: readonly number[];
+    transactions?: readonly number[];
   };
   rosters?: readonly NormalizedRoster[];
   teams: readonly NormalizedTeam[];
@@ -111,7 +125,9 @@ export interface PersistNormalizedLeagueRowsResult {
   teamStats: EntitySyncStats;
   memberStats: EntitySyncStats;
   matchupStats: EntitySyncStats;
+  playerStats: EntitySyncStats;
   rosterStats: EntitySyncStats;
+  draftPickStats: EntitySyncStats;
   transactionStats: EntitySyncStats;
   changedTransactions: ChangedTransaction[];
   finalStandingStats: EntitySyncStats;
@@ -845,16 +861,49 @@ function rosterEntryHashPayload({
   roster: NormalizedRoster;
 }) {
   return {
+    actualPoints: entry.actualPoints ?? entry.points ?? null,
+    fantasyPlayerProviderId: entry.player?.providerId ?? null,
     isKeeper: entry.isKeeper ?? false,
     metadata: entry.metadata ?? {},
     playerProviderId: entry.playerRef.providerId,
     points: entry.points ?? null,
+    projectedPoints: entry.projectedPoints ?? null,
     provider: roster.teamRef.provider,
     providerTeamId: roster.teamRef.providerId,
     scoringPeriod: roster.scoringPeriod,
     season: roster.season,
     slot: entry.slot,
+    started: entry.started ?? false,
     status: entry.status,
+  };
+}
+
+function playerHashPayload(player: NormalizedPlayer) {
+  return {
+    fullName: player.fullName,
+    metadata: player.metadata ?? {},
+    position: player.position,
+    proTeam: player.proTeam ?? null,
+    provider: player.provider,
+    providerId: player.providerId,
+    status: player.status ?? null,
+  };
+}
+
+function draftPickHashPayload(pick: NormalizedDraftPick) {
+  return {
+    auctionValue: pick.auctionValue ?? null,
+    isKeeper: pick.isKeeper ?? false,
+    leagueProviderId: pick.leagueProviderId,
+    metadata: pick.metadata ?? {},
+    pickInRound: pick.pickInRound ?? null,
+    pickOverall: pick.pickOverall ?? null,
+    playerProviderId: pick.playerRef?.providerId ?? null,
+    provider: pick.provider,
+    providerId: pick.providerId,
+    providerTeamId: pick.teamRef.providerId,
+    round: pick.round,
+    season: pick.season,
   };
 }
 
@@ -867,6 +916,7 @@ function transactionHashPayload(transaction: NormalizedTransaction) {
     ),
     provider: transaction.provider,
     providerId: transaction.providerId,
+    scoringPeriod: transaction.scoringPeriod ?? null,
     season: transaction.season,
     teamProviderIds: sortedUnique(
       transaction.teamRefs.map((team) => team.providerId),
@@ -1299,6 +1349,74 @@ function idsForSeason<T extends { season: number }>(
   );
 }
 
+function playerIdentityKey({
+  leagueProviderId,
+  provider,
+  providerPlayerId,
+}: {
+  leagueProviderId: string;
+  provider: string;
+  providerPlayerId: string;
+}): string {
+  return `${provider}:${leagueProviderId}:${providerPlayerId}`;
+}
+
+function collectNormalizedPlayers({
+  draftPicks,
+  leagueProviderId,
+  players,
+  rosters,
+}: {
+  draftPicks: readonly NormalizedDraftPick[];
+  leagueProviderId: string;
+  players: readonly NormalizedPlayer[];
+  rosters: readonly NormalizedRoster[];
+}): NormalizedPlayer[] {
+  const byIdentity = new Map<string, NormalizedPlayer>();
+  const add = (player: NormalizedPlayer | undefined) => {
+    if (
+      !player ||
+      player.providerId.length === 0 ||
+      player.fullName.length === 0
+    ) {
+      return;
+    }
+    const playerLeagueProviderId = player.leagueProviderId ?? leagueProviderId;
+    const key = playerIdentityKey({
+      leagueProviderId: playerLeagueProviderId,
+      provider: player.provider,
+      providerPlayerId: player.providerId,
+    });
+    const existing = byIdentity.get(key);
+    byIdentity.set(key, {
+      ...existing,
+      ...player,
+      leagueProviderId: playerLeagueProviderId,
+      metadata: {
+        ...(existing?.metadata ?? {}),
+        ...(player.metadata ?? {}),
+      },
+      status: player.status ?? existing?.status,
+    });
+  };
+
+  for (const player of players) {
+    add(player);
+  }
+  for (const roster of rosters) {
+    for (const entry of roster.entries) {
+      add(entry.player);
+    }
+  }
+  for (const pick of draftPicks) {
+    add(pick.player);
+  }
+
+  return [...byIdentity.values()].sort((left, right) =>
+    left.providerId.localeCompare(right.providerId),
+  );
+}
+
 async function reconcileImportedMembers({
   leagueId,
   leagueProviderId,
@@ -1424,19 +1542,206 @@ async function reconcileImportedTeams({
   }
 }
 
-async function reconcileImportedProviderTruth({
+async function reconcileImportedRosters({
   leagueId,
   leagueProviderId,
-  members,
-  reconcileSeasons,
-  teams,
+  provider,
+  rosters,
+  seasons,
   tx,
 }: {
   leagueId: string;
   leagueProviderId: string;
+  provider: NormalizedLeague["provider"];
+  rosters: readonly NormalizedRoster[];
+  seasons: readonly number[];
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  for (const season of seasons) {
+    const seasonRosters = rosters.filter((roster) => roster.season === season);
+    const validKeys = new Set(
+      seasonRosters.flatMap((roster) =>
+        roster.entries.map((entry) =>
+          [
+            roster.teamRef.providerId,
+            String(roster.scoringPeriod),
+            entry.playerRef.providerId,
+          ].join(":"),
+        ),
+      ),
+    );
+    if (validKeys.size === 0) {
+      await tx
+        .delete(fantasyRosterEntries)
+        .where(
+          and(
+            eq(fantasyRosterEntries.leagueId, leagueId),
+            eq(fantasyRosterEntries.provider, provider),
+            eq(fantasyRosterEntries.leagueProviderId, leagueProviderId),
+            eq(fantasyRosterEntries.season, season),
+          ),
+        );
+      continue;
+    }
+
+    const existingRows = await tx
+      .select({
+        id: fantasyRosterEntries.id,
+        providerPlayerId: fantasyRosterEntries.providerPlayerId,
+        providerTeamId: fantasyRosterEntries.providerTeamId,
+        scoringPeriod: fantasyRosterEntries.scoringPeriod,
+      })
+      .from(fantasyRosterEntries)
+      .where(
+        and(
+          eq(fantasyRosterEntries.leagueId, leagueId),
+          eq(fantasyRosterEntries.provider, provider),
+          eq(fantasyRosterEntries.leagueProviderId, leagueProviderId),
+          eq(fantasyRosterEntries.season, season),
+        ),
+      );
+    const staleIds = existingRows
+      .filter(
+        (row) =>
+          !validKeys.has(
+            [
+              row.providerTeamId,
+              String(row.scoringPeriod),
+              row.providerPlayerId,
+            ].join(":"),
+          ),
+      )
+      .map((row) => row.id);
+    if (staleIds.length > 0) {
+      await tx
+        .delete(fantasyRosterEntries)
+        .where(inArray(fantasyRosterEntries.id, staleIds));
+    }
+  }
+}
+
+async function reconcileImportedDraftPicks({
+  draftPicks,
+  leagueId,
+  leagueProviderId,
+  provider,
+  seasons,
+  tx,
+}: {
+  draftPicks: readonly NormalizedDraftPick[];
+  leagueId: string;
+  leagueProviderId: string;
+  provider: NormalizedLeague["provider"];
+  seasons: readonly number[];
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  for (const season of seasons) {
+    const providerPickIds = idsForSeason(
+      draftPicks,
+      season,
+      (pick) => pick.providerId,
+    );
+    if (providerPickIds.length === 0) {
+      await tx
+        .delete(fantasyDraftPicks)
+        .where(
+          and(
+            eq(fantasyDraftPicks.leagueId, leagueId),
+            eq(fantasyDraftPicks.provider, provider),
+            eq(fantasyDraftPicks.leagueProviderId, leagueProviderId),
+            eq(fantasyDraftPicks.season, season),
+          ),
+        );
+      continue;
+    }
+
+    await tx
+      .delete(fantasyDraftPicks)
+      .where(
+        and(
+          eq(fantasyDraftPicks.leagueId, leagueId),
+          eq(fantasyDraftPicks.provider, provider),
+          eq(fantasyDraftPicks.leagueProviderId, leagueProviderId),
+          eq(fantasyDraftPicks.season, season),
+          notInArray(fantasyDraftPicks.providerPickId, providerPickIds),
+        ),
+      );
+  }
+}
+
+async function reconcileImportedTransactions({
+  leagueId,
+  leagueProviderId,
+  provider,
+  transactions,
+  seasons,
+  tx,
+}: {
+  leagueId: string;
+  leagueProviderId: string;
+  provider: NormalizedLeague["provider"];
+  transactions: readonly NormalizedTransaction[];
+  seasons: readonly number[];
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  for (const season of seasons) {
+    const providerTransactionIds = idsForSeason(
+      transactions,
+      season,
+      (transaction) => transaction.providerId,
+    );
+    if (providerTransactionIds.length === 0) {
+      await tx
+        .delete(fantasyTransactions)
+        .where(
+          and(
+            eq(fantasyTransactions.leagueId, leagueId),
+            eq(fantasyTransactions.provider, provider),
+            eq(fantasyTransactions.leagueProviderId, leagueProviderId),
+            eq(fantasyTransactions.season, season),
+          ),
+        );
+      continue;
+    }
+
+    await tx
+      .delete(fantasyTransactions)
+      .where(
+        and(
+          eq(fantasyTransactions.leagueId, leagueId),
+          eq(fantasyTransactions.provider, provider),
+          eq(fantasyTransactions.leagueProviderId, leagueProviderId),
+          eq(fantasyTransactions.season, season),
+          notInArray(
+            fantasyTransactions.providerTransactionId,
+            providerTransactionIds,
+          ),
+        ),
+      );
+  }
+}
+
+async function reconcileImportedProviderTruth({
+  draftPicks,
+  leagueId,
+  leagueProviderId,
+  members,
+  provider,
+  reconcileSeasons,
+  rosters,
+  teams,
+  transactions,
+  tx,
+}: {
+  draftPicks: readonly NormalizedDraftPick[];
+  leagueId: string;
+  leagueProviderId: string;
   members: readonly NormalizedMember[];
+  provider: NormalizedLeague["provider"];
   reconcileSeasons?: PersistNormalizedLeagueRowsInput["reconcileSeasons"];
+  rosters: readonly NormalizedRoster[];
   teams: readonly NormalizedTeam[];
+  transactions: readonly NormalizedTransaction[];
   tx: LeagueScopedTx;
 }): Promise<void> {
   await reconcileImportedMembers({
@@ -1453,6 +1758,67 @@ async function reconcileImportedProviderTruth({
     teams,
     tx,
   });
+  await reconcileImportedRosters({
+    leagueId,
+    leagueProviderId,
+    provider,
+    rosters,
+    seasons: seasonsForFreshRows(rosters, reconcileSeasons?.rosters),
+    tx,
+  });
+  await reconcileImportedDraftPicks({
+    draftPicks,
+    leagueId,
+    leagueProviderId,
+    provider,
+    seasons: seasonsForFreshRows(draftPicks, reconcileSeasons?.draftPicks),
+    tx,
+  });
+  await reconcileImportedTransactions({
+    leagueId,
+    leagueProviderId,
+    provider,
+    seasons: seasonsForFreshRows(transactions, reconcileSeasons?.transactions),
+    transactions,
+    tx,
+  });
+}
+
+async function cleanupOrphanFantasyPlayers({
+  leagueId,
+  leagueProviderId,
+  tx,
+}: {
+  leagueId: string;
+  leagueProviderId: string;
+  tx: LeagueScopedTx;
+}): Promise<void> {
+  await tx.execute(sql`
+    delete from fantasy_players player
+    where player.league_id = ${leagueId}
+      and player.league_provider_id = ${leagueProviderId}
+      and not exists (
+        select 1 from fantasy_roster_entries roster
+        where roster.league_id = player.league_id
+          and roster.provider = player.provider
+          and roster.league_provider_id = player.league_provider_id
+          and roster.provider_player_id = player.provider_player_id
+      )
+      and not exists (
+        select 1 from fantasy_draft_picks pick
+        where pick.league_id = player.league_id
+          and pick.provider = player.provider
+          and pick.league_provider_id = player.league_provider_id
+          and pick.provider_player_id = player.provider_player_id
+      )
+      and not exists (
+        select 1 from fantasy_transactions txn
+        where txn.league_id = player.league_id
+          and txn.provider = player.provider
+          and txn.league_provider_id = player.league_provider_id
+          and txn.player_provider_ids ? player.provider_player_id
+      )
+  `);
 }
 
 async function upsertMatchups(
@@ -1697,28 +2063,163 @@ async function upsertLeagueSeasonSettings(
   return stats(1, changed.length);
 }
 
+async function loadNflPlayerMappings(
+  tx: LeagueScopedTx,
+  provider: NormalizedLeague["provider"],
+  providerPlayerIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = sortedUnique(providerPlayerIds);
+  if (ids.length === 0) {
+    return new Map();
+  }
+  const providerPlayerIdSql = sql<string>`${nflPlayers.fantasyProviderIds}->>${provider}`;
+  const rows = await tx
+    .select({
+      id: nflPlayers.id,
+      providerPlayerId: providerPlayerIdSql,
+    })
+    .from(nflPlayers)
+    .where(inArray(providerPlayerIdSql, ids));
+  return new Map(
+    rows
+      .filter((row) => row.providerPlayerId)
+      .map((row) => [row.providerPlayerId, row.id]),
+  );
+}
+
+async function upsertFantasyPlayers(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  leagueProviderId: string,
+  provider: NormalizedLeague["provider"],
+  players: readonly NormalizedPlayer[],
+): Promise<{
+  playerIdByIdentity: Map<string, string>;
+  stats: EntitySyncStats;
+}> {
+  if (players.length === 0) {
+    return { playerIdByIdentity: new Map(), stats: emptyStats() };
+  }
+
+  const nflPlayerIdByProviderId = await loadNflPlayerMappings(
+    tx,
+    provider,
+    players.map((player) => player.providerId),
+  );
+  const rows = players.map((player) => {
+    const rowLeagueProviderId = player.leagueProviderId ?? leagueProviderId;
+    return {
+      contentHash: stableContentHash(playerHashPayload(player)),
+      fullName: player.fullName,
+      leagueId,
+      leagueProviderId: rowLeagueProviderId,
+      metadata: player.metadata ?? {},
+      nflPlayerId: nflPlayerIdByProviderId.get(player.providerId) ?? null,
+      position: player.position || "unknown",
+      proTeam: player.proTeam ?? null,
+      provider: player.provider,
+      providerPlayerId: player.providerId,
+      status: player.status ?? null,
+    };
+  });
+
+  const changed = await tx
+    .insert(fantasyPlayers)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        fantasyPlayers.leagueId,
+        fantasyPlayers.provider,
+        fantasyPlayers.leagueProviderId,
+        fantasyPlayers.providerPlayerId,
+      ],
+      set: {
+        contentHash: sql`excluded.content_hash`,
+        fullName: sql`excluded.full_name`,
+        metadata: sql`excluded.metadata`,
+        nflPlayerId: sql`excluded.nfl_player_id`,
+        position: sql`excluded.position`,
+        proTeam: sql`excluded.pro_team`,
+        status: sql`excluded.status`,
+        updatedAt: sql`now()`,
+      },
+      where: sql`${fantasyPlayers.contentHash} is distinct from excluded.content_hash`,
+    })
+    .returning({ id: fantasyPlayers.id });
+
+  const providerPlayerIds = sortedUnique(
+    rows.map((row) => row.providerPlayerId),
+  );
+  const allRows = await tx
+    .select({
+      id: fantasyPlayers.id,
+      leagueProviderId: fantasyPlayers.leagueProviderId,
+      provider: fantasyPlayers.provider,
+      providerPlayerId: fantasyPlayers.providerPlayerId,
+    })
+    .from(fantasyPlayers)
+    .where(
+      and(
+        eq(fantasyPlayers.leagueId, leagueId),
+        eq(fantasyPlayers.provider, provider),
+        eq(fantasyPlayers.leagueProviderId, leagueProviderId),
+        inArray(fantasyPlayers.providerPlayerId, providerPlayerIds),
+      ),
+    );
+  const playerIdByIdentity = new Map(
+    allRows.map((row) => [
+      playerIdentityKey({
+        leagueProviderId: row.leagueProviderId,
+        provider: row.provider,
+        providerPlayerId: row.providerPlayerId,
+      }),
+      row.id,
+    ]),
+  );
+
+  return { playerIdByIdentity, stats: stats(rows.length, changed.length) };
+}
+
 async function upsertRosterEntries(
   tx: LeagueScopedTx,
   leagueId: string,
   leagueProviderId: string,
   rosters: readonly NormalizedRoster[],
+  playerIdByIdentity: ReadonlyMap<string, string>,
 ): Promise<EntitySyncStats> {
   const rows = rosters.flatMap((roster) =>
-    roster.entries.map((entry) => ({
-      contentHash: stableContentHash(rosterEntryHashPayload({ entry, roster })),
-      isKeeper: entry.isKeeper ?? false,
-      leagueId,
-      leagueProviderId,
-      metadata: entry.metadata ?? {},
-      points: entry.points ?? null,
-      provider: roster.teamRef.provider,
-      providerPlayerId: entry.playerRef.providerId,
-      providerTeamId: roster.teamRef.providerId,
-      scoringPeriod: roster.scoringPeriod,
-      season: roster.season,
-      slot: entry.slot,
-      status: entry.status,
-    })),
+    roster.entries.map((entry) => {
+      const playerLeagueProviderId =
+        entry.player?.leagueProviderId ?? leagueProviderId;
+      return {
+        actualPoints: entry.actualPoints ?? entry.points ?? null,
+        contentHash: stableContentHash(
+          rosterEntryHashPayload({ entry, roster }),
+        ),
+        fantasyPlayerId:
+          playerIdByIdentity.get(
+            playerIdentityKey({
+              leagueProviderId: playerLeagueProviderId,
+              provider: entry.playerRef.provider,
+              providerPlayerId: entry.playerRef.providerId,
+            }),
+          ) ?? null,
+        isKeeper: entry.isKeeper ?? false,
+        leagueId,
+        leagueProviderId,
+        metadata: entry.metadata ?? {},
+        points: entry.actualPoints ?? entry.points ?? null,
+        projectedPoints: entry.projectedPoints ?? null,
+        provider: roster.teamRef.provider,
+        providerPlayerId: entry.playerRef.providerId,
+        providerTeamId: roster.teamRef.providerId,
+        scoringPeriod: roster.scoringPeriod,
+        season: roster.season,
+        slot: entry.slot,
+        started: entry.started ?? false,
+        status: entry.status,
+      };
+    }),
   );
 
   if (rows.length === 0) {
@@ -1739,17 +2240,89 @@ async function upsertRosterEntries(
         fantasyRosterEntries.providerPlayerId,
       ],
       set: {
+        actualPoints: sql`excluded.actual_points`,
         contentHash: sql`excluded.content_hash`,
+        fantasyPlayerId: sql`excluded.fantasy_player_id`,
         isKeeper: sql`excluded.is_keeper`,
         metadata: sql`excluded.metadata`,
         points: sql`excluded.points`,
+        projectedPoints: sql`excluded.projected_points`,
         slot: sql`excluded.slot`,
+        started: sql`excluded.started`,
         status: sql`excluded.status`,
         updatedAt: sql`now()`,
       },
       where: sql`${fantasyRosterEntries.contentHash} is distinct from excluded.content_hash`,
     })
     .returning({ id: fantasyRosterEntries.id });
+
+  return stats(rows.length, changed.length);
+}
+
+async function upsertDraftPicks(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  draftPicks: readonly NormalizedDraftPick[],
+  playerIdByIdentity: ReadonlyMap<string, string>,
+): Promise<EntitySyncStats> {
+  if (draftPicks.length === 0) {
+    return emptyStats();
+  }
+
+  const rows = draftPicks.map((pick) => ({
+    auctionValue: pick.auctionValue ?? null,
+    contentHash: stableContentHash(draftPickHashPayload(pick)),
+    fantasyPlayerId: pick.playerRef
+      ? (playerIdByIdentity.get(
+          playerIdentityKey({
+            leagueProviderId:
+              pick.player?.leagueProviderId ?? pick.leagueProviderId,
+            provider: pick.playerRef.provider,
+            providerPlayerId: pick.playerRef.providerId,
+          }),
+        ) ?? null)
+      : null,
+    isKeeper: pick.isKeeper ?? false,
+    leagueId,
+    leagueProviderId: pick.leagueProviderId,
+    metadata: pick.metadata ?? {},
+    pickInRound: pick.pickInRound ?? null,
+    pickOverall: pick.pickOverall ?? null,
+    provider: pick.provider,
+    providerPickId: pick.providerId,
+    providerPlayerId: pick.playerRef?.providerId ?? null,
+    providerTeamId: pick.teamRef.providerId,
+    round: pick.round,
+    season: pick.season,
+  }));
+
+  const changed = await tx
+    .insert(fantasyDraftPicks)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        fantasyDraftPicks.leagueId,
+        fantasyDraftPicks.provider,
+        fantasyDraftPicks.leagueProviderId,
+        fantasyDraftPicks.season,
+        fantasyDraftPicks.providerPickId,
+      ],
+      set: {
+        auctionValue: sql`excluded.auction_value`,
+        contentHash: sql`excluded.content_hash`,
+        fantasyPlayerId: sql`excluded.fantasy_player_id`,
+        isKeeper: sql`excluded.is_keeper`,
+        metadata: sql`excluded.metadata`,
+        pickInRound: sql`excluded.pick_in_round`,
+        pickOverall: sql`excluded.pick_overall`,
+        providerPlayerId: sql`excluded.provider_player_id`,
+        providerTeamId: sql`excluded.provider_team_id`,
+        round: sql`excluded.round`,
+        updatedAt: sql`now()`,
+      },
+      where: sql`${fantasyDraftPicks.contentHash} is distinct from excluded.content_hash`,
+    })
+    .returning({ id: fantasyDraftPicks.id });
 
   return stats(rows.length, changed.length);
 }
@@ -1774,6 +2347,7 @@ async function upsertTransactions(
     ),
     provider: transaction.provider,
     providerTransactionId: transaction.providerId,
+    scoringPeriod: transaction.scoringPeriod ?? null,
     season: transaction.season,
     teamProviderIds: sortedUnique(
       transaction.teamRefs.map((team) => team.providerId),
@@ -1797,6 +2371,7 @@ async function upsertTransactions(
         details: sql`excluded.details`,
         occurredAt: sql`excluded.occurred_at`,
         playerProviderIds: sql`excluded.player_provider_ids`,
+        scoringPeriod: sql`excluded.scoring_period`,
         teamProviderIds: sql`excluded.team_provider_ids`,
         type: sql`excluded.type`,
         updatedAt: sql`now()`,
@@ -1818,6 +2393,7 @@ async function upsertTransactions(
 }
 
 function resolveLeagueProviderId({
+  draftPicks,
   explicit,
   finalStandings,
   matchups,
@@ -1825,6 +2401,7 @@ function resolveLeagueProviderId({
   teams,
   transactions,
 }: {
+  draftPicks: readonly NormalizedDraftPick[];
   explicit?: string;
   finalStandings: readonly NormalizedFinalStanding[];
   matchups: readonly NormalizedMatchup[];
@@ -1838,6 +2415,7 @@ function resolveLeagueProviderId({
     members[0]?.leagueProviderId ??
     matchups[0]?.leagueProviderId ??
     finalStandings[0]?.leagueProviderId ??
+    draftPicks[0]?.leagueProviderId ??
     transactions[0]?.leagueProviderId;
 
   if (!resolved) {
@@ -1847,14 +2425,55 @@ function resolveLeagueProviderId({
   return resolved;
 }
 
+function resolveProvider({
+  draftPicks,
+  finalStandings,
+  league,
+  matchups,
+  members,
+  players,
+  rosters,
+  teams,
+  transactions,
+}: {
+  draftPicks: readonly NormalizedDraftPick[];
+  finalStandings: readonly NormalizedFinalStanding[];
+  league?: NormalizedLeague;
+  matchups: readonly NormalizedMatchup[];
+  members: readonly NormalizedMember[];
+  players: readonly NormalizedPlayer[];
+  rosters: readonly NormalizedRoster[];
+  teams: readonly NormalizedTeam[];
+  transactions: readonly NormalizedTransaction[];
+}): NormalizedLeague["provider"] {
+  const resolved =
+    league?.provider ??
+    teams[0]?.provider ??
+    members[0]?.provider ??
+    matchups[0]?.provider ??
+    finalStandings[0]?.teamRef.provider ??
+    rosters[0]?.teamRef.provider ??
+    draftPicks[0]?.provider ??
+    players[0]?.provider ??
+    transactions[0]?.provider;
+
+  if (!resolved) {
+    throw new Error("normalized rows require a provider id");
+  }
+
+  return resolved;
+}
+
 export async function persistNormalizedLeagueRows({
   db,
+  draftPicks = [],
   finalStandings = [],
   league,
   leagueId,
   leagueProviderId,
   matchups,
   members,
+  players = [],
   reconcileSeasons,
   rosters = [],
   teams,
@@ -1862,10 +2481,22 @@ export async function persistNormalizedLeagueRows({
 }: PersistNormalizedLeagueRowsInput): Promise<PersistNormalizedLeagueRowsResult> {
   return withLeagueContext(db, leagueId, async (tx) => {
     const resolvedLeagueProviderId = resolveLeagueProviderId({
+      draftPicks,
       explicit: leagueProviderId,
       finalStandings,
       matchups,
       members,
+      teams,
+      transactions,
+    });
+    const resolvedProvider = resolveProvider({
+      draftPicks,
+      finalStandings,
+      league,
+      matchups,
+      members,
+      players,
+      rosters,
       teams,
       transactions,
     });
@@ -1878,12 +2509,29 @@ export async function persistNormalizedLeagueRows({
     );
     const teamStats = await upsertTeams(tx, leagueId, teams);
     const memberStats = await upsertMembers(tx, leagueId, members);
+    const collectedPlayers = collectNormalizedPlayers({
+      draftPicks,
+      leagueProviderId: resolvedLeagueProviderId,
+      players,
+      rosters,
+    });
+    const playerUpsert = await upsertFantasyPlayers(
+      tx,
+      leagueId,
+      resolvedLeagueProviderId,
+      resolvedProvider,
+      collectedPlayers,
+    );
     await reconcileImportedProviderTruth({
+      draftPicks,
       leagueId,
       leagueProviderId: resolvedLeagueProviderId,
       members,
+      provider: resolvedProvider,
       reconcileSeasons,
+      rosters,
       teams,
+      transactions,
       tx,
     });
     const leagueSeasonSettingsStats = await upsertLeagueSeasonSettings(
@@ -1902,21 +2550,35 @@ export async function persistNormalizedLeagueRows({
       leagueId,
       resolvedLeagueProviderId,
       rosters,
+      playerUpsert.playerIdByIdentity,
+    );
+    const draftPickStats = await upsertDraftPicks(
+      tx,
+      leagueId,
+      draftPicks,
+      playerUpsert.playerIdByIdentity,
     );
     const transactionStats = await upsertTransactions(
       tx,
       leagueId,
       transactions,
     );
+    await cleanupOrphanFantasyPlayers({
+      leagueId,
+      leagueProviderId: resolvedLeagueProviderId,
+      tx,
+    });
 
     return {
       changedTransactions: transactionStats.changedTransactions,
       changedMatchupIds: matchupUpsert.changedIds,
       changedMatchupScoringPeriods: matchupUpsert.scoringPeriods,
+      draftPickStats,
       finalStandingStats,
       leagueSeasonSettingsStats,
       matchupStats: matchupUpsert.stats,
       memberStats,
+      playerStats: playerUpsert.stats,
       rosterStats,
       teamStats,
       transactionStats: transactionStats.stats,
@@ -2140,6 +2802,8 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     requestedDataClasses.has("rosters") ||
     requestedDataClasses.has("keeper_dynasty");
   const shouldFetchTransactions = requestedDataClasses.has("transactions");
+  const shouldFetchDraftPicks =
+    !hasExplicitDataClasses && provider.getDraftPicks !== undefined;
   const needsScoringPeriod =
     hasExplicitDataClasses &&
     (shouldFetchMatchups || shouldFetchRosters || shouldFetchTransactions) &&
@@ -2190,6 +2854,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   }
 
   let rosters: readonly NormalizedRoster[] = [];
+  let rosterFetched = false;
   let rosterObservation: DataCoverageObservation | undefined;
   if (
     shouldFetchRosters &&
@@ -2203,12 +2868,15 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
       );
       if (rosterResult.ok) {
         rosters = rosterResult.value;
+        rosterFetched = true;
+        const itemCount = rosterResult.value.reduce(
+          (total, roster) => total + roster.entries.length,
+          0,
+        );
         rosterObservation = {
           details: { rosterCount: rosterResult.value.length },
-          itemCount: rosterResult.value.reduce(
-            (total, roster) => total + roster.entries.length,
-            0,
-          ),
+          itemCount,
+          ...(itemCount === 0 ? { status: "unavailable" as const } : {}),
         };
       } else {
         rosterObservation = {
@@ -2226,6 +2894,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   }
 
   let transactions: readonly NormalizedTransaction[] = [];
+  let transactionFetched = false;
   let transactionObservation: DataCoverageObservation | undefined;
   if (shouldFetchTransactions) {
     if (provider.capabilities.dataClasses.transactions !== "none") {
@@ -2236,9 +2905,13 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
       );
       if (transactionResult.ok) {
         transactions = transactionResult.value;
+        transactionFetched = true;
         transactionObservation = {
           details: { transactionCount: transactionResult.value.length },
           itemCount: transactionResult.value.length,
+          ...(transactionResult.value.length === 0
+            ? { status: "unavailable" as const }
+            : {}),
         };
       } else {
         transactionObservation = {
@@ -2255,6 +2928,16 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     }
   }
 
+  let draftPicks: readonly NormalizedDraftPick[] = [];
+  let draftFetched = false;
+  if (shouldFetchDraftPicks && provider.getDraftPicks) {
+    const draftResult = await provider.getDraftPicks(session, ref);
+    if (draftResult.ok) {
+      draftPicks = draftResult.value;
+      draftFetched = true;
+    }
+  }
+
   const leagueWrite = leagueValue
     ? await upsertLeague(db, leagueValue)
     : { changed: 0, id: input.leagueId };
@@ -2263,17 +2946,27 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   }
   const scoped = await persistNormalizedLeagueRows({
     db,
+    draftPicks,
     league: leagueValue,
     leagueId: leagueWrite.id,
     leagueProviderId: leagueValue?.providerId ?? ref.providerId,
     matchups: matchups.value,
     members: members.value,
     reconcileSeasons: {
+      ...(draftFetched
+        ? { draftPicks: [leagueValue?.season ?? ref.season] }
+        : {}),
       ...(shouldFetchMembers
         ? { members: [leagueValue?.season ?? ref.season] }
         : {}),
+      ...(rosterFetched
+        ? { rosters: [leagueValue?.season ?? ref.season] }
+        : {}),
       ...(shouldFetchTeams
         ? { teams: [leagueValue?.season ?? ref.season] }
+        : {}),
+      ...(transactionFetched
+        ? { transactions: [leagueValue?.season ?? ref.season] }
         : {}),
     },
     rosters,
@@ -2402,7 +3095,9 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     teams: scoped.teamStats,
     members: scoped.memberStats,
     matchups: scoped.matchupStats,
+    players: scoped.playerStats,
     rosters: scoped.rosterStats,
+    draftPicks: scoped.draftPickStats,
     transactions: scoped.transactionStats,
   });
 }

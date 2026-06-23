@@ -173,12 +173,18 @@ export interface NormalizedMatchup extends SeasonScopedProviderEntityRef {
 
 export interface NormalizedPlayer extends ProviderEntityRef {
   fullName: string;
+  leagueProviderId?: string;
+  metadata?: NormalizedJsonObject;
   position: string;
   proTeam?: string;
   status?: string;
 }
 
 export interface NormalizedRosterEntry {
+  actualPoints?: number;
+  projectedPoints?: number;
+  started?: boolean;
+  player?: NormalizedPlayer;
   playerRef: ProviderEntityRef;
   slot: string;
   status: string;
@@ -194,6 +200,19 @@ export interface NormalizedRoster {
   entries: NormalizedRosterEntry[];
 }
 
+export interface NormalizedDraftPick extends SeasonScopedProviderEntityRef {
+  auctionValue?: number;
+  isKeeper?: boolean;
+  leagueProviderId: string;
+  metadata?: NormalizedJsonObject;
+  pickInRound?: number;
+  pickOverall?: number;
+  player?: NormalizedPlayer;
+  playerRef?: ProviderEntityRef;
+  round: number;
+  teamRef: SeasonScopedProviderEntityRef;
+}
+
 export type NormalizedTransactionType =
   | "add"
   | "drop"
@@ -206,6 +225,7 @@ export interface NormalizedTransaction extends SeasonScopedProviderEntityRef {
   type: NormalizedTransactionType;
   teamRefs: SeasonScopedProviderEntityRef[];
   playerRefs: ProviderEntityRef[];
+  scoringPeriod?: number;
   timestamp: Date;
   details: Record<string, unknown>;
 }
@@ -241,6 +261,9 @@ export interface NormalizedSeasonBundle {
   members: NormalizedMember[];
   matchups: NormalizedMatchup[];
   finalStandings: NormalizedFinalStanding[];
+  players?: NormalizedPlayer[];
+  rosters?: NormalizedRoster[];
+  draftPicks?: NormalizedDraftPick[];
   transactions: NormalizedTransaction[];
 }
 
@@ -382,6 +405,10 @@ export interface FantasyProvider<
     ref: ProviderLeagueRef,
     scoringPeriod?: number,
   ): Promise<ProviderResult<NormalizedRoster[]>>;
+  getDraftPicks?(
+    session: Session,
+    ref: ProviderLeagueRef,
+  ): Promise<ProviderResult<NormalizedDraftPick[]>>;
   getMembers(
     session: Session,
     ref: ProviderLeagueRef,

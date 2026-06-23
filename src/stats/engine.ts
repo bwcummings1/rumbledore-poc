@@ -8,6 +8,7 @@ import {
   dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
   headToHeadRecords,
   identityAuditLog,
@@ -2759,6 +2760,18 @@ async function buildDataIntegrityCheckDrafts(
         eq(fantasyMatchups.status, "final"),
       ),
     );
+  const rosterRows = await tx
+    .select({
+      actualPoints: fantasyRosterEntries.actualPoints,
+      points: fantasyRosterEntries.points,
+      providerPlayerId: fantasyRosterEntries.providerPlayerId,
+      providerTeamId: fantasyRosterEntries.providerTeamId,
+      scoringPeriod: fantasyRosterEntries.scoringPeriod,
+      season: fantasyRosterEntries.season,
+      started: fantasyRosterEntries.started,
+    })
+    .from(fantasyRosterEntries)
+    .where(eq(fantasyRosterEntries.leagueId, leagueId));
   const coverageRows = await tx
     .select({
       capability: dataCoverage.capability,
@@ -3033,6 +3046,136 @@ async function buildDataIntegrityCheckDrafts(
       row,
     ]),
   );
+  const mappingsByPersonSeason = new Map(
+    mappingRows.map((row) => [`${row.personId}:${row.season}`, row]),
+  );
+  const rosterEntriesByTeamWeek = new Map<string, typeof rosterRows>();
+  for (const row of rosterRows) {
+    const key = `${row.providerTeamId}:${row.season}:${row.scoringPeriod}`;
+    rosterEntriesByTeamWeek.set(key, [
+      ...(rosterEntriesByTeamWeek.get(key) ?? []),
+      row,
+    ]);
+  }
+  const rosterSeasons = seasonKeys(
+    coverageRows
+      .filter(
+        (row) =>
+          row.dataClass === "rosters" &&
+          row.itemCount > 0 &&
+          row.status !== "unavailable" &&
+          row.status !== "error",
+      )
+      .map((row) => row.season),
+  );
+  for (const season of rosterSeasons) {
+    const coverageIssues: Record<string, unknown>[] = [];
+    const rollupIssues: Record<string, unknown>[] = [];
+    const rollupSkipped: Record<string, unknown>[] = [];
+    const finalizedTeamWeeks = weeklyRows.filter(
+      (row) => row.season === season && row.result !== "bye",
+    );
+
+    for (const weekly of finalizedTeamWeeks) {
+      const mapping = mappingsByPersonSeason.get(
+        `${weekly.personId}:${weekly.season}`,
+      );
+      if (!mapping) {
+        coverageIssues.push({
+          personId: weekly.personId,
+          reason: "missing_identity_mapping",
+          scoringPeriod: weekly.scoringPeriod,
+        });
+        continue;
+      }
+      const rosterKey = `${mapping.providerTeamId}:${weekly.season}:${weekly.scoringPeriod}`;
+      const entries = rosterEntriesByTeamWeek.get(rosterKey) ?? [];
+      if (entries.length === 0) {
+        coverageIssues.push({
+          personId: weekly.personId,
+          providerTeamId: mapping.providerTeamId,
+          reason: "missing_roster_entries",
+          scoringPeriod: weekly.scoringPeriod,
+        });
+        continue;
+      }
+      if (weekly.scoringPeriodSpan > 1) {
+        rollupSkipped.push({
+          personId: weekly.personId,
+          providerTeamId: mapping.providerTeamId,
+          reason: "multi_scoring_period_matchup",
+          scoringPeriod: weekly.scoringPeriod,
+          scoringPeriodSpan: weekly.scoringPeriodSpan,
+        });
+        continue;
+      }
+      const starterEntries = entries.filter((entry) => entry.started);
+      const scoredStarters = starterEntries
+        .map((entry) => entry.actualPoints ?? entry.points)
+        .filter(
+          (points): points is number =>
+            typeof points === "number" && Number.isFinite(points),
+        );
+      if (starterEntries.length === 0 || scoredStarters.length === 0) {
+        rollupSkipped.push({
+          personId: weekly.personId,
+          providerTeamId: mapping.providerTeamId,
+          reason: "missing_started_player_points",
+          scoringPeriod: weekly.scoringPeriod,
+        });
+        continue;
+      }
+      if (scoredStarters.length !== starterEntries.length) {
+        rollupSkipped.push({
+          missingPoints: starterEntries.length - scoredStarters.length,
+          personId: weekly.personId,
+          providerTeamId: mapping.providerTeamId,
+          reason: "partial_started_player_points",
+          scoredStarters: scoredStarters.length,
+          scoringPeriod: weekly.scoringPeriod,
+          starterEntries: starterEntries.length,
+        });
+        continue;
+      }
+      const rosterPoints = round(
+        scoredStarters.reduce((total, points) => total + points, 0),
+        2,
+      );
+      if (!amountEqual(weekly.pointsFor, rosterPoints, 0.1)) {
+        rollupIssues.push({
+          personId: weekly.personId,
+          providerTeamId: mapping.providerTeamId,
+          rosterPoints,
+          scoringPeriod: weekly.scoringPeriod,
+          teamPoints: weekly.pointsFor,
+        });
+      }
+    }
+
+    drafts.push({
+      checkKey: "roster_coverage",
+      detail: {
+        checkedTeamWeeks: finalizedTeamWeeks.length,
+        issues: coverageIssues,
+      },
+      season,
+      status: checkStatus(coverageIssues),
+    });
+    drafts.push({
+      checkKey: "player_points_rollup",
+      detail: {
+        checkedTeamWeeks:
+          finalizedTeamWeeks.length -
+          coverageIssues.length -
+          rollupSkipped.length,
+        issues: rollupIssues,
+        skippedTeamWeeks: rollupSkipped,
+        tolerance: 0.1,
+      },
+      season,
+      status: checkStatus(rollupIssues),
+    });
+  }
   const standingsSeasons = seasonKeys(
     finalStandingRows.map((row) => row.season),
   );

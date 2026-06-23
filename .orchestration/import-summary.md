@@ -243,3 +243,82 @@
 - PASS - placeholder canonical persons removed
 - PASS - provider_identity_contamination invariant passes after clean
 - Real person samples after clean: bradwcummings, bsarto5, Burch 16, espn52782328, garrettreno36, GucciMane1733, Mark Kent Anderson, maverick_fan2007
+
+## T14 player-depth
+
+- Real provider identity: ESPN 95050, current season 2026; sample season 2012, week 8.
+- League id: e4323c97-0c3f-4f24-82d3-3794bd928b26
+- Current import rosters changed/total: 185/185
+- Historical import rosters changed/total: 3589/3589
+- Historical import draft picks changed/total: 200/200
+- Historical import transactions changed/total: 0/0
+
+### Counts
+
+- fantasy_players: 413
+- fantasy_roster_entries: 3774 (3589 in 2012)
+- fantasy_draft_picks: 380 (200 in 2012)
+- fantasy_transactions: 0 imported; ESPN returned no transactions for this league through mTransactions2 with the transaction filter
+- Counts after first import: {"draftPicks":380,"draftPicks2012":200,"fantasyPlayers":413,"rosterEntries":3774,"rosterEntries2012":3589,"transactions":0,"transactions2012":0}
+- Counts after replay: {"draftPicks":380,"draftPicks2012":200,"fantasyPlayers":413,"rosterEntries":3774,"rosterEntries2012":3589,"transactions":0,"transactions2012":0}
+
+### Verification Checks
+
+- PASS - 2012 roster entries imported
+- PASS - 2012 draft picks imported
+- PASS - 2012 week 8 roster sample loaded
+- PASS - idempotent real-season replay kept counts stable
+- PASS - T14 roster integrity checks pass
+- WARN - ESPN returned no real transaction rows for this league; parser and persistence tests cover mTransactions2 rows
+
+### Week 8 Roster Sample
+
+- Team: Team DOMTINATION
+
+| Player | Pos | Pro | Slot | Started | Actual | Projected |
+|---|---|---|---|---:|---:|---:|
+| Bills D/ST | D/ST | BUF | D/ST | yes |  |  |
+| Matt Prater | K | DEN | K | yes |  |  |
+| Cam Newton | TQB | CAR | OP | yes |  |  |
+| Jared Cook | TE | TEN | QB | yes | 4 |  |
+| NaVorro Bowman | unknown | SF | QB | yes | 3 |  |
+| Aaron Rodgers | TQB | GB | QB | yes | 13 |  |
+| DeMarco Murray | RB | DAL | RB | yes |  |  |
+| Doug Martin | RB | TB | RB | yes | 32 |  |
+| Jason Witten | TE | DAL | TE | yes |  |  |
+| Darren McFadden | RB | LV | unknown | yes | 13 |  |
+| Danario Alexander | WR | LAC | unknown | yes |  |  |
+| Luke Kuechly | unknown | CAR | unknown | yes |  |  |
+| Antonio Brown | WR | PIT | WR | yes | 3 |  |
+| Vincent Jackson | WR | TB | WR | yes | 4 |  |
+| Sidney Rice | WR | SEA | BE | no |  |  |
+| Danny Amendola | WR | LAR | BE | no |  |  |
+| BenJarvus Green-Ellis | RB | CIN | BE | no |  |  |
+| Kenny Britt | WR | TEN | BE | no | 3 |  |
+| Andrew Luck | TQB | IND | BE | no | 15 |  |
+| Jets D/ST | D/ST | NYJ | BE | no |  |  |
+| Darren Sproles | RB | NO | BE | no | 11 |  |
+| Ryan Grant | RB | GB | BE | no |  |  |
+
+### Draft Sample
+
+| Overall | Round | Team | Player | Pos |
+|---:|---:|---|---|---|
+| 1 | 1 | 4 | Arian Foster | RB |
+| 2 | 1 | 2 | Ray Rice | RB |
+| 3 | 1 | 1 | Aaron Rodgers | TQB |
+| 4 | 1 | 3 | LeSean McCoy | RB |
+| 5 | 1 | 5 | Maurice Jones-Drew | RB |
+
+### Transaction Sample
+
+- ESPN returned no transaction rows for the verified league. Parser and persistence coverage use representative mTransactions2 payloads; follow-on UI can consume rows when ESPN exposes them.
+
+### Integrity
+
+- Stats weekly rows: 150
+- Stats season rows: 10
+- Integrity checks written: 17
+- Total integrity failures: 0
+- T14 roster/player integrity failures: 0
+- All integrity checks PASS.
