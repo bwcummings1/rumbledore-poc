@@ -145,14 +145,15 @@ Three grains, matching the **dimension-vs-fact** distinction:
 > onto one page or invent layouts. This has been the single most common failure mode (the mid-page `SectionTabs`
 > card, the arena "cluster") and is called out explicitly so it can't recur.
 
-**4.1 Features are separate destinations, not one crammed page.** Each of these is its **own** navigable feature,
-reached from the league nav — never stacked onto a single screen:
-- **Data Book** — the editable per-season data tables (substrate A).
-- **Record Book** — the read-only computed records (the projection).
-- **Edit Ledger / Change Log** — the chronological feed of saved + pushed edits with red/green diffs.
+**4.1 Features are separate destinations, not one crammed page.** The league nav exposes **two** data destinations:
+- **League Data** — one destination for the curated hard-data layer, with top-card tabs:
+  - **Data Book** — the editable per-season data tables (substrate A).
+  - **Edit Ledger / Change Log** — the chronological feed of saved + pushed edits with red/green diffs.
+- **Records** — the read-only computed records (the projection). Record categories are sub-sections inside Records,
+  not separate left-rail destinations.
 
-Keeping them as distinct destinations *is* what stops the data, the records, and the audit trail from blurring in
-the UI the way they blurred in the model (§1).
+Keeping League Data and Records distinct *is* what stops editable data, the audit trail, and computed records from
+blurring in the UI the way they blurred in the model (§1).
 
 **4.2 Within a feature, use the established pattern — never a mid-page button-card.** Sub-sections use the
 **league-feed pattern**: a top header card with the section nav as `TabLinks` **at the bottom of that card**

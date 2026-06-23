@@ -223,22 +223,19 @@ describe("NavigationShellView", () => {
       "Home",
       "The Press",
       "Bet",
-      "Data Book",
-      "Edit Ledger",
+      "League Data",
       "Records",
       "Lore",
       "Members",
     ]);
     expect(
       within(tabs)
-        .getByRole("link", { name: "Data Book" })
+        .getByRole("link", { name: "League Data" })
         .getAttribute("href"),
     ).toBe("/leagues/league-a/data");
     expect(
-      within(tabs)
-        .getByRole("link", { name: "Edit Ledger" })
-        .getAttribute("href"),
-    ).toBe("/leagues/league-a/ledger");
+      within(tabs).queryByRole("link", { name: "Edit Ledger" }),
+    ).toBeNull();
     expect(
       within(tabs)
         .getByRole("link", { name: "The Press" })
@@ -252,6 +249,30 @@ describe("NavigationShellView", () => {
     expect(screen.getAllByRole("region", { name: "League wire" })).toHaveLength(
       2,
     );
+  });
+
+  it("marks League Data active on the Edit Ledger route without rendering a separate ledger item", () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a/ledger")}
+        items={items}
+      >
+        <main>Edit Ledger</main>
+      </NavigationShellView>,
+    );
+
+    const tabs = screen.getByLabelText("Current scope sections");
+    expect(
+      within(tabs)
+        .getByRole("link", { name: "League Data" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      within(tabs).queryByRole("link", { name: "Edit Ledger" }),
+    ).toBeNull();
+    expect(
+      within(tabs).getByRole("link", { name: "Records" }).getAttribute("href"),
+    ).toBe("/leagues/league-a/records");
   });
 
   it("opens the mobile scope switcher sheet with the unified league list", async () => {

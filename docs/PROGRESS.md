@@ -1,14 +1,20 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **UI-Polish-1 owner review fixes on
-`ws/ui1-databook-ledger-polish`**: the Data Book masthead is compact again, with the year picker plus small
-Save/Publish actions relocated to the `{season} {grain}` section toolbar and the detailed curation state tucked into
-a collapsed "Curation details" disclosure. The Edit Ledger is now server-paginated (`limit`/`offset`, default page
-size 25) and renders entries inside a contained panel with page controls at the bottom. Remaining Record Book
-duplicate-key paths were hardened; the screenshot run log reports `grep -c 'same key' /tmp/ui1-screenshots.log` =
-`0`. Refreshed review PNGs: `docs/screenshots/{mobile,tablet,desktop}/10-records.png`, `17-data-book.png`,
-`18-edit-ledger.png`, and `18-edit-ledger-expanded.png`. Prior state: **Data Foundation Phase 2 complete through T9
+Keep it current. Last updated: 2026-06-23 — **UI-Polish-2 owner IA fixes on
+`ws/ui2-league-data-nav`**: the left-rail data IA is now two relevant destinations, **League Data** and **Records**.
+League Data points to `/leagues/[leagueId]/data` and is active for both `/data` and `/ledger`; the standalone
+left-rail Edit Ledger item is gone. Data Book and Edit Ledger now share the same League Data `PublicationMasthead`
+with bottom tabs `[Data Book | Edit Ledger]`, while the People/Settings/Weeks selector moved into Data Book content as
+a secondary segmented control. Refreshed full screenshot set:
+`docs/screenshots/{mobile,tablet,desktop}/`, including `17-data-book.png`, `18-edit-ledger.png`, and
+`18-edit-ledger-expanded.png`; `/tmp/ui2-screenshots.log` reports `grep -c 'same key'` = `0`.
+Prior state: **UI-Polish-1 owner review fixes on `ws/ui1-databook-ledger-polish`**: the Data Book masthead is compact
+again, with the year picker plus small Save/Publish actions relocated to the `{season} {grain}` section toolbar and
+the detailed curation state tucked into a collapsed "Curation details" disclosure. The Edit Ledger is now
+server-paginated (`limit`/`offset`, default page size 25) and renders entries inside a contained panel with page
+controls at the bottom. Remaining Record Book duplicate-key paths were hardened. Prior state: **Data Foundation Phase
+2 complete through T9
 on `ws/t9-record-repoint`**: the Record Book is now a read-only projection of the pushed canonical state. Records load
 `composeCanonicalSnapshot(db, { leagueId })`, the composition of each season's latest pushed version, and derive the
 catalog/page data from those pushed snapshots instead of live draft/materialized facts. Saved-but-unpushed edits are
@@ -202,6 +208,10 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   expands the records catalog, and T12 adds the general fantasy-stats substrate B.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-23: UI-Polish-2 owner IA fix landed — the league rail now exposes **League Data** as the single data
+  destination plus **Records** as its own destination; `/data` and `/ledger` share a League Data masthead with
+  `[Data Book | Edit Ledger]` tabs, and the Data Book People/Settings/Weeks grain selector is now a secondary
+  segmented control inside the Data Book content. Full screenshots were regenerated and duplicate-key grep returned 0.
 - 2026-06-23: Data Foundation T9 landed — Record Book reads `composeCanonicalSnapshot` pushed seasons only; saved
   edits stay draft-only until push; nothing-pushed leagues get the Data Book push empty state; person display uses
   latest pushed team name plus real name; the 2012 real-league vertical slice proved data→edit→save→push→record.

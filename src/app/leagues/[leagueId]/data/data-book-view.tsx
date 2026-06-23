@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  ArrowLeft,
   BookOpen,
   Check,
   ChevronDown,
@@ -17,12 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useId, useState } from "react";
 import { postJson } from "@/app/onboarding/client-http";
-import {
-  PublicationMasthead,
-  type PublicationNavItem,
-} from "@/components/publication/front-view";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { DataCardRow } from "@/components/ui/data-card-table";
@@ -30,6 +25,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import {
@@ -37,6 +33,7 @@ import {
   type DataTableColumn,
   SignedValue,
 } from "@/components/ui/table";
+import { LeagueDataMasthead } from "../league-data-masthead";
 import type {
   DataBookCheckpointOption,
   DataBookCurationMode,
@@ -886,6 +883,51 @@ function PushConfirmDialog({
         </p>
       </div>
     </Dialog>
+  );
+}
+
+function GrainSelector({
+  activeGrain,
+  onGrainChange,
+}: {
+  activeGrain: DataBookGrain;
+  onGrainChange: (grain: DataBookGrain) => void;
+}) {
+  const active = grains.find((grain) => grain.value === activeGrain);
+  const options = grains.map((grain) => ({
+    icon:
+      grain.value === "people" ? (
+        <Users aria-hidden="true" className="size-4" />
+      ) : grain.value === "settings" ? (
+        <Database aria-hidden="true" className="size-4" />
+      ) : (
+        <BookOpen aria-hidden="true" className="size-4" />
+      ),
+    label: grain.label,
+    value: grain.value,
+  }));
+
+  return (
+    <div
+      className="cell grid gap-3 border-steel/30 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-4"
+      data-slot="data-book-grain-selector"
+    >
+      <div className="min-w-0">
+        <p className="font-mono text-xs uppercase tracking-[0.14em] text-steel">
+          Data Book view
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {active?.deck ?? "Imported league data for this season."}
+        </p>
+      </div>
+      <Segmented
+        aria-label="Data Book grain"
+        className="w-full sm:min-w-[22rem]"
+        onValueChange={(value) => onGrainChange(value as DataBookGrain)}
+        options={options}
+        value={activeGrain}
+      />
+    </div>
   );
 }
 
@@ -1933,46 +1975,12 @@ export function DataBookView({
     }
   }
 
-  const navItems = useMemo<PublicationNavItem[]>(
-    () =>
-      grains.map((grain) => ({
-        active: activeGrain === grain.value,
-        icon:
-          grain.value === "people" ? (
-            <Users aria-hidden="true" className="size-4" />
-          ) : grain.value === "settings" ? (
-            <Database aria-hidden="true" className="size-4" />
-          ) : (
-            <BookOpen aria-hidden="true" className="size-4" />
-          ),
-        label: grain.label,
-        onSelect: () => setActiveGrain(grain.value),
-        value: grain.value,
-      })),
-    [activeGrain],
-  );
-
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <PublicationMasthead
-        actions={[
-          {
-            href: `/leagues/${draftData.league.id}`,
-            icon: <ArrowLeft data-icon="inline-start" />,
-            label: "League home",
-          },
-          {
-            href: `/leagues/${draftData.league.id}/records`,
-            icon: <BookOpen data-icon="inline-start" />,
-            label: "Records",
-          },
-        ]}
-        deck={`${draftData.league.provider.toUpperCase()} ${draftData.league.providerLeagueId}. Live draft tables for data curation, displayed one season at a time.`}
-        eyebrow="DATA BOOK"
-        navAriaLabel="Data Book grains"
-        navItems={navItems}
+      <LeagueDataMasthead
+        activeTab="data-book"
+        league={draftData.league}
         sectionLabel={`${season.season} season`}
-        title={`${draftData.league.name} Data Book`}
       />
 
       {draftData.seasons.length === 0 ? (
@@ -1981,6 +1989,10 @@ export function DataBookView({
         </EmptyState>
       ) : (
         <section className="grid gap-4" aria-live="polite">
+          <GrainSelector
+            activeGrain={activeGrain}
+            onGrainChange={setActiveGrain}
+          />
           <GrainSummary
             activeGrain={activeGrain}
             busyAction={busyAction}

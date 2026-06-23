@@ -144,15 +144,8 @@ export const LEAGUE_NAVIGATION_SECTIONS = [
   {
     icon: "database",
     id: "data",
-    label: "Data Book",
+    label: "League Data",
     pathSegment: "data",
-    scope: "league",
-  },
-  {
-    icon: "scroll-text",
-    id: "ledger",
-    label: "Edit Ledger",
-    pathSegment: "ledger",
     scope: "league",
   },
   {
@@ -258,6 +251,7 @@ const LEAGUE_SECTION_BY_SEGMENT: ReadonlyMap<string, LeagueSectionId> = new Map(
     ...LEAGUE_NAVIGATION_SECTIONS.map(
       (section) => [section.pathSegment, section.id] as const,
     ),
+    ["ledger", "ledger"],
     ["cast", "press"],
     ["feed", "press"],
     ["posts", "press"],
@@ -288,14 +282,18 @@ export function getLeagueSectionHref(
   leagueId: string,
   sectionId: LeagueSectionId = "home",
 ): string {
+  const base = `/leagues/${encodeURIComponent(leagueId)}`;
+  if (sectionId === "ledger") {
+    return `${base}/ledger`;
+  }
+
   const section = LEAGUE_NAVIGATION_SECTIONS.find(
     (candidate) => candidate.id === sectionId,
   );
   if (!section) {
-    return `/leagues/${encodeURIComponent(leagueId)}`;
+    return base;
   }
 
-  const base = `/leagues/${encodeURIComponent(leagueId)}`;
   return section.pathSegment.length > 0
     ? `${base}/${section.pathSegment}`
     : base;
