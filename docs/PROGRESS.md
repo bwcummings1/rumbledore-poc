@@ -1,7 +1,18 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **Data Foundation T11 on
+Keep it current. Last updated: 2026-06-23 — **Data Foundation T12 on
+`ws/t12-general-stats-substrate`**: the league-agnostic general fantasy-stats substrate B now exists as shared,
+non-editable NFL reference data. New central tables `nfl_players`, `nfl_schedule`, `nfl_team_stats`, and
+`nfl_player_week_stats` store typed player identity, schedule, team box-score, and player-week facts with
+`source`, `fetched_at`, and `content_hash` provenance. The T12 mock/$0 ingest reads the committed
+`src/fixtures/general-stats/mock-nfl-2026.json` fixture, validates no-silent-empty/coverage/reference integrity before
+writing, upserts idempotently, and stays behind `generalStats: { mock: true }` (`MOCK_GENERAL_STATS=false` is rejected
+until a real source is intentionally wired). `src/general-stats` exposes read-only consumer functions for player
+lookup by source/provider/name, player season/week stats, team box scores, schedules, and league-roster enrichment.
+Functional verification appended `.orchestration/import-summary.md` with PASS checks for integrity, idempotency,
+provenance, consumer reads, and enrichment. No News/AI generation flow is wired to B yet; future work should consume
+the `@/general-stats` API. Prior state: **Data Foundation T11 on
 `ws/t11-records-catalog`**: the Record Book catalog is expanded into typed categories (All-time, Regular, Playoff,
 Head-to-head, Achievements, Lowlights) while still reading only `composeCanonicalSnapshot` pushed data. The Records
 page now uses the league-feed `PublicationMasthead`/`TabLinks` pattern for category section anchors, with the
@@ -233,13 +244,23 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   page. The Records page renders those categories as sections under a `PublicationMasthead` section-anchor tab row,
   with the existing segment×confirmed-era lens preserved as a view control. Real 95050 verification and T11 screenshots
   passed.
+- **Data Foundation T12 delivered (2026-06-23):** substrate B now exists for shared, non-editable general NFL fantasy
+  stats. `nfl_players`, `nfl_schedule`, `nfl_team_stats`, and `nfl_player_week_stats` are central tables with
+  source/fetch-time/content-hash provenance; the committed mock fixture ingests idempotently after integrity checks;
+  and `src/general-stats` provides read-only player/team/schedule/stat lookups plus roster-fact enrichment. Verification
+  is in `.orchestration/import-summary.md`; live News/AI wiring remains future consumer work.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Next:** Phase 3 continues with T12 general fantasy-stats substrate B.
+- **Next:** wire substrate B into News/AI factual grounding and league-data roster enrichment where those consumers
+  need it.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-23: Data Foundation T12 landed — substrate B now stores league-agnostic NFL players, schedule, team box
+  scores, and player-week stats in central provenance-stamped tables, ingests the committed mock/$0 fixture
+  idempotently after integrity checks, and exposes `src/general-stats` read/enrichment APIs for future News/AI
+  grounding.
 - 2026-06-23: Data Foundation T11 landed — Records now renders category sections for All-time, Regular season,
   Playoff, Head-to-head, Achievements, and Lowlights from a typed pushed-snapshot catalog, including new worst/lowlight
   records. Real 95050 verification and T11 screenshots passed with duplicate-key grep = 0.

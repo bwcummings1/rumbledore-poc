@@ -393,6 +393,13 @@
       "when": 1781555600000,
       "tag": "0055_era_proposal_dismissed",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781559200000,
+      "tag": "0056_general_stats_substrate",
+      "breakpoints": true
     }
   ]
 }

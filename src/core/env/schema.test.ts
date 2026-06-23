@@ -63,6 +63,7 @@ describe("parseEnv", () => {
       grounding: { mock: true },
       rss: { mock: true },
     });
+    expect(env.generalStats).toEqual({ mock: true });
     expect(env.entitlements).toEqual({
       caps: DEFAULT_ENTITLEMENT_CAPS,
       devOverride: true,
@@ -141,6 +142,15 @@ describe("parseEnv", () => {
   it("MOCK_NEWS_RSS=false requires RSS feed URLs", () => {
     expect(() => parseEnv({ MOCK_NEWS_RSS: "false" })).toThrow(
       /MOCK_NEWS_RSS=false requires NEWS_RSS_FEED_URLS/,
+    );
+  });
+
+  it("keeps general stats mock-only until a real source is wired", () => {
+    expect(parseEnv({ MOCK_GENERAL_STATS: "true" }).generalStats).toEqual({
+      mock: true,
+    });
+    expect(() => parseEnv({ MOCK_GENERAL_STATS: "false" })).toThrow(
+      /MOCK_GENERAL_STATS=false is not supported yet/,
     );
   });
 

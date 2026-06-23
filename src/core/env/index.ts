@@ -13,6 +13,7 @@ export type {
   EntitlementCapsConfig,
   EntitlementsConfig,
   Env,
+  GeneralStatsConfig,
   GoogleOAuthConfig,
   IngestionConfig,
   InngestConfig,
