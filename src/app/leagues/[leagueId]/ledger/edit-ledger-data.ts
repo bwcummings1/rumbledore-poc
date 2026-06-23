@@ -2,7 +2,9 @@ import { eq, inArray } from "drizzle-orm";
 import type { EditLedgerEntry } from "@/components/curation/edit-ledger-types";
 import type { Db } from "@/db/client";
 import { leagues, users } from "@/db/schema";
-import { listUnifiedDataLedger } from "@/stats";
+import { listUnifiedDataLedgerPage } from "@/stats";
+
+const EDIT_LEDGER_PAGE_SIZE = 25;
 
 export interface EditLedgerPageData {
   readonly entries: readonly EditLedgerEntry[];
@@ -12,6 +14,14 @@ export interface EditLedgerPageData {
     readonly provider: string;
     readonly providerLeagueId: string;
     readonly season: number;
+  };
+  readonly pagination: {
+    readonly hasMore: boolean;
+    readonly limit: number;
+    readonly offset: number;
+    readonly page: number;
+    readonly pageCount: number;
+    readonly total: number;
   };
 }
 
@@ -39,12 +49,12 @@ export async function getEditLedgerPageData(
     return { status: "not_found" };
   }
 
-  const ledgerEntries = (
-    await listUnifiedDataLedger(db, {
-      leagueId: input.leagueId,
-      limit: 200,
-    })
-  ).filter((entry) => entry.source === "league_data_edit");
+  const ledgerPage = await listUnifiedDataLedgerPage(db, {
+    leagueId: input.leagueId,
+    limit: EDIT_LEDGER_PAGE_SIZE,
+    offset: 0,
+  });
+  const ledgerEntries = ledgerPage.entries;
   const actorIds = [
     ...new Set(
       ledgerEntries
@@ -72,6 +82,14 @@ export async function getEditLedgerPageData(
           : null,
       })),
       league,
+      pagination: {
+        hasMore: ledgerPage.hasMore,
+        limit: ledgerPage.limit,
+        offset: ledgerPage.offset,
+        page: 1,
+        pageCount: Math.max(1, Math.ceil(ledgerPage.total / ledgerPage.limit)),
+        total: ledgerPage.total,
+      },
     },
     status: "ready",
   };

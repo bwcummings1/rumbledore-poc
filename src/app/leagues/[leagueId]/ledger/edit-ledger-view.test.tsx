@@ -28,6 +28,14 @@ const data: EditLedgerPageData = {
     providerLeagueId: "95050",
     season: 2026,
   },
+  pagination: {
+    hasMore: false,
+    limit: 25,
+    offset: 0,
+    page: 1,
+    pageCount: 1,
+    total: 1,
+  },
 };
 
 afterEach(() => {
@@ -62,4 +70,5 @@ test("Edit Ledger view uses the masthead destination tabs and renders activity",
     within(nav).getByRole("tab", { name: "Data Book" }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/data");
   expect(screen.getByText("Edited person canonical_name")).toBeDefined();
+  expect(screen.getByText("Page 1 of 1 / 1 entries")).toBeDefined();
 });

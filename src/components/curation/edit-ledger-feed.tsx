@@ -1,144 +1,255 @@
 "use client";
 
 import { ChevronDown, Edit3, RotateCcw, Save, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getJson } from "@/app/onboarding/client-http";
 import { EmptyState } from "@/components/ui/empty-state";
 import { type KVItem, KVList } from "@/components/ui/kv";
+import { Pagination, type PaginationPage } from "@/components/ui/pagination";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import type { EditLedgerEntry } from "./edit-ledger-types";
 
 type LedgerEntryKind = "edit" | "push" | "restore" | "save";
+const DEFAULT_LEDGER_PAGE_SIZE = 25;
+
+interface EditLedgerPagination {
+  readonly hasMore: boolean;
+  readonly limit: number;
+  readonly offset: number;
+  readonly page: number;
+  readonly pageCount: number;
+  readonly total: number;
+}
 
 interface EditLedgerFeedProps {
   readonly className?: string;
   readonly emptyBody?: string;
   readonly emptyTitle?: string;
   readonly entries: readonly EditLedgerEntry[];
+  readonly initialPagination?: EditLedgerPagination;
   readonly initialOpenIds?: readonly string[];
+  readonly leagueId?: string;
   readonly maxEntries?: number;
+  readonly pageSize?: number;
 }
 
 type JsonRecord = Record<string, unknown>;
+interface EditLedgerPageResponse {
+  readonly entries: readonly EditLedgerEntry[];
+  readonly pagination: EditLedgerPagination;
+}
 
 export function EditLedgerFeed({
   className,
   emptyBody = "This league has no recorded curation activity yet.",
   emptyTitle = "No curation activity yet",
   entries,
+  initialPagination,
   initialOpenIds = [],
+  leagueId,
   maxEntries,
+  pageSize = DEFAULT_LEDGER_PAGE_SIZE,
 }: EditLedgerFeedProps) {
-  const orderedEntries = useMemo(
-    () =>
-      [...entries]
-        .sort(
+  const [pageEntries, setPageEntries] =
+    useState<readonly EditLedgerEntry[]>(entries);
+  const [pagination, setPagination] = useState<EditLedgerPagination | null>(
+    initialPagination ?? null,
+  );
+  const [loadingPage, setLoadingPage] = useState<number | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const serverBacked = Boolean(leagueId && pagination);
+  const orderedEntries = useMemo(() => {
+    const sourceEntries = serverBacked ? pageEntries : entries;
+    const sortedEntries = serverBacked
+      ? [...sourceEntries]
+      : [...sourceEntries].sort(
           (left, right) =>
             right.createdAt.localeCompare(left.createdAt) ||
             right.id.localeCompare(left.id),
-        )
-        .slice(0, maxEntries ?? entries.length),
-    [entries, maxEntries],
-  );
+        );
+    return sortedEntries.slice(
+      0,
+      serverBacked ? sortedEntries.length : (maxEntries ?? entries.length),
+    );
+  }, [entries, maxEntries, pageEntries, serverBacked]);
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(
     () => new Set(initialOpenIds),
   );
 
+  useEffect(() => {
+    setPageEntries(entries);
+    setPagination(initialPagination ?? null);
+  }, [entries, initialPagination]);
+
+  const pages = useMemo<readonly PaginationPage[]>(() => {
+    const pageCount = pagination?.pageCount ?? 1;
+    return Array.from({ length: pageCount }, (_, index) => {
+      const page = index + 1;
+      return {
+        ariaLabel: `Page ${page}`,
+        label: `Page ${page}`,
+        page,
+      };
+    });
+  }, [pagination]);
+
+  async function loadPage(page: number) {
+    if (!leagueId || !pagination || loadingPage !== null) {
+      return;
+    }
+    const params = new URLSearchParams({
+      limit: String(pagination.limit || pageSize),
+      offset: String((page - 1) * pagination.limit),
+    });
+    setLoadingPage(page);
+    setPageError(null);
+    try {
+      const payload = await getJson<EditLedgerPageResponse>(
+        `/api/leagues/${leagueId}/curation/ledger?${params.toString()}`,
+      );
+      setPageEntries(payload.entries);
+      setPagination(payload.pagination);
+      setOpenIds(new Set());
+    } catch (cause) {
+      setPageError(
+        cause instanceof Error ? cause.message : "Ledger page could not load",
+      );
+    } finally {
+      setLoadingPage(null);
+    }
+  }
+
   if (orderedEntries.length === 0) {
-    return <EmptyState title={emptyTitle}>{emptyBody}</EmptyState>;
+    return (
+      <div
+        aria-busy={loadingPage !== null ? true : undefined}
+        className={cn("cell overflow-hidden p-3 sm:p-4", className)}
+        data-slot="edit-ledger-feed"
+      >
+        <EmptyState title={emptyTitle}>{emptyBody}</EmptyState>
+      </div>
+    );
   }
 
   return (
-    <ol
-      aria-label="Edit Ledger activity"
-      className={cn("grid gap-2", className)}
+    <div
+      aria-busy={loadingPage !== null ? true : undefined}
+      className={cn("cell overflow-hidden p-0", className)}
       data-slot="edit-ledger-feed"
     >
-      {orderedEntries.map((entry) => {
-        const isOpen = openIds.has(entry.id);
-        const kind = entryKind(entry);
-        const summary = entrySummary(entry, kind);
-        const panelId = `edit-ledger-entry-${entry.id}`;
-        const buttonId = `${panelId}-button`;
+      <ol aria-label="Edit Ledger activity" className="grid gap-2 p-2 sm:p-3">
+        {orderedEntries.map((entry) => {
+          const isOpen = openIds.has(entry.id);
+          const kind = entryKind(entry);
+          const summary = entrySummary(entry, kind);
+          const panelId = `edit-ledger-entry-${entry.id}`;
+          const buttonId = `${panelId}-button`;
 
-        return (
-          <li key={entry.id}>
-            <article
-              className="cell overflow-hidden p-0"
-              data-ledger-entry-kind={kind}
-            >
-              <button
-                aria-controls={panelId}
-                aria-expanded={isOpen}
-                aria-label={`${isOpen ? "Collapse" : "Expand"} ${summary}`}
-                className="grid min-h-11 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 text-left outline-none transition-[background-color,box-shadow] hover:bg-primary/5 focus-visible:shadow-[var(--focus-ring-shadow)] sm:px-4"
-                id={buttonId}
-                onClick={() => {
-                  setOpenIds((current) => {
-                    const next = new Set(current);
-                    if (next.has(entry.id)) {
-                      next.delete(entry.id);
-                    } else {
-                      next.add(entry.id);
-                    }
-                    return next;
-                  });
-                }}
-                type="button"
+          return (
+            <li key={entry.id}>
+              <article
+                className="cell overflow-hidden p-0"
+                data-ledger-entry-kind={kind}
               >
-                <span
-                  aria-hidden="true"
-                  className="chip-glyph flex size-9 items-center justify-center"
+                <button
+                  aria-controls={panelId}
+                  aria-expanded={isOpen}
+                  aria-label={`${isOpen ? "Collapse" : "Expand"} ${summary}`}
+                  className="grid min-h-11 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 text-left outline-none transition-[background-color,box-shadow] hover:bg-primary/5 focus-visible:shadow-[var(--focus-ring-shadow)] sm:px-4"
+                  id={buttonId}
+                  onClick={() => {
+                    setOpenIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(entry.id)) {
+                        next.delete(entry.id);
+                      } else {
+                        next.add(entry.id);
+                      }
+                      return next;
+                    });
+                  }}
+                  type="button"
                 >
-                  <EntryIcon kind={kind} />
-                </span>
-                <span className="min-w-0">
-                  <span className="flex min-w-0 flex-wrap items-center gap-2">
-                    <StatusPill showDot={false} tone={kindTone(kind, entry)}>
-                      {kindLabel(kind)}
-                    </StatusPill>
-                    <span className="truncate font-display text-sm font-medium text-foreground">
-                      {summary}
+                  <span
+                    aria-hidden="true"
+                    className="chip-glyph flex size-9 items-center justify-center"
+                  >
+                    <EntryIcon kind={kind} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <StatusPill showDot={false} tone={kindTone(kind, entry)}>
+                        {kindLabel(kind)}
+                      </StatusPill>
+                      <span className="truncate font-display text-sm font-medium text-foreground">
+                        {summary}
+                      </span>
+                    </span>
+                    <span className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1 font-mono text-xs text-muted-foreground">
+                      <time dateTime={entry.createdAt}>
+                        {formatTimestamp(entry.createdAt)}
+                      </time>
+                      <span aria-hidden="true">/</span>
+                      <span>{actorLabel(entry)}</span>
+                      {entry.scope ? (
+                        <>
+                          <span aria-hidden="true">/</span>
+                          <span>{scopeLabel(entry.scope)}</span>
+                        </>
+                      ) : null}
                     </span>
                   </span>
-                  <span className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1 font-mono text-xs text-muted-foreground">
-                    <time dateTime={entry.createdAt}>
-                      {formatTimestamp(entry.createdAt)}
-                    </time>
-                    <span aria-hidden="true">/</span>
-                    <span>{actorLabel(entry)}</span>
-                    {entry.scope ? (
-                      <>
-                        <span aria-hidden="true">/</span>
-                        <span>{scopeLabel(entry.scope)}</span>
-                      </>
-                    ) : null}
-                  </span>
-                </span>
-                <ChevronDown
-                  aria-hidden="true"
-                  className={cn(
-                    "size-4 text-ink-3 transition-transform",
-                    isOpen ? "rotate-180 text-primary" : "",
-                  )}
-                />
-              </button>
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={cn(
+                      "size-4 text-ink-3 transition-transform",
+                      isOpen ? "rotate-180 text-primary" : "",
+                    )}
+                  />
+                </button>
 
-              {isOpen ? (
-                <section
-                  aria-labelledby={buttonId}
-                  className="grid gap-4 border-t border-[var(--hair)] p-3 sm:p-4"
-                  id={panelId}
-                >
-                  <DiffPair entry={entry} kind={kind} />
-                  <KVList items={metadataItems(entry, kind)} />
-                </section>
-              ) : null}
-            </article>
-          </li>
-        );
-      })}
-    </ol>
+                {isOpen ? (
+                  <section
+                    aria-labelledby={buttonId}
+                    className="grid gap-4 border-t border-[var(--hair)] p-3 sm:p-4"
+                    id={panelId}
+                  >
+                    <DiffPair entry={entry} kind={kind} />
+                    <KVList items={metadataItems(entry, kind)} />
+                  </section>
+                ) : null}
+              </article>
+            </li>
+          );
+        })}
+      </ol>
+
+      {pagination ? (
+        <div className="grid gap-3 border-t border-[var(--hair)] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <p className="font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
+            Page {pagination.page} of {pagination.pageCount} /{" "}
+            {pagination.total} entries
+            {loadingPage !== null ? " / Loading" : ""}
+          </p>
+          <Pagination
+            aria-label="Edit Ledger pages"
+            currentPage={pagination.page}
+            mobileSelectLabel="Edit Ledger page"
+            onPageChange={loadPage}
+            pages={pages}
+          />
+          {pageError ? (
+            <p
+              className="rounded-control border border-coral/40 bg-coral/10 px-3 py-2 text-sm text-coral sm:col-span-2"
+              role="alert"
+            >
+              {pageError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -507,4 +618,4 @@ function readNumber(record: JsonRecord | null, key: string): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export type { EditLedgerFeedProps };
+export type { EditLedgerFeedProps, EditLedgerPagination };

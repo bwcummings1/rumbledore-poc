@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requireLeagueRole } from "@/auth/guards";
 import { AppError } from "@/core/result";
-import { listUnifiedDataLedger } from "@/stats";
+import { listUnifiedDataLedgerPage } from "@/stats";
 import { GET } from "./route";
 
 const mocks = vi.hoisted(() => ({
   db: {},
-  listUnifiedDataLedger: vi.fn(),
+  listUnifiedDataLedgerPage: vi.fn(),
   requireLeagueRole: vi.fn(),
 }));
 
@@ -22,7 +22,7 @@ vi.mock("@/stats", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/stats")>();
   return {
     ...actual,
-    listUnifiedDataLedger: mocks.listUnifiedDataLedger,
+    listUnifiedDataLedgerPage: mocks.listUnifiedDataLedgerPage,
   };
 });
 
@@ -33,6 +33,26 @@ const pushId = "00000000-0000-4000-8000-000000000006";
 
 function routeContext() {
   return { params: Promise.resolve({ leagueId }) };
+}
+
+function ledgerPage(
+  entries: unknown[],
+  total = entries.length,
+  overrides: Partial<{
+    hasMore: boolean;
+    limit: number;
+    offset: number;
+  }> = {},
+) {
+  const limit = overrides.limit ?? 25;
+  const offset = overrides.offset ?? 0;
+  return {
+    entries,
+    hasMore: overrides.hasMore ?? offset + entries.length < total,
+    limit,
+    offset,
+    total,
+  };
 }
 
 afterEach(() => {
@@ -50,21 +70,23 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
         userId: personId,
       },
     });
-    mocks.listUnifiedDataLedger.mockResolvedValue([
-      {
-        actorUserId: personId,
-        afterValue: "Fixture Manager",
-        beforeValue: "Fixture Manger",
-        createdAt: "2026-06-18T12:00:00.000Z",
-        editClass: "cosmetic",
-        field: "canonical_name",
-        id: "00000000-0000-4000-8000-000000000003",
-        reason: "spelling",
-        source: "league_data_edit",
-        targetId: personId,
-        targetKind: "person",
-      },
-    ]);
+    mocks.listUnifiedDataLedgerPage.mockResolvedValue(
+      ledgerPage([
+        {
+          actorUserId: personId,
+          afterValue: "Fixture Manager",
+          beforeValue: "Fixture Manger",
+          createdAt: "2026-06-18T12:00:00.000Z",
+          editClass: "cosmetic",
+          field: "canonical_name",
+          id: "00000000-0000-4000-8000-000000000003",
+          reason: "spelling",
+          source: "league_data_edit",
+          targetId: personId,
+          targetKind: "person",
+        },
+      ]),
+    );
 
     const response = await GET(
       new Request(
@@ -76,13 +98,21 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       entries: [{ field: "canonical_name", targetKind: "person" }],
+      pagination: {
+        hasMore: false,
+        limit: 25,
+        offset: 0,
+        page: 1,
+        pageCount: 1,
+      },
     });
     expect(requireLeagueRole).toHaveBeenCalledWith(
       expect.objectContaining({ minRole: "member" }),
     );
-    expect(listUnifiedDataLedger).toHaveBeenCalledWith(mocks.db, {
+    expect(listUnifiedDataLedgerPage).toHaveBeenCalledWith(mocks.db, {
       leagueId,
       limit: 25,
+      offset: 0,
       targetId: personId,
       targetKind: "person",
     });
@@ -106,7 +136,49 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(listUnifiedDataLedger).not.toHaveBeenCalled();
+    expect(listUnifiedDataLedgerPage).not.toHaveBeenCalled();
+  });
+
+  it("passes server-backed limit and offset pagination", async () => {
+    mocks.requireLeagueRole.mockResolvedValue({
+      ok: true,
+      value: {
+        leagueId,
+        role: "member",
+        session: { user: { id: personId } },
+        userId: personId,
+      },
+    });
+    mocks.listUnifiedDataLedgerPage.mockResolvedValue(
+      ledgerPage([], 61, { hasMore: true, limit: 20, offset: 40 }),
+    );
+
+    const response = await GET(
+      new Request(
+        `https://rumbledore.test/api/leagues/${leagueId}/curation/ledger?limit=20&offset=40`,
+      ),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      entries: [],
+      pagination: {
+        hasMore: true,
+        limit: 20,
+        offset: 40,
+        page: 3,
+        pageCount: 4,
+        total: 61,
+      },
+    });
+    expect(listUnifiedDataLedgerPage).toHaveBeenCalledWith(mocks.db, {
+      leagueId,
+      limit: 20,
+      offset: 40,
+      targetId: undefined,
+      targetKind: undefined,
+    });
   });
 
   it("accepts integrity-check ledger filters", async () => {
@@ -119,21 +191,23 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
         userId: personId,
       },
     });
-    mocks.listUnifiedDataLedger.mockResolvedValue([
-      {
-        actorUserId: personId,
-        afterValue: { status: "reviewed" },
-        beforeValue: { status: "fail" },
-        createdAt: "2026-06-18T12:00:00.000Z",
-        editClass: "audit",
-        field: "mark_reviewed",
-        id: "00000000-0000-4000-8000-000000000005",
-        reason: "accepted provider total",
-        source: "data_correction_audit",
-        targetId: integrityCheckId,
-        targetKind: "integrity_check",
-      },
-    ]);
+    mocks.listUnifiedDataLedgerPage.mockResolvedValue(
+      ledgerPage([
+        {
+          actorUserId: personId,
+          afterValue: { status: "reviewed" },
+          beforeValue: { status: "fail" },
+          createdAt: "2026-06-18T12:00:00.000Z",
+          editClass: "audit",
+          field: "mark_reviewed",
+          id: "00000000-0000-4000-8000-000000000005",
+          reason: "accepted provider total",
+          source: "data_correction_audit",
+          targetId: integrityCheckId,
+          targetKind: "integrity_check",
+        },
+      ]),
+    );
 
     const response = await GET(
       new Request(
@@ -148,9 +222,10 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
         { source: "data_correction_audit", targetKind: "integrity_check" },
       ],
     });
-    expect(listUnifiedDataLedger).toHaveBeenCalledWith(mocks.db, {
+    expect(listUnifiedDataLedgerPage).toHaveBeenCalledWith(mocks.db, {
       leagueId,
-      limit: 100,
+      limit: 25,
+      offset: 0,
       targetId: integrityCheckId,
       targetKind: "integrity_check",
     });
@@ -166,21 +241,23 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
         userId: personId,
       },
     });
-    mocks.listUnifiedDataLedger.mockResolvedValue([
-      {
-        actorUserId: personId,
-        afterValue: { pushId, season: 2012 },
-        beforeValue: null,
-        createdAt: "2026-06-22T13:00:00.000Z",
-        editClass: "substantive",
-        field: "season_push",
-        id: "00000000-0000-4000-8000-000000000007",
-        reason: "2012 verified",
-        source: "league_data_edit",
-        targetId: pushId,
-        targetKind: "curation_push",
-      },
-    ]);
+    mocks.listUnifiedDataLedgerPage.mockResolvedValue(
+      ledgerPage([
+        {
+          actorUserId: personId,
+          afterValue: { pushId, season: 2012 },
+          beforeValue: null,
+          createdAt: "2026-06-22T13:00:00.000Z",
+          editClass: "substantive",
+          field: "season_push",
+          id: "00000000-0000-4000-8000-000000000007",
+          reason: "2012 verified",
+          source: "league_data_edit",
+          targetId: pushId,
+          targetKind: "curation_push",
+        },
+      ]),
+    );
 
     const response = await GET(
       new Request(
@@ -193,9 +270,10 @@ describe("GET /api/leagues/[leagueId]/curation/ledger", () => {
     await expect(response.json()).resolves.toMatchObject({
       entries: [{ field: "season_push", targetKind: "curation_push" }],
     });
-    expect(listUnifiedDataLedger).toHaveBeenCalledWith(mocks.db, {
+    expect(listUnifiedDataLedgerPage).toHaveBeenCalledWith(mocks.db, {
       leagueId,
-      limit: 100,
+      limit: 25,
+      offset: 0,
       targetId: pushId,
       targetKind: "curation_push",
     });

@@ -1,8 +1,7 @@
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
-  dataCorrectionAuditLog,
   fantasyMatchups,
   identityAuditLog,
   identityMappings,
@@ -78,6 +77,14 @@ export interface UnifiedLedgerEntry {
   scope: CuratedEditScope | null;
   targetId: string | null;
   targetKind: string;
+}
+
+export interface UnifiedLedgerPage {
+  entries: UnifiedLedgerEntry[];
+  hasMore: boolean;
+  limit: number;
+  offset: number;
+  total: number;
 }
 
 export interface SeasonGroupingProposal {
@@ -1601,126 +1608,219 @@ export async function listUnifiedDataLedger(
   input: {
     leagueId: string;
     limit?: number;
+    offset?: number;
     targetId?: string;
     targetKind?: UnifiedLedgerTargetKind;
   },
 ): Promise<UnifiedLedgerEntry[]> {
+  return (
+    await listUnifiedDataLedgerPage(db, {
+      leagueId: input.leagueId,
+      limit: input.limit,
+      offset: input.offset,
+      targetId: input.targetId,
+      targetKind: input.targetKind,
+    })
+  ).entries;
+}
+
+export async function listUnifiedDataLedgerPage(
+  db: Db,
+  input: {
+    leagueId: string;
+    limit?: number;
+    offset?: number;
+    targetId?: string;
+    targetKind?: UnifiedLedgerTargetKind;
+  },
+): Promise<UnifiedLedgerPage> {
   const limit = Math.max(1, Math.min(200, input.limit ?? 100));
+  const offset = Math.max(0, input.offset ?? 0);
+  const targetId = input.targetId ?? null;
+  const targetKind = input.targetKind ?? null;
   return withLeagueContext(db, input.leagueId, async (tx) => {
-    const dataEditTargetKind =
-      input.targetKind && input.targetKind !== "integrity_check"
-        ? input.targetKind
-        : undefined;
-    const dataRows =
-      input.targetKind === "integrity_check"
-        ? []
-        : await tx
-            .select()
-            .from(leagueDataEdits)
-            .where(
-              and(
-                eq(leagueDataEdits.leagueId, input.leagueId),
-                dataEditTargetKind
-                  ? eq(leagueDataEdits.targetKind, dataEditTargetKind)
-                  : undefined,
-                input.targetId
-                  ? eq(leagueDataEdits.targetId, input.targetId)
-                  : undefined,
-              ),
-            )
-            .orderBy(desc(leagueDataEdits.createdAt))
-            .limit(limit);
+    const result = await tx.execute(sql<RawUnifiedLedgerRow>`
+      with unified as (
+        select
+          actor_user_id,
+          after_value,
+          before_value,
+          created_at,
+          edit_class::text as edit_class,
+          field,
+          id,
+          reason,
+          scope,
+          'league_data_edit'::text as source,
+          target_id,
+          target_kind::text as target_kind
+        from league_data_edits
+        where league_id = ${input.leagueId}::uuid
+          and (${targetKind}::text is null or ${targetKind}::text <> 'integrity_check')
+          and (${targetKind}::text is null or target_kind::text = ${targetKind}::text)
+          and (${targetId}::uuid is null or target_id = ${targetId}::uuid)
 
-    const identityRows =
-      input.targetKind && !["person", "team_season"].includes(input.targetKind)
-        ? []
-        : await tx
-            .select()
-            .from(identityAuditLog)
-            .where(
-              and(
-                eq(identityAuditLog.leagueId, input.leagueId),
-                input.targetKind === "person" && input.targetId
-                  ? eq(identityAuditLog.personId, input.targetId)
-                  : undefined,
-                input.targetKind === "team_season" && input.targetId
-                  ? eq(identityAuditLog.teamSeasonId, input.targetId)
-                  : undefined,
-                !input.targetKind && input.targetId
-                  ? or(
-                      eq(identityAuditLog.personId, input.targetId),
-                      eq(identityAuditLog.teamSeasonId, input.targetId),
-                    )
-                  : undefined,
-              ),
-            )
-            .orderBy(desc(identityAuditLog.createdAt))
-            .limit(limit);
+        union all
 
-    const correctionRows =
-      input.targetKind && input.targetKind !== "integrity_check"
-        ? []
-        : await tx
-            .select()
-            .from(dataCorrectionAuditLog)
-            .where(
-              and(
-                eq(dataCorrectionAuditLog.leagueId, input.leagueId),
-                input.targetId
-                  ? eq(dataCorrectionAuditLog.integrityCheckId, input.targetId)
-                  : undefined,
-              ),
+        select
+          actor_user_id,
+          after_state as after_value,
+          before_state as before_value,
+          created_at,
+          'audit'::text as edit_class,
+          action::text as field,
+          id,
+          reason,
+          null::text as scope,
+          'identity_audit'::text as source,
+          coalesce(person_id, team_season_id) as target_id,
+          case when person_id is not null then 'person' else 'team_season' end as target_kind
+        from identity_audit_log
+        where league_id = ${input.leagueId}::uuid
+          and (${targetKind}::text is null or ${targetKind}::text in ('person', 'team_season'))
+          and (
+            ${targetKind}::text is null
+            or (${targetKind}::text = 'person' and person_id is not null)
+            or (${targetKind}::text = 'team_season' and team_season_id is not null)
+          )
+          and (
+            ${targetId}::uuid is null
+            or (${targetKind}::text = 'person' and person_id = ${targetId}::uuid)
+            or (${targetKind}::text = 'team_season' and team_season_id = ${targetId}::uuid)
+            or (
+              ${targetKind}::text is null
+              and (person_id = ${targetId}::uuid or team_season_id = ${targetId}::uuid)
             )
-            .orderBy(desc(dataCorrectionAuditLog.createdAt))
-            .limit(limit);
+          )
 
-    return [
-      ...dataRows.map((row) => ({
-        actorUserId: row.actorUserId,
-        afterValue: row.afterValue,
-        beforeValue: row.beforeValue,
-        createdAt: row.createdAt.toISOString(),
-        editClass: row.editClass,
-        field: row.field,
-        id: row.id,
-        reason: row.reason,
-        scope: row.scope,
-        source: "league_data_edit" as const,
-        targetId: row.targetId,
-        targetKind: row.targetKind,
-      })),
-      ...identityRows.map((row) => ({
-        actorUserId: row.actorUserId,
-        afterValue: row.afterState,
-        beforeValue: row.beforeState,
-        createdAt: row.createdAt.toISOString(),
-        editClass: "audit" as const,
-        field: row.action,
-        id: row.id,
-        reason: row.reason,
-        scope: null,
-        source: "identity_audit" as const,
-        targetId: row.personId ?? row.teamSeasonId,
-        targetKind: row.personId ? "person" : "team_season",
-      })),
-      ...correctionRows.map((row) => ({
-        actorUserId: row.actorUserId,
-        afterValue: row.afterState,
-        beforeValue: row.beforeState,
-        createdAt: row.createdAt.toISOString(),
-        editClass: "audit" as const,
-        field: row.action,
-        id: row.id,
-        reason: row.reason,
-        scope: null,
-        source: "data_correction_audit" as const,
-        targetId: row.integrityCheckId,
-        targetKind: "integrity_check",
-      })),
-    ]
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .slice(0, limit);
+        union all
+
+        select
+          actor_user_id,
+          after_state as after_value,
+          before_state as before_value,
+          created_at,
+          'audit'::text as edit_class,
+          action::text as field,
+          id,
+          reason,
+          null::text as scope,
+          'data_correction_audit'::text as source,
+          integrity_check_id as target_id,
+          'integrity_check'::text as target_kind
+        from data_correction_audit_log
+        where league_id = ${input.leagueId}::uuid
+          and (${targetKind}::text is null or ${targetKind}::text = 'integrity_check')
+          and (${targetId}::uuid is null or integrity_check_id = ${targetId}::uuid)
+      ),
+      counted as (
+        select count(*)::int as total_count from unified
+      ),
+      page as (
+        select *
+        from unified
+        order by created_at desc, id desc
+        limit ${limit}
+        offset ${offset}
+      )
+      select
+        page.actor_user_id,
+        page.after_value,
+        page.before_value,
+        page.created_at,
+        page.edit_class,
+        page.field,
+        page.id,
+        page.reason,
+        page.scope,
+        page.source,
+        page.target_id,
+        page.target_kind,
+        counted.total_count
+      from counted
+      left join page on true
+      order by page.created_at desc nulls last, page.id desc nulls last
+    `);
+
+    const rows = result.rows as unknown as RawUnifiedLedgerRow[];
+    const total = rowCount(rows[0]?.total_count);
+    const entries = rows
+      .filter((row) => typeof row.id === "string")
+      .map(normalizeUnifiedLedgerRow);
+
+    return {
+      entries,
+      hasMore: offset + entries.length < total,
+      limit,
+      offset,
+      total,
+    };
   });
+}
+
+interface RawUnifiedLedgerRow {
+  actor_user_id: string | null;
+  after_value: unknown;
+  before_value: unknown;
+  created_at: Date | string | null;
+  edit_class: string | null;
+  field: string | null;
+  id: string | null;
+  reason: string | null;
+  scope: string | null;
+  source: string | null;
+  target_id: string | null;
+  target_kind: string | null;
+  total_count: number | string | bigint;
+}
+
+function normalizeUnifiedLedgerRow(
+  row: RawUnifiedLedgerRow,
+): UnifiedLedgerEntry {
+  return {
+    actorUserId: row.actor_user_id,
+    afterValue: row.after_value,
+    beforeValue: row.before_value,
+    createdAt: timestampIso(row.created_at),
+    editClass:
+      row.edit_class === "audit"
+        ? "audit"
+        : (row.edit_class as LeagueDataEditClass),
+    field: row.field ?? "unknown",
+    id: row.id ?? "",
+    reason: row.reason,
+    scope:
+      row.scope === "all_years" || row.scope === "this_year_only"
+        ? row.scope
+        : null,
+    source:
+      row.source === "identity_audit" || row.source === "data_correction_audit"
+        ? row.source
+        : "league_data_edit",
+    targetId: row.target_id,
+    targetKind: row.target_kind ?? "unknown",
+  };
+}
+
+function timestampIso(value: Date | string | null): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "string") {
+    return new Date(value).toISOString();
+  }
+  return new Date(0).toISOString();
+}
+
+function rowCount(value: number | string | bigint | undefined): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function groupingConfigIsEquivalent(
