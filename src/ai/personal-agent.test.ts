@@ -353,9 +353,19 @@ describe("getPersonalAgentBriefing", () => {
 
 function emptyCatalog(overrides: Partial<RecordsCatalog> = {}): RecordsCatalog {
   return {
+    achievements: {
+      highestScoringSeasons: [],
+      longestWinStreaks: [],
+      mostRegularSeasonTitles: [],
+      mostRunnerUps: [],
+      mostTitles: [],
+      mostTopScoringWeeks: [],
+    },
     allTimeStandings: [],
     blowouts: {
       biggest: [],
+      biggestLosses: [],
+      narrowestLosses: [],
       narrowestWins: [],
     },
     championships: {
@@ -364,6 +374,7 @@ function emptyCatalog(overrides: Partial<RecordsCatalog> = {}): RecordsCatalog {
     },
     headToHead: {
       allTimePairs: [],
+      longestStreaks: [],
       managerLedgers: [],
       seasonPairs: [],
     },
@@ -375,12 +386,39 @@ function emptyCatalog(overrides: Partial<RecordsCatalog> = {}): RecordsCatalog {
       worstScoresInWins: [],
     },
     integrityBlocked: false,
+    lowlights: {
+      biggestLosses: [],
+      lowestScoringSeasons: [],
+      mostBottomScoringWeeks: [],
+      mostLastPlaceFinishes: [],
+      narrowestLosses: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
+    },
     milestones: {
       keeper: {
         entries: [],
         status: "unavailable",
         summary: null,
       },
+    },
+    playoff: {
+      highestScoringAverages: [],
+      highestScoringSeasons: [],
+      lowestScoringSeasons: [],
+      mostPointsAgainstSeasons: [],
+      standings: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
+    },
+    regularSeason: {
+      highestScoringAverages: [],
+      highestScoringSeasons: [],
+      lowestScoringSeasons: [],
+      mostPointsAgainstSeasons: [],
+      standings: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
     },
     streaks: {
       longestLosses: [],

@@ -208,6 +208,15 @@ A task is not "done" until all seven hold:
   `10-records-t10-era-lens.png`.
 **T11 — Records catalog expansion** — categories (H2H / playoff / regular / achievements / **worst**); slot in the
 owner's recovered legacy catalog when available. 
+- *T11 completion note (2026-06-23):* ✅ Completed on `ws/t11-records-catalog` by OrangeGrove. Expanded the pushed
+  snapshot Record Book into a typed category registry and catalog sections for All-time, Regular season, Playoff,
+  Head-to-head, Achievements, and Lowlights. New records cover playoff leaders, runner-ups, regular-season titles,
+  H2H streaks, top/bottom weekly milestone counts, worst career/season win rates, lowest PF season, lowest season
+  scoring average, biggest/narrowest losses, and most last-place finishes. The Records page now renders these
+  categories as sections under the existing `PublicationMasthead`/`TabLinks` pattern while preserving the segment x
+  confirmed-era lens as a view control. No legacy recovered catalog file was present, so the default registry remains
+  the extension point. Real 95050 verification wrote `.orchestration/import-summary.md`; screenshots are
+  `docs/screenshots/{mobile,tablet,desktop}/10-records-t11-categories.png`.
 **T12 — General fantasy-stats substrate (B)** — league-agnostic NFL stats ingest (mock/$0), provenance + integrity,
 consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (file-disjoint).*
 
@@ -226,12 +235,12 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T8 save/push state machine | CloudyGoose | ✅ complete |
 | T9 record-book re-point | HazySpring | ✅ complete |
 | T10 era auto-proposal | CrimsonThrush | ✅ complete |
-| T11 records catalog | — | ☐ |
+| T11 records catalog | OrangeGrove | ✅ complete |
 | T12 general-stats substrate | — | ☐ |
 
 ## Phase 3 — launched 2026-06-23 (specs detailed in .orchestration/prompts/prompt-T10|T11|T12.md)
 - Phase 1 (T1-T3 substrate) + Phase 2 (T4-T9 data layer) + UI1 (ledger pagination/data-book toolbar) + UI2 (League Data|Records nav-IA) all merged to main.
 - T10 (cx3): auto-propose eras from league_season_settings → confirm-in-Data (Data Book); confirmed groupings feed the existing Record Book lens. Era infra (league_season_groupings + confirmLeagueSeasonGrouping + /curation/groupings) already exists; T10 adds the detector + UI.
-- T11 (cx2): expand records-catalog into categories (All-time/Regular/Playoff/H2H/Achievements/Lowlights-worst) rendered as SECTIONS inside the Records destination; reads pushed snapshot; legacy catalog if provided.
+- T11 (cx2): ✅ expanded records-catalog into categories (All-time/Regular/Playoff/H2H/Achievements/Lowlights-worst) rendered as SECTIONS inside the Records destination; reads pushed snapshot; no legacy catalog file was present.
 - T12 (cx3): general-stats substrate B (league-agnostic NFL players/stats/schedule, non-editable, provenance+integrity, mock/$0) + consumer/enrichment read API for the AI writers.
 - Sequential; UI tasks (T10 Data Book, T11 Records) → orchestrator reviews screenshots before merge. After T12 → report Phase 3 complete.

@@ -342,6 +342,12 @@ function highestScoreRecord(data: RecordsPageData) {
   );
 }
 
+function biggestLossRecord(data: RecordsPageData) {
+  return data.currentRecords.find(
+    (record) => record.recordType === "biggest_loss",
+  );
+}
+
 async function pushBaseline(seeded: SeededRecordsLeague) {
   const checkpoint = await createCurationCheckpoint(handle.db, {
     actorUserId: seeded.actorUserId,
@@ -389,6 +395,11 @@ describe("records page pushed snapshot read model", () => {
       season: 2012,
       value: 120,
     });
+    expect(biggestLossRecord(result.data)).toMatchObject({
+      holderName: "Bob 2012 Brand (Bob Real)",
+      season: 2012,
+      value: 25,
+    });
 
     await applyCuratedDataEdit(handle.db, {
       actorUserId: seeded.actorUserId,
@@ -417,6 +428,10 @@ describe("records page pushed snapshot read model", () => {
       season: 2012,
       value: 120,
     });
+    expect(biggestLossRecord(result.data)).toMatchObject({
+      season: 2012,
+      value: 25,
+    });
 
     await pushCurationSeason(handle.db, {
       actorUserId: seeded.actorUserId,
@@ -436,6 +451,11 @@ describe("records page pushed snapshot read model", () => {
       holderName: "Alice 2012 Brand (Alice Real)",
       season: 2012,
       value: 240,
+    });
+    expect(biggestLossRecord(result.data)).toMatchObject({
+      holderName: "Bob 2012 Brand (Bob Real)",
+      season: 2012,
+      value: 145,
     });
     expect(result.data.catalog.highLow.highestScores).toEqual(
       expect.arrayContaining([

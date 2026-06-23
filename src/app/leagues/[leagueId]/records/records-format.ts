@@ -20,7 +20,14 @@ export function formatPercent(value: number): string {
 }
 
 export function formatRecordValue(record: CurrentRecordBookEntry): string {
-  if (record.recordType === "best_career_win_percentage") {
+  if (
+    [
+      "best_career_win_percentage",
+      "best_playoff_win_percentage",
+      "worst_career_win_percentage",
+      "worst_season_win_percentage",
+    ].includes(record.recordType)
+  ) {
     return formatPercent(record.value);
   }
   return formatNumber(record.value);

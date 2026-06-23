@@ -1,22 +1,21 @@
-import {
-  ArrowLeft,
-  BookOpen,
-  Crown,
-  Landmark,
-  Swords,
-  Trophy,
-} from "lucide-react";
+import { ArrowLeft, Crown, Landmark, Swords, Trophy } from "lucide-react";
 import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
+import {
+  PublicationMasthead,
+  type PublicationNavItem,
+} from "@/components/publication/front-view";
 import { Edge } from "@/components/ui/edge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KVList } from "@/components/ui/kv";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
-import type { HeadToHeadPairCatalogEntry } from "@/stats";
+import {
+  type HeadToHeadPairCatalogEntry,
+  RECORD_CATEGORY_REGISTRY,
+} from "@/stats";
 import {
   formatNumber,
-  formatRecordContext,
+  formatPercent,
   formatRecordValue,
   h2hHref,
   leagueRecordsHref,
@@ -84,7 +83,7 @@ function LensControls({ data }: { data: RecordsPageData }) {
     : null;
 
   return (
-    <section aria-label="Record book lens" className="panel grid gap-4 p-4">
+    <section aria-label="Record book lens" className="grid gap-4">
       <div className="grid gap-1">
         <p className="eyebrow text-primary">Lens</p>
         <p className="text-sm text-muted-foreground">
@@ -277,7 +276,7 @@ function AllTimeStandings({ data }: { data: RecordsPageData }) {
     <Section
       icon={<Crown className="size-4 text-primary" aria-hidden="true" />}
       id="all-time"
-      title="All-time standings"
+      title="All-time"
     >
       <AllTimeStandingsTable
         league={data.league}
@@ -288,33 +287,27 @@ function AllTimeStandings({ data }: { data: RecordsPageData }) {
   );
 }
 
-function RecordSection({
+function RecordCardGrid({
   data,
-  id,
   records,
-  title,
 }: {
   data: RecordsPageData;
-  id: string;
   records: readonly CurrentRecordBookEntry[];
-  title: string;
 }) {
   if (records.length === 0) {
     return null;
   }
 
   return (
-    <Section id={id} title={title}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {records.map((record, index) => (
-          <RecordCard
-            data={data}
-            key={recordCardKey(record, index)}
-            record={record}
-          />
-        ))}
-      </div>
-    </Section>
+    <div className="grid gap-3 sm:grid-cols-2">
+      {records.map((record, index) => (
+        <RecordCard
+          data={data}
+          key={recordCardKey(record, index)}
+          record={record}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -371,180 +364,136 @@ function CompactList({
   );
 }
 
-function HighLowSection({ data }: { data: RecordsPageData }) {
-  const { highLow } = data.catalog;
-  return (
-    <Section id="highs-lows" title="Highs and lows">
-      <div className="grid gap-3 lg:grid-cols-3">
-        <CompactList
-          items={highLow.highestScores.map((row) => ({
-            context: `${row.season} - Week ${row.scoringPeriod}`,
-            id: `highest-week-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
-            label: row.personName,
-            value: formatNumber(row.value),
-          }))}
-          title="Highest weeks"
-        />
-        <CompactList
-          items={highLow.lowestScores.map((row) => ({
-            context: `${row.season} - Week ${row.scoringPeriod}`,
-            id: `lowest-week-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
-            label: row.personName,
-            value: formatNumber(row.value),
-          }))}
-          title="Lowest weeks"
-        />
-        <CompactList
-          items={highLow.highestCombinedMatchups.map((row) => ({
-            context: `${row.personName} vs ${row.opponentName ?? "unknown"} - ${row.season}`,
-            id: `highest-combined-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
-            label: "Highest combined",
-            value: formatNumber(row.value),
-          }))}
-          title="Highest-scoring matchups"
-        />
-        <CompactList
-          items={highLow.bestScoresInLosses.map((row) => ({
-            context: `${row.season} - Week ${row.scoringPeriod}`,
-            id: `best-loss-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
-            label: row.personName,
-            value: formatNumber(row.value),
-          }))}
-          title="Best losses"
-        />
-        <CompactList
-          items={highLow.worstScoresInWins.map((row) => ({
-            context: `${row.season} - Week ${row.scoringPeriod}`,
-            id: `worst-win-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
-            label: row.personName,
-            value: formatNumber(row.value),
-          }))}
-          title="Worst wins"
-        />
-      </div>
-    </Section>
-  );
-}
-
-function StreaksAndBlowouts({ data }: { data: RecordsPageData }) {
-  const { blowouts, streaks } = data.catalog;
-  return (
-    <Section id="streaks-margins" title="Streaks and margins">
-      <div className="grid gap-3 lg:grid-cols-2">
-        <CompactList
-          items={streaks.longestWins.map((row) => ({
-            context: `${row.startSeason} W${row.startScoringPeriod} to ${row.endSeason} W${row.endScoringPeriod}`,
-            id: `win-streak-${row.personId}-${row.startSeason}-${row.startScoringPeriod}-${row.endSeason}-${row.endScoringPeriod}`,
-            label: row.personName,
-            value: `${row.length}`,
-          }))}
-          title="Longest winning streaks"
-        />
-        <CompactList
-          items={streaks.longestLosses.map((row) => ({
-            context: `${row.startSeason} W${row.startScoringPeriod} to ${row.endSeason} W${row.endScoringPeriod}`,
-            id: `loss-streak-${row.personId}-${row.startSeason}-${row.startScoringPeriod}-${row.endSeason}-${row.endScoringPeriod}`,
-            label: row.personName,
-            value: `${row.length}`,
-          }))}
-          title="Longest losing streaks"
-        />
-        <CompactList
-          items={blowouts.biggest.map((row) => ({
-            context: formatRecordContext({
-              holderName: row.personName,
-              holderPersonId: row.personId,
-              id: `${row.recordType}-${row.personId}-${row.season}-${row.scoringPeriod}`,
-              label: "Biggest blowout",
-              opponentName: row.opponentName,
-              opponentPersonId: row.opponentPersonId,
-              previousHolderName: null,
-              previousRecordId: null,
-              previousValue: null,
-              recordType: row.recordType,
-              scoringPeriod: row.scoringPeriod,
-              season: row.season,
-              value: row.margin,
-            }),
-            id: `biggest-blowout-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
-            label: row.personName,
-            value: formatNumber(row.margin),
-          }))}
-          title="Biggest blowouts"
-        />
-        <CompactList
-          items={blowouts.narrowestWins.map((row) => ({
-            context: `${row.season} - Week ${row.scoringPeriod}`,
-            id: `closest-win-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
-            label: row.personName,
-            value: formatNumber(row.margin),
-          }))}
-          title="Closest wins"
-        />
-      </div>
-    </Section>
-  );
-}
-
-function Championships({ data }: { data: RecordsPageData }) {
-  const { championships } = data.catalog;
+function RegularSeasonSection({ data }: { data: RecordsPageData }) {
+  const regular = data.catalog.regularSeason;
   if (
-    championships.seasons.length === 0 &&
-    championships.managerRecords.length === 0
+    regular.standings.length === 0 &&
+    regular.highestScoringSeasons.length === 0
   ) {
-    return null;
+    return (
+      <Section id="regular-season" title="Regular season">
+        <div className="cell border-dashed p-4">
+          <h3 className="text-sm font-medium">No regular-season rows</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The current lens is excluding regular-season games.
+          </p>
+        </div>
+      </Section>
+    );
   }
 
   return (
-    <Section
-      icon={<Crown className="size-4 text-primary" aria-hidden="true" />}
-      id="championships"
-      title="Championship history"
-    >
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="overflow-x-auto rounded-card border border-border bg-[var(--panel)] shadow-[var(--bevel)]">
-          <table className="w-full min-w-[32rem] text-left text-sm">
-            <thead className="text-xs uppercase tracking-[0.12em] text-ink-4">
-              <tr>
-                <th className="px-3 py-2 font-medium">Season</th>
-                <th className="px-3 py-2 font-medium">Champion</th>
-                <th className="px-3 py-2 font-medium">Runner-up</th>
-                <th className="px-3 py-2 font-medium">Regular season</th>
-              </tr>
-            </thead>
-            <tbody>
-              {championships.seasons.slice(0, 8).map((row, index) => (
-                <tr
-                  className="border-t border-border"
-                  key={`${row.season}-${index}`}
-                >
-                  <td className="px-3 py-3 tabular-nums">{row.season}</td>
-                  <td className="px-3 py-3">
-                    {row.champion?.personName ?? "-"}
-                  </td>
-                  <td className="px-3 py-3">
-                    {row.runnerUp?.personName ?? "-"}
-                  </td>
-                  <td className="px-3 py-3">
-                    {row.regularSeasonWinner?.personName ?? "-"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <Section id="regular-season" title="Regular season">
+      <div className="grid gap-3 lg:grid-cols-3">
         <CompactList
-          items={championships.managerRecords.map((row) => ({
-            context: `${row.runnerUps} runner-up - ${row.playoffAppearances} playoff trips`,
-            id: `title-count-${row.personId}`,
+          items={regular.standings.map((row) => ({
+            context: `${row.wins}-${row.losses}-${row.ties} · ${formatPercent(row.winPercentage)}`,
+            id: `regular-standing-${row.personId}`,
             label: row.personName,
-            value: `${row.championships}`,
+            value: formatNumber(row.pointsFor),
           }))}
-          title="Title count"
+          title="Regular records"
+        />
+        <CompactList
+          items={regular.highestScoringSeasons.map((row) => ({
+            context: `${row.season} · ${row.wins}-${row.losses}-${row.ties}`,
+            id: `regular-high-season-${row.personId}-${row.season}`,
+            label: row.personName,
+            value: formatNumber(row.value),
+          }))}
+          title="Highest regular seasons"
+        />
+        <CompactList
+          items={[...regular.standings]
+            .sort(
+              (left, right) =>
+                right.topScoringWeeks - left.topScoringWeeks ||
+                left.rank - right.rank,
+            )
+            .map((row) => ({
+              context: `${formatNumber(row.avgPointsFor)} avg PF`,
+              id: `regular-top-weeks-${row.personId}`,
+              label: row.personName,
+              value: `${row.topScoringWeeks}`,
+            }))}
+          title="Top-scoring weeks"
         />
       </div>
     </Section>
   );
+}
+
+function PlayoffSection({ data }: { data: RecordsPageData }) {
+  const playoff = data.catalog.playoff;
+  const managerRecords = data.catalog.championships.managerRecords.filter(
+    (row) =>
+      row.playoffWins +
+        row.playoffLosses +
+        row.playoffTies +
+        row.championships +
+        row.runnerUps >
+      0,
+  );
+  if (playoff.standings.length === 0 && managerRecords.length === 0) {
+    return (
+      <Section id="playoff" title="Playoff">
+        <div className="cell border-dashed p-4">
+          <h3 className="text-sm font-medium">No playoff rows</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The current lens is excluding playoff games or no pushed playoff
+            facts exist yet.
+          </p>
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section id="playoff" title="Playoff">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <CompactList
+          items={playoff.standings.map((row) => ({
+            context: `${row.wins}-${row.losses}-${row.ties} · ${formatPercent(row.winPercentage)}`,
+            id: `playoff-standing-${row.personId}`,
+            label: row.personName,
+            value: formatNumber(row.pointsFor),
+          }))}
+          title="Playoff records"
+        />
+        <CompactList
+          items={managerRecords.map((row) => ({
+            context: `${row.runnerUps} runner-up · ${row.championshipAppearances} title games`,
+            id: `playoff-titles-${row.personId}`,
+            label: row.personName,
+            value: `${row.championships}`,
+          }))}
+          title="Titles"
+        />
+        <CompactList
+          items={[...managerRecords]
+            .sort(
+              (left, right) =>
+                right.playoffPointsFor - left.playoffPointsFor ||
+                compareRecordNames(left.personName, right.personName),
+            )
+            .map((row) => ({
+              context: `${row.playoffWins}-${row.playoffLosses}-${row.playoffTies}`,
+              id: `playoff-pf-${row.personId}`,
+              label: row.personName,
+              value: formatNumber(row.playoffPointsFor),
+            }))}
+          title="Playoff PF"
+        />
+      </div>
+    </Section>
+  );
+}
+
+function compareRecordNames(left: string, right: string): number {
+  return left.localeCompare(right, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function rivalryScore(pair: HeadToHeadPairCatalogEntry): number {
@@ -602,17 +551,18 @@ function RivalryList({
   );
 }
 
-function Rivalries({ data }: { data: RecordsPageData }) {
+function HeadToHeadSection({ data }: { data: RecordsPageData }) {
   const pairs = data.catalog.headToHead.allTimePairs;
-  if (pairs.length === 0) {
+  const streaks = data.catalog.headToHead.longestStreaks;
+  if (pairs.length === 0 && streaks.length === 0) {
     return null;
   }
 
   return (
     <Section
       icon={<Swords className="size-4 text-primary" aria-hidden="true" />}
-      id="rivalries"
-      title="Rivalries"
+      id="head-to-head"
+      title="Head-to-head"
     >
       <div className="grid gap-3 lg:grid-cols-2">
         <RivalryList
@@ -652,156 +602,200 @@ function Rivalries({ data }: { data: RecordsPageData }) {
           )}
           title="Playoff grudges"
         />
+        <CompactList
+          items={streaks.map((row) => ({
+            context: `vs ${row.opponent.personName} · ${row.meetings} meetings`,
+            id: `h2h-streak-${row.holder.personId}-${row.opponent.personId}-${row.season}`,
+            label: row.holder.personName,
+            value: `${row.length}`,
+          }))}
+          title="Longest H2H streaks"
+        />
       </div>
     </Section>
   );
 }
 
-function KeeperMilestones({ data }: { data: RecordsPageData }) {
-  const keeper = data.catalog.milestones.keeper;
-  if (keeper.status === "unavailable") {
-    return (
-      <Section id="keeper-milestones" title="Draft and keeper milestones">
-        <div className="cell border-dashed p-4">
-          <h3 className="text-sm font-medium">Keeper milestones unavailable</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            This provider import has no trusted draft or keeper milestone
-            aggregate yet.
-          </p>
-        </div>
-      </Section>
-    );
+function AchievementsSection({ data }: { data: RecordsPageData }) {
+  const records = recordGroup(data.currentRecords, [
+    "best_score_in_loss",
+    "biggest_blowout",
+    "highest_combined_matchup",
+    "highest_single_week_score",
+    "longest_win_streak",
+    "most_championships",
+    "most_points_for_season",
+    "most_top_scoring_weeks",
+  ]);
+  const achievements = data.catalog.achievements;
+
+  if (
+    records.length === 0 &&
+    achievements.highestScoringSeasons.length === 0 &&
+    achievements.mostTopScoringWeeks.length === 0
+  ) {
+    return null;
   }
 
   return (
     <Section
-      icon={<Landmark className="size-4 text-primary" aria-hidden="true" />}
-      id="keeper-milestones"
-      title="Draft and keeper milestones"
+      icon={<Trophy className="size-4 text-primary" aria-hidden="true" />}
+      id="achievements"
+      title="Achievements"
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {keeper.entries.slice(0, 6).map((entry, index) => (
-          <article
-            className="cell p-4"
-            key={`${entry.milestoneType}-${entry.milestoneKey}-${entry.personId ?? "league"}-${entry.season ?? "all"}-${index}`}
-          >
-            <p className="text-xs uppercase text-muted-foreground">
-              {entry.milestoneType.replaceAll("_", " ")}
-            </p>
-            <h3 className="mt-2 text-sm font-medium">{entry.label}</h3>
-            <p className="mt-3 font-mono text-lg font-semibold tabular-nums">
-              {formatNumber(entry.value)}
-            </p>
-            {entry.personId ? (
-              <Link
-                className="mt-2 block text-sm text-muted-foreground underline-offset-4 hover:underline"
-                href={managerHref(data.league, entry.personId, data.lens)}
-              >
-                {entry.personName ?? "Unknown manager"}
-              </Link>
-            ) : null}
-          </article>
-        ))}
+      <RecordCardGrid data={data} records={records} />
+      <div className="grid gap-3 lg:grid-cols-3">
+        <CompactList
+          items={data.catalog.highLow.highestScores.map((row) => ({
+            context: `${row.season} · Week ${row.scoringPeriod}`,
+            id: `achievement-high-week-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
+            label: row.personName,
+            value: formatNumber(row.value),
+          }))}
+          title="Highest weeks"
+        />
+        <CompactList
+          items={achievements.highestScoringSeasons.map((row) => ({
+            context: `${row.season} · ${row.wins}-${row.losses}-${row.ties}`,
+            id: `achievement-high-season-${row.personId}-${row.season}`,
+            label: row.personName,
+            value: formatNumber(row.value),
+          }))}
+          title="Highest seasons"
+        />
+        <CompactList
+          items={achievements.mostTopScoringWeeks.map((row) => ({
+            context: "Top weekly scorer",
+            id: `achievement-top-weeks-${row.personId}`,
+            label: row.personName,
+            value: `${row.value}`,
+          }))}
+          title="Top-scoring weeks"
+        />
       </div>
     </Section>
   );
 }
 
-const recordBookNav = [
-  { href: "#all-time", label: "All-time" },
-  { href: "#career-marks", label: "Career" },
-  { href: "#season-records", label: "Season" },
-  { href: "#single-week-records", label: "Weeks" },
-  { href: "#highs-lows", label: "High/low" },
-  { href: "#streaks-margins", label: "Streaks" },
-  { href: "#championships", label: "Titles" },
-  { href: "#rivalries", label: "Rivalries" },
-  { href: "#keeper-milestones", label: "Keeper" },
-] as const;
-
-export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
-  const weeklyRecords = recordGroup(data.currentRecords, [
-    "highest_single_week_score",
-    "lowest_single_week_score",
-    "highest_combined_matchup",
-    "best_score_in_loss",
-    "worst_score_in_win",
-    "biggest_blowout",
-    "narrowest_win",
-  ]);
-  const seasonRecords = recordGroup(data.currentRecords, [
-    "best_luck_season",
-    "fewest_points_against_season",
+function LowlightsSection({ data }: { data: RecordsPageData }) {
+  const records = recordGroup(data.currentRecords, [
+    "biggest_loss",
     "fewest_points_for_season",
-    "fewest_wins_season",
-    "highest_season_scoring_average",
-    "most_points_against_season",
-    "most_points_for_season",
-    "most_wins_season",
-    "worst_luck_season",
-  ]);
-  const careerRecords = recordGroup(data.currentRecords, [
-    "best_career_win_percentage",
     "longest_loss_streak",
-    "longest_win_streak",
-    "luckiest_career",
-    "most_career_points",
-    "most_championships",
-    "most_playoff_appearances",
+    "lowest_season_scoring_average",
+    "lowest_single_week_score",
+    "most_bottom_scoring_weeks",
+    "most_last_place_finishes",
+    "most_points_against_season",
+    "narrowest_loss",
+    "worst_score_in_win",
+    "worst_season_win_percentage",
   ]);
+  const lowlights = data.catalog.lowlights;
+
+  if (
+    records.length === 0 &&
+    lowlights.lowestScoringSeasons.length === 0 &&
+    lowlights.mostLastPlaceFinishes.length === 0
+  ) {
+    return null;
+  }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-7 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
-      <header className="panel grid gap-4 p-4">
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/leagues/${data.league.id}`}
-            className={cn(
-              buttonVariants({ className: "w-fit", variant: "ghost" }),
-            )}
-          >
-            <ArrowLeft data-icon="inline-start" />
-            League home
-          </Link>
-          <Link
-            href={`/leagues/${data.league.id}/lore`}
-            className={cn(
-              buttonVariants({ className: "w-fit", variant: "outline" }),
-            )}
-          >
-            <Landmark data-icon="inline-start" />
-            Lore
-          </Link>
-        </div>
-        <div className="grid gap-3">
-          <div className="flex items-center gap-2 text-primary">
-            <BookOpen className="size-5" aria-hidden="true" />
-            <p className="text-sm font-medium">Records</p>
-          </div>
-          <div className="max-w-2xl">
-            <h1 className="heading-auspex text-xl leading-tight">
-              {data.league.name} record book
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              The league history rolled into standings, marks, rivalries, and
-              title lore for the cast to cite.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <StatusPill tone="info">
-                {data.league.provider.toUpperCase()} {data.league.season}
-              </StatusPill>
-              <StatusPill tone="neutral">
-                {data.managers.length} managers
-              </StatusPill>
-              <StatusPill tone="neutral">
-                {data.catalog.allTimeStandings.length} all-time rows
-              </StatusPill>
-            </div>
-          </div>
-        </div>
-      </header>
+    <Section id="lowlights" title="Lowlights">
+      <RecordCardGrid data={data} records={records} />
+      <div className="grid gap-3 lg:grid-cols-3">
+        <CompactList
+          items={data.catalog.highLow.lowestScores.map((row) => ({
+            context: `${row.season} · Week ${row.scoringPeriod}`,
+            id: `lowlight-low-week-${row.personId}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
+            label: row.personName,
+            value: formatNumber(row.value),
+          }))}
+          title="Lowest weeks"
+        />
+        <CompactList
+          items={lowlights.lowestScoringSeasons.map((row) => ({
+            context: `${row.season} · ${row.wins}-${row.losses}-${row.ties}`,
+            id: `lowlight-low-season-${row.personId}-${row.season}`,
+            label: row.personName,
+            value: formatNumber(row.value),
+          }))}
+          title="Lowest PF seasons"
+        />
+        <CompactList
+          items={lowlights.mostLastPlaceFinishes.map((row) => ({
+            context: "Last-place finishes",
+            id: `lowlight-last-place-${row.personId}`,
+            label: row.personName,
+            value: `${row.value}`,
+          }))}
+          title="Most last-place finishes"
+        />
+        <CompactList
+          items={lowlights.biggestLosses.map((row) => ({
+            context: `${row.season} · Week ${row.scoringPeriod} vs ${row.opponentName ?? "unknown"}`,
+            id: `lowlight-big-loss-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
+            label: row.personName,
+            value: formatNumber(row.margin),
+          }))}
+          title="Biggest losses"
+        />
+        <CompactList
+          items={lowlights.narrowestLosses.map((row) => ({
+            context: `${row.season} · Week ${row.scoringPeriod} vs ${row.opponentName ?? "unknown"}`,
+            id: `lowlight-narrow-loss-${row.personId}-${row.opponentPersonId ?? "no-opponent"}-${row.matchupId ?? "no-matchup"}-${row.season}-${row.scoringPeriod}`,
+            label: row.personName,
+            value: formatNumber(row.margin),
+          }))}
+          title="Narrowest losses"
+        />
+        <CompactList
+          items={lowlights.mostBottomScoringWeeks.map((row) => ({
+            context: "Bottom weekly scorer",
+            id: `lowlight-bottom-weeks-${row.personId}`,
+            label: row.personName,
+            value: `${row.value}`,
+          }))}
+          title="Bottom-scoring weeks"
+        />
+      </div>
+    </Section>
+  );
+}
 
-      <LensControls data={data} />
+const recordBookNav: PublicationNavItem[] = RECORD_CATEGORY_REGISTRY.map(
+  (category, index) => ({
+    active: index === 0,
+    href: `#${category.anchorId}`,
+    label: category.label,
+  }),
+);
+
+export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-7 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
+      <PublicationMasthead
+        actions={[
+          {
+            href: `/leagues/${data.league.id}`,
+            icon: <ArrowLeft data-icon="inline-start" />,
+            label: "League home",
+          },
+          {
+            href: `/leagues/${data.league.id}/lore`,
+            icon: <Landmark data-icon="inline-start" />,
+            label: "Lore",
+          },
+        ]}
+        controls={<LensControls data={data} />}
+        deck={`${data.managers.length} managers, ${data.catalog.allTimeStandings.length} career rows, and pushed canonical snapshots only.`}
+        eyebrow="RECORD BOOK"
+        navAriaLabel="Record book sections"
+        navItems={recordBookNav}
+        sectionLabel={`${data.league.provider.toUpperCase()} ${data.league.season}`}
+        title={`${data.league.name} record book`}
+      />
 
       {data.catalog.integrityBlocked ? (
         <EmptyState
@@ -830,46 +824,12 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
 
       {!data.catalog.integrityBlocked && hasTrustedRecordData(data) ? (
         <>
-          <nav
-            aria-label="Record book sections"
-            className="panel sticky top-14 z-10 overflow-x-auto px-2 py-2 lg:top-16"
-          >
-            <div className="flex min-w-max gap-1">
-              {recordBookNav.map((item) => (
-                <Link
-                  className="inline-flex min-h-11 items-center rounded-control px-3 py-2 font-display text-sm text-muted-foreground hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
-                  href={item.href}
-                  key={item.href}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          </nav>
           <AllTimeStandings data={data} />
-          <RecordSection
-            data={data}
-            id="career-marks"
-            records={careerRecords}
-            title="Career marks"
-          />
-          <RecordSection
-            data={data}
-            id="season-records"
-            records={seasonRecords}
-            title="Season records"
-          />
-          <RecordSection
-            data={data}
-            id="single-week-records"
-            records={weeklyRecords}
-            title="Single-week records"
-          />
-          <HighLowSection data={data} />
-          <StreaksAndBlowouts data={data} />
-          <Championships data={data} />
-          <Rivalries data={data} />
-          <KeeperMilestones data={data} />
+          <RegularSeasonSection data={data} />
+          <PlayoffSection data={data} />
+          <HeadToHeadSection data={data} />
+          <AchievementsSection data={data} />
+          <LowlightsSection data={data} />
         </>
       ) : null}
     </main>

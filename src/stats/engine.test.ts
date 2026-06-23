@@ -1332,6 +1332,42 @@ describe("recomputeLeagueStatistics", () => {
       recordType: "narrowest_win",
       season: 2025,
     });
+    expect(catalog.blowouts.biggestLosses[0]).toMatchObject({
+      margin: 20,
+      recordType: "biggest_loss",
+    });
+    expect(catalog.blowouts.narrowestLosses[0]).toMatchObject({
+      margin: 1,
+      recordType: "narrowest_loss",
+      season: 2025,
+    });
+    expect(catalog.lowlights.worstWinPercentages[0]).toMatchObject({
+      recordType: "worst_season_win_percentage",
+      value: 0,
+    });
+    expect(catalog.achievements.mostTopScoringWeeks[0]).toMatchObject({
+      recordType: "most_top_scoring_weeks",
+    });
+    expect(catalog.lowlights.mostBottomScoringWeeks[0]).toMatchObject({
+      recordType: "most_bottom_scoring_weeks",
+    });
+    for (const recordType of [
+      "biggest_loss",
+      "narrowest_loss",
+      "lowest_season_scoring_average",
+      "most_bottom_scoring_weeks",
+      "most_last_place_finishes",
+      "most_top_scoring_weeks",
+      "worst_career_win_percentage",
+      "worst_season_win_percentage",
+    ]) {
+      expect(rows.recordRows).toContainEqual(
+        expect.objectContaining({
+          isCurrent: true,
+          recordType,
+        }),
+      );
+    }
     expect(catalog.streaks.longestLosses[0]).toMatchObject({
       length: 3,
       recordType: "longest_loss_streak",

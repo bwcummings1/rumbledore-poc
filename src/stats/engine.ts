@@ -30,8 +30,10 @@ import { refreshRecordBookAggregates } from "./records-catalog";
 
 export const RECORD_TYPE_LABELS = {
   best_career_win_percentage: "Best career win %",
+  best_playoff_win_percentage: "Best playoff win %",
   best_luck_season: "Luckiest season",
   best_score_in_loss: "Best score in a loss",
+  biggest_loss: "Biggest loss",
   biggest_blowout: "Biggest blowout",
   fewest_points_against_season: "Fewest points against",
   fewest_points_for_season: "Fewest points for",
@@ -41,17 +43,31 @@ export const RECORD_TYPE_LABELS = {
   highest_single_week_score: "Highest weekly score",
   longest_loss_streak: "Longest losing streak",
   longest_win_streak: "Longest winning streak",
+  lowest_season_scoring_average: "Lowest season average",
   lowest_single_week_score: "Lowest weekly score",
   luckiest_career: "Luckiest career",
+  most_bottom_scoring_weeks: "Most bottom-scoring weeks",
   most_career_points: "Most career points",
+  most_career_points_against: "Most career points against",
   most_championships: "Most championships",
+  most_last_place_finishes: "Most last-place finishes",
   most_playoff_appearances: "Most playoff appearances",
+  most_playoff_losses: "Most playoff losses",
+  most_playoff_points_against: "Most playoff points against",
+  most_playoff_points_for: "Most playoff points",
+  most_playoff_wins: "Most playoff wins",
   most_points_against_season: "Most points against",
   most_points_for_season: "Most points for",
+  most_regular_season_titles: "Most regular-season titles",
+  most_runner_ups: "Most runner-up finishes",
+  most_top_scoring_weeks: "Most top-scoring weeks",
   most_wins_season: "Most wins",
+  narrowest_loss: "Narrowest loss",
   narrowest_win: "Narrowest win",
+  worst_career_win_percentage: "Worst career win %",
   worst_luck_season: "Unluckiest season",
   worst_score_in_win: "Worst score in a win",
+  worst_season_win_percentage: "Worst season win %",
 } as const;
 
 export type RecordType = keyof typeof RECORD_TYPE_LABELS;
@@ -1858,6 +1874,12 @@ function recordEvents({
   );
   const winners = singlePeriodFacts.filter((fact) => fact.result === "win");
   const losers = singlePeriodFacts.filter((fact) => fact.result === "loss");
+  const losingHeadToHeadFacts = singlePeriodFacts.filter(
+    (fact) =>
+      fact.matchupKind === "head_to_head" &&
+      fact.opponentPersonId &&
+      fact.result === "loss",
+  );
   const weeklySort = (fact: WeeklyFact) =>
     [
       fact.season,
@@ -1883,6 +1905,15 @@ function recordEvents({
     sortKey: `${row.season}:${row.personId}`,
     value,
   });
+  const maxFinalRankBySeason = new Map<number, number>();
+  for (const row of seasonRows) {
+    if (row.finalRank > 0) {
+      maxFinalRankBySeason.set(
+        row.season,
+        Math.max(maxFinalRankBySeason.get(row.season) ?? 0, row.finalRank),
+      );
+    }
+  }
 
   const matchupCombined = headToHead
     .filter((row) => row.season !== 0)
@@ -1899,33 +1930,77 @@ function recordEvents({
   const career = new Map<
     string,
     {
+      bottomScoringWeeks: number;
       championships: number;
       games: number;
+      lastPlaceFinishes: number;
+      losses: number;
       luck: number;
       playoffAppearances: number;
+      pointsAgainst: number;
       pointsFor: number;
+      regularSeasonTitles: number;
+      runnerUps: number;
       ties: number;
+      topScoringWeeks: number;
       wins: number;
     }
   >();
   for (const row of seasonRows) {
     const entry = career.get(row.personId) ?? {
+      bottomScoringWeeks: 0,
       championships: 0,
       games: 0,
+      lastPlaceFinishes: 0,
+      losses: 0,
       luck: 0,
       playoffAppearances: 0,
+      pointsAgainst: 0,
       pointsFor: 0,
+      regularSeasonTitles: 0,
+      runnerUps: 0,
       ties: 0,
+      topScoringWeeks: 0,
       wins: 0,
     };
     entry.championships += row.finalPlacement === "champ" ? 1 : 0;
     entry.games += row.wins + row.losses + row.ties;
+    const maxFinalRank = maxFinalRankBySeason.get(row.season) ?? 0;
+    entry.lastPlaceFinishes +=
+      row.finalRank > 0 && maxFinalRank > 1 && row.finalRank === maxFinalRank
+        ? 1
+        : 0;
+    entry.losses += row.losses;
     entry.luck = round(entry.luck + row.luck, 4);
     entry.playoffAppearances += row.madePlayoffs ? 1 : 0;
+    entry.pointsAgainst = round(entry.pointsAgainst + row.pointsAgainst, 2);
     entry.pointsFor = round(entry.pointsFor + row.pointsFor, 2);
+    entry.regularSeasonTitles += row.playoffSeed === 1 ? 1 : 0;
+    entry.runnerUps += row.finalPlacement === "runner_up" ? 1 : 0;
     entry.ties += row.ties;
     entry.wins += row.wins;
     career.set(row.personId, entry);
+  }
+  for (const fact of singlePeriodFacts) {
+    const entry = career.get(fact.personId) ?? {
+      bottomScoringWeeks: 0,
+      championships: 0,
+      games: 0,
+      lastPlaceFinishes: 0,
+      losses: 0,
+      luck: 0,
+      playoffAppearances: 0,
+      pointsAgainst: 0,
+      pointsFor: 0,
+      regularSeasonTitles: 0,
+      runnerUps: 0,
+      ties: 0,
+      topScoringWeeks: 0,
+      wins: 0,
+    };
+    entry.bottomScoringWeeks += fact.isBottomScorer ? 1 : 0;
+    entry.topScoringWeeks += fact.isTopScorer ? 1 : 0;
+    career.set(fact.personId, entry);
   }
   const careerRows = [...career.entries()].map(([personId, row]) => ({
     ...row,
@@ -1933,6 +2008,63 @@ function recordEvents({
     winPercentage:
       row.games > 0 ? round((row.wins + row.ties * 0.5) / row.games, 4) : 0,
   }));
+  const playoff = new Map<
+    string,
+    {
+      games: number;
+      losses: number;
+      pointsAgainst: number;
+      pointsFor: number;
+      ties: number;
+      wins: number;
+    }
+  >();
+  for (const fact of facts) {
+    if (
+      !fact.isPlayoff ||
+      fact.matchupKind !== "head_to_head" ||
+      fact.result === "bye"
+    ) {
+      continue;
+    }
+    const entry = playoff.get(fact.personId) ?? {
+      games: 0,
+      losses: 0,
+      pointsAgainst: 0,
+      pointsFor: 0,
+      ties: 0,
+      wins: 0,
+    };
+    entry.games += 1;
+    entry.losses += fact.result === "loss" ? 1 : 0;
+    entry.pointsAgainst = round(entry.pointsAgainst + fact.pointsAgainst, 2);
+    entry.pointsFor = round(entry.pointsFor + fact.pointsFor, 2);
+    entry.ties += fact.result === "tie" ? 1 : 0;
+    entry.wins += fact.result === "win" ? 1 : 0;
+    playoff.set(fact.personId, entry);
+  }
+  const playoffRows = [...playoff.entries()].map(([personId, row]) => ({
+    ...row,
+    personId,
+    winPercentage:
+      row.games > 0 ? round((row.wins + row.ties * 0.5) / row.games, 4) : 0,
+  }));
+  const careerCandidate = (
+    row: (typeof careerRows)[number],
+    value: number,
+  ): RecordCandidate => ({
+    holderPersonId: row.personId,
+    sortKey: row.personId,
+    value,
+  });
+  const playoffCandidate = (
+    row: (typeof playoffRows)[number],
+    value: number,
+  ): RecordCandidate => ({
+    holderPersonId: row.personId,
+    sortKey: row.personId,
+    value,
+  });
 
   return [
     ...currentRecordEvents(
@@ -1953,6 +2085,22 @@ function recordEvents({
     ...currentRecordEvents(
       "narrowest_win",
       winners.map((fact) => ({ ...singleWeek(fact), value: fact.margin })),
+      "min",
+    ),
+    ...currentRecordEvents(
+      "biggest_loss",
+      losingHeadToHeadFacts.map((fact) => ({
+        ...singleWeek(fact),
+        value: Math.abs(fact.margin),
+      })),
+      "max",
+    ),
+    ...currentRecordEvents(
+      "narrowest_loss",
+      losingHeadToHeadFacts.map((fact) => ({
+        ...singleWeek(fact),
+        value: Math.abs(fact.margin),
+      })),
       "min",
     ),
     ...currentRecordEvents("best_score_in_loss", losers.map(singleWeek), "max"),
@@ -2018,48 +2166,98 @@ function recordEvents({
       "max",
     ),
     ...bestCurrentOnly(
+      "lowest_season_scoring_average",
+      seasonRows.map((row) => seasonCandidate(row, row.avgPointsFor)),
+      "min",
+    ),
+    ...bestCurrentOnly(
+      "worst_season_win_percentage",
+      seasonRows.map((row) => seasonCandidate(row, row.winPercentage)),
+      "min",
+    ),
+    ...bestCurrentOnly(
       "best_career_win_percentage",
-      careerRows.map((row) => ({
-        holderPersonId: row.personId,
-        sortKey: row.personId,
-        value: row.winPercentage,
-      })),
+      careerRows.map((row) => careerCandidate(row, row.winPercentage)),
       "max",
     ),
     ...bestCurrentOnly(
+      "worst_career_win_percentage",
+      careerRows.map((row) => careerCandidate(row, row.winPercentage)),
+      "min",
+    ),
+    ...bestCurrentOnly(
       "most_career_points",
-      careerRows.map((row) => ({
-        holderPersonId: row.personId,
-        sortKey: row.personId,
-        value: row.pointsFor,
-      })),
+      careerRows.map((row) => careerCandidate(row, row.pointsFor)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_career_points_against",
+      careerRows.map((row) => careerCandidate(row, row.pointsAgainst)),
       "max",
     ),
     ...bestCurrentOnly(
       "most_championships",
-      careerRows.map((row) => ({
-        holderPersonId: row.personId,
-        sortKey: row.personId,
-        value: row.championships,
-      })),
+      careerRows.map((row) => careerCandidate(row, row.championships)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_runner_ups",
+      careerRows.map((row) => careerCandidate(row, row.runnerUps)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_regular_season_titles",
+      careerRows.map((row) => careerCandidate(row, row.regularSeasonTitles)),
       "max",
     ),
     ...bestCurrentOnly(
       "most_playoff_appearances",
-      careerRows.map((row) => ({
-        holderPersonId: row.personId,
-        sortKey: row.personId,
-        value: row.playoffAppearances,
-      })),
+      careerRows.map((row) => careerCandidate(row, row.playoffAppearances)),
       "max",
     ),
     ...bestCurrentOnly(
       "luckiest_career",
-      careerRows.map((row) => ({
-        holderPersonId: row.personId,
-        sortKey: row.personId,
-        value: row.luck,
-      })),
+      careerRows.map((row) => careerCandidate(row, row.luck)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_last_place_finishes",
+      careerRows.map((row) => careerCandidate(row, row.lastPlaceFinishes)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_top_scoring_weeks",
+      careerRows.map((row) => careerCandidate(row, row.topScoringWeeks)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_bottom_scoring_weeks",
+      careerRows.map((row) => careerCandidate(row, row.bottomScoringWeeks)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_playoff_wins",
+      playoffRows.map((row) => playoffCandidate(row, row.wins)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_playoff_losses",
+      playoffRows.map((row) => playoffCandidate(row, row.losses)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_playoff_points_for",
+      playoffRows.map((row) => playoffCandidate(row, row.pointsFor)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "most_playoff_points_against",
+      playoffRows.map((row) => playoffCandidate(row, row.pointsAgainst)),
+      "max",
+    ),
+    ...bestCurrentOnly(
+      "best_playoff_win_percentage",
+      playoffRows.map((row) => playoffCandidate(row, row.winPercentage)),
       "max",
     ),
   ];

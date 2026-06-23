@@ -735,6 +735,26 @@ function streakCatalogRecord(
   });
 }
 
+function countCatalogRecord(
+  row:
+    | RecordsCatalog["achievements"]["mostTopScoringWeeks"][number]
+    | undefined,
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry | null {
+  if (!row) {
+    return null;
+  }
+  return lensRecordEntry({
+    holderPersonId: row.personId,
+    lens,
+    personNames,
+    recordType: row.recordType,
+    suffix: row.personId,
+    value: row.value,
+  });
+}
+
 function compareRecordCandidate(
   left: {
     personId: string;
@@ -822,6 +842,38 @@ function careerRecord(
   });
 }
 
+function championshipManagerRecord(
+  rows: readonly RecordsCatalog["championships"]["managerRecords"][number][],
+  recordType: RecordType,
+  selector: (
+    row: RecordsCatalog["championships"]["managerRecords"][number],
+  ) => number,
+  direction: "max" | "min",
+  lens: RecordsLensSelection,
+  personNames: ReadonlyMap<string, string>,
+): CurrentRecordBookEntry | null {
+  const candidates = rows
+    .filter((row) => row.seasons > 0)
+    .map((row) => ({
+      personId: row.personId,
+      personName: row.personName,
+      value: selector(row),
+    }))
+    .sort((left, right) => compareRecordCandidate(left, right, direction));
+  const winner = candidates[0];
+  if (!winner) {
+    return null;
+  }
+  return lensRecordEntry({
+    holderPersonId: winner.personId,
+    lens,
+    personNames,
+    recordType,
+    suffix: winner.personId,
+    value: winner.value,
+  });
+}
+
 function derivedCurrentRecords(
   catalog: RecordsCatalog,
   seasonRows: readonly SeasonStatisticsRow[],
@@ -839,8 +891,24 @@ function derivedCurrentRecords(
     ),
     careerRecord(
       catalog.allTimeStandings,
+      "worst_career_win_percentage",
+      (row) => row.winPercentage,
+      "min",
+      lens,
+      personNames,
+    ),
+    careerRecord(
+      catalog.allTimeStandings,
       "most_career_points",
       (row) => row.pointsFor,
+      "max",
+      lens,
+      personNames,
+    ),
+    careerRecord(
+      catalog.allTimeStandings,
+      "most_career_points_against",
+      (row) => row.pointsAgainst,
       "max",
       lens,
       personNames,
@@ -869,8 +937,84 @@ function derivedCurrentRecords(
       lens,
       personNames,
     ),
+    championshipManagerRecord(
+      catalog.championships.managerRecords,
+      "most_runner_ups",
+      (row) => row.runnerUps,
+      "max",
+      lens,
+      personNames,
+    ),
+    championshipManagerRecord(
+      catalog.championships.managerRecords,
+      "most_regular_season_titles",
+      (row) => row.regularSeasonTitles,
+      "max",
+      lens,
+      personNames,
+    ),
+    championshipManagerRecord(
+      catalog.championships.managerRecords,
+      "most_playoff_wins",
+      (row) => row.playoffWins,
+      "max",
+      lens,
+      personNames,
+    ),
+    championshipManagerRecord(
+      catalog.championships.managerRecords,
+      "most_playoff_losses",
+      (row) => row.playoffLosses,
+      "max",
+      lens,
+      personNames,
+    ),
+    championshipManagerRecord(
+      catalog.championships.managerRecords,
+      "most_playoff_points_for",
+      (row) => row.playoffPointsFor,
+      "max",
+      lens,
+      personNames,
+    ),
+    championshipManagerRecord(
+      catalog.championships.managerRecords,
+      "most_playoff_points_against",
+      (row) => row.playoffPointsAgainst,
+      "max",
+      lens,
+      personNames,
+    ),
+    championshipManagerRecord(
+      catalog.championships.managerRecords,
+      "best_playoff_win_percentage",
+      (row) => {
+        const games = row.playoffWins + row.playoffLosses + row.playoffTies;
+        return games > 0
+          ? round((row.playoffWins + row.playoffTies * 0.5) / games, 4)
+          : 0;
+      },
+      "max",
+      lens,
+      personNames,
+    ),
     streakCatalogRecord(catalog.streaks.longestWins[0], lens, personNames),
     streakCatalogRecord(catalog.streaks.longestLosses[0], lens, personNames),
+    countCatalogRecord(
+      catalog.achievements.mostTopScoringWeeks[0],
+      lens,
+      personNames,
+    ),
+    countCatalogRecord(
+      catalog.lowlights.mostBottomScoringWeeks[0],
+      lens,
+      personNames,
+    ),
+    countCatalogRecord(
+      catalog.lowlights.mostLastPlaceFinishes[0],
+      lens,
+      personNames,
+    ),
     seasonRecord(
       seasonRows,
       "most_wins_season",
@@ -937,9 +1081,25 @@ function derivedCurrentRecords(
     ),
     seasonRecord(
       seasonRows,
+      "worst_season_win_percentage",
+      (row) => row.winPercentage,
+      "min",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
       "highest_season_scoring_average",
       (row) => row.avgPointsFor,
       "max",
+      lens,
+      personNames,
+    ),
+    seasonRecord(
+      seasonRows,
+      "lowest_season_scoring_average",
+      (row) => row.avgPointsFor,
+      "min",
       lens,
       personNames,
     ),
@@ -962,6 +1122,12 @@ function derivedCurrentRecords(
     ),
     blowoutCatalogRecord(catalog.blowouts.biggest[0], lens, personNames),
     blowoutCatalogRecord(catalog.blowouts.narrowestWins[0], lens, personNames),
+    blowoutCatalogRecord(catalog.blowouts.biggestLosses[0], lens, personNames),
+    blowoutCatalogRecord(
+      catalog.blowouts.narrowestLosses[0],
+      lens,
+      personNames,
+    ),
   ].filter((record): record is CurrentRecordBookEntry => Boolean(record));
 }
 

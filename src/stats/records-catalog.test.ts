@@ -811,6 +811,18 @@ describe("buildRecordsCatalog", () => {
       matchupId: "matchup-2024-1-alpha-beta",
       personId: PEOPLE.alpha,
     });
+    expect(catalog.blowouts.biggestLosses[0]).toMatchObject({
+      margin: 50,
+      matchupId: "matchup-2024-2-alpha-gamma-title",
+      personId: PEOPLE.gamma,
+      recordType: "biggest_loss",
+    });
+    expect(catalog.blowouts.narrowestLosses[0]).toMatchObject({
+      margin: 10,
+      matchupId: "matchup-2024-1-alpha-beta",
+      personId: PEOPLE.beta,
+      recordType: "narrowest_loss",
+    });
 
     expect(catalog.streaks.longestWins[0]).toMatchObject({
       endScoringPeriod: 1,
@@ -861,6 +873,98 @@ describe("buildRecordsCatalog", () => {
         value: 2,
       }),
     );
+    expect(catalog.regularSeason.standings[0]).toMatchObject({
+      personId: PEOPLE.alpha,
+      pointsFor: 335,
+      wins: 3,
+    });
+    expect(catalog.playoff.standings[0]).toMatchObject({
+      personId: PEOPLE.beta,
+      pointsFor: 140,
+      wins: 1,
+    });
+    expect(catalog.achievements.mostTitles[0]).toMatchObject({
+      personId: PEOPLE.alpha,
+      recordType: "most_championships",
+      value: 1,
+    });
+    expect(catalog.lowlights.mostLastPlaceFinishes).toEqual([
+      expect.objectContaining({
+        personId: PEOPLE.beta,
+        recordType: "most_last_place_finishes",
+        value: 1,
+      }),
+      expect.objectContaining({
+        personId: PEOPLE.gamma,
+        value: 1,
+      }),
+    ]);
+    expect(catalog.lowlights.worstWinPercentages[0]).toMatchObject({
+      personId: PEOPLE.gamma,
+      recordType: "worst_season_win_percentage",
+      season: 2025,
+      value: 0,
+    });
+    expect(catalog.headToHead.longestStreaks[0]).toMatchObject({
+      holder: { personId: PEOPLE.alpha, personName: "Alpha + Shared" },
+      length: 1,
+      opponent: { personId: PEOPLE.beta, personName: "Beta + Shared" },
+    });
+  });
+
+  it("counts achievement and lowlight week milestones from pushed-style weekly flags", () => {
+    const { championshipRows, seasonRows, weeklyRows } = buildSeededCatalog();
+    const flaggedWeeklyRows = weeklyRows.map((row) => {
+      if (row.matchupId === "matchup-2024-1-alpha-beta") {
+        return {
+          ...row,
+          isBottomScorer: row.personId === PEOPLE.beta,
+          isTopScorer: row.personId === PEOPLE.alpha,
+        };
+      }
+      if (row.matchupId === "matchup-2025-3-beta-alpha-title") {
+        return {
+          ...row,
+          isBottomScorer: row.personId === PEOPLE.alpha,
+          isTopScorer: row.personId === PEOPLE.beta,
+        };
+      }
+      return row;
+    });
+
+    const catalog = buildRecordsCatalog({
+      championshipRows,
+      personNames,
+      seasonRows,
+      weeklyRows: flaggedWeeklyRows,
+    });
+
+    expect(catalog.achievements.mostTopScoringWeeks).toEqual([
+      expect.objectContaining({
+        personId: PEOPLE.alpha,
+        recordType: "most_top_scoring_weeks",
+        value: 1,
+      }),
+      expect.objectContaining({
+        personId: PEOPLE.beta,
+        value: 1,
+      }),
+    ]);
+    expect(catalog.lowlights.mostBottomScoringWeeks).toEqual([
+      expect.objectContaining({
+        personId: PEOPLE.alpha,
+        recordType: "most_bottom_scoring_weeks",
+        value: 1,
+      }),
+      expect.objectContaining({
+        personId: PEOPLE.beta,
+        value: 1,
+      }),
+    ]);
+    expect(catalog.regularSeason.standings[0]).toMatchObject({
+      personId: PEOPLE.alpha,
+      topScoringWeeks: 1,
+    });
   });
 
   it("counts playoff bye scoring without crediting playoff ties", () => {

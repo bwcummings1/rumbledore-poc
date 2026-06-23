@@ -88,7 +88,10 @@ export interface WeeklyCatalogEntry extends PeriodContext {
 
 export interface BlowoutCatalogEntry extends PeriodContext {
   margin: number;
-  recordType: Extract<RecordType, "biggest_blowout" | "narrowest_win">;
+  recordType: Extract<
+    RecordType,
+    "biggest_blowout" | "biggest_loss" | "narrowest_loss" | "narrowest_win"
+  >;
 }
 
 export interface StreakCatalogEntry {
@@ -213,10 +216,154 @@ export interface KeeperMilestoneCatalog {
   summary: string | null;
 }
 
+export type RecordsCategoryId =
+  | "achievements"
+  | "all-time"
+  | "head-to-head"
+  | "lowlights"
+  | "playoff"
+  | "regular-season";
+
+export interface RecordCategoryDefinition {
+  anchorId: RecordsCategoryId;
+  description: string;
+  id: RecordsCategoryId;
+  label: string;
+}
+
+export const RECORD_CATEGORY_REGISTRY = [
+  {
+    anchorId: "all-time",
+    description: "Career standings, win rates, points, and title counts.",
+    id: "all-time",
+    label: "All-time",
+  },
+  {
+    anchorId: "regular-season",
+    description: "Regular-season records and week-to-week consistency.",
+    id: "regular-season",
+    label: "Regular",
+  },
+  {
+    anchorId: "playoff",
+    description: "Playoff records, title-game results, and postseason scoring.",
+    id: "playoff",
+    label: "Playoff",
+  },
+  {
+    anchorId: "head-to-head",
+    description: "Rivalries, lopsided series, and H2H streaks.",
+    id: "head-to-head",
+    label: "Head-to-head",
+  },
+  {
+    anchorId: "achievements",
+    description: "High marks, titles, streaks, and top-scoring weeks.",
+    id: "achievements",
+    label: "Achievements",
+  },
+  {
+    anchorId: "lowlights",
+    description: "Worst scores, losses, last places, and bottom weeks.",
+    id: "lowlights",
+    label: "Lowlights",
+  },
+] as const satisfies readonly RecordCategoryDefinition[];
+
+export interface SegmentStandingCatalogRow extends PersonCatalogRef {
+  avgPointsAgainst: number;
+  avgPointsFor: number;
+  bottomScoringWeeks: number;
+  games: number;
+  losses: number;
+  pointDifferential: number;
+  pointsAgainst: number;
+  pointsFor: number;
+  rank: number;
+  seasons: number;
+  ties: number;
+  topScoringWeeks: number;
+  winPercentage: number;
+  wins: number;
+}
+
+export interface SeasonCatalogEntry extends PersonCatalogRef {
+  losses: number;
+  pointsAgainst: number;
+  pointsFor: number;
+  recordType: Extract<
+    RecordType,
+    | "highest_season_scoring_average"
+    | "lowest_season_scoring_average"
+    | "fewest_points_for_season"
+    | "most_points_against_season"
+    | "most_points_for_season"
+    | "worst_season_win_percentage"
+  >;
+  season: number;
+  ties: number;
+  value: number;
+  winPercentage: number;
+  wins: number;
+}
+
+export interface CountCatalogEntry extends PersonCatalogRef {
+  recordType: Extract<
+    RecordType,
+    | "most_bottom_scoring_weeks"
+    | "most_championships"
+    | "most_last_place_finishes"
+    | "most_regular_season_titles"
+    | "most_runner_ups"
+    | "most_top_scoring_weeks"
+  >;
+  value: number;
+}
+
+export interface SegmentRecordSet {
+  lowestScoringSeasons: SeasonCatalogEntry[];
+  highestScoringAverages: SeasonCatalogEntry[];
+  highestScoringSeasons: SeasonCatalogEntry[];
+  mostPointsAgainstSeasons: SeasonCatalogEntry[];
+  standings: SegmentStandingCatalogRow[];
+  worstScoringAverages: SeasonCatalogEntry[];
+  worstWinPercentages: SeasonCatalogEntry[];
+}
+
+export interface HeadToHeadStreakCatalogEntry {
+  holder: PersonCatalogRef;
+  length: number;
+  meetings: number;
+  opponent: PersonCatalogRef;
+  season: number;
+}
+
+export interface RecordsAchievementCatalog {
+  highestScoringSeasons: SeasonCatalogEntry[];
+  longestWinStreaks: StreakCatalogEntry[];
+  mostRegularSeasonTitles: CountCatalogEntry[];
+  mostRunnerUps: CountCatalogEntry[];
+  mostTitles: CountCatalogEntry[];
+  mostTopScoringWeeks: CountCatalogEntry[];
+}
+
+export interface RecordsLowlightCatalog {
+  biggestLosses: BlowoutCatalogEntry[];
+  lowestScoringSeasons: SeasonCatalogEntry[];
+  mostBottomScoringWeeks: CountCatalogEntry[];
+  mostLastPlaceFinishes: CountCatalogEntry[];
+  narrowestLosses: BlowoutCatalogEntry[];
+  worstScoringAverages: SeasonCatalogEntry[];
+  worstWinPercentages: SeasonCatalogEntry[];
+}
+
 export interface RecordsCatalog {
+  achievements: RecordsAchievementCatalog;
   allTimeStandings: AllTimeStandingCatalogRow[];
   blowouts: {
     biggest: BlowoutCatalogEntry[];
+    biggestLosses: BlowoutCatalogEntry[];
+    narrowestLosses: BlowoutCatalogEntry[];
     narrowestWins: BlowoutCatalogEntry[];
   };
   championships: {
@@ -225,6 +372,7 @@ export interface RecordsCatalog {
   };
   headToHead: {
     allTimePairs: HeadToHeadPairCatalogEntry[];
+    longestStreaks: HeadToHeadStreakCatalogEntry[];
     managerLedgers: ManagerHeadToHeadLedgerEntry[];
     seasonPairs: HeadToHeadPairCatalogEntry[];
   };
@@ -236,9 +384,12 @@ export interface RecordsCatalog {
     worstScoresInWins: WeeklyCatalogEntry[];
   };
   integrityBlocked: boolean;
+  lowlights: RecordsLowlightCatalog;
   milestones: {
     keeper: KeeperMilestoneCatalog;
   };
+  playoff: SegmentRecordSet;
+  regularSeason: SegmentRecordSet;
   streaks: {
     longestLosses: StreakCatalogEntry[];
     longestWins: StreakCatalogEntry[];
@@ -265,6 +416,19 @@ interface AllTimeStandingAccumulator {
   scoringPeriods: number;
   seasons: SeasonStatisticsRow[];
   ties: number;
+  wins: number;
+}
+
+interface SegmentStandingAccumulator {
+  bottomScoringWeeks: number;
+  games: number;
+  losses: number;
+  personId: string;
+  pointsAgainst: number;
+  pointsFor: number;
+  seasons: Set<number>;
+  ties: number;
+  topScoringWeeks: number;
   wins: number;
 }
 
@@ -469,6 +633,31 @@ function blowoutTop(
     }));
 }
 
+function lossMarginTop(
+  rows: readonly WeeklyStatisticsRow[],
+  recordType: Extract<RecordType, "biggest_loss" | "narrowest_loss">,
+  personNames: ReadonlyMap<string, string>,
+  direction: "max" | "min",
+  limit: number,
+): BlowoutCatalogEntry[] {
+  return [...rows]
+    .sort((left, right) => {
+      const leftMargin = Math.abs(left.margin);
+      const rightMargin = Math.abs(right.margin);
+      const valueCompare =
+        direction === "max"
+          ? rightMargin - leftMargin
+          : leftMargin - rightMargin;
+      return valueCompare || compareWeeklyAscending(left, right);
+    })
+    .slice(0, limit)
+    .map((row) => ({
+      ...periodContext(row, personNames),
+      margin: round(Math.abs(row.margin), 4),
+      recordType,
+    }));
+}
+
 function matchupCombinedEntries(
   weeklyRows: readonly WeeklyStatisticsRow[],
   personNames: ReadonlyMap<string, string>,
@@ -660,6 +849,229 @@ function buildAllTimeStandings(
         compareStable(left.personId, right.personId),
     )
     .map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+function buildSegmentStandings(
+  seasonRows: readonly SeasonStatisticsRow[],
+  weeklyRows: readonly WeeklyStatisticsRow[],
+  personNames: ReadonlyMap<string, string>,
+): SegmentStandingCatalogRow[] {
+  const byPerson = new Map<string, SegmentStandingAccumulator>();
+  for (const row of seasonRows) {
+    const current = byPerson.get(row.personId) ?? {
+      bottomScoringWeeks: 0,
+      games: 0,
+      losses: 0,
+      personId: row.personId,
+      pointsAgainst: 0,
+      pointsFor: 0,
+      seasons: new Set<number>(),
+      ties: 0,
+      topScoringWeeks: 0,
+      wins: 0,
+    };
+    current.games += row.wins + row.losses + row.ties;
+    current.losses += row.losses;
+    current.pointsAgainst = round(current.pointsAgainst + row.pointsAgainst, 4);
+    current.pointsFor = round(current.pointsFor + row.pointsFor, 4);
+    current.seasons.add(row.season);
+    current.ties += row.ties;
+    current.wins += row.wins;
+    byPerson.set(row.personId, current);
+  }
+
+  for (const row of weeklyRows) {
+    const current = byPerson.get(row.personId) ?? {
+      bottomScoringWeeks: 0,
+      games: 0,
+      losses: 0,
+      personId: row.personId,
+      pointsAgainst: 0,
+      pointsFor: 0,
+      seasons: new Set<number>(),
+      ties: 0,
+      topScoringWeeks: 0,
+      wins: 0,
+    };
+    current.bottomScoringWeeks += row.isBottomScorer ? 1 : 0;
+    current.seasons.add(row.season);
+    current.topScoringWeeks += row.isTopScorer ? 1 : 0;
+    byPerson.set(row.personId, current);
+  }
+
+  return [...byPerson.values()]
+    .map((row) => {
+      const scoringPeriods = weeklyRows
+        .filter((weekly) => weekly.personId === row.personId)
+        .reduce(
+          (sum, weekly) => sum + Math.max(1, weekly.scoringPeriodSpan),
+          0,
+        );
+      const pointsAgainstPeriods = weeklyRows
+        .filter(
+          (weekly) =>
+            weekly.personId === row.personId && weekly.result !== "bye",
+        )
+        .reduce(
+          (sum, weekly) => sum + Math.max(1, weekly.scoringPeriodSpan),
+          0,
+        );
+      return {
+        avgPointsAgainst:
+          pointsAgainstPeriods > 0
+            ? round(row.pointsAgainst / pointsAgainstPeriods, 4)
+            : 0,
+        avgPointsFor:
+          scoringPeriods > 0 ? round(row.pointsFor / scoringPeriods, 4) : 0,
+        bottomScoringWeeks: row.bottomScoringWeeks,
+        games: row.games,
+        losses: row.losses,
+        personId: row.personId,
+        personName: personName(personNames, row.personId),
+        pointDifferential: round(row.pointsFor - row.pointsAgainst, 4),
+        pointsAgainst: row.pointsAgainst,
+        pointsFor: row.pointsFor,
+        rank: 0,
+        seasons: row.seasons.size,
+        ties: row.ties,
+        topScoringWeeks: row.topScoringWeeks,
+        winPercentage:
+          row.games > 0 ? round((row.wins + row.ties * 0.5) / row.games, 4) : 0,
+        wins: row.wins,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.winPercentage - left.winPercentage ||
+        right.pointsFor - left.pointsFor ||
+        left.losses - right.losses ||
+        compareStable(left.personName, right.personName) ||
+        compareStable(left.personId, right.personId),
+    )
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+function seasonCatalogEntry(
+  row: SeasonStatisticsRow,
+  recordType: SeasonCatalogEntry["recordType"],
+  value: number,
+  personNames: ReadonlyMap<string, string>,
+): SeasonCatalogEntry {
+  return {
+    losses: row.losses,
+    personId: row.personId,
+    personName: personName(personNames, row.personId),
+    pointsAgainst: round(row.pointsAgainst, 4),
+    pointsFor: round(row.pointsFor, 4),
+    recordType,
+    season: row.season,
+    ties: row.ties,
+    value: round(value, 4),
+    winPercentage: round(row.winPercentage, 4),
+    wins: row.wins,
+  };
+}
+
+function seasonTop(
+  rows: readonly SeasonStatisticsRow[],
+  recordType: SeasonCatalogEntry["recordType"],
+  personNames: ReadonlyMap<string, string>,
+  selector: (row: SeasonStatisticsRow) => number,
+  direction: "max" | "min",
+  limit: number,
+): SeasonCatalogEntry[] {
+  return [...rows]
+    .filter((row) => row.wins + row.losses + row.ties > 0)
+    .sort((left, right) => {
+      const valueCompare =
+        direction === "max"
+          ? selector(right) - selector(left)
+          : selector(left) - selector(right);
+      return (
+        valueCompare ||
+        left.season - right.season ||
+        compareStable(
+          personName(personNames, left.personId),
+          personName(personNames, right.personId),
+        ) ||
+        compareStable(left.personId, right.personId)
+      );
+    })
+    .slice(0, limit)
+    .map((row) =>
+      seasonCatalogEntry(row, recordType, selector(row), personNames),
+    );
+}
+
+function buildSegmentRecordSet(
+  seasonRows: readonly SeasonStatisticsRow[],
+  weeklyRows: readonly WeeklyStatisticsRow[],
+  personNames: ReadonlyMap<string, string>,
+  limit: number,
+): SegmentRecordSet {
+  return {
+    highestScoringAverages: seasonTop(
+      seasonRows,
+      "highest_season_scoring_average",
+      personNames,
+      (row) => row.avgPointsFor,
+      "max",
+      limit,
+    ),
+    highestScoringSeasons: seasonTop(
+      seasonRows,
+      "most_points_for_season",
+      personNames,
+      (row) => row.pointsFor,
+      "max",
+      limit,
+    ),
+    lowestScoringSeasons: seasonTop(
+      seasonRows,
+      "fewest_points_for_season",
+      personNames,
+      (row) => row.pointsFor,
+      "min",
+      limit,
+    ),
+    mostPointsAgainstSeasons: seasonTop(
+      seasonRows,
+      "most_points_against_season",
+      personNames,
+      (row) => row.pointsAgainst,
+      "max",
+      limit,
+    ),
+    standings: buildSegmentStandings(seasonRows, weeklyRows, personNames),
+    worstScoringAverages: seasonTop(
+      seasonRows,
+      "lowest_season_scoring_average",
+      personNames,
+      (row) => row.avgPointsFor,
+      "min",
+      limit,
+    ),
+    worstWinPercentages: seasonTop(
+      seasonRows,
+      "worst_season_win_percentage",
+      personNames,
+      (row) => row.winPercentage,
+      "min",
+      limit,
+    ),
+  };
+}
+
+function emptySegmentRecordSet(): SegmentRecordSet {
+  return {
+    highestScoringAverages: [],
+    highestScoringSeasons: [],
+    lowestScoringSeasons: [],
+    mostPointsAgainstSeasons: [],
+    standings: [],
+    worstScoringAverages: [],
+    worstWinPercentages: [],
+  };
 }
 
 function seasonSummaryFromJson(value: Record<string, unknown> | null) {
@@ -1067,10 +1479,28 @@ function compareStreak(
 
 function emptyRecordsCatalog(integrityBlocked: boolean): RecordsCatalog {
   return {
+    achievements: {
+      highestScoringSeasons: [],
+      longestWinStreaks: [],
+      mostRegularSeasonTitles: [],
+      mostRunnerUps: [],
+      mostTitles: [],
+      mostTopScoringWeeks: [],
+    },
     allTimeStandings: [],
-    blowouts: { biggest: [], narrowestWins: [] },
+    blowouts: {
+      biggest: [],
+      biggestLosses: [],
+      narrowestLosses: [],
+      narrowestWins: [],
+    },
     championships: { managerRecords: [], seasons: [] },
-    headToHead: { allTimePairs: [], managerLedgers: [], seasonPairs: [] },
+    headToHead: {
+      allTimePairs: [],
+      longestStreaks: [],
+      managerLedgers: [],
+      seasonPairs: [],
+    },
     highLow: {
       bestScoresInLosses: [],
       highestCombinedMatchups: [],
@@ -1079,6 +1509,15 @@ function emptyRecordsCatalog(integrityBlocked: boolean): RecordsCatalog {
       worstScoresInWins: [],
     },
     integrityBlocked,
+    lowlights: {
+      biggestLosses: [],
+      lowestScoringSeasons: [],
+      mostBottomScoringWeeks: [],
+      mostLastPlaceFinishes: [],
+      narrowestLosses: [],
+      worstScoringAverages: [],
+      worstWinPercentages: [],
+    },
     milestones: {
       keeper: {
         entries: [],
@@ -1086,6 +1525,8 @@ function emptyRecordsCatalog(integrityBlocked: boolean): RecordsCatalog {
         summary: null,
       },
     },
+    playoff: emptySegmentRecordSet(),
+    regularSeason: emptySegmentRecordSet(),
     streaks: { longestLosses: [], longestWins: [] },
   };
 }
@@ -1179,6 +1620,43 @@ function compareHeadToHeadPair(
     compareStable(left.personA.personId, right.personA.personId) ||
     compareStable(left.personB.personId, right.personB.personId)
   );
+}
+
+function headToHeadStreakCatalogEntries(
+  pairs: readonly HeadToHeadPairCatalogEntry[],
+): HeadToHeadStreakCatalogEntry[] {
+  return pairs
+    .map((pair) => {
+      const streak = pair.longestStreak;
+      if (!streak) {
+        return null;
+      }
+      const opponent =
+        streak.personId === pair.personA.personId ? pair.personB : pair.personA;
+      return {
+        holder: {
+          personId: streak.personId,
+          personName: streak.personName,
+        },
+        length: streak.length,
+        meetings: pair.meetings,
+        opponent: {
+          personId: opponent.personId,
+          personName: opponent.personName,
+        },
+        season: pair.season,
+      } satisfies HeadToHeadStreakCatalogEntry;
+    })
+    .filter((entry): entry is HeadToHeadStreakCatalogEntry => Boolean(entry))
+    .sort(
+      (left, right) =>
+        right.length - left.length ||
+        right.meetings - left.meetings ||
+        compareStable(left.holder.personName, right.holder.personName) ||
+        compareStable(left.opponent.personName, right.opponent.personName) ||
+        compareStable(left.holder.personId, right.holder.personId) ||
+        compareStable(left.opponent.personId, right.opponent.personId),
+    );
 }
 
 function headToHeadMeetingSort(
@@ -1401,6 +1879,9 @@ function buildHeadToHeadCatalogFromWeeklyRows(
 
   return {
     allTimePairs: pairs.filter((row) => row.season === 0),
+    longestStreaks: headToHeadStreakCatalogEntries(
+      pairs.filter((row) => row.season === 0),
+    ),
     managerLedgers: pairs
       .flatMap((row) => [
         {
@@ -1557,6 +2038,9 @@ function buildHeadToHeadCatalog(
 
   return {
     allTimePairs: pairs.filter((row) => row.season === 0),
+    longestStreaks: headToHeadStreakCatalogEntries(
+      pairs.filter((row) => row.season === 0),
+    ),
     managerLedgers,
     seasonPairs: pairs.filter((row) => row.season !== 0),
   };
@@ -1791,6 +2275,237 @@ function buildChampionshipCatalog({
         thirdPlace: personRef(personNames, row.thirdPlacePersonId),
       }))
       .sort((left, right) => right.season - left.season),
+  };
+}
+
+function countCatalogEntry(
+  personId: string,
+  personNames: ReadonlyMap<string, string>,
+  recordType: CountCatalogEntry["recordType"],
+  value: number,
+): CountCatalogEntry {
+  return {
+    personId,
+    personName: personName(personNames, personId),
+    recordType,
+    value,
+  };
+}
+
+function countTop(
+  rows: readonly CountCatalogEntry[],
+  limit: number,
+): CountCatalogEntry[] {
+  return [...rows]
+    .filter((row) => row.value > 0)
+    .sort(
+      (left, right) =>
+        right.value - left.value ||
+        compareStable(left.personName, right.personName) ||
+        compareStable(left.personId, right.personId),
+    )
+    .slice(0, limit);
+}
+
+function countWeeklyFlags(
+  rows: readonly WeeklyStatisticsRow[],
+  personNames: ReadonlyMap<string, string>,
+  recordType: Extract<
+    CountCatalogEntry["recordType"],
+    "most_bottom_scoring_weeks" | "most_top_scoring_weeks"
+  >,
+  flag: "bottom" | "top",
+  limit: number,
+): CountCatalogEntry[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const matches = flag === "top" ? row.isTopScorer : row.isBottomScorer;
+    if (!matches) {
+      continue;
+    }
+    counts.set(row.personId, (counts.get(row.personId) ?? 0) + 1);
+  }
+  return countTop(
+    [...counts.entries()].map(([personId, value]) =>
+      countCatalogEntry(personId, personNames, recordType, value),
+    ),
+    limit,
+  );
+}
+
+function countLastPlaceFinishes(
+  rows: readonly SeasonStatisticsRow[],
+  personNames: ReadonlyMap<string, string>,
+  limit: number,
+): CountCatalogEntry[] {
+  const maxFinalRankBySeason = new Map<number, number>();
+  for (const row of rows) {
+    if (row.finalRank > 0) {
+      maxFinalRankBySeason.set(
+        row.season,
+        Math.max(maxFinalRankBySeason.get(row.season) ?? 0, row.finalRank),
+      );
+    }
+  }
+
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const maxFinalRank = maxFinalRankBySeason.get(row.season) ?? 0;
+    if (
+      row.finalRank > 0 &&
+      maxFinalRank > 1 &&
+      row.finalRank === maxFinalRank
+    ) {
+      counts.set(row.personId, (counts.get(row.personId) ?? 0) + 1);
+    }
+  }
+
+  return countTop(
+    [...counts.entries()].map(([personId, value]) =>
+      countCatalogEntry(
+        personId,
+        personNames,
+        "most_last_place_finishes",
+        value,
+      ),
+    ),
+    limit,
+  );
+}
+
+function championshipCounts(
+  rows: readonly ManagerChampionshipRecord[],
+  personNames: ReadonlyMap<string, string>,
+  recordType: Extract<
+    CountCatalogEntry["recordType"],
+    "most_championships" | "most_regular_season_titles" | "most_runner_ups"
+  >,
+  selector: (row: ManagerChampionshipRecord) => number,
+  limit: number,
+): CountCatalogEntry[] {
+  return countTop(
+    rows.map((row) =>
+      countCatalogEntry(row.personId, personNames, recordType, selector(row)),
+    ),
+    limit,
+  );
+}
+
+function buildAchievementCatalog({
+  championships,
+  personNames,
+  regularSeason,
+  seasonRows,
+  streaks,
+  weeklyRows,
+  limit,
+}: {
+  championships: RecordsCatalog["championships"];
+  limit: number;
+  personNames: ReadonlyMap<string, string>;
+  regularSeason: SegmentRecordSet;
+  seasonRows: readonly SeasonStatisticsRow[];
+  streaks: RecordsCatalog["streaks"];
+  weeklyRows: readonly WeeklyStatisticsRow[];
+}): RecordsAchievementCatalog {
+  return {
+    highestScoringSeasons:
+      regularSeason.highestScoringSeasons.length > 0
+        ? regularSeason.highestScoringSeasons
+        : seasonTop(
+            seasonRows,
+            "most_points_for_season",
+            personNames,
+            (row) => row.pointsFor,
+            "max",
+            limit,
+          ),
+    longestWinStreaks: streaks.longestWins,
+    mostRegularSeasonTitles: championshipCounts(
+      championships.managerRecords,
+      personNames,
+      "most_regular_season_titles",
+      (row) => row.regularSeasonTitles,
+      limit,
+    ),
+    mostRunnerUps: championshipCounts(
+      championships.managerRecords,
+      personNames,
+      "most_runner_ups",
+      (row) => row.runnerUps,
+      limit,
+    ),
+    mostTitles: championshipCounts(
+      championships.managerRecords,
+      personNames,
+      "most_championships",
+      (row) => row.championships,
+      limit,
+    ),
+    mostTopScoringWeeks: countWeeklyFlags(
+      weeklyRows,
+      personNames,
+      "most_top_scoring_weeks",
+      "top",
+      limit,
+    ),
+  };
+}
+
+function buildLowlightCatalog({
+  biggestLosses,
+  lowlightSeasonRows,
+  narrowestLosses,
+  personNames,
+  weeklyRows,
+  limit,
+}: {
+  biggestLosses: readonly BlowoutCatalogEntry[];
+  limit: number;
+  lowlightSeasonRows: readonly SeasonStatisticsRow[];
+  narrowestLosses: readonly BlowoutCatalogEntry[];
+  personNames: ReadonlyMap<string, string>;
+  weeklyRows: readonly WeeklyStatisticsRow[];
+}): RecordsLowlightCatalog {
+  return {
+    biggestLosses: [...biggestLosses],
+    lowestScoringSeasons: seasonTop(
+      lowlightSeasonRows,
+      "fewest_points_for_season",
+      personNames,
+      (row) => row.pointsFor,
+      "min",
+      limit,
+    ),
+    mostBottomScoringWeeks: countWeeklyFlags(
+      weeklyRows,
+      personNames,
+      "most_bottom_scoring_weeks",
+      "bottom",
+      limit,
+    ),
+    mostLastPlaceFinishes: countLastPlaceFinishes(
+      lowlightSeasonRows,
+      personNames,
+      limit,
+    ),
+    narrowestLosses: [...narrowestLosses],
+    worstScoringAverages: seasonTop(
+      lowlightSeasonRows,
+      "lowest_season_scoring_average",
+      personNames,
+      (row) => row.avgPointsFor,
+      "min",
+      limit,
+    ),
+    worstWinPercentages: seasonTop(
+      lowlightSeasonRows,
+      "worst_season_win_percentage",
+      personNames,
+      (row) => row.winPercentage,
+      "min",
+      limit,
+    ),
   };
 }
 
@@ -2310,27 +3025,99 @@ export function buildRecordsCatalog(input: {
   const winners = singlePeriodHeadToHeadRows.filter(
     (row) => row.result === "win",
   );
+  const headToHeadLosers = singlePeriodHeadToHeadRows.filter(
+    (row) => row.result === "loss",
+  );
   const losers = singlePeriodRows.filter((row) => row.result === "loss");
   const scoredRows = singlePeriodRows.filter((row) => row.pointsFor > 0);
+  const regularWeeklyRows =
+    (input.lens?.segment ?? "both") === "playoff"
+      ? []
+      : weeklyRows.filter((row) => !row.isPlayoff);
+  const playoffWeeklyRows =
+    (input.lens?.segment ?? "both") === "regular"
+      ? []
+      : weeklyRows.filter((row) => row.isPlayoff);
+  const baseSeasonRows = filterSeasonRowsByLens(input.seasonRows, input.lens);
+  const regularSeasonRows =
+    regularWeeklyRows.length > 0
+      ? derivedSeasonRowsFromWeeklyRows(regularWeeklyRows, baseSeasonRows, {
+          ...(input.lens ?? {}),
+          segment: "regular",
+        })
+      : [];
+  const playoffSeasonRows =
+    playoffWeeklyRows.length > 0
+      ? derivedSeasonRowsFromWeeklyRows(playoffWeeklyRows, baseSeasonRows, {
+          ...(input.lens ?? {}),
+          segment: "playoff",
+        })
+      : [];
+  const regularSeason = buildSegmentRecordSet(
+    regularSeasonRows,
+    regularWeeklyRows,
+    input.personNames,
+    limit,
+  );
+  const playoff = buildSegmentRecordSet(
+    playoffSeasonRows,
+    playoffWeeklyRows,
+    input.personNames,
+    limit,
+  );
 
   const hasMaterializedAllTimeStandings =
     input.allTimeStandingRows !== undefined &&
     input.allTimeStandingRows.length > 0;
   const hasMaterializedHeadToHeadRows =
     input.headToHeadRows !== undefined && input.headToHeadRows.length > 0;
+  const allTimeStandings =
+    defaultLens && hasMaterializedAllTimeStandings
+      ? materializedAllTimeStandings(
+          input.allTimeStandingRows ?? [],
+          input.personNames,
+        )
+      : buildAllTimeStandings(seasonRows, input.personNames, championshipRows);
+  const biggestLosses = lossMarginTop(
+    headToHeadLosers,
+    "biggest_loss",
+    input.personNames,
+    "max",
+    limit,
+  );
+  const narrowestLosses = lossMarginTop(
+    headToHeadLosers,
+    "narrowest_loss",
+    input.personNames,
+    "min",
+    limit,
+  );
+  const championships = buildChampionshipCatalog({
+    championshipRows,
+    personNames: input.personNames,
+    seasonRows,
+    weeklyRows,
+  });
+  const headToHead =
+    defaultLens && hasMaterializedHeadToHeadRows
+      ? buildHeadToHeadCatalog(headToHeadRecordRows, input.personNames)
+      : buildHeadToHeadCatalogFromWeeklyRows(headToHeadRows, input.personNames);
+  const streaks = {
+    longestLosses: bestStreaks(weeklyRows, input.personNames, "loss", limit),
+    longestWins: bestStreaks(weeklyRows, input.personNames, "win", limit),
+  };
 
   return {
-    allTimeStandings:
-      defaultLens && hasMaterializedAllTimeStandings
-        ? materializedAllTimeStandings(
-            input.allTimeStandingRows ?? [],
-            input.personNames,
-          )
-        : buildAllTimeStandings(
-            seasonRows,
-            input.personNames,
-            championshipRows,
-          ),
+    achievements: buildAchievementCatalog({
+      championships,
+      limit,
+      personNames: input.personNames,
+      regularSeason,
+      seasonRows,
+      streaks,
+      weeklyRows,
+    }),
+    allTimeStandings,
     blowouts: {
       biggest: blowoutTop(
         winners,
@@ -2339,6 +3126,8 @@ export function buildRecordsCatalog(input: {
         "max",
         limit,
       ),
+      biggestLosses,
+      narrowestLosses,
       narrowestWins: blowoutTop(
         winners,
         "narrowest_win",
@@ -2347,19 +3136,8 @@ export function buildRecordsCatalog(input: {
         limit,
       ),
     },
-    championships: buildChampionshipCatalog({
-      championshipRows,
-      personNames: input.personNames,
-      seasonRows,
-      weeklyRows,
-    }),
-    headToHead:
-      defaultLens && hasMaterializedHeadToHeadRows
-        ? buildHeadToHeadCatalog(headToHeadRecordRows, input.personNames)
-        : buildHeadToHeadCatalogFromWeeklyRows(
-            headToHeadRows,
-            input.personNames,
-          ),
+    championships,
+    headToHead,
     highLow: {
       bestScoresInLosses: weeklyTop(
         losers,
@@ -2396,16 +3174,23 @@ export function buildRecordsCatalog(input: {
       ),
     },
     integrityBlocked: false,
+    lowlights: buildLowlightCatalog({
+      biggestLosses,
+      limit,
+      lowlightSeasonRows: seasonRows,
+      narrowestLosses,
+      personNames: input.personNames,
+      weeklyRows,
+    }),
     milestones: {
       keeper: buildKeeperMilestoneCatalog(
         input.milestoneRows ?? [],
         input.personNames,
       ),
     },
-    streaks: {
-      longestLosses: bestStreaks(weeklyRows, input.personNames, "loss", limit),
-      longestWins: bestStreaks(weeklyRows, input.personNames, "win", limit),
-    },
+    playoff,
+    regularSeason,
+    streaks,
   };
 }
 
