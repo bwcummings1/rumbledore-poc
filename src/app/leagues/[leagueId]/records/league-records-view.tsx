@@ -513,8 +513,11 @@ function Championships({ data }: { data: RecordsPageData }) {
               </tr>
             </thead>
             <tbody>
-              {championships.seasons.slice(0, 8).map((row) => (
-                <tr className="border-t border-border" key={row.season}>
+              {championships.seasons.slice(0, 8).map((row, index) => (
+                <tr
+                  className="border-t border-border"
+                  key={`${row.season}-${index}`}
+                >
                   <td className="px-3 py-3 tabular-nums">{row.season}</td>
                   <td className="px-3 py-3">
                     {row.champion?.personName ?? "-"}

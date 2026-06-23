@@ -157,7 +157,7 @@ function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => {
+              rows.map((row, index) => {
                 const rowId = getRowId(row);
                 const isSelected = selected.has(rowId);
                 return (
@@ -167,7 +167,8 @@ function DataTable<T>({
                       isSelected ? "bg-primary/10" : "",
                     )}
                     data-selected={isSelected ? "true" : undefined}
-                    key={rowId}
+                    // biome-ignore lint/suspicious/noArrayIndexKey: row IDs can repeat in imported records; index is a final disambiguator.
+                    key={`${rowId}:${index}`}
                   >
                     {columns.map((column) => (
                       <td
