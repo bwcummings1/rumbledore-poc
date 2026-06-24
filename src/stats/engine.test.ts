@@ -13,10 +13,13 @@ import {
   dataCorrectionAuditLog,
   dataCoverage,
   dataIntegrityChecks,
+  fantasyDraftPicks,
   fantasyMatchups,
   fantasyMembers,
+  fantasyPlayers,
   fantasyRosterEntries,
   fantasyTeams,
+  fantasyTransactions,
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
@@ -3470,6 +3473,190 @@ describe("recomputeLeagueStatistics", () => {
         providerLeagueId: clean.providerLeagueId,
         rule: "braced_guid",
       }),
+    });
+  });
+
+  it("passes provider code decoding checks for fully decoded ESPN ids", async () => {
+    const clean = await seedProviderIdentityIntegrityLeague({
+      contaminated: false,
+      tag: "provider-code-clean",
+    });
+
+    await withLeagueContext(handle.db, clean.leagueId, async (tx) => {
+      await tx.insert(leagueSeasonSettings).values({
+        contentHash: `${marker}-provider-code-clean-settings`,
+        leagueId: clean.leagueId,
+        leagueProviderId: clean.providerLeagueId,
+        leagueSize: 2,
+        lineupSlotCounts: { "10": 1, "23": 1 },
+        matchupPeriodCount: 1,
+        provider: "espn",
+        scoringSettings: {
+          scoringItems: [
+            { points: 1, statId: 25 },
+            { points: 2, statId: 205 },
+          ],
+          scoringType: "H2H_POINTS",
+        },
+        scoringType: "H2H_POINTS",
+        season: 2026,
+      });
+      await tx.insert(fantasyPlayers).values({
+        contentHash: `${marker}-provider-code-clean-player`,
+        fullName: "Decoded Linebacker",
+        leagueId: clean.leagueId,
+        leagueProviderId: clean.providerLeagueId,
+        metadata: {
+          defaultPositionId: 10,
+          eligibleSlots: [10, 15, 20, 21],
+          proTeamId: 33,
+        },
+        position: "LB",
+        proTeam: "BAL",
+        provider: "espn",
+        providerPlayerId: "decoded-lb",
+      });
+      await tx.insert(fantasyRosterEntries).values({
+        contentHash: `${marker}-provider-code-clean-roster`,
+        leagueId: clean.leagueId,
+        leagueProviderId: clean.providerLeagueId,
+        metadata: { lineupSlotId: 7 },
+        provider: "espn",
+        providerPlayerId: "decoded-lb",
+        providerTeamId: "1",
+        scoringPeriod: 1,
+        season: 2026,
+        slot: "OP",
+        started: true,
+        status: "active",
+      });
+      await tx.insert(fantasyDraftPicks).values({
+        contentHash: `${marker}-provider-code-clean-draft`,
+        leagueId: clean.leagueId,
+        leagueProviderId: clean.providerLeagueId,
+        metadata: { lineupSlotId: 25 },
+        provider: "espn",
+        providerPickId: "decoded-pick",
+        providerTeamId: "1",
+        round: 1,
+        season: 2026,
+      });
+      await tx.insert(fantasyTransactions).values({
+        contentHash: `${marker}-provider-code-clean-transaction`,
+        details: {
+          items: [{ type: 239 }],
+          rawActivityTypeId: 180,
+        },
+        leagueId: clean.leagueId,
+        leagueProviderId: clean.providerLeagueId,
+        occurredAt: new Date(Date.UTC(2026, 8, 1)),
+        playerProviderIds: ["decoded-lb"],
+        provider: "espn",
+        providerTransactionId: "decoded-transaction",
+        season: 2026,
+        teamProviderIds: ["1"],
+        type: "waiver",
+      });
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, {
+      leagueId: clean.leagueId,
+    });
+    expect(integrity.failures).toBe(0);
+
+    const rows = await selectStatsRows(clean.leagueId);
+    const providerCheck = rows.integrityRows.find(
+      (row) => row.checkKey === "provider_code_decoding",
+    );
+    expect(providerCheck).toMatchObject({
+      status: "pass",
+      detail: expect.objectContaining({
+        checkedProviders: ["espn"],
+        issues: [],
+        observedCodeCounts: {
+          espn: expect.objectContaining({
+            activities: 2,
+            proTeams: 1,
+            scoringStats: 2,
+          }),
+        },
+      }),
+    });
+  });
+
+  it("flags synthetic unknown provider code ids", async () => {
+    const league = await seedProviderIdentityIntegrityLeague({
+      contaminated: false,
+      tag: "provider-code-unknown",
+    });
+
+    await withLeagueContext(handle.db, league.leagueId, async (tx) => {
+      await tx.insert(leagueSeasonSettings).values({
+        contentHash: `${marker}-provider-code-unknown-settings`,
+        leagueId: league.leagueId,
+        leagueProviderId: league.providerLeagueId,
+        leagueSize: 2,
+        lineupSlotCounts: { "999": 1 },
+        matchupPeriodCount: 1,
+        provider: "espn",
+        scoringSettings: {
+          scoringItems: [{ points: 1, statId: 999 }],
+          scoringType: "H2H_POINTS",
+        },
+        scoringType: "H2H_POINTS",
+        season: 2026,
+      });
+      await tx.insert(fantasyPlayers).values({
+        contentHash: `${marker}-provider-code-unknown-player`,
+        fullName: "Undecoded Player",
+        leagueId: league.leagueId,
+        leagueProviderId: league.providerLeagueId,
+        metadata: {
+          defaultPositionId: 999,
+          eligibleSlots: [999],
+          proTeamId: 999,
+        },
+        position: "unknown",
+        proTeam: "unknown",
+        provider: "espn",
+        providerPlayerId: "unknown-player",
+      });
+      await tx.insert(fantasyTransactions).values({
+        contentHash: `${marker}-provider-code-unknown-transaction`,
+        details: {
+          items: [{ type: 999 }],
+          rawActivityTypeId: 999,
+        },
+        leagueId: league.leagueId,
+        leagueProviderId: league.providerLeagueId,
+        occurredAt: new Date(Date.UTC(2026, 8, 1)),
+        playerProviderIds: ["unknown-player"],
+        provider: "espn",
+        providerTransactionId: "unknown-transaction",
+        season: 2026,
+        teamProviderIds: ["1"],
+        type: "unknown",
+      });
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, {
+      leagueId: league.leagueId,
+    });
+    expect(integrity.failures).toBeGreaterThanOrEqual(1);
+
+    const rows = await selectStatsRows(league.leagueId);
+    const providerCheck = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "provider_code_decoding" && row.status === "fail",
+    );
+    expect(providerCheck?.detail).toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({ id: 999, kind: "activity" }),
+        expect.objectContaining({ id: 999, kind: "lineup_slot" }),
+        expect.objectContaining({ id: 999, kind: "position" }),
+        expect.objectContaining({ id: 999, kind: "pro_team" }),
+        expect.objectContaining({ id: 999, kind: "scoring_stat" }),
+      ]),
     });
   });
 

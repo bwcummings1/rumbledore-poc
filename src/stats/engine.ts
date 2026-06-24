@@ -6,10 +6,13 @@ import {
   championshipRecords,
   dataCoverage,
   dataIntegrityChecks,
+  fantasyDraftPicks,
   fantasyMatchups,
   fantasyMembers,
+  fantasyPlayers,
   fantasyRosterEntries,
   fantasyTeams,
+  fantasyTransactions,
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
@@ -27,6 +30,7 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import type { NormalizedMatchupKind } from "@/providers";
+import { providerCodeDecodingIssues } from "@/providers/decoding";
 import type { FantasyProviderId } from "@/providers/ids";
 import { identityNameSimilarity } from "./fuzzy";
 import { refreshRecordBookAggregates } from "./records-catalog";
@@ -2555,6 +2559,57 @@ function providerMemberIdRule(provider: FantasyProviderId): string {
   }
 }
 
+function numberFromUnknown(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberArrayFromUnknown(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value
+        .map(numberFromUnknown)
+        .filter((entry): entry is number => entry !== undefined)
+    : [];
+}
+
+function numericRecordKeys(value: Record<string, unknown> | null): number[] {
+  return Object.keys(value ?? {})
+    .map(numberFromUnknown)
+    .filter((entry): entry is number => entry !== undefined);
+}
+
+function scoringStatIdsFromSettings(value: Record<string, unknown>): number[] {
+  return Array.isArray(value.scoringItems)
+    ? value.scoringItems
+        .map((item) => numberFromUnknown(recordFromUnknown(item).statId))
+        .filter((entry): entry is number => entry !== undefined)
+    : [];
+}
+
+function activityIdsFromDetails(value: Record<string, unknown>): number[] {
+  const itemIds = Array.isArray(value.items)
+    ? value.items.flatMap((item) =>
+        numberArrayFromUnknown([recordFromUnknown(item).type]),
+      )
+    : [];
+  return [
+    ...numberArrayFromUnknown([value.rawActivityTypeId, value.rawType]),
+    ...itemIds,
+  ];
+}
+
 function seasonKeys(values: Iterable<number>): number[] {
   return [...new Set(values)]
     .filter((season) => Number.isInteger(season))
@@ -2763,7 +2818,9 @@ async function buildDataIntegrityCheckDrafts(
   const rosterRows = await tx
     .select({
       actualPoints: fantasyRosterEntries.actualPoints,
+      metadata: fantasyRosterEntries.metadata,
       points: fantasyRosterEntries.points,
+      provider: fantasyRosterEntries.provider,
       providerPlayerId: fantasyRosterEntries.providerPlayerId,
       providerTeamId: fantasyRosterEntries.providerTeamId,
       scoringPeriod: fantasyRosterEntries.scoringPeriod,
@@ -2772,6 +2829,35 @@ async function buildDataIntegrityCheckDrafts(
     })
     .from(fantasyRosterEntries)
     .where(eq(fantasyRosterEntries.leagueId, leagueId));
+  const playerRows = await tx
+    .select({
+      metadata: fantasyPlayers.metadata,
+      position: fantasyPlayers.position,
+      proTeam: fantasyPlayers.proTeam,
+      provider: fantasyPlayers.provider,
+      providerPlayerId: fantasyPlayers.providerPlayerId,
+    })
+    .from(fantasyPlayers)
+    .where(eq(fantasyPlayers.leagueId, leagueId));
+  const draftRows = await tx
+    .select({
+      metadata: fantasyDraftPicks.metadata,
+      provider: fantasyDraftPicks.provider,
+      providerPickId: fantasyDraftPicks.providerPickId,
+      season: fantasyDraftPicks.season,
+    })
+    .from(fantasyDraftPicks)
+    .where(eq(fantasyDraftPicks.leagueId, leagueId));
+  const transactionRows = await tx
+    .select({
+      details: fantasyTransactions.details,
+      provider: fantasyTransactions.provider,
+      providerTransactionId: fantasyTransactions.providerTransactionId,
+      season: fantasyTransactions.season,
+      type: fantasyTransactions.type,
+    })
+    .from(fantasyTransactions)
+    .where(eq(fantasyTransactions.leagueId, leagueId));
   const coverageRows = await tx
     .select({
       capability: dataCoverage.capability,
@@ -2791,6 +2877,9 @@ async function buildDataIntegrityCheckDrafts(
         leagueSeasonSettings.playoffMatchupPeriodLength,
       playoffStartScoringPeriod: leagueSeasonSettings.playoffStartScoringPeriod,
       playoffTeamCount: leagueSeasonSettings.playoffTeamCount,
+      provider: leagueSeasonSettings.provider,
+      lineupSlotCounts: leagueSeasonSettings.lineupSlotCounts,
+      scoringSettings: leagueSeasonSettings.scoringSettings,
       season: leagueSeasonSettings.season,
     })
     .from(leagueSeasonSettings)
@@ -2948,6 +3037,113 @@ async function buildDataIntegrityCheckDrafts(
     },
     season: null,
     status: checkStatus(contaminationIssues),
+  });
+
+  const observedCodesByProvider = new Map<
+    FantasyProviderId,
+    {
+      activities: Set<number>;
+      lineupSlots: Set<number>;
+      positions: Set<number>;
+      proTeams: Set<number>;
+      scoringStats: Set<number>;
+    }
+  >();
+  const observedCodesFor = (provider: FantasyProviderId) => {
+    const current = observedCodesByProvider.get(provider) ?? {
+      activities: new Set<number>(),
+      lineupSlots: new Set<number>(),
+      positions: new Set<number>(),
+      proTeams: new Set<number>(),
+      scoringStats: new Set<number>(),
+    };
+    observedCodesByProvider.set(provider, current);
+    return current;
+  };
+  if (leagueRow) {
+    observedCodesFor(leagueRow.provider);
+  }
+  for (const player of playerRows) {
+    const observed = observedCodesFor(player.provider);
+    const metadata = recordFromUnknown(player.metadata);
+    const positionId = numberFromUnknown(metadata.defaultPositionId);
+    const proTeamId = numberFromUnknown(metadata.proTeamId);
+    if (positionId !== undefined) {
+      observed.positions.add(positionId);
+    }
+    if (proTeamId !== undefined) {
+      observed.proTeams.add(proTeamId);
+    }
+    for (const slotId of numberArrayFromUnknown(metadata.eligibleSlots)) {
+      observed.lineupSlots.add(slotId);
+    }
+  }
+  for (const roster of rosterRows) {
+    const observed = observedCodesFor(roster.provider);
+    const lineupSlotId = numberFromUnknown(
+      recordFromUnknown(roster.metadata).lineupSlotId,
+    );
+    if (lineupSlotId !== undefined) {
+      observed.lineupSlots.add(lineupSlotId);
+    }
+  }
+  for (const draft of draftRows) {
+    const observed = observedCodesFor(draft.provider);
+    const lineupSlotId = numberFromUnknown(
+      recordFromUnknown(draft.metadata).lineupSlotId,
+    );
+    if (lineupSlotId !== undefined) {
+      observed.lineupSlots.add(lineupSlotId);
+    }
+  }
+  for (const setting of settingsRows) {
+    const observed = observedCodesFor(setting.provider);
+    for (const slotId of numericRecordKeys(setting.lineupSlotCounts)) {
+      observed.lineupSlots.add(slotId);
+    }
+    for (const statId of scoringStatIdsFromSettings(setting.scoringSettings)) {
+      observed.scoringStats.add(statId);
+    }
+  }
+  for (const transaction of transactionRows) {
+    const observed = observedCodesFor(transaction.provider);
+    for (const activityId of activityIdsFromDetails(transaction.details)) {
+      observed.activities.add(activityId);
+    }
+  }
+  const providerCodeIssues = [...observedCodesByProvider.entries()].flatMap(
+    ([provider, observed]) =>
+      providerCodeDecodingIssues(provider, {
+        activities: observed.activities,
+        lineupSlots: observed.lineupSlots,
+        positions: observed.positions,
+        proTeams: observed.proTeams,
+        scoringStats: observed.scoringStats,
+      }),
+  );
+  const observedCodeCounts = Object.fromEntries(
+    [...observedCodesByProvider.entries()]
+      .sort(([left], [right]) => compareStable(left, right))
+      .map(([provider, observed]) => [
+        provider,
+        {
+          activities: observed.activities.size,
+          lineupSlots: observed.lineupSlots.size,
+          positions: observed.positions.size,
+          proTeams: observed.proTeams.size,
+          scoringStats: observed.scoringStats.size,
+        },
+      ]),
+  );
+  drafts.push({
+    checkKey: "provider_code_decoding",
+    detail: {
+      checkedProviders: [...observedCodesByProvider.keys()].sort(compareStable),
+      observedCodeCounts,
+      issues: providerCodeIssues,
+    },
+    season: null,
+    status: checkStatus(providerCodeIssues),
   });
 
   const seasonStatsByPersonSeason = new Map(

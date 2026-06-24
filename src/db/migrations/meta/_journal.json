@@ -414,6 +414,13 @@
       "when": 1781566400000,
       "tag": "0058_player_depth",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1781570000000,
+      "tag": "0059_provider_code_decoding",
+      "breakpoints": true
     }
   ]
 }
