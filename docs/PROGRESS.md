@@ -1,17 +1,26 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-24 — **Task T15 on `ws/t15-complete-decoding`**:
-ESPN provider-code decoding is complete and coverage-guarded. A typed ESPN dictionary now owns the complete
-cwendt-derived position/default-position, lineup/eligible-slot, pro-team, ACTIVITY_MAP, and scoring-stat category/key
-vocabulary, including the real-payload blank slot sentinel `22 -> N/A`. ESPN normalization decodes player positions,
-eligible slots, roster/draft lineup slots, pro teams, scoring settings, and transaction activity categories through
-that dictionary; Data Book Settings slot labels use the same source while raw slot ids stay intact for settings
-signatures. A new `provider_code_decoding` `data_integrity_check` flags any undecoded position/slot/proTeam/stat/
-activity id observed after import and replaces stale pass/fail rows on rerun. Real ESPN 95050 verification reset and
-imported all 16 seasons (2011-2026), observed 100% decoded coverage with zero player-position/pro-team/roster-slot
-`unknown` values, and proved a synthetic `999` code fails the invariant; artifact:
-`.orchestration/import-summary.md` → `T15 decoding coverage`. Prior state: **Task T14 on `ws/t14-player-depth`**:
+Keep it current. Last updated: 2026-06-24 — **Task T16 on `ws/t16-see-real-league`**:
+the shared dev DB used by the running app now contains the real ESPN 95050 league with player depth and complete
+decoding. The current shared provider row is `NHS Alumni Annual`
+(`f8334edb-7a20-4138-aa7a-65c0b5285886`; provider `espn` / `95050`), with 16 pushed canonical seasons, zero placeholder
+persons, 24,433 roster entries, zero `unknown` decoded positions/pro teams/roster slots, and `provider_code_decoding`
+PASS. Real owner-visible screenshots live in `docs/screenshots/real-95050/{mobile,tablet,desktop}/` and show the actual
+league data: Data Book People real managers (`bradwcummings`, `truman1109`, `w hardy`), Data Book Settings, Data Book
+Weeks with 2012 W8 `MONROE_REBS` roster including Luke Kuechly decoded as `DL / CAR` in `LB`, Edit Ledger, Records, and
+the league/press front. The real screenshot run reports zero duplicate React key warnings. Artifact:
+`.orchestration/import-summary.md` → `T16 real-league population`. Prior state: **Task T15 on
+`ws/t15-complete-decoding`**: ESPN provider-code decoding is complete and coverage-guarded. A typed ESPN dictionary now
+owns the complete cwendt-derived position/default-position, lineup/eligible-slot, pro-team, ACTIVITY_MAP, and scoring-stat
+category/key vocabulary, including the real-payload blank slot sentinel `22 -> N/A`. ESPN normalization decodes player
+positions, eligible slots, roster/draft lineup slots, pro teams, scoring settings, and transaction activity categories
+through that dictionary; Data Book Settings slot labels use the same source while raw slot ids stay intact for settings
+signatures. A new `provider_code_decoding` `data_integrity_check` flags any undecoded position/slot/proTeam/stat/activity
+id observed after import and replaces stale pass/fail rows on rerun. Real ESPN 95050 verification reset and imported all
+16 seasons (2011-2026), observed 100% decoded coverage with zero player-position/pro-team/roster-slot `unknown` values,
+and proved a synthetic `999` code fails the invariant; artifact: `.orchestration/import-summary.md` →
+`T15 decoding coverage`. Prior state: **Task T14 on `ws/t14-player-depth`**:
 league-scoped player depth now exists for substrate A. ESPN imports request player views (`mBoxscore`/`mMatchupScore`,
 `mScoreboard`, `mRoster`, `kona_player_info`, `mDraftDetail`, `mTransactions2`) for current and historical seasons;
 the adapter preserves real ESPN player ids including negative D/ST ids, maps player names/positions/pro teams,

@@ -359,3 +359,72 @@
 - PASS - synthetic unknown position/slot/proTeam/stat/activity code flags
 - provider_code_decoding detail: {"issues":[],"checkedProviders":["espn"],"observedCodeCounts":{"espn":{"proTeams":33,"positions":7,"activities":0,"lineupSlots":26,"scoringStats":50}}}
 - synthetic unknown issues: [{"id":999,"kind":"activity","provider":"espn"},{"id":999,"kind":"lineup_slot","provider":"espn"},{"id":999,"kind":"position","provider":"espn"},{"id":999,"kind":"pro_team","provider":"espn"},{"id":999,"kind":"scoring_stat","provider":"espn"}]
+
+## T16 real-league population
+
+- Verified at: 2026-06-24T04:51:46.723Z
+- DB target: default LOCAL_DATABASE_URL (postgres://rumbledore:rumbledore@localhost:5440/rumbledore)
+- Provider identity: ESPN 95050, current season 2026
+- Current shared provider row: NHS Alumni Annual (f8334edb-7a20-4138-aa7a-65c0b5285886)
+- Task-note league id 466e2035-6c78-451a-b517-bcc5accae436: not present in this dev DB; provider 95050 resolved to current shared row above
+- Current import rosters changed/total: 0/185
+- Historical import rosters changed/total: 0/0
+- Historical requested seasons: 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011
+- Historical imported seasons this run: (none; existing checkpoint/data reused)
+- Historical skipped seasons this run: 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011
+- Stats recompute integrity failures: 0
+- Baseline curation push: existing pushed seasons reused
+- Canonical pushed seasons: 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026
+- Confirmed eras: 12-team era (2013-2014) (2013, 2014)
+
+### Counts
+
+- Settings rows: 16
+- fantasy_roster_entries: 24433 (3589 in 2012)
+- fantasy_draft_picks: 2968
+- Placeholder persons: 0
+- Real name samples: bradwcummings, truman1109, w hardy
+- Unknown player positions: 0
+- Unknown player pro teams: 0
+- Unknown roster slots: 0
+- Integrity failures: 0
+- Existing auth-plane members for the league: 0
+
+### 2012 Week 8 Roster Decode Sample
+
+| Player | Manager | Team | Pos | Pro | Slot | Started | Actual | Projected |
+|---|---|---|---|---|---|---:|---:|---:|
+| Luke Kuechly | MONROE_REBS | Team DOMTINATION | DL | CAR | LB | yes |  |  |
+
+### Verification Checks
+
+- PASS - placeholder persons are absent
+- PASS - real manager names are present
+- PASS - fantasy_roster_entries is populated
+- PASS - decoded player positions/pro teams/roster slots have zero unknowns
+- PASS - provider_code_decoding integrity passes
+- PASS - record-book canonical snapshot has every imported season
+- PASS - 2012 week 8 Luke Kuechly row is decoded
+- provider_code_decoding detail: [{"detail":{"issues":[],"checkedProviders":["espn"],"observedCodeCounts":{"espn":{"proTeams":33,"positions":7,"activities":0,"lineupSlots":26,"scoringStats":50}}},"season":null,"status":"pass"}]
+
+### Real-League Screenshot Proof
+
+- Capture command: `T16_REAL_SCREENSHOTS=1 PATH=/usr/bin:$PATH pnpm exec playwright test e2e/real-95050-screenshots.spec.ts`
+- Output root: `docs/screenshots/real-95050/`
+- Viewports: `mobile`, `tablet`, `desktop`
+- Captured pages per viewport:
+  - `01-league-home.png`
+  - `02-press-front.png`
+  - `03-data-book-people.png`
+  - `04-data-book-settings.png`
+  - `05-data-book-weeks-roster-2012-wk8.png`
+  - `06-edit-ledger.png`
+  - `07-records.png`
+- Screenshot file set: complete
+- Screenshot verification:
+  - Real names are visible: `bradwcummings`, `truman1109`, `w hardy`, `MONROE_REBS`.
+  - `Fixture Manager` is absent.
+  - Desktop People view shows real owner/source names and provider team mappings.
+  - Desktop Weeks roster shows `W8 / MONROE_REBS` with Luke Kuechly decoded as `DL / CAR / active` in slot `LB`.
+  - Records shows real standings/records, pushed seasons, and the `12-team era (2013-2014)` chip.
+  - Screenshot run log duplicate-key grep: `0`.
