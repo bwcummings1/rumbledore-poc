@@ -18,6 +18,7 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import { espnLineupSlotLabel } from "@/providers/espn/reference-data";
 import {
   listLeagueSeasonGroupings,
   type PersistedSeasonGrouping,
@@ -419,19 +420,6 @@ function buildCurationState(input: {
   };
 }
 
-const ESPN_LINEUP_SLOT_LABELS: Readonly<Record<string, string>> = {
-  "0": "QB",
-  "2": "RB",
-  "4": "WR",
-  "6": "TE",
-  "16": "D/ST",
-  "17": "K",
-  "20": "Bench",
-  "21": "IR",
-  "23": "Flex",
-  "24": "OP",
-};
-
 function formatJsonRecord(
   value: Record<string, number> | Record<string, unknown>,
   options: { numericSlots?: boolean } = {},
@@ -450,7 +438,7 @@ function formatJsonRecord(
     .sort(([left], [right]) => compareText(left, right))
     .map(([key, nested]) => {
       const label = options.numericSlots
-        ? (ESPN_LINEUP_SLOT_LABELS[key] ?? key)
+        ? (espnLineupSlotLabel(key) ?? key)
         : key.replaceAll("_", " ");
       return `${label}: ${typeof nested === "number" ? formatNumber(nested, 2) : String(nested)}`;
     })

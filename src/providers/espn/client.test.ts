@@ -536,8 +536,20 @@ describe("ESPN current league client", () => {
       },
       scoringSettings: {
         scoringItems: [
-          { points: 0.1, statId: 3 },
-          { points: 6, statId: 25 },
+          {
+            points: 0.1,
+            providerStatId: 3,
+            statCategory: "passing",
+            statId: 3,
+            statKey: "passingYards",
+          },
+          {
+            points: 6,
+            providerStatId: 25,
+            statCategory: "rushing",
+            statId: 25,
+            statKey: "rushingTouchdowns",
+          },
         ],
         scoringType: "H2H_POINTS",
       },
@@ -694,6 +706,76 @@ describe("ESPN current league client", () => {
     });
   });
 
+  it("decodes IDP, OP/flex variants, and relocated pro teams in roster rows", async () => {
+    const fixture = playerDepthLeagueFixture();
+    const home = fixture.schedule[0].home as Record<string, unknown>;
+    const roster = home.rosterForCurrentScoringPeriod as {
+      entries: ReturnType<typeof playerPoolEntry>[];
+    };
+    const linebacker = playerPoolEntry({
+      lineupSlotId: 10,
+      playerId: 5555,
+    });
+    Object.assign(linebacker.playerPoolEntry.player, {
+      defaultPositionId: 10,
+      eligibleSlots: [10, 15, 20, 21],
+      firstName: "NaVorro",
+      fullName: "NaVorro Bowman",
+      lastName: "Bowman",
+      proTeamId: 33,
+    });
+    const superflex = playerPoolEntry({
+      lineupSlotId: 7,
+      playerId: 6666,
+    });
+    Object.assign(superflex.playerPoolEntry.player, {
+      defaultPositionId: 4,
+      eligibleSlots: [3, 5, 7, 23],
+      firstName: "Puka",
+      fullName: "Puka Nacua",
+      lastName: "Nacua",
+      proTeamId: 14,
+    });
+    roster.entries = [linebacker, superflex];
+
+    const { fetch } = createCapturingFetch(jsonResponse(fixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getRosters(fixtureSession(), leagueRef, 1);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value[0]?.entries).toEqual([
+      expect.objectContaining({
+        slot: "LB",
+        started: true,
+        player: expect.objectContaining({
+          fullName: "NaVorro Bowman",
+          position: "LB",
+          proTeam: "BAL",
+        }),
+        metadata: expect.objectContaining({
+          lineupSlotId: 10,
+          lineupSlotLabel: "LB",
+        }),
+      }),
+      expect.objectContaining({
+        slot: "OP",
+        started: true,
+        player: expect.objectContaining({
+          fullName: "Puka Nacua",
+          metadata: expect.objectContaining({
+            defaultPositionId: 4,
+            eligibleSlotLabels: ["RB/WR", "WR/TE", "OP", "FLEX"],
+            proTeamId: 14,
+          }),
+          position: "WR",
+          proTeam: "LAR",
+        }),
+      }),
+    ]);
+  });
+
   it("normalizes ESPN draft picks and transactions", async () => {
     const { fetch: draftFetch } = createCapturingFetch(
       jsonResponse(playerDepthLeagueFixture()),
@@ -738,6 +820,34 @@ describe("ESPN current league client", () => {
       type: "add",
       teamRefs: [{ providerId: "1", season: 2026 }],
       playerRefs: [{ providerId: "4430807" }],
+    });
+  });
+
+  it("categorizes numeric ESPN activity codes", async () => {
+    const fixture = playerDepthLeagueFixture();
+    const fixtureWithTransactions = fixture as typeof fixture & {
+      transactions: { items: Record<string, unknown>[]; type: unknown }[];
+    };
+    fixtureWithTransactions.transactions[0].type = 180;
+    fixtureWithTransactions.transactions[0].items[0].type = 180;
+    const { fetch } = createCapturingFetch(jsonResponse(fixture));
+    const client = createEspnDiscoveryClient({ fetch, retryDelayMs: 0 });
+
+    const transactions = await client.getTransactions(
+      fixtureSession(),
+      leagueRef,
+      1,
+    );
+
+    expect(transactions.ok).toBe(true);
+    if (!transactions.ok) throw transactions.error;
+    expect(transactions.value[0]).toMatchObject({
+      type: "waiver",
+      details: {
+        activityCategory: "waiver",
+        activityLabel: "WAIVER ADDED",
+        rawActivityTypeId: 180,
+      },
     });
   });
 
