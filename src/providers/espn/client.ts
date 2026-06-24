@@ -8,6 +8,7 @@ import {
   type NormalizedAcquisitionSettings,
   type NormalizedDraftPick,
   type NormalizedFinalStanding,
+  type NormalizedJsonObject,
   type NormalizedLeague,
   type NormalizedMatchup,
   type NormalizedMatchupStatus,
@@ -28,6 +29,14 @@ import {
   type ProviderResult,
   RateLimitedError,
 } from "../model";
+import {
+  decodeEspnActivityValue,
+  decodeEspnLineupSlotId,
+  decodeEspnPositionId,
+  decodeEspnProTeamId,
+  decodeEspnScoringStatId,
+  espnLineupSlotIsStarted,
+} from "./reference-data";
 
 export interface EspnCookieCredentials {
   swid: string;
@@ -82,64 +91,6 @@ const ESPN_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 const BRACED_SWID = /^\{[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}$/;
 const UNBRACED_SWID = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
-const ESPN_POSITION_BY_ID: Record<number, string> = {
-  0: "QB",
-  1: "TQB",
-  2: "RB",
-  3: "WR",
-  4: "TE",
-  5: "K",
-  16: "D/ST",
-};
-const ESPN_LINEUP_SLOT_BY_ID: Record<number, string> = {
-  0: "QB",
-  2: "RB",
-  4: "WR",
-  6: "TE",
-  7: "OP",
-  16: "D/ST",
-  17: "K",
-  20: "BE",
-  21: "IR",
-  23: "FLEX",
-  24: "ER",
-};
-const ESPN_PRO_TEAM_BY_ID: Record<number, string> = {
-  0: "FA",
-  1: "ATL",
-  2: "BUF",
-  3: "CHI",
-  4: "CIN",
-  5: "CLE",
-  6: "DAL",
-  7: "DEN",
-  8: "DET",
-  9: "GB",
-  10: "TEN",
-  11: "IND",
-  12: "KC",
-  13: "LV",
-  14: "LAR",
-  15: "MIA",
-  16: "MIN",
-  17: "NE",
-  18: "NO",
-  19: "NYG",
-  20: "NYJ",
-  21: "PHI",
-  22: "ARI",
-  23: "PIT",
-  24: "LAC",
-  25: "SF",
-  26: "SEA",
-  27: "TB",
-  28: "WSH",
-  29: "CAR",
-  30: "JAX",
-  33: "BAL",
-  34: "HOU",
-};
-
 export const ESPN_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
   authKind: "cookie",
   dataClasses: {
@@ -741,6 +692,37 @@ function normalizeAcquisitionSettings(
   };
 }
 
+function normalizeScoringSettings(
+  scoringSettings: Record<string, unknown> | undefined,
+): NormalizedJsonObject {
+  if (!scoringSettings) {
+    return {};
+  }
+
+  const scoringItems = recordArray(scoringSettings, "scoringItems").map(
+    (item) => {
+      const statId = numberFromUnknown(recordValue(item, "statId"));
+      const decoded =
+        statId === undefined ? undefined : decodeEspnScoringStatId(statId);
+      return {
+        ...item,
+        ...(statId === undefined ? {} : { providerStatId: statId }),
+        ...(decoded
+          ? {
+              statCategory: decoded.category,
+              statKey: decoded.key,
+            }
+          : {}),
+      };
+    },
+  );
+
+  return {
+    ...scoringSettings,
+    ...(scoringItems.length > 0 ? { scoringItems } : {}),
+  };
+}
+
 function normalizePostseasonSettings(
   league: EspnLeagueApiResponse,
 ): NormalizedPostseasonSettings | undefined {
@@ -790,7 +772,7 @@ function normalizeLeague(league: EspnLeagueApiResponse): NormalizedLeague {
     sport: "ffl",
     name: league.settings?.name?.trim() || `ESPN Fantasy League ${providerId}`,
     scoringType: league.settings?.scoringSettings?.scoringType ?? "unknown",
-    scoringSettings: league.settings?.scoringSettings ?? {},
+    scoringSettings: normalizeScoringSettings(league.settings?.scoringSettings),
     size:
       toInteger(league.settings?.size) ??
       toInteger(league.status?.teamsJoined) ??
@@ -1202,6 +1184,17 @@ function normalizeEspnPlayer(
     recordValue(player, "defaultPositionId"),
   );
   const proTeamId = numberFromUnknown(recordValue(player, "proTeamId"));
+  const position =
+    defaultPositionId === undefined
+      ? undefined
+      : decodeEspnPositionId(defaultPositionId);
+  const proTeam =
+    proTeamId === undefined ? undefined : decodeEspnProTeamId(proTeamId);
+  const eligibleSlots = Array.isArray(recordValue(player, "eligibleSlots"))
+    ? (recordValue(player, "eligibleSlots") as unknown[])
+        .map(numberFromUnknown)
+        .filter((slotId): slotId is number => slotId !== undefined)
+    : [];
   const fullName =
     stringFromUnknown(recordValue(player, "fullName")) ??
     [recordValue(player, "firstName"), recordValue(player, "lastName")]
@@ -1218,20 +1211,18 @@ function normalizeEspnPlayer(
     providerId,
     leagueProviderId: league.providerId,
     fullName: fullName || `ESPN Player ${providerId}`,
-    position:
-      (defaultPositionId === undefined
-        ? undefined
-        : ESPN_POSITION_BY_ID[defaultPositionId]) ?? "unknown",
-    ...(proTeamId === undefined
-      ? {}
-      : { proTeam: ESPN_PRO_TEAM_BY_ID[proTeamId] }),
+    position: position ?? "unknown",
+    ...(proTeamId === undefined ? {} : { proTeam: proTeam ?? "unknown" }),
     ...(injuryStatus || injured !== undefined
       ? { status: injuryStatus ?? (injured ? "injured" : "active") }
       : {}),
     metadata: {
       ...(defaultPositionId === undefined ? {} : { defaultPositionId }),
       ...(proTeamId === undefined ? {} : { proTeamId }),
-      eligibleSlots: recordValue(player, "eligibleSlots") ?? [],
+      eligibleSlots,
+      eligibleSlotLabels: eligibleSlots.map(
+        (slotId) => decodeEspnLineupSlotId(slotId) ?? "unknown",
+      ),
     },
   };
 }
@@ -1290,7 +1281,7 @@ function normalizeRosterEntry(
   const slot =
     (lineupSlotId === undefined
       ? undefined
-      : ESPN_LINEUP_SLOT_BY_ID[lineupSlotId]) ?? "unknown";
+      : decodeEspnLineupSlotId(lineupSlotId)) ?? "unknown";
   const poolApplied = isRecord(playerPoolEntry)
     ? numberFromUnknown(recordValue(playerPoolEntry, "appliedStatTotal"))
     : undefined;
@@ -1307,8 +1298,6 @@ function normalizeRosterEntry(
   return {
     actualPoints,
     projectedPoints,
-    started:
-      lineupSlotId === undefined ? false : ![20, 21, 24].includes(lineupSlotId),
     player,
     playerRef: {
       provider: ESPN_PROVIDER_ID,
@@ -1320,8 +1309,12 @@ function normalizeRosterEntry(
       stringFromUnknown(recordValue(entry, "injuryStatus")) ??
       "unknown",
     points: actualPoints,
+    started: espnLineupSlotIsStarted(lineupSlotId),
     metadata: {
       ...(lineupSlotId === undefined ? {} : { lineupSlotId }),
+      ...(lineupSlotId === undefined
+        ? {}
+        : { lineupSlotLabel: decodeEspnLineupSlotId(lineupSlotId) ?? null }),
       injuryStatus: recordValue(entry, "injuryStatus") ?? null,
     },
   };
@@ -1574,6 +1567,7 @@ function normalizeDraftPicks(
       booleanFromUnknown(recordValue(pick, "keeper")) ??
       booleanFromUnknown(recordValue(pick, "reservedForKeeper"));
     const auctionValue = numberFromUnknown(recordValue(pick, "bidAmount"));
+    const lineupSlotId = numberFromUnknown(recordValue(pick, "lineupSlotId"));
     picks.push({
       provider: ESPN_PROVIDER_ID,
       providerId: pickId,
@@ -1613,6 +1607,10 @@ function normalizeDraftPicks(
       ...(auctionValue === undefined ? {} : { auctionValue }),
       metadata: {
         lineupSlotId: recordValue(pick, "lineupSlotId") ?? null,
+        lineupSlotLabel:
+          lineupSlotId === undefined
+            ? null
+            : (decodeEspnLineupSlotId(lineupSlotId) ?? null),
         nominatingTeamId: recordValue(pick, "nominatingTeamId") ?? null,
         owningTeamIds: recordValue(pick, "owningTeamIds") ?? [],
       },
@@ -1632,7 +1630,8 @@ function normalizeTransactions(
     const transactionId =
       positiveProviderId(recordValue(transaction, "id")) ??
       stringFromUnknown(recordValue(transaction, "transactionId"));
-    const typeValue = stringFromUnknown(recordValue(transaction, "type"));
+    const rawTypeValue = recordValue(transaction, "type");
+    const typeValue = stringFromUnknown(rawTypeValue);
     const processDate =
       numberFromUnknown(recordValue(transaction, "processDate")) ??
       numberFromUnknown(recordValue(transaction, "proposedDate")) ??
@@ -1660,7 +1659,12 @@ function normalizeTransactions(
       providerId,
       season: ref.season,
     }));
-    const normalizedType = normalizeTransactionType(typeValue, items);
+    const decodedActivity =
+      decodeEspnActivityValue(rawTypeValue) ??
+      items
+        .map((item) => decodeEspnActivityValue(recordValue(item, "type")))
+        .find(Boolean);
+    const normalizedType = normalizeTransactionType(rawTypeValue, items);
     const fallbackId = [
       normalizedType,
       processDate ?? "unknown-date",
@@ -1691,8 +1695,21 @@ function normalizeTransactions(
         bidAmount: recordValue(transaction, "bidAmount") ?? null,
         status: recordValue(transaction, "status") ?? null,
         rawType: typeValue ?? null,
+        rawActivityTypeId:
+          numberFromUnknown(rawTypeValue) ??
+          items
+            .map((item) => numberFromUnknown(recordValue(item, "type")))
+            .find((id) => id !== undefined) ??
+          null,
+        activityCategory: decodedActivity?.category ?? null,
+        activityLabel: decodedActivity?.label ?? null,
         items: items.map((item) => ({
           type: recordValue(item, "type") ?? null,
+          activityCategory:
+            decodeEspnActivityValue(recordValue(item, "type"))?.category ??
+            null,
+          activityLabel:
+            decodeEspnActivityValue(recordValue(item, "type"))?.label ?? null,
           playerId: recordValue(item, "playerId") ?? null,
           fromTeamId: recordValue(item, "fromTeamId") ?? null,
           toTeamId: recordValue(item, "toTeamId") ?? null,
@@ -1705,10 +1722,19 @@ function normalizeTransactions(
 }
 
 function normalizeTransactionType(
-  typeValue: string | undefined,
+  typeValue: unknown,
   items: readonly Record<string, unknown>[],
 ): NormalizedTransaction["type"] {
-  const value = typeValue?.toUpperCase();
+  const decoded =
+    decodeEspnActivityValue(typeValue) ??
+    items
+      .map((item) => decodeEspnActivityValue(recordValue(item, "type")))
+      .find(Boolean);
+  if (decoded) {
+    return decoded.category;
+  }
+
+  const value = stringFromUnknown(typeValue)?.toUpperCase();
   if (value?.includes("TRADE")) {
     return "trade";
   }

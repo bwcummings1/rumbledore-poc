@@ -110,6 +110,7 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "data_edit_ledger_completeness",
   "sticky_edit_conflict",
   "provider_identity_contamination",
+  "provider_code_decoding",
   "roster_coverage",
   "player_points_rollup",
 ]);
