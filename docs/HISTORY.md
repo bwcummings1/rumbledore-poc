@@ -1,7 +1,7 @@
 # Rumbledore — Project History & Trajectory
 
 > A reference for *how this project got here*: what existed before, the decision to rebuild, the methodology,
-> the autonomous build, and the current state. Technically detailed and accurate as of **2026-06-18**.
+> the autonomous build, and the current state. Technically detailed and accurate as of **2026-06-24**.
 > For current architecture/state see `docs/PROGRESS.md`; for conventions see `AGENTS.md`; for intent see `PRODUCT.md` + `specs/`.
 
 ---
@@ -113,7 +113,8 @@ not scaffolding** — the opposite of Era 0.
 - **Isolation/auth** is genuinely sound: real RLS + `FORCE` on every league-scoped table, `withLeagueContext()` sets
   `app.current_league_id` transaction-locally, a **canary test that binds under a real NOSUPERUSER role**, membership+role
   checks on all league routes (no IDOR), encrypted provider creds, no committed secrets.
-- **Ingestion** (ESPN/Sleeper/Yahoo) makes real HTTP calls with retry/backoff/zod/normalization; verified vs the 95050 fixture.
+- **Ingestion** has a real ESPN path with retry/backoff/zod/normalization verified against provider id `95050`
+  (**"NHS Alumni Annual"**); Sleeper/Yahoo adapters have fixture-backed coverage until production-real provider breadth.
 - **Betting** (odds locked at placement, parlay/push/void settlement, event-sourced rolling-min bankroll, central arena) is
   real and correct — no negative/double-spend path found.
 - **Gates are honest:** `pnpm typecheck`/`lint`/`test` all pass live against a real Postgres-backed suite; no `ignoreBuildErrors`,
@@ -160,17 +161,55 @@ agent/WizKit tier, and a general↔personal wire toggle — captured as new spec
 
 ---
 
-## 6. Operational reference
-- **Repo/branch:** live/integration branch is **`main`** (carries the full build + the AUSPEX overhaul). `rebuild/foundation`
-  was the autonomous-build branch (historical); old assets are minable via `git show v0.62:<path>`.
+## 6. Era 5 — Orchestrated increments and data correctness (2026-06-18 → 2026-06-24)
+
+The Ralph loop stayed retired. The project moved to the **orchestrated workstream model** in `ORCHESTRATION.md`: an
+orchestrator sequences file-bounded agents in separate worktrees/`ws/*` branches, verifies gates, and owns merges to
+`main`.
+
+The first integrated increment (`specs/36`–`41`, then hardening) delivered the missing product environments and data
+curation spine: League Data split into Data Book + Edit Ledger, Records as its own projection, pushed canonical snapshots,
+confirmed era/grouping flow, News/Arena environment work, the ambient agent/WizKit tier, and the general↔personal wire
+toggle. Owner UI follow-ups then aligned League Data/Records navigation and the Data Book/Edit Ledger masthead.
+
+The data-foundation T1-T16 arc then made the validation league trustworthy:
+- **T1-T12:** persisted per-season settings, fixed names, byes, multi-week spans, save/push, edit ledger, pushed Record
+  Book, eras, expanded records, and mock/$0 substrate B.
+- **T13 clean-import guarantee:** fixture ESPN data moved to reserved non-real provider id `fixture-espn-95050`; imports
+  reconcile each fetched season to provider truth; `provider_identity_contamination` blocks invalid ESPN member ids and
+  fixture/screenshot placeholder names.
+- **T14 player-depth:** ESPN imports now persist league-scoped fantasy players, weekly roster entries, lineup slots,
+  actual/projected points when exposed, draft picks, and transaction payloads when ESPN returns them. ESPN 95050 returned
+  no transaction rows; this is a WARN/follow-on for UI/records, not an import failure.
+- **T15 complete decoding:** `src/providers/espn/reference-data.ts` + `src/providers/decoding.ts` provide complete ESPN
+  dictionaries for positions/default positions, lineup/eligible slots, pro teams, activity categories, and scoring stat
+  categories/keys. `provider_code_decoding` flags any undecoded observed code; latest migration is
+  `0059_provider_code_decoding.sql`.
+- **T16 real-league population:** provider `espn` / provider id `95050`, **"NHS Alumni Annual"**, is populated in the
+  shared dev DB used by the running app with 2011-2026 pushed canonical seasons, player depth, zero placeholder persons,
+  and zero decoded unknown player/slot/team values. Real screenshots live under
+  `docs/screenshots/real-95050/{desktop,tablet,mobile}/`, separate from fixture baselines. Product imports write to the
+  app's configured DB; only the T13 integrity verifier creates a throwaway DB.
+
+Deferred after this arc: full per-stat scoring persistence, player-level Record Book records, draft/transaction UI,
+Sleeper/Yahoo dictionaries and invariants, making substrate B real and wiring it into News/AI consumers, and minor
+owner-set-aside UI tweaks.
+
+---
+
+## 7. Operational reference
+- **Repo/branch:** live/integration branch is **`main`** (carries the full build, AUSPEX overhaul, Increment 1, and data
+  foundation through T16). Workstream agents use `ws/*` branches and never merge to `main`; the orchestrator owns merges.
+  `rebuild/foundation` was the autonomous-build branch (historical); old assets are minable via `git show v0.62:<path>`.
 - **Accounts (tmux-safe launchers in `~/.local/bin`):** `cbx` = Claude `bxbxbxbxbxr`, `cbw` = Claude `bwcummings1`
   (busy — other agents), `cx` = Codex (ChatGPT). Bare `claude` defaults to `bwcummings1`; bare `codex` is broken in tmux.
-- **Build harness:** `loop.sh [build|plan]` (Fable→Codex timed switch). Stop: `touch ~/rumbledore-loop.STOP`.
-  Monitor: `tail -f ~/rumbledore-loop-logs/STATUS.log` (free) or `tmux attach -t rumbledore-loop`.
+- **Build harness:** current work uses `ORCHESTRATION.md` (worktrees, `ws/*` branches, commit→push→orchestrator merge).
+  `loop.sh` and the Ralph prompts are historical/guarded off.
 - **Manage from phone:** `ssh` (Termius) → `tmux attach -t manage` → `cbx "$(cat ~/rumbledore-manage-prompt.txt)"`.
-- **Source of truth for state:** `docs/PROGRESS.md`. Conventions: `AGENTS.md`. Specs of record: `specs/00–35`.
+- **Source of truth for state:** `docs/PROGRESS.md`. Conventions: `AGENTS.md`. Orchestration: `ORCHESTRATION.md`.
+  Specs/handoffs remain historical context and task records.
 
-## 7. Key decisions & rationale (quick reference)
+## 8. Key decisions & rationale (quick reference)
 | Decision | Rationale |
 |---|---|
 | Clean rebuild (not patch v0.62) | v0.62 had systemic fake-auth/disabled-gates/fictional-isolation; faster to rebuild right than to un-rot |
@@ -179,3 +218,4 @@ agent/WizKit tier, and a general↔personal wire toggle — captured as new spec
 | Anthropic SDK direct (no LangChain) | Lean, modern; LangChain considered dated for greenfield TS in 2026 |
 | Ralph loop + gates-as-backpressure | Autonomous build only commits when typecheck/lint/test/build/ubs pass — quality can't silently rot |
 | Fable max → Codex 5.5 switch at 2h | Use the strong/fast model for the burst, then a separate account to preserve Claude limits |
+| Orchestrated workstreams after the loop | Parallel progress without file-ownership collisions; workstreams push branches, orchestrator reviews and merges |

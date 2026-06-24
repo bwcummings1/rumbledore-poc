@@ -1,7 +1,7 @@
 # Data Foundation — Design Doc
 
-> **Status:** DRAFT for owner review. Not yet decomposed into specs. Supersedes the implicit
-> "records page = data" model in the current build.
+> **Status (2026-06-24):** implemented through T16. Supersedes the old implicit "records page = data" model and now
+> documents the shipped data-foundation architecture plus current follow-ons.
 >
 > **One-line thesis:** A *rigid canonical substrate* that receives data, with *consumers* that read from it.
 > The substrate is the point of truth; consumers (the record book, the AI writers) are read-only projections.
@@ -71,7 +71,7 @@ Three grains, matching the **dimension-vs-fact** distinction:
 
 1. **People / dimensions** — the participants. A person has a stable **real name** and a **per-season team name**
    (which legitimately varies — some managers rename every year). EXISTS: `persons`, `identity_mapping`.
-   - **Edit scope (NEW, key primitive):** editing a dimension prompts, after confirm, **"apply to all years"**
+   - **Edit scope (EXISTS, key primitive):** editing a dimension prompts, after confirm, **"apply to all years"**
      or **"this year only."** Smart-defaulted by field — real name → *all years*; team name → *this year only* —
      always overridable. This preserves real variance while letting the real name stay consistent.
 
@@ -94,7 +94,7 @@ Three grains, matching the **dimension-vs-fact** distinction:
 - **Every edit is logged** to the append-only ledger (EXISTS: `league_data_edits`) with before/after, who, when.
 - **Edit scope** prompt (§2.1) applies to dimension edits.
 
-### 2.3 State machine (NEW — the heart of this doc)
+### 2.3 State machine (EXISTS — the heart of this doc)
 ```
   DRAFT  ──save──▶  SAVED CHECKPOINT  ──push──▶  PUSHED SNAPSHOT
    (working edits)    (restorable; not yet         (the record book
@@ -113,7 +113,7 @@ Three grains, matching the **dimension-vs-fact** distinction:
 - **Live vs. curated hybrid:** the **in-progress season streams in live** (auto-updates); **finalized seasons are
   curate-and-push** (locked until you push). Agreed posture.
 
-### 2.4 Change feed + diff (NEW — kept deliberately light)
+### 2.4 Change feed + diff (EXISTS)
 - A **chronological feed** of saves and pushes — each entry a single line (like a notification).
 - **Click an entry → see what changed**: the new value vs. the prior value, rendered **red/green (before/after)**.
 - Not git branching — just an auditable, clickable history. Built on `league_data_edits` + checkpoint markers.
@@ -207,9 +207,9 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 | Integrity checks (`data_integrity_check`) | **EXISTS** — surface in the Data page as flags to resolve |
 | Records engine (`recomputeLeagueStatistics`) + catalog + lens | **EXISTS** — Record Book computes from `composeCanonicalSnapshot`; lens → view-only; category registry covers All-time/Regular/Playoff/H2H/Achievements/Lowlights |
 | Steward/commissioner role + `/curation/*` APIs | **EXISTS** — the permission model |
-| Per-matchup `scoring_period_span`, ESPN `matchup_period_count` | **EXISTS (partial)** — extend with settings-driven auto-detect |
+| Per-matchup `scoring_period_span`, ESPN `matchup_period_count` | **EXISTS** — playoff spans derive from persisted settings and clamp over-broad ESPN windows |
 | Persist per-season `mSettings` | **EXISTS** — `league_season_settings` stores league size, schedule, roster slots, scoring, and acquisition fields |
-| **Data page** (the 3-grain editable tables) | **NEW** |
+| **Data page** (the 3-grain editable tables) | **EXISTS** — League Data contains Data Book + Edit Ledger; Data Book has People, Settings, and Weeks grains |
 | **Edit-scope** (this-year vs all-years) | **EXISTS (service/API)** — `applyCuratedDataEdit` smart-defaults real names to all-years and team names to this-year-only; UI prompt is T6/T8 |
 | **Save/Push state machine + pushed snapshot** | **EXISTS (service/API + Record Book consumer)** — append-only checkpoints + per-season pushes; Records read only pushed composition |
 | **Change feed + red/green diff view** | **EXISTS** — `/leagues/[leagueId]/ledger` renders edits, saves, and pushes from the ledger |
@@ -297,6 +297,14 @@ full per-player stat-breakdown persistence remains a follow-on. Integrity now in
 flags any undecoded provider position/slot/proTeam/scoring-stat/activity id observed after import and clears stale
 pass/fail rows on rerun.
 
+**T16 real-league population note:** the validation league is documented by provider `espn` / provider id `95050`,
+**"NHS Alumni Annual"**, not by an internal UUID. Internal league ids are local DB artifacts and change across resets.
+The T16 verifier targets the app's configured dev DB (`env.databaseUrl`), imports/pushes 2011-2026 canonical seasons,
+and confirms player depth plus decoding coverage in the same DB used by the running app. Only
+`scripts/verify-t13-import-integrity.ts` creates a throwaway DB for verification. Real screenshots are stored under
+`docs/screenshots/real-95050/{desktop,tablet,mobile}/`; fixture screenshots remain under
+`docs/screenshots/{desktop,tablet,mobile}/`.
+
 ---
 
 ## 7. The four data-quality fixes fold in here
@@ -307,37 +315,45 @@ They aren't separate patches — they're the Data page's first real content / th
 2. ✅ **Names** — EXISTS for ingestion + clean verification: ESPN member `displayName`/`firstName`+`lastName` values
    persist through identity resolution to non-manual `persons.canonical_name`, current/history imports reconcile away
    stale provider-member rows for fetched seasons, and `provider_identity_contamination` blocks invalid ids or fixture
-   placeholder names in real provider namespaces. The People grid + edit-scope UI remains future Data page work.
+   placeholder names in real provider namespaces. The People grid and edit-scope UI exist in the Data Book for dimension
+   edits; player-level records and draft/transaction UI remain follow-ons.
 3. ✅ **Multi-week span** (the "325" record) — auto-detected from `playoffMatchupPeriodLength` (=2 for 2011-2012) and
    editable in the per-season grid. The 325 two-week playoff total is excluded from single-week records.
 4. ✅ **Settings ingest** — persist per-season `mSettings` and use them to auto-propose eras/spans.
 
 ---
 
-## 8. Proposed build sequence (after this doc is agreed)
-1. **Substrate**: persist per-season settings + facts cleanly (incl. byes); fix names ingestion + clean fixture data.
-2. **Data page — read view** of the 3 grains (no editing yet) verified against the real league.
-3. **Editable cells + edit-scope** + ledger writes.
-4. **Change feed + red/green diff.**
-5. **Save (checkpoint) + Push (snapshot)** state machine.
-6. **Re-point the record book** to the pushed snapshot; lens → view-only; display rule.
-7. **Era/span auto-proposal** from settings (confirm-in-Data).
-8. ✅ **Expand the records catalog** (categories + the recovered legacy set). The recovered legacy set was not present,
-   so T11 shipped the rich default registry and kept it extensible.
-9. **General fantasy-stats substrate (B)** — can proceed in parallel once the substrate contracts are set.
+## 8. Delivered build sequence
+1. ✅ **Substrate**: per-season settings, byes, multi-week spans, name refresh, and clean fixture isolation.
+2. ✅ **Data Book**: read view, editable dimension cells, edit-scope prompts, save/restore/push controls, and pushed
+   canonical snapshots.
+3. ✅ **Edit Ledger**: chronological feed with expandable before/after diffs for edits, saves, and pushes.
+4. ✅ **Record Book**: reads only pushed snapshots, applies the one-row-per-person display rule, and renders the expanded
+   category catalog.
+5. ✅ **Era/span auto-proposal**: settings-derived proposals confirmed/dismissed in the Data Book and visible to Records
+   only after push.
+6. ✅ **General fantasy-stats substrate B**: mock/$0 central tables, provenance, integrity checks, and read-only consumer
+   APIs.
+7. ✅ **Clean-import and player-depth hardening**: T13 reconciliation/invariant plus T14 player identities, rosters,
+   lineups, drafts, and transaction persistence when provider data exists.
+8. ✅ **Complete ESPN decoding**: T15 full dictionaries + `provider_code_decoding` coverage invariant.
+9. ✅ **Real-league proof**: T16 populated provider id `95050` / **"NHS Alumni Annual"** in the shared dev DB and captured
+   real screenshots separate from fixture baselines.
 
-Each phase = file-disjoint specs + orchestrated agents + **verification against the real league** before moving on.
+Current follow-ons: full per-stat scoring persistence, player-level Record Book records, draft/transaction UI,
+Sleeper/Yahoo dictionaries, real substrate-B provider/source wiring, News/AI substrate-B consumption, and the
+owner-set-aside minor UI tweaks.
 
 ---
 
-## 9. Open decisions for owner review
-1. **Record-book display rule** — default to *most-recent team name + real name*? Or a per-person canonical you pick?
-2. **Live-vs-curated boundary** — confirm: active season auto-updates; a season becomes curate-and-push once
-   finalized. Who/what marks a season "finalized" — automatic on season end, or an explicit owner action?
-3. **Push granularity** — push the whole league at once, or per-season (push 2012 independently of 2011)?
-4. **Save retention** — keep all checkpoints, or last-N? (Leaning: keep all; they're cheap as ledger markers.)
-5. **General-stats source** — which provider feeds substrate B (and is it mock/$0 for now)?
-6. **First vertical slice** — do we prove the whole pipeline on ONE season end-to-end (data→edit→save→push→record)
-   before scaling to all 16, or build each phase across all seasons at once? (Leaning: one-season vertical slice
-   first — fastest way to validate the framework is sound.)
+## 9. Resolved defaults and current decisions
+1. **Record-book display rule** — most-recent pushed team name + real name.
+2. **Live-vs-curated boundary** — active seasons stream provider updates; finalized seasons are curate-and-push with a
+   steward-controlled state and provider-complete suggestion.
+3. **Push granularity** — per-season push, plus push-all convenience, with the composed snapshot preserving every other
+   pushed season.
+4. **Save retention** — keep all checkpoints.
+5. **General-stats source** — mock/$0 only until a real source is deliberately wired.
+6. **Verification slice** — the 2012 edit→save→push→record slice was proven, then scaled to all 16 validation-league
+   seasons.
 ```

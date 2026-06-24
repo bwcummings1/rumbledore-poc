@@ -7,12 +7,16 @@
 > + git state + the task spec). Agents: **codex2 and codex3 only**, both `gpt-5.5` @ `xhigh` + `service_tier=fast`
 > (confirmed). Orchestrator (Claude) launches each task, monitors ~every 10 min, merges to `main` after verifying,
 > and pauses/adjusts on any issue.
+>
+> **Status (2026-06-24):** historical execution plan, complete through T16. T13-T16 added the clean-import guarantee,
+> player-level league depth, complete ESPN decoding, and real ESPN 95050 dev-DB population/screenshots. Deferred follow-ons
+> are explicitly called out below; do not treat omitted player-level records, draft/transaction UI, Sleeper/Yahoo
+> dictionaries, real substrate-B sourcing, or per-stat scoring persistence as already built.
 
 ---
 
-## A. Locked defaults (open decisions — veto any before T4)
-These are my recommended answers to the design doc's §9 so the build isn't blocked. Flag any you disagree with;
-they don't affect T1–T3 (substrate), so the build can start while you decide the rest.
+## A. Locked defaults (resolved)
+These were the defaults used by T4-T16:
 1. **Record-book display rule** → **most-recent team name + the person's real name.** (T9)
 2. **Finalized trigger** → a season is **live** while in-progress and becomes **curate-and-push** when the owner
    marks it finalized (explicit action), with auto-suggest when ESPN reports the season complete. (T8)
@@ -241,6 +245,47 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
   `.orchestration/import-summary.md` proves fresh empty DB import, re-import idempotency, and contaminated-to-clean dev
   DB reconciliation for ESPN 95050 with no product-code special case.
 
+### Phase 5 — Player-level league depth
+**T14 — Player-depth league data** (post-T13 substrate-A deepening)
+- *Goal:* import and persist player-level league facts without making substrate B a prerequisite: fantasy player identities,
+  weekly roster/player scores, lineup slots, draft picks, and transaction payloads when ESPN exposes them.
+- *T14 completion note (2026-06-23):* ✅ Completed on `ws/t14-player-depth` by NobleHawk. ESPN current/history imports
+  request `mBoxscore`, `mMatchupScore`, `mScoreboard`, `mRoster`, `kona_player_info`, `mDraftDetail`, and `mTransactions2`;
+  preserve real ESPN player ids including negative D/ST ids; merge sparse historical box-score rows with roster lineup
+  slots; and normalize fantasy players, roster entries, draft picks, and transaction payloads. Schema adds
+  `fantasy_players`, `fantasy_draft_picks`, player-linked roster entries, and transaction scoring periods with RLS/FORCE
+  RLS. Ingest reconciles roster/draft/transaction/player-depth rows per fetched season, and Data Book Weeks now shows a
+  selected team-week roster with slots, starter/bench, and player points where ESPN exposes them. Integrity adds
+  `roster_coverage` and `player_points_rollup`; real 95050 verification imported 2012 week 8 and passed idempotent replay
+  + integrity. ESPN 95050 exposed zero transaction rows via `mTransactions2`, so transaction UI/records remain follow-ons
+  and rows should be treated as opportunistic until another league/provider proves real activity.
+
+### Phase 6 — Complete provider-code decoding
+**T15 — Complete + correct ESPN decoding** (post-T14 correctness hardening)
+- *Goal:* replace partial/local ESPN code labels with full canonical dictionaries and an unknown-code invariant.
+- *T15 completion note (2026-06-24):* ✅ Completed on `ws/t15-complete-decoding`. `src/providers/espn/reference-data.ts`
+  now owns complete cwendt-derived dictionaries for positions/default positions (including IDP and fixed 3/4/5), lineup
+  and eligible slots, all current ESPN pro teams, ACTIVITY_MAP transaction categories, and scoring stat categories/keys.
+  `src/providers/decoding.ts` is the provider-agnostic boundary for future Sleeper/Yahoo dictionaries. ESPN normalization
+  decodes player, roster, draft, scoring-setting, and transaction fields through that boundary; Data Book Settings uses
+  the same slot dictionary. Migration `0059_provider_code_decoding.sql` adds the `provider_code_decoding` integrity key,
+  which flags any undecoded observed position/slot/proTeam/scoring-stat/activity id. Real 95050 verification across
+  2011-2026 passed with zero decoded `unknown` player-position/pro-team/roster-slot values and a synthetic `999` failure.
+  Full per-player stat-breakdown persistence remains an additive follow-on.
+
+### Phase 7 — Real-league population and screenshots
+**T16 — Real ESPN 95050 dev-DB population + screenshots** (post-T15 proof)
+- *Goal:* prove the running app's configured dev DB contains the real validation league and capture screenshots from it,
+  separate from fixture screenshots.
+- *T16 completion note (2026-06-24):* ✅ Completed on `ws/t16-see-real-league`. The validation league is identified in
+  docs by provider `espn` / provider id `95050`, **"NHS Alumni Annual"**, not by a volatile internal UUID. The verifier
+  targets the app's configured dev DB (`env.databaseUrl`), imports and pushes 2011-2026 canonical seasons, confirms zero
+  placeholder persons, 24,433 roster entries, 2,968 draft picks, zero decoded unknown player/slot/team values, and
+  `provider_code_decoding` PASS. Real-league screenshots live under
+  `docs/screenshots/real-95050/{desktop,tablet,mobile}/` and are separate from the fixture baseline under
+  `docs/screenshots/{desktop,tablet,mobile}/`. There is no DB-routing flaw; only the T13 integrity verifier creates a
+  throwaway DB.
+
 ---
 
 ## E. Status tracker
@@ -260,6 +305,8 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
 | T12 general-stats substrate | AzureLotus | ✅ complete |
 | T13 import-clean guarantee | SilentFinch | ✅ complete |
 | T14 player-depth league data | NobleHawk | ✅ complete |
+| T15 complete ESPN decoding | Codex | ✅ complete |
+| T16 real-league population/screenshots | Codex | ✅ complete |
 
 ## Phase 3 — launched 2026-06-23 (specs detailed in .orchestration/prompts/prompt-T10|T11|T12.md)
 - Phase 1 (T1-T3 substrate) + Phase 2 (T4-T9 data layer) + UI1 (ledger pagination/data-book toolbar) + UI2 (League Data|Records nav-IA) all merged to main.
@@ -285,3 +332,15 @@ consumed by AI writers + league enrichment. *Can parallelize with late Phase 2 (
   `roster_coverage` and `player_points_rollup`; real 95050 verification imported 2012 week 8 and passed idempotent
   replay + integrity. ESPN 95050 exposed zero transaction rows via `mTransactions2`, so transaction UI/records should
   treat rows as opportunistic until another league/provider proves real activity.
+
+## Phase 6 — completed 2026-06-24
+- T15: ✅ complete ESPN decoding and coverage invariant. ESPN dictionaries now cover position/default-position ids,
+  lineup/eligible slots, pro teams, activity codes, and scoring stat categories/keys through `src/providers/decoding.ts`;
+  migration `0059_provider_code_decoding.sql` is the latest migration. Deferred: full per-stat scoring persistence and
+  Sleeper/Yahoo dictionaries.
+
+## Phase 7 — completed 2026-06-24
+- T16: ✅ real ESPN 95050 / "NHS Alumni Annual" populated in the shared dev DB used by the running app, with real-league
+  screenshots under `docs/screenshots/real-95050/{desktop,tablet,mobile}/`. The product import path writes to the
+  configured app DB; the only throwaway DB path is the T13 verification harness. Deferred: player-level Record Book
+  records, draft/transaction UI, real substrate-B sourcing/consumer wiring, and minor owner-set-aside UI tweaks.

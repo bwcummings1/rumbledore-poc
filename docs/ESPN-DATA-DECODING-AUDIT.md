@@ -24,18 +24,18 @@ T15 also canonicalizes cwendt's blank id `22` sentinel as `N/A` because real `el
 **Scoring `PLAYER_STATS_MAP`:** ~200 stat ids — passing 0–22, rushing 23–40, receiving 41–61, turnovers 62–73,
 kicking 74–88, defense 89–136, punting 138–154, head-coach 155–174, misc 201–206.
 
-## Our current state vs. complete (the GAPS)
-| Variable | Authoritative | Ours today (`src/providers/espn/client.ts`) | Gap |
+## Closed gaps and remaining follow-ons
+| Variable | Authoritative | Current implementation | Status |
 |---|---|---|---|
 | **Position id→name** | 0–25 incl. IDP + flex variants | **T15 closed:** `src/providers/espn/reference-data.ts` owns the full map; `3=RB/WR`, `4=WR`, `5=WR/TE`; id `22=N/A` sentinel | Closed |
 | **Lineup slot id→name** | full set incl. IDP slots, flex variants, P/HC/Rookie | **T15 closed:** same reference module owns slots incl. IDP, OP, FLEX, ER, Rookie, and `22=N/A`; Data Book labels use it | Closed |
 | **Pro team id→abbr** | full 32 incl. relocations | **T15 closed:** full cwendt map incl. LV/LAR/LAC/WSH/BAL/HOU and `0=FA` | Closed |
 | **Scoring stat id→category** | ~200 stat ids | **T15 closed:** scoring stat ids decode to canonical categories and keys; scoring settings persist decoded `providerStatId`/`statCategory`/`statKey` | Full per-player stat breakdown table remains follow-on |
 | **Acquisition/transaction types** | ACTIVITY_MAP | **T15 closed:** numeric and string activity values decode to canonical add/drop/waiver/trade categories | Closed |
-| **Higher-level settings** (roster limits, scoring type, playoff/division config, keeper/dynasty, FAAB/auction) | in `mSettings` | partially captured (T1: size, playoff length, lineupSlotCounts, scoring type, acquisition) | enumerate + decode the rest; drive organization from them |
+| **Higher-level settings** (roster limits, scoring type, playoff/division config, keeper/dynasty, FAAB/auction) | in `mSettings` | T1 persists the settings needed by current Data Book/era/span flows: size, playoff length/count, lineup slot counts, scoring type/settings, acquisition, and keeper fields | Additional settings-driven UI organization remains follow-on as needs arise |
 
-## Validation against real data (owner league 95050)
-T15 verification reset and re-imported ESPN 95050 across all 16 seasons (2011–2026). The distinct observed
+## Validation against real data (provider id 95050 / "NHS Alumni Annual")
+T15 verification reset and re-imported ESPN provider id `95050` across all 16 seasons (2011–2026). The distinct observed
 `defaultPositionId`/lineup-slot/eligible-slot/pro-team/scoring-stat/activity ids are written under
 `.orchestration/import-summary.md` → **T15 decoding coverage**. The real import has `provider_code_decoding` PASS,
 zero decoded player-position/pro-team/roster-slot `unknown` values, and the synthetic `999` position/slot/proTeam/stat/
@@ -71,8 +71,9 @@ code, it is **orthogonal to the data/records architecture**:
 - **Clean-import guarantee (T13): COMPLEMENTARY** — the new coverage invariant is the same philosophy as T13's
   provider-id invariant; T13's idempotent reconciliation makes re-decoding/backfill safe.
 - **Player-depth (T14): the captured data gets CORRECTED** (positions/slots/scoring) — the intended improvement.
-- **Schema:** position/`proTeam` are existing text columns → value corrections (no destructive change); the per-stat
-  **scoring breakdown is NEW (additive tables/columns)**; nothing existing is dropped.
+- **Schema:** position/`proTeam` are existing text columns → value corrections (no destructive change). Full per-player
+  scoring-stat breakdown persistence is still a future additive model/table; T15 landed the dictionary, decode path, and
+  cheap scoring-setting metadata only.
 
 **Careful points (deliberate, not risky):** (1) backfill = a **re-import** to correct historical rows — idempotent per
 T13, **no re-push needed**; (2) **sequence** the coverage invariant to turn on *after* re-decoding so it doesn't flag

@@ -1,16 +1,19 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-24 — **Task T16 on `ws/t16-see-real-league`**:
-the shared dev DB used by the running app now contains the real ESPN 95050 league with player depth and complete
-decoding. The current shared provider row is `NHS Alumni Annual`
-(`f8334edb-7a20-4138-aa7a-65c0b5285886`; provider `espn` / `95050`), with 16 pushed canonical seasons, zero placeholder
-persons, 24,433 roster entries, zero `unknown` decoded positions/pro teams/roster slots, and `provider_code_decoding`
-PASS. Real owner-visible screenshots live in `docs/screenshots/real-95050/{mobile,tablet,desktop}/` and show the actual
-league data: Data Book People real managers (`bradwcummings`, `truman1109`, `w hardy`), Data Book Settings, Data Book
-Weeks with 2012 W8 `MONROE_REBS` roster including Luke Kuechly decoded as `DL / CAR` in `LB`, Edit Ledger, Records, and
-the league/press front. The real screenshot run reports zero duplicate React key warnings. Artifact:
-`.orchestration/import-summary.md` → `T16 real-league population`. Prior state: **Task T15 on
+Keep it current. Last updated: 2026-06-24 — **Task T17 on `ws/t17-doc-sync`**:
+documentation has been reconciled to the T13-T16 state. The shared dev DB used by the running app contains the real ESPN
+validation league, provider `espn` / provider id `95050`, **"NHS Alumni Annual"**, with player depth and complete
+decoding. Do not document a volatile internal league UUID for this league; it changes across local DB resets. The shared
+dev row has 16 pushed canonical seasons, zero placeholder persons, 24,433 roster entries, zero `unknown` decoded
+positions/pro teams/roster slots, and `provider_code_decoding` PASS. Product imports write to the app's configured
+database (`env.databaseUrl`); only the T13 verification harness (`scripts/verify-t13-import-integrity.ts`) creates a
+throwaway DB. There is no DB-routing flaw and the live/shared dev app is not empty for 95050. Real owner-visible
+screenshots live in `docs/screenshots/real-95050/{mobile,tablet,desktop}/` and show the actual league data: Data Book
+People real managers (`bradwcummings`, `truman1109`, `w hardy`), Data Book Settings, Data Book Weeks with 2012 W8
+`MONROE_REBS` roster including Luke Kuechly decoded as `DL / CAR` in `LB`, Edit Ledger, Records, and the league/press
+front. The real screenshot run reports zero duplicate React key warnings. Artifact: `.orchestration/import-summary.md`
+→ `T16 real-league population`. Prior state: **Task T15 on
 `ws/t15-complete-decoding`**: ESPN provider-code decoding is complete and coverage-guarded. A typed ESPN dictionary now
 owns the complete cwendt-derived position/default-position, lineup/eligible-slot, pro-team, ACTIVITY_MAP, and scoring-stat
 category/key vocabulary, including the real-payload blank slot sentinel `22 -> N/A`. ESPN normalization decodes player
@@ -42,8 +45,8 @@ seeds delete that reserved league after use. Current and historical imports now 
 known placeholder canonical names even if an old manual edit exists. A new `provider_identity_contamination`
 data-integrity check gates real provider namespaces: ESPN real imports require braced GUID member ids, known
 fixture/screenshot placeholder names fail, mixed real+invalid identities fail, and stale pass/fail integrity snapshots
-are replaced on rerun. Verification in `.orchestration/import-summary.md` proves both a fresh empty DB import and
-contaminated-to-clean dev DB reconciliation for real league 95050, with stable re-import counts and zero
+are replaced on rerun. Verification in `.orchestration/import-summary.md` proves both a harness-only fresh empty DB import
+and contaminated-to-clean dev DB reconciliation for real league 95050, with stable re-import counts and zero
 placeholder/invalid residue. Prior state: **Data Foundation T12 on
 `ws/t12-general-stats-substrate`**: the league-agnostic general fantasy-stats substrate B now exists as shared,
 non-editable NFL reference data. New central tables `nfl_players`, `nfl_schedule`, `nfl_team_stats`, and
@@ -157,14 +160,22 @@ the live, up-to-date branch.**
 ---
 
 ## 0. TL;DR for whoever picks this up
-- The clean, first-principles rebuild is **delivered**; the live/integration branch is now **`main`** (it carries the full build + the AUSPEX UI overhaul). `rebuild/foundation` was the autonomous-build branch (historical).
-- The autonomous **Ralph loop** is retired (`loop.sh` guarded). Increment 1 was built via the **orchestrated-tracks** model (`ORCHESTRATION.md`): an orchestrator + file-disjoint workstream agents in git worktrees, balanced across 3 Codex accounts (A=specs 36/37/38, B=39/40, C=41), each branch merged into `review/increment-1` only after gates green. **`main` was never touched.** Branch `review/increment-1` is ready for owner review; per-tick status in `.orchestration/STATUS.md`.
-- **Account routing:** the build runs on `bxbxbxbxbxr`, but the Claude account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME` — `loop.sh` pins it via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`. Use launchers `cbx`/`cbw`/`cx`. Never run heavy work on `bwcummings1` (other agents + shared 5h limit). See `docs/HISTORY.md §3`.
-- ESPN ingestion is **proven working** on a real league (95050). Creds are in gitignored `.env.local`.
-- Quality gates are **ON** from day one (typecheck, lint, test, build, `ubs`). Never disable them.
+- The clean, first-principles rebuild is **delivered**; `main` currently carries the full build, AUSPEX overhaul, data
+  foundation through T16, real ESPN 95050 dev-DB population, and the real-league screenshot set. `rebuild/foundation`
+  was the autonomous-build branch (historical).
+- The autonomous **Ralph loop** is retired (`loop.sh` guarded). Current work uses the **orchestrated workstream** model
+  in `ORCHESTRATION.md`: workstream agents work on `ws/*` branches/worktrees, commit and push their branch, and the
+  orchestrator owns merges to `main`.
+- **Account routing:** an agent account is set by the CONFIG DIR (`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME`), **not** `HOME`.
+  Use launchers `cbx`/`cbw`/`cx`; never run heavy work on `bwcummings1` unless explicitly assigned. See
+  `docs/HISTORY.md §3`.
+- ESPN ingestion is **proven working** on real provider id `95050` / **"NHS Alumni Annual"**. Credentials are in
+  gitignored `.env.local` and must never be printed or committed.
+- Quality gates are **ON** from day one (typecheck, lint, test, build, `ubs`, secret scan). Never disable them.
 
 ## 1. What Rumbledore is (product vision)
-A **sandboxed, per-league fantasy-football companion**. Connect your existing ESPN league (later Sleeper + Yahoo), ingest current + ~10 yrs history, and per league get:
+A **sandboxed, per-league fantasy-football companion**. Connect your existing ESPN league (Sleeper/Yahoo adapters exist
+fixture-backed; production-real provider breadth is deferred), ingest current + ~10 yrs history, and per league get:
 - **Per-league home base** — an ESPN-fantasy-homepage-style front page; some content shared across leagues, some league-specific; as real-time as feasible.
 - **Two-tier news + AI blogger** — (a) a **central** NFL/fantasy news hub open to all leagues; (b) a **league-tailored** feed; (c) a per-league **AI blogger** with personas (Commissioner, Analyst, Narrator, Trash-Talker, Betting-Advisor) blending league storylines (rivalries, managers, inside jokes from history) with real NFL news. Web-grounded.
 - **Paper betting** — DraftKings/FanDuel-style markets, real odds, fake money. **Rolling-minimum weekly bankroll**: floor e.g. $10k; lose all → reset to floor next week; finish above floor → carry balance forward.
@@ -174,11 +185,13 @@ A **sandboxed, per-league fantasy-football companion**. Connect your existing ES
 - **A league "data steward" role** — a designated member who can review/clean their league's data.
 - **Bar:** new, snappy, mobile-first (distributed via a shareable link), desktop parity, nothing dated.
 
-## 2. Branch reality (important — `main` is NOT current)
-- `main` = 2 commits, the *oldest* checkpoint ("phase 1 complete"). Audited; mostly obsolete.
-- The old "real" code reached ~Phase 5 on **`v0.62`** (linear `main→…→v1.0→v0.61→v0.62`, +238k lines) but was **never merged**. It has the same fatal patterns at scale: build gates disabled, `middleware.ts` auth disabled, ~5% test coverage, committed coverage HTML.
-- `claude/ultrathink-project-review` is the newest *by date* but a **divergent dead-end** (missing ~238k lines). Ignore it.
-- **Decision (user): clean rebuild, reuse only proven assets.** Mine `v0.62` on demand via `git show v0.62:<path>` (good candidates: Prisma schema/domain modeling, `lib/crypto/encryption.ts`, ESPN request/header learnings, identity-resolution logic). Do NOT carry over the disabled-gates/fake-auth patterns.
+## 2. Branch reality
+- `main` is the live/integration branch and is current through T16. Workstream agents still work on `ws/*` branches and
+  must not merge to or force-push `main`; the orchestrator owns merges.
+- Old version branches such as **`v0.62`** are historical mining references only. They contain useful domain clues
+  (schema/domain modeling, `lib/crypto/encryption.ts`, ESPN request/header learnings, identity-resolution logic), but
+  also the abandoned build's fatal patterns: disabled gates, fake auth, commented middleware, and low test coverage.
+- `claude/ultrathink-project-review` remains a divergent dead-end. Ignore it except as historical context.
 
 ## 3. Validated facts (proven this session, not assumptions)
 - **ESPN cookies work.** `SWID`+`espn_s2` (in `.env.local`) returned HTTP 200.
@@ -199,25 +212,31 @@ A **sandboxed, per-league fantasy-football companion**. Connect your existing ES
 | AI | **Anthropic SDK direct** (NO LangChain). Claude for flagship voice + a cheaper Claude tier for bulk; prompt-cache persona+league-facts prefix. Confirm exact model IDs/pricing via the `claude-api` skill at build time. |
 | Web grounding | **Tavily** + RSS + sports feed |
 | Odds/Betting | **The Odds API** (odds) + **SportsDataIO** (results/prop settlement); append-only `odds_snapshots`, odds locked at placement, event-sourced `bankroll_ledger` |
-| Provider abstraction | `FantasyProvider` interface; ESPN now, Sleeper (no-auth) + Yahoo (OAuth2) later; normalized model |
+| Provider abstraction | `FantasyProvider` interface; ESPN real now, Sleeper (no-auth) + Yahoo (OAuth2) fixture-backed until production-real provider work; normalized model |
 Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite); Expo native wrapper (if push-retention demands).
 
 ## 5. Methodology & guardrails
-- **Ralph loop** (Geoffrey Huntley / Clayton Farr playbook): `specs/*` + `PROMPT_plan.md`/`PROMPT_build.md` + `AGENTS.md` + disposable `IMPLEMENTATION_PLAN.md`; loop runs `claude -p --dangerously-skip-permissions`; **tests/build/lint are mandatory backpressure gates before every commit**. No stubs/placeholders — implement completely.
-- **Verification per iteration:** typecheck + lint + unit/integration tests + build + `ubs <changed files>` must pass before commit. (Optionally wire `no-mistakes` as a validated push gate.)
-- **UI taste:** the authoritative design source is `DESIGN.md` (AUSPEX) + `docs/screenshots/reference-images/` — build to near-pixel fidelity. (The `impeccable` gate / `DESIGN.md` + `PRODUCT.md` "anti-slop" rules are removed: they contradicted the AUSPEX design and caused a bad build.)
-- **Secrets:** never commit. `.env*` is gitignored. Add a secret-scan gate.
-- **Git:** work on `rebuild/foundation` (or child branches), commit often, push freely. NEVER force-push; NEVER touch `main`/`v0.62`.
-- **Accounts:** the Claude account is the CONFIG DIR, not `HOME` (this run's Fable phase mistakenly used `bwcummings1` because only `HOME` was set — now fixed). Launchers in `~/.local/bin`: `cbx` (Claude bxbxbxbxbxr), `cbw` (Claude bwcummings1 — reserved), `cx` (Codex). `loop.sh` pins Fable via `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`.
-- **Model plan:** Fable 5 at max effort for the build window (~2h), then switch to Codex 5.5 high. This doc + the specs make the handoff seamless.
+- **Current model:** use `ORCHESTRATION.md`, not the Ralph loop. Workstream agents use their own worktree/`ws/*` branch,
+  stay inside their ownership boundary, run applicable gates, commit and push, then let the orchestrator review and merge.
+- **Verification per round:** typecheck + lint + unit/integration tests + build + `ubs <changed files>` + secret scan
+  remain the standard; use the narrower gate set only when the task explicitly scopes it, as T17 does for docs.
+- **UI taste:** the authoritative design source is `DESIGN.md` (AUSPEX) + `docs/screenshots/reference-images/` — build to
+  near-pixel fidelity and inspect screenshots for UI work.
+- **Secrets:** never commit. `.env*` is gitignored. Never print ESPN cookie values.
+- **Git:** commit often on the assigned `ws/*` branch, push that branch, never force-push, and never have a workstream
+  agent merge to `main`.
+- **Accounts:** the agent account is the CONFIG DIR, not `HOME`. Launchers in `~/.local/bin`: `cbx` (Claude
+  bxbxbxbxbxr), `cbw` (Claude bwcummings1 — reserved), `cx` (Codex).
 
 ## 6. Research briefs (full reasoning lives in the planning conversation; key conclusions here)
 - **Onboarding/mobile:** browser extensions CAN'T read ESPN HttpOnly cookies on mobile (iOS Safari / no Android extensions). Mobile primary = **hosted live-browser login** (Browserbase-style: user logs into ESPN in an embedded cloud browser, capture session server-side). Desktop fallback = MV3 extension. `chrome-devtools-mcp` is a dev tool, NOT a consumer channel.
 - **Betting:** play-money (no real prize) = low legal risk; never add real prizes, never use sportsbook trademarks, license odds (don't scrape a book). Parlays: all legs win; push/void leg drops & re-prices.
 - **AI:** treat all web/RSS as untrusted (prompt-injection); enforce league isolation in SQL (`WHERE league_id`) + RLS, never trust the model; near-dup check generated posts (cosine > ~0.92).
 
-## 7. Current state & next steps (build + Scope hardening complete 2026-06-16)
-All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are built on `rebuild/foundation`, with gates kept as commit backpressure (typecheck/lint/test/build/ubs; DB-backed tests against local Postgres). See §8 for the build log and `docs/HISTORY.md` for the trajectory + independent review.
+## 7. Current state & next steps
+All planned rebuild product scope (P0-P5), AUSPEX overhaul, Increment 1, data foundation T1-T16, and real ESPN 95050
+dev-DB population are on `main`. Gates remain mandatory backpressure for code work. See §8 for the build log and
+`docs/HISTORY.md` for the trajectory + independent review.
 - **Data Foundation T1 delivered (2026-06-22):** `league_season_settings` now captures `league_size`,
   matchup/regular/playoff/championship schedule fields, `playoff_matchup_period_length`, playoff teams, scoring type
   + full scoring JSON, lineup slot counts, acquisition type/budget + full acquisition JSON, and keeper fields. ESPN
@@ -310,14 +329,27 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   dictionary, and `provider_code_decoding` flags any undecoded provider code on import. Real 95050 all-season
   verification passed with zero decoded `unknown` player-position/pro-team/roster-slot values and a synthetic unknown
   code failure.
-- **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
+- **Task T16 delivered (2026-06-24):** the real ESPN validation league is populated in the shared dev DB under provider
+  `espn` / provider id `95050`, **"NHS Alumni Annual"**. The verifier targets the app's configured dev DB, imports and
+  pushes 2011-2026 canonical seasons, confirms zero placeholder persons and zero decoded unknown player/slot/team values,
+  and captures real-league screenshots under `docs/screenshots/real-95050/{desktop,tablet,mobile}/`. The fixture baseline
+  remains separate under `docs/screenshots/{desktop,tablet,mobile}/`.
+- **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN ingestion against provider
+  id `95050` / **"NHS Alumni Annual"**, stats/records/identity, AI content pipeline behind mocks, betting engine +
+  rolling-min bankroll + central arena, realtime + push. Sleeper/Yahoo adapters exist with fixture-backed coverage;
+  production-real provider breadth is deferred.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Next:** wire substrate B into News/AI factual grounding and league-data roster enrichment where those consumers
-  need it.
+- **Deferred/follow-on:** full per-stat scoring persistence; player-level records in the Record Book; draft/transactions
+  UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real substrate-B source wiring and News/AI
+  consumption; production-real paid-provider keys/capture; minor owner-set-aside UI tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-24: Task T16 landed — the real ESPN validation league, provider `espn` / provider id `95050`
+  (**"NHS Alumni Annual"**), is populated in the shared dev DB used by the running app, with 16 pushed canonical seasons,
+  player-depth rows, complete decoding coverage, and real screenshots at `docs/screenshots/real-95050/`. The product
+  import path writes to the configured app DB; only the T13 integrity verifier creates a throwaway DB.
 - 2026-06-24: Task T15 landed — ESPN provider-code decoding is complete and guarded by `provider_code_decoding`.
   The shared dictionary covers position/default-position ids, lineup/eligible slots, pro teams, transaction activity
   codes, and scoring stat categories/keys; the ESPN adapter and Data Book Settings labels consume it; real 95050

@@ -2,9 +2,17 @@
 
 The durable phase plan toward the North Star (`docs/NORTH-STAR.md`). Disposable per-phase backlogs live in `IMPLEMENTATION_PLAN.md`; this file is the stable map of what each phase is and what still remains. Timeline anchors: **~1 month to football buzz, ~3 months to the season** (season opens ~Sept 2026; this was written in the June 2026 offseason).
 
-> **Status (2026-06-18) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3 and the Phase 5 **UI/UX overhaul** (the AUSPEX design language, incl. the pass-2 refinements) are **done and on `main`**. The only outstanding *roadmap* items are deliberately deferred: **real paid-API keys/capture** (Phase 4) and **Stripe billing** (Phase 6). The project is now in **targeted-increment mode** on a functionally- and visually-complete app; the next increment (data-curation/eras/ledger, News/Arena as self-contained environments, the ambient agent/WizKit tier, the general↔personal wire toggle) is **specified in `specs/36`–`41`**, sequenced and run per **`ORCHESTRATION.md`** (orchestrated tracks; the Ralph loop is retired). Phase labels marked "current" below are historical.
+> **Status (2026-06-24) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3,
+> the AUSPEX UI/UX overhaul, Increment 1 (`specs/36`–`41`), and the data-foundation T1–T16 arc are **done and on
+> `main`**. The app now has clean-import invariants, player-depth substrate A, complete ESPN decoding, and the real ESPN
+> validation league `95050` / **"NHS Alumni Annual"** populated in the shared dev DB with screenshots. The remaining
+> roadmap items are deliberate follow-ons: production-real paid-provider keys/capture (Phase 4), real substrate-B source
+> wiring and News/AI consumption, player-level records and draft/transaction UI, Sleeper/Yahoo dictionaries, minor
+> owner-set-aside UI tweaks, and Stripe/beta hardening (Phase 6). Work now runs per **`ORCHESTRATION.md`**; the Ralph loop
+> is retired.
 
-The work splits along one line: **🤖 loop-buildable** (functional, fully mockable — the autonomous Ralph loop can build it) vs **🤝 human-paired** (needs the user and/or real API keys — voice, design, real integrations).
+The work splits along one line: **orchestrated-agent buildable** (functional, fully mockable, gateable) vs
+**human-paired** (needs the user and/or real API keys — voice, design, real integrations).
 
 ---
 
@@ -12,6 +20,9 @@ The work splits along one line: **🤖 loop-buildable** (functional, fully mocka
 - **Round 1 (P0–P5):** foundation — data substrate, ESPN ingestion, Postgres RLS isolation, Better Auth (leagues-as-orgs), betting/bankroll/arena skeleton, basic onboarding, basic publication/AI.
 - **Phase 1 — Spectacle Core:** IA/nav, data-foundation depth, the publication system, the AI cast (instigator, authenticity, LLM-judge eval gate), and the league lore mechanic.
 - **Phase 2 — Competition, Onboarding, Entitlements, Lore UI:** sportsbook + bankroll loop, the league-vs-league Arena, onboarding completeness (multi-league discovery, SMS/link invites, claim-your-team), free/premium/individual entitlement gates, and the member-facing lore UI.
+- **Increment 1 + data foundation T1-T16:** data curation/save-push/edit-ledger/eras, expanded Record Book, mock substrate
+  B, clean-import guarantee, player-level league depth, complete ESPN decoding, and real ESPN 95050 dev-DB population +
+  screenshots.
 
 ---
 
@@ -50,7 +61,9 @@ The part that comes after functionality, iterated **with** the user.
 - **Payments/billing** — Stripe over the entitlement gates (free / premium-league / individual).
 - **Trust, safety & legal** — AI + user-lore moderation, paper-betting guardrails formalized, ToS.
 - **Production infra** — deploy, observability, performance/caching at scale, security review.
-- **Beta** — the user's real league (95050) as the first live spectacle → seed invites.
+- **Beta** — the user's real league (provider id `95050`, **"NHS Alumni Annual"**) is already populated in the shared dev
+  DB as the first spectacle candidate; production beta still needs hosted capture/real provider posture, invite seeding,
+  observability, and legal/billing decisions.
 
 ---
 
@@ -62,4 +75,7 @@ The part that comes after functionality, iterated **with** the user.
 ---
 
 ## Sequencing
-**P3 next (autonomous) → P4 + P5 together (paired; un-mocking AI in P4 feeds voice tuning in P5) → P6 → beta.** This is a proposed order — the user steers it. The biggest user-provided inputs gating progress: **real API keys** (Phase 4) and the **UI style reference + voice direction** (Phase 5).
+Current next work is selective, not phase-bulk: choose among production-real provider/key capture, substrate-B real-source
+wiring, player-level records/draft/transaction UI, Sleeper/Yahoo dictionaries, owner UI tweaks, and launch/billing work.
+The biggest user-provided inputs still gating production are real API/provider credentials, hosted capture posture, final
+voice direction, pricing, and beta/legal choices.
