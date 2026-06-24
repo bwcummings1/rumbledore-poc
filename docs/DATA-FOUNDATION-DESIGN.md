@@ -287,6 +287,16 @@ cover representative add/drop/trade payloads. T13-style reconciliation applies p
 draft picks, transactions, and orphan fantasy players. Integrity adds `roster_coverage` and `player_points_rollup`;
 rollup checks only complete single-period starter rows and records provider-incomplete rows as skipped detail.
 
+**T15 canonical-decoding note:** ESPN player-depth rows now pass through a complete typed provider dictionary at
+`src/providers/espn/reference-data.ts`. The dictionary covers positions/default positions, lineup/eligible slots
+including IDP/flex/OP/TQB/P/HC/Rookie/ER and cwendt's blank `22 -> N/A` sentinel, full ESPN pro-team ids including
+relocations, ACTIVITY_MAP transaction categories, and scoring stat categories/keys. `src/providers/decoding.ts` is the
+provider boundary for coverage checks so Sleeper/Yahoo can add dictionaries without changing the integrity runner.
+ESPN normalization persists decoded scoring-setting metadata (`providerStatId`, `statCategory`, `statKey`) where cheap;
+full per-player stat-breakdown persistence remains a follow-on. Integrity now includes `provider_code_decoding`, which
+flags any undecoded provider position/slot/proTeam/scoring-stat/activity id observed after import and clears stale
+pass/fail rows on rerun.
+
 ---
 
 ## 7. The four data-quality fixes fold in here

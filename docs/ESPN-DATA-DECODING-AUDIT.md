@@ -1,6 +1,6 @@
 # ESPN Data-Decoding Audit — toward complete, adaptive league-data organization
 
-> **Status:** DIAGNOSIS (no code changes). Owner-aligned principle: the system must correctly decode + organize
+> **Status:** T15 CLOSED. Owner-aligned principle: the system must correctly decode + organize
 > **any** ESPN league type/format/roster/position ESPN has ever offered — sourced from the **complete authoritative
 > vocabulary**, NOT inferred from one league. The owner's league is a *validation set*, not the source.
 
@@ -18,6 +18,7 @@
 **Positions / slots (one shared id space — ESPN uses these for both `defaultPositionId` and lineup-slot/eligibleSlots):**
 `0 QB · 1 TQB · 2 RB · 3 RB/WR · 4 WR · 5 WR/TE · 6 TE · 7 OP(superflex) · 8 DT · 9 DE · 10 LB · 11 DL · 12 CB ·
 13 S · 14 DB · 15 DP · 16 D/ST · 17 K · 18 P · 19 HC · 20 BE(bench) · 21 IR · 23 RB/WR/TE(FLEX) · 24 ER · 25 Rookie`
+T15 also canonicalizes cwendt's blank id `22` sentinel as `N/A` because real `eligibleSlots` payloads expose it.
 **Pro teams:** full 32 incl. relocations/renames: `13 LV · 14 LAR · 24 LAC · 28 WSH · 33 BAL · 34 HOU` (+ 0 = FA/None).
 **Acquisition / ACTIVITY:** `178 FA-add · 180 waiver-add · 179/181/239 drop · 244 trade`.
 **Scoring `PLAYER_STATS_MAP`:** ~200 stat ids — passing 0–22, rushing 23–40, receiving 41–61, turnovers 62–73,
@@ -26,29 +27,33 @@ kicking 74–88, defense 89–136, punting 138–154, head-coach 155–174, misc
 ## Our current state vs. complete (the GAPS)
 | Variable | Authoritative | Ours today (`src/providers/espn/client.ts`) | Gap |
 |---|---|---|---|
-| **Position id→name** | 0–25 incl. IDP + flex variants | `ESPN_POSITION_BY_ID`: 7 entries, AND **wrong**: `3=WR`(→RB/WR), `4=TE`(→WR), `5=K`(→WR/TE) | **Incorrect** for 3/4/5; missing 6,7,8–15,17,18,19,23,25 → wrong + `unknown` positions |
-| **Lineup slot id→name** | full set incl. IDP slots, flex variants, P/HC/Rookie | `ESPN_LINEUP_SLOT_BY_ID`: 11 entries (mostly right) | Missing 1,3,5,8–15,18,19,25 → `unknown`/wrong slots for IDP/custom |
-| **Pro team id→abbr** | full 32 incl. relocations | `ESPN_PRO_TEAM_BY_ID`: partial | Verify completeness incl. LV/LAC/LAR/WSH/BAL/HOU |
-| **Scoring stat id→category** | ~200 stat ids | **none** | We store points only — no per-category scoring breakdown |
-| **Acquisition/transaction types** | ACTIVITY_MAP | not decoded | adds/drops/waivers/trades not categorized |
+| **Position id→name** | 0–25 incl. IDP + flex variants | **T15 closed:** `src/providers/espn/reference-data.ts` owns the full map; `3=RB/WR`, `4=WR`, `5=WR/TE`; id `22=N/A` sentinel | Closed |
+| **Lineup slot id→name** | full set incl. IDP slots, flex variants, P/HC/Rookie | **T15 closed:** same reference module owns slots incl. IDP, OP, FLEX, ER, Rookie, and `22=N/A`; Data Book labels use it | Closed |
+| **Pro team id→abbr** | full 32 incl. relocations | **T15 closed:** full cwendt map incl. LV/LAR/LAC/WSH/BAL/HOU and `0=FA` | Closed |
+| **Scoring stat id→category** | ~200 stat ids | **T15 closed:** scoring stat ids decode to canonical categories and keys; scoring settings persist decoded `providerStatId`/`statCategory`/`statKey` | Full per-player stat breakdown table remains follow-on |
+| **Acquisition/transaction types** | ACTIVITY_MAP | **T15 closed:** numeric and string activity values decode to canonical add/drop/waiver/trade categories | Closed |
 | **Higher-level settings** (roster limits, scoring type, playoff/division config, keeper/dynasty, FAAB/auction) | in `mSettings` | partially captured (T1: size, playoff length, lineupSlotCounts, scoring type, acquisition) | enumerate + decode the rest; drive organization from them |
 
 ## Validation against real data (owner league 95050)
-Symptoms already observed in the T14 player sample confirm the gaps: IDP/OP seasons (2011–2012) produced `unknown`
-positions (e.g. NaVorro Bowman = LB, id 10 — absent from our map) and a mis-labeled lineup slot (TE shown in a "QB"
-slot). **Action:** on the next real import, dump the DISTINCT `defaultPositionId`/`lineupSlotId`/`stat id` values that
-appear across all 16 seasons and confirm the complete dictionary covers 100% (the league is a coverage check, not the
-source — the dictionary must also cover formats this league never used).
+T15 verification reset and re-imported ESPN 95050 across all 16 seasons (2011–2026). The distinct observed
+`defaultPositionId`/lineup-slot/eligible-slot/pro-team/scoring-stat/activity ids are written under
+`.orchestration/import-summary.md` → **T15 decoding coverage**. The real import has `provider_code_decoding` PASS,
+zero decoded player-position/pro-team/roster-slot `unknown` values, and the synthetic `999` position/slot/proTeam/stat/
+activity probe flags as expected.
 
-## Proposed fix (the build, after review)
-1. **Complete + correct the dictionaries** — replace the partial/buggy maps with the full ESPN enumerations
-   (positions, slots, pro teams, the `PLAYER_STATS_MAP`, ACTIVITY_MAP). Single source of truth; typed.
-2. **Canonical model** — decode provider codes → canonical position/slot/scoring/transaction vocabulary; per-provider
-   dictionary boundary so Sleeper/Yahoo plug in later.
-3. **Settings-driven organization** — Data Book + records organize per each league's actual settings/season.
-4. **Coverage invariant** — a `data_integrity_check` that fails/flags on ANY undecoded position/slot/stat/team/activity
-   id, so gaps surface immediately and never ship as `unknown`.
-5. **Backfill-safe** — re-decode is idempotent (T13) so re-importing corrects historical rows.
+## T15 implementation
+1. **Complete + correct dictionaries** — `src/providers/espn/reference-data.ts` is the ESPN source of truth for
+   positions, lineup slots, pro teams, activity codes, and scoring stat categories/keys.
+2. **Canonical provider boundary** — `src/providers/decoding.ts` exposes provider-code coverage checks; Sleeper/Yahoo
+   become "add a dictionary" follow-ons.
+3. **Decode path** — ESPN normalization uses the shared dictionaries for player position/pro team, eligible slots,
+   roster slots, draft slot metadata, scoring settings, and transaction activity category.
+4. **Settings-driven labels** — the Data Book Settings grain formats lineup slot counts through the shared dictionary
+   while preserving raw numeric ids for signatures/era detection.
+5. **Coverage invariant** — `provider_code_decoding` in `data_integrity_check` flags any undecoded ESPN position,
+   lineup slot, pro team, scoring stat, or activity id observed after import; stale pass/fail rows are replaced on rerun.
+6. **Backfill-safe** — no curated snapshot/save-push/Record Book state changed. Re-importing rewrites normalized player
+   rows idempotently and fixes live Data Book Weeks roster labels without re-pushing curated seasons.
 
 ## Impact on the data system we built (T4–T14) — verified, before any change
 The fix lives in the **ingestion/normalization layer** (how provider codes decode into values). Verified against the

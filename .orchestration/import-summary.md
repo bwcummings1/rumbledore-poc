@@ -322,3 +322,40 @@
 - Total integrity failures: 0
 - T14 roster/player integrity failures: 0
 - All integrity checks PASS.
+
+## T15 decoding coverage
+
+- Real provider identity: ESPN 95050, current season 2026, imported seasons 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026.
+- League id: f8334edb-7a20-4138-aa7a-65c0b5285886
+- Current import rosters changed/total: 185/185
+- Historical import rosters changed/total: 24248/24248
+- Stats recompute integrity failures: 0
+
+### Distinct ESPN Codes Observed
+
+- defaultPositionId: 1:TQB, 2:RB, 3:RB/WR, 4:WR, 5:WR/TE, 11:DL, 16:D/ST
+- lineupSlotId/eligible/settings slots: 0:QB, 1:TQB, 2:RB, 3:RB/WR, 4:WR, 5:WR/TE, 6:TE, 7:OP, 8:DT, 9:DE, 10:LB, 11:DL, 12:CB, 13:S, 14:DB, 15:DP, 16:D/ST, 17:K, 18:P, 19:HC, 20:BE, 21:IR, 22:N/A, 23:FLEX, 24:ER, 25:Rookie
+- proTeamId: 0:FA, 1:ATL, 2:BUF, 3:CHI, 4:CIN, 5:CLE, 6:DAL, 7:DEN, 8:DET, 9:GB, 10:TEN, 11:IND, 12:KC, 13:LV, 14:LAR, 15:MIA, 16:MIN, 17:NE, 18:NO, 19:NYG, 20:NYJ, 21:PHI, 22:ARI, 23:PIT, 24:LAC, 25:SF, 26:SEA, 27:TB, 28:WSH, 29:CAR, 30:JAX, 33:BAL, 34:HOU
+- scoring statId: 4:passing/passingTouchdowns, 5:passing/passingStat5, 8:passing/passingStat8, 19:passing/passing2PtConversions, 20:passing/passingInterceptions, 24:rushing/rushingYards, 25:rushing/rushingTouchdowns, 26:rushing/rushing2PtConversions, 28:rushing/rushingStat28, 42:receiving/receivingYards, 43:receiving/receivingTouchdowns, 44:receiving/receiving2PtConversions, 48:receiving/receivingStat48, 53:receiving/receivingReceptions, 63:turnover/fumbleRecoveredForTD, 72:turnover/lostFumbles, 74:kicking/madeFieldGoalsFrom50Plus, 77:kicking/madeFieldGoalsFrom40To49, 80:kicking/madeFieldGoalsFromUnder40, 85:kicking/missedFieldGoals, 86:kicking/madeExtraPoints, 89:defense/defensive0PointsAllowed, 90:defense/defensive1To6PointsAllowed, 91:defense/defensive7To13PointsAllowed, 92:defense/defensive14To17PointsAllowed, 93:defense/defensiveBlockedKickForTouchdowns, 95:defense/defensiveInterceptions, 96:defense/defensiveFumbles, 97:defense/defensiveBlockedKicks, 98:defense/defensiveSafeties, 99:defense/defensiveSacks, 101:defense/kickoffReturnTouchdowns, 102:defense/puntReturnTouchdowns, 103:defense/interceptionReturnTouchdowns, 104:defense/fumbleReturnTouchdowns, 106:defense/defensiveForcedFumbles, 109:defense/defensiveTotalTackles, 123:defense/defensive28To34PointsAllowed, 124:defense/defensive35To45PointsAllowed, 125:defense/defensive45PlusPointsAllowed, 128:defense/defensiveLessThan100YardsAllowed, 129:defense/defensive100To199YardsAllowed, 130:defense/defensive200To299YardsAllowed, 132:defense/defensive350To399YardsAllowed, 133:defense/defensive400To449YardsAllowed, 134:defense/defensive450To499YardsAllowed, 135:defense/defensive500To549YardsAllowed, 136:defense/defensive550PlusYardsAllowed, 198:kicking/kickingStat198, 201:kicking/madeFieldGoalsFrom60Plus
+- activity id: (none observed)
+
+### Previously Broken Cases
+
+| Season | Week | Player | Pos | Pro | Slot |
+|---:|---:|---|---|---|---|
+| 2012 | 1 | Luke Kuechly | DL | CAR | LB |
+| 2012 | 1 | Lance Briggs | DL | CHI | LB |
+| 2012 | 1 | Jerod Mayo | DL | NE | LB |
+| 2012 | 1 | James Laurinaitis | DL | LAR | LB |
+| 2012 | 1 | Derrick Johnson | DL | KC | LB |
+| 2012 | 1 | D'Qwell Jackson | DL | CLE | LB |
+| 2012 | 1 | Chad Greenway | DL | MIN | LB |
+| 2012 | 1 | Curtis Lofton | DL | ATL | LB |
+
+### Verification Checks
+
+- PASS - provider_code_decoding passes on real ESPN import
+- PASS - decoded player position/pro team and roster slot values contain zero unknowns
+- PASS - synthetic unknown position/slot/proTeam/stat/activity code flags
+- provider_code_decoding detail: {"issues":[],"checkedProviders":["espn"],"observedCodeCounts":{"espn":{"proTeams":33,"positions":7,"activities":0,"lineupSlots":26,"scoringStats":50}}}
+- synthetic unknown issues: [{"id":999,"kind":"activity","provider":"espn"},{"id":999,"kind":"lineup_slot","provider":"espn"},{"id":999,"kind":"position","provider":"espn"},{"id":999,"kind":"pro_team","provider":"espn"},{"id":999,"kind":"scoring_stat","provider":"espn"}]

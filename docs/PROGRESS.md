@@ -1,7 +1,17 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-23 — **Task T14 on `ws/t14-player-depth`**:
+Keep it current. Last updated: 2026-06-24 — **Task T15 on `ws/t15-complete-decoding`**:
+ESPN provider-code decoding is complete and coverage-guarded. A typed ESPN dictionary now owns the complete
+cwendt-derived position/default-position, lineup/eligible-slot, pro-team, ACTIVITY_MAP, and scoring-stat category/key
+vocabulary, including the real-payload blank slot sentinel `22 -> N/A`. ESPN normalization decodes player positions,
+eligible slots, roster/draft lineup slots, pro teams, scoring settings, and transaction activity categories through
+that dictionary; Data Book Settings slot labels use the same source while raw slot ids stay intact for settings
+signatures. A new `provider_code_decoding` `data_integrity_check` flags any undecoded position/slot/proTeam/stat/
+activity id observed after import and replaces stale pass/fail rows on rerun. Real ESPN 95050 verification reset and
+imported all 16 seasons (2011-2026), observed 100% decoded coverage with zero player-position/pro-team/roster-slot
+`unknown` values, and proved a synthetic `999` code fails the invariant; artifact:
+`.orchestration/import-summary.md` → `T15 decoding coverage`. Prior state: **Task T14 on `ws/t14-player-depth`**:
 league-scoped player depth now exists for substrate A. ESPN imports request player views (`mBoxscore`/`mMatchupScore`,
 `mScoreboard`, `mRoster`, `kona_player_info`, `mDraftDetail`, `mTransactions2`) for current and historical seasons;
 the adapter preserves real ESPN player ids including negative D/ST ids, maps player names/positions/pro teams,
@@ -285,6 +295,12 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   roster/draft/transaction/player-depth rows per fetched season, Data Book Weeks shows a selected team-week roster,
   and new roster coverage / player-rollup integrity checks pass on real 95050. ESPN 95050 returned zero rows through
   `mTransactions2`; the parser/persistence path is covered by representative tests and will store rows when present.
+- **Task T15 delivered (2026-06-24):** ESPN provider-code decoding now uses a complete typed dictionary for positions,
+  lineup slots, pro teams, transaction activity codes, and scoring stat categories/keys. Normalization decodes
+  player/roster/draft/scoring/transaction fields through that boundary, Data Book Settings labels use the same slot
+  dictionary, and `provider_code_decoding` flags any undecoded provider code on import. Real 95050 all-season
+  verification passed with zero decoded `unknown` player-position/pro-team/roster-slot values and a synthetic unknown
+  code failure.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN/Sleeper/Yahoo ingestion (vs the 95050 fixture), stats/records/identity, AI content pipeline, betting engine + rolling-min bankroll + central arena, realtime + push.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
@@ -293,6 +309,11 @@ All planned product scope (P0–P5) and the 2026-06-16 audit-hardening Scope are
   need it.
 
 ## 8. Recent (loop log; newest first)
+- 2026-06-24: Task T15 landed — ESPN provider-code decoding is complete and guarded by `provider_code_decoding`.
+  The shared dictionary covers position/default-position ids, lineup/eligible slots, pro teams, transaction activity
+  codes, and scoring stat categories/keys; the ESPN adapter and Data Book Settings labels consume it; real 95050
+  verification across 2011-2026 passed with zero decoded unknown player/slot/team values and a synthetic unknown-code
+  failure.
 - 2026-06-23: Task T14 landed — ESPN imports now include league player identities, weekly roster/player point rows,
   lineup slots, draft picks, and transaction support; Data Book Weeks surfaces selected team rosters; real 95050
   verification on 2012 week 8 passed with stable replay counts and integrity PASS. ESPN exposed no transaction rows for
