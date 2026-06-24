@@ -41,6 +41,7 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { createCurationCheckpoint, pushCurationSeason } from "./curated-state";
 import {
   applyLeagueDataEdit,
   confirmLeagueSeasonGrouping,
@@ -4076,6 +4077,30 @@ describe("recomputeLeagueStatistics", () => {
     const { leagueId } = await seedStatsLeague("integrity-uncovered");
 
     await recomputeLeagueStatistics(handle.db, { leagueId });
+    const [actor] = await handle.db
+      .insert(users)
+      .values({
+        displayName: `${marker} integrity curation actor`,
+        email: `${marker}-integrity-curation@example.com`,
+        emailVerified: true,
+      })
+      .returning({ id: users.id });
+    if (!actor) {
+      throw new Error("integrity curation actor was not created");
+    }
+    const checkpoint = await createCurationCheckpoint(handle.db, {
+      actorUserId: actor.id,
+      label: "Integrity valid checkpoint",
+      leagueId,
+      note: "Valid curation marker should satisfy ledger completeness",
+    });
+    await pushCurationSeason(handle.db, {
+      actorUserId: actor.id,
+      checkpointId: checkpoint.id,
+      leagueId,
+      reason: "Valid curation push should satisfy ledger completeness",
+      season: 2025,
+    });
 
     await withLeagueContext(handle.db, leagueId, async (tx) => {
       const [targetMatchup] = await tx
@@ -4216,6 +4241,21 @@ describe("recomputeLeagueStatistics", () => {
           ]),
         }),
       }),
+    );
+    const ledgerCheck = rows.integrityRows.find(
+      (row) => row.checkKey === "data_edit_ledger_completeness",
+    );
+    const ledgerIssues =
+      (
+        ledgerCheck?.detail as
+          | { issues?: Record<string, unknown>[] }
+          | undefined
+      )?.issues ?? [];
+    expect(ledgerIssues).not.toContainEqual(
+      expect.objectContaining({ targetKind: "curation_checkpoint" }),
+    );
+    expect(ledgerIssues).not.toContainEqual(
+      expect.objectContaining({ targetKind: "curation_push" }),
     );
   });
 

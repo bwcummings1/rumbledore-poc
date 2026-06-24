@@ -16,6 +16,8 @@ import {
   headToHeadRecords,
   identityAuditLog,
   identityMappings,
+  leagueCurationCheckpoints,
+  leagueCurationSeasonPushes,
   leagueDataEdits,
   leagueGroupingSeasons,
   leagueSeasonGroupings,
@@ -2909,6 +2911,14 @@ async function buildDataIntegrityCheckDrafts(
     })
     .from(leagueDataEdits)
     .where(eq(leagueDataEdits.leagueId, leagueId));
+  const curationCheckpointRows = await tx
+    .select({ id: leagueCurationCheckpoints.id })
+    .from(leagueCurationCheckpoints)
+    .where(eq(leagueCurationCheckpoints.leagueId, leagueId));
+  const curationPushRows = await tx
+    .select({ id: leagueCurationSeasonPushes.id })
+    .from(leagueCurationSeasonPushes)
+    .where(eq(leagueCurationSeasonPushes.leagueId, leagueId));
   const personRows = await tx
     .select({ canonicalName: persons.canonicalName, id: persons.id })
     .from(persons)
@@ -3827,6 +3837,8 @@ async function buildDataIntegrityCheckDrafts(
   }
 
   const editTargets = {
+    curation_checkpoint: new Set(curationCheckpointRows.map((row) => row.id)),
+    curation_push: new Set(curationPushRows.map((row) => row.id)),
     grouping: new Set(groupingRows.map((row) => row.id)),
     matchup: new Set(matchupRows.map((row) => row.id)),
     person: new Set(personRows.map((row) => row.id)),
@@ -3839,17 +3851,8 @@ async function buildDataIntegrityCheckDrafts(
     (entry) => entry.editClass === "substantive",
   )) {
     const targetSet =
-      row.targetKind === "person"
-        ? editTargets.person
-        : row.targetKind === "team_season"
-          ? editTargets.team_season
-          : row.targetKind === "weekly_stat"
-            ? editTargets.weekly_stat
-            : row.targetKind === "matchup"
-              ? editTargets.matchup
-              : row.targetKind === "season_setting"
-                ? editTargets.season_setting
-                : editTargets.grouping;
+      editTargets[row.targetKind as keyof typeof editTargets] ??
+      new Set<string>();
     if (!targetSet.has(row.targetId)) {
       ledgerIssues.push({
         editId: row.id,
