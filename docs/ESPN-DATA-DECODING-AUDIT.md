@@ -50,6 +50,31 @@ source — the dictionary must also cover formats this league never used).
    id, so gaps surface immediately and never ship as `unknown`.
 5. **Backfill-safe** — re-decode is idempotent (T13) so re-importing corrects historical rows.
 
+## Impact on the data system we built (T4–T14) — verified, before any change
+The fix lives in the **ingestion/normalization layer** (how provider codes decode into values). Verified against the
+code, it is **orthogonal to the data/records architecture**:
+- **Pushed snapshot / Record Book (T9–T11): UNAFFECTED.** `CuratedSeasonSnapshot` is team/person/matchup/settings-level
+  only — it does NOT contain player/roster data. The Record Book reads that snapshot, so correcting player
+  position/slot/scoring decoding does not touch records, the lens, or the catalog. (Future *player-level* records
+  would benefit, but none exist yet.)
+- **Curated-state / save-push / Edit Ledger (T4, T7, T8): UNAFFECTED.** They operate on persons/teams/matchups/settings
+  — not player codes. No re-push is required by the player-decoding fix (player data isn't in the snapshot).
+- **Data Book — People & Settings grains: ~unaffected** (settings get correct slot *labels* — display only; the raw
+  ids/era signature are unchanged). **Weeks/rosters grain (T14): IMPROVES** — it reads live `fantasy_roster_entries`,
+  so correct positions/slots appear on **re-import, with no re-push.**
+- **Era auto-proposal (T10): UNAFFECTED structurally** — it compares raw `lineupSlotCounts` id signatures, not labels.
+- **Clean-import guarantee (T13): COMPLEMENTARY** — the new coverage invariant is the same philosophy as T13's
+  provider-id invariant; T13's idempotent reconciliation makes re-decoding/backfill safe.
+- **Player-depth (T14): the captured data gets CORRECTED** (positions/slots/scoring) — the intended improvement.
+- **Schema:** position/`proTeam` are existing text columns → value corrections (no destructive change); the per-stat
+  **scoring breakdown is NEW (additive tables/columns)**; nothing existing is dropped.
+
+**Careful points (deliberate, not risky):** (1) backfill = a **re-import** to correct historical rows — idempotent per
+T13, **no re-push needed**; (2) **sequence** the coverage invariant to turn on *after* re-decoding so it doesn't flag
+stale rows; (3) **maintenance** — update tests/fixtures that assert old position values + refresh the Data Book Weeks
+screenshot. Net: low architectural risk; additive + corrective at the ingestion layer; the only visible behavior change
+is the Data Book rosters showing correct positions/slots.
+
 ## Scope
 ESPN first (we have real data) — complete + correct + coverage-guarded. Sleeper/Yahoo = a dictionary each, same
 canonical model, later. This is a general data-correctness foundation, not a per-league patch.
