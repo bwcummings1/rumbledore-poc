@@ -1,6 +1,6 @@
 # Rumbledore — Phase Roadmap
 
-The durable phase plan toward the North Star (`docs/NORTH-STAR.md`). Disposable per-phase backlogs live in `IMPLEMENTATION_PLAN.md`; this file is the stable map of what each phase is and what still remains. Timeline anchors: **~1 month to football buzz, ~3 months to the season** (season opens ~Sept 2026; this was written in the June 2026 offseason).
+The durable phase plan toward the North Star (`docs/NORTH-STAR.md`). Live state lives in `docs/PROGRESS.md`; this file is the stable map of what each phase is and what still remains. (The old `IMPLEMENTATION_PLAN.md` loop-backlog is retired/historical — see the banner atop that file.) Timeline anchors: **~1 month to football buzz, ~3 months to the season** (season opens ~Sept 2026; this was written in the June 2026 offseason).
 
 > **Status (2026-06-24) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3,
 > the AUSPEX UI/UX overhaul, Increment 1 (`specs/36`–`41`), and the data-foundation T1–T16 arc are **done and on

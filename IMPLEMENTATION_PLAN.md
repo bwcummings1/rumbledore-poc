@@ -1,5 +1,10 @@
 # IMPLEMENTATION_PLAN.md — Hardening Pass: Audit Findings
 
+> **⚠️ HISTORICAL / ARCHIVED — do NOT treat as live.** This is a relic of the retired autonomous "Ralph loop"
+> (`loop.sh`, `PROMPT_build.md`/`PROMPT_harden.md`/`PROMPT_plan.md` — all retired). It captured the 2026-06-16
+> hardening backlog against `specs/35` (since renumbered to `specs/00–09`), and all its items are long since done.
+> **For LIVE state → `docs/PROGRESS.md`. For the phase plan / what's next → `docs/ROADMAP.md`.** Kept only for history.
+
 Disposable, loop-maintained backlog. The loop works `## Scope` until none unblocked + gates green (writes `.loop/SCOPE_DONE`), then auto-runs the value-ranked `## Icebox` ×10 (`PROMPT_harden.md`), then stops at the review checkpoint. **This is the LAST autonomous pass — nothing chains after it; it stops for review when done.**
 One task = one sentence, no "and". **Spec of record: `specs/35`. Build toward `docs/NORTH-STAR.md`.** Phases 1–5 are complete (git history + `docs/PROGRESS.md §8`). Source: the 2026-06-16 5-agent audit.
 

@@ -1,7 +1,21 @@
 # AGENTS.md — Rumbledore v2 operational guide
 
-Keep this lean and operational. Vision/architecture/state live in `docs/PROGRESS.md` and `specs/`.
-Status notes do NOT go here — they go in `IMPLEMENTATION_PLAN.md`.
+Keep this lean and operational. This file is HOW to work; the WHAT/WHY live in the docs below.
+
+## Start here — documentation map (read in this order)
+1. **`docs/NORTH-STAR.md`** — the product's soul (what Rumbledore *is* + why): data substrate → AI cast/spectacle →
+   league-vs-league competition. The orienting truth every spec derives from.
+2. **`specs/00-09`** — the full product + architecture spec set (product, architecture, foundation, ingestion,
+   onboarding, feeds/home, stats/records, AI content, betting, platform services).
+3. **`docs/PROGRESS.md`** — the SINGLE SOURCE OF TRUTH for live state: what's built, what's current, what's next.
+   Read this first to know where the project actually is. (State/status notes go HERE.)
+4. **`docs/ROADMAP.md`** — the durable phase plan toward the North Star (done vs. next; the deferred follow-ons).
+5. **`docs/DATA-FOUNDATION-{DESIGN,PLAN,AUDIT}.md`** + **`.orchestration/handoff/T*.md`** — the recent data-foundation
+   arc (T1–T17): substrate/curation/records model, the ESPN decoding audit, and the per-task handoffs (task ledger).
+6. **`ORCHESTRATION.md`** (operating model — orchestrator + workstream agents) + **`DESIGN.md`** (AUSPEX design).
+
+> **Retired relics — do NOT treat as live:** `IMPLEMENTATION_PLAN.md`, `loop.sh`, `PROMPT_build.md`/`PROMPT_harden.md`/
+> `PROMPT_plan.md` (the autonomous Ralph loop). Live state → `docs/PROGRESS.md`; plan → `docs/ROADMAP.md`.
 
 > **Operating model (2026-06-18): `ORCHESTRATION.md` is authoritative.** The autonomous Ralph loop is **retired** (`loop.sh` is guarded off; `PROMPT_build.md` / `PROMPT_harden.md` / `PROMPT_plan.md` and the "pick the next `IMPLEMENTATION_PLAN.md` task and loop" model are **historical** — do not follow them). You are either the **orchestrator** or a **workstream agent**: read `ORCHESTRATION.md` for your role, your file-ownership boundary, and the per-round commit→push→(orchestrator-)merge protocol. Everything below (gates, hard rules, conventions, gotchas) still applies.
 
@@ -28,7 +42,7 @@ Inngest (jobs) · Upstash Redis · Supabase Realtime · Anthropic SDK (no LangCh
 
 ## Hard rules
 - NEVER disable gates. No `ignoreBuildErrors`, no `eslint.ignoreDuringBuilds`, no skipping tests to go green.
-- Implement COMPLETELY. No stubs/placeholders/TODO-as-done. If you must defer, write it in `IMPLEMENTATION_PLAN.md`.
+- Implement COMPLETELY. No stubs/placeholders/TODO-as-done. If you must defer, record it in `docs/PROGRESS.md` (live state) / `docs/ROADMAP.md` (phase plan).
 - League isolation is sacred: every league-scoped query filters `WHERE league_id = …` AND relies on Postgres RLS. Central/arena tables are the only cross-league ones.
 - Secrets live ONLY in `.env.local` (gitignored). Never commit secrets. Never log cookies/tokens.
 - ESPN calls are server-side only. Real test fixture: league `95050` season `2026` (creds in `.env.local`). Mock paid APIs (Anthropic/Odds/SportsDataIO/Tavily/Browserbase) behind interfaces until keys exist.
