@@ -3,6 +3,8 @@
 Keep this lean and operational. This file is HOW to work; the WHAT/WHY live in the docs below.
 
 ## Start here — documentation map (read in this order)
+**New here? Read [`docs/START-HERE.md`](docs/START-HERE.md) first** — the one-page onboarding (what Rumbledore is,
+current state, what's left, and this reading order). Then, in order:
 1. **`docs/NORTH-STAR.md`** — the product's soul (what Rumbledore *is* + why): data substrate → AI cast/spectacle →
    league-vs-league competition. The orienting truth every spec derives from.
 2. **`specs/00-09`** — the full product + architecture spec set (product, architecture, foundation, ingestion,
