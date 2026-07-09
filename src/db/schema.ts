@@ -3091,6 +3091,57 @@ export const aiPersonaCards = pgTable(
   ],
 );
 
+export const aiPersonaToneHistory = pgTable(
+  "ai_persona_tone_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    personaCardId: uuid("persona_card_id")
+      .notNull()
+      .references(() => aiPersonaCards.id, { onDelete: "cascade" }),
+    persona: aiPersona("persona").notNull(),
+    toneVersion: integer("tone_version").notNull(),
+    toneProfile: jsonb("tone_profile").$type<unknown>().notNull(),
+    toneUpdatedBy: text("tone_updated_by"),
+    toneUpdatedAt: timestamp("tone_updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    source: text("source").notNull().default(sql`'edit'`),
+    sourceToneVersion: integer("source_tone_version"),
+    reason: text("reason").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_persona_tone_history_league_persona_version_unique").on(
+      table.leagueId,
+      table.persona,
+      table.toneVersion,
+    ),
+    index("ai_persona_tone_history_card_created_idx").on(
+      table.leagueId,
+      table.personaCardId,
+      table.createdAt,
+    ),
+    pgPolicy("ai_persona_tone_history_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "ai_persona_tone_history_version_positive",
+      sql`${table.toneVersion} > 0`,
+    ),
+    check(
+      "ai_persona_tone_history_source_valid",
+      sql`${table.source} IN ('seed', 'edit', 'rollback')`,
+    ),
+  ],
+);
+
 export const editorialActions = pgTable(
   "editorial_actions",
   {
@@ -4087,6 +4138,8 @@ export type NewPushNotificationPreference =
   typeof pushNotificationPreferences.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
+export type AiPersonaToneHistory = typeof aiPersonaToneHistory.$inferSelect;
+export type NewAiPersonaToneHistory = typeof aiPersonaToneHistory.$inferInsert;
 export type EditorialAction = typeof editorialActions.$inferSelect;
 export type NewEditorialAction = typeof editorialActions.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;

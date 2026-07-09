@@ -6,6 +6,10 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { withLeagueContext } from "./rls";
 import {
+  type AiPersonaCard,
+  type AiPersonaToneHistory,
+  aiPersonaCards,
+  aiPersonaToneHistory,
   bankrollLedger,
   bankrollWeeks,
   type ContentItem,
@@ -79,6 +83,10 @@ let contentB: ContentItem;
 let centralContent: ContentItem;
 let editorialActionA: EditorialAction;
 let editorialActionB: EditorialAction;
+let personaCardA: AiPersonaCard;
+let personaCardB: AiPersonaCard;
+let toneHistoryA: AiPersonaToneHistory;
+let toneHistoryB: AiPersonaToneHistory;
 let userA: User;
 let userB: User;
 let bankrollWeekA: { id: string; leagueId: string };
@@ -152,7 +160,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, editorial_actions, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -255,6 +263,82 @@ beforeAll(async () => {
         leagueId: null,
         summary: "Central summary",
         title: "Central news",
+      },
+    ])
+    .returning();
+
+  [personaCardA, personaCardB] = await admin.db
+    .insert(aiPersonaCards)
+    .values([
+      {
+        beat: "Canary commissioner beat A",
+        leagueId: leagueA,
+        name: "Commissioner A",
+        persona: "commissioner",
+        pointOfView: "Canary league A point of view.",
+        promptTemplate: "Canary prompt A",
+        purpose: "Canary persona A",
+        tone: "Canary tone A",
+        toneProfile: {
+          beats: ["canary beat A"],
+          diction: ["canary"],
+          dosAndDonts: ["Do keep league A isolated."],
+          guardrails: {
+            loreCanonContract: ["A canon only"],
+            noLeakage: ["A no leakage"],
+            noRealMoney: ["A no money"],
+            untrustedNews: ["A news"],
+          },
+          pointOfView: "Canary league A point of view.",
+          styleDirectives: ["A style"],
+        },
+      },
+      {
+        beat: "Canary commissioner beat B",
+        leagueId: leagueB,
+        name: "Commissioner B",
+        persona: "commissioner",
+        pointOfView: "Canary league B point of view.",
+        promptTemplate: "Canary prompt B",
+        purpose: "Canary persona B",
+        tone: "Canary tone B",
+        toneProfile: {
+          beats: ["canary beat B"],
+          diction: ["canary"],
+          dosAndDonts: ["Do keep league B isolated."],
+          guardrails: {
+            loreCanonContract: ["B canon only"],
+            noLeakage: ["B no leakage"],
+            noRealMoney: ["B no money"],
+            untrustedNews: ["B news"],
+          },
+          pointOfView: "Canary league B point of view.",
+          styleDirectives: ["B style"],
+        },
+      },
+    ])
+    .returning();
+
+  [toneHistoryA, toneHistoryB] = await admin.db
+    .insert(aiPersonaToneHistory)
+    .values([
+      {
+        leagueId: leagueA,
+        persona: "commissioner",
+        personaCardId: personaCardA.id,
+        source: "seed",
+        toneProfile: personaCardA.toneProfile,
+        toneUpdatedBy: "canary",
+        toneVersion: 1,
+      },
+      {
+        leagueId: leagueB,
+        persona: "commissioner",
+        personaCardId: personaCardB.id,
+        source: "seed",
+        toneProfile: personaCardB.toneProfile,
+        toneUpdatedBy: "canary",
+        toneVersion: 1,
       },
     ])
     .returning();
@@ -684,6 +768,17 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("sees no persona tone history rows outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(aiPersonaToneHistory)
+      .where(
+        inArray(aiPersonaToneHistory.id, [toneHistoryA.id, toneHistoryB.id]),
+      );
+
+    expect(rows).toHaveLength(0);
+  });
+
   it("sees no bankroll rows at all outside a league context", async () => {
     const weeks = await canary.db
       .select()
@@ -848,6 +943,16 @@ describe("two-league isolation under withLeagueContext", () => {
 
     expect(rows.map((row) => row.id)).toContain(editorialActionA.id);
     expect(rows.map((row) => row.id)).not.toContain(editorialActionB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered persona tone history scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(aiPersonaToneHistory),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(toneHistoryA.id);
+    expect(rows.map((row) => row.id)).not.toContain(toneHistoryB.id);
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
@@ -1020,6 +1125,23 @@ describe("two-league isolation under withLeagueContext", () => {
             leagueId: leagueB,
             reason: "bad cross-league retract",
             targetContentItemId: contentB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing league B persona tone history from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(aiPersonaToneHistory).values({
+            leagueId: leagueB,
+            persona: "commissioner",
+            personaCardId: personaCardB.id,
+            source: "edit",
+            toneProfile: toneHistoryB.toneProfile,
+            toneVersion: 2,
           }),
         ),
       ),
@@ -1231,6 +1353,19 @@ describe("two-league isolation under withLeagueContext", () => {
             .update(editorialActions)
             .set({ reason: "mutated" })
             .where(eq(editorialActions.id, editorialActionA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct persona tone history mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(aiPersonaToneHistory)
+            .set({ reason: "mutated" })
+            .where(eq(aiPersonaToneHistory.id, toneHistoryA.id)),
         ),
       ),
     ).toBe("55000");

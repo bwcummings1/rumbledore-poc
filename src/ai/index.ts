@@ -63,6 +63,18 @@ export {
   MockWebGrounding,
 } from "./mocks";
 export {
+  editPersonaToneProfile,
+  getLeagueToneProfileEditorData,
+  type LeagueToneProfileEditorData,
+  type LeagueToneProfileEditorLoadResult,
+  type PersonaToneEditorCard,
+  type PersonaToneHistoryEntry,
+  type PersonaToneMutationResult,
+  type PersonaTonePreviewResult,
+  previewPersonaToneProfile,
+  rollbackPersonaToneProfile,
+} from "./persona-tone-editor";
+export {
   AI_PERSONAS,
   type AiPersona,
   DEFAULT_PERSONA_CARDS,
