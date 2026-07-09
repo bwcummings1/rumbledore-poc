@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getArenaLeaderboardData } from "@/betting/arena";
-import { contentItemIsPublished } from "@/content/lifecycle";
+import {
+  contentItemIsPublished,
+  supersedingContentDedupKey,
+} from "@/content/lifecycle";
 import { DEFAULT_ENTITLEMENT_CAPS } from "@/core/env/schema";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
@@ -103,6 +106,10 @@ export interface GenerateLeagueBlogPostInput {
   persona: AiPersona;
   contentType: AiContentType;
   triggerKey: string;
+  supersedes?: {
+    contentItemId: string;
+    dedupKey: string;
+  };
 }
 
 export interface AiGenerationDependencies {
@@ -218,6 +225,12 @@ function generationRunTriggerKey(input: GenerateLeagueBlogPostInput): string {
 }
 
 function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
+  if (input.supersedes) {
+    return supersedingContentDedupKey({
+      dedupKey: input.supersedes.dedupKey,
+      id: input.supersedes.contentItemId,
+    });
+  }
   return `blog:${input.persona}:${input.contentType}:${input.triggerKey}`;
 }
 
@@ -2033,6 +2046,7 @@ async function publishDraft({
           }),
           publishedAt: timestamp,
           summary: draft.summary,
+          supersedesContentItemId: input.supersedes?.contentItemId,
           title: draft.title,
         })
         .onConflictDoNothing({

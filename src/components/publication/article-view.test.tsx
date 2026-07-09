@@ -46,6 +46,10 @@ const baseData: PublicationArticleViewData = {
       },
     ],
     kind: "blog",
+    lifecycle: {
+      status: "published",
+      statusChangedAt: "2026-06-11T12:00:00.000Z",
+    },
     publishedAt: "2026-06-11T12:00:00.000Z",
     section: {
       href: "/leagues/league-1/press/recaps",
@@ -140,6 +144,10 @@ test("publication article view treats central news as source-authored", () => {
           heroImageUrl: "",
           inlineDataBlocks: [],
           kind: "news",
+          lifecycle: {
+            status: "published",
+            statusChangedAt: "2026-06-11T12:00:00.000Z",
+          },
           sourceUrl: "https://news.example.com/story",
           tags: [],
         },
@@ -163,4 +171,86 @@ test("publication article view treats central news as source-authored", () => {
   expect(
     screen.getByRole("link", { name: /open source/i }).getAttribute("href"),
   ).toBe("https://news.example.com/story");
+});
+
+test("publication article view renders lifecycle controls and ledger for managed league posts", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          lifecycle: {
+            retractionReason: "Wrong matchup winner.",
+            status: "retracted",
+            statusChangedAt: "2026-06-12T12:00:00.000Z",
+          },
+        },
+        editorial: {
+          canManage: true,
+          ledgerEntries: [
+            {
+              actorDisplayName: "Commissioner",
+              actorUserId: "00000000-0000-4000-8000-000000000010",
+              afterValue: {
+                reason: "Wrong matchup winner.",
+                status: "retracted",
+              },
+              beforeValue: { status: "published" },
+              createdAt: "2026-06-12T12:00:00.000Z",
+              editClass: "substantive",
+              field: "retract",
+              id: "editorial-action-1",
+              reason: "Wrong matchup winner.",
+              scope: null,
+              source: "editorial_action",
+              targetId: "post-1",
+              targetKind: "content_item",
+            },
+          ],
+          regenerateApiUrl: "/api/leagues/league-1/press/post-1/regenerate",
+          retractApiUrl: "/api/leagues/league-1/press/post-1/retract",
+        },
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByRole("region", { name: "Retracted article" }),
+  ).toBeDefined();
+  expect(screen.getByText("Wrong matchup winner.")).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Article body" })).toBeNull();
+  expect(
+    screen.getByRole("complementary", { name: "Editorial ledger" }),
+  ).toBeDefined();
+  const editorialControls = screen.getByLabelText("Editorial controls");
+  expect(editorialControls).toBeDefined();
+  expect(
+    within(editorialControls)
+      .getByRole("button", { name: /retract/i })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+});
+
+test("publication article view links superseded posts to their replacement", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          lifecycle: {
+            replacementHref: "/leagues/league-1/press/post-3",
+            replacementTitle: "Updated fixture story",
+            status: "superseded",
+            statusChangedAt: "2026-06-12T13:00:00.000Z",
+          },
+        },
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByRole("link", { name: /updated version/i }).getAttribute("href"),
+  ).toBe("/leagues/league-1/press/post-3");
 });

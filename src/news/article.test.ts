@@ -401,8 +401,14 @@ describe("publication articles", () => {
       bylineDetail: "Custom rivalry voice for this league.",
       dek: "A league-specific rivalry dek.",
       headline: "Narrator files the rivalry column",
+      lifecycle: { status: "published" },
       section: { label: "Recaps" },
       tags: ["Fixture Team 01", "Rivalry Week"],
+    });
+    expect(result.data.editorial).toMatchObject({
+      canManage: true,
+      regenerateApiUrl: `/api/leagues/${leagueAId}/press/${leagueArticleId}/regenerate`,
+      retractApiUrl: `/api/leagues/${leagueAId}/press/${leagueArticleId}/retract`,
     });
     expect(result.data.article.inlineDataBlocks).toEqual([
       {
@@ -469,35 +475,69 @@ describe("publication articles", () => {
     ).not.toContain("League B should not leak");
   });
 
-  it("does not load a superseded league article through the press reader", async () => {
-    const [hidden] = await withLeagueContext(handle.db, leagueAId, async (tx) =>
-      tx
-        .insert(contentItems)
-        .values({
-          authorPersona: "analyst",
-          body: "Hidden league article body.",
-          contentHash: `${marker}-league-hidden-article-hash`,
-          dedupKey: `${marker}-league-hidden-article`,
-          kind: "blog",
-          leagueId: leagueAId,
-          publishedAt: new Date("2026-06-11T18:00:00.000Z"),
-          status: "superseded",
-          summary: "Hidden league article summary.",
-          title: "Hidden league article",
-        })
-        .returning({ id: contentItems.id }),
+  it("loads a superseded league article old link with replacement lineage", async () => {
+    const [original] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "analyst",
+            body: "Superseded league article body.",
+            contentHash: `${marker}-league-hidden-article-hash`,
+            dedupKey: `${marker}-league-hidden-article`,
+            kind: "blog",
+            leagueId: leagueAId,
+            publishedAt: new Date("2026-06-11T18:00:00.000Z"),
+            status: "superseded",
+            summary: "Hidden league article summary.",
+            title: "Hidden league article",
+          })
+          .returning({ id: contentItems.id }),
     );
-    if (!hidden) {
-      throw new Error("hidden league article was not inserted");
+    if (!original) {
+      throw new Error("superseded league article was not inserted");
+    }
+    const [replacement] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "analyst",
+            body: "Replacement league article body.",
+            contentHash: `${marker}-league-replacement-article-hash`,
+            dedupKey: `${marker}-league-replacement-article`,
+            kind: "blog",
+            leagueId: leagueAId,
+            publishedAt: new Date("2026-06-11T19:00:00.000Z"),
+            summary: "Replacement league article summary.",
+            supersedesContentItemId: original.id,
+            title: "Replacement league article",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!replacement) {
+      throw new Error("replacement league article was not inserted");
     }
 
-    await expect(
-      getLeaguePressArticleData(handle.db, {
-        leagueId: leagueAId,
-        postId: hidden.id,
-        userId,
-      }),
-    ).resolves.toEqual({ status: "not_found" });
+    const result = await getLeaguePressArticleData(handle.db, {
+      leagueId: leagueAId,
+      postId: original.id,
+      userId,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected superseded result: ${result.status}`);
+    }
+    expect(result.data.article.lifecycle).toMatchObject({
+      replacementHref: `/leagues/${leagueAId}/press/${replacement.id}`,
+      replacementTitle: "Replacement league article",
+      status: "superseded",
+    });
   });
 
   it("does not expose league articles to non-members", async () => {

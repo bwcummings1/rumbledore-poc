@@ -226,6 +226,14 @@ export const contentItemStatus = pgEnum("content_item_status", [
   "retracted",
 ]);
 
+export const editorialAction = pgEnum("editorial_action", [
+  "retract",
+  "regenerate",
+  "correct",
+  "tone_edit",
+  "tone_rollback",
+]);
+
 export const aiPersona = pgEnum("ai_persona", [
   "commissioner",
   "analyst",
@@ -3083,6 +3091,73 @@ export const aiPersonaCards = pgTable(
   ],
 );
 
+export const editorialActions = pgTable(
+  "editorial_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    action: editorialAction("action").notNull(),
+    targetContentItemId: uuid("target_content_item_id").references(
+      () => contentItems.id,
+      { onDelete: "cascade" },
+    ),
+    targetPersonaCardId: uuid("target_persona_card_id").references(
+      () => aiPersonaCards.id,
+      { onDelete: "cascade" },
+    ),
+    reason: text("reason").notNull().default(""),
+    beforeContentItemId: uuid("before_content_item_id").references(
+      () => contentItems.id,
+      { onDelete: "set null" },
+    ),
+    afterContentItemId: uuid("after_content_item_id").references(
+      () => contentItems.id,
+      { onDelete: "set null" },
+    ),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("editorial_actions_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("editorial_actions_content_idx").on(
+      table.leagueId,
+      table.targetContentItemId,
+      table.createdAt,
+    ),
+    index("editorial_actions_persona_idx").on(
+      table.leagueId,
+      table.targetPersonaCardId,
+      table.createdAt,
+    ),
+    pgPolicy("editorial_actions_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "editorial_actions_target_required",
+      sql`${table.targetContentItemId} IS NOT NULL OR ${table.targetPersonaCardId} IS NOT NULL`,
+    ),
+    check(
+      "editorial_actions_retract_reason_required",
+      sql`${table.action} <> 'retract' OR length(btrim(${table.reason})) > 0`,
+    ),
+  ],
+);
+
 export const aiGenerationRuns = pgTable(
   "ai_generation_run",
   {
@@ -4012,6 +4087,8 @@ export type NewPushNotificationPreference =
   typeof pushNotificationPreferences.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
+export type EditorialAction = typeof editorialActions.$inferSelect;
+export type NewEditorialAction = typeof editorialActions.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;
 export type NewAiGenerationRun = typeof aiGenerationRuns.$inferInsert;
 export type AiMemory = typeof aiMemory.$inferSelect;

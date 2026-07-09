@@ -23,6 +23,10 @@ const data: LeaguePressArticleData = {
     id: "00000000-0000-4000-8000-000000000101",
     inlineDataBlocks: [],
     kind: "blog",
+    lifecycle: {
+      status: "published",
+      statusChangedAt: "2026-06-11T14:30:00.000Z",
+    },
     publishedAt: "2026-06-11T14:30:00.000Z",
     section: {
       href: "/leagues/00000000-0000-4000-8000-000000000001/press/recaps",

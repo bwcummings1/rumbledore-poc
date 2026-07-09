@@ -4,7 +4,7 @@ import { InngestTestEngine } from "@inngest/test";
 import { and, eq, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createMockAiDependencies } from "@/ai";
+import { createMockAiDependencies, MockLlmJudge } from "@/ai";
 import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -173,6 +173,31 @@ describe("content.generate Inngest function", () => {
     expect(runs[0]).toMatchObject({
       status: "blocked_entitlement",
     });
+  });
+
+  it("uses the judge-gated pipeline for cadence and reactive publish events", async () => {
+    const judge = new MockLlmJudge();
+    const result = await runContentGenerate({
+      data: {
+        contentType: "weekly_recap",
+        leagueId,
+        persona: "narrator",
+        triggerKey: "job:judge-gated",
+      },
+      deps: {
+        ...createMockAiDependencies(handle.db),
+        duplicateThreshold: 1.1,
+        judge,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+      },
+    });
+
+    expect(result).toMatchObject({
+      eventName: JOB_EVENTS.contentGenerate,
+      ok: true,
+      status: "published",
+    });
+    expect(judge.requests.length).toBeGreaterThanOrEqual(1);
   });
 
   it("blocks free-league instigation candidates before seeding polls or lore", async () => {

@@ -1,8 +1,9 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   buildPersonaBylineMap,
   resolvePersonaByline,
 } from "@/ai/persona-display";
+import type { EditLedgerEntry } from "@/components/curation/edit-ledger-types";
 import type { PublicationStory } from "@/components/publication/story";
 import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
@@ -10,11 +11,13 @@ import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   aiPersonaCards,
   contentItems,
+  editorialActions,
   leagueFeedReferences,
   leagues,
   loreClaims,
   type Member,
   members,
+  users,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
 import {
@@ -88,6 +91,19 @@ export interface PublicationArticleViewData {
     heroImageUrl: string;
     sourceUrl: string;
     canonCitations: PublicationArticleCanonCitation[];
+    lifecycle: {
+      status: "published" | "retracted" | "superseded";
+      statusChangedAt: string;
+      replacementHref?: string;
+      replacementTitle?: string;
+      retractionReason?: string;
+    };
+  };
+  editorial?: {
+    canManage: boolean;
+    ledgerEntries: readonly EditLedgerEntry[];
+    regenerateApiUrl: string;
+    retractApiUrl: string;
   };
   relatedStories: PublicationArticleStory[];
 }
@@ -152,6 +168,14 @@ function metadataNumber(value: unknown): number | null {
 
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function canManageEditorial(role: Member["role"]): boolean {
+  return (
+    role === "commissioner" ||
+    role === "data_steward" ||
+    role === "league_admin"
+  );
 }
 
 function articleStructure(metadata: unknown): Record<string, unknown> {
@@ -526,6 +550,74 @@ function selectRelatedStories(
     }));
 }
 
+type EditorialActionRow = {
+  action: "correct" | "regenerate" | "retract" | "tone_edit" | "tone_rollback";
+  actorDisplayName: string | null;
+  actorUserId: string | null;
+  afterContentItemId: string | null;
+  beforeContentItemId: string | null;
+  createdAt: Date;
+  id: string;
+  metadata: Record<string, unknown>;
+  reason: string;
+  targetContentItemId: string | null;
+  targetPersonaCardId: string | null;
+};
+
+function editorialActionLabel(action: EditorialActionRow["action"]): string {
+  return action.replaceAll("_", " ");
+}
+
+function editorialLedgerValue(
+  row: EditorialActionRow,
+  side: "after" | "before",
+): Record<string, unknown> {
+  const contentItemId =
+    side === "after" ? row.afterContentItemId : row.beforeContentItemId;
+  const status =
+    side === "after"
+      ? row.action === "retract"
+        ? "retracted"
+        : row.action === "regenerate"
+          ? row.afterContentItemId
+            ? "replacement published"
+            : "generation did not publish"
+          : editorialActionLabel(row.action)
+      : row.beforeContentItemId
+        ? "previous article"
+        : "none";
+
+  return {
+    ...(contentItemId ? { contentItemId } : {}),
+    action: editorialActionLabel(row.action),
+    reason: row.reason || "none",
+    status,
+  };
+}
+
+function editorialRowsToLedgerEntries(
+  rows: readonly EditorialActionRow[],
+): EditLedgerEntry[] {
+  return rows.map((row) => ({
+    actorDisplayName: row.actorDisplayName,
+    actorUserId: row.actorUserId,
+    afterValue: editorialLedgerValue(row, "after"),
+    beforeValue: editorialLedgerValue(row, "before"),
+    createdAt: row.createdAt.toISOString(),
+    editClass:
+      row.action === "tone_edit" || row.action === "tone_rollback"
+        ? "cosmetic"
+        : "substantive",
+    field: row.action,
+    id: row.id,
+    reason: row.reason || null,
+    scope: null,
+    source: "editorial_action",
+    targetId: row.targetContentItemId ?? row.targetPersonaCardId,
+    targetKind: row.targetPersonaCardId ? "persona_card" : "content_item",
+  }));
+}
+
 async function loadCanonCitationsInContext(
   tx: LeagueScopedTx,
   input: { claimIds: readonly string[]; leagueId: string },
@@ -679,6 +771,10 @@ export async function getCentralNewsArticleData(
         sourceUrl: sourceUrlFor(row.metadata, row.sourceUrl),
         tags,
         canonCitations: [],
+        lifecycle: {
+          status: "published",
+          statusChangedAt: row.publishedAt.toISOString(),
+        },
       },
       backHref: "/news",
       backLabel: "News front",
@@ -751,6 +847,8 @@ export async function getLeaguePressArticleData(
         id: contentItems.id,
         metadata: contentItems.metadata,
         publishedAt: contentItems.publishedAt,
+        status: contentItems.status,
+        statusChangedAt: contentItems.statusChangedAt,
         summary: contentItems.summary,
         title: contentItems.title,
       })
@@ -760,7 +858,6 @@ export async function getLeaguePressArticleData(
           eq(contentItems.id, input.postId),
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
-          contentItemIsPublished(),
         ),
       )
       .limit(1);
@@ -792,6 +889,57 @@ export async function getLeaguePressArticleData(
       claimIds: articleLoreCitationIds(articleRow.metadata),
       leagueId: input.leagueId,
     });
+    const editorialRows = await tx
+      .select({
+        action: editorialActions.action,
+        actorDisplayName: users.displayName,
+        actorUserId: editorialActions.actorUserId,
+        afterContentItemId: editorialActions.afterContentItemId,
+        beforeContentItemId: editorialActions.beforeContentItemId,
+        createdAt: editorialActions.createdAt,
+        id: editorialActions.id,
+        metadata: editorialActions.metadata,
+        reason: editorialActions.reason,
+        targetContentItemId: editorialActions.targetContentItemId,
+        targetPersonaCardId: editorialActions.targetPersonaCardId,
+      })
+      .from(editorialActions)
+      .leftJoin(users, eq(editorialActions.actorUserId, users.id))
+      .where(
+        and(
+          eq(editorialActions.leagueId, input.leagueId),
+          or(
+            eq(editorialActions.targetContentItemId, articleRow.id),
+            eq(editorialActions.beforeContentItemId, articleRow.id),
+            eq(editorialActions.afterContentItemId, articleRow.id),
+          ),
+        ),
+      )
+      .orderBy(desc(editorialActions.createdAt), desc(editorialActions.id))
+      .limit(12);
+    const retraction = editorialRows.find(
+      (row) =>
+        row.action === "retract" && row.targetContentItemId === articleRow.id,
+    );
+    const [replacement] =
+      articleRow.status === "superseded"
+        ? await tx
+            .select({ id: contentItems.id, title: contentItems.title })
+            .from(contentItems)
+            .where(
+              and(
+                eq(contentItems.leagueId, input.leagueId),
+                eq(contentItems.kind, "blog"),
+                eq(contentItems.supersedesContentItemId, articleRow.id),
+                contentItemIsPublished(),
+              ),
+            )
+            .orderBy(
+              desc(contentItems.publishedAt),
+              desc(contentItems.createdAt),
+            )
+            .limit(1)
+        : [];
 
     const leagueRows = await tx
       .select({
@@ -943,6 +1091,25 @@ export async function getLeaguePressArticleData(
         sourceUrl: "",
         tags,
         canonCitations,
+        lifecycle: {
+          status: articleRow.status,
+          statusChangedAt: articleRow.statusChangedAt.toISOString(),
+          ...(replacement
+            ? {
+                replacementHref: `/leagues/${input.leagueId}/press/${replacement.id}`,
+                replacementTitle: replacement.title,
+              }
+            : {}),
+          ...(retraction?.reason
+            ? { retractionReason: retraction.reason }
+            : {}),
+        },
+      },
+      editorial: {
+        canManage: canManageEditorial(userRole),
+        ledgerEntries: editorialRowsToLedgerEntries(editorialRows),
+        regenerateApiUrl: `/api/leagues/${input.leagueId}/press/${articleRow.id}/regenerate`,
+        retractApiUrl: `/api/leagues/${input.leagueId}/press/${articleRow.id}/retract`,
       },
       relatedStories: selectRelatedStories(
         [...leagueCandidates, ...centralCandidates],

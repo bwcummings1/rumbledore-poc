@@ -12,6 +12,8 @@ import {
   contentItems,
   type DataIntegrityCheck,
   dataIntegrityChecks,
+  type EditorialAction,
+  editorialActions,
   type FantasyTeam,
   fantasyTeams,
   type Instigation,
@@ -75,6 +77,8 @@ let teamB: FantasyTeam;
 let contentA: ContentItem;
 let contentB: ContentItem;
 let centralContent: ContentItem;
+let editorialActionA: EditorialAction;
+let editorialActionB: EditorialAction;
 let userA: User;
 let userB: User;
 let bankrollWeekA: { id: string; leagueId: string };
@@ -148,7 +152,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, editorial_actions, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -251,6 +255,28 @@ beforeAll(async () => {
         leagueId: null,
         summary: "Central summary",
         title: "Central news",
+      },
+    ])
+    .returning();
+
+  [editorialActionA, editorialActionB] = await admin.db
+    .insert(editorialActions)
+    .values([
+      {
+        action: "retract",
+        actorUserId: userA.id,
+        beforeContentItemId: contentA.id,
+        leagueId: leagueA,
+        reason: "canary retract",
+        targetContentItemId: contentA.id,
+      },
+      {
+        action: "retract",
+        actorUserId: userB.id,
+        beforeContentItemId: contentB.id,
+        leagueId: leagueB,
+        reason: "canary retract",
+        targetContentItemId: contentB.id,
       },
     ])
     .returning();
@@ -644,6 +670,20 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toEqual([{ id: centralContent.id, leagueId: null }]);
   });
 
+  it("sees no editorial action rows outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(editorialActions)
+      .where(
+        inArray(editorialActions.id, [
+          editorialActionA.id,
+          editorialActionB.id,
+        ]),
+      );
+
+    expect(rows).toHaveLength(0);
+  });
+
   it("sees no bankroll rows at all outside a league context", async () => {
     const weeks = await canary.db
       .select()
@@ -801,6 +841,16 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
+  it("scoped to league A, unfiltered editorial action scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(editorialActions),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(editorialActionA.id);
+    expect(rows.map((row) => row.id)).not.toContain(editorialActionB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
   it("scoped to league A, unfiltered curation scans still yield only league A rows", async () => {
     const rows = await withLeagueContext(canary.db, leagueA, async (tx) => ({
       edits: await tx.select().from(leagueDataEdits),
@@ -953,6 +1003,23 @@ describe("two-league isolation under withLeagueContext", () => {
             leagueId: leagueB,
             season: 2026,
             status: "fail",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B editorial action from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(editorialActions).values({
+            action: "retract",
+            actorUserId: userA.id,
+            beforeContentItemId: contentB.id,
+            leagueId: leagueB,
+            reason: "bad cross-league retract",
+            targetContentItemId: contentB.id,
           }),
         ),
       ),
@@ -1151,6 +1218,19 @@ describe("two-league isolation under withLeagueContext", () => {
             .update(loreEvents)
             .set({ reason: "mutated" })
             .where(eq(loreEvents.id, loreEventA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct editorial action mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(editorialActions)
+            .set({ reason: "mutated" })
+            .where(eq(editorialActions.id, editorialActionA.id)),
         ),
       ),
     ).toBe("55000");
