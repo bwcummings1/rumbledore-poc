@@ -4,12 +4,13 @@ import { InngestTestEngine } from "@inngest/test";
 import { and, eq, sql } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createMockAiDependencies, MockLlmClient } from "@/ai";
+import { createMockAiDependencies, MockLlmClient, MockLlmJudge } from "@/ai";
 import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   aiGenerationRuns,
+  allTimeRecords,
   contentItems,
   fantasyMatchups,
   fantasyMembers,
@@ -28,6 +29,7 @@ import { MockNflCalendar, type NflWeekState } from "@/sports/nfl-calendar";
 import {
   planCronContent,
   planGameFinalContent,
+  planLaunchEditionContent,
   planTriggeredContent,
 } from "./content-planning";
 import { JOB_EVENTS } from "./events";
@@ -46,6 +48,11 @@ import {
   createContentPlanGameFinalFunction,
   runContentPlanGameFinal,
 } from "./functions/content-plan-game-final";
+import {
+  contentPlanLaunchEdition,
+  createContentPlanLaunchEditionFunction,
+  runContentPlanLaunchEdition,
+} from "./functions/content-plan-launch-edition";
 import {
   contentPlanArenaStandingsSwing,
   contentPlanBetSettled,
@@ -282,6 +289,75 @@ async function seedFinalMatchup({
   return matchup.id;
 }
 
+async function seedLaunchEditionFacts({
+  league,
+  tag,
+}: {
+  league: SeededLeague;
+  tag: string;
+}) {
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    const [homePerson, awayPerson] = await tx
+      .insert(persons)
+      .values([
+        {
+          canonicalName: `${tag} Home Manager`,
+          leagueId: league.id,
+        },
+        {
+          canonicalName: `${tag} Away Manager`,
+          leagueId: league.id,
+        },
+      ])
+      .returning({ id: persons.id });
+    if (!homePerson || !awayPerson) {
+      throw new Error("launch people were not inserted");
+    }
+
+    await tx.insert(headToHeadRecords).values({
+      currentStreakLength: 2,
+      currentStreakPersonId: homePerson.id,
+      leagueId: league.id,
+      longestStreakLength: 3,
+      longestStreakPersonId: awayPerson.id,
+      meetings: 9,
+      personAId: homePerson.id,
+      personAWins: 5,
+      personBId: awayPerson.id,
+      personBWins: 4,
+      season: 2026,
+      ties: 0,
+    });
+
+    const [previousRecord] = await tx
+      .insert(allTimeRecords)
+      .values({
+        holderPersonId: awayPerson.id,
+        isCurrent: false,
+        leagueId: league.id,
+        recordType: "highest_single_week_score",
+        scoringPeriod: 2,
+        season: 2025,
+        value: 147.6,
+      })
+      .returning({ id: allTimeRecords.id });
+    if (!previousRecord) {
+      throw new Error("launch previous record was not inserted");
+    }
+
+    await tx.insert(allTimeRecords).values({
+      holderPersonId: homePerson.id,
+      isCurrent: true,
+      leagueId: league.id,
+      previousRecordId: previousRecord.id,
+      recordType: "highest_single_week_score",
+      scoringPeriod: 4,
+      season: 2026,
+      value: 188.4,
+    });
+  });
+}
+
 async function leagueBlogPosts(leagueId: string) {
   return withLeagueContext(handle.db, leagueId, (tx) =>
     tx
@@ -289,6 +365,7 @@ async function leagueBlogPosts(leagueId: string) {
         authorPersona: contentItems.authorPersona,
         dedupKey: contentItems.dedupKey,
         id: contentItems.id,
+        metadata: contentItems.metadata,
         title: contentItems.title,
       })
       .from(contentItems)
@@ -969,6 +1046,201 @@ describe("content planning", () => {
     });
   });
 
+  it("plans a cold-start launch edition with stable natural keys", async () => {
+    const league = await seedLeague("launch-plan");
+    await seedLaunchEditionFacts({ league, tag: "launch-plan" });
+
+    const first = await planLaunchEditionContent({
+      data: { leagueId: league.id },
+      db: handle.db,
+      env: openEntitlementEnv,
+    });
+    const second = await runContentPlanLaunchEdition({
+      data: { leagueId: league.id },
+      deps: {
+        db: handle.db,
+        env: openEntitlementEnv,
+      },
+    });
+
+    expect(first).toMatchObject({
+      eventName: JOB_EVENTS.leagueConnected,
+      league: {
+        id: league.id,
+        status: "in_season",
+      },
+      skippedReason: null,
+    });
+    expect(
+      first.planned.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+        triggerKey: event.data.triggerKey,
+      })),
+    ).toEqual([
+      {
+        contentType: "season_arc",
+        persona: "narrator",
+        triggerKey: "launch-edition:v1",
+      },
+      {
+        contentType: "rivalry_piece",
+        persona: "trash_talker",
+        triggerKey: "launch-edition:v1",
+      },
+      {
+        contentType: "milestone_record",
+        persona: "analyst",
+        triggerKey: "launch-edition:v1",
+      },
+    ]);
+    expect(first.planned.map((event) => event.id)).toEqual(
+      second.planned.map((event) => event.id),
+    );
+    expect(second.sentCount).toBe(0);
+  });
+
+  it("publishes the launch edition through the judged pipeline and reuses it on replay", async () => {
+    const league = await seedLeague("launch-publish");
+    await seedLaunchEditionFacts({ league, tag: "launch-publish" });
+    const plan = await planLaunchEditionContent({
+      data: { leagueId: league.id },
+      db: handle.db,
+      env: openEntitlementEnv,
+    });
+    const judge = new MockLlmJudge();
+    const llm = new MockLlmClient();
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      judge,
+      llm,
+      now: () => new Date("2026-06-11T12:00:00.000Z"),
+    };
+
+    for (const event of plan.planned) {
+      await runContentGenerate({ data: event.data, deps });
+    }
+    for (const event of plan.planned) {
+      await runContentGenerate({ data: event.data, deps });
+    }
+
+    const posts = await leagueBlogPosts(league.id);
+    expect(posts).toHaveLength(3);
+    expect(posts.map((post) => post.dedupKey).sort()).toEqual([
+      "blog:analyst:milestone_record:launch-edition:v1",
+      "blog:narrator:season_arc:launch-edition:v1",
+      "blog:trash_talker:rivalry_piece:launch-edition:v1",
+    ]);
+    expect(
+      posts
+        .map((post) => post.metadata.contentType)
+        .sort((left, right) => String(left).localeCompare(String(right))),
+    ).toEqual(["milestone_record", "rivalry_piece", "season_arc"]);
+    expect(judge.requests).toHaveLength(3);
+    expect(
+      llm.requests.every(
+        (request) =>
+          request.context.trigger.cadence?.event === "league.connected" &&
+          request.context.trigger.cadence?.stakes.includes(
+            "cold_start_launch",
+          ) &&
+          request.prompt.userTask?.includes("cold-start issue"),
+      ),
+    ).toBe(true);
+  });
+
+  it("plans launch edition content through the Inngest step API", async () => {
+    const league = await seedLeague("job-launch");
+    const fn = createContentPlanLaunchEditionFunction(() => ({
+      db: handle.db,
+      env: openEntitlementEnv,
+    }));
+    const testEngine = new InngestTestEngine({ function: fn });
+
+    const stepRun = await testEngine.executeStep("plan-launch-edition", {
+      events: [
+        {
+          data: {
+            leagueId: league.id,
+          },
+          name: JOB_EVENTS.leagueConnected,
+        },
+      ],
+    });
+
+    expect(stepRun.result).toMatchObject({
+      eventName: JOB_EVENTS.leagueConnected,
+      ok: true,
+      planned: expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contentType: "season_arc",
+            leagueId: league.id,
+            persona: "narrator",
+            triggerKey: "launch-edition:v1",
+          }),
+          name: JOB_EVENTS.contentGenerate,
+        }),
+      ]),
+      sentCount: 0,
+      skippedReason: null,
+    });
+  });
+
+  it("keeps launch edition entitlement-aware and capped", async () => {
+    const free = await seedLeague("launch-free");
+    await expect(
+      planLaunchEditionContent({
+        data: { leagueId: free.id },
+        db: handle.db,
+        env: gatedEntitlementEnv,
+      }),
+    ).resolves.toMatchObject({
+      planned: [],
+      skippedEntitlement: {
+        leagueId: free.id,
+        reason: "TIER_REQUIRED",
+        requiredTier: "premium",
+      },
+      skippedReason: "entitlement:TIER_REQUIRED:requires_premium",
+    });
+
+    const now = new Date("2026-06-18T12:00:00.000Z");
+    const capped = await seedLeague("launch-cap");
+    await grantPremiumLeague(capped.id);
+    await seedAiGenerationRuns({
+      count: 1,
+      createdAt: now,
+      leagueId: capped.id,
+      tag: "launch-cap",
+    });
+    const env = entitlementEnv(false, {
+      ...DEFAULT_ENTITLEMENT_CAPS,
+      aiPostsPerWeek: 2,
+    });
+
+    await expect(
+      planLaunchEditionContent({
+        data: { leagueId: capped.id },
+        db: handle.db,
+        env,
+        now: () => now,
+      }),
+    ).resolves.toMatchObject({
+      planned: [
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contentType: "season_arc",
+            triggerKey: "launch-edition:v1",
+          }),
+        }),
+      ],
+      skippedEntitlement: null,
+      skippedReason: "launch_edition_capped",
+    });
+  });
+
   it("carries reactive playoff framing into the generated content task", async () => {
     const league = await seedLeague("game-final-playoff-context");
     const gameId = await seedFinalMatchup({
@@ -1457,6 +1729,20 @@ describe("content planning", () => {
     ).rejects.toBeInstanceOf(NonRetriableError);
   });
 
+  it("rejects invalid launch-edition payloads without retrying", async () => {
+    await expect(
+      runContentPlanLaunchEdition({
+        data: {
+          leagueId: "not-a-uuid",
+        },
+        deps: {
+          db: handle.db,
+          env: openEntitlementEnv,
+        },
+      }),
+    ).rejects.toBeInstanceOf(NonRetriableError);
+  });
+
   it("is exported through the shared function registry", () => {
     const cronFn = createContentPlanCronFunction({
       cadence: "weekly-wrap",
@@ -1472,6 +1758,7 @@ describe("content planning", () => {
     expect(functions).toContain(contentPlanPostOddsRefresh);
     expect(functions).toContain(contentPlanOffseasonBeat);
     expect(functions).toContain(contentPlanGameFinal);
+    expect(functions).toContain(contentPlanLaunchEdition);
     expect(functions).toContain(contentPlanTransaction);
     expect(functions).toContain(contentPlanWaiver);
     expect(functions).toContain(contentPlanRecordBroken);

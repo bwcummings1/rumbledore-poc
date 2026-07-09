@@ -28,6 +28,7 @@ import {
   type ContentGenerateData,
   type GameFinalData,
   JOB_EVENTS,
+  type LeagueConnectedData,
   type LoreCanonizedData,
   type PollClosedData,
   type RecordBrokenData,
@@ -102,6 +103,17 @@ export interface ContentPlanTriggerResult {
   skippedReason: string | null;
 }
 
+export interface ContentPlanLaunchEditionResult {
+  eventName: typeof JOB_EVENTS.leagueConnected;
+  league: {
+    id: string;
+    status: string;
+  } | null;
+  planned: PlannedContentGenerateEvent[];
+  skippedEntitlement: SkippedContentGenerationLeague | null;
+  skippedReason: string | null;
+}
+
 const ACTIVE_LEAGUE_STATUSES = ["preseason", "in_season"] as const;
 const CAP_COUNTED_GENERATION_STATUSES = ["running", "published"] as const;
 const BLOWOUT_MARGIN = 25;
@@ -143,6 +155,13 @@ const OFFSEASON_BEAT_CANDIDATES = [
 const PRESEASON_COUNTDOWN_CANDIDATES = [
   { contentType: "season_arc", persona: "commissioner" },
   { contentType: "power_rankings", persona: "analyst" },
+] as const satisfies readonly ContentCandidate[];
+
+const LAUNCH_EDITION_TRIGGER_KEY = "launch-edition:v1";
+const LAUNCH_EDITION_CANDIDATES = [
+  { contentType: "season_arc", persona: "narrator" },
+  { contentType: "rivalry_piece", persona: "trash_talker" },
+  { contentType: "milestone_record", persona: "analyst" },
 ] as const satisfies readonly ContentCandidate[];
 
 const CALENDAR_CANDIDATES: Record<
@@ -260,6 +279,29 @@ async function resolveCadenceEntitlement({
   leagueId: string;
   now?: () => Date;
 }): Promise<SkippedContentGenerationLeague | null> {
+  const budget = await resolveContentPlanningBudget({
+    db,
+    env,
+    leagueId,
+    now,
+  });
+  return budget.skippedEntitlement;
+}
+
+async function resolveContentPlanningBudget({
+  db,
+  env,
+  leagueId,
+  now,
+}: {
+  db: Db;
+  env: EntitlementResolverEnv;
+  leagueId: string;
+  now?: () => Date;
+}): Promise<{
+  remainingSlots: number;
+  skippedEntitlement: SkippedContentGenerationLeague | null;
+}> {
   const resolvedAt = now?.() ?? new Date();
   const resolution = await resolveEntitlement({
     capability: "ai.cadence.schedule",
@@ -271,7 +313,10 @@ async function resolveCadenceEntitlement({
 
   if (resolution.allowed) {
     if (resolution.reason === "DEV_OVERRIDE") {
-      return null;
+      return {
+        remainingSlots: Number.POSITIVE_INFINITY,
+        skippedEntitlement: null,
+      };
     }
 
     const generatedThisWeek = await countThisWeekAiGenerationRuns({
@@ -281,23 +326,32 @@ async function resolveCadenceEntitlement({
     });
     if (generatedThisWeek >= resolution.caps.aiPostsPerWeek) {
       return {
-        capability: "ai.cadence.schedule",
-        leagueId,
-        reason: "CAP_EXCEEDED",
-        requiredTier: resolution.requiredTier,
-        tier: resolution.tier,
+        remainingSlots: 0,
+        skippedEntitlement: {
+          capability: "ai.cadence.schedule",
+          leagueId,
+          reason: "CAP_EXCEEDED",
+          requiredTier: resolution.requiredTier,
+          tier: resolution.tier,
+        },
       };
     }
 
-    return null;
+    return {
+      remainingSlots: resolution.caps.aiPostsPerWeek - generatedThisWeek,
+      skippedEntitlement: null,
+    };
   }
 
   return {
-    capability: "ai.cadence.schedule",
-    leagueId,
-    reason: resolution.reason,
-    requiredTier: resolution.requiredTier,
-    tier: resolution.tier,
+    remainingSlots: 0,
+    skippedEntitlement: {
+      capability: "ai.cadence.schedule",
+      leagueId,
+      reason: resolution.reason,
+      requiredTier: resolution.requiredTier,
+      tier: resolution.tier,
+    },
   };
 }
 
@@ -988,5 +1042,79 @@ export async function planTriggeredContent({
     planned,
     skippedEntitlement: null,
     skippedReason: null,
+  };
+}
+
+export async function planLaunchEditionContent({
+  data,
+  db,
+  env,
+  now,
+}: {
+  data: LeagueConnectedData;
+  db: Db;
+  env: EntitlementResolverEnv;
+  now?: () => Date;
+}): Promise<ContentPlanLaunchEditionResult> {
+  const [league] = await db
+    .select({
+      id: leagues.id,
+      status: leagues.status,
+    })
+    .from(leagues)
+    .where(eq(leagues.id, data.leagueId))
+    .limit(1);
+
+  if (!league) {
+    return {
+      eventName: JOB_EVENTS.leagueConnected,
+      league: null,
+      planned: [],
+      skippedEntitlement: null,
+      skippedReason: "league_not_found",
+    };
+  }
+
+  const budget = await resolveContentPlanningBudget({
+    db,
+    env,
+    leagueId: data.leagueId,
+    now,
+  });
+  if (budget.skippedEntitlement) {
+    return {
+      eventName: JOB_EVENTS.leagueConnected,
+      league,
+      planned: [],
+      skippedEntitlement: budget.skippedEntitlement,
+      skippedReason: entitlementSkippedReason(budget.skippedEntitlement),
+    };
+  }
+
+  const candidateLimit = Number.isFinite(budget.remainingSlots)
+    ? Math.max(
+        0,
+        Math.min(LAUNCH_EDITION_CANDIDATES.length, budget.remainingSlots),
+      )
+    : LAUNCH_EDITION_CANDIDATES.length;
+  const planned = LAUNCH_EDITION_CANDIDATES.slice(0, candidateLimit).map(
+    (candidate) =>
+      toPlannedEvent({
+        contentType: candidate.contentType,
+        leagueId: data.leagueId,
+        persona: candidate.persona,
+        triggerKey: LAUNCH_EDITION_TRIGGER_KEY,
+      }),
+  );
+
+  return {
+    eventName: JOB_EVENTS.leagueConnected,
+    league,
+    planned,
+    skippedEntitlement: null,
+    skippedReason:
+      planned.length < LAUNCH_EDITION_CANDIDATES.length
+        ? "launch_edition_capped"
+        : null,
   };
 }

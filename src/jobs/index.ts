@@ -11,6 +11,7 @@ import {
   contentPlanWeeklyWrap,
 } from "./functions/content-plan-cron";
 import { contentPlanGameFinal } from "./functions/content-plan-game-final";
+import { contentPlanLaunchEdition } from "./functions/content-plan-launch-edition";
 import {
   contentPlanArenaStandingsSwing,
   contentPlanBetSettled,
@@ -47,6 +48,7 @@ export {
   contentPlanWeeklyWrap,
 } from "./functions/content-plan-cron";
 export { contentPlanGameFinal } from "./functions/content-plan-game-final";
+export { contentPlanLaunchEdition } from "./functions/content-plan-launch-edition";
 export {
   contentPlanArenaStandingsSwing,
   contentPlanBetSettled,
@@ -83,6 +85,7 @@ export const functions = [
   contentPlanPostOddsRefresh,
   contentPlanOffseasonBeat,
   contentPlanGameFinal,
+  contentPlanLaunchEdition,
   contentPlanTransaction,
   contentPlanWaiver,
   contentPlanRecordBroken,

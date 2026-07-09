@@ -388,6 +388,20 @@ function parseFramedReactiveKey({
 function parseTriggerCadenceFrame(
   triggerKey: string,
 ): LeagueContextCadenceFrame | null {
+  if (triggerKey.startsWith("launch-edition:")) {
+    const [, version = "v1"] = triggerKey.split(":");
+    return {
+      cadence: "launch-edition",
+      event: "league.connected",
+      gamePhase: "quiet",
+      phase: "launch",
+      seasonWeek: null,
+      source: "reactive",
+      stakes: ["cold_start_launch", "provider_import_facts"],
+      weekToken: version,
+    };
+  }
+
   if (triggerKey.startsWith("cron:")) {
     const [, cadence, phase, weekToken] = triggerKey.split(":");
     if (!cadence || !isNflPhase(phase) || !weekToken) {
