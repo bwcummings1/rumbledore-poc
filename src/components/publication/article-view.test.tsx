@@ -256,6 +256,38 @@ test("publication article view links superseded posts to their replacement", () 
   ).toBe("/leagues/league-1/press/post-3");
 });
 
+test("publication article view renders reaction controls for league posts", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          reactions: {
+            apiUrl: "/api/leagues/league-1/press/post-1/reactions",
+            counts: [
+              { count: 2, emoji: "fire", glyph: "🔥", label: "Fire" },
+              { count: 1, emoji: "skull", glyph: "💀", label: "Skull" },
+              { count: 0, emoji: "laugh", glyph: "😂", label: "Laugh" },
+              { count: 0, emoji: "trash", glyph: "🗑️", label: "Trash" },
+            ],
+            currentEmoji: "skull",
+            total: 3,
+          },
+        },
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("region", { name: "Article body" })).toBeDefined();
+  expect(screen.getByText("Reader signal")).toBeDefined();
+  expect(
+    screen
+      .getByRole("button", { name: /skull reaction, 1 vote/i })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
 test("publication article view renders live embeds and drops unknown embeds", () => {
   render(
     <PublicationArticleView

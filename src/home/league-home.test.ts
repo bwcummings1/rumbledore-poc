@@ -277,6 +277,19 @@ describe("getLeagueHomeData", () => {
         dek: "Only the requested league should see this summary.",
         id: expect.any(String),
         publishedAt: "2026-06-11T00:00:00.000Z",
+        reactions: {
+          apiUrl: expect.stringMatching(
+            /^\/api\/leagues\/[0-9a-f-]+\/press\/[0-9a-f-]+\/reactions$/,
+          ),
+          counts: [
+            { count: 0, emoji: "fire", glyph: "🔥", label: "Fire" },
+            { count: 0, emoji: "skull", glyph: "💀", label: "Skull" },
+            { count: 0, emoji: "laugh", glyph: "😂", label: "Laugh" },
+            { count: 0, emoji: "trash", glyph: "🗑️", label: "Trash" },
+          ],
+          currentEmoji: null,
+          total: 0,
+        },
         section: {
           id: "previews",
           label: "Previews",

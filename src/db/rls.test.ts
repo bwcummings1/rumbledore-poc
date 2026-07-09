@@ -48,6 +48,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "bet_settlements",
     "bet_slips",
     "championship_record",
+    "content_reactions",
     "data_correction_audit_log",
     "data_coverage",
     "data_integrity_check",

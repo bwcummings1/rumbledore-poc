@@ -13,7 +13,9 @@ import {
   bankrollLedger,
   bankrollWeeks,
   type ContentItem,
+  type ContentReaction,
   contentItems,
+  contentReactions,
   type DataIntegrityCheck,
   dataIntegrityChecks,
   type EditorialAction,
@@ -81,6 +83,8 @@ let teamB: FantasyTeam;
 let contentA: ContentItem;
 let contentB: ContentItem;
 let centralContent: ContentItem;
+let contentReactionA: ContentReaction;
+let contentReactionB: ContentReaction;
 let editorialActionA: EditorialAction;
 let editorialActionB: EditorialAction;
 let personaCardA: AiPersonaCard;
@@ -160,7 +164,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -263,6 +267,24 @@ beforeAll(async () => {
         leagueId: null,
         summary: "Central summary",
         title: "Central news",
+      },
+    ])
+    .returning();
+
+  [contentReactionA, contentReactionB] = await admin.db
+    .insert(contentReactions)
+    .values([
+      {
+        contentItemId: contentA.id,
+        emoji: "fire",
+        leagueId: leagueA,
+        memberId: memberA.id,
+      },
+      {
+        contentItemId: contentB.id,
+        emoji: "skull",
+        leagueId: leagueB,
+        memberId: memberB.id,
       },
     ])
     .returning();
@@ -768,6 +790,20 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("sees no content reaction rows outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(contentReactions)
+      .where(
+        inArray(contentReactions.id, [
+          contentReactionA.id,
+          contentReactionB.id,
+        ]),
+      );
+
+    expect(rows).toHaveLength(0);
+  });
+
   it("sees no persona tone history rows outside a league context", async () => {
     const rows = await canary.db
       .select()
@@ -943,6 +979,16 @@ describe("two-league isolation under withLeagueContext", () => {
 
     expect(rows.map((row) => row.id)).toContain(editorialActionA.id);
     expect(rows.map((row) => row.id)).not.toContain(editorialActionB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered content reaction scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(contentReactions),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(contentReactionA.id);
+    expect(rows.map((row) => row.id)).not.toContain(contentReactionB.id);
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
@@ -1125,6 +1171,21 @@ describe("two-league isolation under withLeagueContext", () => {
             leagueId: leagueB,
             reason: "bad cross-league retract",
             targetContentItemId: contentB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B content reaction from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(contentReactions).values({
+            contentItemId: contentB.id,
+            emoji: "laugh",
+            leagueId: leagueB,
+            memberId: memberB.id,
           }),
         ),
       ),

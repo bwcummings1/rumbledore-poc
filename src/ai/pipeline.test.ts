@@ -278,6 +278,8 @@ class PassingLlmJudge implements LlmJudge {
       matchedPersonaMarkers: ["fixture persona marker"],
       notes: ["Test fixture judge passes."],
       personaMatch: 1,
+      targetedOffLimits: [],
+      targetingConsent: true,
     };
   }
 }

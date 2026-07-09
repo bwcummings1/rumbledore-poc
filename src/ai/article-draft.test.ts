@@ -66,6 +66,7 @@ function context(): LeagueBlogContext {
       },
       people: [],
       rivalries: [],
+      roastConsent: { full_send: [], light: [], off_limits: [] },
     },
     league: {
       currentScoringPeriod: 1,

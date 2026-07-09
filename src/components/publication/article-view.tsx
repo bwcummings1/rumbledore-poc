@@ -21,6 +21,7 @@ import { buttonVariants } from "../ui/button";
 import { StatusPill } from "../ui/status-pill";
 import { ArticleEmbedBlock } from "./article-embeds";
 import { EditorialArticleActions } from "./editorial-actions";
+import { ContentReactionStrip } from "./reaction-strip";
 import { ReadingProgress } from "./reading-progress";
 import { PublicationStoryCard } from "./story-card";
 
@@ -577,6 +578,13 @@ export function PublicationArticleView({
               </Link>
             ))}
           </nav>
+        ) : null}
+
+        {data.article.reactions ? (
+          <ContentReactionStrip
+            summary={data.article.reactions}
+            variant="article"
+          />
         ) : null}
 
         {data.editorial ? (

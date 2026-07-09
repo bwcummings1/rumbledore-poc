@@ -16,12 +16,14 @@ import {
   aiMemory,
   aiPersonaCards,
   allTimeRecords,
+  members as authMembers,
   contentItems,
   dataIntegrityChecks,
   fantasyMembers,
   fantasyTeams,
   headToHeadRecords,
   instigations,
+  leagueMemberIdentityClaims,
   leagues,
   loreClaims,
   loreVerifications,
@@ -35,6 +37,10 @@ import {
   type EntitlementTier,
   resolveEntitlement,
 } from "@/entitlements";
+import {
+  mostRestrictiveRoastLevel,
+  type RoastLevel,
+} from "@/members/roast-consent-types";
 import { NoopPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
   NoopRealtimePublisher,
@@ -610,6 +616,7 @@ function stableAuthenticityFacts(context: LeagueBlogContext) {
       personBWins: rivalry.personBWins,
       ties: rivalry.ties,
     })),
+    roastConsent: context.authenticity.roastConsent,
   };
 }
 
@@ -740,6 +747,107 @@ function ownerNamesFromHistory(
   return uniqueStrings(history.flatMap((entry) => entry.ownerNames ?? []));
 }
 
+function providerMemberIdsFromHistory(
+  history: readonly { providerMemberIds?: readonly string[] }[],
+): string[] {
+  return uniqueStrings(
+    history.flatMap((entry) => entry.providerMemberIds ?? []),
+  );
+}
+
+function emptyRoastConsent(): Record<RoastLevel, string[]> {
+  return {
+    full_send: [],
+    light: [],
+    off_limits: [],
+  };
+}
+
+function setRoastConsentName(
+  levelsByName: Map<string, { displayName: string; level: RoastLevel }>,
+  input: { level: RoastLevel; name: string | null | undefined },
+) {
+  const displayName = input.name?.replace(/\s+/g, " ").trim();
+  if (!displayName || displayName.length < 2) {
+    return;
+  }
+  const key = displayName.toLocaleLowerCase();
+  const existing = levelsByName.get(key);
+  levelsByName.set(key, {
+    displayName: existing?.displayName ?? displayName,
+    level: existing
+      ? mostRestrictiveRoastLevel([existing.level, input.level])
+      : input.level,
+  });
+}
+
+function buildRoastConsent(input: {
+  claimedLevelsByProviderId: ReadonlyMap<string, RoastLevel>;
+  fantasyMembers: readonly {
+    displayName: string;
+    providerMemberId: string;
+    roastLevel: RoastLevel;
+  }[];
+  people: readonly {
+    canonicalName: string;
+    ownerHistory: readonly {
+      ownerNames?: readonly string[];
+      providerMemberIds?: readonly string[];
+    }[];
+  }[];
+}): Record<RoastLevel, string[]> {
+  const importedLevelsByProviderId = new Map<string, RoastLevel>();
+  for (const member of input.fantasyMembers) {
+    const existing = importedLevelsByProviderId.get(member.providerMemberId);
+    importedLevelsByProviderId.set(
+      member.providerMemberId,
+      existing
+        ? mostRestrictiveRoastLevel([existing, member.roastLevel])
+        : member.roastLevel,
+    );
+  }
+
+  const effectiveLevelForProviderId = (providerMemberId: string): RoastLevel =>
+    input.claimedLevelsByProviderId.get(providerMemberId) ??
+    importedLevelsByProviderId.get(providerMemberId) ??
+    "light";
+
+  const levelsByName = new Map<
+    string,
+    { displayName: string; level: RoastLevel }
+  >();
+  for (const member of input.fantasyMembers) {
+    setRoastConsentName(levelsByName, {
+      level: effectiveLevelForProviderId(member.providerMemberId),
+      name: member.displayName,
+    });
+  }
+  for (const person of input.people) {
+    const providerIds = providerMemberIdsFromHistory(person.ownerHistory);
+    const level =
+      providerIds.length > 0
+        ? mostRestrictiveRoastLevel(
+            providerIds.map(effectiveLevelForProviderId),
+          )
+        : "light";
+    setRoastConsentName(levelsByName, {
+      level,
+      name: person.canonicalName,
+    });
+    for (const ownerName of ownerNamesFromHistory(person.ownerHistory)) {
+      setRoastConsentName(levelsByName, { level, name: ownerName });
+    }
+  }
+
+  const consent = emptyRoastConsent();
+  for (const entry of [...levelsByName.values()].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName),
+  )) {
+    consent[entry.level].push(entry.displayName);
+  }
+  return consent;
+}
+
 function buildEntityTokens({
   canonLore,
   people,
@@ -854,6 +962,7 @@ function llmJudgeSkipReason(score: LlmJudgeScore): string {
       ? `persona:${score.personaMatch.toFixed(2)}`
       : null,
     score.leakage ? "leakage" : null,
+    score.targetingConsent ? null : "targeting_consent",
   ].filter((reason): reason is string => Boolean(reason));
   return `llm_judge:${reasons.join(",") || "failed"}`;
 }
@@ -1471,6 +1580,7 @@ async function prepareGeneration({
     .select({
       displayName: fantasyMembers.displayName,
       providerMemberId: fantasyMembers.providerMemberId,
+      roastLevel: fantasyMembers.roastLevel,
     })
     .from(fantasyMembers)
     .where(
@@ -1481,6 +1591,23 @@ async function prepareGeneration({
     );
   const membersByProviderId = new Map(
     memberRows.map((member) => [member.providerMemberId, member.displayName]),
+  );
+  const claimedRoastRows = await tx
+    .select({
+      providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+      roastLevel: authMembers.roastLevel,
+    })
+    .from(leagueMemberIdentityClaims)
+    .innerJoin(
+      authMembers,
+      and(
+        eq(authMembers.organizationId, input.leagueId),
+        eq(authMembers.userId, leagueMemberIdentityClaims.userId),
+      ),
+    )
+    .where(eq(leagueMemberIdentityClaims.leagueId, input.leagueId));
+  const claimedLevelsByProviderId = new Map(
+    claimedRoastRows.map((row) => [row.providerMemberId, row.roastLevel]),
   );
 
   const teamRows = await tx
@@ -1829,6 +1956,11 @@ async function prepareGeneration({
     id: person.id,
     ownerNames: ownerNamesFromHistory(person.ownerHistory),
   }));
+  const roastConsent = buildRoastConsent({
+    claimedLevelsByProviderId,
+    fantasyMembers: memberRows,
+    people: allPersonRows,
+  });
   const rivalries = rivalryRows.map((rivalry) => ({
     currentStreakLength: rivalry.currentStreakLength,
     currentStreakName: rivalry.currentStreakPersonId
@@ -1865,6 +1997,7 @@ async function prepareGeneration({
     lore,
     people,
     rivalries,
+    roastConsent,
   };
 
   const priorPosts = await tx
@@ -2346,7 +2479,7 @@ export async function generateLeagueBlogPost({
   let alreadyRetried = false;
   if (!draft || !referencedLeagueEntity({ context, draft })) {
     const authenticityNudge =
-      "The first draft was too generic. Name a concrete league-owned team, manager, record, rivalry, or canon fact from the supplied context.";
+      "The first draft was too generic. Name a concrete league-owned team, manager, record, rivalry, or canon fact from the supplied context while honoring roast-consent limits.";
     const retryPrompt = buildPromptParts({
       contentType: input.contentType,
       context,
@@ -2459,7 +2592,7 @@ export async function generateLeagueBlogPost({
 
   if (judgeFailureReason && !alreadyRetried) {
     const judgeNudge =
-      "The first draft failed the AI judge for league authenticity, persona fit, or leakage. Rewrite with concrete league-owned facts, clear persona markers, and no other-league references.";
+      "The first draft failed the AI judge for league authenticity, persona fit, leakage, or roast consent. Rewrite with concrete league-owned facts, clear persona markers, no other-league references, and no off-limits targets.";
     const retryPrompt = buildPromptParts({
       contentType: input.contentType,
       context,

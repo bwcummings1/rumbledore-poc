@@ -107,3 +107,31 @@ test("publication story card omits the cast orb for source stories", () => {
   expect(within(article).getByText("NFL Wire")).toBeDefined();
   expect(container.querySelector('[data-slot="story-card-orb"]')).toBeNull();
 });
+
+test("publication story card renders reaction controls for league cast stories", () => {
+  render(
+    <PublicationStoryCard
+      story={{
+        ...story,
+        reactions: {
+          apiUrl: "/api/leagues/league-1/press/post-1/reactions",
+          counts: [
+            { count: 3, emoji: "fire", glyph: "🔥", label: "Fire" },
+            { count: 1, emoji: "skull", glyph: "💀", label: "Skull" },
+            { count: 0, emoji: "laugh", glyph: "😂", label: "Laugh" },
+            { count: 0, emoji: "trash", glyph: "🗑️", label: "Trash" },
+          ],
+          currentEmoji: "fire",
+          total: 4,
+        },
+      }}
+      variant="river"
+    />,
+  );
+
+  expect(
+    screen
+      .getByRole("button", { name: /fire reaction, 3 votes/i })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});

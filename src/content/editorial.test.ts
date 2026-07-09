@@ -46,6 +46,8 @@ class FailingJudge implements LlmJudge {
       matchedPersonaMarkers: [],
       notes: ["Forced failure for editorial regenerate."],
       personaMatch: 0,
+      targetedOffLimits: [],
+      targetingConsent: true,
     };
   }
 }

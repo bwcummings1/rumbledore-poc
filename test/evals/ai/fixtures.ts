@@ -310,6 +310,11 @@ export function contextFor({
       },
       people,
       rivalries,
+      roastConsent: {
+        full_send: [],
+        light: [fixture.primaryManager, fixture.secondaryManager],
+        off_limits: [],
+      },
     },
     league: {
       currentScoringPeriod: 10,

@@ -210,6 +210,7 @@ function toPressTeaserStory({
     id: storyline.id,
     origin: "cast",
     publishedAt: storyline.publishedAt,
+    reactions: storyline.reactions,
     sectionTag: storyline.section.label,
     thumbnailAlt: storyline.title,
     thumbnailUrl: storyline.thumbnailUrl || undefined,

@@ -1,4 +1,5 @@
 import type { ContentEmbedBodyBlock } from "@/content/embeds";
+import type { RoastLevel } from "@/members/roast-consent-types";
 import type { LeaguePublicationSectionId } from "@/news/sections";
 import type { AiContentType, BlogContentStructure } from "./content-types";
 import type { AiPersona, ToneProfile } from "./personas";
@@ -158,6 +159,7 @@ export interface LeagueAuthenticityContext {
   lore: LeagueContextLore;
   canonLore: LeagueContextCanonLore[];
   entityTokens: string[];
+  roastConsent: Record<RoastLevel, string[]>;
 }
 
 export interface LeagueContextInstigation {
@@ -366,6 +368,7 @@ export interface LlmModelProviderKeyResolver {
 export interface LlmJudgeRubric {
   authenticityThreshold: number;
   personaMatchThreshold: number;
+  targetingConsentRequired: boolean;
 }
 
 export interface LlmJudgeLeagueFacts {
@@ -383,9 +386,11 @@ export interface LlmJudgeScore {
   authenticity: number;
   personaMatch: number;
   leakage: boolean;
+  targetingConsent: boolean;
   matchedLeagueFacts: string[];
   matchedPersonaMarkers: string[];
   leakedTokens: string[];
+  targetedOffLimits: string[];
   notes: string[];
 }
 

@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ContentReactionStrip } from "./reaction-strip";
 import type { PublicationStory, PublicationStoryCardVariant } from "./story";
 
 export type { PublicationStory, PublicationStoryCardVariant } from "./story";
@@ -190,6 +191,9 @@ export function PublicationStoryCard({
           <p className="border-l-2 border-primary/70 bg-primary/5 px-3 py-2 text-xs leading-5 text-muted-foreground">
             {story.relevanceReason}
           </p>
+        ) : null}
+        {story.reactions ? (
+          <ContentReactionStrip summary={story.reactions} variant="card" />
         ) : null}
         {story.thumbnailUrl && variant === "compact" ? (
           <p className="sr-only">

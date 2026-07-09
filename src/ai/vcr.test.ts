@@ -56,6 +56,7 @@ function requestFor(
         },
         people: [],
         rivalries: [],
+        roastConsent: { full_send: [], light: [], off_limits: [] },
       },
       memory: [],
       persona: {

@@ -815,6 +815,9 @@ export class MockLlmJudge implements LlmJudge {
     const leakedTokens = otherLeagueTokens.filter((token) =>
       includesToken(text, token),
     );
+    const targetedOffLimits = uniqueJudgeTokens(
+      request.leagueFacts.context.authenticity.roastConsent.off_limits ?? [],
+    ).filter((token) => includesToken(text, token));
     const requiredLeagueHits = Math.max(1, Math.min(2, leagueTokens.length));
     const requiredPersonaHits = Math.max(1, Math.min(2, personaMarkers.length));
     const authenticity =
@@ -835,6 +838,9 @@ export class MockLlmJudge implements LlmJudge {
       leakedTokens.length > 0
         ? `Leaked other-league tokens: ${leakedTokens.join(", ")}`
         : "No other-league token matched.",
+      targetedOffLimits.length > 0
+        ? `Targeted off-limits members: ${targetedOffLimits.join(", ")}`
+        : "No off-limits target matched.",
     ];
 
     return {
@@ -845,6 +851,8 @@ export class MockLlmJudge implements LlmJudge {
       matchedPersonaMarkers,
       notes,
       personaMatch,
+      targetedOffLimits,
+      targetingConsent: targetedOffLimits.length === 0,
     };
   }
 }

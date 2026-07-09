@@ -250,6 +250,95 @@ describe("offline AI judge eval gate", () => {
       }),
     ).toThrow("leaking fixture failed the AI judge eval gate");
   });
+
+  it("enforces roast consent levels in judge scoring", async () => {
+    const judge = new MockLlmJudge();
+    const baseContext = contextFor({
+      fixture: league95050,
+      persona: "trash_talker",
+    });
+    const persona = baseContext.persona;
+    const personaLead = `${persona.name}'s beat: ${persona.beat}. Point of view: ${persona.pointOfView}.`;
+
+    const fullSendContext = {
+      ...baseContext,
+      authenticity: {
+        ...baseContext.authenticity,
+        roastConsent: {
+          full_send: [league95050.primaryManager],
+          light: [league95050.secondaryManager],
+          off_limits: [],
+        },
+      },
+    };
+    const fullSendScore = await judge.score({
+      leagueFacts: { context: fullSendContext },
+      piece: weeklyRecapFixture(
+        `${personaLead} ${league95050.primaryTeam} and ${league95050.primaryManager} take the loudest ribbing because the canon facts are theirs.`,
+      ),
+      rubric: DEFAULT_LLM_JUDGE_RUBRIC,
+    });
+    expect(fullSendScore.targetingConsent).toBe(true);
+    expect(fullSendScore.targetedOffLimits).toEqual([]);
+    assertLlmJudgeScorePasses({
+      label: "full-send roast consent",
+      score: fullSendScore,
+    });
+
+    const lightContext = {
+      ...baseContext,
+      authenticity: {
+        ...baseContext.authenticity,
+        roastConsent: {
+          full_send: [],
+          light: [league95050.primaryManager, league95050.secondaryManager],
+          off_limits: [],
+        },
+      },
+    };
+    const lightScore = await judge.score({
+      leagueFacts: { context: lightContext },
+      piece: weeklyRecapFixture(
+        `${personaLead} ${league95050.primaryTeam} and ${league95050.primaryManager} get a playful nudge, not a humiliation lap.`,
+      ),
+      rubric: DEFAULT_LLM_JUDGE_RUBRIC,
+    });
+    expect(lightScore.targetingConsent).toBe(true);
+    expect(lightScore.targetedOffLimits).toEqual([]);
+    assertLlmJudgeScorePasses({
+      label: "light roast consent",
+      score: lightScore,
+    });
+
+    const offLimitsContext = {
+      ...baseContext,
+      authenticity: {
+        ...baseContext.authenticity,
+        roastConsent: {
+          full_send: [league95050.primaryManager],
+          light: [],
+          off_limits: [league95050.secondaryManager],
+        },
+      },
+    };
+    const offLimitsScore = await judge.score({
+      leagueFacts: { context: offLimitsContext },
+      piece: weeklyRecapFixture(
+        `${personaLead} ${league95050.primaryTeam} and ${league95050.secondaryManager} are framed as the joke of the week.`,
+      ),
+      rubric: DEFAULT_LLM_JUDGE_RUBRIC,
+    });
+    expect(offLimitsScore.targetingConsent).toBe(false);
+    expect(offLimitsScore.targetedOffLimits).toContain(
+      league95050.secondaryManager,
+    );
+    expect(() =>
+      assertLlmJudgeScorePasses({
+        label: "off-limits roast consent",
+        score: offLimitsScore,
+      }),
+    ).toThrow("off-limits roast consent failed the AI judge eval gate");
+  });
 });
 
 describe("offline personal-agent canon evals", () => {

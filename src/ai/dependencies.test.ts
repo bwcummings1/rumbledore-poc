@@ -89,6 +89,8 @@ const fallbackJudgeScore: LlmJudgeScore = {
   matchedPersonaMarkers: ["Commissioner"],
   notes: ["mock fallback"],
   personaMatch: 0.9,
+  targetedOffLimits: [],
+  targetingConsent: true,
 };
 
 const fallbackNews: NewsItem[] = [

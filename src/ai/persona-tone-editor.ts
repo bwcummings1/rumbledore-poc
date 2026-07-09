@@ -785,6 +785,7 @@ function buildPreviewContext(input: {
       lore: { canon: [], disputed: [], pending: [], refuted: [] },
       people: [],
       rivalries: [],
+      roastConsent: { full_send: [], light: [], off_limits: [] },
     },
     league: {
       currentScoringPeriod: input.league.currentScoringPeriod,

@@ -6,6 +6,11 @@ import {
 import type { EditLedgerEntry } from "@/components/curation/edit-ledger-types";
 import type { PublicationStory } from "@/components/publication/story";
 import { contentItemIsPublished } from "@/content/lifecycle";
+import type { ContentReactionSummary } from "@/content/reaction-types";
+import {
+  getLeagueMemberIdForUser,
+  loadContentReactionSummaries,
+} from "@/content/reactions";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
@@ -99,6 +104,7 @@ export interface PublicationArticleViewData {
     heroImageUrl: string;
     sourceUrl: string;
     canonCitations: PublicationArticleCanonCitation[];
+    reactions?: ContentReactionSummary;
     lifecycle: {
       status: "published" | "retracted" | "superseded";
       statusChangedAt: string;
@@ -551,6 +557,7 @@ function selectRelatedStories(
       origin: candidate.origin,
       publishedAt: candidate.publishedAt,
       relevanceReason: candidate.relevanceReason,
+      reactions: candidate.reactions,
       sectionTag: candidate.sectionTag,
       sourceUrl: candidate.sourceUrl,
       thumbnailAlt: candidate.thumbnailAlt,
@@ -559,7 +566,13 @@ function selectRelatedStories(
 }
 
 type EditorialActionRow = {
-  action: "correct" | "regenerate" | "retract" | "tone_edit" | "tone_rollback";
+  action:
+    | "correct"
+    | "regenerate"
+    | "retract"
+    | "roast_consent"
+    | "tone_edit"
+    | "tone_rollback";
   actorDisplayName: string | null;
   actorUserId: string | null;
   afterContentItemId: string | null;
@@ -569,6 +582,8 @@ type EditorialActionRow = {
   metadata: Record<string, unknown>;
   reason: string;
   targetContentItemId: string | null;
+  targetFantasyMemberId: string | null;
+  targetMemberId: string | null;
   targetPersonaCardId: string | null;
 };
 
@@ -621,8 +636,18 @@ function editorialRowsToLedgerEntries(
     reason: row.reason || null,
     scope: null,
     source: "editorial_action",
-    targetId: row.targetContentItemId ?? row.targetPersonaCardId,
-    targetKind: row.targetPersonaCardId ? "persona_card" : "content_item",
+    targetId:
+      row.targetContentItemId ??
+      row.targetPersonaCardId ??
+      row.targetMemberId ??
+      row.targetFantasyMemberId,
+    targetKind: row.targetContentItemId
+      ? "content_item"
+      : row.targetPersonaCardId
+        ? "persona_card"
+        : row.targetMemberId
+          ? "member"
+          : "fantasy_member",
   }));
 }
 
@@ -848,6 +873,11 @@ export async function getLeaguePressArticleData(
     return { status: "forbidden" };
   }
 
+  const memberId = await getLeagueMemberIdForUser(db, {
+    leagueId: input.leagueId,
+    userId: input.userId,
+  });
+
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
     const [articleRow] = await tx
       .select({
@@ -915,6 +945,8 @@ export async function getLeaguePressArticleData(
         metadata: editorialActions.metadata,
         reason: editorialActions.reason,
         targetContentItemId: editorialActions.targetContentItemId,
+        targetFantasyMemberId: editorialActions.targetFantasyMemberId,
+        targetMemberId: editorialActions.targetMemberId,
         targetPersonaCardId: editorialActions.targetPersonaCardId,
       })
       .from(editorialActions)
@@ -1010,6 +1042,17 @@ export async function getLeaguePressArticleData(
       )
       .limit(RELATED_CANDIDATE_LIMIT);
 
+    const reactionSummaries = await loadContentReactionSummaries(tx, {
+      apiUrlFor: (contentItemId) =>
+        `/api/leagues/${input.leagueId}/press/${contentItemId}/reactions`,
+      contentItemIds: [
+        articleRow.id,
+        ...leagueRows.map((candidate) => candidate.id),
+      ],
+      leagueId: input.leagueId,
+      memberId,
+    });
+
     const leagueCandidates: RelatedCandidate[] = leagueRows
       .filter((candidate) => candidate.id !== articleRow.id)
       .map((candidate) => {
@@ -1035,6 +1078,7 @@ export async function getLeaguePressArticleData(
           id: candidate.id,
           origin: "cast",
           publishedAt: candidate.publishedAt.toISOString(),
+          reactions: reactionSummaries.get(candidate.id),
           sectionId: candidateSection.id,
           sectionTag: candidateSection.label,
           tags: articleTags(candidate.metadata),
@@ -1099,6 +1143,7 @@ export async function getLeaguePressArticleData(
         inlineDataBlocks: articleInlineDataBlocks(articleRow.metadata),
         kind: "blog" as const,
         publishedAt: articleRow.publishedAt.toISOString(),
+        reactions: reactionSummaries.get(articleRow.id),
         section: {
           href: `/leagues/${input.leagueId}/press/${articleSection.slug}`,
           label: articleSection.label,

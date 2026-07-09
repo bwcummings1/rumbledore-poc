@@ -226,12 +226,20 @@ export const contentItemStatus = pgEnum("content_item_status", [
   "retracted",
 ]);
 
+export const contentReactionEmoji = pgEnum("content_reaction_emoji", [
+  "fire",
+  "skull",
+  "laugh",
+  "trash",
+]);
+
 export const editorialAction = pgEnum("editorial_action", [
   "retract",
   "regenerate",
   "correct",
   "tone_edit",
   "tone_rollback",
+  "roast_consent",
 ]);
 
 export const aiPersona = pgEnum("ai_persona", [
@@ -438,6 +446,12 @@ export const pushNotificationType = pgEnum("push_notification_type", [
   "content.superseded",
 ]);
 
+export const memberRoastLevel = pgEnum("member_roast_level", [
+  "full_send",
+  "light",
+  "off_limits",
+]);
+
 export interface LeagueFeedMatchedEntity {
   provider: string;
   type: "player" | "team" | "member" | "storyline";
@@ -640,6 +654,7 @@ export const fantasyMembers = pgTable(
     season: integer("season").notNull(),
     displayName: text("display_name").notNull(),
     role: text("role").notNull().default("unknown"),
+    roastLevel: memberRoastLevel("roast_level").notNull().default("light"),
     contentHash: text("content_hash").notNull(),
     ...timestamps,
   },
@@ -3161,6 +3176,13 @@ export const editorialActions = pgTable(
       () => aiPersonaCards.id,
       { onDelete: "cascade" },
     ),
+    targetMemberId: uuid("target_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    targetFantasyMemberId: uuid("target_fantasy_member_id").references(
+      () => fantasyMembers.id,
+      { onDelete: "set null" },
+    ),
     reason: text("reason").notNull().default(""),
     beforeContentItemId: uuid("before_content_item_id").references(
       () => contentItems.id,
@@ -3193,6 +3215,16 @@ export const editorialActions = pgTable(
       table.targetPersonaCardId,
       table.createdAt,
     ),
+    index("editorial_actions_member_idx").on(
+      table.leagueId,
+      table.targetMemberId,
+      table.createdAt,
+    ),
+    index("editorial_actions_fantasy_member_idx").on(
+      table.leagueId,
+      table.targetFantasyMemberId,
+      table.createdAt,
+    ),
     pgPolicy("editorial_actions_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
@@ -3200,7 +3232,7 @@ export const editorialActions = pgTable(
     }),
     check(
       "editorial_actions_target_required",
-      sql`${table.targetContentItemId} IS NOT NULL OR ${table.targetPersonaCardId} IS NOT NULL`,
+      sql`${table.targetContentItemId} IS NOT NULL OR ${table.targetPersonaCardId} IS NOT NULL OR ${table.targetMemberId} IS NOT NULL OR ${table.targetFantasyMemberId} IS NOT NULL`,
     ),
     check(
       "editorial_actions_retract_reason_required",
@@ -3360,6 +3392,7 @@ export const members = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: leagueRole("role").notNull().default("member"),
+    roastLevel: memberRoastLevel("roast_level").notNull().default("light"),
     lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -3369,6 +3402,41 @@ export const members = pgTable(
       table.userId,
     ),
     index("members_user_idx").on(table.userId),
+  ],
+);
+
+export const contentReactions = pgTable(
+  "content_reactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    contentItemId: uuid("content_item_id")
+      .notNull()
+      .references(() => contentItems.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    emoji: contentReactionEmoji("emoji").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("content_reactions_member_content_unique").on(
+      table.leagueId,
+      table.contentItemId,
+      table.memberId,
+    ),
+    index("content_reactions_content_idx").on(
+      table.leagueId,
+      table.contentItemId,
+    ),
+    index("content_reactions_member_idx").on(table.leagueId, table.memberId),
+    pgPolicy("content_reactions_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
   ],
 );
 
@@ -4128,6 +4196,8 @@ export type BetSettlement = typeof betSettlements.$inferSelect;
 export type NewBetSettlement = typeof betSettlements.$inferInsert;
 export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
+export type ContentReaction = typeof contentReactions.$inferSelect;
+export type NewContentReaction = typeof contentReactions.$inferInsert;
 export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;
 export type NewLeagueFeedReference = typeof leagueFeedReferences.$inferInsert;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;

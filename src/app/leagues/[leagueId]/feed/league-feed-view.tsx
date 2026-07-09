@@ -38,6 +38,7 @@ function toStory({
     id: `${item.scope}-${item.id}`,
     origin: item.scope === "league" && item.kind === "blog" ? "cast" : "source",
     publishedAt: item.publishedAt,
+    reactions: item.reactions,
     relevanceReason: item.relevanceReason,
     sectionTag: sectionTag(item),
     sourceUrl: item.scope === "central" ? item.sourceUrl : undefined,

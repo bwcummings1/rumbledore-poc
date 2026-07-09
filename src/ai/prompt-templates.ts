@@ -73,11 +73,18 @@ function templateDescriptor(template: PromptTemplate) {
 
 function guardrailLines(context: LeagueBlogContext): string[] {
   const guardrails = context.persona.toneProfile.guardrails;
+  const roastConsent = context.authenticity.roastConsent;
   return [
     `Lore canon contract: ${guardrails.loreCanonContract.join(" | ")}`,
     `No leakage: ${guardrails.noLeakage.join(" | ")}`,
     `No real-money framing: ${guardrails.noRealMoney.join(" | ")}`,
     `Untrusted-news framing: ${guardrails.untrustedNews.join(" | ")}`,
+    [
+      "Roast consent:",
+      `off_limits=${roastConsent.off_limits.join(", ") || "none"} must never be targeted or made the butt of trash-talk;`,
+      `light=${roastConsent.light.join(", ") || "none"} allows only playful non-humiliating mentions;`,
+      `full_send=${roastConsent.full_send.join(", ") || "none"} allows sharper league banter without slurs, real-life attacks, or harassment.`,
+    ].join(" "),
   ];
 }
 
@@ -162,7 +169,10 @@ function sectionDataFor({
         role: "rumbledore_league_blog_writer",
       };
     case "guardrails":
-      return context.persona.toneProfile.guardrails;
+      return {
+        ...context.persona.toneProfile.guardrails,
+        roastConsent: context.authenticity.roastConsent,
+      };
     case "tone":
       return stablePrefix.persona ?? null;
     case "content_type_contract":

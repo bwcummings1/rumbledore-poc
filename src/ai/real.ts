@@ -88,6 +88,8 @@ const llmJudgeScoreSchema = z.object({
   matchedPersonaMarkers: z.array(z.string().min(1)).max(16),
   notes: z.array(z.string().min(1)).max(8),
   personaMatch: z.number().min(0).max(1),
+  targetedOffLimits: z.array(z.string().min(1)).max(16),
+  targetingConsent: z.boolean(),
 }) satisfies z.ZodType<LlmJudgeScore>;
 
 const structureSchemas = {
@@ -416,6 +418,7 @@ function judgeSystemInstructions(): string {
     "Score authenticity from 0 to 1 based on concrete use of this league's supplied facts.",
     "Score personaMatch from 0 to 1 based on the supplied persona markers.",
     "Set leakage true if the piece mentions any supplied other-league token.",
+    "Set targetingConsent false if the piece targets, mocks, or makes an off_limits roast-consent token the butt of a joke.",
     "Do not reward generic fantasy-football writing that could fit any league.",
   ].join("\n");
 }
@@ -435,6 +438,7 @@ function judgeUserTask(request: LlmJudgeRequest): string {
     ),
     personaMarkers: judgePersonaMarkers(request),
     rubric: request.rubric,
+    roastConsent: context.authenticity.roastConsent,
   });
 }
 
