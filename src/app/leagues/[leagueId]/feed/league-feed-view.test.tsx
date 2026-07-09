@@ -191,6 +191,19 @@ test("league press view renders the league publication front", () => {
   expect(screen.getByRole("link", { name: "Lore" }).getAttribute("href")).toBe(
     "/leagues/00000000-0000-4000-8000-000000000001/lore",
   );
+  expect(
+    screen.getByRole("link", { name: "Failure queue" }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press/failures");
+  expect(
+    screen.getByRole("link", { name: "Webhooks" }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press/webhooks");
+});
+
+test("league press view hides editorial actions from members", () => {
+  render(<LeagueFeedView data={{ ...data, userRole: "member" }} />);
+
+  expect(screen.queryByRole("link", { name: "Failure queue" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Webhooks" })).toBeNull();
 });
 
 test("league press view renders an empty state", () => {

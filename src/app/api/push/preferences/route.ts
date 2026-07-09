@@ -8,18 +8,35 @@ import {
   requireUserId,
   resultJson,
 } from "@/onboarding/http";
-import { PUSH_EVENT_VALUES, setPushNotificationPreference } from "@/push";
+import {
+  NOTIFICATION_CHANNEL_VALUES,
+  NOTIFICATION_EVENT_FAMILY_VALUES,
+  PUSH_EVENT_VALUES,
+  setNotificationChannelPreference,
+  setPushNotificationPreference,
+} from "@/push";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_PUSH_PREFERENCES_BODY_BYTES = 8 * 1024;
 
-const preferencesBodySchema = z.object({
+const legacyPushPreferenceSchema = z.object({
   enabled: z.boolean(),
   leagueId: z.uuid(),
   type: z.enum(PUSH_EVENT_VALUES),
 });
+
+const channelPreferenceSchema = z.object({
+  channel: z.enum(NOTIFICATION_CHANNEL_VALUES),
+  eventFamily: z.enum(NOTIFICATION_EVENT_FAMILY_VALUES),
+  leagueId: z.uuid(),
+});
+
+const preferencesBodySchema = z.union([
+  channelPreferenceSchema,
+  legacyPushPreferenceSchema,
+]);
 
 async function pushPreferencesPatch(request: Request) {
   const userId = await requireUserId(request);
@@ -43,15 +60,26 @@ async function pushPreferencesPatch(request: Request) {
     );
   }
 
-  const result = await setPushNotificationPreference(
-    { db: getDb() },
-    {
-      enabled: parsed.data.enabled,
-      leagueId: parsed.data.leagueId,
-      type: parsed.data.type,
-      userId: userId.value,
-    },
-  );
+  const result =
+    "eventFamily" in parsed.data
+      ? await setNotificationChannelPreference(
+          { db: getDb() },
+          {
+            channel: parsed.data.channel,
+            eventFamily: parsed.data.eventFamily,
+            leagueId: parsed.data.leagueId,
+            userId: userId.value,
+          },
+        )
+      : await setPushNotificationPreference(
+          { db: getDb() },
+          {
+            enabled: parsed.data.enabled,
+            leagueId: parsed.data.leagueId,
+            type: parsed.data.type,
+            userId: userId.value,
+          },
+        );
   return resultJson(result);
 }
 

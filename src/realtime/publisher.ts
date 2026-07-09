@@ -4,6 +4,9 @@ import {
   type ArenaStandingsSwingPayload,
   arenaLeaderboardChannel,
   type BlogPublishedPayload,
+  type ContentRetractedPayload,
+  type ContentSupersededPayload,
+  centralNewsChannel,
   type HistoryImportProgressPayload,
   type LeagueLeaderboardUpdatedPayload,
   type LoreCanonizedPayload,
@@ -26,6 +29,12 @@ export interface SupabaseRealtimePublisherOptions {
 
 function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function contentLifecycleChannel(payload: { leagueId: string | null }): string {
+  return payload.leagueId
+    ? leagueBlogChannel(payload.leagueId)
+    : centralNewsChannel();
 }
 
 export class SupabaseRealtimePublisher implements RealtimePublisher {
@@ -58,6 +67,28 @@ export class SupabaseRealtimePublisher implements RealtimePublisher {
       payload,
       private: true,
       topic: arenaLeaderboardChannel(),
+    });
+  }
+
+  async publishContentRetracted(
+    payload: ContentRetractedPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.contentRetracted,
+      payload,
+      private: true,
+      topic: contentLifecycleChannel(payload),
+    });
+  }
+
+  async publishContentSuperseded(
+    payload: ContentSupersededPayload,
+  ): Promise<void> {
+    await this.broadcast({
+      event: REALTIME_EVENTS.contentSuperseded,
+      payload,
+      private: true,
+      topic: contentLifecycleChannel(payload),
     });
   }
 

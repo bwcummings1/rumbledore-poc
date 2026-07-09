@@ -6,16 +6,27 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "./client";
 import { withLeagueContext } from "./rls";
 import {
+  type AiPersonaCard,
+  type AiPersonaToneHistory,
+  aiPersonaCards,
+  aiPersonaToneHistory,
   bankrollLedger,
   bankrollWeeks,
   type ContentItem,
+  type ContentReaction,
   contentItems,
+  contentReactions,
   type DataIntegrityCheck,
   dataIntegrityChecks,
+  type EditorialAction,
+  type EmailDigestDeliveryRecord,
+  editorialActions,
+  emailDigestDeliveryRecords,
   type FantasyTeam,
   fantasyTeams,
   type Instigation,
   instigations,
+  type LeagueWebhook,
   type LoreClaim,
   type LoreEvent,
   type LoreSubject,
@@ -25,6 +36,7 @@ import {
   leagueGroupingSeasons,
   leagueSeasonGroupings,
   leagues,
+  leagueWebhooks,
   loreClaims,
   loreEvents,
   loreSubjects,
@@ -40,6 +52,8 @@ import {
   pushNotificationPreferences,
   type User,
   users,
+  type WebhookDeliveryRecord,
+  webhookDeliveryRecords,
 } from "./schema";
 import { migrateSerialized } from "./test-support";
 
@@ -75,6 +89,20 @@ let teamB: FantasyTeam;
 let contentA: ContentItem;
 let contentB: ContentItem;
 let centralContent: ContentItem;
+let contentReactionA: ContentReaction;
+let contentReactionB: ContentReaction;
+let leagueWebhookA: LeagueWebhook;
+let leagueWebhookB: LeagueWebhook;
+let webhookDeliveryA: WebhookDeliveryRecord;
+let webhookDeliveryB: WebhookDeliveryRecord;
+let emailDigestDeliveryA: EmailDigestDeliveryRecord;
+let emailDigestDeliveryB: EmailDigestDeliveryRecord;
+let editorialActionA: EditorialAction;
+let editorialActionB: EditorialAction;
+let personaCardA: AiPersonaCard;
+let personaCardB: AiPersonaCard;
+let toneHistoryA: AiPersonaToneHistory;
+let toneHistoryB: AiPersonaToneHistory;
 let userA: User;
 let userB: User;
 let bankrollWeekA: { id: string; leagueId: string };
@@ -148,7 +176,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, league_feed_reference, ai_persona_card, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, email_digest_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -251,6 +279,206 @@ beforeAll(async () => {
         leagueId: null,
         summary: "Central summary",
         title: "Central news",
+      },
+    ])
+    .returning();
+
+  [leagueWebhookA, leagueWebhookB] = await admin.db
+    .insert(leagueWebhooks)
+    .values([
+      {
+        createdByUserId: userA.id,
+        encryptedUrl: `${marker}-encrypted-webhook-a`,
+        leagueId: leagueA,
+        name: "Canary webhook A",
+        targetKind: "generic",
+        updatedByUserId: userA.id,
+        urlHash: `${marker}-webhook-hash-a`,
+        urlLabel: "chat.example.test / encrypted endpoint",
+      },
+      {
+        createdByUserId: userB.id,
+        encryptedUrl: `${marker}-encrypted-webhook-b`,
+        leagueId: leagueB,
+        name: "Canary webhook B",
+        targetKind: "generic",
+        updatedByUserId: userB.id,
+        urlHash: `${marker}-webhook-hash-b`,
+        urlLabel: "chat.example.test / encrypted endpoint",
+      },
+    ])
+    .returning();
+
+  [webhookDeliveryA, webhookDeliveryB] = await admin.db
+    .insert(webhookDeliveryRecords)
+    .values([
+      {
+        contentItemId: contentA.id,
+        deliveredAt: new Date("2026-06-12T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        eventKey: `content:${contentA.id}`,
+        eventType: "content.published",
+        leagueId: leagueA,
+        payload: { marker, side: "a" },
+        targetKind: "generic",
+        webhookId: leagueWebhookA.id,
+      },
+      {
+        contentItemId: contentB.id,
+        deliveredAt: new Date("2026-06-12T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        eventKey: `content:${contentB.id}`,
+        eventType: "content.published",
+        leagueId: leagueB,
+        payload: { marker, side: "b" },
+        targetKind: "generic",
+        webhookId: leagueWebhookB.id,
+      },
+    ])
+    .returning();
+
+  [emailDigestDeliveryA, emailDigestDeliveryB] = await admin.db
+    .insert(emailDigestDeliveryRecords)
+    .values([
+      {
+        contentItemIds: [contentA.id],
+        deliveredAt: new Date("2026-06-13T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        digestKey: `${marker}:weekly:a`,
+        leagueId: leagueA,
+        payload: { marker, side: "a" },
+        recipientEmailHash: `${marker}-digest-email-hash-a`,
+        recipientUserId: userA.id,
+        windowEndAt: new Date("2026-06-13T00:00:00.000Z"),
+        windowStartAt: new Date("2026-06-06T00:00:00.000Z"),
+      },
+      {
+        contentItemIds: [contentB.id],
+        deliveredAt: new Date("2026-06-13T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        digestKey: `${marker}:weekly:b`,
+        leagueId: leagueB,
+        payload: { marker, side: "b" },
+        recipientEmailHash: `${marker}-digest-email-hash-b`,
+        recipientUserId: userB.id,
+        windowEndAt: new Date("2026-06-13T00:00:00.000Z"),
+        windowStartAt: new Date("2026-06-06T00:00:00.000Z"),
+      },
+    ])
+    .returning();
+
+  [contentReactionA, contentReactionB] = await admin.db
+    .insert(contentReactions)
+    .values([
+      {
+        contentItemId: contentA.id,
+        emoji: "fire",
+        leagueId: leagueA,
+        memberId: memberA.id,
+      },
+      {
+        contentItemId: contentB.id,
+        emoji: "skull",
+        leagueId: leagueB,
+        memberId: memberB.id,
+      },
+    ])
+    .returning();
+
+  [personaCardA, personaCardB] = await admin.db
+    .insert(aiPersonaCards)
+    .values([
+      {
+        beat: "Canary commissioner beat A",
+        leagueId: leagueA,
+        name: "Commissioner A",
+        persona: "commissioner",
+        pointOfView: "Canary league A point of view.",
+        promptTemplate: "Canary prompt A",
+        purpose: "Canary persona A",
+        tone: "Canary tone A",
+        toneProfile: {
+          beats: ["canary beat A"],
+          diction: ["canary"],
+          dosAndDonts: ["Do keep league A isolated."],
+          guardrails: {
+            loreCanonContract: ["A canon only"],
+            noLeakage: ["A no leakage"],
+            noRealMoney: ["A no money"],
+            untrustedNews: ["A news"],
+          },
+          pointOfView: "Canary league A point of view.",
+          styleDirectives: ["A style"],
+        },
+      },
+      {
+        beat: "Canary commissioner beat B",
+        leagueId: leagueB,
+        name: "Commissioner B",
+        persona: "commissioner",
+        pointOfView: "Canary league B point of view.",
+        promptTemplate: "Canary prompt B",
+        purpose: "Canary persona B",
+        tone: "Canary tone B",
+        toneProfile: {
+          beats: ["canary beat B"],
+          diction: ["canary"],
+          dosAndDonts: ["Do keep league B isolated."],
+          guardrails: {
+            loreCanonContract: ["B canon only"],
+            noLeakage: ["B no leakage"],
+            noRealMoney: ["B no money"],
+            untrustedNews: ["B news"],
+          },
+          pointOfView: "Canary league B point of view.",
+          styleDirectives: ["B style"],
+        },
+      },
+    ])
+    .returning();
+
+  [toneHistoryA, toneHistoryB] = await admin.db
+    .insert(aiPersonaToneHistory)
+    .values([
+      {
+        leagueId: leagueA,
+        persona: "commissioner",
+        personaCardId: personaCardA.id,
+        source: "seed",
+        toneProfile: personaCardA.toneProfile,
+        toneUpdatedBy: "canary",
+        toneVersion: 1,
+      },
+      {
+        leagueId: leagueB,
+        persona: "commissioner",
+        personaCardId: personaCardB.id,
+        source: "seed",
+        toneProfile: personaCardB.toneProfile,
+        toneUpdatedBy: "canary",
+        toneVersion: 1,
+      },
+    ])
+    .returning();
+
+  [editorialActionA, editorialActionB] = await admin.db
+    .insert(editorialActions)
+    .values([
+      {
+        action: "retract",
+        actorUserId: userA.id,
+        beforeContentItemId: contentA.id,
+        leagueId: leagueA,
+        reason: "canary retract",
+        targetContentItemId: contentA.id,
+      },
+      {
+        action: "retract",
+        actorUserId: userB.id,
+        beforeContentItemId: contentB.id,
+        leagueId: leagueB,
+        reason: "canary retract",
+        targetContentItemId: contentB.id,
       },
     ])
     .returning();
@@ -575,13 +803,17 @@ beforeAll(async () => {
     .insert(pushNotificationPreferences)
     .values([
       {
+        channel: "none",
         enabled: false,
+        eventFamily: "arena",
         leagueId: leagueA,
         type: "arena.rival.passed",
         userId: userA.id,
       },
       {
+        channel: "none",
         enabled: false,
+        eventFamily: "arena",
         leagueId: leagueB,
         type: "arena.rival.passed",
         userId: userB.id,
@@ -642,6 +874,45 @@ describe("two-league isolation under withLeagueContext", () => {
         inArray(contentItems.id, [contentA.id, contentB.id, centralContent.id]),
       );
     expect(rows).toEqual([{ id: centralContent.id, leagueId: null }]);
+  });
+
+  it("sees no editorial action rows outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(editorialActions)
+      .where(
+        inArray(editorialActions.id, [
+          editorialActionA.id,
+          editorialActionB.id,
+        ]),
+      );
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it("sees no content reaction rows outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(contentReactions)
+      .where(
+        inArray(contentReactions.id, [
+          contentReactionA.id,
+          contentReactionB.id,
+        ]),
+      );
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it("sees no persona tone history rows outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(aiPersonaToneHistory)
+      .where(
+        inArray(aiPersonaToneHistory.id, [toneHistoryA.id, toneHistoryB.id]),
+      );
+
+    expect(rows).toHaveLength(0);
   });
 
   it("sees no bankroll rows at all outside a league context", async () => {
@@ -746,6 +1017,27 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("sees no webhook rows at all outside a league context", async () => {
+    const webhooks = await canary.db
+      .select()
+      .from(leagueWebhooks)
+      .where(
+        inArray(leagueWebhooks.id, [leagueWebhookA.id, leagueWebhookB.id]),
+      );
+    const deliveries = await canary.db
+      .select()
+      .from(webhookDeliveryRecords)
+      .where(
+        inArray(webhookDeliveryRecords.id, [
+          webhookDeliveryA.id,
+          webhookDeliveryB.id,
+        ]),
+      );
+
+    expect(webhooks).toHaveLength(0);
+    expect(deliveries).toHaveLength(0);
+  });
+
   it("scoped to league A, sees A's fantasy team and nothing of league B", async () => {
     const { mine, theirs } = await withLeagueContext(
       canary.db,
@@ -798,6 +1090,36 @@ describe("two-league isolation under withLeagueContext", () => {
 
     expect(rows.map((row) => row.id)).toContain(integrityCheckA.id);
     expect(rows.map((row) => row.id)).not.toContain(integrityCheckB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered editorial action scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(editorialActions),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(editorialActionA.id);
+    expect(rows.map((row) => row.id)).not.toContain(editorialActionB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered content reaction scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(contentReactions),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(contentReactionA.id);
+    expect(rows.map((row) => row.id)).not.toContain(contentReactionB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered persona tone history scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(aiPersonaToneHistory),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(toneHistoryA.id);
+    expect(rows.map((row) => row.id)).not.toContain(toneHistoryB.id);
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
@@ -887,6 +1209,32 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
+  it("scoped to league A, unfiltered webhook scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, async (tx) => ({
+      deliveries: await tx.select().from(webhookDeliveryRecords),
+      webhooks: await tx.select().from(leagueWebhooks),
+    }));
+
+    expect(rows.webhooks.map((row) => row.id)).toContain(leagueWebhookA.id);
+    expect(rows.webhooks.map((row) => row.id)).not.toContain(leagueWebhookB.id);
+    expect(rows.webhooks.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(rows.deliveries.map((row) => row.id)).toContain(webhookDeliveryA.id);
+    expect(rows.deliveries.map((row) => row.id)).not.toContain(
+      webhookDeliveryB.id,
+    );
+    expect(rows.deliveries.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered digest delivery scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(emailDigestDeliveryRecords),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(emailDigestDeliveryA.id);
+    expect(rows.map((row) => row.id)).not.toContain(emailDigestDeliveryB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
   it("scoped to league A, content scans include central rows and league A only", async () => {
     const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
       tx
@@ -953,6 +1301,55 @@ describe("two-league isolation under withLeagueContext", () => {
             leagueId: leagueB,
             season: 2026,
             status: "fail",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B editorial action from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(editorialActions).values({
+            action: "retract",
+            actorUserId: userA.id,
+            beforeContentItemId: contentB.id,
+            leagueId: leagueB,
+            reason: "bad cross-league retract",
+            targetContentItemId: contentB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B content reaction from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(contentReactions).values({
+            contentItemId: contentB.id,
+            emoji: "laugh",
+            leagueId: leagueB,
+            memberId: memberB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing league B persona tone history from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(aiPersonaToneHistory).values({
+            leagueId: leagueB,
+            persona: "commissioner",
+            personaCardId: personaCardB.id,
+            source: "edit",
+            toneProfile: toneHistoryB.toneProfile,
+            toneVersion: 2,
           }),
         ),
       ),
@@ -1069,10 +1466,68 @@ describe("two-league isolation under withLeagueContext", () => {
       await sqlstateOf(
         withLeagueContext(canary.db, leagueA, (tx) =>
           tx.insert(pushNotificationPreferences).values({
+            channel: "none",
             enabled: false,
+            eventFamily: "lore",
             leagueId: leagueB,
             type: "league.lore.vote.opened",
             userId: userB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing league B webhook rows from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(leagueWebhooks).values({
+            encryptedUrl: `${marker}-bad-encrypted-webhook`,
+            leagueId: leagueB,
+            name: "Bad cross-league webhook",
+            targetKind: "generic",
+            urlHash: `${marker}-bad-webhook-hash`,
+            urlLabel: "chat.example.test / encrypted endpoint",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(webhookDeliveryRecords).values({
+            contentItemId: contentB.id,
+            deliveredAt: new Date("2026-06-12T00:00:00.000Z"),
+            deliveryStatus: "delivered",
+            eventKey: `content:${contentB.id}:bad`,
+            eventType: "content.published",
+            leagueId: leagueB,
+            payload: { marker, bad: true },
+            targetKind: "generic",
+            webhookId: leagueWebhookB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B digest delivery from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(emailDigestDeliveryRecords).values({
+            contentItemIds: [contentB.id],
+            deliveredAt: new Date("2026-06-13T00:00:00.000Z"),
+            deliveryStatus: "delivered",
+            digestKey: `${marker}:weekly:bad`,
+            leagueId: leagueB,
+            payload: { marker, bad: true },
+            recipientEmailHash: `${marker}-bad-digest-email-hash`,
+            recipientUserId: userB.id,
+            windowEndAt: new Date("2026-06-13T00:00:00.000Z"),
+            windowStartAt: new Date("2026-06-06T00:00:00.000Z"),
           }),
         ),
       ),
@@ -1151,6 +1606,58 @@ describe("two-league isolation under withLeagueContext", () => {
             .update(loreEvents)
             .set({ reason: "mutated" })
             .where(eq(loreEvents.id, loreEventA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct editorial action mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(editorialActions)
+            .set({ reason: "mutated" })
+            .where(eq(editorialActions.id, editorialActionA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct persona tone history mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(aiPersonaToneHistory)
+            .set({ reason: "mutated" })
+            .where(eq(aiPersonaToneHistory.id, toneHistoryA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct webhook delivery mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(webhookDeliveryRecords)
+            .set({ errorMessage: "mutated" })
+            .where(eq(webhookDeliveryRecords.id, webhookDeliveryA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct digest delivery mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(emailDigestDeliveryRecords)
+            .set({ errorMessage: "mutated" })
+            .where(eq(emailDigestDeliveryRecords.id, emailDigestDeliveryA.id)),
         ),
       ),
     ).toBe("55000");

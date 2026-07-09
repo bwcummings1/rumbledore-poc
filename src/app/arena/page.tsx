@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import { getArenaLeaderboardData } from "@/betting";
 import { getDb } from "@/db";
+import { ARENA_NAVIGATION_SECTIONS } from "@/navigation/scope";
+import { arenaShareMetadata } from "@/share/route-metadata";
 import { ArenaLeaderboardView } from "./arena-leaderboard-view";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Arena | Rumbledore",
-  description: "Cross-league paper-betting leaderboards.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return arenaShareMetadata(ARENA_NAVIGATION_SECTIONS[0]);
+}
 
 interface ArenaPageProps {
   searchParams?: Promise<{

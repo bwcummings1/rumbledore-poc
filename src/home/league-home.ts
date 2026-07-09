@@ -5,6 +5,12 @@ import {
   type PersonaBylineMap,
   resolvePersonaByline,
 } from "@/ai/persona-display";
+import { contentItemIsPublished } from "@/content/lifecycle";
+import type { ContentReactionSummary } from "@/content/reaction-types";
+import {
+  getLeagueMemberIdForUser,
+  loadContentReactionSummaries,
+} from "@/content/reactions";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -91,6 +97,7 @@ export interface LeagueHomeStoryline {
   publishedAt: string;
   section: PublicationSection<LeaguePublicationSectionId>;
   thumbnailUrl: string;
+  reactions?: ContentReactionSummary;
 }
 
 export interface LeagueHomeActivationAllTime {
@@ -400,6 +407,7 @@ function buildRecords(
 function buildStorylines(
   rows: readonly StorylineRow[],
   personaBylines: PersonaBylineMap,
+  reactionSummaries: ReadonlyMap<string, ContentReactionSummary> = new Map(),
 ): LeagueHomeStoryline[] {
   return rows.map((row) => ({
     authorPersona: row.authorPersona,
@@ -407,6 +415,7 @@ function buildStorylines(
     dek: articleDek(row.metadata, row.summary),
     id: row.id,
     publishedAt: row.publishedAt.toISOString(),
+    reactions: reactionSummaries.get(row.id),
     section: resolveLeaguePublicationSection({
       authorPersona: row.authorPersona,
       kind: "blog",
@@ -536,6 +545,7 @@ function buildActivation({
   latestStoryline,
   personaBylines,
   personNamesById,
+  reactionSummaries,
   recordRows,
   standings,
 }: {
@@ -544,6 +554,7 @@ function buildActivation({
   latestStoryline: LeagueHomeStoryline | null;
   personaBylines: PersonaBylineMap;
   personNamesById: ReadonlyMap<string, string>;
+  reactionSummaries: ReadonlyMap<string, ContentReactionSummary>;
   recordRows: readonly RecordRow[];
   standings: readonly LeagueHomeStanding[];
 }): LeagueHomeActivation | null {
@@ -572,6 +583,7 @@ function buildActivation({
   const matchedStorylines = buildStorylines(
     activation.matchedStoryline ? [activation.matchedStoryline] : [],
     personaBylines,
+    reactionSummaries,
   );
   const matchedStoryline = matchedStorylines[0] ?? null;
 
@@ -648,6 +660,11 @@ export async function getLeagueHomeData(
   if (!userRole) {
     return { status: "forbidden" };
   }
+
+  const memberId = await getLeagueMemberIdForUser(db, {
+    leagueId: input.leagueId,
+    userId: input.userId,
+  });
 
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
     const teamRows = await tx
@@ -795,6 +812,7 @@ export async function getLeagueHomeData(
         and(
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(desc(contentItems.publishedAt))
@@ -884,6 +902,7 @@ export async function getLeagueHomeData(
                 and(
                   eq(contentItems.leagueId, input.leagueId),
                   eq(contentItems.kind, "blog"),
+                  contentItemIsPublished(),
                   or(...searchConditions),
                 ),
               )
@@ -905,6 +924,18 @@ export async function getLeagueHomeData(
       };
     }
 
+    const storylineIds = [
+      ...storylineRows.map((storyline) => storyline.id),
+      ...(activation?.matchedStoryline ? [activation.matchedStoryline.id] : []),
+    ];
+    const reactionSummaries = await loadContentReactionSummaries(tx, {
+      apiUrlFor: (contentItemId) =>
+        `/api/leagues/${input.leagueId}/press/${contentItemId}/reactions`,
+      contentItemIds: storylineIds,
+      leagueId: input.leagueId,
+      memberId,
+    });
+
     return {
       activation,
       matchups: matchupRows satisfies FantasyMatchupRow[],
@@ -914,6 +945,7 @@ export async function getLeagueHomeData(
         personRows.map((person) => [person.id, person.canonicalName]),
       ),
       records: recordRows satisfies RecordRow[],
+      reactionSummaries,
       storylines: storylineRows satisfies StorylineRow[],
       teams: teamRows satisfies FantasyTeamRow[],
     };
@@ -953,7 +985,11 @@ export async function getLeagueHomeData(
     membersByProviderId,
     claimedProviderTeamIds,
   );
-  const storylines = buildStorylines(scoped.storylines, scoped.personaBylines);
+  const storylines = buildStorylines(
+    scoped.storylines,
+    scoped.personaBylines,
+    scoped.reactionSummaries,
+  );
 
   return {
     status: "ready",
@@ -964,6 +1000,7 @@ export async function getLeagueHomeData(
         latestStoryline: storylines[0] ?? null,
         personaBylines: scoped.personaBylines,
         personNamesById: scoped.personNamesById,
+        reactionSummaries: scoped.reactionSummaries,
         recordRows: scoped.records,
         standings,
       }),

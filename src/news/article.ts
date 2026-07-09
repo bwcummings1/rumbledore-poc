@@ -1,21 +1,35 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   buildPersonaBylineMap,
   resolvePersonaByline,
 } from "@/ai/persona-display";
+import type { EditLedgerEntry } from "@/components/curation/edit-ledger-types";
 import type { PublicationStory } from "@/components/publication/story";
+import { contentItemIsPublished } from "@/content/lifecycle";
+import type { ContentReactionSummary } from "@/content/reaction-types";
+import {
+  getLeagueMemberIdForUser,
+  loadContentReactionSummaries,
+} from "@/content/reactions";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   aiPersonaCards,
   contentItems,
+  editorialActions,
   leagueFeedReferences,
   leagues,
   loreClaims,
   type Member,
   members,
+  users,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import type { PublicationArticleBodyBlock } from "./article-embed-types";
+import {
+  resolveLeagueArticleBodyBlocks,
+  unresolvedArticleBodyBlocks,
+} from "./article-embeds";
 import {
   articleDek,
   articleHeroImageUrl,
@@ -28,6 +42,8 @@ import {
   resolveCentralPublicationSection,
   resolveLeaguePublicationSection,
 } from "./sections";
+
+export type { PublicationArticleBodyBlock } from "./article-embed-types";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -69,12 +85,19 @@ export interface PublicationArticleViewData {
   backHref: string;
   backLabel: string;
   tagHrefBase: string;
+  arrivalCta?: {
+    body: string;
+    href: string;
+    label: string;
+    title: string;
+  };
   article: {
     id: string;
     kind: "news" | "blog";
     headline: string;
     dek: string;
     body: string;
+    bodyBlocks: PublicationArticleBodyBlock[];
     byline: string;
     bylineDetail: string;
     publishedAt: string;
@@ -87,6 +110,25 @@ export interface PublicationArticleViewData {
     heroImageUrl: string;
     sourceUrl: string;
     canonCitations: PublicationArticleCanonCitation[];
+    reactions?: ContentReactionSummary;
+    lifecycle: {
+      status: "published" | "retracted" | "superseded";
+      statusChangedAt: string;
+      replacementHref?: string;
+      replacementTitle?: string;
+      retractionReason?: string;
+    };
+    share?: {
+      href: string;
+      text: string;
+      title: string;
+    };
+  };
+  editorial?: {
+    canManage: boolean;
+    ledgerEntries: readonly EditLedgerEntry[];
+    regenerateApiUrl: string;
+    retractApiUrl: string;
   };
   relatedStories: PublicationArticleStory[];
 }
@@ -107,6 +149,37 @@ export interface LeaguePressArticleData extends PublicationArticleViewData {
   userRole: Member["role"];
 }
 
+export interface LeaguePressArticleTeaserData {
+  scope: "league";
+  publicationLabel: string;
+  publicationHref: string;
+  articleHref: string;
+  article: {
+    byline: string;
+    bylineDetail: string;
+    dek: string;
+    headline: string;
+    id: string;
+    lede: string;
+    lifecycle: {
+      status: "published" | "retracted" | "superseded";
+      statusChangedAt: string;
+    };
+    publishedAt: string;
+    section: {
+      href: string;
+      label: string;
+    };
+  };
+  league: {
+    id: string;
+    provider: FantasyProviderId;
+    providerLeagueId: string;
+    name: string;
+    season: number;
+  };
+}
+
 export type CentralNewsArticleLoadResult =
   | { status: "ready"; data: CentralNewsArticleData }
   | { status: "not_found" };
@@ -115,6 +188,10 @@ export type LeaguePressArticleLoadResult =
   | { status: "ready"; data: LeaguePressArticleData }
   | { status: "not_found" }
   | { status: "forbidden" };
+
+export type LeaguePressArticleTeaserLoadResult =
+  | { status: "ready"; data: LeaguePressArticleTeaserData }
+  | { status: "not_found" };
 
 interface RelatedCandidate extends PublicationArticleStory {
   editorialImportance?: number;
@@ -141,6 +218,36 @@ function metadataText(value: unknown): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }
 
+function cappedTeaserText(value: string, limit = 320): string {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= limit) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
+
+function teaserLedeFromBody(body: string, fallback: string): string {
+  const paragraphs = body
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    if (/^#{1,6}\s+/.test(paragraph)) {
+      continue;
+    }
+    if (/^[-*]\s+/.test(paragraph) || /^\d+[.)]\s+/.test(paragraph)) {
+      continue;
+    }
+    if (paragraph.startsWith(">")) {
+      continue;
+    }
+    return cappedTeaserText(paragraph);
+  }
+
+  return cappedTeaserText(fallback);
+}
+
 function metadataNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -151,6 +258,14 @@ function metadataNumber(value: unknown): number | null {
 
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function canManageEditorial(role: Member["role"]): boolean {
+  return (
+    role === "commissioner" ||
+    role === "data_steward" ||
+    role === "league_admin"
+  );
 }
 
 function articleStructure(metadata: unknown): Record<string, unknown> {
@@ -518,11 +633,98 @@ function selectRelatedStories(
       origin: candidate.origin,
       publishedAt: candidate.publishedAt,
       relevanceReason: candidate.relevanceReason,
+      reactions: candidate.reactions,
       sectionTag: candidate.sectionTag,
       sourceUrl: candidate.sourceUrl,
       thumbnailAlt: candidate.thumbnailAlt,
       thumbnailUrl: candidate.thumbnailUrl,
     }));
+}
+
+type EditorialActionRow = {
+  action:
+    | "correct"
+    | "regenerate"
+    | "retract"
+    | "roast_consent"
+    | "tone_edit"
+    | "tone_rollback";
+  actorDisplayName: string | null;
+  actorUserId: string | null;
+  afterContentItemId: string | null;
+  beforeContentItemId: string | null;
+  createdAt: Date;
+  id: string;
+  metadata: Record<string, unknown>;
+  reason: string;
+  targetContentItemId: string | null;
+  targetFantasyMemberId: string | null;
+  targetMemberId: string | null;
+  targetPersonaCardId: string | null;
+};
+
+function editorialActionLabel(action: EditorialActionRow["action"]): string {
+  return action.replaceAll("_", " ");
+}
+
+function editorialLedgerValue(
+  row: EditorialActionRow,
+  side: "after" | "before",
+): Record<string, unknown> {
+  const contentItemId =
+    side === "after" ? row.afterContentItemId : row.beforeContentItemId;
+  const status =
+    side === "after"
+      ? row.action === "retract"
+        ? "retracted"
+        : row.action === "regenerate"
+          ? row.afterContentItemId
+            ? "replacement published"
+            : "generation did not publish"
+          : editorialActionLabel(row.action)
+      : row.beforeContentItemId
+        ? "previous article"
+        : "none";
+
+  return {
+    ...(contentItemId ? { contentItemId } : {}),
+    action: editorialActionLabel(row.action),
+    reason: row.reason || "none",
+    status,
+  };
+}
+
+function editorialRowsToLedgerEntries(
+  rows: readonly EditorialActionRow[],
+): EditLedgerEntry[] {
+  return rows.map((row) => ({
+    actorDisplayName: row.actorDisplayName,
+    actorUserId: row.actorUserId,
+    afterValue: editorialLedgerValue(row, "after"),
+    beforeValue: editorialLedgerValue(row, "before"),
+    createdAt: row.createdAt.toISOString(),
+    editClass:
+      row.action === "tone_edit" || row.action === "tone_rollback"
+        ? "cosmetic"
+        : "substantive",
+    field: row.action,
+    id: row.id,
+    reason: row.reason || null,
+    scope: null,
+    source: "editorial_action",
+    targetId:
+      row.targetContentItemId ??
+      row.targetPersonaCardId ??
+      row.targetMemberId ??
+      row.targetFantasyMemberId,
+    targetKind: row.targetContentItemId
+      ? "content_item"
+      : row.targetPersonaCardId
+        ? "persona_card"
+        : row.targetMemberId
+          ? "member"
+          : "fantasy_member",
+  }));
 }
 
 async function loadCanonCitationsInContext(
@@ -593,6 +795,7 @@ export async function getCentralNewsArticleData(
         eq(contentItems.id, input.articleId),
         isNull(contentItems.leagueId),
         eq(contentItems.kind, "news"),
+        contentItemIsPublished(),
       ),
     )
     .limit(1);
@@ -619,7 +822,13 @@ export async function getCentralNewsArticleData(
       title: contentItems.title,
     })
     .from(contentItems)
-    .where(and(isNull(contentItems.leagueId), eq(contentItems.kind, "news")))
+    .where(
+      and(
+        isNull(contentItems.leagueId),
+        eq(contentItems.kind, "news"),
+        contentItemIsPublished(),
+      ),
+    )
     .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
     .limit(RELATED_CANDIDATE_LIMIT);
 
@@ -655,6 +864,7 @@ export async function getCentralNewsArticleData(
     data: {
       article: {
         body: row.body,
+        bodyBlocks: unresolvedArticleBodyBlocks(row.metadata),
         byline: sourceLabel(row.source),
         bylineDetail: "Central NFL and fantasy desk",
         dek: articleDek(row.metadata, row.summary),
@@ -671,6 +881,15 @@ export async function getCentralNewsArticleData(
         sourceUrl: sourceUrlFor(row.metadata, row.sourceUrl),
         tags,
         canonCitations: [],
+        lifecycle: {
+          status: "published",
+          statusChangedAt: row.publishedAt.toISOString(),
+        },
+        share: {
+          href: `/news/articles/${row.id}`,
+          text: articleDek(row.metadata, row.summary),
+          title: row.title,
+        },
       },
       backHref: "/news",
       backLabel: "News front",
@@ -735,6 +954,11 @@ export async function getLeaguePressArticleData(
     return { status: "forbidden" };
   }
 
+  const memberId = await getLeagueMemberIdForUser(db, {
+    leagueId: input.leagueId,
+    userId: input.userId,
+  });
+
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
     const [articleRow] = await tx
       .select({
@@ -743,6 +967,8 @@ export async function getLeaguePressArticleData(
         id: contentItems.id,
         metadata: contentItems.metadata,
         publishedAt: contentItems.publishedAt,
+        status: contentItems.status,
+        statusChangedAt: contentItems.statusChangedAt,
         summary: contentItems.summary,
         title: contentItems.title,
       })
@@ -779,10 +1005,68 @@ export async function getLeaguePressArticleData(
       title: articleRow.title,
     });
     const tags = articleTags(articleRow.metadata);
+    const bodyBlocks = await resolveLeagueArticleBodyBlocks(tx, {
+      leagueId: input.leagueId,
+      leagueSeason: league.season,
+      metadata: articleRow.metadata,
+    });
     const canonCitations = await loadCanonCitationsInContext(tx, {
       claimIds: articleLoreCitationIds(articleRow.metadata),
       leagueId: input.leagueId,
     });
+    const editorialRows = await tx
+      .select({
+        action: editorialActions.action,
+        actorDisplayName: users.displayName,
+        actorUserId: editorialActions.actorUserId,
+        afterContentItemId: editorialActions.afterContentItemId,
+        beforeContentItemId: editorialActions.beforeContentItemId,
+        createdAt: editorialActions.createdAt,
+        id: editorialActions.id,
+        metadata: editorialActions.metadata,
+        reason: editorialActions.reason,
+        targetContentItemId: editorialActions.targetContentItemId,
+        targetFantasyMemberId: editorialActions.targetFantasyMemberId,
+        targetMemberId: editorialActions.targetMemberId,
+        targetPersonaCardId: editorialActions.targetPersonaCardId,
+      })
+      .from(editorialActions)
+      .leftJoin(users, eq(editorialActions.actorUserId, users.id))
+      .where(
+        and(
+          eq(editorialActions.leagueId, input.leagueId),
+          or(
+            eq(editorialActions.targetContentItemId, articleRow.id),
+            eq(editorialActions.beforeContentItemId, articleRow.id),
+            eq(editorialActions.afterContentItemId, articleRow.id),
+          ),
+        ),
+      )
+      .orderBy(desc(editorialActions.createdAt), desc(editorialActions.id))
+      .limit(12);
+    const retraction = editorialRows.find(
+      (row) =>
+        row.action === "retract" && row.targetContentItemId === articleRow.id,
+    );
+    const [replacement] =
+      articleRow.status === "superseded"
+        ? await tx
+            .select({ id: contentItems.id, title: contentItems.title })
+            .from(contentItems)
+            .where(
+              and(
+                eq(contentItems.leagueId, input.leagueId),
+                eq(contentItems.kind, "blog"),
+                eq(contentItems.supersedesContentItemId, articleRow.id),
+                contentItemIsPublished(),
+              ),
+            )
+            .orderBy(
+              desc(contentItems.publishedAt),
+              desc(contentItems.createdAt),
+            )
+            .limit(1)
+        : [];
 
     const leagueRows = await tx
       .select({
@@ -798,6 +1082,7 @@ export async function getLeaguePressArticleData(
         and(
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
@@ -829,6 +1114,7 @@ export async function getLeaguePressArticleData(
           eq(leagueFeedReferences.leagueId, input.leagueId),
           isNull(contentItems.leagueId),
           eq(contentItems.kind, "news"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(
@@ -836,6 +1122,17 @@ export async function getLeaguePressArticleData(
         desc(contentItems.publishedAt),
       )
       .limit(RELATED_CANDIDATE_LIMIT);
+
+    const reactionSummaries = await loadContentReactionSummaries(tx, {
+      apiUrlFor: (contentItemId) =>
+        `/api/leagues/${input.leagueId}/press/${contentItemId}/reactions`,
+      contentItemIds: [
+        articleRow.id,
+        ...leagueRows.map((candidate) => candidate.id),
+      ],
+      leagueId: input.leagueId,
+      memberId,
+    });
 
     const leagueCandidates: RelatedCandidate[] = leagueRows
       .filter((candidate) => candidate.id !== articleRow.id)
@@ -862,6 +1159,7 @@ export async function getLeaguePressArticleData(
           id: candidate.id,
           origin: "cast",
           publishedAt: candidate.publishedAt.toISOString(),
+          reactions: reactionSummaries.get(candidate.id),
           sectionId: candidateSection.id,
           sectionTag: candidateSection.label,
           tags: articleTags(candidate.metadata),
@@ -916,6 +1214,7 @@ export async function getLeaguePressArticleData(
     return {
       article: {
         body: articleRow.body,
+        bodyBlocks,
         byline: byline.label,
         bylineDetail: byline.detail,
         dek: articleDek(articleRow.metadata, articleRow.summary),
@@ -925,6 +1224,7 @@ export async function getLeaguePressArticleData(
         inlineDataBlocks: articleInlineDataBlocks(articleRow.metadata),
         kind: "blog" as const,
         publishedAt: articleRow.publishedAt.toISOString(),
+        reactions: reactionSummaries.get(articleRow.id),
         section: {
           href: `/leagues/${input.leagueId}/press/${articleSection.slug}`,
           label: articleSection.label,
@@ -932,6 +1232,30 @@ export async function getLeaguePressArticleData(
         sourceUrl: "",
         tags,
         canonCitations,
+        lifecycle: {
+          status: articleRow.status,
+          statusChangedAt: articleRow.statusChangedAt.toISOString(),
+          ...(replacement
+            ? {
+                replacementHref: `/leagues/${input.leagueId}/press/${replacement.id}`,
+                replacementTitle: replacement.title,
+              }
+            : {}),
+          ...(retraction?.reason
+            ? { retractionReason: retraction.reason }
+            : {}),
+        },
+        share: {
+          href: `/leagues/${input.leagueId}/press/${articleRow.id}`,
+          text: articleDek(articleRow.metadata, articleRow.summary),
+          title: articleRow.title,
+        },
+      },
+      editorial: {
+        canManage: canManageEditorial(userRole),
+        ledgerEntries: editorialRowsToLedgerEntries(editorialRows),
+        regenerateApiUrl: `/api/leagues/${input.leagueId}/press/${articleRow.id}/regenerate`,
+        retractApiUrl: `/api/leagues/${input.leagueId}/press/${articleRow.id}/retract`,
       },
       relatedStories: selectRelatedStories(
         [...leagueCandidates, ...centralCandidates],
@@ -958,6 +1282,144 @@ export async function getLeaguePressArticleData(
       scope: "league",
       tagHrefBase: `/leagues/${league.id}/press`,
       userRole,
+    },
+    status: "ready",
+  };
+}
+
+export async function getLeaguePressArticleTeaserData(
+  db: Db,
+  input: { leagueId: string; postId: string },
+): Promise<LeaguePressArticleTeaserLoadResult> {
+  if (!UUID_RE.test(input.leagueId) || !UUID_RE.test(input.postId)) {
+    return { status: "not_found" };
+  }
+
+  const [league] = await db
+    .select({
+      id: leagues.id,
+      name: leagues.name,
+      provider: leagues.provider,
+      providerLeagueId: leagues.providerLeagueId,
+      season: leagues.season,
+    })
+    .from(leagues)
+    .where(eq(leagues.id, input.leagueId))
+    .limit(1);
+
+  if (!league) {
+    return { status: "not_found" };
+  }
+
+  const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
+    // Intentionally open teaser query: body is read only to derive a capped
+    // first paragraph. The returned DTO never carries raw body, embeds, canon
+    // citations, reactions, editorial rows, or member-derived data.
+    const [articleRow] = await tx
+      .select({
+        authorPersona: contentItems.authorPersona,
+        body: contentItems.body,
+        id: contentItems.id,
+        metadata: contentItems.metadata,
+        publishedAt: contentItems.publishedAt,
+        status: contentItems.status,
+        statusChangedAt: contentItems.statusChangedAt,
+        summary: contentItems.summary,
+        title: contentItems.title,
+      })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.id, input.postId),
+          eq(contentItems.leagueId, input.leagueId),
+          eq(contentItems.kind, "blog"),
+        ),
+      )
+      .limit(1);
+
+    if (!articleRow) {
+      return null;
+    }
+
+    const personaBylines = buildPersonaBylineMap(
+      await tx
+        .select({
+          name: aiPersonaCards.name,
+          persona: aiPersonaCards.persona,
+          purpose: aiPersonaCards.purpose,
+        })
+        .from(aiPersonaCards)
+        .where(eq(aiPersonaCards.leagueId, input.leagueId)),
+    );
+    const articleSection = resolveLeaguePublicationSection({
+      authorPersona: articleRow.authorPersona,
+      kind: "blog",
+      metadata: articleRow.metadata,
+      summary: articleRow.summary,
+      title: articleRow.title,
+    });
+
+    if (articleRow.status !== "published") {
+      return {
+        article: {
+          byline: "Rumbledore Press",
+          bylineDetail: "Editorial lifecycle notice",
+          dek: "",
+          headline: "No longer available",
+          id: articleRow.id,
+          lede: "",
+          lifecycle: {
+            status: articleRow.status,
+            statusChangedAt: articleRow.statusChangedAt.toISOString(),
+          },
+          publishedAt: articleRow.publishedAt.toISOString(),
+          section: {
+            href: `/leagues/${input.leagueId}/press/${articleSection.slug}`,
+            label: articleSection.label,
+          },
+        },
+      };
+    }
+
+    const byline = resolvePersonaByline(
+      articleRow.authorPersona,
+      personaBylines,
+    );
+    const dek = articleDek(articleRow.metadata, articleRow.summary);
+
+    return {
+      article: {
+        byline: byline.label,
+        bylineDetail: byline.detail,
+        dek,
+        headline: articleRow.title,
+        id: articleRow.id,
+        lede: teaserLedeFromBody(articleRow.body, dek),
+        lifecycle: {
+          status: articleRow.status,
+          statusChangedAt: articleRow.statusChangedAt.toISOString(),
+        },
+        publishedAt: articleRow.publishedAt.toISOString(),
+        section: {
+          href: `/leagues/${input.leagueId}/press/${articleSection.slug}`,
+          label: articleSection.label,
+        },
+      },
+    };
+  });
+
+  if (!scoped) {
+    return { status: "not_found" };
+  }
+
+  return {
+    data: {
+      ...scoped,
+      articleHref: `/leagues/${league.id}/press/${scoped.article.id}`,
+      league,
+      publicationHref: `/leagues/${league.id}/press`,
+      publicationLabel: `The ${league.name} Press`,
+      scope: "league",
     },
     status: "ready",
   };

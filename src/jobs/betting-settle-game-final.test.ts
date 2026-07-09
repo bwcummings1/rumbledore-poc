@@ -12,7 +12,6 @@ import {
   placeBetSlip,
   type ResultsProvider,
   type ResultsProviderInput,
-  rebuildArenaStandings,
 } from "@/betting";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -166,6 +165,92 @@ async function seedRivalSettledSingle() {
   });
 }
 
+async function seedPriorArenaSnapshot(seasonId: string) {
+  const computedAt = new Date("2037-09-07T21:00:00.000Z");
+  await handle.db.insert(arenaStandings).values([
+    {
+      computedAt,
+      currentBalanceCents: 990_000,
+      kind: "league",
+      leagueId: league.id,
+      netPnlCents: -10_000,
+      pushVoidSlipCount: 0,
+      rank: 2,
+      rankDelta: 0,
+      roiBps: -10_000,
+      seasonId,
+      settledSlipCount: 0,
+      subjectId: league.id,
+      totalReturnCents: 0,
+      totalStakeCents: 10_000,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 0,
+      wonSlipCount: 0,
+    },
+    {
+      computedAt,
+      currentBalanceCents: 1_005_000,
+      kind: "league",
+      leagueId: rivalLeague.id,
+      netPnlCents: 5_000,
+      pushVoidSlipCount: 0,
+      rank: 1,
+      rankDelta: 0,
+      roiBps: 5_000,
+      seasonId,
+      settledSlipCount: 1,
+      subjectId: rivalLeague.id,
+      totalReturnCents: 15_000,
+      totalStakeCents: 10_000,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 10_000,
+      wonSlipCount: 1,
+    },
+    {
+      computedAt,
+      currentBalanceCents: 990_000,
+      kind: "individual",
+      netPnlCents: -10_000,
+      pushVoidSlipCount: 0,
+      rank: 2,
+      rankDelta: 0,
+      roiBps: -10_000,
+      seasonId,
+      settledSlipCount: 0,
+      subjectId: user.id,
+      totalReturnCents: 0,
+      totalStakeCents: 10_000,
+      userId: user.id,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 0,
+      wonSlipCount: 0,
+    },
+    {
+      computedAt,
+      currentBalanceCents: 1_005_000,
+      kind: "individual",
+      netPnlCents: 5_000,
+      pushVoidSlipCount: 0,
+      rank: 1,
+      rankDelta: 0,
+      roiBps: 5_000,
+      seasonId,
+      settledSlipCount: 1,
+      subjectId: rivalUser.id,
+      totalReturnCents: 15_000,
+      totalStakeCents: 10_000,
+      userId: rivalUser.id,
+      weeksPlayed: 1,
+      weeksSurvived: 1,
+      winRateBps: 10_000,
+      wonSlipCount: 1,
+    },
+  ]);
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -246,10 +331,7 @@ describe("betting game.final settlement job", () => {
       startsAt: new Date("2037-09-01T00:00:00.000Z"),
     });
     await seedRivalSettledSingle();
-    await rebuildArenaStandings(handle.db, {
-      computedAt: new Date("2037-09-07T21:00:00.000Z"),
-      seasonId: arenaSeason.id,
-    });
+    await seedPriorArenaSnapshot(arenaSeason.id);
     const push = new RecordingPushNotifier();
     const realtime = new RecordingRealtimePublisher();
     const fn = createBettingSettleGameFinalFunction(() => ({

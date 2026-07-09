@@ -27,6 +27,14 @@ import { Input } from "@/components/ui/input";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
+import {
+  type LeagueRoastConsentData,
+  type LeagueRoastConsentMutationResult,
+  type LeagueRoastConsentUnclaimedTarget,
+  ROAST_LEVEL_DISPLAY,
+  ROAST_LEVELS,
+  type RoastLevel,
+} from "@/members/roast-consent-types";
 
 interface LeagueInviteTarget {
   displayName: string;
@@ -92,6 +100,197 @@ interface CreatedInvite {
   target: LeagueInviteTarget | null;
   targetHint: string | null;
   token: string;
+}
+
+function RoastLevelButton({
+  busy,
+  current,
+  level,
+  onSelect,
+}: {
+  busy: boolean;
+  current: RoastLevel;
+  level: RoastLevel;
+  onSelect: (level: RoastLevel) => Promise<void>;
+}) {
+  const display = ROAST_LEVEL_DISPLAY[level];
+  const active = current === level;
+  return (
+    <Button
+      aria-pressed={active}
+      disabled={busy || active}
+      onClick={() => void onSelect(level)}
+      size="sm"
+      type="button"
+      variant={active ? "default" : "outline"}
+    >
+      {display.label}
+    </Button>
+  );
+}
+
+function RoastConsentTargetRow({
+  busyKey,
+  onChange,
+  target,
+}: {
+  busyKey: string | null;
+  onChange: (
+    target: LeagueRoastConsentUnclaimedTarget,
+    level: RoastLevel,
+  ) => Promise<void>;
+  target: LeagueRoastConsentUnclaimedTarget;
+}) {
+  const busy = busyKey === target.fantasyMemberId;
+  return (
+    <div className="cell grid gap-3 px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{target.displayName}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {target.teamNames.length > 0
+              ? target.teamNames.join(", ")
+              : target.providerMemberId}
+          </p>
+        </div>
+        <StatusPill
+          tone={target.roastLevel === "off_limits" ? "danger" : "neutral"}
+        >
+          {ROAST_LEVEL_DISPLAY[target.roastLevel].label}
+        </StatusPill>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {ROAST_LEVELS.map((level) => (
+          <RoastLevelButton
+            busy={busy || busyKey !== null}
+            current={target.roastLevel}
+            key={level}
+            level={level}
+            onSelect={(nextLevel) => onChange(target, nextLevel)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RoastConsentPanel({ data }: { data: LeagueRoastConsentData }) {
+  const [self, setSelf] = useState(data.self);
+  const [targets, setTargets] = useState(data.unclaimedTargets);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState<OnboardingPanelError | null>(null);
+
+  async function updateSelf(roastLevel: RoastLevel) {
+    setBusyKey("self");
+    setError(null);
+    try {
+      const result = await postJson<LeagueRoastConsentMutationResult>(
+        data.apiUrl,
+        {
+          roastLevel,
+          target: { kind: "self" },
+        },
+      );
+      setSelf((current) => ({ ...current, roastLevel: result.roastLevel }));
+    } catch (cause) {
+      setError(onboardingPanelError(cause));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function updateTarget(
+    target: LeagueRoastConsentUnclaimedTarget,
+    roastLevel: RoastLevel,
+  ) {
+    setBusyKey(target.fantasyMemberId);
+    setError(null);
+    try {
+      const result = await postJson<LeagueRoastConsentMutationResult>(
+        data.apiUrl,
+        {
+          roastLevel,
+          target: {
+            fantasyMemberId: target.fantasyMemberId,
+            kind: "fantasy_member",
+          },
+        },
+      );
+      setTargets((current) =>
+        current.map((candidate) =>
+          candidate.fantasyMemberId === target.fantasyMemberId
+            ? { ...candidate, roastLevel: result.roastLevel }
+            : candidate,
+        ),
+      );
+    } catch (cause) {
+      setError(onboardingPanelError(cause));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <section className="panel grid gap-4 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-sm font-medium text-foreground">
+            Roast consent
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {ROAST_LEVEL_DISPLAY[self.roastLevel].description}
+          </p>
+        </div>
+        <StatusPill tone={self.roastLevel === "off_limits" ? "danger" : "live"}>
+          {ROAST_LEVEL_DISPLAY[self.roastLevel].label}
+        </StatusPill>
+      </div>
+
+      {error ? <Alert tone="danger">{error.message}</Alert> : null}
+
+      <div className="cell grid gap-3 px-3 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{self.displayName}</p>
+          <p className="text-xs text-muted-foreground">Your league account</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {ROAST_LEVELS.map((level) => (
+            <RoastLevelButton
+              busy={busyKey !== null}
+              current={self.roastLevel}
+              key={level}
+              level={level}
+              onSelect={updateSelf}
+            />
+          ))}
+        </div>
+      </div>
+
+      {data.canManageUnclaimed ? (
+        <div className="grid gap-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Unclaimed provider members
+          </p>
+          {targets.length > 0 ? (
+            <div className="grid gap-2">
+              {targets.map((target) => (
+                <RoastConsentTargetRow
+                  busyKey={busyKey}
+                  key={target.fantasyMemberId}
+                  onChange={updateTarget}
+                  target={target}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-control border border-dashed border-border bg-muted/25 px-3 py-3 text-sm text-muted-foreground">
+              Every imported member has been claimed.
+            </p>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function targetKey(target: LeagueInviteTarget): string {
@@ -268,9 +467,11 @@ function DataStewardDoorwayCard({
 
 export function LeagueInviteView({
   initialSummary,
+  roastConsent,
   stewardDoorway,
 }: {
   initialSummary: LeagueInviteSummary;
+  roastConsent?: LeagueRoastConsentData;
   stewardDoorway?: DataStewardDoorwaySummary;
 }) {
   const [error, setError] = useState<OnboardingPanelError | null>(null);
@@ -523,6 +724,8 @@ export function LeagueInviteView({
       </header>
 
       {error ? <Alert tone="danger">{error.message}</Alert> : null}
+
+      {roastConsent ? <RoastConsentPanel data={roastConsent} /> : null}
 
       {stewardDoorwayState ? (
         <DataStewardDoorwayCard

@@ -6,14 +6,10 @@ import {
   ARENA_NAVIGATION_SECTIONS,
   type ArenaSectionId,
 } from "@/navigation/scope";
+import { arenaShareMetadata } from "@/share/route-metadata";
 import { ArenaLeaderboardView } from "../arena-leaderboard-view";
 
 export const dynamic = "force-dynamic";
-
-export const metadata: Metadata = {
-  title: "Arena Section | Rumbledore",
-  description: "A section of the central cross-league Arena.",
-};
 
 interface ArenaSectionPageProps {
   params: Promise<{ section: string }>;
@@ -23,6 +19,17 @@ interface ArenaSectionPageProps {
     season?: string | string[];
     seasonId?: string | string[];
   }>;
+}
+
+export async function generateMetadata({
+  params,
+}: ArenaSectionPageProps): Promise<Metadata> {
+  const { section: sectionSlug } = await params;
+  return arenaShareMetadata(
+    ARENA_NAVIGATION_SECTIONS.find(
+      (section) => section.href === `/arena/${sectionSlug}`,
+    ) ?? ARENA_NAVIGATION_SECTIONS[0],
+  );
 }
 
 function firstSearchValue(value: string | string[] | undefined): string | null {

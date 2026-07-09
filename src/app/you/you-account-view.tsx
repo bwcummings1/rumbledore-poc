@@ -344,18 +344,22 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="eyebrow text-primary">Notification prefs</p>
-              <h2 className="mt-1 heading-auspex text-lg">League-scoped</h2>
+              <h2 className="mt-1 heading-auspex text-lg">
+                Digest first, push when installed
+              </h2>
             </div>
             <Bell className="size-5 text-primary" aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground">
-            Push subscriptions are stored per league. Open a league home to
-            toggle alerts for that league without exposing cross-league data.
+            Weekly digests and commissioner webhooks are the baseline arrival
+            path. Web push is an installed-app enhancement; on iOS, Safari only
+            delivers it after Add to Home Screen.
           </p>
           <KVList
             items={[
-              { label: "Scope", value: "Per league" },
-              { label: "Secret exposure", value: "Public key only" },
+              { label: "Content", value: "Digest" },
+              { label: "Bets, lore, arena", value: "Push" },
+              { label: "Mute option", value: "None per family" },
             ]}
           />
         </div>

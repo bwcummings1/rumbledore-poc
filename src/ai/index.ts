@@ -12,6 +12,16 @@ export {
   parseAiContentType,
   validateContentStructure,
 } from "./content-types";
+export {
+  DEFAULT_GENERATION_STALE_AFTER_MS,
+  type GenerationFailureQueueData,
+  type GenerationFailureQueueItem,
+  type GenerationFailureQueueItemStatus,
+  type GenerationFailureQueueLoadResult,
+  type GenerationFailureRetryResult,
+  getGenerationFailureQueueData,
+  retryGenerationFailureRun,
+} from "./generation-failure-queue";
 export type {
   BlogDraft,
   BlogDraftBodyBlock,
@@ -20,6 +30,7 @@ export type {
   LeagueBlogContext,
   LeagueContextCadenceFrame,
   LeagueContextCanonLore,
+  LeagueContextCorrection,
   LeagueContextInstigation,
   LeagueContextLoreClaim,
   LeagueContextPerson,
@@ -51,6 +62,18 @@ export {
   MockLlmJudge,
   MockWebGrounding,
 } from "./mocks";
+export {
+  editPersonaToneProfile,
+  getLeagueToneProfileEditorData,
+  type LeagueToneProfileEditorData,
+  type LeagueToneProfileEditorLoadResult,
+  type PersonaToneEditorCard,
+  type PersonaToneHistoryEntry,
+  type PersonaToneMutationResult,
+  type PersonaTonePreviewResult,
+  previewPersonaToneProfile,
+  rollbackPersonaToneProfile,
+} from "./persona-tone-editor";
 export {
   AI_PERSONAS,
   type AiPersona,

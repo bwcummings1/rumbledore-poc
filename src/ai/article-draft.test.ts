@@ -66,6 +66,7 @@ function context(): LeagueBlogContext {
       },
       people: [],
       rivalries: [],
+      roastConsent: { full_send: [], light: [], off_limits: [] },
     },
     league: {
       currentScoringPeriod: 1,
@@ -109,6 +110,7 @@ function context(): LeagueBlogContext {
       },
     ],
     trigger: {
+      correction: null,
       instigation: null,
       loreClaim: null,
       poll: null,
@@ -142,6 +144,40 @@ function weeklyDraft(overrides: Partial<BlogDraft> = {}): BlogDraft {
     summary: "Fixture Team gets a recap with cited canon.",
     tags: ["Fixture Team", "Canon"],
     title: "Fixture Team revisits the winter legend",
+    ...overrides,
+  };
+}
+
+function powerRankingsDraft(overrides: Partial<BlogDraft> = {}): BlogDraft {
+  const bodyBlocks: BlogDraft["bodyBlocks"] = [
+    { text: "Model board", type: "heading" },
+    {
+      text: "Fixture Team keeps the top line because the record and points both point there.",
+      type: "paragraph",
+    },
+  ];
+  return {
+    body: "Fixture Team keeps the top line because the record and points both point there.",
+    bodyBlocks,
+    citedCanonClaimIds: [canonClaimId],
+    contentType: "power_rankings",
+    dek: "Fixture Team stays on top of the model board.",
+    section: "power-rankings",
+    structure: {
+      rankings: [
+        {
+          delta: 0,
+          rank: 1,
+          rationale: "Fixture Team is 2-1-0 with 120 points for.",
+          record: "2-1-0",
+          team: "Fixture Team",
+        },
+      ],
+      type: "power_rankings",
+    },
+    summary: "Fixture Team tops the power rankings.",
+    tags: ["Fixture Team", "Power"],
+    title: "Fixture Team leads the model board",
     ...overrides,
   };
 }
@@ -184,5 +220,46 @@ describe("blog draft canon citations", () => {
         context: context(),
       }),
     ).toThrowError("AI draft cited lore claims that are not active canon");
+  });
+
+  it("adds live-data embed blocks to recap and power-ranking drafts", () => {
+    const leagueContext = context();
+    const recap = validateBlogDraft(weeklyDraft(), {
+      contentType: "weekly_recap",
+      context: leagueContext,
+    });
+    const rankings = validateBlogDraft(powerRankingsDraft(), {
+      contentType: "power_rankings",
+      context: leagueContext,
+    });
+
+    expect(recap.bodyBlocks).toEqual(
+      expect.arrayContaining([
+        {
+          embed: {
+            kind: "scoreboard_strip",
+            scoringPeriod: 1,
+            season: 2026,
+            title: "Week 1 scoreboard",
+          },
+          type: "embed",
+        },
+      ]),
+    );
+    expect(rankings.bodyBlocks).toEqual(
+      expect.arrayContaining([
+        {
+          embed: {
+            kind: "standings_movement",
+            limit: 8,
+            season: 2026,
+            title: "Standings movement",
+          },
+          type: "embed",
+        },
+      ]),
+    );
+    expect(recap.body).not.toContain("scoreboard_strip");
+    expect(rankings.body).not.toContain("standings_movement");
   });
 });

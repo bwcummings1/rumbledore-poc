@@ -9,6 +9,7 @@ import { withLeagueContext } from "@/db/rls";
 import {
   aiPersonaCards,
   contentItems,
+  leagueFeedReferences,
   leagues,
   members,
   users,
@@ -249,6 +250,55 @@ afterAll(async () => {
 
 describe("league-tailored feed", () => {
   it("returns this league's posts plus only referenced central news", async () => {
+    const [hiddenCentral] = await handle.db
+      .insert(contentItems)
+      .values({
+        body: "Hidden central body.",
+        contentHash: `${marker}-central-hidden-hash`,
+        dedupKey: `${marker}-central-hidden`,
+        kind: "news",
+        leagueId: null,
+        publishedAt: new Date("2026-06-11T16:00:00.000Z"),
+        source: "Hidden Central Wire",
+        sourceUrl: `https://news.example.com/${marker}/hidden`,
+        status: "retracted",
+        summary: "A hidden central story with a stale league reference.",
+        title: "Hidden central story",
+      })
+      .returning({ id: contentItems.id });
+    if (!hiddenCentral) {
+      throw new Error("hidden central row was not inserted");
+    }
+
+    await withLeagueContext(handle.db, leagueAId, async (tx) => {
+      await tx.insert(contentItems).values({
+        authorPersona: "narrator",
+        body: "Hidden league body.",
+        contentHash: `${marker}-league-hidden-hash`,
+        dedupKey: `${marker}-league-hidden`,
+        kind: "blog",
+        leagueId: leagueAId,
+        publishedAt: new Date("2026-06-11T16:30:00.000Z"),
+        status: "superseded",
+        summary: "A hidden league story.",
+        title: "Hidden league post",
+      });
+      await tx.insert(leagueFeedReferences).values({
+        contentItemId: hiddenCentral.id,
+        leagueId: leagueAId,
+        matchedEntities: [
+          {
+            label: "Fixture Team 01",
+            provider: "espn",
+            providerId: "1",
+            type: "team",
+          },
+        ],
+        reason: "Stale hidden central reference.",
+        relevanceScore: 99,
+      });
+    });
+
     const result = await getLeagueFeedData(handle.db, {
       leagueId: leagueAId,
       limit: 20,
@@ -300,6 +350,12 @@ describe("league-tailored feed", () => {
     );
     expect(result.data.items.map((item) => item.title)).not.toContain(
       "Narrator note for league B",
+    );
+    expect(result.data.items.map((item) => item.title)).not.toContain(
+      "Hidden central story",
+    );
+    expect(result.data.items.map((item) => item.title)).not.toContain(
+      "Hidden league post",
     );
     expect(result.data.items[0]?.section.label).toBe("Previews");
     expect(result.data.sections.map((section) => section.label)).toEqual([

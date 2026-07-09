@@ -1,5 +1,6 @@
 export type EditLedgerSource =
   | "data_correction_audit"
+  | "editorial_action"
   | "identity_audit"
   | "league_data_edit";
 

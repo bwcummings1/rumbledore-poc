@@ -542,6 +542,15 @@ function blocksForStructure(
     case "weekly_recap":
       return [
         { text: `${personaName}'s weekly recap`, type: "heading" },
+        {
+          embed: {
+            kind: "scoreboard_strip",
+            scoringPeriod: request.context.league.currentScoringPeriod,
+            season: request.context.league.season,
+            title: `Week ${request.context.league.currentScoringPeriod} scoreboard`,
+          },
+          type: "embed",
+        },
         { text: `${structure.lead} ${personaLine}`, type: "paragraph" },
         { text: toneLine, type: "paragraph" },
         {
@@ -557,6 +566,15 @@ function blocksForStructure(
     case "power_rankings":
       return [
         { text: `${personaName}'s power rankings`, type: "heading" },
+        {
+          embed: {
+            kind: "standings_movement",
+            limit: Math.min(Math.max(structure.rankings.length, 3), 12),
+            season: request.context.league.season,
+            title: "Standings movement",
+          },
+          type: "embed",
+        },
         { text: personaLine, type: "paragraph" },
         { text: toneLine, type: "paragraph" },
         {
@@ -621,9 +639,24 @@ function blocksForStructure(
           type: "list",
         },
       ];
-    case "rivalry_piece":
+    case "rivalry_piece": {
+      const rivalry = request.context.authenticity.rivalries[0];
       return [
         { text: `${personaName}'s rivalry file`, type: "heading" },
+        ...(rivalry
+          ? [
+              {
+                embed: {
+                  kind: "h2h_sparkline" as const,
+                  personAName: rivalry.personAName,
+                  personBName: rivalry.personBName,
+                  season: request.context.league.season,
+                  title: `${rivalry.personAName} vs ${rivalry.personBName}`,
+                },
+                type: "embed" as const,
+              },
+            ]
+          : []),
         { text: `${structure.history} ${personaLine}`, type: "paragraph" },
         { text: toneLine, type: "paragraph" },
         {
@@ -631,6 +664,7 @@ function blocksForStructure(
           type: "list",
         },
       ];
+    }
     case "arena_recap":
       return [
         { text: `${personaName}'s arena recap`, type: "heading" },
@@ -781,6 +815,9 @@ export class MockLlmJudge implements LlmJudge {
     const leakedTokens = otherLeagueTokens.filter((token) =>
       includesToken(text, token),
     );
+    const targetedOffLimits = uniqueJudgeTokens(
+      request.leagueFacts.context.authenticity.roastConsent.off_limits ?? [],
+    ).filter((token) => includesToken(text, token));
     const requiredLeagueHits = Math.max(1, Math.min(2, leagueTokens.length));
     const requiredPersonaHits = Math.max(1, Math.min(2, personaMarkers.length));
     const authenticity =
@@ -801,6 +838,9 @@ export class MockLlmJudge implements LlmJudge {
       leakedTokens.length > 0
         ? `Leaked other-league tokens: ${leakedTokens.join(", ")}`
         : "No other-league token matched.",
+      targetedOffLimits.length > 0
+        ? `Targeted off-limits members: ${targetedOffLimits.join(", ")}`
+        : "No off-limits target matched.",
     ];
 
     return {
@@ -811,6 +851,8 @@ export class MockLlmJudge implements LlmJudge {
       matchedPersonaMarkers,
       notes,
       personaMatch,
+      targetedOffLimits,
+      targetingConsent: targetedOffLimits.length === 0,
     };
   }
 }

@@ -1,3 +1,5 @@
+import type { ContentReactionSummary } from "@/content/reaction-types";
+
 export type PublicationStoryCardVariant =
   | "hero"
   | "secondary"
@@ -22,4 +24,5 @@ export interface PublicationStory {
   origin?: PublicationStoryOrigin;
   sourceUrl?: string;
   relevanceReason?: string;
+  reactions?: ContentReactionSummary;
 }

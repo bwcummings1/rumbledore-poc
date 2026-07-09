@@ -1982,6 +1982,8 @@ function buildShellRealtimeSubscriptions(
       ]),
       realtimeSubscription(leagueRealtimeChannel(leagueId, "blog"), [
         REALTIME_EVENTS.blogPublished,
+        REALTIME_EVENTS.contentRetracted,
+        REALTIME_EVENTS.contentSuperseded,
       ]),
       realtimeSubscription(leagueRealtimeChannel(leagueId, "lore"), [
         REALTIME_EVENTS.loreVoteOpened,
@@ -1991,7 +1993,11 @@ function buildShellRealtimeSubscriptions(
   }
 
   return [
-    realtimeSubscription("central:news", [REALTIME_EVENTS.centralNewsUpdated]),
+    realtimeSubscription("central:news", [
+      REALTIME_EVENTS.centralNewsUpdated,
+      REALTIME_EVENTS.contentRetracted,
+      REALTIME_EVENTS.contentSuperseded,
+    ]),
     realtimeSubscription("arena:leaderboard", [
       REALTIME_EVENTS.arenaLeaderboardUpdated,
       REALTIME_EVENTS.arenaStandingsSwing,
@@ -2079,6 +2085,28 @@ function shellWireItemFromRealtimeEvent(
       kind: "cast",
       label: payload.title,
       meta: "PRESS",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.contentRetracted) {
+    return {
+      fresh: true,
+      href: contentHref(payload.leagueId, payload.contentItemId),
+      id: `rt:${payload.type}:${payload.leagueId ?? "central"}:${payload.contentItemId}`,
+      kind: "cast",
+      label: `${payload.title} is no longer available`,
+      meta: "RETRACTED",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.contentSuperseded) {
+    return {
+      fresh: true,
+      href: contentHref(payload.leagueId, payload.replacementContentItemId),
+      id: `rt:${payload.type}:${payload.leagueId ?? "central"}:${payload.contentItemId}:${payload.replacementContentItemId}`,
+      kind: "cast",
+      label: `${payload.title} was updated`,
+      meta: "UPDATED",
     };
   }
 
@@ -2194,6 +2222,28 @@ function shellNotificationFromRealtimeEvent(
       kind: "blog",
       timestamp,
       title: "The Press published",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.contentRetracted) {
+    return {
+      detail: payload.title,
+      href: contentHref(payload.leagueId, payload.contentItemId),
+      id: `notice:${payload.type}:${payload.leagueId ?? "central"}:${payload.contentItemId}`,
+      kind: "blog",
+      timestamp,
+      title: "Post retracted",
+    };
+  }
+
+  if (payload.type === REALTIME_EVENTS.contentSuperseded) {
+    return {
+      detail: payload.title,
+      href: contentHref(payload.leagueId, payload.replacementContentItemId),
+      id: `notice:${payload.type}:${payload.leagueId ?? "central"}:${payload.contentItemId}:${payload.replacementContentItemId}`,
+      kind: "blog",
+      timestamp,
+      title: "Post updated",
     };
   }
 
@@ -2548,6 +2598,12 @@ function newsWireFallbackItem(
 
 function leagueHref(leagueId: string, suffix = ""): string {
   return `/leagues/${encodeURIComponent(leagueId)}${suffix}`;
+}
+
+function contentHref(leagueId: string | null, contentItemId: string): string {
+  return leagueId
+    ? leagueHref(leagueId, `/press/${contentItemId}`)
+    : `/news/articles/${contentItemId}`;
 }
 
 function arenaHref(seasonId: string | null): string {

@@ -1,28 +1,31 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Ban,
   ExternalLink,
   Landmark,
   Newspaper,
   Tag,
+  UserPlus,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ComponentPropsWithoutRef } from "react";
+import { EditLedgerFeed } from "@/components/curation/edit-ledger-feed";
 import { cn } from "@/lib/utils";
 import type {
+  PublicationArticleBodyBlock,
   PublicationArticleInlineDataBlock,
   PublicationArticleViewData,
 } from "@/news/article";
 import { buttonVariants } from "../ui/button";
+import { StatusPill } from "../ui/status-pill";
+import { ArticleEmbedBlock } from "./article-embeds";
+import { ArticleShareActions } from "./article-share-actions";
+import { EditorialArticleActions } from "./editorial-actions";
+import { ContentReactionStrip } from "./reaction-strip";
 import { ReadingProgress } from "./reading-progress";
 import { PublicationStoryCard } from "./story-card";
-
-type BodyBlock =
-  | { type: "heading"; text: string }
-  | { type: "paragraph"; text: string }
-  | { type: "quote"; text: string }
-  | { type: "list"; ordered: boolean; items: string[] };
 
 function formatPublishedAt(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -39,7 +42,7 @@ function cleanLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function parseBodyBlock(block: string): BodyBlock | null {
+function parseBodyBlock(block: string): PublicationArticleBodyBlock | null {
   const lines = block
     .split("\n")
     .map((line) => line.trim())
@@ -84,12 +87,12 @@ function parseBodyBlock(block: string): BodyBlock | null {
 export function parseArticleBodyBlocks(
   body: string,
   fallback: string,
-): BodyBlock[] {
+): PublicationArticleBodyBlock[] {
   const text = body.trim().length > 0 ? body : fallback;
   return text
     .split(/\n{2,}/)
     .map(parseBodyBlock)
-    .filter((block): block is BodyBlock => block !== null);
+    .filter((block): block is PublicationArticleBodyBlock => block !== null);
 }
 
 function tagHref(baseHref: string, tag: string): string {
@@ -139,7 +142,7 @@ export function EditorialProse({
 }
 
 function renderBodyBlock(
-  block: BodyBlock,
+  block: PublicationArticleBodyBlock,
   index: number,
   options: { pullQuote: boolean; quoteCaption: string },
 ) {
@@ -192,11 +195,18 @@ function renderBodyBlock(
     }
     case "paragraph":
       return <p key={`${index}-${block.text}`}>{block.text}</p>;
+    case "embed":
+      return (
+        <ArticleEmbedBlock
+          embed={block.embed}
+          key={`${index}-${block.embed.kind}-${block.embed.id}`}
+        />
+      );
   }
 }
 
 function renderArticleBodyBlocks(
-  blocks: readonly BodyBlock[],
+  blocks: readonly PublicationArticleBodyBlock[],
   input: { quoteCaption: string },
 ) {
   let pullQuoteCount = 0;
@@ -305,17 +315,52 @@ function ArticleInlineDataBlock({
   );
 }
 
+function ArticleArrivalCta({
+  cta,
+}: {
+  cta: NonNullable<PublicationArticleViewData["arrivalCta"]>;
+}) {
+  return (
+    <aside
+      aria-label="Claim your league"
+      className="panel mx-auto grid w-full max-w-[72ch] gap-3 border-primary/35 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-5"
+      data-slot="article-arrival-cta"
+    >
+      <span className="chip-glyph flex size-10 items-center justify-center">
+        <UserPlus className="size-4 text-primary" aria-hidden="true" />
+      </span>
+      <div className="grid gap-1">
+        <p className="eyebrow text-primary">Guest arrival</p>
+        <h2 className="font-display text-base font-medium text-foreground">
+          {cta.title}
+        </h2>
+        <p className="text-sm leading-6 text-muted-foreground">{cta.body}</p>
+      </div>
+      <Link
+        href={cta.href}
+        className={cn(buttonVariants({ className: "w-fit", size: "sm" }))}
+      >
+        {cta.label}
+        <ArrowRight data-icon="inline-end" />
+      </Link>
+    </aside>
+  );
+}
+
 export function PublicationArticleView({
   data,
 }: {
   data: PublicationArticleViewData;
 }) {
-  const bodyBlocks = parseArticleBodyBlocks(
-    data.article.body,
-    data.article.dek,
-  );
+  const bodyBlocks =
+    data.article.bodyBlocks.length > 0
+      ? data.article.bodyBlocks
+      : parseArticleBodyBlocks(data.article.body, data.article.dek);
   const readMinutes = estimatedReadMinutes(data.article.body, data.article.dek);
   const isCastArticle = data.article.kind === "blog";
+  const isPublished = data.article.lifecycle.status === "published";
+  const isRetracted = data.article.lifecycle.status === "retracted";
+  const isSuperseded = data.article.lifecycle.status === "superseded";
   const bodyId = `article-body-${data.article.id}`;
   const nextStory = data.relatedStories.find((story) => story.href);
   const nextHref = nextStory?.href ?? data.article.section.href;
@@ -393,6 +438,14 @@ export function PublicationArticleView({
             <span className="metric rounded-control border border-input bg-[var(--panel-2)] px-2 py-1 text-xs text-muted-foreground">
               {readMinutes} min read
             </span>
+            {data.article.lifecycle.status !== "published" ? (
+              <StatusPill
+                showDot={false}
+                tone={isRetracted ? "danger" : "warning"}
+              >
+                {data.article.lifecycle.status}
+              </StatusPill>
+            ) : null}
           </div>
           {data.article.sourceUrl ? (
             <a
@@ -412,7 +465,16 @@ export function PublicationArticleView({
               <span className="sr-only"> opens in new tab</span>
             </a>
           ) : null}
+          {isPublished && data.article.share ? (
+            <ArticleShareActions
+              text={data.article.share.text}
+              title={data.article.share.title}
+              url={data.article.share.href}
+            />
+          ) : null}
         </header>
+
+        {data.arrivalCta ? <ArticleArrivalCta cta={data.arrivalCta} /> : null}
 
         {data.article.heroImageUrl ? (
           <div className="panel mx-auto w-full max-w-5xl overflow-hidden p-2">
@@ -427,23 +489,71 @@ export function PublicationArticleView({
           </div>
         ) : null}
 
-        <section
-          aria-label="Article body"
-          id={bodyId}
-          className="panel mx-auto w-full max-w-[72ch] p-4 sm:p-6"
-        >
-          <EditorialProse>
-            {bodyBlocks.length > 0 ? (
-              renderArticleBodyBlocks(bodyBlocks, {
-                quoteCaption: data.article.byline,
-              })
-            ) : (
-              <p className="cell border-dashed px-3 py-3 text-sm text-muted-foreground">
-                This article does not have body text yet.
-              </p>
-            )}
-          </EditorialProse>
-        </section>
+        {isRetracted ? (
+          <section
+            aria-label="Retracted article"
+            className="panel mx-auto grid w-full max-w-[72ch] gap-3 border-coral/45 p-4 shadow-[0_0_18px_rgba(224,138,138,.16),var(--bevel)] sm:p-6"
+          >
+            <div className="flex items-center gap-3">
+              <span className="chip-glyph flex size-10 items-center justify-center">
+                <Ban className="size-4 text-coral" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="eyebrow text-coral">Retracted</p>
+                <h2 className="heading-auspex text-base">
+                  Retracted by the commissioner
+                </h2>
+              </div>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {data.article.lifecycle.retractionReason ??
+                "This post is no longer available in the league press."}
+            </p>
+          </section>
+        ) : (
+          <section
+            aria-label="Article body"
+            id={bodyId}
+            className="panel mx-auto w-full max-w-[72ch] p-4 sm:p-6"
+          >
+            {isSuperseded ? (
+              <div className="mb-5 rounded-control border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                {data.article.lifecycle.replacementHref ? (
+                  <Link
+                    href={data.article.lifecycle.replacementHref}
+                    className="font-semibold underline-offset-4 hover:underline"
+                  >
+                    Updated version:{" "}
+                    {data.article.lifecycle.replacementTitle ??
+                      "Read the replacement"}
+                  </Link>
+                ) : (
+                  "This post has been superseded by a newer version."
+                )}
+              </div>
+            ) : null}
+            <EditorialProse>
+              {bodyBlocks.length > 0 ? (
+                renderArticleBodyBlocks(bodyBlocks, {
+                  quoteCaption: data.article.byline,
+                })
+              ) : (
+                <p className="cell border-dashed px-3 py-3 text-sm text-muted-foreground">
+                  This article does not have body text yet.
+                </p>
+              )}
+            </EditorialProse>
+          </section>
+        )}
+
+        {data.editorial ? (
+          <EditorialArticleActions
+            canManage={data.editorial.canManage}
+            lifecycleStatus={data.article.lifecycle.status}
+            regenerateApiUrl={data.editorial.regenerateApiUrl}
+            retractApiUrl={data.editorial.retractApiUrl}
+          />
+        ) : null}
 
         {data.article.inlineDataBlocks.length > 0 ? (
           <section
@@ -512,6 +622,31 @@ export function PublicationArticleView({
               </Link>
             ))}
           </nav>
+        ) : null}
+
+        {data.article.reactions ? (
+          <ContentReactionStrip
+            summary={data.article.reactions}
+            variant="article"
+          />
+        ) : null}
+
+        {data.editorial ? (
+          <aside
+            aria-label="Editorial ledger"
+            className="mx-auto grid w-full max-w-[72ch] gap-3"
+          >
+            <div>
+              <p className="eyebrow text-primary">Editorial</p>
+              <h2 className="heading-auspex text-base">Public ledger</h2>
+            </div>
+            <EditLedgerFeed
+              emptyBody="No editorial action has been recorded for this post."
+              emptyTitle="No editorial actions"
+              entries={data.editorial.ledgerEntries}
+              maxEntries={6}
+            />
+          </aside>
         ) : null}
       </article>
 

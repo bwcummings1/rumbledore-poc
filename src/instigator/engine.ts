@@ -7,6 +7,7 @@ import {
   generateLeagueBlogPost,
   parseAiPersona,
 } from "@/ai";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -517,6 +518,7 @@ export async function seedInstigationForContentCandidate({
         and(
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.id, contentItemId),
+          contentItemIsPublished(),
         ),
       )
       .limit(1),

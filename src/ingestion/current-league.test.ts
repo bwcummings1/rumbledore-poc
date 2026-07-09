@@ -7,6 +7,7 @@ import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  contentItems,
   dataCoverage,
   dataIntegrityChecks,
   fantasyDraftPicks,
@@ -1835,6 +1836,36 @@ describe("syncCurrentLeague", () => {
       changed: 1,
       unchanged: 83,
     });
+    const [publishedPost] = await withLeagueContext(
+      handle.db,
+      first.value.league.id,
+      (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: "The week one recap was written before the stat correction.",
+            contentHash: `${marker}-finalized-correction-post-hash`,
+            dedupKey: `${marker}-finalized-correction-post`,
+            kind: "blog",
+            leagueId: first.value.league.id,
+            metadata: {
+              contentType: "weekly_recap",
+              references: {
+                matchupWeeks: [{ scoringPeriod: 1, season: 2026 }],
+              },
+              section: "recaps",
+              tags: ["NHS Alumni Annual"],
+            },
+            publishedAt: new Date("2026-06-12T12:00:00.000Z"),
+            summary: "Week one recap",
+            title: "Week one recap",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!publishedPost) {
+      throw new Error("published post was not inserted");
+    }
 
     const correctedFixture = leagueFixtureFor(providerLeagueId);
     correctedFixture.schedule[0].winner = "HOME";
@@ -1862,6 +1893,14 @@ describe("syncCurrentLeague", () => {
         contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         id: expect.any(String),
       },
+    ]);
+    expect(corrected.value.contentCorrectionsNeeded).toEqual([
+      expect.objectContaining({
+        affectedWeeks: [{ scoringPeriod: 1, season: 2026 }],
+        contentItemId: publishedPost.id,
+        correctionHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        leagueId: first.value.league.id,
+      }),
     ]);
 
     const rows = await selectIngestedRows(first.value.league.id);

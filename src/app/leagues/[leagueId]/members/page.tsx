@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
+import { getLeagueRoastConsentData } from "@/members/roast-consent";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import { getLeagueInviteDependencies } from "@/onboarding/deps";
 import { listLeaguemateInviteTargets } from "@/onboarding/invites";
@@ -96,9 +97,16 @@ export default async function LeagueMembersPage({
     );
   }
 
+  const roastConsent = await getLeagueRoastConsentData(db, {
+    leagueId,
+    userId: access.value.userId,
+    userRole: access.value.role,
+  });
+
   return (
     <LeagueInviteView
       initialSummary={result.value}
+      roastConsent={roastConsent}
       stewardDoorway={stewardDoorway.value}
     />
   );

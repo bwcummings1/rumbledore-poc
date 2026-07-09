@@ -5,6 +5,8 @@ export const REALTIME_EVENTS = {
   arenaStandingsSwing: "arena.standings.swing",
   blogPublished: "blog.published",
   centralNewsUpdated: "central.news.updated",
+  contentRetracted: "content.retracted",
+  contentSuperseded: "content.superseded",
   historyImportProgress: "history.import.progress",
   leagueLeaderboardUpdated: "league.leaderboard.updated",
   loreCanonized: "lore.canonized",
@@ -125,11 +127,34 @@ export interface CentralNewsUpdatedPayload {
   contentItemIds: string[];
 }
 
+export interface ContentRetractedPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.contentRetracted;
+  at: string;
+  leagueId: string | null;
+  contentItemId: string;
+  statusChangedAt: string;
+  title: string;
+}
+
+export interface ContentSupersededPayload {
+  v: 1;
+  type: typeof REALTIME_EVENTS.contentSuperseded;
+  at: string;
+  leagueId: string | null;
+  contentItemId: string;
+  replacementContentItemId: string;
+  statusChangedAt: string;
+  title: string;
+}
+
 export type RealtimePayload =
   | ArenaLeaderboardUpdatedPayload
   | ArenaStandingsSwingPayload
   | BlogPublishedPayload
   | CentralNewsUpdatedPayload
+  | ContentRetractedPayload
+  | ContentSupersededPayload
   | HistoryImportProgressPayload
   | LeagueLeaderboardUpdatedPayload
   | LoreCanonizedPayload
@@ -144,6 +169,8 @@ export interface RealtimePublisher {
   publishArenaStandingsSwing(
     payload: ArenaStandingsSwingPayload,
   ): Promise<void>;
+  publishContentRetracted(payload: ContentRetractedPayload): Promise<void>;
+  publishContentSuperseded(payload: ContentSupersededPayload): Promise<void>;
   publishLeagueBlogPublished(payload: BlogPublishedPayload): Promise<void>;
   publishLeagueHistoryImportProgress(
     payload: HistoryImportProgressPayload,
@@ -194,6 +221,10 @@ export function leagueBlogChannel(leagueId: string): `league:${string}:blog` {
 
 export function arenaLeaderboardChannel(): "arena:leaderboard" {
   return "arena:leaderboard";
+}
+
+export function centralNewsChannel(): "central:news" {
+  return "central:news";
 }
 
 export function leagueLeaderboardChannel(

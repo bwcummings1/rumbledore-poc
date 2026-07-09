@@ -89,6 +89,19 @@ describe("central news hub", () => {
         title: "League-scoped news story",
       },
       {
+        body: "Hidden central body.",
+        contentHash: `${marker}-hidden-central-hash`,
+        dedupKey: `${marker}-hidden-central`,
+        kind: "news",
+        leagueId: null,
+        publishedAt: new Date("2026-06-11T17:00:00.000Z"),
+        source: "Hidden Wire",
+        sourceUrl: `https://news.example.com/${marker}/hidden-central`,
+        status: "retracted",
+        summary: "Hidden central summary.",
+        title: "Hidden central story",
+      },
+      {
         body: "Central blog body.",
         contentHash: `${marker}-central-blog-hash`,
         dedupKey: `${marker}-central-blog`,
@@ -115,6 +128,7 @@ describe("central news hub", () => {
     });
     expect(titles).not.toContain("League-scoped news story");
     expect(titles).not.toContain("Central blog story");
+    expect(titles).not.toContain("Hidden central story");
   });
 
   it("lets an older editorially important story lead over fresher minor news", async () => {

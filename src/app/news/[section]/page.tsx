@@ -5,14 +5,13 @@ import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getCentralNewsHubData } from "@/news/hub";
 import { getCentralPublicationSectionBySlug } from "@/news/sections";
+import {
+  centralNewsFrontMetadata,
+  centralNewsSectionMetadata,
+} from "@/share/route-metadata";
 import { NewsHubView } from "../news-hub-view";
 
 export const dynamic = "force-dynamic";
-
-export const metadata: Metadata = {
-  title: "News Section | Rumbledore",
-  description: "A section front from Rumbledore News.",
-};
 
 interface NewsSectionPageProps {
   params: Promise<{ section: string }>;
@@ -24,6 +23,16 @@ interface NewsSectionPageProps {
 
 function firstSearchValue(value: string | string[] | undefined): string | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+export async function generateMetadata({
+  params,
+}: NewsSectionPageProps): Promise<Metadata> {
+  const { section: sectionSlug } = await params;
+  const section = getCentralPublicationSectionBySlug(sectionSlug);
+  return section
+    ? centralNewsSectionMetadata(section)
+    : centralNewsFrontMetadata();
 }
 
 export default async function NewsSectionPage({

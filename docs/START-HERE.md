@@ -1,7 +1,7 @@
 # START HERE — Rumbledore onboarding (read this first)
 
 > One-page orientation for any agent/person picking up this project. If you read one doc first, read this.
-> **Last reconciled: 2026-06-24 (through the T13–T17 arc; migrations through 0059).** Keep this current when the
+> **Last reconciled: 2026-07-09 (through T18; migrations through 0068).** Keep this current when the
 > project's shape changes; keep live task state in `docs/PROGRESS.md`.
 
 You are picking up **Rumbledore v2** — a mobile-first, per-league fantasy-football companion PWA (Next.js App Router,
@@ -20,12 +20,12 @@ Drizzle/Postgres + RLS, Better Auth, Inngest, Anthropic; ESPN now, Sleeper/Yahoo
 - **`docs/ROADMAP.md`** — the phased plan toward the North Star (done vs. next).
 - **`specs/00-09`** — the full product + architecture spec set (skim all; deep-read your work area).
 - **`docs/DATA-FOUNDATION-DESIGN.md`** + **`docs/ESPN-DATA-DECODING-AUDIT.md`** + **`.orchestration/handoff/T*.md`** —
-  the recent data-foundation arc (T1–T17) and per-task handoffs (the task ledger).
+  the recent data-foundation/editorial arcs (T1–T18) and per-task handoffs (the task ledger).
 - **`ORCHESTRATION.md`** (how work is done: orchestrator + workstream agents in git worktrees) + **`DESIGN.md`** (AUSPEX UI fidelity).
 - **IGNORE as retired/historical:** `IMPLEMENTATION_PLAN.md`, `loop.sh`, `PROMPT_*.md` (the old autonomous "Ralph loop").
   Live state lives in `docs/PROGRESS.md`, not these.
 
-## 2. Current state (through T17; migrations through 0059; all on `main`)
+## 2. Current state (through T18; migrations through 0068; T18 ready for orchestrator merge)
 The **data substrate (layer 1) is built and hardened**:
 - Per-league **curated data** with a save→push state machine + edit ledger + eras, and a read-only **Record Book**
   projected from pushed snapshots (T1–T11).
@@ -41,13 +41,21 @@ dev DB with real names, correct rosters/positions, records, and eras (screenshot
 Refer to that league by **provider id 95050**, never a hardcoded internal UUID (it changes across local DB resets).
 Product imports write to `env.databaseUrl` (the app DB) — there is no DB-routing issue.
 
+The **editorial and arrival layer is built behind mock/$0 boundaries**:
+- AI league context and records provenance use pushed canon through a branded `CanonCatalog`.
+- Content has lifecycle state, append-only editorial actions, retract/regenerate/correction controls, generation failure
+  visibility, versioned persona tone editing, typed live embeds, reactions, and roast-consent guardrails.
+- Distribution has social metadata/OG cards, logged-out league article teasers, launch editions, mock league webhooks,
+  mock weekly digest email, and one push/digest/none notification preference matrix.
+
 ## 3. What's left (deferred follow-ons — see `docs/ROADMAP.md` for the full phase plan)
 - Player-level **records** in the Record Book (best single-player week, draft steals/busts).
 - Full per-stat scoring **persistence** (T15 landed the dictionary/decode, not the stored breakdown).
 - **Sleeper/Yahoo** decoding dictionaries (the canonical model is ready — "add a dictionary").
-- Make **substrate B** a **real** NFL-stats source (owner is evaluating sources) + wire the AI writers to it.
-- **Phase 4 "Reality"** — real API keys, hosted ESPN capture/onboarding, real Sleeper/Yahoo.
-- **Phase 5 "Soul"** — AI voice/persona tuning + UI/UX identity (human-paired with the owner).
+- Make **substrate B** a **real** NFL-stats source (owner is evaluating sources).
+- **Phase 4 "Reality"** — real API keys, hosted ESPN capture/onboarding, real Sleeper/Yahoo, and real webhook/email
+  delivery providers/domains.
+- **Phase 5 "Soul"** — use the versioned tone tooling for AI voice/persona tuning with the owner.
 - **Phase 6** — launch: Stripe/entitlements, moderation, infra, beta. Plus minor owner-set-aside UI tweaks.
 
 ## 4. Hard rules (from `AGENTS.md` — do not violate)

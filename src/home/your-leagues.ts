@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { AiPersona } from "@/ai/personas";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -249,6 +250,7 @@ async function buildLeagueCard(
         and(
           eq(contentItems.leagueId, input.league.id),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))

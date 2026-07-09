@@ -12,7 +12,9 @@ export const JOB_EVENTS = {
   bankrollRollover: "bankroll.rollover",
   oddsPoll: "odds.poll",
   newsRefresh: "news.refresh",
+  weeklyDigest: "digest.weekly",
   contentGenerate: "content.generate",
+  contentCorrectionNeeded: "content.correction.needed",
   instigationSeed: "instigation.seed",
   instigationSeeded: "instigation.seeded",
   transaction: "transaction",
@@ -84,6 +86,23 @@ export interface ContentGenerateData {
   persona: AiPersona;
   contentType: AiContentType;
   triggerKey: string;
+}
+
+export interface ContentCorrectionNeededData {
+  affectedWeeks: {
+    scoringPeriod: number;
+    season: number;
+  }[];
+  changedMatchups: {
+    contentHash: string;
+    id: string;
+    scoringPeriod: number;
+    season: number;
+  }[];
+  contentItemId: string;
+  correctionHash: string;
+  leagueId: string;
+  reason?: string;
 }
 
 export interface BankrollRolloverData {
@@ -178,6 +197,14 @@ export interface GameFinalData {
 export interface NewsRefreshData {
   topic?: string;
   limit?: number;
+}
+
+export interface WeeklyDigestData {
+  leagueId?: string;
+  leagueIds?: string[];
+  limit?: number;
+  windowEnd?: string;
+  windowStart?: string;
 }
 
 export interface OddsPollData {

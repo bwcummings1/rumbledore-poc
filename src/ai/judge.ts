@@ -4,6 +4,7 @@ import type { LlmJudgeRubric, LlmJudgeScore } from "./interfaces";
 export const DEFAULT_LLM_JUDGE_RUBRIC: LlmJudgeRubric = {
   authenticityThreshold: 0.7,
   personaMatchThreshold: 0.7,
+  targetingConsentRequired: true,
 };
 
 export function llmJudgeScorePasses(
@@ -13,7 +14,8 @@ export function llmJudgeScorePasses(
   return (
     score.authenticity >= rubric.authenticityThreshold &&
     score.personaMatch >= rubric.personaMatchThreshold &&
-    !score.leakage
+    !score.leakage &&
+    (!rubric.targetingConsentRequired || score.targetingConsent)
   );
 }
 
@@ -42,6 +44,8 @@ export function assertLlmJudgeScorePasses({
       notes: score.notes,
       personaMatch: score.personaMatch,
       personaMatchThreshold: rubric.personaMatchThreshold,
+      targetedOffLimits: score.targetedOffLimits,
+      targetingConsent: score.targetingConsent,
     },
     message: `${label} failed the AI judge eval gate`,
     status: 422,

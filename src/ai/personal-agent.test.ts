@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getLeagueRecordsPageData } from "@/app/leagues/[leagueId]/records/records-page-data";
 import { type EntitlementsConfig, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -20,10 +21,14 @@ import {
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
-  getLeagueRecordsCatalog,
+  applyCuratedDataEdit,
+  createCurationCheckpoint,
+  getLeagueCanonRecordsContext,
+  pushAllCurationSeasons,
   type RecordsCatalog,
   recomputeLeagueStatistics,
 } from "@/stats";
+import { forgeCanonCatalogForTest } from "@/testing/canon";
 import {
   getPersonalAgentAnswer,
   getPersonalAgentBriefing,
@@ -101,7 +106,7 @@ async function seedEngineBackedAnswerLeague(tag: string) {
     throw new Error(`failed to seed ${tag} records league`);
   }
 
-  const grouping = await withLeagueContext(handle.db, league.id, async (tx) => {
+  const seeded = await withLeagueContext(handle.db, league.id, async (tx) => {
     await tx.insert(leagueSeasonSettings).values({
       contentHash: `${marker}-${tag}-settings-2025`,
       leagueId: league.id,
@@ -162,38 +167,50 @@ async function seedEngineBackedAnswerLeague(tag: string) {
       });
     }
 
-    await tx.insert(fantasyMatchups).values([
-      {
-        awayScore: 122,
-        awayTeamProviderId: "2",
-        contentHash: `${marker}-${tag}-matchup-1`,
-        homeScore: 188.5,
-        homeTeamProviderId: "1",
-        leagueId: league.id,
-        leagueProviderId: providerLeagueId,
-        provider: "espn",
-        providerMatchupId: `${tag}-2025-1`,
-        scoringPeriod: 1,
-        season: 2025,
-        status: "final",
-        winner: "home",
-      },
-      {
-        awayScore: 140,
-        awayTeamProviderId: "1",
-        contentHash: `${marker}-${tag}-matchup-2`,
-        homeScore: 152,
-        homeTeamProviderId: "2",
-        leagueId: league.id,
-        leagueProviderId: providerLeagueId,
-        provider: "espn",
-        providerMatchupId: `${tag}-2025-2`,
-        scoringPeriod: 2,
-        season: 2025,
-        status: "final",
-        winner: "home",
-      },
-    ]);
+    const insertedMatchups = await tx
+      .insert(fantasyMatchups)
+      .values([
+        {
+          awayScore: 122,
+          awayTeamProviderId: "2",
+          contentHash: `${marker}-${tag}-matchup-1`,
+          homeScore: 188.5,
+          homeTeamProviderId: "1",
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: `${tag}-2025-1`,
+          scoringPeriod: 1,
+          season: 2025,
+          status: "final",
+          winner: "home",
+        },
+        {
+          awayScore: 140,
+          awayTeamProviderId: "1",
+          contentHash: `${marker}-${tag}-matchup-2`,
+          homeScore: 152,
+          homeTeamProviderId: "2",
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: `${tag}-2025-2`,
+          scoringPeriod: 2,
+          season: 2025,
+          status: "final",
+          winner: "home",
+        },
+      ])
+      .returning({
+        id: fantasyMatchups.id,
+        scoringPeriod: fantasyMatchups.scoringPeriod,
+      });
+    const weekOneMatchup = insertedMatchups.find(
+      (matchup) => matchup.scoringPeriod === 1,
+    );
+    if (!weekOneMatchup) {
+      throw new Error("agent answer Week 1 matchup was not created");
+    }
 
     const [era] = await tx
       .insert(leagueSeasonGroupings)
@@ -232,15 +249,31 @@ async function seedEngineBackedAnswerLeague(tag: string) {
       verification: "verified",
     });
 
-    return era;
+    return {
+      groupingId: era.id,
+      matchupId: weekOneMatchup.id,
+    };
   });
 
   await recomputeLeagueStatistics(handle.db, { leagueId: league.id });
+  const actor = await seedUser(`${tag}-curation-actor`);
+  const checkpoint = await createCurationCheckpoint(handle.db, {
+    actorUserId: actor.id,
+    label: "agent answer pushed baseline",
+    leagueId: league.id,
+  });
+  await pushAllCurationSeasons(handle.db, {
+    actorUserId: actor.id,
+    checkpointId: checkpoint.id,
+    leagueId: league.id,
+  });
 
   return {
-    groupingId: grouping.id,
+    actorUserId: actor.id,
+    groupingId: seeded.groupingId,
     leagueId: league.id,
     leagueName,
+    matchupId: seeded.matchupId,
   };
 }
 
@@ -473,27 +506,29 @@ describe("getPersonalAgentAnswer", () => {
       env: entitlementEnv({ devOverride: true }),
       loadLeagueQuestionContext: async () => ({
         canonFacts: ["The Squyres Standard: playoff eruptions count as lore"],
-        catalog: emptyCatalog({
-          highLow: {
-            bestScoresInLosses: [],
-            highestCombinedMatchups: [],
-            highestScores: [
-              {
-                matchupId: "fixture-matchup",
-                opponentName: "Final Boss",
-                opponentPersonId: "person-opponent",
-                personId: "person-squyres",
-                personName: "Squyres18",
-                recordType: "highest_single_week_score",
-                scoringPeriod: 16,
-                season: 2022,
-                value: 247.5,
-              },
-            ],
-            lowestScores: [],
-            worstScoresInWins: [],
-          },
-        }),
+        catalog: forgeCanonCatalogForTest(
+          emptyCatalog({
+            highLow: {
+              bestScoresInLosses: [],
+              highestCombinedMatchups: [],
+              highestScores: [
+                {
+                  matchupId: "fixture-matchup",
+                  opponentName: "Final Boss",
+                  opponentPersonId: "person-opponent",
+                  personId: "person-squyres",
+                  personName: "Squyres18",
+                  recordType: "highest_single_week_score",
+                  scoringPeriod: 16,
+                  season: 2022,
+                  value: 247.5,
+                },
+              ],
+              lowestScores: [],
+              worstScoresInWins: [],
+            },
+          }),
+        ),
         leagueId,
         leagueName: "Fixture League",
         lens: {
@@ -545,13 +580,88 @@ describe("getPersonalAgentAnswer", () => {
     );
   });
 
+  it("answers a capped global question when no league context is selected", async () => {
+    const user = await seedUser("answer-global");
+
+    const result = await getPersonalAgentAnswer({
+      context: {
+        pathname: "/you",
+        scope: "global",
+        sectionId: "overview",
+      },
+      db: handle.db,
+      env: entitlementEnv({
+        caps: { individualLeaguesCovered: 2 },
+        devOverride: true,
+      }),
+      loadLandingData: async () => ({
+        leagues: [
+          {
+            href: "/leagues/league-alpha",
+            latestPress: null,
+            leagueId: "league-alpha",
+            logo: null,
+            matchup: null,
+            name: "Alpha League",
+            provider: "espn",
+            providerLabel: "ESPN",
+          },
+          {
+            href: "/leagues/league-beta",
+            latestPress: null,
+            leagueId: "league-beta",
+            logo: null,
+            matchup: null,
+            name: "Beta League",
+            provider: "sleeper",
+            providerLabel: "Sleeper",
+          },
+          {
+            href: "/leagues/league-gamma",
+            latestPress: null,
+            leagueId: "league-gamma",
+            logo: null,
+            matchup: null,
+            name: "Gamma League",
+            provider: "yahoo",
+            providerLabel: "Yahoo",
+          },
+        ],
+      }),
+      now: () => now,
+      question: "What should I look at first?",
+      userId: user.id,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected global answer to be ready");
+    }
+    expect(result.answer.scope).toEqual({
+      kind: "global",
+      pathname: "/you",
+      scope: "global",
+      sectionId: "overview",
+    });
+    expect(result.answer.citations).toEqual([
+      {
+        detail: "2 covered of 3 connected leagues",
+        href: "/you",
+        label: "Personal briefing",
+      },
+    ]);
+    expect(result.answer.text).toContain("Alpha League, Beta League");
+    expect(result.answer.text).not.toContain("Gamma League");
+    expect(result.answer.text).toContain("first 2 leagues by recency");
+  });
+
   it("answers era and segment questions through the real engine-backed context loader", async () => {
     const user = await seedUser("answer-real-seam");
     await handle.db.insert(userEntitlements).values({ userId: user.id });
     const league = await seedEngineBackedAnswerLeague("answer-real-seam");
     const question = "Who has the most regular points in era 2?";
 
-    const engineCatalog = await getLeagueRecordsCatalog(handle.db, {
+    const canonContext = await getLeagueCanonRecordsContext(handle.db, {
       leagueId: league.leagueId,
       lens: {
         groupingId: league.groupingId,
@@ -559,12 +669,12 @@ describe("getPersonalAgentAnswer", () => {
       },
       limit: 5,
     });
-    const engineLeader = engineCatalog.highLow.highestScores[0];
-    if (!engineLeader) {
-      throw new Error("expected real-seam engine catalog leader");
+    const canonLeader = canonContext.catalog.highLow.highestScores[0];
+    if (!canonLeader) {
+      throw new Error("expected real-seam canon catalog leader");
     }
-    expect(engineLeader).toMatchObject({
-      personName: "Riley Rocket",
+    expect(canonLeader).toMatchObject({
+      personName: "Riley Rockets (Riley Rocket)",
       scoringPeriod: 1,
       season: 2025,
       value: 188.5,
@@ -598,7 +708,7 @@ describe("getPersonalAgentAnswer", () => {
       leagueName: league.leagueName,
       sectionId: "records",
     });
-    expect(result.answer.text).toContain(engineLeader.personName);
+    expect(result.answer.text).toContain(canonLeader.personName);
     expect(result.answer.text).toContain("188.50");
     expect(result.answer.text).toContain("top regular-season score in Era 2");
     expect(result.answer.citations).toEqual(
@@ -616,5 +726,79 @@ describe("getPersonalAgentAnswer", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps unpushed score edits out of the Record Book and personal-agent canon", async () => {
+    const user = await seedUser("answer-t9-replay");
+    await handle.db.insert(userEntitlements).values({ userId: user.id });
+    const league = await seedEngineBackedAnswerLeague("answer-t9-replay");
+
+    await applyCuratedDataEdit(handle.db, {
+      actorUserId: league.actorUserId,
+      editClass: "substantive",
+      field: "home_score",
+      leagueId: league.leagueId,
+      reason: "T9 replay saved but not pushed",
+      targetId: league.matchupId,
+      targetKind: "matchup",
+      value: 240,
+    });
+    await createCurationCheckpoint(handle.db, {
+      actorUserId: league.actorUserId,
+      label: "saved unpushed T9 score edit",
+      leagueId: league.leagueId,
+    });
+
+    const recordsPage = await getLeagueRecordsPageData(handle.db, {
+      leagueId: league.leagueId,
+      lens: {
+        groupingId: league.groupingId,
+        segment: "regular",
+      },
+    });
+    expect(recordsPage.status).toBe("ready");
+    if (recordsPage.status !== "ready") {
+      throw new Error("expected records page data");
+    }
+    expect(recordsPage.data.catalog.highLow.highestScores[0]).toMatchObject({
+      personName: "Riley Rockets (Riley Rocket)",
+      season: 2025,
+      value: 188.5,
+    });
+
+    const canonContext = await getLeagueCanonRecordsContext(handle.db, {
+      leagueId: league.leagueId,
+      lens: {
+        groupingId: league.groupingId,
+        segment: "regular",
+      },
+      limit: 5,
+    });
+    expect(canonContext.catalog.highLow.highestScores[0]).toMatchObject({
+      personName: "Riley Rockets (Riley Rocket)",
+      season: 2025,
+      value: 188.5,
+    });
+
+    const result = await getPersonalAgentAnswer({
+      context: {
+        leagueId: league.leagueId,
+        pathname: `/leagues/${league.leagueId}/records`,
+        scope: "league",
+        sectionId: "records",
+      },
+      db: handle.db,
+      env: entitlementEnv(),
+      now: () => now,
+      question: "Who has the most regular points in era 2?",
+      userId: user.id,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected T9 replay answer");
+    }
+    expect(result.answer.text).toContain("188.50");
+    expect(result.answer.text).not.toContain("240");
   });
 });

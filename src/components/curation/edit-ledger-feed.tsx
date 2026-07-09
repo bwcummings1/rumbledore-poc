@@ -344,6 +344,9 @@ function entrySummary(entry: EditLedgerEntry, kind: LedgerEntryKind): string {
       )} for ${seasonsLabel(seasonsFromRecord(after))}`;
     }
     case "edit":
+      if (entry.source === "editorial_action") {
+        return `${startCase(entry.field)} ${targetLabel(entry.targetKind)}`;
+      }
       return `Edited ${targetLabel(entry.targetKind)} ${entry.field}`;
   }
 }
@@ -378,6 +381,8 @@ function sourceLabel(source: EditLedgerEntry["source"]): string {
   switch (source) {
     case "data_correction_audit":
       return "Integrity audit";
+    case "editorial_action":
+      return "Editorial action";
     case "identity_audit":
       return "Identity audit";
     case "league_data_edit":
@@ -563,6 +568,11 @@ function scopeLabel(scope: NonNullable<EditLedgerEntry["scope"]>): string {
 
 function targetLabel(targetKind: string): string {
   return targetKind.replaceAll("_", " ");
+}
+
+function startCase(value: string): string {
+  const label = value.replaceAll("_", " ");
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : "Edited";
 }
 
 function seasonsLabel(seasons: readonly number[]): string {

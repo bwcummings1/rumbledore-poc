@@ -3,6 +3,9 @@ import {
   type ArenaStandingsSwingPayload,
   arenaLeaderboardChannel,
   type BlogPublishedPayload,
+  type ContentRetractedPayload,
+  type ContentSupersededPayload,
+  centralNewsChannel,
   type HistoryImportProgressPayload,
   type LeagueLeaderboardUpdatedPayload,
   type LoreCanonizedPayload,
@@ -20,6 +23,14 @@ import {
   type ScoresUpdatedPayload,
 } from "./interfaces";
 
+function contentLifecycleChannel(payload: {
+  leagueId: string | null;
+}): RealtimeChannel {
+  return payload.leagueId
+    ? leagueBlogChannel(payload.leagueId)
+    : centralNewsChannel();
+}
+
 export class NoopRealtimePublisher implements RealtimePublisher {
   async publishArenaLeaderboardUpdated(
     _payload: ArenaLeaderboardUpdatedPayload,
@@ -29,6 +40,18 @@ export class NoopRealtimePublisher implements RealtimePublisher {
 
   async publishArenaStandingsSwing(
     _payload: ArenaStandingsSwingPayload,
+  ): Promise<void> {
+    return;
+  }
+
+  async publishContentRetracted(
+    _payload: ContentRetractedPayload,
+  ): Promise<void> {
+    return;
+  }
+
+  async publishContentSuperseded(
+    _payload: ContentSupersededPayload,
   ): Promise<void> {
     return;
   }
@@ -74,6 +97,8 @@ export class RecordingRealtimePublisher implements RealtimePublisher {
   readonly arenaLeaderboardUpdated: ArenaLeaderboardUpdatedPayload[] = [];
   readonly arenaStandingsSwing: ArenaStandingsSwingPayload[] = [];
   readonly blogPublished: BlogPublishedPayload[] = [];
+  readonly contentRetracted: ContentRetractedPayload[] = [];
+  readonly contentSuperseded: ContentSupersededPayload[] = [];
   readonly historyImportProgress: HistoryImportProgressPayload[] = [];
   readonly leagueLeaderboardUpdated: LeagueLeaderboardUpdatedPayload[] = [];
   readonly loreCanonized: LoreCanonizedPayload[] = [];
@@ -90,6 +115,18 @@ export class RecordingRealtimePublisher implements RealtimePublisher {
     payload: ArenaStandingsSwingPayload,
   ): Promise<void> {
     this.arenaStandingsSwing.push(payload);
+  }
+
+  async publishContentRetracted(
+    payload: ContentRetractedPayload,
+  ): Promise<void> {
+    this.contentRetracted.push(payload);
+  }
+
+  async publishContentSuperseded(
+    payload: ContentSupersededPayload,
+  ): Promise<void> {
+    this.contentSuperseded.push(payload);
   }
 
   async publishLeagueBlogPublished(
@@ -177,6 +214,26 @@ export class InProcessRealtimePublisher implements RealtimePublisher {
     await this.publish(
       arenaLeaderboardChannel(),
       REALTIME_EVENTS.arenaStandingsSwing,
+      payload,
+    );
+  }
+
+  async publishContentRetracted(
+    payload: ContentRetractedPayload,
+  ): Promise<void> {
+    await this.publish(
+      contentLifecycleChannel(payload),
+      REALTIME_EVENTS.contentRetracted,
+      payload,
+    );
+  }
+
+  async publishContentSuperseded(
+    payload: ContentSupersededPayload,
+  ): Promise<void> {
+    await this.publish(
+      contentLifecycleChannel(payload),
+      REALTIME_EVENTS.contentSuperseded,
       payload,
     );
   }

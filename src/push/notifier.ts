@@ -10,6 +10,10 @@ import type {
   PushNotificationPayload,
   PushNotifier,
 } from "./interfaces";
+import {
+  defaultNotificationChannelForFamily,
+  notificationFamilyForPushEvent,
+} from "./interfaces";
 
 type WebPushSubscription = Parameters<typeof webpush.sendNotification>[0];
 type SendNotification = typeof webpush.sendNotification;
@@ -92,16 +96,22 @@ async function loadActiveSubscriptions(
   if (input.userIds !== undefined && userIds.length === 0) {
     return [];
   }
+  const eventFamily = notificationFamilyForPushEvent(input.type);
+  const defaultChannel = defaultNotificationChannelForFamily(eventFamily);
+  const channelFilter =
+    defaultChannel === "push"
+      ? or(
+          isNull(pushNotificationPreferences.channel),
+          eq(pushNotificationPreferences.channel, "push"),
+        )
+      : eq(pushNotificationPreferences.channel, "push");
 
   return withLeagueContext(db, input.leagueId, async (tx) => {
     const filters = [
       eq(pushSubscriptions.leagueId, input.leagueId),
       eq(pushSubscriptions.status, "active"),
       isNull(pushSubscriptions.disabledAt),
-      or(
-        isNull(pushNotificationPreferences.enabled),
-        eq(pushNotificationPreferences.enabled, true),
-      ),
+      channelFilter,
     ];
     if (userIds.length > 0) {
       filters.push(inArray(pushSubscriptions.userId, userIds));
@@ -121,7 +131,7 @@ async function loadActiveSubscriptions(
         and(
           eq(pushNotificationPreferences.leagueId, pushSubscriptions.leagueId),
           eq(pushNotificationPreferences.userId, pushSubscriptions.userId),
-          eq(pushNotificationPreferences.type, input.type),
+          eq(pushNotificationPreferences.eventFamily, eventFamily),
         ),
       )
       .where(and(...filters));

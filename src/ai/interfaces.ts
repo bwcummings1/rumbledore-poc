@@ -1,3 +1,5 @@
+import type { ContentEmbedBodyBlock } from "@/content/embeds";
+import type { RoastLevel } from "@/members/roast-consent-types";
 import type { LeaguePublicationSectionId } from "@/news/sections";
 import type { AiContentType, BlogContentStructure } from "./content-types";
 import type { AiPersona, ToneProfile } from "./personas";
@@ -157,6 +159,7 @@ export interface LeagueAuthenticityContext {
   lore: LeagueContextLore;
   canonLore: LeagueContextCanonLore[];
   entityTokens: string[];
+  roastConsent: Record<RoastLevel, string[]>;
 }
 
 export interface LeagueContextInstigation {
@@ -188,6 +191,22 @@ export interface LeagueContextLoreClaim {
   ratifiedAt: Date | null;
 }
 
+export interface LeagueContextCorrection {
+  affectedWeeks: {
+    scoringPeriod: number;
+    season: number;
+  }[];
+  changedMatchups: {
+    contentHash: string;
+    id: string;
+    scoringPeriod: number;
+    season: number;
+  }[];
+  correctionHash: string;
+  originalContentItemId: string;
+  reason: string;
+}
+
 export interface LeagueContextCadenceFrame {
   cadence: string | null;
   event: string | null;
@@ -201,6 +220,7 @@ export interface LeagueContextCadenceFrame {
 
 export interface LeagueContextTrigger {
   cadence?: LeagueContextCadenceFrame | null;
+  correction: LeagueContextCorrection | null;
   instigation: LeagueContextInstigation | null;
   poll: LeagueContextPoll | null;
   loreClaim: LeagueContextLoreClaim | null;
@@ -309,7 +329,8 @@ export type BlogDraftBodyBlock =
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "quote"; text: string }
-  | { type: "list"; ordered?: boolean; items: string[] };
+  | { type: "list"; ordered?: boolean; items: string[] }
+  | ContentEmbedBodyBlock;
 
 export interface BlogDraft {
   contentType: AiContentType;
@@ -347,6 +368,7 @@ export interface LlmModelProviderKeyResolver {
 export interface LlmJudgeRubric {
   authenticityThreshold: number;
   personaMatchThreshold: number;
+  targetingConsentRequired: boolean;
 }
 
 export interface LlmJudgeLeagueFacts {
@@ -364,9 +386,11 @@ export interface LlmJudgeScore {
   authenticity: number;
   personaMatch: number;
   leakage: boolean;
+  targetingConsent: boolean;
   matchedLeagueFacts: string[];
   matchedPersonaMarkers: string[];
   leakedTokens: string[];
+  targetedOffLimits: string[];
   notes: string[];
 }
 

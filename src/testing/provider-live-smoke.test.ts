@@ -104,6 +104,7 @@ function requestFor(
         },
         people: [],
         rivalries: [],
+        roastConsent: { full_send: [], light: [], off_limits: [] },
       },
       memory: [],
       persona: {
@@ -138,6 +139,7 @@ function requestFor(
         },
       ],
       trigger: {
+        correction: null,
         instigation: null,
         loreClaim: null,
         poll: null,

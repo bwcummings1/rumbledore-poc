@@ -66,6 +66,28 @@ describe("structured logger", () => {
     expect(entry.query).toBe(`token=${REDACTED}`);
   });
 
+  it("redacts webhook endpoint fields without hiding ordinary URLs", () => {
+    const webhookUrl =
+      "https://chat.example.test/hooks/super-secret-webhook-token";
+    const sourceUrl = "https://news.example.test/story";
+    const redacted = redactSecrets({
+      encryptedUrl: "ciphertext-with-secret-webhook-token",
+      sourceUrl,
+      webhookUrl,
+      urlHash: "safe-hash",
+    });
+
+    expect(redacted).toEqual({
+      encryptedUrl: REDACTED,
+      sourceUrl,
+      urlHash: "safe-hash",
+      webhookUrl: REDACTED,
+    });
+    expect(JSON.stringify(redacted)).not.toContain(
+      "super-secret-webhook-token",
+    );
+  });
+
   it("serializes errors and circular objects without throwing", () => {
     const root: Record<string, unknown> = { name: "root" };
     root.self = root;

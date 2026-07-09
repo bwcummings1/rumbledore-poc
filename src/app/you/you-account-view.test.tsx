@@ -117,6 +117,10 @@ test("you account view renders identity, providers, and installed leagues", () =
   expect(
     screen.getByText("Press: Moon Crew Opens the Trap Door"),
   ).toBeDefined();
+  expect(screen.getByText("Digest first, push when installed")).toBeDefined();
+  expect(screen.getByText("Content")).toBeDefined();
+  expect(screen.getByText("Digest")).toBeDefined();
+  expect(screen.getByText("Bets, lore, arena")).toBeDefined();
 });
 
 test("you account view renders provider reconnect CTAs", () => {

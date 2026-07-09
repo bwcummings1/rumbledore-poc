@@ -3,8 +3,11 @@ export {
   type CentralNewsArticleLoadResult,
   getCentralNewsArticleData,
   getLeaguePressArticleData,
+  getLeaguePressArticleTeaserData,
   type LeaguePressArticleData,
   type LeaguePressArticleLoadResult,
+  type LeaguePressArticleTeaserData,
+  type LeaguePressArticleTeaserLoadResult,
   type PublicationArticleStory,
   type PublicationArticleViewData,
 } from "./article";
@@ -74,6 +77,18 @@ export {
   type LeaguePublicationSectionId,
   type PublicationSection,
 } from "./sections";
+export {
+  type CentralArticleShareMetadata,
+  type CentralArticleShareMetadataResult,
+  getCentralNewsArticleShareMetadata,
+  getLeaguePressArticleShareMetadata,
+  getLeagueRouteShareMetadata,
+  type LeagueArticleShareMetadata,
+  type LeagueArticleShareMetadataResult,
+  type LeagueRouteShareMetadata,
+  type LeagueRouteShareMetadataResult,
+  type ShareLifecycleStatus,
+} from "./share-metadata";
 export {
   type CentralNewsTailoringInput,
   type CentralNewsTailoringResult,

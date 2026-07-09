@@ -26,6 +26,7 @@ function contextFixture(): LeagueBlogContext {
       lore: { canon: [], disputed: [], pending: [], refuted: [] },
       people: [],
       rivalries: [],
+      roastConsent: { full_send: [], light: [], off_limits: [] },
     },
     league: {
       currentScoringPeriod: 3,
@@ -70,6 +71,7 @@ function contextFixture(): LeagueBlogContext {
     ],
     trigger: {
       cadence: null,
+      correction: null,
       instigation: null,
       loreClaim: null,
       poll: null,

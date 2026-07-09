@@ -51,6 +51,7 @@ function requestFor(
         },
         people: [],
         rivalries: [],
+        roastConsent: { full_send: [], light: [], off_limits: [] },
       },
       arena: {
         computedAt: null,
@@ -84,6 +85,7 @@ function requestFor(
       records: [],
       teams: [],
       trigger: {
+        correction: null,
         instigation: null,
         loreClaim: null,
         poll: null,
@@ -329,6 +331,7 @@ function judgeRequestFor(
     rubric: {
       authenticityThreshold: 0.7,
       personaMatchThreshold: 0.7,
+      targetingConsentRequired: true,
     },
   };
 }
@@ -349,6 +352,8 @@ describe("AnthropicLlmJudge", () => {
               matchedPersonaMarkers: ["League-official framing"],
               notes: ["Concrete league fact and persona beat are present."],
               personaMatch: 0.85,
+              targetedOffLimits: [],
+              targetingConsent: true,
             },
             usage: {
               input_tokens: 80,
@@ -372,6 +377,8 @@ describe("AnthropicLlmJudge", () => {
         matchedPersonaMarkers: ["League-official framing"],
         notes: ["Concrete league fact and persona beat are present."],
         personaMatch: 0.85,
+        targetedOffLimits: [],
+        targetingConsent: true,
       },
     );
     await expect(

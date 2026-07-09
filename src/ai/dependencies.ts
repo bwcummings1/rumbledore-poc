@@ -9,6 +9,7 @@ import {
 import type { Db } from "@/db/client";
 import { createPushNotifier } from "@/push";
 import { createRealtimePublisher } from "@/realtime";
+import { createWebhookDeliverer } from "@/webhooks/dependencies";
 import type {
   BlogDraft,
   EmbeddingProvider,
@@ -239,6 +240,7 @@ export function createAiDependencies(
   env: Pick<
     Env,
     | "ai"
+    | "auth"
     | "entitlements"
     | "push"
     | "realtime"
@@ -282,6 +284,7 @@ export function createAiDependencies(
         ),
     llm: realLlm ? new GuardedLlmClient(realLlm, mockLlm, spendGuard) : mockLlm,
     push: createPushNotifier(db, env),
+    webhooks: createWebhookDeliverer(db, env),
     web: env.services.tavily.mock
       ? mockWeb
       : new GuardedWebGrounding(

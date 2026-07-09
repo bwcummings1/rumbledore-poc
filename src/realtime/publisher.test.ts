@@ -95,6 +95,59 @@ describe("realtime publisher", () => {
     });
   });
 
+  it("posts lifecycle payloads to league blog and central news channels", async () => {
+    const calls: Array<{
+      input: RequestInfo | URL;
+      init: RequestInit | undefined;
+    }> = [];
+    const publisher = new SupabaseRealtimePublisher({
+      apiKey: "supabase-service-key", // ubs:ignore — fake fixture value
+      fetchFn: async (input, init) => {
+        calls.push({ input, init });
+        return okResponse();
+      },
+      url: "https://project.supabase.co/",
+    });
+
+    await publisher.publishContentRetracted({
+      at: "2026-07-09T12:00:01.000Z",
+      contentItemId: "post-1",
+      leagueId: "league-123",
+      statusChangedAt: "2026-07-09T12:00:00.000Z",
+      title: "Commissioner note",
+      type: REALTIME_EVENTS.contentRetracted,
+      v: 1,
+    });
+    await publisher.publishContentSuperseded({
+      at: "2026-07-09T12:05:01.000Z",
+      contentItemId: "central-1",
+      leagueId: null,
+      replacementContentItemId: "central-2",
+      statusChangedAt: "2026-07-09T12:05:00.000Z",
+      title: "Central note",
+      type: REALTIME_EVENTS.contentSuperseded,
+      v: 1,
+    });
+
+    expect(calls.map((call) => call.input.toString())).toEqual([
+      "https://project.supabase.co/realtime/v1/api/broadcast/league%3Aleague-123%3Ablog/events/content.retracted?private=true",
+      "https://project.supabase.co/realtime/v1/api/broadcast/central%3Anews/events/content.superseded?private=true",
+    ]);
+    expect(parseJsonBody(calls[0]?.init?.body)).toMatchObject({
+      contentItemId: "post-1",
+      leagueId: "league-123",
+      type: "content.retracted",
+      v: 1,
+    });
+    expect(parseJsonBody(calls[1]?.init?.body)).toMatchObject({
+      contentItemId: "central-1",
+      leagueId: null,
+      replacementContentItemId: "central-2",
+      type: "content.superseded",
+      v: 1,
+    });
+  });
+
   it("throws when Supabase rejects the broadcast", async () => {
     const publisher = new SupabaseRealtimePublisher({
       apiKey: "supabase-service-key", // ubs:ignore — fake fixture value

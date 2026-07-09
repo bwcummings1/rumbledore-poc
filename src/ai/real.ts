@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { type TavilyClient, tavily } from "@tavily/core";
 import { z } from "zod";
+import { CONTENT_EMBED_KINDS } from "@/content/embeds";
 import { AppError } from "@/core/result";
 import { blogDraftText } from "./article-draft";
 import {
@@ -53,6 +54,30 @@ const bodyBlockSchema = z.discriminatedUnion("type", [
     ordered: z.boolean().optional(),
     type: z.literal("list"),
   }),
+  z.object({
+    embed: z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal(CONTENT_EMBED_KINDS[0]),
+        scoringPeriod: z.number().int().positive().optional(),
+        season: z.number().int().positive().optional(),
+        title: z.string().trim().min(1).max(96).optional(),
+      }),
+      z.object({
+        kind: z.literal(CONTENT_EMBED_KINDS[1]),
+        limit: z.number().int().min(3).max(12).optional(),
+        season: z.number().int().positive().optional(),
+        title: z.string().trim().min(1).max(96).optional(),
+      }),
+      z.object({
+        kind: z.literal(CONTENT_EMBED_KINDS[2]),
+        personAName: z.string().trim().min(1),
+        personBName: z.string().trim().min(1),
+        season: z.number().int().positive().optional(),
+        title: z.string().trim().min(1).max(96).optional(),
+      }),
+    ]),
+    type: z.literal("embed"),
+  }),
 ]);
 
 const llmJudgeScoreSchema = z.object({
@@ -63,6 +88,8 @@ const llmJudgeScoreSchema = z.object({
   matchedPersonaMarkers: z.array(z.string().min(1)).max(16),
   notes: z.array(z.string().min(1)).max(8),
   personaMatch: z.number().min(0).max(1),
+  targetedOffLimits: z.array(z.string().min(1)).max(16),
+  targetingConsent: z.boolean(),
 }) satisfies z.ZodType<LlmJudgeScore>;
 
 const structureSchemas = {
@@ -290,6 +317,8 @@ function anthropicSystemInstructions(request: LlmGenerateRequest): string {
     `The required content_type is ${request.contentType}.`,
     `Template contract: ${template.promptContract}`,
     "Include a sharp dek, 2-8 tags from league teams/managers/topics, and bodyBlocks for typographic rendering.",
+    "For weekly_recap bodyBlocks include one typed embed block with kind scoreboard_strip.",
+    "For power_rankings bodyBlocks include one typed embed block with kind standings_movement.",
     "Populate structure with the required machine-readable sections for that content_type.",
     `Write as the ${request.context.persona.name} persona.`,
     `Beat: ${request.context.persona.beat}`,
@@ -318,6 +347,7 @@ function userTask(request: LlmGenerateRequest): string {
     `The JSON contentType field must be exactly ${request.contentType}.`,
     "The title should be a concise headline. The summary should be one sentence for cards. The dek should be a standfirst under the headline.",
     "The body should be represented as bodyBlocks with at least two blocks; use paragraphs plus optional headings, quotes, or lists.",
+    "Use typed embed bodyBlocks for live DB-backed data where the schema allows them; do not write raw HTML or markdown placeholders for embeds.",
     "The body field should contain the same article as markdown-style text.",
     duplicateNudge,
   ].join("\n");
@@ -388,6 +418,7 @@ function judgeSystemInstructions(): string {
     "Score authenticity from 0 to 1 based on concrete use of this league's supplied facts.",
     "Score personaMatch from 0 to 1 based on the supplied persona markers.",
     "Set leakage true if the piece mentions any supplied other-league token.",
+    "Set targetingConsent false if the piece targets, mocks, or makes an off_limits roast-consent token the butt of a joke.",
     "Do not reward generic fantasy-football writing that could fit any league.",
   ].join("\n");
 }
@@ -407,6 +438,7 @@ function judgeUserTask(request: LlmJudgeRequest): string {
     ),
     personaMarkers: judgePersonaMarkers(request),
     rubric: request.rubric,
+    roastConsent: context.authenticity.roastConsent,
   });
 }
 

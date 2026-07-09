@@ -1,7 +1,22 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
 import type { PublicationArticleViewData } from "@/news/article";
 import { PublicationArticleView } from "./article-view";
+
+const clipboardWrite = vi.fn(async () => undefined);
+
+Object.assign(navigator, {
+  clipboard: {
+    writeText: clipboardWrite,
+  },
+});
 
 const baseData: PublicationArticleViewData = {
   article: {
@@ -12,6 +27,7 @@ const baseData: PublicationArticleViewData = {
       "- Bench leverage arrived early",
       "- The favorite lost margin",
     ].join("\n\n"),
+    bodyBlocks: [],
     byline: "The Narrator",
     bylineDetail: "Narrator - weaves the week into legend",
     canonCitations: [
@@ -46,6 +62,10 @@ const baseData: PublicationArticleViewData = {
       },
     ],
     kind: "blog",
+    lifecycle: {
+      status: "published",
+      statusChangedAt: "2026-06-11T12:00:00.000Z",
+    },
     publishedAt: "2026-06-11T12:00:00.000Z",
     section: {
       href: "/leagues/league-1/press/recaps",
@@ -53,6 +73,11 @@ const baseData: PublicationArticleViewData = {
     },
     sourceUrl: "",
     tags: ["rivalry", "waivers"],
+    share: {
+      href: "/leagues/league-1/press/post-1",
+      text: "A calm standfirst for the league paper.",
+      title: "Fixture Team 01 turns panic into policy",
+    },
   },
   backHref: "/leagues/league-1/press",
   backLabel: "The Press",
@@ -77,6 +102,7 @@ const baseData: PublicationArticleViewData = {
 
 afterEach(() => {
   cleanup();
+  clipboardWrite.mockClear();
 });
 
 test("publication article view renders the AUSPEX editorial prose skin", () => {
@@ -123,8 +149,27 @@ test("publication article view renders the AUSPEX editorial prose skin", () => {
   ).toBeDefined();
   expect(screen.getByRole("region", { name: "Related stories" })).toBeDefined();
   expect(
+    screen.getByRole("group", { name: "Article share actions" }),
+  ).toBeDefined();
+  expect(
     screen.getByRole("link", { name: /next in recaps/i }).getAttribute("href"),
   ).toBe("/leagues/league-1/press/post-2");
+});
+
+test("publication article view copies the canonical article share link", async () => {
+  render(<PublicationArticleView data={baseData} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+
+  await waitFor(() => {
+    expect(clipboardWrite).toHaveBeenCalledWith(
+      new URL(
+        "/leagues/league-1/press/post-1",
+        window.location.origin,
+      ).toString(),
+    );
+  });
+  expect(screen.getByText("Link copied")).toBeDefined();
 });
 
 test("publication article view treats central news as source-authored", () => {
@@ -140,8 +185,17 @@ test("publication article view treats central news as source-authored", () => {
           heroImageUrl: "",
           inlineDataBlocks: [],
           kind: "news",
+          lifecycle: {
+            status: "published",
+            statusChangedAt: "2026-06-11T12:00:00.000Z",
+          },
           sourceUrl: "https://news.example.com/story",
           tags: [],
+          share: {
+            href: "/news/articles/post-1",
+            text: "A calm standfirst for the league paper.",
+            title: "Fixture Team 01 turns panic into policy",
+          },
         },
         backHref: "/news",
         backLabel: "News front",
@@ -150,6 +204,12 @@ test("publication article view treats central news as source-authored", () => {
         relatedStories: [],
         scope: "central",
         tagHrefBase: "/news",
+        arrivalCta: {
+          body: "Connect a fantasy account and bring this desk into a league.",
+          href: "/onboarding/espn?returnTo=%2Fnews%2Farticles%2Fpost-1",
+          label: "Claim league",
+          title: "Reading as a guest",
+        },
       }}
     />,
   );
@@ -163,4 +223,225 @@ test("publication article view treats central news as source-authored", () => {
   expect(
     screen.getByRole("link", { name: /open source/i }).getAttribute("href"),
   ).toBe("https://news.example.com/story");
+  expect(screen.getByLabelText("Claim your league")).toBeDefined();
+  expect(screen.getByText("Reading as a guest")).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: /claim league/i }).getAttribute("href"),
+  ).toBe("/onboarding/espn?returnTo=%2Fnews%2Farticles%2Fpost-1");
+});
+
+test("publication article view renders lifecycle controls and ledger for managed league posts", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          lifecycle: {
+            retractionReason: "Wrong matchup winner.",
+            status: "retracted",
+            statusChangedAt: "2026-06-12T12:00:00.000Z",
+          },
+        },
+        editorial: {
+          canManage: true,
+          ledgerEntries: [
+            {
+              actorDisplayName: "Commissioner",
+              actorUserId: "00000000-0000-4000-8000-000000000010",
+              afterValue: {
+                reason: "Wrong matchup winner.",
+                status: "retracted",
+              },
+              beforeValue: { status: "published" },
+              createdAt: "2026-06-12T12:00:00.000Z",
+              editClass: "substantive",
+              field: "retract",
+              id: "editorial-action-1",
+              reason: "Wrong matchup winner.",
+              scope: null,
+              source: "editorial_action",
+              targetId: "post-1",
+              targetKind: "content_item",
+            },
+          ],
+          regenerateApiUrl: "/api/leagues/league-1/press/post-1/regenerate",
+          retractApiUrl: "/api/leagues/league-1/press/post-1/retract",
+        },
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByRole("region", { name: "Retracted article" }),
+  ).toBeDefined();
+  expect(screen.getByText("Wrong matchup winner.")).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Article body" })).toBeNull();
+  expect(
+    screen.getByRole("complementary", { name: "Editorial ledger" }),
+  ).toBeDefined();
+  const editorialControls = screen.getByLabelText("Editorial controls");
+  expect(editorialControls).toBeDefined();
+  expect(
+    within(editorialControls)
+      .getByRole("button", { name: /retract/i })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(
+    screen.queryByRole("group", { name: "Article share actions" }),
+  ).toBeNull();
+});
+
+test("publication article view links superseded posts to their replacement", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          lifecycle: {
+            replacementHref: "/leagues/league-1/press/post-3",
+            replacementTitle: "Updated fixture story",
+            status: "superseded",
+            statusChangedAt: "2026-06-12T13:00:00.000Z",
+          },
+        },
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByRole("link", { name: /updated version/i }).getAttribute("href"),
+  ).toBe("/leagues/league-1/press/post-3");
+});
+
+test("publication article view renders reaction controls for league posts", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          reactions: {
+            apiUrl: "/api/leagues/league-1/press/post-1/reactions",
+            counts: [
+              { count: 2, emoji: "fire", glyph: "🔥", label: "Fire" },
+              { count: 1, emoji: "skull", glyph: "💀", label: "Skull" },
+              { count: 0, emoji: "laugh", glyph: "😂", label: "Laugh" },
+              { count: 0, emoji: "trash", glyph: "🗑️", label: "Trash" },
+            ],
+            currentEmoji: "skull",
+            total: 3,
+          },
+        },
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("region", { name: "Article body" })).toBeDefined();
+  expect(screen.getByText("Reader signal")).toBeDefined();
+  expect(
+    screen
+      .getByRole("button", { name: /skull reaction, 1 vote/i })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
+test("publication article view renders live embeds and drops unknown embeds", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          body: "Fallback only body should not replace structured blocks.",
+          bodyBlocks: [
+            { text: "Week turns", type: "heading" },
+            {
+              text: "Fixture Team 01 has live data in the article body.",
+              type: "paragraph",
+            },
+            {
+              embed: {
+                id: "scoreboard:2026:1:2",
+                kind: "scoreboard_strip",
+                matchups: [
+                  {
+                    awayLabel: "FT2",
+                    awayScore: 117.9,
+                    homeLabel: "FT1",
+                    homeScore: 131.2,
+                    id: "matchup-1",
+                    kickoffLabel: "Week 1",
+                    status: "final",
+                    winProbability: 100,
+                  },
+                ],
+                scoringPeriod: 1,
+                season: 2026,
+                title: "Week 1 scoreboard",
+              },
+              type: "embed",
+            },
+            {
+              embed: {
+                id: "standings:2026:3:3",
+                kind: "standings_movement",
+                rows: [
+                  {
+                    delta: 1,
+                    id: "1",
+                    managerNames: ["Manager One"],
+                    pointsFor: 344.2,
+                    previousRank: 2,
+                    rank: 1,
+                    record: "3-1-0",
+                    team: "Fixture Team 01",
+                  },
+                ],
+                season: 2026,
+                title: "Standings movement",
+              },
+              type: "embed",
+            },
+            {
+              embed: {
+                id: "h2h:2026:one-two:4",
+                kind: "h2h_sparkline",
+                personAName: "Manager One",
+                personBName: "Manager Two",
+                points: [
+                  {
+                    label: "2026 W1",
+                    personAScore: 131.2,
+                    personBScore: 117.9,
+                    resultForA: "win",
+                  },
+                ],
+                season: 2026,
+                title: "Manager One vs Manager Two",
+              },
+              type: "embed",
+            },
+            {
+              embed: { id: "future:embed", kind: "unknown" },
+              type: "embed",
+            },
+          ],
+        },
+      }}
+    />,
+  );
+
+  expect(screen.getByLabelText("Week 1 scoreboard")).toBeDefined();
+  expect(screen.getByText("FT1")).toBeDefined();
+  expect(screen.getByLabelText("Standings movement")).toBeDefined();
+  expect(screen.getAllByText("Fixture Team 01").length).toBeGreaterThan(0);
+  expect(screen.getByLabelText("Manager One vs Manager Two")).toBeDefined();
+  expect(screen.queryByText("future:embed")).toBeNull();
+  expect(
+    screen.queryByText(
+      "Fallback only body should not replace structured blocks.",
+    ),
+  ).toBeNull();
 });

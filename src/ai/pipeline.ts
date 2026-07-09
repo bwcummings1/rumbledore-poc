@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getArenaLeaderboardData } from "@/betting/arena";
+import {
+  contentItemIsPublished,
+  supersedingContentDedupKey,
+} from "@/content/lifecycle";
 import { DEFAULT_ENTITLEMENT_CAPS } from "@/core/env/schema";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
@@ -12,12 +16,14 @@ import {
   aiMemory,
   aiPersonaCards,
   allTimeRecords,
+  members as authMembers,
   contentItems,
   dataIntegrityChecks,
   fantasyMembers,
   fantasyTeams,
   headToHeadRecords,
   instigations,
+  leagueMemberIdentityClaims,
   leagues,
   loreClaims,
   loreVerifications,
@@ -31,6 +37,10 @@ import {
   type EntitlementTier,
   resolveEntitlement,
 } from "@/entitlements";
+import {
+  mostRestrictiveRoastLevel,
+  type RoastLevel,
+} from "@/members/roast-consent-types";
 import { NoopPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
   NoopRealtimePublisher,
@@ -38,9 +48,11 @@ import {
   type RealtimePublisher,
 } from "@/realtime";
 import { RECORD_TYPE_LABELS, type RecordType } from "@/stats";
+import { MockWebhookDeliverer, type WebhookDeliverer } from "@/webhooks";
 import {
   blogDraftMetadata,
   blogDraftText,
+  bodyBlocksToMarkdown,
   validateBlogDraft,
 } from "./article-draft";
 import { type AiContentType, parseAiContentType } from "./content-types";
@@ -54,6 +66,7 @@ import type {
   LeagueContextArenaStanding,
   LeagueContextCadenceFrame,
   LeagueContextCanonLore,
+  LeagueContextCorrection,
   LeagueContextDisputedLore,
   LeagueContextInstigation,
   LeagueContextLore,
@@ -102,6 +115,11 @@ export interface GenerateLeagueBlogPostInput {
   persona: AiPersona;
   contentType: AiContentType;
   triggerKey: string;
+  correction?: LeagueContextCorrection;
+  supersedes?: {
+    contentItemId: string;
+    dedupKey: string;
+  };
 }
 
 export interface AiGenerationDependencies {
@@ -111,6 +129,7 @@ export interface AiGenerationDependencies {
   judge: LlmJudge;
   push: PushNotifier;
   realtime: RealtimePublisher;
+  webhooks?: WebhookDeliverer;
   web: WebGrounding;
   embeddings: EmbeddingProvider;
   duplicateThreshold?: number;
@@ -217,6 +236,12 @@ function generationRunTriggerKey(input: GenerateLeagueBlogPostInput): string {
 }
 
 function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
+  if (input.supersedes) {
+    return supersedingContentDedupKey({
+      dedupKey: input.supersedes.dedupKey,
+      id: input.supersedes.contentItemId,
+    });
+  }
   return `blog:${input.persona}:${input.contentType}:${input.triggerKey}`;
 }
 
@@ -365,6 +390,20 @@ function parseFramedReactiveKey({
 function parseTriggerCadenceFrame(
   triggerKey: string,
 ): LeagueContextCadenceFrame | null {
+  if (triggerKey.startsWith("launch-edition:")) {
+    const [, version = "v1"] = triggerKey.split(":");
+    return {
+      cadence: "launch-edition",
+      event: "league.connected",
+      gamePhase: "quiet",
+      phase: "launch",
+      seasonWeek: null,
+      source: "reactive",
+      stakes: ["cold_start_launch", "provider_import_facts"],
+      weekToken: version,
+    };
+  }
+
   if (triggerKey.startsWith("cron:")) {
     const [, cadence, phase, weekToken] = triggerKey.split(":");
     if (!cadence || !isNflPhase(phase) || !weekToken) {
@@ -486,12 +525,14 @@ async function loadNearestBlogMemories({
         textContent: aiMemory.textContent,
       })
       .from(aiMemory)
+      .innerJoin(contentItems, eq(aiMemory.contentItemId, contentItems.id))
       .where(
         and(
           eq(aiMemory.leagueId, input.leagueId),
           eq(aiMemory.source, "blog_post"),
           eq(aiMemory.embeddingDimensions, embedding.length),
           eq(aiMemory.embeddingModel, deps.embeddings.model),
+          contentItemIsPublished(),
           sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
         ),
       )
@@ -591,6 +632,7 @@ function stableAuthenticityFacts(context: LeagueBlogContext) {
       personBWins: rivalry.personBWins,
       ties: rivalry.ties,
     })),
+    roastConsent: context.authenticity.roastConsent,
   };
 }
 
@@ -721,6 +763,107 @@ function ownerNamesFromHistory(
   return uniqueStrings(history.flatMap((entry) => entry.ownerNames ?? []));
 }
 
+function providerMemberIdsFromHistory(
+  history: readonly { providerMemberIds?: readonly string[] }[],
+): string[] {
+  return uniqueStrings(
+    history.flatMap((entry) => entry.providerMemberIds ?? []),
+  );
+}
+
+function emptyRoastConsent(): Record<RoastLevel, string[]> {
+  return {
+    full_send: [],
+    light: [],
+    off_limits: [],
+  };
+}
+
+function setRoastConsentName(
+  levelsByName: Map<string, { displayName: string; level: RoastLevel }>,
+  input: { level: RoastLevel; name: string | null | undefined },
+) {
+  const displayName = input.name?.replace(/\s+/g, " ").trim();
+  if (!displayName || displayName.length < 2) {
+    return;
+  }
+  const key = displayName.toLocaleLowerCase();
+  const existing = levelsByName.get(key);
+  levelsByName.set(key, {
+    displayName: existing?.displayName ?? displayName,
+    level: existing
+      ? mostRestrictiveRoastLevel([existing.level, input.level])
+      : input.level,
+  });
+}
+
+function buildRoastConsent(input: {
+  claimedLevelsByProviderId: ReadonlyMap<string, RoastLevel>;
+  fantasyMembers: readonly {
+    displayName: string;
+    providerMemberId: string;
+    roastLevel: RoastLevel;
+  }[];
+  people: readonly {
+    canonicalName: string;
+    ownerHistory: readonly {
+      ownerNames?: readonly string[];
+      providerMemberIds?: readonly string[];
+    }[];
+  }[];
+}): Record<RoastLevel, string[]> {
+  const importedLevelsByProviderId = new Map<string, RoastLevel>();
+  for (const member of input.fantasyMembers) {
+    const existing = importedLevelsByProviderId.get(member.providerMemberId);
+    importedLevelsByProviderId.set(
+      member.providerMemberId,
+      existing
+        ? mostRestrictiveRoastLevel([existing, member.roastLevel])
+        : member.roastLevel,
+    );
+  }
+
+  const effectiveLevelForProviderId = (providerMemberId: string): RoastLevel =>
+    input.claimedLevelsByProviderId.get(providerMemberId) ??
+    importedLevelsByProviderId.get(providerMemberId) ??
+    "light";
+
+  const levelsByName = new Map<
+    string,
+    { displayName: string; level: RoastLevel }
+  >();
+  for (const member of input.fantasyMembers) {
+    setRoastConsentName(levelsByName, {
+      level: effectiveLevelForProviderId(member.providerMemberId),
+      name: member.displayName,
+    });
+  }
+  for (const person of input.people) {
+    const providerIds = providerMemberIdsFromHistory(person.ownerHistory);
+    const level =
+      providerIds.length > 0
+        ? mostRestrictiveRoastLevel(
+            providerIds.map(effectiveLevelForProviderId),
+          )
+        : "light";
+    setRoastConsentName(levelsByName, {
+      level,
+      name: person.canonicalName,
+    });
+    for (const ownerName of ownerNamesFromHistory(person.ownerHistory)) {
+      setRoastConsentName(levelsByName, { level, name: ownerName });
+    }
+  }
+
+  const consent = emptyRoastConsent();
+  for (const entry of [...levelsByName.values()].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName),
+  )) {
+    consent[entry.level].push(entry.displayName);
+  }
+  return consent;
+}
+
 function buildEntityTokens({
   canonLore,
   people,
@@ -787,6 +930,45 @@ function validateDraftOrGeneric({
   }
 }
 
+function correctionWeekLabel(correction: LeagueContextCorrection): string {
+  return correction.affectedWeeks
+    .map((week) => `${week.season} Week ${week.scoringPeriod}`)
+    .join(", ");
+}
+
+function applyCorrectionLabel(
+  draft: BlogDraft,
+  correction?: LeagueContextCorrection,
+): BlogDraft {
+  if (!correction) {
+    return draft;
+  }
+
+  const correctionText = `Correction: scores or results changed for ${correctionWeekLabel(correction)}. This version supersedes the earlier post.`;
+  const hasCorrectionBlock = draft.bodyBlocks.some(
+    (block) =>
+      block.type === "paragraph" &&
+      block.text.toLocaleLowerCase().startsWith("correction:"),
+  );
+  const bodyBlocks = hasCorrectionBlock
+    ? draft.bodyBlocks
+    : [
+        { text: correctionText, type: "paragraph" as const },
+        ...draft.bodyBlocks,
+      ];
+  return {
+    ...draft,
+    body: bodyBlocksToMarkdown(bodyBlocks),
+    bodyBlocks,
+    summary: draft.summary.toLocaleLowerCase().startsWith("correction")
+      ? draft.summary
+      : `Correction note: ${draft.summary}`,
+    title: draft.title.toLocaleLowerCase().startsWith("correction:")
+      ? draft.title
+      : `Correction: ${draft.title}`,
+  };
+}
+
 function llmJudgeSkipReason(score: LlmJudgeScore): string {
   const reasons = [
     score.authenticity < DEFAULT_LLM_JUDGE_RUBRIC.authenticityThreshold
@@ -796,6 +978,7 @@ function llmJudgeSkipReason(score: LlmJudgeScore): string {
       ? `persona:${score.personaMatch.toFixed(2)}`
       : null,
     score.leakage ? "leakage" : null,
+    score.targetingConsent ? null : "targeting_consent",
   ].filter((reason): reason is string => Boolean(reason));
   return `llm_judge:${reasons.join(",") || "failed"}`;
 }
@@ -1211,6 +1394,7 @@ async function loadTriggerContext({
   const cadence = parseTriggerCadenceFrame(input.triggerKey);
   const empty = {
     cadence,
+    correction: input.correction ?? null,
     instigation: null,
     loreClaim: null,
     poll: null,
@@ -1249,7 +1433,13 @@ async function loadTriggerContext({
           tx,
         })
       : null;
-    return { cadence, instigation, loreClaim, poll };
+    return {
+      cadence,
+      correction: empty.correction,
+      instigation,
+      loreClaim,
+      poll,
+    };
   }
 
   const claim = await loadLoreClaimContext({
@@ -1282,7 +1472,13 @@ async function loadTriggerContext({
         title: claim.title,
       }
     : null;
-  return { cadence, instigation, loreClaim, poll };
+  return {
+    cadence,
+    correction: empty.correction,
+    instigation,
+    loreClaim,
+    poll,
+  };
 }
 
 async function prepareGeneration({
@@ -1323,6 +1519,7 @@ async function prepareGeneration({
         and(
           eq(contentItems.id, existingRun.contentItemId),
           eq(contentItems.leagueId, input.leagueId),
+          contentItemIsPublished(),
         ),
       )
       .limit(1);
@@ -1399,6 +1596,7 @@ async function prepareGeneration({
     .select({
       displayName: fantasyMembers.displayName,
       providerMemberId: fantasyMembers.providerMemberId,
+      roastLevel: fantasyMembers.roastLevel,
     })
     .from(fantasyMembers)
     .where(
@@ -1409,6 +1607,23 @@ async function prepareGeneration({
     );
   const membersByProviderId = new Map(
     memberRows.map((member) => [member.providerMemberId, member.displayName]),
+  );
+  const claimedRoastRows = await tx
+    .select({
+      providerMemberId: leagueMemberIdentityClaims.providerMemberId,
+      roastLevel: authMembers.roastLevel,
+    })
+    .from(leagueMemberIdentityClaims)
+    .innerJoin(
+      authMembers,
+      and(
+        eq(authMembers.organizationId, input.leagueId),
+        eq(authMembers.userId, leagueMemberIdentityClaims.userId),
+      ),
+    )
+    .where(eq(leagueMemberIdentityClaims.leagueId, input.leagueId));
+  const claimedLevelsByProviderId = new Map(
+    claimedRoastRows.map((row) => [row.providerMemberId, row.roastLevel]),
   );
 
   const teamRows = await tx
@@ -1757,6 +1972,11 @@ async function prepareGeneration({
     id: person.id,
     ownerNames: ownerNamesFromHistory(person.ownerHistory),
   }));
+  const roastConsent = buildRoastConsent({
+    claimedLevelsByProviderId,
+    fantasyMembers: memberRows,
+    people: allPersonRows,
+  });
   const rivalries = rivalryRows.map((rivalry) => ({
     currentStreakLength: rivalry.currentStreakLength,
     currentStreakName: rivalry.currentStreakPersonId
@@ -1793,6 +2013,7 @@ async function prepareGeneration({
     lore,
     people,
     rivalries,
+    roastConsent,
   };
 
   const priorPosts = await tx
@@ -1807,6 +2028,7 @@ async function prepareGeneration({
       and(
         eq(contentItems.leagueId, input.leagueId),
         eq(contentItems.kind, "blog"),
+        contentItemIsPublished(),
       ),
     )
     .orderBy(desc(contentItems.publishedAt))
@@ -1820,10 +2042,12 @@ async function prepareGeneration({
       textContent: aiMemory.textContent,
     })
     .from(aiMemory)
+    .innerJoin(contentItems, eq(aiMemory.contentItemId, contentItems.id))
     .where(
       and(
         eq(aiMemory.leagueId, input.leagueId),
         eq(aiMemory.source, "blog_post"),
+        contentItemIsPublished(),
         sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
       ),
     )
@@ -2026,6 +2250,7 @@ async function publishDraft({
           }),
           publishedAt: timestamp,
           summary: draft.summary,
+          supersedesContentItemId: input.supersedes?.contentItemId,
           title: draft.title,
         })
         .onConflictDoNothing({
@@ -2056,6 +2281,7 @@ async function publishDraft({
                 eq(contentItems.leagueId, input.leagueId),
                 eq(contentItems.kind, "blog"),
                 eq(contentItems.dedupKey, dedupKey),
+                contentItemIsPublished(),
               ),
             )
             .limit(1)
@@ -2151,6 +2377,19 @@ async function publishDraft({
         leagueId: input.leagueId,
       });
     }
+
+    try {
+      await deps.webhooks?.deliverPublishedContent({
+        contentItemId: result.contentItemId,
+        leagueId: input.leagueId,
+      });
+    } catch (error) {
+      logger.warn("Webhook blog publish delivery failed", {
+        contentItemId: result.contentItemId,
+        error,
+        leagueId: input.leagueId,
+      });
+    }
   }
 
   return result;
@@ -2171,6 +2410,10 @@ export function createMockAiDependencies(db: Db): AiGenerationDependencies {
     llm: new MockLlmClient(),
     push: new NoopPushNotifier(),
     realtime: new NoopRealtimePublisher(),
+    webhooks: new MockWebhookDeliverer({
+      appUrl: "http://localhost:3000",
+      db,
+    }),
     web: new MockWebGrounding(),
   };
 }
@@ -2269,7 +2512,7 @@ export async function generateLeagueBlogPost({
   let alreadyRetried = false;
   if (!draft || !referencedLeagueEntity({ context, draft })) {
     const authenticityNudge =
-      "The first draft was too generic. Name a concrete league-owned team, manager, record, rivalry, or canon fact from the supplied context.";
+      "The first draft was too generic. Name a concrete league-owned team, manager, record, rivalry, or canon fact from the supplied context while honoring roast-consent limits.";
     const retryPrompt = buildPromptParts({
       contentType: input.contentType,
       context,
@@ -2302,6 +2545,7 @@ export async function generateLeagueBlogPost({
       reason: "generic_slop:missing_league_entity",
     });
   }
+  draft = applyCorrectionLabel(draft, input.correction);
 
   let embedding = await deps.embeddings.embed(blogDraftText(draft));
   let nearestMemories = await loadNearestBlogMemories({
@@ -2343,9 +2587,7 @@ export async function generateLeagueBlogPost({
         reason: "generic_slop:missing_league_entity",
       });
     }
-    draft = duplicateDraft;
-    embedding = await deps.embeddings.embed(blogDraftText(draft));
-    if (!referencedLeagueEntity({ context, draft })) {
+    if (!referencedLeagueEntity({ context, draft: duplicateDraft })) {
       return markSkipped({
         deps,
         input,
@@ -2354,6 +2596,8 @@ export async function generateLeagueBlogPost({
         reason: "generic_slop:missing_league_entity",
       });
     }
+    draft = applyCorrectionLabel(duplicateDraft, input.correction);
+    embedding = await deps.embeddings.embed(blogDraftText(draft));
     nearestMemories = await loadNearestBlogMemories({
       deps,
       embedding,
@@ -2381,7 +2625,7 @@ export async function generateLeagueBlogPost({
 
   if (judgeFailureReason && !alreadyRetried) {
     const judgeNudge =
-      "The first draft failed the AI judge for league authenticity, persona fit, or leakage. Rewrite with concrete league-owned facts, clear persona markers, and no other-league references.";
+      "The first draft failed the AI judge for league authenticity, persona fit, leakage, or roast consent. Rewrite with concrete league-owned facts, clear persona markers, no other-league references, and no off-limits targets.";
     const retryPrompt = buildPromptParts({
       contentType: input.contentType,
       context,
@@ -2415,7 +2659,7 @@ export async function generateLeagueBlogPost({
       });
     }
 
-    draft = judgedDraft;
+    draft = applyCorrectionLabel(judgedDraft, input.correction);
     alreadyRetried = true;
     embedding = await deps.embeddings.embed(blogDraftText(draft));
     nearestMemories = await loadNearestBlogMemories({

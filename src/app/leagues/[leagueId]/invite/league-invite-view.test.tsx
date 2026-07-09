@@ -354,3 +354,89 @@ test("ordinary members can reach the public data ledger without steward controls
   expect(screen.queryByRole("link", { name: "Open data review" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Make steward" })).toBeNull();
 });
+
+test("invite view lets members and commissioners update roast consent", async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          roastLevel: body.roastLevel,
+          status: "changed",
+          target: body.target,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      );
+    });
+
+  render(
+    <LeagueInviteView
+      initialSummary={initialSummary}
+      roastConsent={{
+        apiUrl:
+          "/api/leagues/00000000-0000-4000-8000-000000000001/roast-consent",
+        canManageUnclaimed: true,
+        self: {
+          displayName: "Fixture Manager One",
+          memberId: "member-row-1",
+          roastLevel: "light",
+        },
+        unclaimedTargets: [
+          {
+            displayName: "Fixture Manager Two",
+            fantasyMemberId: "member-row-2",
+            providerMemberId: "provider-member-2",
+            roastLevel: "light",
+            teamNames: ["Fixture Team 02"],
+          },
+        ],
+      }}
+    />,
+  );
+
+  expect(screen.getByText("Roast consent")).toBeDefined();
+  fireEvent.click(
+    firstElement(
+      screen.getAllByRole("button", { name: "Off limits" }),
+      "off-limits button",
+    ),
+  );
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/00000000-0000-4000-8000-000000000001/roast-consent",
+      expect.objectContaining({
+        body: JSON.stringify({
+          roastLevel: "off_limits",
+          target: { kind: "self" },
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  const fullSendButtons = screen.getAllByRole("button", {
+    name: "Full send",
+  });
+  fireEvent.click(fullSendButtons[1] ?? fullSendButtons[0]);
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/leagues/00000000-0000-4000-8000-000000000001/roast-consent",
+      expect.objectContaining({
+        body: JSON.stringify({
+          roastLevel: "full_send",
+          target: {
+            fantasyMemberId: "member-row-2",
+            kind: "fantasy_member",
+          },
+        }),
+        method: "POST",
+      }),
+    );
+  });
+});

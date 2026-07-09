@@ -9,6 +9,9 @@ import { withLeagueContext } from "@/db/rls";
 import {
   aiPersonaCards,
   contentItems,
+  fantasyMatchups,
+  fantasyMembers,
+  fantasyTeams,
   leagues,
   loreClaims,
   members,
@@ -18,6 +21,7 @@ import { migrateSerialized } from "@/db/test-support";
 import {
   getCentralNewsArticleData,
   getLeaguePressArticleData,
+  getLeaguePressArticleTeaserData,
 } from "./article";
 import { upsertLeagueFeedReference } from "./league-feed";
 
@@ -163,6 +167,76 @@ beforeAll(async () => {
     throw new Error("lore citation claims were not inserted");
   }
 
+  await withLeagueContext(handle.db, leagueAId, async (tx) => {
+    await tx.insert(fantasyMembers).values([
+      {
+        contentHash: `${marker}-member-1`,
+        displayName: "Manager One",
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        provider: "espn",
+        providerMemberId: "member-1",
+        season: 2026,
+      },
+      {
+        contentHash: `${marker}-member-2`,
+        displayName: "Manager Two",
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        provider: "espn",
+        providerMemberId: "member-2",
+        season: 2026,
+      },
+    ]);
+    await tx.insert(fantasyTeams).values([
+      {
+        abbrev: "FT1",
+        contentHash: `${marker}-team-1`,
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        losses: 1,
+        name: "Fixture Team 01",
+        ownerMemberIds: ["member-1"],
+        pointsAgainst: 311.4,
+        pointsFor: 344.2,
+        provider: "espn",
+        providerTeamId: "1",
+        season: 2026,
+        wins: 3,
+      },
+      {
+        abbrev: "FT2",
+        contentHash: `${marker}-team-2`,
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        losses: 2,
+        name: "Fixture Team 02",
+        ownerMemberIds: ["member-2"],
+        pointsAgainst: 320.1,
+        pointsFor: 300.6,
+        provider: "espn",
+        providerTeamId: "2",
+        season: 2026,
+        wins: 2,
+      },
+    ]);
+    await tx.insert(fantasyMatchups).values({
+      awayScore: 117.9,
+      awayTeamProviderId: "2",
+      contentHash: `${marker}-matchup-1`,
+      homeScore: 131.2,
+      homeTeamProviderId: "1",
+      leagueId: leagueAId,
+      leagueProviderId: `${marker}-league-a`,
+      provider: "espn",
+      providerMatchupId: `${marker}-week-1`,
+      scoringPeriod: 1,
+      season: 2026,
+      status: "final",
+      winner: "home",
+    });
+  });
+
   const centralRows = await handle.db
     .insert(contentItems)
     .values([
@@ -252,6 +326,35 @@ beforeAll(async () => {
               type: "weekly_recap",
               upsetOrBlowout: "The favorite survived by a field goal.",
             },
+            bodyBlocks: [
+              { text: "Rivalry turn", type: "heading" },
+              {
+                text: "Fixture Team 01 beat Fixture Team 02 with the scoreboard in view.",
+                type: "paragraph",
+              },
+              {
+                embed: {
+                  kind: "scoreboard_strip",
+                  scoringPeriod: 1,
+                  season: 2026,
+                  title: "Week 1 scoreboard",
+                },
+                type: "embed",
+              },
+              {
+                embed: {
+                  kind: "standings_movement",
+                  limit: 3,
+                  season: 2026,
+                  title: "Standings movement",
+                },
+                type: "embed",
+              },
+              {
+                embed: { kind: "future_embed" },
+                type: "embed",
+              },
+            ],
             tags: ["Fixture Team 01", "Rivalry Week"],
           },
           publishedAt: new Date("2026-06-11T14:00:00.000Z"),
@@ -356,6 +459,34 @@ describe("publication articles", () => {
     );
   });
 
+  it("does not load a retracted central article through the public article reader", async () => {
+    const [hidden] = await handle.db
+      .insert(contentItems)
+      .values({
+        body: "Hidden central article body.",
+        contentHash: `${marker}-central-hidden-article-hash`,
+        dedupKey: `${marker}-central-hidden-article`,
+        kind: "news",
+        leagueId: null,
+        publishedAt: new Date("2099-06-11T17:00:00.000Z"),
+        source: "Hidden Wire",
+        sourceUrl: `https://news.example.com/${marker}/central-hidden-article`,
+        status: "retracted",
+        summary: "Hidden central article summary.",
+        title: "Hidden central article",
+      })
+      .returning({ id: contentItems.id });
+    if (!hidden) {
+      throw new Error("hidden central article was not inserted");
+    }
+
+    await expect(
+      getCentralNewsArticleData(handle.db, {
+        articleId: hidden.id,
+      }),
+    ).resolves.toEqual({ status: "not_found" });
+  });
+
   it("returns a league-scoped article with persona byline and scoped related stories", async () => {
     const result = await getLeaguePressArticleData(handle.db, {
       leagueId: leagueAId,
@@ -373,8 +504,14 @@ describe("publication articles", () => {
       bylineDetail: "Custom rivalry voice for this league.",
       dek: "A league-specific rivalry dek.",
       headline: "Narrator files the rivalry column",
+      lifecycle: { status: "published" },
       section: { label: "Recaps" },
       tags: ["Fixture Team 01", "Rivalry Week"],
+    });
+    expect(result.data.editorial).toMatchObject({
+      canManage: true,
+      regenerateApiUrl: `/api/leagues/${leagueAId}/press/${leagueArticleId}/regenerate`,
+      retractApiUrl: `/api/leagues/${leagueAId}/press/${leagueArticleId}/retract`,
     });
     expect(result.data.article.inlineDataBlocks).toEqual([
       {
@@ -410,6 +547,52 @@ describe("publication articles", () => {
         title: "Recap ledger",
       },
     ]);
+    expect(result.data.article.bodyBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          embed: expect.objectContaining({
+            kind: "scoreboard_strip",
+            matchups: [
+              expect.objectContaining({
+                awayLabel: "FT2",
+                awayScore: 117.9,
+                homeLabel: "FT1",
+                homeScore: 131.2,
+                status: "final",
+              }),
+            ],
+            scoringPeriod: 1,
+            title: "Week 1 scoreboard",
+          }),
+          type: "embed",
+        }),
+        expect.objectContaining({
+          embed: expect.objectContaining({
+            kind: "standings_movement",
+            rows: [
+              expect.objectContaining({
+                managerNames: ["Manager One"],
+                rank: 1,
+                record: "3-1-0",
+                team: "Fixture Team 01",
+              }),
+              expect.objectContaining({
+                managerNames: ["Manager Two"],
+                rank: 2,
+                record: "2-2-0",
+                team: "Fixture Team 02",
+              }),
+            ],
+            title: "Standings movement",
+          }),
+          type: "embed",
+        }),
+        expect.objectContaining({
+          embed: expect.objectContaining({ kind: "unknown" }),
+          type: "embed",
+        }),
+      ]),
+    );
     expect(result.data.article.canonCitations).toEqual([
       {
         claimId: canonCitationId,
@@ -439,6 +622,130 @@ describe("publication articles", () => {
     expect(
       result.data.relatedStories.map((story) => story.headline),
     ).not.toContain("League B should not leak");
+  });
+
+  it("returns a public league article teaser without serializing full body or member data", async () => {
+    const [article] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: [
+              "## Public gate",
+              "Public lede for a shared visitor.",
+              "Private second paragraph names Manager One and the hidden bench.",
+            ].join("\n\n"),
+            contentHash: `${marker}-league-teaser-article-hash`,
+            dedupKey: `${marker}-league-teaser-article`,
+            kind: "blog",
+            leagueId: leagueAId,
+            metadata: {
+              canonCitations: [{ claimId: canonCitationId }],
+              dek: "A public teaser dek.",
+              section: "recaps",
+              tags: ["Manager One"],
+            },
+            publishedAt: new Date("2026-06-11T20:00:00.000Z"),
+            summary: "Teaser article summary.",
+            title: "Narrator opens a shared teaser",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!article) {
+      throw new Error("teaser article was not inserted");
+    }
+
+    const result = await getLeaguePressArticleTeaserData(handle.db, {
+      leagueId: leagueAId,
+      postId: article.id,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected teaser result: ${result.status}`);
+    }
+
+    expect(result.data.article).toMatchObject({
+      byline: "Rivalry Desk",
+      dek: "A public teaser dek.",
+      headline: "Narrator opens a shared teaser",
+      lede: "Public lede for a shared visitor.",
+      lifecycle: { status: "published" },
+    });
+
+    const serialized = JSON.stringify(result.data);
+    expect(serialized).not.toContain("Private second paragraph");
+    expect(serialized).not.toContain("Manager One");
+    expect(serialized).not.toContain("canonCitations");
+    expect(serialized).not.toContain("bodyBlocks");
+  });
+
+  it("loads a superseded league article old link with replacement lineage", async () => {
+    const [original] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "analyst",
+            body: "Superseded league article body.",
+            contentHash: `${marker}-league-hidden-article-hash`,
+            dedupKey: `${marker}-league-hidden-article`,
+            kind: "blog",
+            leagueId: leagueAId,
+            publishedAt: new Date("2026-06-11T18:00:00.000Z"),
+            status: "superseded",
+            summary: "Hidden league article summary.",
+            title: "Hidden league article",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!original) {
+      throw new Error("superseded league article was not inserted");
+    }
+    const [replacement] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "analyst",
+            body: "Replacement league article body.",
+            contentHash: `${marker}-league-replacement-article-hash`,
+            dedupKey: `${marker}-league-replacement-article`,
+            kind: "blog",
+            leagueId: leagueAId,
+            publishedAt: new Date("2026-06-11T19:00:00.000Z"),
+            summary: "Replacement league article summary.",
+            supersedesContentItemId: original.id,
+            title: "Replacement league article",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!replacement) {
+      throw new Error("replacement league article was not inserted");
+    }
+
+    const result = await getLeaguePressArticleData(handle.db, {
+      leagueId: leagueAId,
+      postId: original.id,
+      userId,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected superseded result: ${result.status}`);
+    }
+    expect(result.data.article.lifecycle).toMatchObject({
+      replacementHref: `/leagues/${leagueAId}/press/${replacement.id}`,
+      replacementTitle: "Replacement league article",
+      status: "superseded",
+    });
   });
 
   it("does not expose league articles to non-members", async () => {

@@ -2,14 +2,16 @@
 
 The durable phase plan toward the North Star (`docs/NORTH-STAR.md`). Live state lives in `docs/PROGRESS.md`; this file is the stable map of what each phase is and what still remains. (The old `IMPLEMENTATION_PLAN.md` loop-backlog is retired/historical — see the banner atop that file.) Timeline anchors: **~1 month to football buzz, ~3 months to the season** (season opens ~Sept 2026; this was written in the June 2026 offseason).
 
-> **Status (2026-06-24) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3,
-> the AUSPEX UI/UX overhaul, Increment 1 (`specs/36`–`41`), and the data-foundation T1–T16 arc are **done and on
-> `main`**. The app now has clean-import invariants, player-depth substrate A, complete ESPN decoding, and the real ESPN
-> validation league `95050` / **"NHS Alumni Annual"** populated in the shared dev DB with screenshots. The remaining
-> roadmap items are deliberate follow-ons: production-real paid-provider keys/capture (Phase 4), real substrate-B source
-> wiring and News/AI consumption, player-level records and draft/transaction UI, Sleeper/Yahoo dictionaries, minor
-> owner-set-aside UI tweaks, and Stripe/beta hardening (Phase 6). Work now runs per **`ORCHESTRATION.md`**; the Ralph loop
-> is retired.
+> **Status (2026-07-09) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3,
+> the AUSPEX UI/UX overhaul, Increment 1 (`specs/36`–`41`), the data-foundation T1–T16 arc, and the T18 editorial/
+> distribution arc (`specs/45`/`46`) are **done or ready for orchestrator merge**. The app now has clean-import
+> invariants, player-depth substrate A, complete ESPN decoding, pushed-canon editorial provenance, content lifecycle/
+> correction/governance tools, share/teaser/launch arrival, mock webhook/email delivery, and the real ESPN validation
+> league `95050` / **"NHS Alumni Annual"** populated in the shared dev DB with screenshots. The remaining roadmap items
+> are deliberate follow-ons: production-real paid-provider keys/capture (Phase 4), real webhook/email credentials and
+> domains, real substrate-B source wiring, player-level records and draft/transaction UI, Sleeper/Yahoo dictionaries,
+> minor owner-set-aside UI tweaks, and Stripe/beta hardening (Phase 6). Work now runs per **`ORCHESTRATION.md`**; the
+> Ralph loop is retired.
 
 The work splits along one line: **orchestrated-agent buildable** (functional, fully mockable, gateable) vs
 **human-paired** (needs the user and/or real API keys — voice, design, real integrations).
@@ -23,6 +25,10 @@ The work splits along one line: **orchestrated-agent buildable** (functional, fu
 - **Increment 1 + data foundation T1-T16:** data curation/save-push/edit-ledger/eras, expanded Record Book, mock substrate
   B, clean-import guarantee, player-level league depth, complete ESPN decoding, and real ESPN 95050 dev-DB population +
   screenshots.
+- **T18 editorial control + arrival (`specs/45`/`46`):** compiler-enforced pushed-canon AI context, content lifecycle,
+  append-only editorial actions, commissioner retract/regenerate/correction controls, failure queue, persona tone editor,
+  live article embeds, reactions and roast consent, OG/share/teaser surfaces, launch edition, mock webhooks/digests, and
+  shared notification channel preferences.
 
 ---
 
@@ -44,13 +50,16 @@ Flip the discriminated-union mocks to live.
 - **Real onboarding capture** — hosted cloud-browser ESPN login (Browserbase-style), mobile-first, the frictionless connect (the #1 past failure). *Primary in-app embedded webview; "open in browser" fallback. The data path already works with a captured session — this builds the capture UX.*
 - **Provider breadth** — Sleeper (no-auth) and Yahoo (OAuth + real refresh-token renewal) made production-real, not fixture-backed.
 - **Un-mock the paid services** — Anthropic (real AI), The Odds API + SportsDataIO (real odds/settlement), Tavily/Voyage (web grounding + embeddings), Browserbase.
+- **Un-mock delivery** — wire the new webhook and digest boundaries to real provider credentials/domains only after owner
+  choices are made; the T18 implementation records delivery through mock boundaries until then.
 - Confirms the durable-capture model end-to-end: connect once → keep pulling current + future data; rare one-tap reconnect on ESPN session expiry.
 
 ---
 
 ## 🤝🎨 Phase 5 — Soul  *(human-paired — the differentiator)*
 The part that comes after functionality, iterated **with** the user.
-- **AI voice / persona tuning** — the cast's actual voice (Commissioner, Narrator, Trash-Talker…); the Phase-1 LLM-judge eval gate becomes the ruler.
+- **AI voice / persona tuning** — the editable/versioned tone tools exist, but the cast's actual voice
+  (Commissioner, Narrator, Trash-Talker…) still needs human-paired direction; the LLM-judge eval gate remains the ruler.
 - **UI/UX overhaul** — the user's style reference applied; snappy, mobile-first, the editorial identity of *The {League} Press*. *(User to provide the visual reference.)*
 
 → Turns a working app into the *experience* that creates the football buzz.
@@ -75,7 +84,8 @@ The part that comes after functionality, iterated **with** the user.
 ---
 
 ## Sequencing
-Current next work is selective, not phase-bulk: choose among production-real provider/key capture, substrate-B real-source
-wiring, player-level records/draft/transaction UI, Sleeper/Yahoo dictionaries, owner UI tweaks, and launch/billing work.
-The biggest user-provided inputs still gating production are real API/provider credentials, hosted capture posture, final
-voice direction, pricing, and beta/legal choices.
+Current next work is selective, not phase-bulk: choose among production-real provider/key capture, delivery-provider
+activation, substrate-B real-source wiring, player-level records/draft/transaction UI, Sleeper/Yahoo dictionaries, owner
+UI tweaks, and launch/billing work. The biggest user-provided inputs still gating production are real API/provider
+credentials, hosted capture posture, email/webhook provider/domain choices, final voice direction, pricing, and beta/legal
+choices.

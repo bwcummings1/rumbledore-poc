@@ -220,6 +220,28 @@ export const contentItemKind = pgEnum("content_item_kind", [
   "ingest_event",
 ]);
 
+export const contentItemStatus = pgEnum("content_item_status", [
+  "published",
+  "superseded",
+  "retracted",
+]);
+
+export const contentReactionEmoji = pgEnum("content_reaction_emoji", [
+  "fire",
+  "skull",
+  "laugh",
+  "trash",
+]);
+
+export const editorialAction = pgEnum("editorial_action", [
+  "retract",
+  "regenerate",
+  "correct",
+  "tone_edit",
+  "tone_rollback",
+  "roast_consent",
+]);
+
 export const aiPersona = pgEnum("ai_persona", [
   "commissioner",
   "analyst",
@@ -420,6 +442,47 @@ export const pushNotificationType = pgEnum("push_notification_type", [
   "league.lore.vote.opened",
   "league.lore.canonized",
   "arena.rival.passed",
+  "content.retracted",
+  "content.superseded",
+]);
+
+export const notificationEventFamily = pgEnum("notification_event_family", [
+  "content",
+  "lore",
+  "bets",
+  "arena",
+]);
+
+export const notificationChannel = pgEnum("notification_channel", [
+  "push",
+  "digest",
+  "none",
+]);
+
+export const leagueWebhookTargetKind = pgEnum("league_webhook_target_kind", [
+  "discord",
+  "generic",
+]);
+
+export const leagueWebhookStatus = pgEnum("league_webhook_status", [
+  "active",
+  "disabled",
+]);
+
+export const webhookDeliveryStatus = pgEnum("webhook_delivery_status", [
+  "delivered",
+  "failed",
+]);
+
+export const emailDigestDeliveryStatus = pgEnum(
+  "email_digest_delivery_status",
+  ["delivered", "failed"],
+);
+
+export const memberRoastLevel = pgEnum("member_roast_level", [
+  "full_send",
+  "light",
+  "off_limits",
 ]);
 
 export interface LeagueFeedMatchedEntity {
@@ -427,6 +490,11 @@ export interface LeagueFeedMatchedEntity {
   type: "player" | "team" | "member" | "storyline";
   providerId: string;
   label?: string;
+}
+
+export interface LeagueWebhookEventSelection {
+  contentSections?: string[];
+  events?: string[];
 }
 
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
@@ -624,6 +692,7 @@ export const fantasyMembers = pgTable(
     season: integer("season").notNull(),
     displayName: text("display_name").notNull(),
     role: text("role").notNull().default("unknown"),
+    roastLevel: memberRoastLevel("roast_level").notNull().default("light"),
     contentHash: text("content_hash").notNull(),
     ...timestamps,
   },
@@ -2854,6 +2923,14 @@ export const contentItems = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    status: contentItemStatus("status").notNull().default("published"),
+    supersedesContentItemId: uuid("supersedes_content_item_id").references(
+      (): AnyPgColumn => contentItems.id,
+      { onDelete: "set null" },
+    ),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     dedupKey: text("dedup_key").notNull(),
     contentHash: text("content_hash").notNull(),
     metadata: jsonb("metadata")
@@ -2877,8 +2954,18 @@ export const contentItems = pgTable(
       table.leagueId,
       table.publishedAt,
     ),
+    index("content_item_league_status_published_idx").on(
+      table.leagueId,
+      table.status,
+      table.publishedAt,
+    ),
     index("content_item_central_published_idx").on(
       table.kind,
+      table.publishedAt,
+    ),
+    index("content_item_central_status_published_idx").on(
+      table.kind,
+      table.status,
       table.publishedAt,
     ),
     pgPolicy("content_item_scope_policy", {
@@ -2985,25 +3072,245 @@ export const pushNotificationPreferences = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     type: pushNotificationType("type").notNull(),
+    eventFamily: notificationEventFamily("event_family").notNull(),
+    channel: notificationChannel("channel").notNull().default("push"),
     enabled: boolean("enabled").notNull().default(true),
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("push_notification_preferences_user_type_unique").on(
+    uniqueIndex("push_notification_preferences_user_family_unique").on(
       table.leagueId,
       table.userId,
-      table.type,
+      table.eventFamily,
     ),
-    index("push_notification_preferences_league_type_idx").on(
+    index("push_notification_preferences_league_family_channel_idx").on(
       table.leagueId,
-      table.type,
-      table.enabled,
+      table.eventFamily,
+      table.channel,
+    ),
+    check(
+      "push_notification_preferences_enabled_matches_channel",
+      sql`${table.enabled} = (${table.channel} <> 'none')`,
     ),
     pgPolicy("push_notification_preferences_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+  ],
+);
+
+// ── Outbound group-chat webhooks (mock delivery boundary) ────────────────
+
+export const leagueWebhooks = pgTable(
+  "league_webhooks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    targetKind: leagueWebhookTargetKind("target_kind").notNull(),
+    encryptedUrl: text("encrypted_url").notNull(),
+    urlHash: text("url_hash").notNull(),
+    urlLabel: text("url_label").notNull().default("encrypted endpoint"),
+    eventSelection: jsonb("event_selection")
+      .$type<LeagueWebhookEventSelection>()
+      .notNull()
+      .default(
+        sql`'{"events":["content.published","content.corrected"],"contentSections":["recaps","power-rankings","trash-talk","records","previews"]}'::jsonb`,
+      ),
+    status: leagueWebhookStatus("status").notNull().default("active"),
+    lastDeliveryAt: timestamp("last_delivery_at", { withTimezone: true }),
+    lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("league_webhooks_league_url_hash_unique").on(
+      table.leagueId,
+      table.urlHash,
+    ),
+    index("league_webhooks_league_status_idx").on(table.leagueId, table.status),
+    pgPolicy("league_webhooks_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "league_webhooks_name_not_blank",
+      sql`length(btrim(${table.name})) > 0`,
+    ),
+    check(
+      "league_webhooks_url_hash_not_blank",
+      sql`length(btrim(${table.urlHash})) > 0`,
+    ),
+  ],
+);
+
+export const webhookDeliveryRecords = pgTable(
+  "webhook_delivery_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    webhookId: uuid("webhook_id")
+      .notNull()
+      .references(() => leagueWebhooks.id, { onDelete: "cascade" }),
+    contentItemId: uuid("content_item_id").references(() => contentItems.id, {
+      onDelete: "cascade",
+    }),
+    eventKey: text("event_key").notNull(),
+    eventType: text("event_type").notNull(),
+    targetKind: leagueWebhookTargetKind("target_kind").notNull(),
+    deliveryStatus: webhookDeliveryStatus("delivery_status").notNull(),
+    deliveryMode: text("delivery_mode").notNull().default("mock"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    errorMessage: text("error_message"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("webhook_delivery_records_webhook_event_unique").on(
+      table.webhookId,
+      table.eventKey,
+    ),
+    index("webhook_delivery_records_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("webhook_delivery_records_content_idx").on(
+      table.leagueId,
+      table.contentItemId,
+    ),
+    index("webhook_delivery_records_status_idx").on(
+      table.leagueId,
+      table.deliveryStatus,
+      table.createdAt,
+    ),
+    pgPolicy("webhook_delivery_records_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "webhook_delivery_records_event_key_not_blank",
+      sql`length(btrim(${table.eventKey})) > 0`,
+    ),
+    check(
+      "webhook_delivery_records_event_type_not_blank",
+      sql`length(btrim(${table.eventType})) > 0`,
+    ),
+    check(
+      "webhook_delivery_records_attempt_count_positive",
+      sql`${table.attemptCount} > 0`,
+    ),
+    check(
+      "webhook_delivery_records_delivered_at_required",
+      sql`${table.deliveryStatus} <> 'delivered' OR ${table.deliveredAt} IS NOT NULL`,
+    ),
+    check(
+      "webhook_delivery_records_failed_at_required",
+      sql`${table.deliveryStatus} <> 'failed' OR ${table.failedAt} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const emailDigestDeliveryRecords = pgTable(
+  "email_digest_delivery_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    recipientUserId: uuid("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    digestKey: text("digest_key").notNull(),
+    windowStartAt: timestamp("window_start_at", {
+      withTimezone: true,
+    }).notNull(),
+    windowEndAt: timestamp("window_end_at", { withTimezone: true }).notNull(),
+    recipientEmailHash: text("recipient_email_hash").notNull(),
+    deliveryStatus: emailDigestDeliveryStatus("delivery_status").notNull(),
+    deliveryMode: text("delivery_mode").notNull().default("mock"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    contentItemIds: jsonb("content_item_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    errorMessage: text("error_message"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("email_digest_delivery_records_user_window_unique").on(
+      table.leagueId,
+      table.recipientUserId,
+      table.digestKey,
+    ),
+    index("email_digest_delivery_records_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("email_digest_delivery_records_user_idx").on(
+      table.leagueId,
+      table.recipientUserId,
+    ),
+    index("email_digest_delivery_records_status_idx").on(
+      table.leagueId,
+      table.deliveryStatus,
+      table.createdAt,
+    ),
+    pgPolicy("email_digest_delivery_records_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "email_digest_delivery_records_digest_key_not_blank",
+      sql`length(btrim(${table.digestKey})) > 0`,
+    ),
+    check(
+      "email_digest_delivery_records_email_hash_not_blank",
+      sql`length(btrim(${table.recipientEmailHash})) > 0`,
+    ),
+    check(
+      "email_digest_delivery_records_attempt_count_positive",
+      sql`${table.attemptCount} > 0`,
+    ),
+    check(
+      "email_digest_delivery_records_window_order",
+      sql`${table.windowEndAt} > ${table.windowStartAt}`,
+    ),
+    check(
+      "email_digest_delivery_records_delivered_at_required",
+      sql`${table.deliveryStatus} <> 'delivered' OR ${table.deliveredAt} IS NOT NULL`,
+    ),
+    check(
+      "email_digest_delivery_records_failed_at_required",
+      sql`${table.deliveryStatus} <> 'failed' OR ${table.failedAt} IS NOT NULL`,
+    ),
   ],
 );
 
@@ -3054,6 +3361,141 @@ export const aiPersonaCards = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+  ],
+);
+
+export const aiPersonaToneHistory = pgTable(
+  "ai_persona_tone_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    personaCardId: uuid("persona_card_id")
+      .notNull()
+      .references(() => aiPersonaCards.id, { onDelete: "cascade" }),
+    persona: aiPersona("persona").notNull(),
+    toneVersion: integer("tone_version").notNull(),
+    toneProfile: jsonb("tone_profile").$type<unknown>().notNull(),
+    toneUpdatedBy: text("tone_updated_by"),
+    toneUpdatedAt: timestamp("tone_updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    source: text("source").notNull().default(sql`'edit'`),
+    sourceToneVersion: integer("source_tone_version"),
+    reason: text("reason").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_persona_tone_history_league_persona_version_unique").on(
+      table.leagueId,
+      table.persona,
+      table.toneVersion,
+    ),
+    index("ai_persona_tone_history_card_created_idx").on(
+      table.leagueId,
+      table.personaCardId,
+      table.createdAt,
+    ),
+    pgPolicy("ai_persona_tone_history_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "ai_persona_tone_history_version_positive",
+      sql`${table.toneVersion} > 0`,
+    ),
+    check(
+      "ai_persona_tone_history_source_valid",
+      sql`${table.source} IN ('seed', 'edit', 'rollback')`,
+    ),
+  ],
+);
+
+export const editorialActions = pgTable(
+  "editorial_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    action: editorialAction("action").notNull(),
+    targetContentItemId: uuid("target_content_item_id").references(
+      () => contentItems.id,
+      { onDelete: "cascade" },
+    ),
+    targetPersonaCardId: uuid("target_persona_card_id").references(
+      () => aiPersonaCards.id,
+      { onDelete: "cascade" },
+    ),
+    targetMemberId: uuid("target_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    targetFantasyMemberId: uuid("target_fantasy_member_id").references(
+      () => fantasyMembers.id,
+      { onDelete: "set null" },
+    ),
+    reason: text("reason").notNull().default(""),
+    beforeContentItemId: uuid("before_content_item_id").references(
+      () => contentItems.id,
+      { onDelete: "set null" },
+    ),
+    afterContentItemId: uuid("after_content_item_id").references(
+      () => contentItems.id,
+      { onDelete: "set null" },
+    ),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("editorial_actions_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("editorial_actions_content_idx").on(
+      table.leagueId,
+      table.targetContentItemId,
+      table.createdAt,
+    ),
+    index("editorial_actions_persona_idx").on(
+      table.leagueId,
+      table.targetPersonaCardId,
+      table.createdAt,
+    ),
+    index("editorial_actions_member_idx").on(
+      table.leagueId,
+      table.targetMemberId,
+      table.createdAt,
+    ),
+    index("editorial_actions_fantasy_member_idx").on(
+      table.leagueId,
+      table.targetFantasyMemberId,
+      table.createdAt,
+    ),
+    pgPolicy("editorial_actions_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "editorial_actions_target_required",
+      sql`${table.targetContentItemId} IS NOT NULL OR ${table.targetPersonaCardId} IS NOT NULL OR ${table.targetMemberId} IS NOT NULL OR ${table.targetFantasyMemberId} IS NOT NULL`,
+    ),
+    check(
+      "editorial_actions_retract_reason_required",
+      sql`${table.action} <> 'retract' OR length(btrim(${table.reason})) > 0`,
+    ),
   ],
 );
 
@@ -3208,6 +3650,7 @@ export const members = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: leagueRole("role").notNull().default("member"),
+    roastLevel: memberRoastLevel("roast_level").notNull().default("light"),
     lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -3217,6 +3660,41 @@ export const members = pgTable(
       table.userId,
     ),
     index("members_user_idx").on(table.userId),
+  ],
+);
+
+export const contentReactions = pgTable(
+  "content_reactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    contentItemId: uuid("content_item_id")
+      .notNull()
+      .references(() => contentItems.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    emoji: contentReactionEmoji("emoji").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("content_reactions_member_content_unique").on(
+      table.leagueId,
+      table.contentItemId,
+      table.memberId,
+    ),
+    index("content_reactions_content_idx").on(
+      table.leagueId,
+      table.contentItemId,
+    ),
+    index("content_reactions_member_idx").on(table.leagueId, table.memberId),
+    pgPolicy("content_reactions_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
   ],
 );
 
@@ -3976,6 +4454,8 @@ export type BetSettlement = typeof betSettlements.$inferSelect;
 export type NewBetSettlement = typeof betSettlements.$inferInsert;
 export type ContentItem = typeof contentItems.$inferSelect;
 export type NewContentItem = typeof contentItems.$inferInsert;
+export type ContentReaction = typeof contentReactions.$inferSelect;
+export type NewContentReaction = typeof contentReactions.$inferInsert;
 export type LeagueFeedReference = typeof leagueFeedReferences.$inferSelect;
 export type NewLeagueFeedReference = typeof leagueFeedReferences.$inferInsert;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
@@ -3984,8 +4464,21 @@ export type PushNotificationPreference =
   typeof pushNotificationPreferences.$inferSelect;
 export type NewPushNotificationPreference =
   typeof pushNotificationPreferences.$inferInsert;
+export type LeagueWebhook = typeof leagueWebhooks.$inferSelect;
+export type NewLeagueWebhook = typeof leagueWebhooks.$inferInsert;
+export type WebhookDeliveryRecord = typeof webhookDeliveryRecords.$inferSelect;
+export type NewWebhookDeliveryRecord =
+  typeof webhookDeliveryRecords.$inferInsert;
+export type EmailDigestDeliveryRecord =
+  typeof emailDigestDeliveryRecords.$inferSelect;
+export type NewEmailDigestDeliveryRecord =
+  typeof emailDigestDeliveryRecords.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
+export type AiPersonaToneHistory = typeof aiPersonaToneHistory.$inferSelect;
+export type NewAiPersonaToneHistory = typeof aiPersonaToneHistory.$inferInsert;
+export type EditorialAction = typeof editorialActions.$inferSelect;
+export type NewEditorialAction = typeof editorialActions.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;
 export type NewAiGenerationRun = typeof aiGenerationRuns.$inferInsert;
 export type AiMemory = typeof aiMemory.$inferSelect;

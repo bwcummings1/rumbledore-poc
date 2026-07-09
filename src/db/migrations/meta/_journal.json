@@ -421,6 +421,69 @@
       "when": 1781570000000,
       "tag": "0059_provider_code_decoding",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1781573600000,
+      "tag": "0060_content_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1781577200000,
+      "tag": "0061_editorial_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1781580800000,
+      "tag": "0062_editorial_target_fk_cascade",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1781584400000,
+      "tag": "0063_editorial_correction_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1781588000000,
+      "tag": "0064_persona_tone_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1781591600000,
+      "tag": "0065_content_reactions_roast_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1781595200000,
+      "tag": "0066_league_webhooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1781598800000,
+      "tag": "0067_email_digest_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1781602400000,
+      "tag": "0068_notification_channel_preferences",
+      "breakpoints": true
     }
   ]
 }

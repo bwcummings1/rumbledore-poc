@@ -114,14 +114,21 @@ Personal, league-specific moments — each maps to a deep link into the relevant
 Voice belongs in `title`/`body` (the cast instigates: "Settle it: the 2019 trade was the worst ever — your
 league needs you." / "A rival just passed you in the arena."), not in plumbing. Copy lives with the producer.
 
-### User preferences / opt-out
-- NEW table `push_notification_preferences` (per-league RLS row, `league_id` + `user_id` + per-`type` boolean,
-  default opted-in), `pgPolicy` `USING/WITH CHECK league_id = current_league_id()` + hand-added
-  `FORCE ROW LEVEL SECURITY` in the migration, listed in `_journal.json`.
-- `notifyLeague` filters recipients by preference **before** load/send: a user opted out of `arena.rival.passed`
-  is excluded from that fan-out. League-wide types still resolve to the per-user opt-out set.
-- `PATCH /api/push/preferences` (membership-guarded, `withLeagueContext`, explicit `league_id`/`user_id`) toggles
-  a type; absence of a row = default on. Opting out is honored without unsubscribing the browser endpoint.
+### User preferences / channel matrix
+- `push_notification_preferences` is the single delivery-preference source for both Web Push and weekly digest:
+  one per-league RLS row per `league_id` + `user_id` + `event_family`, with `channel = push | digest | none`.
+  The legacy concrete `type` column remains only as a representative compatibility value.
+- Event families: `content` (`league.blog.published`, content lifecycle notices), `lore`,
+  `bets`, and `arena`. Defaults are content → digest, lore/bets/arena → push; absence of a row means the default
+  channel for that family.
+- `notifyLeague` maps each concrete push event to its family and filters recipients by `channel='push'` before
+  load/send. The weekly digest job reads the same `content` family rows and includes only members whose channel is
+  the default digest or an explicit `digest`.
+- `PATCH /api/push/preferences` (membership-guarded, `withLeagueContext`, explicit `league_id`/`user_id`) accepts
+  the grouped `{ eventFamily, channel }` payload; the older `{ type, enabled }` payload is compatibility sugar
+  that writes the same family row as `push` or `none`.
+- iOS posture: digest + commissioner-configured group-chat webhook are the baseline arrival paths. Web Push is an
+  installed-app enhancement; on iOS Safari it only works after Add to Home Screen.
 
 ## 4. Fan-out source — domain events → broadcasts + pushes (Inngest layer)
 

@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -275,6 +276,7 @@ async function centralNewsRowsForTailoring(
         inArray(contentItems.id, ids),
         isNull(contentItems.leagueId),
         eq(contentItems.kind, "news"),
+        contentItemIsPublished(),
       ),
     );
 }

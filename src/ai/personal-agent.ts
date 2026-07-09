@@ -1,12 +1,7 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import {
-  leagueGroupingSeasons,
-  leagueSeasonGroupings,
-  leagues,
-  loreClaims,
-} from "@/db/schema";
+import { leagues, loreClaims } from "@/db/schema";
 import type {
   EntitlementResolution,
   EntitlementResolverEnv,
@@ -19,11 +14,12 @@ import {
   type YourLeagueMatchupSide,
 } from "@/home/your-leagues";
 import {
-  getLeagueRecordsCatalog,
+  type CanonCatalog,
+  getLeagueCanonRecordsContext,
   type ManagerChampionshipRecord,
-  type RecordBookLens,
   type RecordBookSegment,
-  type RecordsCatalog,
+  type RecordsGroupingOption,
+  type RecordsLensInput,
 } from "@/stats";
 
 export interface PersonalAgentBriefingInput {
@@ -100,7 +96,7 @@ export interface PersonalAgentQuestionLens {
 
 export interface PersonalAgentLeagueQuestionContext {
   readonly canonFacts: string[];
-  readonly catalog: RecordsCatalog;
+  readonly catalog: CanonCatalog;
   readonly leagueId: string;
   readonly leagueName: string;
   readonly lens: PersonalAgentQuestionLens;
@@ -444,6 +440,17 @@ function selectedGrouping(
   );
 }
 
+function toAgentGrouping(
+  grouping: RecordsGroupingOption,
+): PersonalAgentSeasonGroupingContext {
+  return {
+    id: grouping.id,
+    name: grouping.name,
+    ordinal: grouping.ordinal,
+    seasons: grouping.seasons,
+  };
+}
+
 export async function loadPersonalAgentLeagueQuestionContext({
   db,
   leagueId,
@@ -455,102 +462,51 @@ export async function loadPersonalAgentLeagueQuestionContext({
     .where(eq(leagues.id, leagueId))
     .limit(1);
 
-  const groupingsAndCanon = await withLeagueContext(
-    db,
-    leagueId,
-    async (tx) => {
-      const groupingRows = await tx
-        .select({
-          id: leagueSeasonGroupings.id,
-          name: leagueSeasonGroupings.name,
-          ordinal: leagueSeasonGroupings.ordinal,
-        })
-        .from(leagueSeasonGroupings)
-        .where(
-          and(
-            eq(leagueSeasonGroupings.leagueId, leagueId),
-            eq(leagueSeasonGroupings.kind, "era"),
-            eq(leagueSeasonGroupings.status, "confirmed"),
-          ),
-        )
-        .orderBy(
-          asc(leagueSeasonGroupings.ordinal),
-          asc(leagueSeasonGroupings.id),
-        );
+  const canonFacts = await withLeagueContext(db, leagueId, async (tx) => {
+    const canonRows = await tx
+      .select({
+        statement: loreClaims.statement,
+        title: loreClaims.title,
+      })
+      .from(loreClaims)
+      .where(
+        and(eq(loreClaims.leagueId, leagueId), eq(loreClaims.status, "canon")),
+      )
+      .orderBy(asc(loreClaims.createdAt))
+      .limit(3);
 
-      const seasonRows =
-        groupingRows.length > 0
-          ? await tx
-              .select({
-                groupingId: leagueGroupingSeasons.groupingId,
-                season: leagueGroupingSeasons.season,
-              })
-              .from(leagueGroupingSeasons)
-              .where(
-                and(
-                  eq(leagueGroupingSeasons.leagueId, leagueId),
-                  inArray(
-                    leagueGroupingSeasons.groupingId,
-                    groupingRows.map((row) => row.id),
-                  ),
-                ),
-              )
-              .orderBy(
-                asc(leagueGroupingSeasons.groupingId),
-                asc(leagueGroupingSeasons.season),
-              )
-          : [];
-
-      const canonRows = await tx
-        .select({
-          statement: loreClaims.statement,
-          title: loreClaims.title,
-        })
-        .from(loreClaims)
-        .where(
-          and(
-            eq(loreClaims.leagueId, leagueId),
-            eq(loreClaims.status, "canon"),
-          ),
-        )
-        .orderBy(asc(loreClaims.createdAt))
-        .limit(3);
-
-      return {
-        canonFacts: canonRows.map((row) => `${row.title}: ${row.statement}`),
-        groupings: groupingRows.map((row) => ({
-          id: row.id,
-          name: row.name,
-          ordinal: row.ordinal,
-          seasons: seasonRows
-            .filter((season) => season.groupingId === row.id)
-            .map((season) => season.season),
-        })),
-      };
-    },
-  );
-
-  const grouping = selectedGrouping(question, groupingsAndCanon.groupings);
-  const lens: RecordBookLens = {
-    segment: inferSegment(question),
-    ...(grouping
-      ? { groupingId: grouping.id, seasonSet: grouping.seasons }
-      : {}),
-  };
-  const catalog = await getLeagueRecordsCatalog(db, {
-    leagueId,
-    lens,
-    limit: 5,
+    return canonRows.map((row) => `${row.title}: ${row.statement}`);
   });
 
+  const canonContext = await getLeagueCanonRecordsContext(db, {
+    leagueId,
+    limit: 5,
+    resolveLens: (groupings): RecordsLensInput => {
+      const eraGroupings = groupings
+        .filter((grouping) => grouping.kind === "era")
+        .map(toAgentGrouping);
+      const selected = selectedGrouping(question, eraGroupings);
+      return {
+        groupingId: selected?.id ?? null,
+        segment: inferSegment(question),
+      };
+    },
+  });
+  const grouping = canonContext.lens.groupingId
+    ? (canonContext.lens.groupings
+        .filter((option) => option.kind === "era")
+        .map(toAgentGrouping)
+        .find((option) => option.id === canonContext.lens.groupingId) ?? null)
+    : null;
+
   return {
-    canonFacts: groupingsAndCanon.canonFacts,
-    catalog,
+    canonFacts,
+    catalog: canonContext.catalog,
     leagueId,
     leagueName: league?.name ?? "Current league",
     lens: {
       grouping,
-      segment: lens.segment ?? "both",
+      segment: canonContext.lens.segment,
     },
   };
 }

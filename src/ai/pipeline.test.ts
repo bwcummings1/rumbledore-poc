@@ -46,6 +46,7 @@ import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
+import type { WebhookDeliverer } from "@/webhooks";
 import { bodyBlocksToMarkdown } from "./article-draft";
 
 const marker = `aipipeline-${randomUUID()}`;
@@ -265,6 +266,23 @@ class RecordingEmbeddingProvider extends DeterministicEmbeddingProvider {
   }
 }
 
+class RecordingWebhookDeliverer implements WebhookDeliverer {
+  readonly config = { mock: true } as const;
+  readonly deliveries: Array<{ contentItemId: string; leagueId: string }> = [];
+
+  async deliver(): Promise<{ status: "delivered" }> {
+    return { status: "delivered" };
+  }
+
+  async deliverPublishedContent(input: {
+    contentItemId: string;
+    leagueId: string;
+  }): Promise<{ delivered: number; failed: number; skipped: number }> {
+    this.deliveries.push(input);
+    return { delivered: 1, failed: 0, skipped: 0 };
+  }
+}
+
 class PassingLlmJudge implements LlmJudge {
   readonly requests: LlmJudgeRequest[] = [];
 
@@ -278,6 +296,8 @@ class PassingLlmJudge implements LlmJudge {
       matchedPersonaMarkers: ["fixture persona marker"],
       notes: ["Test fixture judge passes."],
       personaMatch: 1,
+      targetedOffLimits: [],
+      targetingConsent: true,
     };
   }
 }
@@ -363,6 +383,7 @@ describe("generateLeagueBlogPost", () => {
     const judge = new MockLlmJudge();
     const push = new RecordingPushNotifier();
     const realtime = new RecordingRealtimePublisher();
+    const webhooks = new RecordingWebhookDeliverer();
     const deps = {
       db: handle.db,
       duplicateThreshold: 1.1,
@@ -374,6 +395,7 @@ describe("generateLeagueBlogPost", () => {
       push,
       realtime,
       web: new MockWebGrounding(),
+      webhooks,
     };
 
     const first = await generateLeagueBlogPost({
@@ -488,6 +510,22 @@ describe("generateLeagueBlogPost", () => {
             ? third.contentItemId
             : expect.any(String)
         }`,
+      },
+    ]);
+    expect(webhooks.deliveries).toEqual([
+      {
+        contentItemId:
+          first.status === "published"
+            ? first.contentItemId
+            : expect.any(String),
+        leagueId: league.id,
+      },
+      {
+        contentItemId:
+          third.status === "published"
+            ? third.contentItemId
+            : expect.any(String),
+        leagueId: league.id,
       },
     ]);
 
@@ -703,6 +741,14 @@ describe("generateLeagueBlogPost", () => {
     )?.metadata;
 
     expect(recapMetadata).toMatchObject({
+      article: {
+        bodyBlocks: expect.arrayContaining([
+          expect.objectContaining({
+            embed: expect.objectContaining({ kind: "scoreboard_strip" }),
+            type: "embed",
+          }),
+        ]),
+      },
       content_type: "weekly_recap",
       structure: {
         lead: expect.stringContaining("templates Team"),
@@ -710,6 +756,14 @@ describe("generateLeagueBlogPost", () => {
       },
     });
     expect(rankingMetadata).toMatchObject({
+      article: {
+        bodyBlocks: expect.arrayContaining([
+          expect.objectContaining({
+            embed: expect.objectContaining({ kind: "standings_movement" }),
+            type: "embed",
+          }),
+        ]),
+      },
       content_type: "power_rankings",
       structure: {
         rankings: [
@@ -1383,14 +1437,116 @@ describe("generateLeagueBlogPost", () => {
     });
   });
 
+  it("ignores retracted blog memories when checking near duplicates", async () => {
+    const league = await seedLeague("retracted-memory");
+    const llm = new MockLlmClient();
+    const embeddings = new ConstantEmbeddingProvider();
+    const realtime = new RecordingRealtimePublisher();
+
+    await withLeagueContext(handle.db, league.id, async (tx) => {
+      const [prior] = await tx
+        .insert(contentItems)
+        .values({
+          authorPersona: "analyst",
+          body: "This duplicate body is intentionally unchanged.",
+          contentHash: `${marker}-retracted-memory-content-hash`,
+          dedupKey: `${marker}-retracted-memory-prior`,
+          kind: "blog",
+          leagueId: league.id,
+          publishedAt: new Date("2026-06-10T12:00:00.000Z"),
+          status: "retracted",
+          summary: "This duplicate summary is intentionally unchanged.",
+          title: "Duplicate league note",
+        })
+        .returning({ id: contentItems.id });
+      if (!prior) throw new Error("prior content was not inserted");
+      await tx.insert(aiMemory).values({
+        contentItemId: prior.id,
+        embedding: await embeddings.embed("duplicate"),
+        embeddingDimensions: 8,
+        embeddingModel: embeddings.model,
+        leagueId: league.id,
+        metadata: { contentType: "weekly_recap" },
+        source: "blog_post",
+        textContent: "duplicate",
+      });
+    });
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        embeddings,
+        entitlements: openEntitlementEnv,
+        judge: new PassingLlmJudge(),
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime,
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        triggerKey: "weekly:retracted-memory",
+      },
+    });
+
+    expect(result).toMatchObject({
+      reused: false,
+      status: "published",
+    });
+    expect(realtime.blogPublished).toHaveLength(1);
+  });
+
   it("orders near-duplicate memory by vector distance before applying the limit", async () => {
     const league = await seedLeague("vector");
     const llm = new VectorDuplicateLlmClient();
     const embeddings = new DirectionalEmbeddingProvider();
 
     await withLeagueContext(handle.db, league.id, async (tx) => {
+      const contentRows = await tx
+        .insert(contentItems)
+        .values([
+          {
+            authorPersona: "analyst",
+            body: "Vector duplicate old archive body.",
+            contentHash: `${marker}-vector-old-content-hash`,
+            dedupKey: `${marker}-vector-old-content`,
+            kind: "blog",
+            leagueId: league.id,
+            publishedAt: new Date("2026-01-01T00:00:00.000Z"),
+            summary: "Vector duplicate old archive summary.",
+            title: "Vector duplicate old archive",
+          },
+          ...Array.from({ length: 20 }, (_, index) => ({
+            authorPersona: "analyst" as const,
+            body: `Orthogonal recent body ${index}.`,
+            contentHash: `${marker}-vector-orthogonal-${index}-content-hash`,
+            dedupKey: `${marker}-vector-orthogonal-${index}-content`,
+            kind: "blog" as const,
+            leagueId: league.id,
+            publishedAt: new Date(
+              `2026-02-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+            ),
+            summary: `Orthogonal recent summary ${index}.`,
+            title: `Orthogonal recent memory ${index}`,
+          })),
+        ])
+        .returning({ dedupKey: contentItems.dedupKey, id: contentItems.id });
+      const contentIdByDedupKey = new Map(
+        contentRows.map((row) => [row.dedupKey, row.id]),
+      );
+      const oldContentItemId = contentIdByDedupKey.get(
+        `${marker}-vector-old-content`,
+      );
+      if (!oldContentItemId) {
+        throw new Error("old vector content row was not inserted");
+      }
+
       await tx.insert(aiMemory).values([
         {
+          contentItemId: oldContentItemId,
           createdAt: new Date("2026-01-01T00:00:00.000Z"),
           embedding: [1, 0],
           embeddingDimensions: 2,
@@ -1400,18 +1556,27 @@ describe("generateLeagueBlogPost", () => {
           source: "blog_post",
           textContent: "vector-near-duplicate-token from the old archive",
         },
-        ...Array.from({ length: 20 }, (_, index) => ({
-          createdAt: new Date(
-            `2026-02-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
-          ),
-          embedding: [0, 1],
-          embeddingDimensions: 2,
-          embeddingModel: embeddings.model,
-          leagueId: league.id,
-          metadata: { contentType: "weekly_recap" },
-          source: "blog_post" as const,
-          textContent: `orthogonal recent memory ${index}`,
-        })),
+        ...Array.from({ length: 20 }, (_, index) => {
+          const contentItemId = contentIdByDedupKey.get(
+            `${marker}-vector-orthogonal-${index}-content`,
+          );
+          if (!contentItemId) {
+            throw new Error(`orthogonal content row ${index} was not inserted`);
+          }
+          return {
+            contentItemId,
+            createdAt: new Date(
+              `2026-02-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+            ),
+            embedding: [0, 1],
+            embeddingDimensions: 2,
+            embeddingModel: embeddings.model,
+            leagueId: league.id,
+            metadata: { contentType: "weekly_recap" },
+            source: "blog_post" as const,
+            textContent: `orthogonal recent memory ${index}`,
+          };
+        }),
       ]);
     });
 

@@ -1,4 +1,8 @@
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import {
+  type ContentCorrectionNeeded,
+  detectContentCorrectionsNeeded,
+} from "@/content/corrections";
 import { logger } from "@/core/logging";
 import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
@@ -78,6 +82,7 @@ export interface ChangedTransaction {
 export interface CurrentLeagueSyncResult {
   changedFinalMatchups: ChangedFinalMatchup[];
   changedTransactions: ChangedTransaction[];
+  contentCorrectionsNeeded: ContentCorrectionNeeded[];
   recordBrokenHooks: RecordBrokenHook[];
   recordLoreClaims: RecordBrokenLoreHookResult[];
   league: {
@@ -3056,6 +3061,11 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     leagueId: leagueWrite.id,
     matchupIds: scoped.changedMatchupIds,
   });
+  const contentCorrectionsNeeded = await detectContentCorrectionsNeeded({
+    changedFinalMatchups,
+    db,
+    leagueId: leagueWrite.id,
+  });
   await publishScoresUpdated({
     input,
     leagueId: leagueWrite.id,
@@ -3082,6 +3092,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
   return ok({
     changedFinalMatchups,
     changedTransactions: scoped.changedTransactions,
+    contentCorrectionsNeeded,
     recordBrokenHooks: recompute.recordBrokenHooks,
     recordLoreClaims,
     league: {

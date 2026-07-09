@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { AiPersona } from "@/ai/personas";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import { contentItems, leagues, type Member, members } from "@/db/schema";
@@ -96,6 +97,7 @@ export async function getLeagueBlogPostData(
           eq(contentItems.id, input.postId),
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .limit(1);

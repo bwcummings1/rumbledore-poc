@@ -4,6 +4,12 @@ import {
   resolvePersonaByline,
 } from "@/ai/persona-display";
 import type { AiPersona } from "@/ai/personas";
+import { contentItemIsPublished } from "@/content/lifecycle";
+import type { ContentReactionSummary } from "@/content/reaction-types";
+import {
+  getLeagueMemberIdForUser,
+  loadContentReactionSummaries,
+} from "@/content/reactions";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -83,6 +89,7 @@ export interface LeagueFeedItem {
   tags?: string[];
   thumbnailUrl?: string;
   editorialImportance?: number;
+  reactions?: ContentReactionSummary;
   matchedEntities: LeagueFeedMatchedEntity[];
 }
 
@@ -207,6 +214,7 @@ export async function upsertLeagueFeedReference(
           eq(contentItems.id, input.contentItemId),
           isNull(contentItems.leagueId),
           eq(contentItems.kind, "news"),
+          contentItemIsPublished(),
         ),
       )
       .limit(1);
@@ -316,6 +324,11 @@ export async function getLeagueFeedData(
     return { status: "forbidden" };
   }
 
+  const memberId = await getLeagueMemberIdForUser(db, {
+    leagueId: input.leagueId,
+    userId: input.userId,
+  });
+
   const limit = boundedLimit(input.limit);
   const candidateLimit = input.sectionId
     ? MAX_LIMIT
@@ -351,6 +364,7 @@ export async function getLeagueFeedData(
           and(
             eq(contentItems.leagueId, input.leagueId),
             inArray(contentItems.kind, ["blog", "ingest_event"]),
+            contentItemIsPublished(),
           ),
         )
         .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
@@ -393,6 +407,7 @@ export async function getLeagueFeedData(
             eq(leagueFeedReferences.leagueId, input.leagueId),
             isNull(contentItems.leagueId),
             eq(contentItems.kind, "news"),
+            contentItemIsPublished(),
           ),
         )
         .orderBy(
@@ -421,6 +436,15 @@ export async function getLeagueFeedData(
         .from(aiPersonaCards)
         .where(eq(aiPersonaCards.leagueId, input.leagueId)),
     );
+    const reactionSummaries = await loadContentReactionSummaries(tx, {
+      apiUrlFor: (contentItemId) =>
+        `/api/leagues/${input.leagueId}/press/${contentItemId}/reactions`,
+      contentItemIds: leagueRows
+        .filter((row) => row.kind === "blog")
+        .map((row) => row.id),
+      leagueId: input.leagueId,
+      memberId,
+    });
 
     const leagueItems: LeagueFeedItem[] = leagueRows.map((row) => {
       const title = row.title;
@@ -438,6 +462,8 @@ export async function getLeagueFeedData(
         publishedAt: row.publishedAt.toISOString(),
         relevanceReason: "",
         relevanceScore: 0,
+        reactions:
+          row.kind === "blog" ? reactionSummaries.get(row.id) : undefined,
         scope: "league",
         section: resolveLeaguePublicationSection({
           authorPersona: row.authorPersona,
