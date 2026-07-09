@@ -75,6 +75,18 @@ export {
   type PublicationSection,
 } from "./sections";
 export {
+  type CentralArticleShareMetadata,
+  type CentralArticleShareMetadataResult,
+  getCentralNewsArticleShareMetadata,
+  getLeaguePressArticleShareMetadata,
+  getLeagueRouteShareMetadata,
+  type LeagueArticleShareMetadata,
+  type LeagueArticleShareMetadataResult,
+  type LeagueRouteShareMetadata,
+  type LeagueRouteShareMetadataResult,
+  type ShareLifecycleStatus,
+} from "./share-metadata";
+export {
   type CentralNewsTailoringInput,
   type CentralNewsTailoringResult,
   tailorCentralNewsToLeagues,

@@ -4,8 +4,18 @@ import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
-import { getLeagueFeedData, getLeaguePressArticleData } from "@/news";
+import {
+  getLeagueFeedData,
+  getLeaguePressArticleData,
+  getLeaguePressArticleShareMetadata,
+  getLeagueRouteShareMetadata,
+} from "@/news";
 import { getLeaguePublicationSectionBySlug } from "@/news/sections";
+import {
+  leagueArticleMetadata,
+  leaguePressFrontMetadata,
+  leaguePressSectionMetadata,
+} from "@/share/route-metadata";
 import { LeagueFeedView } from "../../feed/league-feed-view";
 import {
   type LeagueDeepLinkSearchParams,
@@ -16,11 +26,6 @@ import { LeagueBlogPostView } from "../../posts/[postId]/league-blog-post-view";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Press Article | Rumbledore",
-  description: "A league-scoped column from the Rumbledore cast.",
-};
-
 interface LeaguePressPostPageProps {
   params: Promise<{ leagueId: string; postId: string }>;
   searchParams?: Promise<LeagueDeepLinkSearchParams>;
@@ -28,6 +33,39 @@ interface LeaguePressPostPageProps {
 
 function firstSearchValue(value: string | string[] | undefined): string | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+export async function generateMetadata({
+  params,
+}: LeaguePressPostPageProps): Promise<Metadata> {
+  const { leagueId, postId } = await params;
+  const section = getLeaguePublicationSectionBySlug(postId);
+  if (section) {
+    const league = await getLeagueRouteShareMetadata(getDb(), { leagueId });
+    return league.status === "ready"
+      ? leaguePressSectionMetadata(league.data, section)
+      : leaguePressFrontMetadata({
+          id: leagueId,
+          name: "League",
+          provider: "espn",
+          providerLeagueId: "unknown",
+          season: 0,
+        });
+  }
+
+  const result = await getLeaguePressArticleShareMetadata(getDb(), {
+    leagueId,
+    postId,
+  });
+  return result.status === "ready"
+    ? leagueArticleMetadata(result.data)
+    : leaguePressFrontMetadata({
+        id: leagueId,
+        name: "League",
+        provider: "espn",
+        providerLeagueId: "unknown",
+        season: 0,
+      });
 }
 
 export default async function LeaguePressPostPage({

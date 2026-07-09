@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
-import { getLeagueFeedData } from "@/news";
+import { getLeagueFeedData, getLeagueRouteShareMetadata } from "@/news";
+import { leaguePressFrontMetadata } from "@/share/route-metadata";
 import { LeagueFeedView } from "../feed/league-feed-view";
 import {
   type LeagueDeepLinkSearchParams,
@@ -14,11 +15,6 @@ import { LeagueSectionAccessState } from "../league-section-access-state";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "The Press | Rumbledore",
-  description: "The league's AI cast, columns, and tailored news.",
-};
-
 interface LeaguePressPageProps {
   params: Promise<{ leagueId: string }>;
   searchParams?: Promise<LeagueDeepLinkSearchParams>;
@@ -26,6 +22,19 @@ interface LeaguePressPageProps {
 
 function firstSearchValue(value: string | string[] | undefined): string | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+export async function generateMetadata({
+  params,
+}: LeaguePressPageProps): Promise<Metadata> {
+  const { leagueId } = await params;
+  const result = await getLeagueRouteShareMetadata(getDb(), { leagueId });
+  return result.status === "ready"
+    ? leaguePressFrontMetadata(result.data)
+    : {
+        title: "The Press | Rumbledore",
+        description: "The league's AI cast, columns, and tailored news.",
+      };
 }
 
 export default async function LeaguePressPage({

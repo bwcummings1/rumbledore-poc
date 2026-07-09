@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
@@ -6,6 +7,8 @@ import { getDb } from "@/db";
 import { resolveEntitlement } from "@/entitlements";
 import { getLeagueHomeData } from "@/home/league-home";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
+import { getLeagueRouteShareMetadata } from "@/news";
+import { leagueHomeMetadata } from "@/share/route-metadata";
 import {
   type LeagueDeepLinkSearchParams,
   redirectToLeagueDeepLinkOnboarding,
@@ -18,6 +21,19 @@ export const dynamic = "force-dynamic";
 interface LeagueHomePageProps {
   params: Promise<{ leagueId: string }>;
   searchParams?: Promise<LeagueDeepLinkSearchParams>;
+}
+
+export async function generateMetadata({
+  params,
+}: LeagueHomePageProps): Promise<Metadata> {
+  const { leagueId } = await params;
+  const result = await getLeagueRouteShareMetadata(getDb(), { leagueId });
+  return result.status === "ready"
+    ? leagueHomeMetadata(result.data)
+    : {
+        title: "League | Rumbledore",
+        description: "A Rumbledore league home.",
+      };
 }
 
 export default async function LeagueHomePage({

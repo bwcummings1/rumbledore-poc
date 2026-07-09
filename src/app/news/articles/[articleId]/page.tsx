@@ -2,17 +2,31 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PublicationArticleView } from "@/components/publication/article-view";
 import { getDb } from "@/db";
-import { getCentralNewsArticleData } from "@/news";
+import {
+  getCentralNewsArticleData,
+  getCentralNewsArticleShareMetadata,
+} from "@/news";
+import {
+  centralNewsArticleMetadata,
+  centralNewsFrontMetadata,
+} from "@/share/route-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "News Article | Rumbledore",
-  description: "A full article from Rumbledore News.",
-};
-
 interface NewsArticlePageProps {
   params: Promise<{ articleId: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: NewsArticlePageProps): Promise<Metadata> {
+  const { articleId } = await params;
+  const result = await getCentralNewsArticleShareMetadata(getDb(), {
+    articleId,
+  });
+  return result.status === "ready"
+    ? centralNewsArticleMetadata(result.data)
+    : centralNewsFrontMetadata();
 }
 
 export default async function NewsArticlePage({

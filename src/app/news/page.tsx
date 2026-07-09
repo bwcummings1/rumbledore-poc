@@ -3,14 +3,14 @@ import { headers } from "next/headers";
 import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getCentralNewsHubData } from "@/news/hub";
+import { centralNewsFrontMetadata } from "@/share/route-metadata";
 import { NewsHubView } from "./news-hub-view";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Central News | Rumbledore",
-  description: "League-agnostic NFL and fantasy-football headlines.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return centralNewsFrontMetadata();
+}
 
 interface NewsPageProps {
   searchParams?: Promise<{

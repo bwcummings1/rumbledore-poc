@@ -1,16 +1,35 @@
 import { ShieldAlert, Trophy, UserPlus } from "lucide-react";
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
 import { getLeagueInviteLanding } from "@/onboarding/invites";
 import { withReturnTo } from "@/onboarding/return-to";
+import { inviteShareMetadata } from "@/share/route-metadata";
 import { InviteAcceptPanel } from "./invite-accept-panel";
 
 export const dynamic = "force-dynamic";
 
 interface InvitePreviewPageProps {
   params: Promise<{ leagueId: string; token: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: InvitePreviewPageProps): Promise<Metadata> {
+  const { leagueId, token } = await params;
+  const invite = await getLeagueInviteLanding(
+    { db: getDb() },
+    { leagueId, token },
+  );
+  const path = `/invite/${encodeURIComponent(leagueId)}/${encodeURIComponent(token)}`;
+  return invite.ok
+    ? inviteShareMetadata(invite.value, path)
+    : {
+        title: "League invite | Rumbledore",
+        description: "Claim your team in Rumbledore.",
+      };
 }
 
 function teamLabel(teamNames: readonly string[]): string {
