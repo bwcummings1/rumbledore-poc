@@ -80,6 +80,7 @@ function requestFor(
       records: [],
       teams: [],
       trigger: {
+        correction: null,
         instigation: null,
         loreClaim: null,
         poll: null,

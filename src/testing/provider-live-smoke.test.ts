@@ -138,6 +138,7 @@ function requestFor(
         },
       ],
       trigger: {
+        correction: null,
         instigation: null,
         loreClaim: null,
         poll: null,

@@ -18,6 +18,7 @@ import {
 import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
 import { JOB_EVENTS } from "./events";
+import { contentCorrectionNeeded } from "./functions/content-correction-needed";
 import {
   contentGenerate,
   createContentGenerateFunction,
@@ -261,6 +262,7 @@ describe("content.generate Inngest function", () => {
   });
 
   it("is exported through the shared function registry", () => {
+    expect(functions).toContain(contentCorrectionNeeded);
     expect(functions).toContain(contentGenerate);
   });
 });

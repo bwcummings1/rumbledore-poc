@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { LlmJudge, LlmJudgeRequest, LlmJudgeScore } from "@/ai";
 import { createMockAiDependencies, MockLlmJudge } from "@/ai";
+import { detectContentCorrectionsNeeded } from "@/content/corrections";
 import { supersedingContentDedupKey } from "@/content/lifecycle";
 import { DEFAULT_ENTITLEMENT_CAPS, parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -12,6 +13,7 @@ import {
   aiGenerationRuns,
   contentItems,
   editorialActions,
+  fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
   leagues,
@@ -21,6 +23,7 @@ import { migrateSerialized } from "@/db/test-support";
 import { NoopPushNotifier } from "@/push";
 import { NoopRealtimePublisher } from "@/realtime";
 import {
+  correctEditorialContentItem,
   regenerateEditorialContentItem,
   retractEditorialContentItem,
 } from "./editorial";
@@ -98,7 +101,15 @@ async function seedLeague(tag: string) {
   return league;
 }
 
-async function seedPost(leagueId: string, tag: string) {
+async function seedPost(
+  leagueId: string,
+  tag: string,
+  metadata: Record<string, unknown> = {
+    contentType: "weekly_recap",
+    section: "recaps",
+    tags: [`${tag} Team`],
+  },
+) {
   const [post] = await withLeagueContext(handle.db, leagueId, (tx) =>
     tx
       .insert(contentItems)
@@ -109,11 +120,7 @@ async function seedPost(leagueId: string, tag: string) {
         dedupKey: `${marker}-${tag}-post`,
         kind: "blog",
         leagueId,
-        metadata: {
-          contentType: "weekly_recap",
-          section: "recaps",
-          tags: [`${tag} Team`],
-        },
+        metadata,
         publishedAt: new Date("2026-07-09T12:00:00.000Z"),
         summary: `${tag} original summary`,
         title: `${tag} original title`,
@@ -127,6 +134,36 @@ async function seedPost(leagueId: string, tag: string) {
     throw new Error("post was not inserted");
   }
   return post;
+}
+
+async function seedFinalMatchup(
+  league: { id: string; providerLeagueId: string },
+  tag: string,
+) {
+  const [matchup] = await withLeagueContext(handle.db, league.id, (tx) =>
+    tx
+      .insert(fantasyMatchups)
+      .values({
+        awayScore: 98,
+        awayTeamProviderId: null,
+        contentHash: `${marker}-${tag}-matchup-hash`,
+        homeScore: 122,
+        homeTeamProviderId: `${tag}-team`,
+        leagueId: league.id,
+        leagueProviderId: league.providerLeagueId,
+        provider: "espn",
+        providerMatchupId: `${tag}-matchup-1`,
+        scoringPeriod: 3,
+        season: 2026,
+        status: "final",
+        winner: "home",
+      })
+      .returning({ id: fantasyMatchups.id }),
+  );
+  if (!matchup) {
+    throw new Error("matchup was not inserted");
+  }
+  return matchup;
 }
 
 beforeAll(async () => {
@@ -450,5 +487,125 @@ describe("editorial content actions", () => {
         }),
       ]),
     );
+  });
+
+  it("detects score corrections and publishes one labeled superseding correction", async () => {
+    const league = await seedLeague("correction");
+    const matchup = await seedFinalMatchup(league, "correction");
+    const post = await seedPost(league.id, "correction", {
+      contentType: "weekly_recap",
+      references: {
+        matchupWeeks: [{ scoringPeriod: 3, season: 2026 }],
+      },
+      section: "recaps",
+      tags: ["correction Team"],
+    });
+    const correctedHash = "a".repeat(64);
+
+    const corrections = await detectContentCorrectionsNeeded({
+      changedFinalMatchups: [{ contentHash: correctedHash, id: matchup.id }],
+      db: handle.db,
+      leagueId: league.id,
+    });
+
+    expect(corrections).toEqual([
+      expect.objectContaining({
+        affectedWeeks: [{ scoringPeriod: 3, season: 2026 }],
+        changedMatchups: [
+          {
+            contentHash: correctedHash,
+            id: matchup.id,
+            scoringPeriod: 3,
+            season: 2026,
+          },
+        ],
+        contentItemId: post.id,
+        correctionHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        leagueId: league.id,
+      }),
+    ]);
+
+    const judge = new MockLlmJudge();
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      judge,
+      now: () => new Date("2026-07-09T17:00:00.000Z"),
+    };
+    const correction = corrections[0];
+    if (!correction) {
+      throw new Error("expected a correction candidate");
+    }
+    const first = await correctEditorialContentItem(deps, correction);
+    const second = await correctEditorialContentItem(deps, correction);
+
+    expect(first).toMatchObject({
+      originalContentItemId: post.id,
+      status: "published",
+    });
+    expect(second).toMatchObject({
+      actionId: first.actionId,
+      replacementContentItemId: first.replacementContentItemId,
+      status: "already_current",
+    });
+    expect(judge.requests.length).toBeGreaterThanOrEqual(1);
+    expect(judge.requests[0]?.piece.title).toMatch(/^Correction:/);
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      actions: await tx
+        .select()
+        .from(editorialActions)
+        .where(eq(editorialActions.targetContentItemId, post.id)),
+      posts: await tx
+        .select({
+          id: contentItems.id,
+          metadata: contentItems.metadata,
+          status: contentItems.status,
+          supersedesContentItemId: contentItems.supersedesContentItemId,
+          title: contentItems.title,
+        })
+        .from(contentItems)
+        .where(eq(contentItems.leagueId, league.id)),
+    }));
+    const original = rows.posts.find((row) => row.id === post.id);
+    const replacement = rows.posts.find(
+      (row) => row.id === first.replacementContentItemId,
+    );
+
+    expect(original).toMatchObject({ status: "superseded" });
+    expect(replacement).toMatchObject({
+      status: "published",
+      supersedesContentItemId: post.id,
+      title: expect.stringMatching(/^Correction:/),
+    });
+    expect(replacement?.metadata).toMatchObject({
+      editorial: {
+        correctionHash: correction.correctionHash,
+        kind: "correction",
+        originalContentItemId: post.id,
+      },
+      references: {
+        matchupWeeks: [{ scoringPeriod: 3, season: 2026 }],
+      },
+    });
+    expect(rows.actions).toHaveLength(1);
+    expect(rows.actions[0]).toMatchObject({
+      action: "correct",
+      afterContentItemId: first.replacementContentItemId,
+      beforeContentItemId: post.id,
+      reason: correction.reason,
+      targetContentItemId: post.id,
+    });
+    expect(rows.actions[0]?.metadata).toMatchObject({
+      correctionHash: correction.correctionHash,
+      triggerKey: `correction:${post.id}:${correction.correctionHash}`,
+    });
+
+    const afterLedger = await detectContentCorrectionsNeeded({
+      changedFinalMatchups: [{ contentHash: correctedHash, id: matchup.id }],
+      db: handle.db,
+      leagueId: league.id,
+    });
+    expect(afterLedger).toEqual([]);
   });
 });

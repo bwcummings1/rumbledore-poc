@@ -45,6 +45,7 @@ import { RECORD_TYPE_LABELS, type RecordType } from "@/stats";
 import {
   blogDraftMetadata,
   blogDraftText,
+  bodyBlocksToMarkdown,
   validateBlogDraft,
 } from "./article-draft";
 import { type AiContentType, parseAiContentType } from "./content-types";
@@ -58,6 +59,7 @@ import type {
   LeagueContextArenaStanding,
   LeagueContextCadenceFrame,
   LeagueContextCanonLore,
+  LeagueContextCorrection,
   LeagueContextDisputedLore,
   LeagueContextInstigation,
   LeagueContextLore,
@@ -106,6 +108,7 @@ export interface GenerateLeagueBlogPostInput {
   persona: AiPersona;
   contentType: AiContentType;
   triggerKey: string;
+  correction?: LeagueContextCorrection;
   supersedes?: {
     contentItemId: string;
     dedupKey: string;
@@ -803,6 +806,45 @@ function validateDraftOrGeneric({
   }
 }
 
+function correctionWeekLabel(correction: LeagueContextCorrection): string {
+  return correction.affectedWeeks
+    .map((week) => `${week.season} Week ${week.scoringPeriod}`)
+    .join(", ");
+}
+
+function applyCorrectionLabel(
+  draft: BlogDraft,
+  correction?: LeagueContextCorrection,
+): BlogDraft {
+  if (!correction) {
+    return draft;
+  }
+
+  const correctionText = `Correction: scores or results changed for ${correctionWeekLabel(correction)}. This version supersedes the earlier post.`;
+  const hasCorrectionBlock = draft.bodyBlocks.some(
+    (block) =>
+      block.type === "paragraph" &&
+      block.text.toLocaleLowerCase().startsWith("correction:"),
+  );
+  const bodyBlocks = hasCorrectionBlock
+    ? draft.bodyBlocks
+    : [
+        { text: correctionText, type: "paragraph" as const },
+        ...draft.bodyBlocks,
+      ];
+  return {
+    ...draft,
+    body: bodyBlocksToMarkdown(bodyBlocks),
+    bodyBlocks,
+    summary: draft.summary.toLocaleLowerCase().startsWith("correction")
+      ? draft.summary
+      : `Correction note: ${draft.summary}`,
+    title: draft.title.toLocaleLowerCase().startsWith("correction:")
+      ? draft.title
+      : `Correction: ${draft.title}`,
+  };
+}
+
 function llmJudgeSkipReason(score: LlmJudgeScore): string {
   const reasons = [
     score.authenticity < DEFAULT_LLM_JUDGE_RUBRIC.authenticityThreshold
@@ -1227,6 +1269,7 @@ async function loadTriggerContext({
   const cadence = parseTriggerCadenceFrame(input.triggerKey);
   const empty = {
     cadence,
+    correction: input.correction ?? null,
     instigation: null,
     loreClaim: null,
     poll: null,
@@ -1265,7 +1308,13 @@ async function loadTriggerContext({
           tx,
         })
       : null;
-    return { cadence, instigation, loreClaim, poll };
+    return {
+      cadence,
+      correction: empty.correction,
+      instigation,
+      loreClaim,
+      poll,
+    };
   }
 
   const claim = await loadLoreClaimContext({
@@ -1298,7 +1347,13 @@ async function loadTriggerContext({
         title: claim.title,
       }
     : null;
-  return { cadence, instigation, loreClaim, poll };
+  return {
+    cadence,
+    correction: empty.correction,
+    instigation,
+    loreClaim,
+    poll,
+  };
 }
 
 async function prepareGeneration({
@@ -2324,6 +2379,7 @@ export async function generateLeagueBlogPost({
       reason: "generic_slop:missing_league_entity",
     });
   }
+  draft = applyCorrectionLabel(draft, input.correction);
 
   let embedding = await deps.embeddings.embed(blogDraftText(draft));
   let nearestMemories = await loadNearestBlogMemories({
@@ -2365,9 +2421,7 @@ export async function generateLeagueBlogPost({
         reason: "generic_slop:missing_league_entity",
       });
     }
-    draft = duplicateDraft;
-    embedding = await deps.embeddings.embed(blogDraftText(draft));
-    if (!referencedLeagueEntity({ context, draft })) {
+    if (!referencedLeagueEntity({ context, draft: duplicateDraft })) {
       return markSkipped({
         deps,
         input,
@@ -2376,6 +2430,8 @@ export async function generateLeagueBlogPost({
         reason: "generic_slop:missing_league_entity",
       });
     }
+    draft = applyCorrectionLabel(duplicateDraft, input.correction);
+    embedding = await deps.embeddings.embed(blogDraftText(draft));
     nearestMemories = await loadNearestBlogMemories({
       deps,
       embedding,
@@ -2437,7 +2493,7 @@ export async function generateLeagueBlogPost({
       });
     }
 
-    draft = judgedDraft;
+    draft = applyCorrectionLabel(judgedDraft, input.correction);
     alreadyRetried = true;
     embedding = await deps.embeddings.embed(blogDraftText(draft));
     nearestMemories = await loadNearestBlogMemories({

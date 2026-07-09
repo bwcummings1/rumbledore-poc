@@ -188,6 +188,22 @@ export interface LeagueContextLoreClaim {
   ratifiedAt: Date | null;
 }
 
+export interface LeagueContextCorrection {
+  affectedWeeks: {
+    scoringPeriod: number;
+    season: number;
+  }[];
+  changedMatchups: {
+    contentHash: string;
+    id: string;
+    scoringPeriod: number;
+    season: number;
+  }[];
+  correctionHash: string;
+  originalContentItemId: string;
+  reason: string;
+}
+
 export interface LeagueContextCadenceFrame {
   cadence: string | null;
   event: string | null;
@@ -201,6 +217,7 @@ export interface LeagueContextCadenceFrame {
 
 export interface LeagueContextTrigger {
   cadence?: LeagueContextCadenceFrame | null;
+  correction: LeagueContextCorrection | null;
   instigation: LeagueContextInstigation | null;
   poll: LeagueContextPoll | null;
   loreClaim: LeagueContextLoreClaim | null;

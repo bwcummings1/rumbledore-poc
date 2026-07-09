@@ -316,6 +316,7 @@ function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {
   return {
     changedFinalMatchups: [],
     changedTransactions: [],
+    contentCorrectionsNeeded: [],
     league: {
       changed: 0,
       id: seed.leagueId,
@@ -1261,6 +1262,84 @@ describe("live ingestion jobs", () => {
       gameFinalEvents: [expectedGameFinalEvent],
       ok: true,
       sentGameFinalCount: 0,
+    });
+  });
+
+  it("plans content.correction.needed events for affected published posts through the worker step", async () => {
+    const seeded = await seedLiveLeague("worker-content-correction");
+    const fixtureProvider = currentSyncProvider();
+    const contentItemId = randomUUID();
+    const matchupId = randomUUID();
+    const correctionHash = "b".repeat(64);
+    const sourceContentHash = "c".repeat(64);
+    const fn = createLeagueIngestFunction(() => ({
+      cipher,
+      db: handle.db,
+      providers: { espn: fixtureProvider.provider },
+      syncCurrent: async () =>
+        ok({
+          ...successfulSyncResult(seeded),
+          contentCorrectionsNeeded: [
+            {
+              affectedWeeks: [{ scoringPeriod: 3, season: 2026 }],
+              changedMatchups: [
+                {
+                  contentHash: sourceContentHash,
+                  id: matchupId,
+                  scoringPeriod: 3,
+                  season: 2026,
+                },
+              ],
+              contentItemId,
+              correctionHash,
+              leagueId: seeded.leagueId,
+              reason:
+                "Score correction changed a published post's referenced week.",
+            },
+          ],
+        }),
+    }));
+    const testEngine = new InngestTestEngine({ function: fn });
+    const event = {
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: `${marker} league worker-content-correction`,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        sport: "ffl",
+      },
+      name: JOB_EVENTS.leagueIngest,
+    };
+
+    const stepRun = await testEngine.executeStep("sync-current-league", {
+      events: [event],
+    });
+
+    const expectedCorrectionEvent = {
+      data: {
+        affectedWeeks: [{ scoringPeriod: 3, season: 2026 }],
+        changedMatchups: [
+          {
+            contentHash: sourceContentHash,
+            id: matchupId,
+            scoringPeriod: 3,
+            season: 2026,
+          },
+        ],
+        contentItemId,
+        correctionHash,
+        leagueId: seeded.leagueId,
+        reason: "Score correction changed a published post's referenced week.",
+      },
+      id: `${JOB_EVENTS.contentCorrectionNeeded}:${seeded.leagueId}:${contentItemId}:${correctionHash}`,
+      name: JOB_EVENTS.contentCorrectionNeeded,
+    };
+    expect(stepRun.result).toMatchObject({
+      contentCorrectionEvents: [expectedCorrectionEvent],
+      ok: true,
+      sentContentCorrectionCount: 0,
     });
   });
 

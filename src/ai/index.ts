@@ -20,6 +20,7 @@ export type {
   LeagueBlogContext,
   LeagueContextCadenceFrame,
   LeagueContextCanonLore,
+  LeagueContextCorrection,
   LeagueContextInstigation,
   LeagueContextLoreClaim,
   LeagueContextPerson,

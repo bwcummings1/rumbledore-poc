@@ -1,6 +1,7 @@
 import { appPing } from "./functions/app-ping";
 import { bankrollRollover } from "./functions/bankroll-rollover";
 import { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
+import { contentCorrectionNeeded } from "./functions/content-correction-needed";
 import { contentGenerate } from "./functions/content-generate";
 import {
   contentPlanMidWeek,
@@ -36,6 +37,7 @@ export { JOB_EVENTS } from "./events";
 export { appPing } from "./functions/app-ping";
 export { bankrollRollover } from "./functions/bankroll-rollover";
 export { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
+export { contentCorrectionNeeded } from "./functions/content-correction-needed";
 export { contentGenerate } from "./functions/content-generate";
 export {
   contentPlanMidWeek,
@@ -74,6 +76,7 @@ export const functions = [
   seasonRolloverCheck,
   importRequested,
   contentGenerate,
+  contentCorrectionNeeded,
   contentPlanWeeklyPreview,
   contentPlanWeeklyWrap,
   contentPlanMidWeek,

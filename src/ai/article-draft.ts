@@ -369,6 +369,42 @@ function canonCitationsForDraft({
   return [...cited.values()].map(canonCitationMetadata);
 }
 
+function referencedMatchupWeeks({
+  context,
+  triggerKey,
+}: {
+  context: LeagueBlogContext;
+  triggerKey: string;
+}) {
+  if (context.trigger.correction) {
+    return context.trigger.correction.affectedWeeks;
+  }
+
+  const gameFinalParts = triggerKey.startsWith("game-final:")
+    ? triggerKey.split(":")
+    : [];
+  const gameFinalSeason = Number.parseInt(gameFinalParts[3] ?? "", 10);
+  const gameFinalScoringPeriod = Number.parseInt(gameFinalParts[4] ?? "", 10);
+  if (
+    Number.isInteger(gameFinalSeason) &&
+    Number.isInteger(gameFinalScoringPeriod)
+  ) {
+    return [{ scoringPeriod: gameFinalScoringPeriod, season: gameFinalSeason }];
+  }
+
+  const cadence = context.trigger.cadence;
+  if (cadence?.event === "game.final" || cadence?.cadence === "weekly-wrap") {
+    return [
+      {
+        scoringPeriod: context.league.currentScoringPeriod,
+        season: context.league.season,
+      },
+    ];
+  }
+
+  return [];
+}
+
 export function blogDraftMetadata({
   context,
   draft,
@@ -384,6 +420,10 @@ export function blogDraftMetadata({
     ? canonCitationsForDraft({ context, draft })
     : [];
   const citedCanonClaimIds = canonCitations.map((citation) => citation.claimId);
+  const matchupWeeks = context
+    ? referencedMatchupWeeks({ context, triggerKey })
+    : [];
+  const correction = context?.trigger.correction;
   return {
     article: {
       bodyBlocks: draft.bodyBlocks,
@@ -393,16 +433,33 @@ export function blogDraftMetadata({
       contentType: draft.contentType,
       format: "rumbledore.article.v1",
       headline: draft.title,
+      ...(matchupWeeks.length > 0 ? { matchupWeeks } : {}),
       structure: draft.structure,
     },
     bodyBlocks: draft.bodyBlocks,
     byline: persona,
     canonCitations,
     citedCanonClaimIds,
+    cadenceFrame: context?.trigger.cadence ?? null,
     content_type: draft.contentType,
     contentType: draft.contentType,
     dek: draft.dek,
+    ...(correction
+      ? {
+          editorial: {
+            affectedWeeks: correction.affectedWeeks,
+            changedMatchups: correction.changedMatchups,
+            correctionHash: correction.correctionHash,
+            kind: "correction",
+            originalContentItemId: correction.originalContentItemId,
+            reason: correction.reason,
+          },
+        }
+      : {}),
     leagueSection: draft.section,
+    references: {
+      matchupWeeks,
+    },
     section: draft.section,
     structure: draft.structure,
     tags: draft.tags,

@@ -70,6 +70,7 @@ function contextFixture(): LeagueBlogContext {
     ],
     trigger: {
       cadence: null,
+      correction: null,
       instigation: null,
       loreClaim: null,
       poll: null,

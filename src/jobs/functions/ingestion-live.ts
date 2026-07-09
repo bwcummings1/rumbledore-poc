@@ -69,6 +69,7 @@ import {
 } from "@/sports/nfl-calendar";
 import { inngest } from "../client";
 import {
+  type ContentCorrectionNeededData,
   type GameFinalData,
   type ImportRequestedData,
   type IngestionTickData,
@@ -204,6 +205,12 @@ export interface PlannedGameFinalEvent {
   name: typeof JOB_EVENTS.gameFinal;
 }
 
+export interface PlannedContentCorrectionNeededEvent {
+  data: ContentCorrectionNeededData;
+  id: string;
+  name: typeof JOB_EVENTS.contentCorrectionNeeded;
+}
+
 export interface PlannedRecordBrokenEvent {
   data: RecordBrokenData;
   id: string;
@@ -258,6 +265,7 @@ export interface IngestionTickResponse {
 }
 
 export interface LeagueIngestResponse extends CurrentLeagueSyncResult {
+  contentCorrectionEvents: PlannedContentCorrectionNeededEvent[];
   dataClasses: ProviderDataClass[];
   eventName: typeof JOB_EVENTS.leagueIngest;
   gameFinalEvents: PlannedGameFinalEvent[];
@@ -265,6 +273,7 @@ export interface LeagueIngestResponse extends CurrentLeagueSyncResult {
   recordBrokenEvents: PlannedRecordBrokenEvent[];
   transactionEvents: PlannedTransactionEvent[];
   waiverEvents: PlannedWaiverEvent[];
+  sentContentCorrectionCount: number;
   sentGameFinalCount: number;
   sentRecordBrokenCount: number;
   sentTransactionCount: number;
@@ -1361,6 +1370,28 @@ function plannedGameFinalEventsFor(
   }));
 }
 
+function plannedContentCorrectionEventsFor(
+  sync: CurrentLeagueSyncResult,
+): PlannedContentCorrectionNeededEvent[] {
+  return sync.contentCorrectionsNeeded.map((correction) => ({
+    data: {
+      affectedWeeks: correction.affectedWeeks,
+      changedMatchups: correction.changedMatchups,
+      contentItemId: correction.contentItemId,
+      correctionHash: correction.correctionHash,
+      leagueId: sync.league.id,
+      reason: correction.reason,
+    },
+    id: [
+      JOB_EVENTS.contentCorrectionNeeded,
+      sync.league.id,
+      correction.contentItemId,
+      correction.correctionHash,
+    ].join(":"),
+    name: JOB_EVENTS.contentCorrectionNeeded,
+  }));
+}
+
 function plannedRecordBrokenEventsFor(
   sync: CurrentLeagueSyncResult,
 ): PlannedRecordBrokenEvent[] {
@@ -1645,11 +1676,13 @@ export async function runLeagueIngest({
   }
 
   const gameFinalEvents = plannedGameFinalEventsFor(sync.value);
+  const contentCorrectionEvents = plannedContentCorrectionEventsFor(sync.value);
   const recordBrokenEvents = plannedRecordBrokenEventsFor(sync.value);
   const transactionEvents = plannedTransactionEventsFor(sync.value);
   const waiverEvents = plannedWaiverEventsFor(sync.value);
 
   return {
+    contentCorrectionEvents,
     dataClasses: data.dataClasses ?? [...PROVIDER_DATA_CLASSES],
     eventName: JOB_EVENTS.leagueIngest,
     gameFinalEvents,
@@ -1657,6 +1690,7 @@ export async function runLeagueIngest({
     recordBrokenEvents,
     transactionEvents,
     waiverEvents,
+    sentContentCorrectionCount: 0,
     sentGameFinalCount: 0,
     sentRecordBrokenCount: 0,
     sentTransactionCount: 0,
@@ -1923,6 +1957,12 @@ export function createLeagueIngestFunction(
             result.gameFinalEvents,
           );
         }
+        if (result.contentCorrectionEvents.length > 0) {
+          await step.sendEvent(
+            "send-content-correction-events",
+            result.contentCorrectionEvents,
+          );
+        }
         if (result.recordBrokenEvents.length > 0) {
           await step.sendEvent(
             "send-record-broken-events",
@@ -1940,6 +1980,7 @@ export function createLeagueIngestFunction(
         }
         return {
           ...result,
+          sentContentCorrectionCount: result.contentCorrectionEvents.length,
           sentGameFinalCount: result.gameFinalEvents.length,
           sentRecordBrokenCount: result.recordBrokenEvents.length,
           sentTransactionCount: result.transactionEvents.length,

@@ -1,4 +1,4 @@
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import {
   type AiContentType,
   type AiGenerationDependencies,
@@ -16,6 +16,10 @@ import {
 } from "@/db/schema";
 import type { PushNotifier } from "@/push";
 import type { RealtimePublisher } from "@/realtime";
+import type {
+  CorrectionChangedMatchup,
+  CorrectionMatchupWeek,
+} from "./corrections";
 import {
   type ContentLifecycleTransitionResult,
   retractContentItem,
@@ -60,6 +64,31 @@ export interface RegenerateEditorialContentInput {
 }
 
 export interface RegenerateEditorialContentResult {
+  actionId: string | null;
+  generation: GenerateLeagueBlogPostResult | null;
+  originalContentItemId: string;
+  replacementContentItemId: string | null;
+  status:
+    | "already_current"
+    | "blocked"
+    | "conflict"
+    | "not_found"
+    | "published"
+    | "skipped";
+  transition?: ContentLifecycleTransitionResult;
+}
+
+export interface CorrectEditorialContentInput {
+  actorUserId?: string | null;
+  affectedWeeks: CorrectionMatchupWeek[];
+  changedMatchups: CorrectionChangedMatchup[];
+  contentItemId: string;
+  correctionHash: string;
+  leagueId: string;
+  reason?: string;
+}
+
+export interface CorrectEditorialContentResult {
   actionId: string | null;
   generation: GenerateLeagueBlogPostResult | null;
   originalContentItemId: string;
@@ -135,6 +164,13 @@ function editorialRegenerationTriggerKey(contentItemId: string): string {
   return `editorial-regenerate:${contentItemId}`;
 }
 
+function correctionTriggerKey(
+  contentItemId: string,
+  correctionHash: string,
+): string {
+  return `correction:${contentItemId}:${correctionHash}`;
+}
+
 async function loadEditorialContentRow(
   tx: LeagueScopedTx,
   input: { contentItemId: string; leagueId: string },
@@ -202,6 +238,39 @@ async function latestEditorialAction(
           eq(editorialActions.targetContentItemId, input.contentItemId),
           eq(editorialActions.beforeContentItemId, input.contentItemId),
         ),
+      ),
+    )
+    .orderBy(desc(editorialActions.createdAt), desc(editorialActions.id))
+    .limit(1);
+  return row ?? null;
+}
+
+async function latestCorrectionAction(
+  tx: LeagueScopedTx,
+  input: {
+    contentItemId: string;
+    correctionHash: string;
+    leagueId: string;
+  },
+): Promise<{
+  afterContentItemId: string | null;
+  id: string;
+  metadata: Record<string, unknown>;
+} | null> {
+  const [row] = await tx
+    .select({
+      afterContentItemId: editorialActions.afterContentItemId,
+      id: editorialActions.id,
+      metadata: editorialActions.metadata,
+    })
+    .from(editorialActions)
+    .where(
+      and(
+        eq(editorialActions.leagueId, input.leagueId),
+        eq(editorialActions.action, "correct"),
+        eq(editorialActions.targetContentItemId, input.contentItemId),
+        eq(editorialActions.beforeContentItemId, input.contentItemId),
+        sql`${editorialActions.metadata}->>'correctionHash' = ${input.correctionHash}`,
       ),
     )
     .orderBy(desc(editorialActions.createdAt), desc(editorialActions.id))
@@ -403,6 +472,177 @@ export async function regenerateEditorialContentItem(
         reason,
         transition,
         triggerKey: editorialRegenerationTriggerKey(input.contentItemId),
+      },
+      reason,
+      targetContentItemId: input.contentItemId,
+    }),
+  );
+
+  return {
+    actionId,
+    generation,
+    originalContentItemId: input.contentItemId,
+    replacementContentItemId: generation.contentItemId,
+    status: generation.reused ? "already_current" : "published",
+    transition,
+  };
+}
+
+export async function correctEditorialContentItem(
+  deps: AiGenerationDependencies,
+  input: CorrectEditorialContentInput,
+): Promise<CorrectEditorialContentResult> {
+  const reason = cleanReason(
+    input.reason ??
+      "Score correction changed a published post's referenced week.",
+    { required: false },
+  );
+  const original = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (tx) => {
+      const row = await loadEditorialContentRow(tx, input);
+      if (!row) {
+        return { action: null, replacement: null, row: null };
+      }
+      const replacement = await latestReplacement(tx, input);
+      const action = await latestCorrectionAction(tx, {
+        contentItemId: input.contentItemId,
+        correctionHash: input.correctionHash,
+        leagueId: input.leagueId,
+      });
+      return { action, replacement, row };
+    },
+  );
+
+  if (!original.row) {
+    return {
+      actionId: null,
+      generation: null,
+      originalContentItemId: input.contentItemId,
+      replacementContentItemId: null,
+      status: "not_found",
+    };
+  }
+
+  if (original.action) {
+    return {
+      actionId: original.action.id,
+      generation: null,
+      originalContentItemId: input.contentItemId,
+      replacementContentItemId:
+        original.action.afterContentItemId ?? original.replacement?.id ?? null,
+      status: "already_current",
+    };
+  }
+
+  if (original.row.status === "superseded" && original.replacement) {
+    return {
+      actionId: null,
+      generation: null,
+      originalContentItemId: input.contentItemId,
+      replacementContentItemId: original.replacement.id,
+      status: "already_current",
+    };
+  }
+
+  if (original.row.status !== "published") {
+    return {
+      actionId: null,
+      generation: null,
+      originalContentItemId: input.contentItemId,
+      replacementContentItemId: null,
+      status: "skipped",
+    };
+  }
+
+  if (!original.row.authorPersona) {
+    throw new AppError({
+      code: "EDITORIAL_PERSONA_MISSING",
+      message: "This post does not carry an AI persona for correction",
+      status: 409,
+    });
+  }
+
+  const persona = original.row.authorPersona;
+  const contentType = contentTypeFromMetadata(original.row.metadata);
+  const triggerKey = correctionTriggerKey(
+    input.contentItemId,
+    input.correctionHash,
+  );
+  const correction = {
+    affectedWeeks: input.affectedWeeks,
+    changedMatchups: input.changedMatchups,
+    correctionHash: input.correctionHash,
+    originalContentItemId: input.contentItemId,
+    reason,
+  };
+  const generation = await import("@/ai").then(({ generateLeagueBlogPost }) =>
+    generateLeagueBlogPost({
+      deps,
+      input: {
+        contentType,
+        correction,
+        leagueId: input.leagueId,
+        persona,
+        supersedes: {
+          contentItemId: original.row.id,
+          dedupKey: original.row.dedupKey,
+        },
+        triggerKey,
+      },
+    }),
+  );
+
+  if (generation.status !== "published") {
+    const actionId = await withLeagueContext(deps.db, input.leagueId, (tx) =>
+      insertEditorialAction(tx, {
+        action: "correct",
+        actorUserId: input.actorUserId ?? null,
+        beforeContentItemId: input.contentItemId,
+        leagueId: input.leagueId,
+        metadata: {
+          affectedWeeks: input.affectedWeeks,
+          changedMatchups: input.changedMatchups,
+          correctionHash: input.correctionHash,
+          generation,
+          reason,
+          triggerKey,
+        },
+        reason,
+        targetContentItemId: input.contentItemId,
+      }),
+    );
+    return {
+      actionId,
+      generation,
+      originalContentItemId: input.contentItemId,
+      replacementContentItemId: null,
+      status: generation.status,
+    };
+  }
+
+  const transition = await supersedeContentItem(deps, {
+    contentItemId: input.contentItemId,
+    leagueId: input.leagueId,
+    replacementContentItemId: generation.contentItemId,
+  });
+
+  const actionId = await withLeagueContext(deps.db, input.leagueId, (tx) =>
+    insertEditorialAction(tx, {
+      action: "correct",
+      actorUserId: input.actorUserId ?? null,
+      afterContentItemId: generation.contentItemId,
+      beforeContentItemId: input.contentItemId,
+      leagueId: input.leagueId,
+      metadata: {
+        affectedWeeks: input.affectedWeeks,
+        changedMatchups: input.changedMatchups,
+        correctionHash: input.correctionHash,
+        generation,
+        reason,
+        transition,
+        triggerKey,
       },
       reason,
       targetContentItemId: input.contentItemId,
