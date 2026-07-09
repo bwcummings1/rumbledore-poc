@@ -463,6 +463,13 @@
       "when": 1781591600000,
       "tag": "0065_content_reactions_roast_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1781595200000,
+      "tag": "0066_league_webhooks",
+      "breakpoints": true
     }
   ]
 }

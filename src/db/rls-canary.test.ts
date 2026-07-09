@@ -24,6 +24,7 @@ import {
   fantasyTeams,
   type Instigation,
   instigations,
+  type LeagueWebhook,
   type LoreClaim,
   type LoreEvent,
   type LoreSubject,
@@ -33,6 +34,7 @@ import {
   leagueGroupingSeasons,
   leagueSeasonGroupings,
   leagues,
+  leagueWebhooks,
   loreClaims,
   loreEvents,
   loreSubjects,
@@ -48,6 +50,8 @@ import {
   pushNotificationPreferences,
   type User,
   users,
+  type WebhookDeliveryRecord,
+  webhookDeliveryRecords,
 } from "./schema";
 import { migrateSerialized } from "./test-support";
 
@@ -85,6 +89,10 @@ let contentB: ContentItem;
 let centralContent: ContentItem;
 let contentReactionA: ContentReaction;
 let contentReactionB: ContentReaction;
+let leagueWebhookA: LeagueWebhook;
+let leagueWebhookB: LeagueWebhook;
+let webhookDeliveryA: WebhookDeliveryRecord;
+let webhookDeliveryB: WebhookDeliveryRecord;
 let editorialActionA: EditorialAction;
 let editorialActionB: EditorialAction;
 let personaCardA: AiPersonaCard;
@@ -164,7 +172,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -267,6 +275,60 @@ beforeAll(async () => {
         leagueId: null,
         summary: "Central summary",
         title: "Central news",
+      },
+    ])
+    .returning();
+
+  [leagueWebhookA, leagueWebhookB] = await admin.db
+    .insert(leagueWebhooks)
+    .values([
+      {
+        createdByUserId: userA.id,
+        encryptedUrl: `${marker}-encrypted-webhook-a`,
+        leagueId: leagueA,
+        name: "Canary webhook A",
+        targetKind: "generic",
+        updatedByUserId: userA.id,
+        urlHash: `${marker}-webhook-hash-a`,
+        urlLabel: "chat.example.test / encrypted endpoint",
+      },
+      {
+        createdByUserId: userB.id,
+        encryptedUrl: `${marker}-encrypted-webhook-b`,
+        leagueId: leagueB,
+        name: "Canary webhook B",
+        targetKind: "generic",
+        updatedByUserId: userB.id,
+        urlHash: `${marker}-webhook-hash-b`,
+        urlLabel: "chat.example.test / encrypted endpoint",
+      },
+    ])
+    .returning();
+
+  [webhookDeliveryA, webhookDeliveryB] = await admin.db
+    .insert(webhookDeliveryRecords)
+    .values([
+      {
+        contentItemId: contentA.id,
+        deliveredAt: new Date("2026-06-12T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        eventKey: `content:${contentA.id}`,
+        eventType: "content.published",
+        leagueId: leagueA,
+        payload: { marker, side: "a" },
+        targetKind: "generic",
+        webhookId: leagueWebhookA.id,
+      },
+      {
+        contentItemId: contentB.id,
+        deliveredAt: new Date("2026-06-12T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        eventKey: `content:${contentB.id}`,
+        eventType: "content.published",
+        leagueId: leagueB,
+        payload: { marker, side: "b" },
+        targetKind: "generic",
+        webhookId: leagueWebhookB.id,
       },
     ])
     .returning();
@@ -917,6 +979,27 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("sees no webhook rows at all outside a league context", async () => {
+    const webhooks = await canary.db
+      .select()
+      .from(leagueWebhooks)
+      .where(
+        inArray(leagueWebhooks.id, [leagueWebhookA.id, leagueWebhookB.id]),
+      );
+    const deliveries = await canary.db
+      .select()
+      .from(webhookDeliveryRecords)
+      .where(
+        inArray(webhookDeliveryRecords.id, [
+          webhookDeliveryA.id,
+          webhookDeliveryB.id,
+        ]),
+      );
+
+    expect(webhooks).toHaveLength(0);
+    expect(deliveries).toHaveLength(0);
+  });
+
   it("scoped to league A, sees A's fantasy team and nothing of league B", async () => {
     const { mine, theirs } = await withLeagueContext(
       canary.db,
@@ -1086,6 +1169,22 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows.map((row) => row.id)).toContain(pushPreferenceA.id);
     expect(rows.map((row) => row.id)).not.toContain(pushPreferenceB.id);
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered webhook scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, async (tx) => ({
+      deliveries: await tx.select().from(webhookDeliveryRecords),
+      webhooks: await tx.select().from(leagueWebhooks),
+    }));
+
+    expect(rows.webhooks.map((row) => row.id)).toContain(leagueWebhookA.id);
+    expect(rows.webhooks.map((row) => row.id)).not.toContain(leagueWebhookB.id);
+    expect(rows.webhooks.every((row) => row.leagueId === leagueA)).toBe(true);
+    expect(rows.deliveries.map((row) => row.id)).toContain(webhookDeliveryA.id);
+    expect(rows.deliveries.map((row) => row.id)).not.toContain(
+      webhookDeliveryB.id,
+    );
+    expect(rows.deliveries.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
   it("scoped to league A, content scans include central rows and league A only", async () => {
@@ -1329,6 +1428,41 @@ describe("two-league isolation under withLeagueContext", () => {
     ).toBe("42501");
   });
 
+  it("rejects writing league B webhook rows from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(leagueWebhooks).values({
+            encryptedUrl: `${marker}-bad-encrypted-webhook`,
+            leagueId: leagueB,
+            name: "Bad cross-league webhook",
+            targetKind: "generic",
+            urlHash: `${marker}-bad-webhook-hash`,
+            urlLabel: "chat.example.test / encrypted endpoint",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(webhookDeliveryRecords).values({
+            contentItemId: contentB.id,
+            deliveredAt: new Date("2026-06-12T00:00:00.000Z"),
+            deliveryStatus: "delivered",
+            eventKey: `content:${contentB.id}:bad`,
+            eventType: "content.published",
+            leagueId: leagueB,
+            payload: { marker, bad: true },
+            targetKind: "generic",
+            webhookId: leagueWebhookB.id,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
   it("enforces one claim vote per member", async () => {
     expect(
       await sqlstateOf(
@@ -1427,6 +1561,19 @@ describe("two-league isolation under withLeagueContext", () => {
             .update(aiPersonaToneHistory)
             .set({ reason: "mutated" })
             .where(eq(aiPersonaToneHistory.id, toneHistoryA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct webhook delivery mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(webhookDeliveryRecords)
+            .set({ errorMessage: "mutated" })
+            .where(eq(webhookDeliveryRecords.id, webhookDeliveryA.id)),
         ),
       ),
     ).toBe("55000");

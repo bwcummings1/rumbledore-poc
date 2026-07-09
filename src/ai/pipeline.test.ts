@@ -46,6 +46,7 @@ import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
+import type { WebhookDeliverer } from "@/webhooks";
 import { bodyBlocksToMarkdown } from "./article-draft";
 
 const marker = `aipipeline-${randomUUID()}`;
@@ -265,6 +266,23 @@ class RecordingEmbeddingProvider extends DeterministicEmbeddingProvider {
   }
 }
 
+class RecordingWebhookDeliverer implements WebhookDeliverer {
+  readonly config = { mock: true } as const;
+  readonly deliveries: Array<{ contentItemId: string; leagueId: string }> = [];
+
+  async deliver(): Promise<{ status: "delivered" }> {
+    return { status: "delivered" };
+  }
+
+  async deliverPublishedContent(input: {
+    contentItemId: string;
+    leagueId: string;
+  }): Promise<{ delivered: number; failed: number; skipped: number }> {
+    this.deliveries.push(input);
+    return { delivered: 1, failed: 0, skipped: 0 };
+  }
+}
+
 class PassingLlmJudge implements LlmJudge {
   readonly requests: LlmJudgeRequest[] = [];
 
@@ -365,6 +383,7 @@ describe("generateLeagueBlogPost", () => {
     const judge = new MockLlmJudge();
     const push = new RecordingPushNotifier();
     const realtime = new RecordingRealtimePublisher();
+    const webhooks = new RecordingWebhookDeliverer();
     const deps = {
       db: handle.db,
       duplicateThreshold: 1.1,
@@ -376,6 +395,7 @@ describe("generateLeagueBlogPost", () => {
       push,
       realtime,
       web: new MockWebGrounding(),
+      webhooks,
     };
 
     const first = await generateLeagueBlogPost({
@@ -490,6 +510,22 @@ describe("generateLeagueBlogPost", () => {
             ? third.contentItemId
             : expect.any(String)
         }`,
+      },
+    ]);
+    expect(webhooks.deliveries).toEqual([
+      {
+        contentItemId:
+          first.status === "published"
+            ? first.contentItemId
+            : expect.any(String),
+        leagueId: league.id,
+      },
+      {
+        contentItemId:
+          third.status === "published"
+            ? third.contentItemId
+            : expect.any(String),
+        leagueId: league.id,
       },
     ]);
 

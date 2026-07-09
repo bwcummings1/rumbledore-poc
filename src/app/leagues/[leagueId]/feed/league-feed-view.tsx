@@ -1,4 +1,10 @@
-import { AlertTriangle, ArrowLeft, Landmark, Newspaper } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Landmark,
+  Newspaper,
+  PlugZap,
+} from "lucide-react";
 import {
   PublicationFrontLayout,
   PublicationMasthead,
@@ -106,6 +112,11 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
                   href: `/leagues/${data.league.id}/press/failures`,
                   icon: <AlertTriangle data-icon="inline-start" />,
                   label: "Failure queue",
+                },
+                {
+                  href: `/leagues/${data.league.id}/press/webhooks`,
+                  icon: <PlugZap data-icon="inline-start" />,
+                  label: "Webhooks",
                 },
               ]
             : []),

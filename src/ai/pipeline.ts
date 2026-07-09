@@ -48,6 +48,7 @@ import {
   type RealtimePublisher,
 } from "@/realtime";
 import { RECORD_TYPE_LABELS, type RecordType } from "@/stats";
+import { MockWebhookDeliverer, type WebhookDeliverer } from "@/webhooks";
 import {
   blogDraftMetadata,
   blogDraftText,
@@ -128,6 +129,7 @@ export interface AiGenerationDependencies {
   judge: LlmJudge;
   push: PushNotifier;
   realtime: RealtimePublisher;
+  webhooks?: WebhookDeliverer;
   web: WebGrounding;
   embeddings: EmbeddingProvider;
   duplicateThreshold?: number;
@@ -2375,6 +2377,19 @@ async function publishDraft({
         leagueId: input.leagueId,
       });
     }
+
+    try {
+      await deps.webhooks?.deliverPublishedContent({
+        contentItemId: result.contentItemId,
+        leagueId: input.leagueId,
+      });
+    } catch (error) {
+      logger.warn("Webhook blog publish delivery failed", {
+        contentItemId: result.contentItemId,
+        error,
+        leagueId: input.leagueId,
+      });
+    }
   }
 
   return result;
@@ -2395,6 +2410,10 @@ export function createMockAiDependencies(db: Db): AiGenerationDependencies {
     llm: new MockLlmClient(),
     push: new NoopPushNotifier(),
     realtime: new NoopRealtimePublisher(),
+    webhooks: new MockWebhookDeliverer({
+      appUrl: "http://localhost:3000",
+      db,
+    }),
     web: new MockWebGrounding(),
   };
 }

@@ -7,6 +7,7 @@ import { MemorySpendCounterStore, SpendGuard } from "@/core/spend-guard";
 import type { Db } from "@/db/client";
 import { NoopPushNotifier, WebPushNotifier } from "@/push";
 import { NoopRealtimePublisher, SupabaseRealtimePublisher } from "@/realtime";
+import { MockWebhookDeliverer } from "@/webhooks";
 import type { AiContentType } from "./content-types";
 import {
   createAiDependencies,
@@ -141,6 +142,7 @@ describe("createAiDependencies", () => {
     expect(deps.embeddings).toBeInstanceOf(DeterministicEmbeddingProvider);
     expect(deps.realtime).toBeInstanceOf(NoopRealtimePublisher);
     expect(deps.push).toBeInstanceOf(NoopPushNotifier);
+    expect(deps.webhooks).toBeInstanceOf(MockWebhookDeliverer);
   });
 
   it("selects real Anthropic, Tavily, and Voyage clients when keys are present", () => {

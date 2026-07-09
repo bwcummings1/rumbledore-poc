@@ -20,6 +20,8 @@ export interface Logger {
 const SENSITIVE_KEY =
   /(^|_|-)(authorization|cookie|credential|espn_s2|password|secret|swid|token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token)($|_|-)/i;
 const FULL_BODY_KEY = /^(body|headers|rawBody|requestBody|request|response)$/i;
+const WEBHOOK_URL_KEY =
+  /(^webhookUrl$|(^|[_-])webhook[_-]?url$|^encryptedUrl$|^encrypted[_-]?url$)/i;
 
 const defaultSinks: Record<LogLevel, LogSink> = {
   debug: (line) => console.debug(line),
@@ -104,7 +106,12 @@ export function redactSecrets(
   const extraSecrets = options.extraSecrets ?? [];
   const key = options.key ?? "";
 
-  if (key !== "" && (SENSITIVE_KEY.test(key) || FULL_BODY_KEY.test(key))) {
+  if (
+    key !== "" &&
+    (SENSITIVE_KEY.test(key) ||
+      FULL_BODY_KEY.test(key) ||
+      WEBHOOK_URL_KEY.test(key))
+  ) {
     return REDACTED;
   }
 

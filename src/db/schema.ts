@@ -446,6 +446,21 @@ export const pushNotificationType = pgEnum("push_notification_type", [
   "content.superseded",
 ]);
 
+export const leagueWebhookTargetKind = pgEnum("league_webhook_target_kind", [
+  "discord",
+  "generic",
+]);
+
+export const leagueWebhookStatus = pgEnum("league_webhook_status", [
+  "active",
+  "disabled",
+]);
+
+export const webhookDeliveryStatus = pgEnum("webhook_delivery_status", [
+  "delivered",
+  "failed",
+]);
+
 export const memberRoastLevel = pgEnum("member_roast_level", [
   "full_send",
   "light",
@@ -457,6 +472,11 @@ export interface LeagueFeedMatchedEntity {
   type: "player" | "team" | "member" | "storyline";
   providerId: string;
   label?: string;
+}
+
+export interface LeagueWebhookEventSelection {
+  contentSections?: string[];
+  events?: string[];
 }
 
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
@@ -3056,6 +3076,135 @@ export const pushNotificationPreferences = pgTable(
   ],
 );
 
+// ── Outbound group-chat webhooks (mock delivery boundary) ────────────────
+
+export const leagueWebhooks = pgTable(
+  "league_webhooks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    targetKind: leagueWebhookTargetKind("target_kind").notNull(),
+    encryptedUrl: text("encrypted_url").notNull(),
+    urlHash: text("url_hash").notNull(),
+    urlLabel: text("url_label").notNull().default("encrypted endpoint"),
+    eventSelection: jsonb("event_selection")
+      .$type<LeagueWebhookEventSelection>()
+      .notNull()
+      .default(
+        sql`'{"events":["content.published","content.corrected"],"contentSections":["recaps","power-rankings","trash-talk","records","previews"]}'::jsonb`,
+      ),
+    status: leagueWebhookStatus("status").notNull().default("active"),
+    lastDeliveryAt: timestamp("last_delivery_at", { withTimezone: true }),
+    lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("league_webhooks_league_url_hash_unique").on(
+      table.leagueId,
+      table.urlHash,
+    ),
+    index("league_webhooks_league_status_idx").on(table.leagueId, table.status),
+    pgPolicy("league_webhooks_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "league_webhooks_name_not_blank",
+      sql`length(btrim(${table.name})) > 0`,
+    ),
+    check(
+      "league_webhooks_url_hash_not_blank",
+      sql`length(btrim(${table.urlHash})) > 0`,
+    ),
+  ],
+);
+
+export const webhookDeliveryRecords = pgTable(
+  "webhook_delivery_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    webhookId: uuid("webhook_id")
+      .notNull()
+      .references(() => leagueWebhooks.id, { onDelete: "cascade" }),
+    contentItemId: uuid("content_item_id").references(() => contentItems.id, {
+      onDelete: "cascade",
+    }),
+    eventKey: text("event_key").notNull(),
+    eventType: text("event_type").notNull(),
+    targetKind: leagueWebhookTargetKind("target_kind").notNull(),
+    deliveryStatus: webhookDeliveryStatus("delivery_status").notNull(),
+    deliveryMode: text("delivery_mode").notNull().default("mock"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    errorMessage: text("error_message"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("webhook_delivery_records_webhook_event_unique").on(
+      table.webhookId,
+      table.eventKey,
+    ),
+    index("webhook_delivery_records_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("webhook_delivery_records_content_idx").on(
+      table.leagueId,
+      table.contentItemId,
+    ),
+    index("webhook_delivery_records_status_idx").on(
+      table.leagueId,
+      table.deliveryStatus,
+      table.createdAt,
+    ),
+    pgPolicy("webhook_delivery_records_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "webhook_delivery_records_event_key_not_blank",
+      sql`length(btrim(${table.eventKey})) > 0`,
+    ),
+    check(
+      "webhook_delivery_records_event_type_not_blank",
+      sql`length(btrim(${table.eventType})) > 0`,
+    ),
+    check(
+      "webhook_delivery_records_attempt_count_positive",
+      sql`${table.attemptCount} > 0`,
+    ),
+    check(
+      "webhook_delivery_records_delivered_at_required",
+      sql`${table.deliveryStatus} <> 'delivered' OR ${table.deliveredAt} IS NOT NULL`,
+    ),
+    check(
+      "webhook_delivery_records_failed_at_required",
+      sql`${table.deliveryStatus} <> 'failed' OR ${table.failedAt} IS NOT NULL`,
+    ),
+  ],
+);
+
 export const aiPersonaCards = pgTable(
   "ai_persona_card",
   {
@@ -4206,6 +4355,11 @@ export type PushNotificationPreference =
   typeof pushNotificationPreferences.$inferSelect;
 export type NewPushNotificationPreference =
   typeof pushNotificationPreferences.$inferInsert;
+export type LeagueWebhook = typeof leagueWebhooks.$inferSelect;
+export type NewLeagueWebhook = typeof leagueWebhooks.$inferInsert;
+export type WebhookDeliveryRecord = typeof webhookDeliveryRecords.$inferSelect;
+export type NewWebhookDeliveryRecord =
+  typeof webhookDeliveryRecords.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
 export type AiPersonaToneHistory = typeof aiPersonaToneHistory.$inferSelect;
