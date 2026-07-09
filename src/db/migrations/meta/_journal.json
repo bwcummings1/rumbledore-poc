@@ -477,6 +477,13 @@
       "when": 1781598800000,
       "tag": "0067_email_digest_deliveries",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1781602400000,
+      "tag": "0068_notification_channel_preferences",
+      "breakpoints": true
     }
   ]
 }

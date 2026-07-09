@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -12,9 +12,12 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { PUSH_EVENTS } from "./interfaces";
+import { DIGEST_NOTIFICATION_EVENT_FAMILY, PUSH_EVENTS } from "./interfaces";
 import {
+  getNotificationChannelPreference,
+  isDigestNotificationEnabled,
   isPushNotificationEnabled,
+  setNotificationChannelPreference,
   setPushNotificationPreference,
 } from "./preferences";
 
@@ -83,7 +86,28 @@ afterAll(async () => {
 });
 
 describe("push notification preferences", () => {
-  it("defaults missing preferences to enabled and upserts explicit choices", async () => {
+  it("defaults content to digest and live event families to push", async () => {
+    await expect(
+      getNotificationChannelPreference(handle.db, {
+        eventFamily: DIGEST_NOTIFICATION_EVENT_FAMILY,
+        leagueId,
+        userId,
+      }),
+    ).resolves.toBe("digest");
+    await expect(
+      isPushNotificationEnabled(handle.db, {
+        leagueId,
+        type: PUSH_EVENTS.leagueBlogPublished,
+        userId,
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      isDigestNotificationEnabled(handle.db, {
+        eventFamily: DIGEST_NOTIFICATION_EVENT_FAMILY,
+        leagueId,
+        userId,
+      }),
+    ).resolves.toBe(true);
     await expect(
       isPushNotificationEnabled(handle.db, {
         leagueId,
@@ -91,6 +115,36 @@ describe("push notification preferences", () => {
         userId,
       }),
     ).resolves.toBe(true);
+  });
+
+  it("upserts grouped channel choices and keeps legacy event writes compatible", async () => {
+    const digestOff = await setNotificationChannelPreference(
+      { db: handle.db, now: () => new Date("2026-06-15T09:00:00.000Z") },
+      {
+        channel: "none",
+        eventFamily: DIGEST_NOTIFICATION_EVENT_FAMILY,
+        leagueId,
+        userId,
+      },
+    );
+    expect(digestOff).toMatchObject({
+      ok: true,
+      value: {
+        channel: "none",
+        enabled: false,
+        eventFamily: "content",
+        leagueId,
+        type: "league.blog.published",
+        userId,
+      },
+    });
+    await expect(
+      isDigestNotificationEnabled(handle.db, {
+        eventFamily: DIGEST_NOTIFICATION_EVENT_FAMILY,
+        leagueId,
+        userId,
+      }),
+    ).resolves.toBe(false);
 
     const disabled = await setPushNotificationPreference(
       { db: handle.db, now: () => new Date("2026-06-15T10:00:00.000Z") },
@@ -104,7 +158,9 @@ describe("push notification preferences", () => {
     expect(disabled).toMatchObject({
       ok: true,
       value: {
+        channel: "none",
         enabled: false,
+        eventFamily: "arena",
         leagueId,
         type: "arena.rival.passed",
         userId,
@@ -115,10 +171,17 @@ describe("push notification preferences", () => {
       tx
         .select()
         .from(pushNotificationPreferences)
-        .where(eq(pushNotificationPreferences.userId, userId)),
+        .where(
+          and(
+            eq(pushNotificationPreferences.userId, userId),
+            eq(pushNotificationPreferences.eventFamily, "arena"),
+          ),
+        ),
     );
     expect(saved).toMatchObject({
+      channel: "none",
       enabled: false,
+      eventFamily: "arena",
       leagueId,
       type: "arena.rival.passed",
       userId,
@@ -142,7 +205,7 @@ describe("push notification preferences", () => {
     );
     expect(enabled).toMatchObject({
       ok: true,
-      value: { enabled: true },
+      value: { channel: "push", enabled: true, eventFamily: "arena" },
     });
     await expect(
       isPushNotificationEnabled(handle.db, {

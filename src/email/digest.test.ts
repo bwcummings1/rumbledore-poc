@@ -78,7 +78,9 @@ async function seedLeague() {
 
   await withLeagueContext(handle.db, leagueId, (tx) =>
     tx.insert(pushNotificationPreferences).values({
+      channel: "none",
       enabled: false,
+      eventFamily: "content",
       leagueId,
       type: "league.blog.published",
       userId: userBId,

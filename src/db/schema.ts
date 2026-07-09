@@ -446,6 +446,19 @@ export const pushNotificationType = pgEnum("push_notification_type", [
   "content.superseded",
 ]);
 
+export const notificationEventFamily = pgEnum("notification_event_family", [
+  "content",
+  "lore",
+  "bets",
+  "arena",
+]);
+
+export const notificationChannel = pgEnum("notification_channel", [
+  "push",
+  "digest",
+  "none",
+]);
+
 export const leagueWebhookTargetKind = pgEnum("league_webhook_target_kind", [
   "discord",
   "generic",
@@ -3059,19 +3072,25 @@ export const pushNotificationPreferences = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     type: pushNotificationType("type").notNull(),
+    eventFamily: notificationEventFamily("event_family").notNull(),
+    channel: notificationChannel("channel").notNull().default("push"),
     enabled: boolean("enabled").notNull().default(true),
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("push_notification_preferences_user_type_unique").on(
+    uniqueIndex("push_notification_preferences_user_family_unique").on(
       table.leagueId,
       table.userId,
-      table.type,
+      table.eventFamily,
     ),
-    index("push_notification_preferences_league_type_idx").on(
+    index("push_notification_preferences_league_family_channel_idx").on(
       table.leagueId,
-      table.type,
-      table.enabled,
+      table.eventFamily,
+      table.channel,
+    ),
+    check(
+      "push_notification_preferences_enabled_matches_channel",
+      sql`${table.enabled} = (${table.channel} <> 'none')`,
     ),
     pgPolicy("push_notification_preferences_isolation", {
       for: "all",

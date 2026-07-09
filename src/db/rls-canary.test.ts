@@ -803,13 +803,17 @@ beforeAll(async () => {
     .insert(pushNotificationPreferences)
     .values([
       {
+        channel: "none",
         enabled: false,
+        eventFamily: "arena",
         leagueId: leagueA,
         type: "arena.rival.passed",
         userId: userA.id,
       },
       {
+        channel: "none",
         enabled: false,
+        eventFamily: "arena",
         leagueId: leagueB,
         type: "arena.rival.passed",
         userId: userB.id,
@@ -1462,7 +1466,9 @@ describe("two-league isolation under withLeagueContext", () => {
       await sqlstateOf(
         withLeagueContext(canary.db, leagueA, (tx) =>
           tx.insert(pushNotificationPreferences).values({
+            channel: "none",
             enabled: false,
+            eventFamily: "lore",
             leagueId: leagueB,
             type: "league.lore.vote.opened",
             userId: userB.id,

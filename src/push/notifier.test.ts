@@ -118,6 +118,16 @@ afterAll(async () => {
 describe("WebPushNotifier", () => {
   it("fans out league notifications to active subscriptions", async () => {
     await seedSubscription("active");
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(pushNotificationPreferences).values({
+        channel: "push",
+        enabled: true,
+        eventFamily: "content",
+        leagueId,
+        type: PUSH_EVENTS.leagueBlogPublished,
+        userId,
+      });
+    });
     const calls: { endpoint: string; payload: PushNotificationPayload }[] = [];
     const sendNotification = vi.fn(async (subscription, payload) => {
       calls.push({
@@ -195,7 +205,9 @@ describe("WebPushNotifier", () => {
     await seedSubscription("personal-opt-out");
     await withLeagueContext(handle.db, leagueId, async (tx) => {
       await tx.insert(pushNotificationPreferences).values({
+        channel: "none",
         enabled: false,
+        eventFamily: "arena",
         leagueId,
         type: PUSH_EVENTS.arenaRivalPassed,
         userId,
@@ -233,7 +245,9 @@ describe("WebPushNotifier", () => {
       await tx
         .insert(pushNotificationPreferences)
         .values({
+          channel: "none",
           enabled: false,
+          eventFamily: "lore",
           leagueId,
           type: PUSH_EVENTS.leagueLoreVoteOpened,
           userId,
@@ -242,9 +256,9 @@ describe("WebPushNotifier", () => {
           target: [
             pushNotificationPreferences.leagueId,
             pushNotificationPreferences.userId,
-            pushNotificationPreferences.type,
+            pushNotificationPreferences.eventFamily,
           ],
-          set: { enabled: false },
+          set: { channel: "none", enabled: false },
         });
     });
     const calls: { endpoint: string; payload: PushNotificationPayload }[] = [];

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   db: {},
   getDb: vi.fn(),
   requireSession: vi.fn(),
+  setNotificationChannelPreference: vi.fn(),
   setPushNotificationPreference: vi.fn(),
 }));
 
@@ -18,6 +19,8 @@ vi.mock("@/db", () => ({
 }));
 
 vi.mock("@/push", () => ({
+  NOTIFICATION_CHANNEL_VALUES: ["push", "digest", "none"],
+  NOTIFICATION_EVENT_FAMILY_VALUES: ["content", "lore", "bets", "arena"],
   PUSH_EVENT_VALUES: [
     "league.bet.settled",
     "league.blog.published",
@@ -27,6 +30,7 @@ vi.mock("@/push", () => ({
     "content.retracted",
     "content.superseded",
   ],
+  setNotificationChannelPreference: mocks.setNotificationChannelPreference,
   setPushNotificationPreference: mocks.setPushNotificationPreference,
 }));
 
@@ -46,7 +50,53 @@ afterEach(() => {
 });
 
 describe("PATCH /api/push/preferences", () => {
-  it("writes a membership-guarded push preference for the session user", async () => {
+  it("writes a membership-guarded channel preference for the session user", async () => {
+    mocks.getDb.mockReturnValue(mocks.db);
+    mocks.requireSession.mockResolvedValue({
+      ok: true,
+      value: { userId },
+    });
+    mocks.setNotificationChannelPreference.mockResolvedValue({
+      ok: true,
+      value: {
+        channel: "digest",
+        enabled: true,
+        eventFamily: "content",
+        id: "pref-1",
+        leagueId,
+        type: "league.blog.published",
+        userId,
+      },
+    });
+
+    const response = await PATCH(
+      request({
+        channel: "digest",
+        eventFamily: "content",
+        leagueId,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      channel: "digest",
+      eventFamily: "content",
+      leagueId,
+      userId,
+    });
+    expect(mocks.setNotificationChannelPreference).toHaveBeenCalledWith(
+      { db: mocks.db },
+      {
+        channel: "digest",
+        eventFamily: "content",
+        leagueId,
+        userId,
+      },
+    );
+    expect(mocks.setPushNotificationPreference).not.toHaveBeenCalled();
+  });
+
+  it("keeps legacy push event preference payloads compatible", async () => {
     mocks.getDb.mockReturnValue(mocks.db);
     mocks.requireSession.mockResolvedValue({
       ok: true,
@@ -55,7 +105,9 @@ describe("PATCH /api/push/preferences", () => {
     mocks.setPushNotificationPreference.mockResolvedValue({
       ok: true,
       value: {
+        channel: "none",
         enabled: false,
+        eventFamily: "arena",
         id: "pref-1",
         leagueId,
         type: "arena.rival.passed",
@@ -87,6 +139,26 @@ describe("PATCH /api/push/preferences", () => {
         userId,
       },
     );
+    expect(mocks.setNotificationChannelPreference).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown channel preferences", async () => {
+    mocks.requireSession.mockResolvedValue({
+      ok: true,
+      value: { userId },
+    });
+
+    const response = await PATCH(
+      request({
+        channel: "sms",
+        eventFamily: "content",
+        leagueId,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.setNotificationChannelPreference).not.toHaveBeenCalled();
+    expect(mocks.setPushNotificationPreference).not.toHaveBeenCalled();
   });
 
   it("rejects unknown push event types", async () => {
@@ -104,6 +176,7 @@ describe("PATCH /api/push/preferences", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(mocks.setNotificationChannelPreference).not.toHaveBeenCalled();
     expect(mocks.setPushNotificationPreference).not.toHaveBeenCalled();
   });
 
@@ -126,6 +199,7 @@ describe("PATCH /api/push/preferences", () => {
     );
 
     expect(response.status).toBe(401);
+    expect(mocks.setNotificationChannelPreference).not.toHaveBeenCalled();
     expect(mocks.setPushNotificationPreference).not.toHaveBeenCalled();
   });
 });

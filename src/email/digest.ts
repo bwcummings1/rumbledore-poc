@@ -11,8 +11,8 @@ import {
   pushNotificationPreferences,
   users,
 } from "@/db/schema";
+import { DIGEST_NOTIFICATION_EVENT_FAMILY } from "@/push/interfaces";
 
-const DIGEST_EVENT_TYPE = "league.blog.published";
 const MAX_DIGEST_ERROR_LENGTH = 500;
 const DEFAULT_DIGEST_LIMIT = 100;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -405,15 +405,18 @@ async function loadDigestSource(
         and(
           eq(pushNotificationPreferences.leagueId, input.leagueId),
           eq(pushNotificationPreferences.userId, users.id),
-          eq(pushNotificationPreferences.type, DIGEST_EVENT_TYPE),
+          eq(
+            pushNotificationPreferences.eventFamily,
+            DIGEST_NOTIFICATION_EVENT_FAMILY,
+          ),
         ),
       )
       .where(
         and(
           eq(members.organizationId, input.leagueId),
           or(
-            isNull(pushNotificationPreferences.enabled),
-            eq(pushNotificationPreferences.enabled, true),
+            isNull(pushNotificationPreferences.channel),
+            eq(pushNotificationPreferences.channel, "digest"),
           ),
         ),
       )
