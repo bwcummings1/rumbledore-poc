@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -136,7 +137,13 @@ async function getCentralNewsRows(
         title: contentItems.title,
       })
       .from(contentItems)
-      .where(and(isNull(contentItems.leagueId), eq(contentItems.kind, "news")))
+      .where(
+        and(
+          isNull(contentItems.leagueId),
+          eq(contentItems.kind, "news"),
+          contentItemIsPublished(),
+        ),
+      )
       .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
       .limit(pageLimit)
       .offset(offset);
@@ -251,6 +258,7 @@ async function getForYourLeagueRail(
           eq(leagueFeedReferences.leagueId, leagueId),
           isNull(contentItems.leagueId),
           eq(contentItems.kind, "news"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(

@@ -4,6 +4,8 @@ export const PUSH_EVENT_VALUES = [
   "league.lore.vote.opened",
   "league.lore.canonized",
   "arena.rival.passed",
+  "content.retracted",
+  "content.superseded",
 ] as const;
 
 export const PUSH_EVENTS = {
@@ -12,6 +14,8 @@ export const PUSH_EVENTS = {
   leagueBlogPublished: "league.blog.published",
   leagueLoreCanonized: "league.lore.canonized",
   leagueLoreVoteOpened: "league.lore.vote.opened",
+  contentRetracted: "content.retracted",
+  contentSuperseded: "content.superseded",
 } as const satisfies Record<string, (typeof PUSH_EVENT_VALUES)[number]>;
 
 export type PushEventType = (typeof PUSH_EVENT_VALUES)[number];

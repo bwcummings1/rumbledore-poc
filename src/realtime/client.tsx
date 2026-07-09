@@ -31,7 +31,11 @@ const CHANNEL_REFRESH_EVENTS: Record<
   Exclude<LeagueRealtimeChannelKind, "presence">,
   readonly RealtimeEventType[]
 > = {
-  blog: [REALTIME_EVENTS.blogPublished],
+  blog: [
+    REALTIME_EVENTS.blogPublished,
+    REALTIME_EVENTS.contentRetracted,
+    REALTIME_EVENTS.contentSuperseded,
+  ],
   history: [REALTIME_EVENTS.historyImportProgress],
   leaderboard: [REALTIME_EVENTS.leagueLeaderboardUpdated],
   lore: [REALTIME_EVENTS.loreVoteOpened, REALTIME_EVENTS.loreCanonized],
@@ -506,7 +510,11 @@ export function CentralNewsRealtimeRefresh() {
   const subscriptions = useMemo(
     (): RealtimeRefreshSubscription[] => [
       {
-        events: [REALTIME_EVENTS.centralNewsUpdated],
+        events: [
+          REALTIME_EVENTS.centralNewsUpdated,
+          REALTIME_EVENTS.contentRetracted,
+          REALTIME_EVENTS.contentSuperseded,
+        ],
         topic: "central:news",
       },
     ],

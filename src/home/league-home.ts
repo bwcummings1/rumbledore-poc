@@ -5,6 +5,7 @@ import {
   type PersonaBylineMap,
   resolvePersonaByline,
 } from "@/ai/persona-display";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -795,6 +796,7 @@ export async function getLeagueHomeData(
         and(
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(desc(contentItems.publishedAt))
@@ -884,6 +886,7 @@ export async function getLeagueHomeData(
                 and(
                   eq(contentItems.leagueId, input.leagueId),
                   eq(contentItems.kind, "blog"),
+                  contentItemIsPublished(),
                   or(...searchConditions),
                 ),
               )

@@ -356,6 +356,34 @@ describe("publication articles", () => {
     );
   });
 
+  it("does not load a retracted central article through the public article reader", async () => {
+    const [hidden] = await handle.db
+      .insert(contentItems)
+      .values({
+        body: "Hidden central article body.",
+        contentHash: `${marker}-central-hidden-article-hash`,
+        dedupKey: `${marker}-central-hidden-article`,
+        kind: "news",
+        leagueId: null,
+        publishedAt: new Date("2099-06-11T17:00:00.000Z"),
+        source: "Hidden Wire",
+        sourceUrl: `https://news.example.com/${marker}/central-hidden-article`,
+        status: "retracted",
+        summary: "Hidden central article summary.",
+        title: "Hidden central article",
+      })
+      .returning({ id: contentItems.id });
+    if (!hidden) {
+      throw new Error("hidden central article was not inserted");
+    }
+
+    await expect(
+      getCentralNewsArticleData(handle.db, {
+        articleId: hidden.id,
+      }),
+    ).resolves.toEqual({ status: "not_found" });
+  });
+
   it("returns a league-scoped article with persona byline and scoped related stories", async () => {
     const result = await getLeaguePressArticleData(handle.db, {
       leagueId: leagueAId,
@@ -439,6 +467,37 @@ describe("publication articles", () => {
     expect(
       result.data.relatedStories.map((story) => story.headline),
     ).not.toContain("League B should not leak");
+  });
+
+  it("does not load a superseded league article through the press reader", async () => {
+    const [hidden] = await withLeagueContext(handle.db, leagueAId, async (tx) =>
+      tx
+        .insert(contentItems)
+        .values({
+          authorPersona: "analyst",
+          body: "Hidden league article body.",
+          contentHash: `${marker}-league-hidden-article-hash`,
+          dedupKey: `${marker}-league-hidden-article`,
+          kind: "blog",
+          leagueId: leagueAId,
+          publishedAt: new Date("2026-06-11T18:00:00.000Z"),
+          status: "superseded",
+          summary: "Hidden league article summary.",
+          title: "Hidden league article",
+        })
+        .returning({ id: contentItems.id }),
+    );
+    if (!hidden) {
+      throw new Error("hidden league article was not inserted");
+    }
+
+    await expect(
+      getLeaguePressArticleData(handle.db, {
+        leagueId: leagueAId,
+        postId: hidden.id,
+        userId,
+      }),
+    ).resolves.toEqual({ status: "not_found" });
   });
 
   it("does not expose league articles to non-members", async () => {

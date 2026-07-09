@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -202,7 +203,13 @@ async function centralNewsRows(db: Db): Promise<CentralNewsWireRow[]> {
       title: contentItems.title,
     })
     .from(contentItems)
-    .where(and(isNull(contentItems.leagueId), eq(contentItems.kind, "news")))
+    .where(
+      and(
+        isNull(contentItems.leagueId),
+        eq(contentItems.kind, "news"),
+        contentItemIsPublished(),
+      ),
+    )
     .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
     .limit(CANDIDATE_LIMIT);
 }

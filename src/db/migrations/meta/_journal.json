@@ -421,6 +421,13 @@
       "when": 1781570000000,
       "tag": "0059_provider_code_decoding",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1781573600000,
+      "tag": "0060_content_lifecycle",
+      "breakpoints": true
     }
   ]
 }

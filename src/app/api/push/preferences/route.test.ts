@@ -24,6 +24,8 @@ vi.mock("@/push", () => ({
     "league.lore.vote.opened",
     "league.lore.canonized",
     "arena.rival.passed",
+    "content.retracted",
+    "content.superseded",
   ],
   setPushNotificationPreference: mocks.setPushNotificationPreference,
 }));

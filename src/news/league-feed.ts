@@ -4,6 +4,7 @@ import {
   resolvePersonaByline,
 } from "@/ai/persona-display";
 import type { AiPersona } from "@/ai/personas";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -207,6 +208,7 @@ export async function upsertLeagueFeedReference(
           eq(contentItems.id, input.contentItemId),
           isNull(contentItems.leagueId),
           eq(contentItems.kind, "news"),
+          contentItemIsPublished(),
         ),
       )
       .limit(1);
@@ -351,6 +353,7 @@ export async function getLeagueFeedData(
           and(
             eq(contentItems.leagueId, input.leagueId),
             inArray(contentItems.kind, ["blog", "ingest_event"]),
+            contentItemIsPublished(),
           ),
         )
         .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
@@ -393,6 +396,7 @@ export async function getLeagueFeedData(
             eq(leagueFeedReferences.leagueId, input.leagueId),
             isNull(contentItems.leagueId),
             eq(contentItems.kind, "news"),
+            contentItemIsPublished(),
           ),
         )
         .orderBy(

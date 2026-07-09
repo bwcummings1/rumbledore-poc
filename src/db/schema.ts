@@ -220,6 +220,12 @@ export const contentItemKind = pgEnum("content_item_kind", [
   "ingest_event",
 ]);
 
+export const contentItemStatus = pgEnum("content_item_status", [
+  "published",
+  "superseded",
+  "retracted",
+]);
+
 export const aiPersona = pgEnum("ai_persona", [
   "commissioner",
   "analyst",
@@ -420,6 +426,8 @@ export const pushNotificationType = pgEnum("push_notification_type", [
   "league.lore.vote.opened",
   "league.lore.canonized",
   "arena.rival.passed",
+  "content.retracted",
+  "content.superseded",
 ]);
 
 export interface LeagueFeedMatchedEntity {
@@ -2854,6 +2862,14 @@ export const contentItems = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    status: contentItemStatus("status").notNull().default("published"),
+    supersedesContentItemId: uuid("supersedes_content_item_id").references(
+      (): AnyPgColumn => contentItems.id,
+      { onDelete: "set null" },
+    ),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     dedupKey: text("dedup_key").notNull(),
     contentHash: text("content_hash").notNull(),
     metadata: jsonb("metadata")
@@ -2877,8 +2893,18 @@ export const contentItems = pgTable(
       table.leagueId,
       table.publishedAt,
     ),
+    index("content_item_league_status_published_idx").on(
+      table.leagueId,
+      table.status,
+      table.publishedAt,
+    ),
     index("content_item_central_published_idx").on(
       table.kind,
+      table.publishedAt,
+    ),
+    index("content_item_central_status_published_idx").on(
+      table.kind,
+      table.status,
       table.publishedAt,
     ),
     pgPolicy("content_item_scope_policy", {

@@ -4,6 +4,7 @@ import {
   resolvePersonaByline,
 } from "@/ai/persona-display";
 import type { PublicationStory } from "@/components/publication/story";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
@@ -593,6 +594,7 @@ export async function getCentralNewsArticleData(
         eq(contentItems.id, input.articleId),
         isNull(contentItems.leagueId),
         eq(contentItems.kind, "news"),
+        contentItemIsPublished(),
       ),
     )
     .limit(1);
@@ -619,7 +621,13 @@ export async function getCentralNewsArticleData(
       title: contentItems.title,
     })
     .from(contentItems)
-    .where(and(isNull(contentItems.leagueId), eq(contentItems.kind, "news")))
+    .where(
+      and(
+        isNull(contentItems.leagueId),
+        eq(contentItems.kind, "news"),
+        contentItemIsPublished(),
+      ),
+    )
     .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
     .limit(RELATED_CANDIDATE_LIMIT);
 
@@ -752,6 +760,7 @@ export async function getLeaguePressArticleData(
           eq(contentItems.id, input.postId),
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .limit(1);
@@ -798,6 +807,7 @@ export async function getLeaguePressArticleData(
         and(
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
@@ -829,6 +839,7 @@ export async function getLeaguePressArticleData(
           eq(leagueFeedReferences.leagueId, input.leagueId),
           isNull(contentItems.leagueId),
           eq(contentItems.kind, "news"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(

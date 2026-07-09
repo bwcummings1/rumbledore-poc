@@ -236,6 +236,18 @@ describe("getLeagueHomeData", () => {
         summary: "Only the requested league should see this summary.",
         title: "Commissioner: Home league storyline",
       });
+      await tx.insert(contentItems).values({
+        authorPersona: "commissioner",
+        body: "Hidden home storyline body.",
+        contentHash: `${marker}-hidden-storyline-hash`,
+        dedupKey: `${marker}-hidden-storyline`,
+        kind: "blog",
+        leagueId,
+        publishedAt: new Date("2026-06-13T00:00:00.000Z"),
+        status: "retracted",
+        summary: "Hidden home storyline summary.",
+        title: "Commissioner: Hidden home storyline",
+      });
     });
 
     await withLeagueContext(handle.db, otherLeague.id, async (tx) => {

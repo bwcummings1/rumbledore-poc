@@ -218,6 +218,18 @@ beforeAll(async () => {
         summary: "Latest alpha summary",
         title: "Beta Gets Dragged Into Prime Time",
       },
+      {
+        authorPersona: "commissioner",
+        body: "Hidden alpha body",
+        contentHash: `${marker}-alpha-hidden-hash`,
+        dedupKey: `${marker}-alpha-hidden`,
+        kind: "blog",
+        leagueId: alphaLeagueId,
+        publishedAt: new Date("2026-06-14T00:00:00.000Z"),
+        status: "retracted",
+        summary: "Hidden alpha summary",
+        title: "Hidden Alpha Press",
+      },
     ]);
   });
 

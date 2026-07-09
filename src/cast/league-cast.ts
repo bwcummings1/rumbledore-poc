@@ -4,6 +4,7 @@ import {
   type AiPersona,
   DEFAULT_PERSONA_CARDS,
 } from "@/ai/personas";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -353,6 +354,7 @@ export async function getLeagueCastPresenceData(
         and(
           eq(contentItems.leagueId, input.leagueId),
           eq(contentItems.kind, "blog"),
+          contentItemIsPublished(),
         ),
       )
       .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))

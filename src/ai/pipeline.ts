@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getArenaLeaderboardData } from "@/betting/arena";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import { DEFAULT_ENTITLEMENT_CAPS } from "@/core/env/schema";
 import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
@@ -486,12 +487,14 @@ async function loadNearestBlogMemories({
         textContent: aiMemory.textContent,
       })
       .from(aiMemory)
+      .innerJoin(contentItems, eq(aiMemory.contentItemId, contentItems.id))
       .where(
         and(
           eq(aiMemory.leagueId, input.leagueId),
           eq(aiMemory.source, "blog_post"),
           eq(aiMemory.embeddingDimensions, embedding.length),
           eq(aiMemory.embeddingModel, deps.embeddings.model),
+          contentItemIsPublished(),
           sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
         ),
       )
@@ -1323,6 +1326,7 @@ async function prepareGeneration({
         and(
           eq(contentItems.id, existingRun.contentItemId),
           eq(contentItems.leagueId, input.leagueId),
+          contentItemIsPublished(),
         ),
       )
       .limit(1);
@@ -1807,6 +1811,7 @@ async function prepareGeneration({
       and(
         eq(contentItems.leagueId, input.leagueId),
         eq(contentItems.kind, "blog"),
+        contentItemIsPublished(),
       ),
     )
     .orderBy(desc(contentItems.publishedAt))
@@ -1820,10 +1825,12 @@ async function prepareGeneration({
       textContent: aiMemory.textContent,
     })
     .from(aiMemory)
+    .innerJoin(contentItems, eq(aiMemory.contentItemId, contentItems.id))
     .where(
       and(
         eq(aiMemory.leagueId, input.leagueId),
         eq(aiMemory.source, "blog_post"),
+        contentItemIsPublished(),
         sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
       ),
     )
@@ -2056,6 +2063,7 @@ async function publishDraft({
                 eq(contentItems.leagueId, input.leagueId),
                 eq(contentItems.kind, "blog"),
                 eq(contentItems.dedupKey, dedupKey),
+                contentItemIsPublished(),
               ),
             )
             .limit(1)
