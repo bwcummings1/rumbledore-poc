@@ -6,6 +6,7 @@ import { LeagueBlogPostView } from "./league-blog-post-view";
 const data: LeaguePressArticleData = {
   article: {
     body: "## Turning point\n\nThe rivalry tilted toward Fixture Team 01.\n\n> Fixture Team 02 still has a counterpunch waiting.\n\n- A waiver panic\n- A title-game grudge",
+    bodyBlocks: [],
     byline: "Narrator",
     bylineDetail: "Story-driven recaps that connect results to league history.",
     canonCitations: [

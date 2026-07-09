@@ -703,6 +703,14 @@ describe("generateLeagueBlogPost", () => {
     )?.metadata;
 
     expect(recapMetadata).toMatchObject({
+      article: {
+        bodyBlocks: expect.arrayContaining([
+          expect.objectContaining({
+            embed: expect.objectContaining({ kind: "scoreboard_strip" }),
+            type: "embed",
+          }),
+        ]),
+      },
       content_type: "weekly_recap",
       structure: {
         lead: expect.stringContaining("templates Team"),
@@ -710,6 +718,14 @@ describe("generateLeagueBlogPost", () => {
       },
     });
     expect(rankingMetadata).toMatchObject({
+      article: {
+        bodyBlocks: expect.arrayContaining([
+          expect.objectContaining({
+            embed: expect.objectContaining({ kind: "standings_movement" }),
+            type: "embed",
+          }),
+        ]),
+      },
       content_type: "power_rankings",
       structure: {
         rankings: [

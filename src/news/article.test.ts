@@ -9,6 +9,9 @@ import { withLeagueContext } from "@/db/rls";
 import {
   aiPersonaCards,
   contentItems,
+  fantasyMatchups,
+  fantasyMembers,
+  fantasyTeams,
   leagues,
   loreClaims,
   members,
@@ -163,6 +166,76 @@ beforeAll(async () => {
     throw new Error("lore citation claims were not inserted");
   }
 
+  await withLeagueContext(handle.db, leagueAId, async (tx) => {
+    await tx.insert(fantasyMembers).values([
+      {
+        contentHash: `${marker}-member-1`,
+        displayName: "Manager One",
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        provider: "espn",
+        providerMemberId: "member-1",
+        season: 2026,
+      },
+      {
+        contentHash: `${marker}-member-2`,
+        displayName: "Manager Two",
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        provider: "espn",
+        providerMemberId: "member-2",
+        season: 2026,
+      },
+    ]);
+    await tx.insert(fantasyTeams).values([
+      {
+        abbrev: "FT1",
+        contentHash: `${marker}-team-1`,
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        losses: 1,
+        name: "Fixture Team 01",
+        ownerMemberIds: ["member-1"],
+        pointsAgainst: 311.4,
+        pointsFor: 344.2,
+        provider: "espn",
+        providerTeamId: "1",
+        season: 2026,
+        wins: 3,
+      },
+      {
+        abbrev: "FT2",
+        contentHash: `${marker}-team-2`,
+        leagueId: leagueAId,
+        leagueProviderId: `${marker}-league-a`,
+        losses: 2,
+        name: "Fixture Team 02",
+        ownerMemberIds: ["member-2"],
+        pointsAgainst: 320.1,
+        pointsFor: 300.6,
+        provider: "espn",
+        providerTeamId: "2",
+        season: 2026,
+        wins: 2,
+      },
+    ]);
+    await tx.insert(fantasyMatchups).values({
+      awayScore: 117.9,
+      awayTeamProviderId: "2",
+      contentHash: `${marker}-matchup-1`,
+      homeScore: 131.2,
+      homeTeamProviderId: "1",
+      leagueId: leagueAId,
+      leagueProviderId: `${marker}-league-a`,
+      provider: "espn",
+      providerMatchupId: `${marker}-week-1`,
+      scoringPeriod: 1,
+      season: 2026,
+      status: "final",
+      winner: "home",
+    });
+  });
+
   const centralRows = await handle.db
     .insert(contentItems)
     .values([
@@ -252,6 +325,35 @@ beforeAll(async () => {
               type: "weekly_recap",
               upsetOrBlowout: "The favorite survived by a field goal.",
             },
+            bodyBlocks: [
+              { text: "Rivalry turn", type: "heading" },
+              {
+                text: "Fixture Team 01 beat Fixture Team 02 with the scoreboard in view.",
+                type: "paragraph",
+              },
+              {
+                embed: {
+                  kind: "scoreboard_strip",
+                  scoringPeriod: 1,
+                  season: 2026,
+                  title: "Week 1 scoreboard",
+                },
+                type: "embed",
+              },
+              {
+                embed: {
+                  kind: "standings_movement",
+                  limit: 3,
+                  season: 2026,
+                  title: "Standings movement",
+                },
+                type: "embed",
+              },
+              {
+                embed: { kind: "future_embed" },
+                type: "embed",
+              },
+            ],
             tags: ["Fixture Team 01", "Rivalry Week"],
           },
           publishedAt: new Date("2026-06-11T14:00:00.000Z"),
@@ -444,6 +546,52 @@ describe("publication articles", () => {
         title: "Recap ledger",
       },
     ]);
+    expect(result.data.article.bodyBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          embed: expect.objectContaining({
+            kind: "scoreboard_strip",
+            matchups: [
+              expect.objectContaining({
+                awayLabel: "FT2",
+                awayScore: 117.9,
+                homeLabel: "FT1",
+                homeScore: 131.2,
+                status: "final",
+              }),
+            ],
+            scoringPeriod: 1,
+            title: "Week 1 scoreboard",
+          }),
+          type: "embed",
+        }),
+        expect.objectContaining({
+          embed: expect.objectContaining({
+            kind: "standings_movement",
+            rows: [
+              expect.objectContaining({
+                managerNames: ["Manager One"],
+                rank: 1,
+                record: "3-1-0",
+                team: "Fixture Team 01",
+              }),
+              expect.objectContaining({
+                managerNames: ["Manager Two"],
+                rank: 2,
+                record: "2-2-0",
+                team: "Fixture Team 02",
+              }),
+            ],
+            title: "Standings movement",
+          }),
+          type: "embed",
+        }),
+        expect.objectContaining({
+          embed: expect.objectContaining({ kind: "unknown" }),
+          type: "embed",
+        }),
+      ]),
+    );
     expect(result.data.article.canonCitations).toEqual([
       {
         claimId: canonCitationId,

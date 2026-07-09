@@ -1,3 +1,7 @@
+import {
+  defaultContentEmbedForArticle,
+  normalizeContentEmbed,
+} from "@/content/embeds";
 import { AppError } from "@/core/result";
 import {
   getLeaguePublicationSectionBySlug,
@@ -65,6 +69,10 @@ function normalizeBodyBlock(
         ? { items, ordered: block.ordered === true, type: "list" }
         : null;
     }
+    case "embed": {
+      const embed = normalizeContentEmbed(block.embed);
+      return embed ? { embed, type: "embed" } : null;
+    }
   }
 }
 
@@ -114,10 +122,37 @@ export function bodyBlocksToMarkdown(
               block.ordered ? `${index + 1}. ${item}` : `- ${item}`,
             )
             .join("\n");
+        case "embed":
+          return "";
       }
       return "";
     })
+    .filter((block) => block.trim().length > 0)
     .join("\n\n");
+}
+
+function bodyBlocksWithDefaultEmbed(
+  blocks: readonly BlogDraftBodyBlock[],
+  options: {
+    contentType: AiContentType;
+    context: LeagueBlogContext;
+  },
+): BlogDraftBodyBlock[] {
+  if (blocks.some((block) => block.type === "embed")) {
+    return [...blocks];
+  }
+
+  const embed = defaultContentEmbedForArticle({
+    contentType: options.contentType,
+    league: options.context.league,
+  });
+  if (!embed) {
+    return [...blocks];
+  }
+
+  const embedBlock: BlogDraftBodyBlock = { embed, type: "embed" };
+  const [first, ...rest] = blocks;
+  return first ? [first, embedBlock, ...rest] : [embedBlock];
 }
 
 function draftReferencesLeagueEntity(
@@ -155,7 +190,7 @@ export function validateBlogDraft(
   const rawTags = Array.isArray(draft.tags) ? draft.tags : [];
   const tags = normalizeTags(rawTags);
   const rawBodyBlocks = Array.isArray(draft.bodyBlocks) ? draft.bodyBlocks : [];
-  const bodyBlocks = rawBodyBlocks
+  const normalizedBodyBlocks = rawBodyBlocks
     .map(normalizeBodyBlock)
     .filter((block): block is BlogDraftBodyBlock => block !== null);
 
@@ -180,6 +215,10 @@ export function validateBlogDraft(
     contentType,
     context: options.context,
     structure: draft.structure,
+  });
+  const bodyBlocks = bodyBlocksWithDefaultEmbed(normalizedBodyBlocks, {
+    contentType,
+    context: options.context,
   });
 
   if (!section || tags.length === 0 || bodyBlocks.length < 2) {

@@ -12,6 +12,7 @@ const baseData: PublicationArticleViewData = {
       "- Bench leverage arrived early",
       "- The favorite lost margin",
     ].join("\n\n"),
+    bodyBlocks: [],
     byline: "The Narrator",
     bylineDetail: "Narrator - weaves the week into legend",
     canonCitations: [
@@ -253,4 +254,103 @@ test("publication article view links superseded posts to their replacement", () 
   expect(
     screen.getByRole("link", { name: /updated version/i }).getAttribute("href"),
   ).toBe("/leagues/league-1/press/post-3");
+});
+
+test("publication article view renders live embeds and drops unknown embeds", () => {
+  render(
+    <PublicationArticleView
+      data={{
+        ...baseData,
+        article: {
+          ...baseData.article,
+          body: "Fallback only body should not replace structured blocks.",
+          bodyBlocks: [
+            { text: "Week turns", type: "heading" },
+            {
+              text: "Fixture Team 01 has live data in the article body.",
+              type: "paragraph",
+            },
+            {
+              embed: {
+                id: "scoreboard:2026:1:2",
+                kind: "scoreboard_strip",
+                matchups: [
+                  {
+                    awayLabel: "FT2",
+                    awayScore: 117.9,
+                    homeLabel: "FT1",
+                    homeScore: 131.2,
+                    id: "matchup-1",
+                    kickoffLabel: "Week 1",
+                    status: "final",
+                    winProbability: 100,
+                  },
+                ],
+                scoringPeriod: 1,
+                season: 2026,
+                title: "Week 1 scoreboard",
+              },
+              type: "embed",
+            },
+            {
+              embed: {
+                id: "standings:2026:3:3",
+                kind: "standings_movement",
+                rows: [
+                  {
+                    delta: 1,
+                    id: "1",
+                    managerNames: ["Manager One"],
+                    pointsFor: 344.2,
+                    previousRank: 2,
+                    rank: 1,
+                    record: "3-1-0",
+                    team: "Fixture Team 01",
+                  },
+                ],
+                season: 2026,
+                title: "Standings movement",
+              },
+              type: "embed",
+            },
+            {
+              embed: {
+                id: "h2h:2026:one-two:4",
+                kind: "h2h_sparkline",
+                personAName: "Manager One",
+                personBName: "Manager Two",
+                points: [
+                  {
+                    label: "2026 W1",
+                    personAScore: 131.2,
+                    personBScore: 117.9,
+                    resultForA: "win",
+                  },
+                ],
+                season: 2026,
+                title: "Manager One vs Manager Two",
+              },
+              type: "embed",
+            },
+            {
+              embed: { id: "future:embed", kind: "unknown" },
+              type: "embed",
+            },
+          ],
+        },
+      }}
+    />,
+  );
+
+  expect(screen.getByLabelText("Week 1 scoreboard")).toBeDefined();
+  expect(screen.getByText("FT1")).toBeDefined();
+  expect(screen.getByLabelText("Standings movement")).toBeDefined();
+  expect(screen.getAllByText("Fixture Team 01").length).toBeGreaterThan(0);
+  expect(screen.getByLabelText("Manager One vs Manager Two")).toBeDefined();
+  expect(screen.queryByText("future:embed")).toBeNull();
+  expect(
+    screen.queryByText(
+      "Fallback only body should not replace structured blocks.",
+    ),
+  ).toBeNull();
 });

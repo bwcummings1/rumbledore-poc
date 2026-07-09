@@ -1,3 +1,4 @@
+import type { ContentEmbedBodyBlock } from "@/content/embeds";
 import type { LeaguePublicationSectionId } from "@/news/sections";
 import type { AiContentType, BlogContentStructure } from "./content-types";
 import type { AiPersona, ToneProfile } from "./personas";
@@ -326,7 +327,8 @@ export type BlogDraftBodyBlock =
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "quote"; text: string }
-  | { type: "list"; ordered?: boolean; items: string[] };
+  | { type: "list"; ordered?: boolean; items: string[] }
+  | ContentEmbedBodyBlock;
 
 export interface BlogDraft {
   contentType: AiContentType;

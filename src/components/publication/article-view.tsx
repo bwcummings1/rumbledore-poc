@@ -13,20 +13,16 @@ import type { ComponentPropsWithoutRef } from "react";
 import { EditLedgerFeed } from "@/components/curation/edit-ledger-feed";
 import { cn } from "@/lib/utils";
 import type {
+  PublicationArticleBodyBlock,
   PublicationArticleInlineDataBlock,
   PublicationArticleViewData,
 } from "@/news/article";
 import { buttonVariants } from "../ui/button";
 import { StatusPill } from "../ui/status-pill";
+import { ArticleEmbedBlock } from "./article-embeds";
 import { EditorialArticleActions } from "./editorial-actions";
 import { ReadingProgress } from "./reading-progress";
 import { PublicationStoryCard } from "./story-card";
-
-type BodyBlock =
-  | { type: "heading"; text: string }
-  | { type: "paragraph"; text: string }
-  | { type: "quote"; text: string }
-  | { type: "list"; ordered: boolean; items: string[] };
 
 function formatPublishedAt(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -43,7 +39,7 @@ function cleanLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function parseBodyBlock(block: string): BodyBlock | null {
+function parseBodyBlock(block: string): PublicationArticleBodyBlock | null {
   const lines = block
     .split("\n")
     .map((line) => line.trim())
@@ -88,12 +84,12 @@ function parseBodyBlock(block: string): BodyBlock | null {
 export function parseArticleBodyBlocks(
   body: string,
   fallback: string,
-): BodyBlock[] {
+): PublicationArticleBodyBlock[] {
   const text = body.trim().length > 0 ? body : fallback;
   return text
     .split(/\n{2,}/)
     .map(parseBodyBlock)
-    .filter((block): block is BodyBlock => block !== null);
+    .filter((block): block is PublicationArticleBodyBlock => block !== null);
 }
 
 function tagHref(baseHref: string, tag: string): string {
@@ -143,7 +139,7 @@ export function EditorialProse({
 }
 
 function renderBodyBlock(
-  block: BodyBlock,
+  block: PublicationArticleBodyBlock,
   index: number,
   options: { pullQuote: boolean; quoteCaption: string },
 ) {
@@ -196,11 +192,18 @@ function renderBodyBlock(
     }
     case "paragraph":
       return <p key={`${index}-${block.text}`}>{block.text}</p>;
+    case "embed":
+      return (
+        <ArticleEmbedBlock
+          embed={block.embed}
+          key={`${index}-${block.embed.kind}-${block.embed.id}`}
+        />
+      );
   }
 }
 
 function renderArticleBodyBlocks(
-  blocks: readonly BodyBlock[],
+  blocks: readonly PublicationArticleBodyBlock[],
   input: { quoteCaption: string },
 ) {
   let pullQuoteCount = 0;
@@ -314,10 +317,10 @@ export function PublicationArticleView({
 }: {
   data: PublicationArticleViewData;
 }) {
-  const bodyBlocks = parseArticleBodyBlocks(
-    data.article.body,
-    data.article.dek,
-  );
+  const bodyBlocks =
+    data.article.bodyBlocks.length > 0
+      ? data.article.bodyBlocks
+      : parseArticleBodyBlocks(data.article.body, data.article.dek);
   const readMinutes = estimatedReadMinutes(data.article.body, data.article.dek);
   const isCastArticle = data.article.kind === "blog";
   const isRetracted = data.article.lifecycle.status === "retracted";

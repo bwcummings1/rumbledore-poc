@@ -20,6 +20,11 @@ import {
   users,
 } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import type { PublicationArticleBodyBlock } from "./article-embed-types";
+import {
+  resolveLeagueArticleBodyBlocks,
+  unresolvedArticleBodyBlocks,
+} from "./article-embeds";
 import {
   articleDek,
   articleHeroImageUrl,
@@ -32,6 +37,8 @@ import {
   resolveCentralPublicationSection,
   resolveLeaguePublicationSection,
 } from "./sections";
+
+export type { PublicationArticleBodyBlock } from "./article-embed-types";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -79,6 +86,7 @@ export interface PublicationArticleViewData {
     headline: string;
     dek: string;
     body: string;
+    bodyBlocks: PublicationArticleBodyBlock[];
     byline: string;
     bylineDetail: string;
     publishedAt: string;
@@ -755,6 +763,7 @@ export async function getCentralNewsArticleData(
     data: {
       article: {
         body: row.body,
+        bodyBlocks: unresolvedArticleBodyBlocks(row.metadata),
         byline: sourceLabel(row.source),
         bylineDetail: "Central NFL and fantasy desk",
         dek: articleDek(row.metadata, row.summary),
@@ -885,6 +894,11 @@ export async function getLeaguePressArticleData(
       title: articleRow.title,
     });
     const tags = articleTags(articleRow.metadata);
+    const bodyBlocks = await resolveLeagueArticleBodyBlocks(tx, {
+      leagueId: input.leagueId,
+      leagueSeason: league.season,
+      metadata: articleRow.metadata,
+    });
     const canonCitations = await loadCanonCitationsInContext(tx, {
       claimIds: articleLoreCitationIds(articleRow.metadata),
       leagueId: input.leagueId,
@@ -1075,6 +1089,7 @@ export async function getLeaguePressArticleData(
     return {
       article: {
         body: articleRow.body,
+        bodyBlocks,
         byline: byline.label,
         bylineDetail: byline.detail,
         dek: articleDek(articleRow.metadata, articleRow.summary),
