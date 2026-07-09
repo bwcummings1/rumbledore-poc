@@ -1,8 +1,16 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-06-24 — **Task T17 on `ws/t17-doc-sync`**:
-documentation has been reconciled to the T13-T16 state. The shared dev DB used by the running app contains the real ESPN
+Keep it current. Last updated: 2026-07-09 — **Task T18 on `ws/t18-editorial-canon`**:
+`specs/45` and `specs/46` are implemented through the requested build scope. The AI/editorial stack now reads pushed
+canon through a branded `CanonCatalog`; published content has lifecycle state, ledgered commissioner controls,
+corrections, failure visibility, tone editing, live embed blocks, reactions, and roast-consent guardrails. Distribution
+now has social metadata/OG cards, logged-out article teasers, launch-edition planning, mock league webhooks, mock weekly
+digests, and one notification preference matrix for push/digest/none. New RLS/FORCE tables and migrations run through
+`0068`; `$0`/mock boundaries remain for real webhook/email/provider activation. Standard fixture screenshots were
+refreshed with `SCREENSHOTS=1 PATH=/usr/bin:$PATH pnpm exec playwright test e2e/screenshots.spec.ts` (passed; one
+non-fatal React hydration warning appeared on the members screenshot path). Prior state: **Task T17 on
+`ws/t17-doc-sync`**: documentation had been reconciled to the T13-T16 state. The shared dev DB used by the running app contains the real ESPN
 validation league, provider `espn` / provider id `95050`, **"NHS Alumni Annual"**, with player depth and complete
 decoding. Do not document a volatile internal league UUID for this league; it changes across local DB resets. The shared
 dev row has 16 pushed canonical seasons, zero placeholder persons, 24,433 roster entries, zero `unknown` decoded
@@ -160,9 +168,9 @@ the live, up-to-date branch.**
 ---
 
 ## 0. TL;DR for whoever picks this up
-- The clean, first-principles rebuild is **delivered**; `main` currently carries the full build, AUSPEX overhaul, data
-  foundation through T16, real ESPN 95050 dev-DB population, and the real-league screenshot set. `rebuild/foundation`
-  was the autonomous-build branch (historical).
+- The clean, first-principles rebuild is **delivered**; `main` currently carries the full build through T16, while
+  `ws/t18-editorial-canon` carries the completed `specs/45`/`specs/46` editorial-control and distribution arc for the
+  orchestrator merge. `rebuild/foundation` was the autonomous-build branch (historical).
 - The autonomous **Ralph loop** is retired (`loop.sh` guarded). Current work uses the **orchestrated workstream** model
   in `ORCHESTRATION.md`: workstream agents work on `ws/*` branches/worktrees, commit and push their branch, and the
   orchestrator owns merges to `main`.
@@ -235,8 +243,9 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 
 ## 7. Current state & next steps
 All planned rebuild product scope (P0-P5), AUSPEX overhaul, Increment 1, data foundation T1-T16, and real ESPN 95050
-dev-DB population are on `main`. Gates remain mandatory backpressure for code work. See §8 for the build log and
-`docs/HISTORY.md` for the trajectory + independent review.
+dev-DB population are on `main`; T18 adds the editorial-control plane plus distribution/arrival stack on
+`ws/t18-editorial-canon` for orchestrator review/merge. Gates remain mandatory backpressure for code work. See §8 for
+the build log and `docs/HISTORY.md` for the trajectory + independent review.
 - **Data Foundation T1 delivered (2026-06-22):** `league_season_settings` now captures `league_size`,
   matchup/regular/playoff/championship schedule fields, `playoff_matchup_period_length`, playoff teams, scoring type
   + full scoring JSON, lineup slot counts, acquisition type/budget + full acquisition JSON, and keeper fields. ESPN
@@ -334,6 +343,13 @@ dev-DB population are on `main`. Gates remain mandatory backpressure for code wo
   pushes 2011-2026 canonical seasons, confirms zero placeholder persons and zero decoded unknown player/slot/team values,
   and captures real-league screenshots under `docs/screenshots/real-95050/{desktop,tablet,mobile}/`. The fixture baseline
   remains separate under `docs/screenshots/{desktop,tablet,mobile}/`.
+- **Task T18 delivered (2026-07-09):** `specs/45` and `specs/46` are built through the requested scope. The content
+  stack now has compiler-enforced pushed-canon provenance for AI context, lifecycle state (`published`/`superseded`/
+  `retracted`), append-only editorial actions, commissioner retract/regenerate controls through the judge, correction
+  detection, generation failure queue, versioned persona tone editor, typed live embeds, reactions, and roast consent.
+  Arrival now includes share metadata and OG cards, logged-out league teasers, launch editions, mock outbound webhooks,
+  mock weekly digest email, and a shared push/digest/none notification matrix. Real webhook/email sends and live paid
+  provider calls remain Phase 4 key/domain work behind the new boundaries.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN ingestion against provider
   id `95050` / **"NHS Alumni Annual"**, stats/records/identity, AI content pipeline behind mocks, betting engine +
   rolling-min bankroll + central arena, realtime + push. Sleeper/Yahoo adapters exist with fixture-backed coverage;
@@ -342,10 +358,15 @@ dev-DB population are on `main`. Gates remain mandatory backpressure for code wo
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
 - **Deferred/follow-on:** full per-stat scoring persistence; player-level records in the Record Book; draft/transactions
-  UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real substrate-B source wiring and News/AI
-  consumption; production-real paid-provider keys/capture; minor owner-set-aside UI tweaks.
+  UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real substrate-B source wiring; production-real
+  paid-provider keys/capture plus real webhook/email delivery domains; minor owner-set-aside UI tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-09: Task T18 landed on `ws/t18-editorial-canon` — the editorial control plane and distribution/arrival arc
+  from `specs/45`/`specs/46` are implemented through the requested scope: pushed-canon AI context, content lifecycle,
+  editorial ledger/actions, corrections, failure queue, tone editor, live embeds, reactions/roast consent, OG cards,
+  logged-out teasers, launch edition, mock webhooks, mock digest, and unified notification channel preferences. Standard
+  fixture screenshots were refreshed; full gates were run before handoff.
 - 2026-06-24: Task T16 landed — the real ESPN validation league, provider `espn` / provider id `95050`
   (**"NHS Alumni Annual"**), is populated in the shared dev DB used by the running app, with 16 pushed canonical seasons,
   player-depth rows, complete decoding coverage, and real screenshots at `docs/screenshots/real-95050/`. The product
