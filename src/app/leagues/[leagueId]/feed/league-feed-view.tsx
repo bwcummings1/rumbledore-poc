@@ -1,4 +1,4 @@
-import { ArrowLeft, Landmark, Newspaper } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Landmark, Newspaper } from "lucide-react";
 import {
   PublicationFrontLayout,
   PublicationMasthead,
@@ -74,6 +74,7 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
       label: section.label,
     })),
   ];
+  const canManageEditorial = data.userRole !== "member";
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -98,6 +99,15 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
             icon: <Landmark data-icon="inline-start" />,
             label: "Lore",
           },
+          ...(canManageEditorial
+            ? [
+                {
+                  href: `/leagues/${data.league.id}/press/failures`,
+                  icon: <AlertTriangle data-icon="inline-start" />,
+                  label: "Failure queue",
+                },
+              ]
+            : []),
         ]}
         deck={`${data.league.season} ${data.league.provider.toUpperCase()} fantasy football. Filed by the cast for ${data.userRole.replace("_", " ")} readers.`}
         eyebrow={

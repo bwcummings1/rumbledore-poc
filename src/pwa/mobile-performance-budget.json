@@ -32,6 +32,7 @@
     "/leagues/[leagueId]/posts/[postId]",
     "/leagues/[leagueId]/press",
     "/leagues/[leagueId]/press/[postId]",
+    "/leagues/[leagueId]/press/failures",
     "/leagues/[leagueId]/records",
     "/leagues/[leagueId]/records/h2h/[personAId]/[personBId]",
     "/leagues/[leagueId]/records/managers/[personId]"
