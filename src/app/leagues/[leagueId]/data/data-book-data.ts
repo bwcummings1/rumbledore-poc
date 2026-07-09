@@ -98,7 +98,16 @@ type MatchupRow = Pick<
   | "season"
   | "status"
 >;
-type CurationCheckpointRow = typeof leagueCurationCheckpoints.$inferSelect;
+type CurationCheckpointRow = Pick<
+  typeof leagueCurationCheckpoints.$inferSelect,
+  | "createdAt"
+  | "id"
+  | "label"
+  | "latestEditId"
+  | "markerEditId"
+  | "note"
+  | "seasons"
+>;
 type CurationSeasonPushRow = Pick<
   typeof leagueCurationSeasonPushes.$inferSelect,
   | "checkpointId"
@@ -266,6 +275,7 @@ export interface DataBookPageData {
   curation: DataBookCurationState;
   eraProposals: DataBookEraProposal[];
   league: DataBookLeagueSummary;
+  selectedSeason: number;
   seasons: DataBookSeason[];
 }
 
@@ -503,6 +513,20 @@ function uniqueSeasons(input: {
   return [...seasons]
     .filter((season) => Number.isInteger(season) && season > 0)
     .sort((left, right) => right - left);
+}
+
+function resolveSelectedSeason(
+  seasons: readonly number[],
+  selectedSeason: number | undefined,
+  leagueSeason: number,
+): number {
+  if (selectedSeason && seasons.includes(selectedSeason)) {
+    return selectedSeason;
+  }
+  if (seasons.includes(leagueSeason)) {
+    return leagueSeason;
+  }
+  return seasons[0] ?? leagueSeason;
 }
 
 function toLeagueSummary(league: LeagueRow): DataBookLeagueSummary {
@@ -962,7 +986,7 @@ function buildSeasonData(input: {
 
 export async function getLeagueDataBookData(
   db: Db,
-  input: { canManageEras?: boolean; leagueId: string },
+  input: { canManageEras?: boolean; leagueId: string; selectedSeason?: number },
 ): Promise<DataBookResult> {
   const [league] = await db
     .select({
@@ -1050,73 +1074,6 @@ export async function getLeagueDataBookData(
         asc(weeklyStatistics.personId),
       );
 
-    const playerRows = await tx
-      .select({
-        fullName: fantasyPlayers.fullName,
-        leagueProviderId: fantasyPlayers.leagueProviderId,
-        position: fantasyPlayers.position,
-        proTeam: fantasyPlayers.proTeam,
-        provider: fantasyPlayers.provider,
-        providerPlayerId: fantasyPlayers.providerPlayerId,
-        status: fantasyPlayers.status,
-      })
-      .from(fantasyPlayers)
-      .where(eq(fantasyPlayers.leagueId, input.leagueId))
-      .orderBy(
-        asc(fantasyPlayers.fullName),
-        asc(fantasyPlayers.providerPlayerId),
-      );
-
-    const rosterRows = await tx
-      .select({
-        actualPoints: fantasyRosterEntries.actualPoints,
-        id: fantasyRosterEntries.id,
-        leagueProviderId: fantasyRosterEntries.leagueProviderId,
-        points: fantasyRosterEntries.points,
-        projectedPoints: fantasyRosterEntries.projectedPoints,
-        provider: fantasyRosterEntries.provider,
-        providerPlayerId: fantasyRosterEntries.providerPlayerId,
-        providerTeamId: fantasyRosterEntries.providerTeamId,
-        scoringPeriod: fantasyRosterEntries.scoringPeriod,
-        season: fantasyRosterEntries.season,
-        slot: fantasyRosterEntries.slot,
-        started: fantasyRosterEntries.started,
-        status: fantasyRosterEntries.status,
-      })
-      .from(fantasyRosterEntries)
-      .where(eq(fantasyRosterEntries.leagueId, input.leagueId))
-      .orderBy(
-        desc(fantasyRosterEntries.season),
-        asc(fantasyRosterEntries.scoringPeriod),
-        asc(fantasyRosterEntries.providerTeamId),
-        asc(fantasyRosterEntries.slot),
-        asc(fantasyRosterEntries.providerPlayerId),
-      );
-
-    const statBreakdownRows = await tx
-      .select({
-        fantasyPoints: fantasyPlayerWeekStatBreakdowns.fantasyPoints,
-        providerPlayerId: fantasyPlayerWeekStatBreakdowns.providerPlayerId,
-        providerStatId: fantasyPlayerWeekStatBreakdowns.providerStatId,
-        providerTeamId: fantasyPlayerWeekStatBreakdowns.providerTeamId,
-        scoringPeriod: fantasyPlayerWeekStatBreakdowns.scoringPeriod,
-        season: fantasyPlayerWeekStatBreakdowns.season,
-        statCategory: fantasyPlayerWeekStatBreakdowns.statCategory,
-        statKey: fantasyPlayerWeekStatBreakdowns.statKey,
-        statSource: fantasyPlayerWeekStatBreakdowns.statSource,
-        statValue: fantasyPlayerWeekStatBreakdowns.statValue,
-      })
-      .from(fantasyPlayerWeekStatBreakdowns)
-      .where(eq(fantasyPlayerWeekStatBreakdowns.leagueId, input.leagueId))
-      .orderBy(
-        desc(fantasyPlayerWeekStatBreakdowns.season),
-        asc(fantasyPlayerWeekStatBreakdowns.scoringPeriod),
-        asc(fantasyPlayerWeekStatBreakdowns.providerTeamId),
-        asc(fantasyPlayerWeekStatBreakdowns.providerPlayerId),
-        asc(fantasyPlayerWeekStatBreakdowns.statSource),
-        asc(fantasyPlayerWeekStatBreakdowns.providerStatId),
-      );
-
     const matchupRows = await tx
       .select({
         awayTeamProviderId: fantasyMatchups.awayTeamProviderId,
@@ -1135,8 +1092,117 @@ export async function getLeagueDataBookData(
         asc(fantasyMatchups.id),
       );
 
+    const seasonNumbers = uniqueSeasons({
+      league,
+      matchupRows,
+      seasonRows,
+      settingsRows,
+      teamRows,
+      weeklyRows,
+    });
+    const selectedSeason = resolveSelectedSeason(
+      seasonNumbers,
+      input.selectedSeason,
+      league.season,
+    );
+
+    const rosterRows = await tx
+      .select({
+        actualPoints: fantasyRosterEntries.actualPoints,
+        id: fantasyRosterEntries.id,
+        leagueProviderId: fantasyRosterEntries.leagueProviderId,
+        points: fantasyRosterEntries.points,
+        projectedPoints: fantasyRosterEntries.projectedPoints,
+        provider: fantasyRosterEntries.provider,
+        providerPlayerId: fantasyRosterEntries.providerPlayerId,
+        providerTeamId: fantasyRosterEntries.providerTeamId,
+        scoringPeriod: fantasyRosterEntries.scoringPeriod,
+        season: fantasyRosterEntries.season,
+        slot: fantasyRosterEntries.slot,
+        started: fantasyRosterEntries.started,
+        status: fantasyRosterEntries.status,
+      })
+      .from(fantasyRosterEntries)
+      .where(
+        and(
+          eq(fantasyRosterEntries.leagueId, input.leagueId),
+          eq(fantasyRosterEntries.season, selectedSeason),
+        ),
+      )
+      .orderBy(
+        asc(fantasyRosterEntries.scoringPeriod),
+        asc(fantasyRosterEntries.providerTeamId),
+        asc(fantasyRosterEntries.slot),
+        asc(fantasyRosterEntries.providerPlayerId),
+      );
+
+    const selectedPlayerIds = [
+      ...new Set(rosterRows.map((row) => row.providerPlayerId)),
+    ];
+
+    const playerRows =
+      selectedPlayerIds.length > 0
+        ? await tx
+            .select({
+              fullName: fantasyPlayers.fullName,
+              leagueProviderId: fantasyPlayers.leagueProviderId,
+              position: fantasyPlayers.position,
+              proTeam: fantasyPlayers.proTeam,
+              provider: fantasyPlayers.provider,
+              providerPlayerId: fantasyPlayers.providerPlayerId,
+              status: fantasyPlayers.status,
+            })
+            .from(fantasyPlayers)
+            .where(
+              and(
+                eq(fantasyPlayers.leagueId, input.leagueId),
+                inArray(fantasyPlayers.providerPlayerId, selectedPlayerIds),
+              ),
+            )
+            .orderBy(
+              asc(fantasyPlayers.fullName),
+              asc(fantasyPlayers.providerPlayerId),
+            )
+        : [];
+
+    const statBreakdownRows = await tx
+      .select({
+        fantasyPoints: fantasyPlayerWeekStatBreakdowns.fantasyPoints,
+        providerPlayerId: fantasyPlayerWeekStatBreakdowns.providerPlayerId,
+        providerStatId: fantasyPlayerWeekStatBreakdowns.providerStatId,
+        providerTeamId: fantasyPlayerWeekStatBreakdowns.providerTeamId,
+        scoringPeriod: fantasyPlayerWeekStatBreakdowns.scoringPeriod,
+        season: fantasyPlayerWeekStatBreakdowns.season,
+        statCategory: fantasyPlayerWeekStatBreakdowns.statCategory,
+        statKey: fantasyPlayerWeekStatBreakdowns.statKey,
+        statSource: fantasyPlayerWeekStatBreakdowns.statSource,
+        statValue: fantasyPlayerWeekStatBreakdowns.statValue,
+      })
+      .from(fantasyPlayerWeekStatBreakdowns)
+      .where(
+        and(
+          eq(fantasyPlayerWeekStatBreakdowns.leagueId, input.leagueId),
+          eq(fantasyPlayerWeekStatBreakdowns.season, selectedSeason),
+        ),
+      )
+      .orderBy(
+        asc(fantasyPlayerWeekStatBreakdowns.scoringPeriod),
+        asc(fantasyPlayerWeekStatBreakdowns.providerTeamId),
+        asc(fantasyPlayerWeekStatBreakdowns.providerPlayerId),
+        asc(fantasyPlayerWeekStatBreakdowns.statSource),
+        asc(fantasyPlayerWeekStatBreakdowns.providerStatId),
+      );
+
     const checkpointRows = await tx
-      .select()
+      .select({
+        createdAt: leagueCurationCheckpoints.createdAt,
+        id: leagueCurationCheckpoints.id,
+        label: leagueCurationCheckpoints.label,
+        latestEditId: leagueCurationCheckpoints.latestEditId,
+        markerEditId: leagueCurationCheckpoints.markerEditId,
+        note: leagueCurationCheckpoints.note,
+        seasons: leagueCurationCheckpoints.seasons,
+      })
       .from(leagueCurationCheckpoints)
       .where(eq(leagueCurationCheckpoints.leagueId, input.leagueId))
       .orderBy(
@@ -1195,8 +1261,10 @@ export async function getLeagueDataBookData(
       playerRows,
       pushRows,
       rosterRows,
+      selectedSeason,
       statBreakdownRows,
       seasonRows,
+      seasonNumbers,
       seasonStateRows,
       settingsRows,
       teamRows,
@@ -1228,7 +1296,7 @@ export async function getLeagueDataBookData(
     scoped.settingsRows.map((row) => [row.season, row]),
   );
 
-  const seasons = uniqueSeasons({ league, ...scoped }).map((season) =>
+  const seasons = scoped.seasonNumbers.map((season) =>
     buildSeasonData({
       league,
       mappingByTeamSeason,
@@ -1264,6 +1332,7 @@ export async function getLeagueDataBookData(
         .filter((grouping) => grouping.status !== "dismissed")
         .map(toEraProposal),
       league: toLeagueSummary(league),
+      selectedSeason: scoped.selectedSeason,
       seasons,
     },
     status: "ready",

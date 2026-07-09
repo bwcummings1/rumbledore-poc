@@ -14,6 +14,7 @@ export function getAuth(): Auth {
       secret: env.auth.secret,
       baseURL: env.auth.url,
       google: env.auth.google,
+      redisUrl: env.redisUrl,
     });
   }
   return globalForAuth.__rumbledoreAuth;

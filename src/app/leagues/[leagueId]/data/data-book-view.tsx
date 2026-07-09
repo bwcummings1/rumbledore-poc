@@ -16,7 +16,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { postJson } from "@/app/onboarding/client-http";
 import { Alert } from "@/components/ui/alert";
@@ -2117,11 +2117,16 @@ export function DataBookView({
   data: DataBookPageData;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [activeGrain, setActiveGrain] = useState<DataBookGrain>("people");
   const [draftData, setDraftData] = useState(data);
   const [curationState, setCurationState] = useState(data.curation);
   const [eraProposals, setEraProposals] = useState(data.eraProposals);
-  const initialSeason = draftData.seasons[0]?.season ?? draftData.league.season;
+  const initialSeason =
+    draftData.selectedSeason ??
+    draftData.seasons[0]?.season ??
+    draftData.league.season;
   const [selectedSeason, setSelectedSeason] = useState(initialSeason);
   const [pendingEdit, setPendingEdit] = useState<PendingDimensionEdit | null>(
     null,
@@ -2153,6 +2158,13 @@ export function DataBookView({
   const groupingApiUrl = `/api/leagues/${draftData.league.id}/curation/groupings`;
   const pushApiUrl = `/api/leagues/${draftData.league.id}/curation/push`;
   const selectedSeasonState = curationForSeason(curationState, season.season);
+
+  function changeSelectedSeason(nextSeason: number) {
+    setSelectedSeason(nextSeason);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("season", String(nextSeason));
+    router.push(`${pathname}?${params.toString()}`);
+  }
 
   useEffect(() => {
     if (
@@ -2482,7 +2494,7 @@ export function DataBookView({
               setPushIntent(intent);
             }}
             onSave={saveCheckpoint}
-            onSeasonChange={setSelectedSeason}
+            onSeasonChange={changeSelectedSeason}
             season={season}
             seasons={draftData.seasons}
             selectedSeasonState={selectedSeasonState}

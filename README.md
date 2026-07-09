@@ -28,6 +28,19 @@ curl -fsS http://localhost:3000/api/health
 
 Local defaults are Postgres on `localhost:5440` and Redis on `localhost:6390`; these match `docker-compose.yml` and the validated env defaults. Override the compose host ports with `RUMBLEDORE_DB_PORT` / `RUMBLEDORE_REDIS_PORT`, and update `DATABASE_URL` / `REDIS_URL` if you do.
 
+Local dev DB backups write outside the repo by default:
+
+```bash
+RUMBLEDORE_BACKUP_DIR=/home/ubuntu/rumbledore-db-backups pnpm db:dump
+pnpm db:restore /home/ubuntu/rumbledore-db-backups/rumbledore-YYYYMMDDTHHMMSSZ.dump
+```
+
+Compose-friendly nightly cron example:
+
+```cron
+17 3 * * * cd /home/ubuntu/rumbledore-poc && PATH=/usr/bin:$PATH RUMBLEDORE_BACKUP_DIR=/home/ubuntu/rumbledore-db-backups pnpm db:dump >> /home/ubuntu/rumbledore-db-backups/cron.log 2>&1
+```
+
 ## Environment
 
 All server config is validated in `src/core/env`. Empty values in `.env.local` count as unset.
@@ -58,6 +71,8 @@ pnpm dev          # Next.js dev server
 pnpm jobs:dev     # Inngest dev server, expects pnpm dev on port 3000
 pnpm db:up        # local pgvector Postgres + Redis
 pnpm db:down      # stop local stack
+pnpm db:dump      # pg_dump custom-format backup outside the repo
+pnpm db:restore   # restore an explicit dump into DATABASE_URL
 pnpm db:migrate   # apply Drizzle migrations
 pnpm db:generate  # generate Drizzle migrations
 ```

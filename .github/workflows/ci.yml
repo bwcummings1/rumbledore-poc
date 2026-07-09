@@ -84,6 +84,22 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Flagship e2e
+        run: pnpm exec playwright test e2e/espn-onboarding.spec.ts e2e/pwa-cache-isolation.spec.ts
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+
       - name: Mobile PWA performance budget
         run: pnpm perf:pwa
 

@@ -40,6 +40,8 @@ The owner's **real ESPN league — provider id `95050`, "NHS Alumni Annual," 201
 dev DB with real names, correct rosters/positions, records, and eras (screenshots in `docs/screenshots/real-95050/`).
 Refer to that league by **provider id 95050**, never a hardcoded internal UUID (it changes across local DB resets).
 Product imports write to `env.databaseUrl` (the app DB) — there is no DB-routing issue.
+Nightly dev DB backups should run with `PATH=/usr/bin:$PATH RUMBLEDORE_BACKUP_DIR=/home/ubuntu/rumbledore-db-backups pnpm db:dump`;
+the script writes `pg_dump` custom-format files outside the repo and prunes old dumps by retention.
 
 The **editorial and arrival layer is built behind mock/$0 boundaries**:
 - AI league context and records provenance use pushed canon through a branded `CanonCatalog`.

@@ -427,6 +427,30 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
           );
         }
       }
+      {
+        const inngestDevConfigured =
+          "INNGEST_DEV" in present || "INNGEST_DEVSERVER_URL" in present;
+        if (inngestDevConfigured) {
+          problems.push(
+            "✖ Inngest dev mode is not allowed when NODE_ENV=production\n  → at INNGEST_DEV",
+          );
+        }
+        const inngestCloudConfigured =
+          "INNGEST_EVENT_KEY" in present ||
+          "INNGEST_BASE_URL" in present ||
+          "INNGEST_API_BASE_URL" in present ||
+          "INNGEST_EVENT_API_BASE_URL" in present;
+        if (inngestCloudConfigured && !("INNGEST_EVENT_KEY" in present)) {
+          problems.push(
+            "✖ Production Inngest cloud mode requires INNGEST_EVENT_KEY\n  → at INNGEST_EVENT_KEY",
+          );
+        }
+        if (inngestCloudConfigured && !("INNGEST_SIGNING_KEY" in present)) {
+          problems.push(
+            "✖ Production Inngest cloud mode requires INNGEST_SIGNING_KEY\n  → at INNGEST_SIGNING_KEY",
+          );
+        }
+      }
       break;
     default:
       break;

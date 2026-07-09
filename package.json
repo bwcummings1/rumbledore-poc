@@ -21,6 +21,8 @@
     "jobs:dev": "inngest dev -u http://localhost:3000/api/inngest",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
+    "db:dump": "bash scripts/dev-db-dump.sh",
+    "db:restore": "bash scripts/dev-db-restore.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

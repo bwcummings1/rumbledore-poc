@@ -15,11 +15,14 @@ import type {
 import { DataBookView } from "./data-book-view";
 
 const router = vi.hoisted(() => ({
+  push: vi.fn(),
   refresh: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/leagues/00000000-0000-4000-8000-000000000001/data",
   useRouter: () => router,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const leagueId = "00000000-0000-4000-8000-000000000001";
@@ -121,6 +124,7 @@ const data: DataBookPageData = {
     size: 12,
     status: "in_season",
   },
+  selectedSeason: 2026,
   seasons: [
     season({
       people: [
@@ -352,6 +356,7 @@ const data: DataBookPageData = {
 
 afterEach(() => {
   cleanup();
+  router.push.mockClear();
   router.refresh.mockClear();
   vi.restoreAllMocks();
 });
@@ -525,6 +530,9 @@ test("Data Book year dropdown changes the displayed season", () => {
   fireEvent.change(screen.getByLabelText("Data Book season"), {
     target: { value: "2025" },
   });
+  expect(router.push).toHaveBeenCalledWith(
+    "/leagues/00000000-0000-4000-8000-000000000001/data?season=2025",
+  );
 
   const peopleTable = screen.getByRole("table", {
     name: "2025 Data Book people",

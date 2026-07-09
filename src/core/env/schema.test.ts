@@ -519,6 +519,40 @@ describe("parseEnv", () => {
     expect(message).not.toContain("fixture private dev value");
   });
 
+  it("rejects Inngest dev mode in production", () => {
+    expect(() =>
+      parseEnv({
+        BETTER_AUTH_SECRET: fixtureValue("better", "auth", "prod"),
+        CREDENTIAL_ENCRYPTION_KEY: fixtureValue("credential", "key", "prod"),
+        INNGEST_DEV: "true",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(/Inngest dev mode is not allowed/);
+  });
+
+  it("requires production Inngest cloud signing parity when cloud config is present", () => {
+    expect(() =>
+      parseEnv({
+        BETTER_AUTH_SECRET: fixtureValue("better", "auth", "prod"),
+        CREDENTIAL_ENCRYPTION_KEY: fixtureValue("credential", "key", "prod"),
+        INNGEST_EVENT_KEY: fixtureValue("inngest", "event", "prod"),
+        NODE_ENV: "production",
+      }),
+    ).toThrow(/INNGEST_SIGNING_KEY/);
+
+    const env = parseEnv({
+      BETTER_AUTH_SECRET: fixtureValue("better", "auth", "prod"),
+      CREDENTIAL_ENCRYPTION_KEY: fixtureValue("credential", "key", "prod"),
+      INNGEST_EVENT_KEY: fixtureValue("inngest", "event", "prod"),
+      INNGEST_SIGNING_KEY: fixtureValue("inngest", "signing", "prod"),
+      NODE_ENV: "production",
+    });
+    expect(env.jobs.inngest).toMatchObject({
+      mode: "cloud",
+      signingKey: fixtureValue("inngest", "signing", "prod"),
+    });
+  });
+
   it("goes real for web push when VAPID config is present", () => {
     const publicKey = fixtureValue("web", "push", "public");
     const privateKey = fixtureValue("web", "push", "private");
