@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, not, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, not, or, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
+  fantasyDraftPicks,
   fantasyMatchups,
+  fantasyPlayers,
+  fantasyRosterEntries,
   identityMappings,
   leagueCurationCheckpoints,
   leagueCurationSeasonPushes,
@@ -25,6 +28,9 @@ type WeeklyStatisticsRow = typeof weeklyStatistics.$inferSelect;
 type GroupingRow = typeof leagueSeasonGroupings.$inferSelect;
 type CheckpointRow = typeof leagueCurationCheckpoints.$inferSelect;
 type SeasonPushRow = typeof leagueCurationSeasonPushes.$inferSelect;
+type FantasyPlayerRow = typeof fantasyPlayers.$inferSelect;
+type FantasyRosterEntryRow = typeof fantasyRosterEntries.$inferSelect;
+type FantasyDraftPickRow = typeof fantasyDraftPicks.$inferSelect;
 
 interface TimestampedSnapshot {
   createdAt: string;
@@ -128,6 +134,58 @@ export interface CuratedWeeklyStatSnapshot extends TimestampedSnapshot {
   weeklyRank: number;
 }
 
+export interface CuratedFantasyPlayerSnapshot extends TimestampedSnapshot {
+  contentHash: string;
+  fullName: string;
+  id: string;
+  leagueProviderId: string;
+  metadata: Record<string, unknown>;
+  nflPlayerId: string | null;
+  position: string;
+  proTeam: string | null;
+  provider: FantasyPlayerRow["provider"];
+  providerPlayerId: string;
+  status: string | null;
+}
+
+export interface CuratedFantasyRosterEntrySnapshot extends TimestampedSnapshot {
+  actualPoints: number | null;
+  contentHash: string;
+  fantasyPlayerId: string | null;
+  id: string;
+  isKeeper: boolean;
+  leagueProviderId: string;
+  metadata: Record<string, unknown>;
+  points: number | null;
+  projectedPoints: number | null;
+  provider: FantasyRosterEntryRow["provider"];
+  providerPlayerId: string;
+  providerTeamId: string;
+  scoringPeriod: number;
+  season: number;
+  slot: string;
+  started: boolean;
+  status: string;
+}
+
+export interface CuratedFantasyDraftPickSnapshot extends TimestampedSnapshot {
+  auctionValue: number | null;
+  contentHash: string;
+  fantasyPlayerId: string | null;
+  id: string;
+  isKeeper: boolean;
+  leagueProviderId: string;
+  metadata: Record<string, unknown>;
+  pickInRound: number | null;
+  pickOverall: number | null;
+  provider: FantasyDraftPickRow["provider"];
+  providerPickId: string;
+  providerPlayerId: string | null;
+  providerTeamId: string;
+  round: number;
+  season: number;
+}
+
 export interface CuratedGroupingSnapshot {
   config: GroupingRow["config"];
   confirmedByUserId: string | null;
@@ -144,6 +202,9 @@ export interface CuratedGroupingSnapshot {
 export interface CuratedSeasonSnapshot {
   capturedAt: string;
   editIds: string[];
+  fantasyDraftPicks?: CuratedFantasyDraftPickSnapshot[];
+  fantasyPlayers?: CuratedFantasyPlayerSnapshot[];
+  fantasyRosterEntries?: CuratedFantasyRosterEntrySnapshot[];
   groupings: CuratedGroupingSnapshot[];
   identityMappings: CuratedIdentityMappingSnapshot[];
   latestEditId: string | null;
@@ -208,6 +269,15 @@ export interface ComposedCanonicalSnapshot {
   leagueId: string;
   matchups: Array<CuratedMatchupSnapshot & { snapshotSeason: number }>;
   persons: Array<CuratedPersonSnapshot & { snapshotSeason: number }>;
+  fantasyDraftPicks: Array<
+    CuratedFantasyDraftPickSnapshot & { snapshotSeason: number }
+  >;
+  fantasyPlayers: Array<
+    CuratedFantasyPlayerSnapshot & { snapshotSeason: number }
+  >;
+  fantasyRosterEntries: Array<
+    CuratedFantasyRosterEntrySnapshot & { snapshotSeason: number }
+  >;
   seasonSettings: Array<
     CuratedSeasonSettingsSnapshot & { snapshotSeason: number }
   >;
@@ -336,11 +406,21 @@ async function knownSeasons(
     .select({ season: weeklyStatistics.season })
     .from(weeklyStatistics)
     .where(eq(weeklyStatistics.leagueId, leagueId));
+  const rosterRows = await tx
+    .select({ season: fantasyRosterEntries.season })
+    .from(fantasyRosterEntries)
+    .where(eq(fantasyRosterEntries.leagueId, leagueId));
+  const draftRows = await tx
+    .select({ season: fantasyDraftPicks.season })
+    .from(fantasyDraftPicks)
+    .where(eq(fantasyDraftPicks.leagueId, leagueId));
   return sortedUniqueNumbers([
     ...settingsRows.map((row) => row.season),
     ...teamRows.map((row) => row.season),
     ...matchupRows.map((row) => row.season),
     ...weeklyRows.map((row) => row.season),
+    ...rosterRows.map((row) => row.season),
+    ...draftRows.map((row) => row.season),
   ]);
 }
 
@@ -468,6 +548,76 @@ function weeklyStatSnapshot(
     teamSeasonId: row.teamSeasonId,
     updatedAt: iso(row.updatedAt),
     weeklyRank: row.weeklyRank,
+  };
+}
+
+function fantasyPlayerSnapshot(
+  row: FantasyPlayerRow,
+): CuratedFantasyPlayerSnapshot {
+  return {
+    contentHash: row.contentHash,
+    createdAt: iso(row.createdAt),
+    fullName: row.fullName,
+    id: row.id,
+    leagueProviderId: row.leagueProviderId,
+    metadata: row.metadata,
+    nflPlayerId: row.nflPlayerId,
+    position: row.position,
+    proTeam: row.proTeam,
+    provider: row.provider,
+    providerPlayerId: row.providerPlayerId,
+    status: row.status,
+    updatedAt: iso(row.updatedAt),
+  };
+}
+
+function fantasyRosterEntrySnapshot(
+  row: FantasyRosterEntryRow,
+): CuratedFantasyRosterEntrySnapshot {
+  return {
+    actualPoints: row.actualPoints,
+    contentHash: row.contentHash,
+    createdAt: iso(row.createdAt),
+    fantasyPlayerId: row.fantasyPlayerId,
+    id: row.id,
+    isKeeper: row.isKeeper,
+    leagueProviderId: row.leagueProviderId,
+    metadata: row.metadata,
+    points: row.points,
+    projectedPoints: row.projectedPoints,
+    provider: row.provider,
+    providerPlayerId: row.providerPlayerId,
+    providerTeamId: row.providerTeamId,
+    scoringPeriod: row.scoringPeriod,
+    season: row.season,
+    slot: row.slot,
+    started: row.started,
+    status: row.status,
+    updatedAt: iso(row.updatedAt),
+  };
+}
+
+function fantasyDraftPickSnapshot(
+  row: FantasyDraftPickRow,
+): CuratedFantasyDraftPickSnapshot {
+  return {
+    auctionValue: row.auctionValue,
+    contentHash: row.contentHash,
+    createdAt: iso(row.createdAt),
+    fantasyPlayerId: row.fantasyPlayerId,
+    id: row.id,
+    isKeeper: row.isKeeper,
+    leagueProviderId: row.leagueProviderId,
+    metadata: row.metadata,
+    pickInRound: row.pickInRound,
+    pickOverall: row.pickOverall,
+    provider: row.provider,
+    providerPickId: row.providerPickId,
+    providerPlayerId: row.providerPlayerId,
+    providerTeamId: row.providerTeamId,
+    round: row.round,
+    season: row.season,
+    updatedAt: iso(row.updatedAt),
   };
 }
 
@@ -608,10 +758,81 @@ async function captureSeasonSnapshot(
       ),
     )
     .orderBy(asc(weeklyStatistics.scoringPeriod), asc(weeklyStatistics.id));
+  const rosterRows = await tx
+    .select()
+    .from(fantasyRosterEntries)
+    .where(
+      and(
+        eq(fantasyRosterEntries.leagueId, input.leagueId),
+        eq(fantasyRosterEntries.season, input.season),
+      ),
+    )
+    .orderBy(
+      asc(fantasyRosterEntries.scoringPeriod),
+      asc(fantasyRosterEntries.providerTeamId),
+      asc(fantasyRosterEntries.slot),
+      asc(fantasyRosterEntries.providerPlayerId),
+      asc(fantasyRosterEntries.id),
+    );
+  const draftRows = await tx
+    .select()
+    .from(fantasyDraftPicks)
+    .where(
+      and(
+        eq(fantasyDraftPicks.leagueId, input.leagueId),
+        eq(fantasyDraftPicks.season, input.season),
+      ),
+    )
+    .orderBy(
+      asc(fantasyDraftPicks.round),
+      asc(fantasyDraftPicks.pickInRound),
+      asc(fantasyDraftPicks.pickOverall),
+      asc(fantasyDraftPicks.providerPickId),
+    );
+  const playerIds = [
+    ...new Set(
+      [...rosterRows, ...draftRows]
+        .map((row) => row.fantasyPlayerId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const playerProviderIds = [
+    ...new Set(
+      [
+        ...rosterRows.map((row) => row.providerPlayerId),
+        ...draftRows
+          .map((row) => row.providerPlayerId)
+          .filter((id): id is string => Boolean(id)),
+      ].filter(Boolean),
+    ),
+  ];
+  const playerRows =
+    playerIds.length === 0 && playerProviderIds.length === 0
+      ? []
+      : await tx
+          .select()
+          .from(fantasyPlayers)
+          .where(
+            and(
+              eq(fantasyPlayers.leagueId, input.leagueId),
+              or(
+                playerIds.length > 0
+                  ? inArray(fantasyPlayers.id, playerIds)
+                  : undefined,
+                playerProviderIds.length > 0
+                  ? inArray(fantasyPlayers.providerPlayerId, playerProviderIds)
+                  : undefined,
+              ),
+            ),
+          )
+          .orderBy(asc(fantasyPlayers.fullName), asc(fantasyPlayers.id));
 
   return {
     capturedAt: input.capturedAt,
     editIds: input.editIds,
+    fantasyDraftPicks: draftRows.map(fantasyDraftPickSnapshot),
+    fantasyPlayers: playerRows.map(fantasyPlayerSnapshot),
+    fantasyRosterEntries: rosterRows.map(fantasyRosterEntrySnapshot),
     groupings: await groupingSnapshotsForSeason(
       tx,
       input.leagueId,
@@ -916,6 +1137,12 @@ async function restoreSeasonSnapshot(
   const settingIds = input.snapshot.seasonSettings.map((row) => row.id);
   const matchupIds = input.snapshot.matchups.map((row) => row.id);
   const weeklyIds = input.snapshot.weeklyStatistics.map((row) => row.id);
+  const rosterIds = (input.snapshot.fantasyRosterEntries ?? []).map(
+    (row) => row.id,
+  );
+  const draftIds = (input.snapshot.fantasyDraftPicks ?? []).map(
+    (row) => row.id,
+  );
 
   await tx
     .delete(weeklyStatistics)
@@ -925,6 +1152,28 @@ async function restoreSeasonSnapshot(
         eq(weeklyStatistics.season, season),
         weeklyIds.length > 0
           ? not(inArray(weeklyStatistics.id, weeklyIds))
+          : undefined,
+      ),
+    );
+  await tx
+    .delete(fantasyRosterEntries)
+    .where(
+      and(
+        eq(fantasyRosterEntries.leagueId, input.leagueId),
+        eq(fantasyRosterEntries.season, season),
+        rosterIds.length > 0
+          ? not(inArray(fantasyRosterEntries.id, rosterIds))
+          : undefined,
+      ),
+    );
+  await tx
+    .delete(fantasyDraftPicks)
+    .where(
+      and(
+        eq(fantasyDraftPicks.leagueId, input.leagueId),
+        eq(fantasyDraftPicks.season, season),
+        draftIds.length > 0
+          ? not(inArray(fantasyDraftPicks.id, draftIds))
           : undefined,
       ),
     );
@@ -1127,6 +1376,134 @@ async function restoreSeasonSnapshot(
           winner: row.winner,
         },
         target: fantasyMatchups.id,
+      });
+  }
+
+  for (const row of input.snapshot.fantasyPlayers ?? []) {
+    await tx
+      .insert(fantasyPlayers)
+      .values({
+        contentHash: row.contentHash,
+        createdAt: asDate(row.createdAt),
+        fullName: row.fullName,
+        id: row.id,
+        leagueId: input.leagueId,
+        leagueProviderId: row.leagueProviderId,
+        metadata: row.metadata,
+        nflPlayerId: row.nflPlayerId,
+        position: row.position,
+        proTeam: row.proTeam,
+        provider: row.provider,
+        providerPlayerId: row.providerPlayerId,
+        status: row.status,
+        updatedAt: asDate(row.updatedAt ?? row.createdAt),
+      })
+      .onConflictDoUpdate({
+        set: {
+          contentHash: row.contentHash,
+          fullName: row.fullName,
+          leagueProviderId: row.leagueProviderId,
+          metadata: row.metadata,
+          nflPlayerId: row.nflPlayerId,
+          position: row.position,
+          proTeam: row.proTeam,
+          provider: row.provider,
+          providerPlayerId: row.providerPlayerId,
+          status: row.status,
+          updatedAt: asDate(row.updatedAt ?? row.createdAt),
+        },
+        target: fantasyPlayers.id,
+      });
+  }
+
+  for (const row of input.snapshot.fantasyRosterEntries ?? []) {
+    await tx
+      .insert(fantasyRosterEntries)
+      .values({
+        actualPoints: row.actualPoints,
+        contentHash: row.contentHash,
+        createdAt: asDate(row.createdAt),
+        fantasyPlayerId: row.fantasyPlayerId,
+        id: row.id,
+        isKeeper: row.isKeeper,
+        leagueId: input.leagueId,
+        leagueProviderId: row.leagueProviderId,
+        metadata: row.metadata,
+        points: row.points,
+        projectedPoints: row.projectedPoints,
+        provider: row.provider,
+        providerPlayerId: row.providerPlayerId,
+        providerTeamId: row.providerTeamId,
+        scoringPeriod: row.scoringPeriod,
+        season: row.season,
+        slot: row.slot,
+        started: row.started,
+        status: row.status,
+        updatedAt: asDate(row.updatedAt ?? row.createdAt),
+      })
+      .onConflictDoUpdate({
+        set: {
+          actualPoints: row.actualPoints,
+          contentHash: row.contentHash,
+          fantasyPlayerId: row.fantasyPlayerId,
+          isKeeper: row.isKeeper,
+          leagueProviderId: row.leagueProviderId,
+          metadata: row.metadata,
+          points: row.points,
+          projectedPoints: row.projectedPoints,
+          provider: row.provider,
+          providerPlayerId: row.providerPlayerId,
+          providerTeamId: row.providerTeamId,
+          scoringPeriod: row.scoringPeriod,
+          slot: row.slot,
+          started: row.started,
+          status: row.status,
+          updatedAt: asDate(row.updatedAt ?? row.createdAt),
+        },
+        target: fantasyRosterEntries.id,
+      });
+  }
+
+  for (const row of input.snapshot.fantasyDraftPicks ?? []) {
+    await tx
+      .insert(fantasyDraftPicks)
+      .values({
+        auctionValue: row.auctionValue,
+        contentHash: row.contentHash,
+        createdAt: asDate(row.createdAt),
+        fantasyPlayerId: row.fantasyPlayerId,
+        id: row.id,
+        isKeeper: row.isKeeper,
+        leagueId: input.leagueId,
+        leagueProviderId: row.leagueProviderId,
+        metadata: row.metadata,
+        pickInRound: row.pickInRound,
+        pickOverall: row.pickOverall,
+        provider: row.provider,
+        providerPickId: row.providerPickId,
+        providerPlayerId: row.providerPlayerId,
+        providerTeamId: row.providerTeamId,
+        round: row.round,
+        season: row.season,
+        updatedAt: asDate(row.updatedAt ?? row.createdAt),
+      })
+      .onConflictDoUpdate({
+        set: {
+          auctionValue: row.auctionValue,
+          contentHash: row.contentHash,
+          fantasyPlayerId: row.fantasyPlayerId,
+          isKeeper: row.isKeeper,
+          leagueProviderId: row.leagueProviderId,
+          metadata: row.metadata,
+          pickInRound: row.pickInRound,
+          pickOverall: row.pickOverall,
+          provider: row.provider,
+          providerPlayerId: row.providerPlayerId,
+          providerTeamId: row.providerTeamId,
+          round: row.round,
+          updatedAt: asDate(row.updatedAt ?? row.createdAt),
+        },
+        target: fantasyDraftPicks.id,
       });
   }
 
@@ -1404,6 +1781,15 @@ export async function composeCanonicalSnapshot(
       composedAt: new Date().toISOString(),
       groupings: seasonSnapshots.flatMap((snapshot) =>
         withSeason(snapshot.groupings, snapshot.season),
+      ),
+      fantasyDraftPicks: seasonSnapshots.flatMap((snapshot) =>
+        withSeason(snapshot.fantasyDraftPicks ?? [], snapshot.season),
+      ),
+      fantasyPlayers: seasonSnapshots.flatMap((snapshot) =>
+        withSeason(snapshot.fantasyPlayers ?? [], snapshot.season),
+      ),
+      fantasyRosterEntries: seasonSnapshots.flatMap((snapshot) =>
+        withSeason(snapshot.fantasyRosterEntries ?? [], snapshot.season),
       ),
       identityMappings: seasonSnapshots.flatMap((snapshot) =>
         withSeason(snapshot.identityMappings, snapshot.season),

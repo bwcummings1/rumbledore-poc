@@ -1,4 +1,11 @@
-import { ArrowLeft, Crown, Landmark, Swords, Trophy } from "lucide-react";
+import {
+  ArrowLeft,
+  Crown,
+  Landmark,
+  Swords,
+  Trophy,
+  UserRound,
+} from "lucide-react";
 import Link from "next/link";
 import {
   PublicationMasthead,
@@ -42,6 +49,7 @@ function hasTrustedRecordData(data: RecordsPageData): boolean {
     data.catalog.allTimeStandings.length > 0 ||
     data.catalog.headToHead.allTimePairs.length > 0 ||
     data.catalog.championships.seasons.length > 0 ||
+    data.catalog.players.bestWeeks.length > 0 ||
     data.catalog.milestones.keeper.status === "available"
   );
 }
@@ -616,6 +624,118 @@ function HeadToHeadSection({ data }: { data: RecordsPageData }) {
   );
 }
 
+const playerPositionOrder = ["QB", "RB", "WR", "TE", "K", "D-ST"] as const;
+
+function playerWeekContext(row: {
+  personName: string;
+  position: string;
+  proTeam: string | null;
+  scoringPeriod: number;
+  season: number;
+}): string {
+  return [
+    row.position,
+    row.proTeam,
+    row.personName,
+    row.season,
+    `Week ${row.scoringPeriod}`,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function draftContext(row: {
+  personName: string;
+  pickOverall: number;
+  round: number;
+  season: number;
+  seasonPoints: number;
+}): string {
+  return [
+    row.personName,
+    `${row.season}`,
+    `Round ${row.round}`,
+    `Pick ${row.pickOverall}`,
+    `${formatNumber(row.seasonPoints)} pts`,
+  ].join(" - ");
+}
+
+function PlayersSection({ data }: { data: RecordsPageData }) {
+  const players = data.catalog.players;
+  const positionRows = playerPositionOrder.flatMap((position) =>
+    players.positionalBests[position].slice(0, 1).map((row) => ({
+      ...row,
+      positionLabel: position,
+    })),
+  );
+
+  if (
+    players.bestWeeks.length === 0 &&
+    positionRows.length === 0 &&
+    players.draftSteals.length === 0 &&
+    players.draftBusts.length === 0 &&
+    players.benchTragedies.length === 0
+  ) {
+    return null;
+  }
+
+  return (
+    <Section
+      icon={<UserRound className="size-4 text-primary" aria-hidden="true" />}
+      id="players"
+      title="Players"
+    >
+      <div className="grid gap-3 lg:grid-cols-3">
+        <CompactList
+          items={players.bestWeeks.map((row) => ({
+            context: playerWeekContext(row),
+            id: `player-best-week-${row.providerPlayerId}-${row.personId}-${row.season}-${row.scoringPeriod}`,
+            label: row.playerName,
+            value: formatNumber(row.value),
+          }))}
+          title="Best player weeks"
+        />
+        <CompactList
+          items={positionRows.map((row) => ({
+            context: playerWeekContext(row),
+            id: `player-position-${row.positionLabel}-${row.providerPlayerId}-${row.season}-${row.scoringPeriod}`,
+            label: `${row.positionLabel}: ${row.playerName}`,
+            value: formatNumber(row.value),
+          }))}
+          title="Positional highs"
+        />
+        <CompactList
+          items={players.benchTragedies.map((row) => ({
+            context: playerWeekContext(row),
+            id: `player-bench-${row.providerPlayerId}-${row.personId}-${row.season}-${row.scoringPeriod}`,
+            label: row.playerName,
+            value: formatNumber(row.value),
+          }))}
+          title="Bench tragedies"
+        />
+        <CompactList
+          items={players.draftSteals.map((row) => ({
+            context: draftContext(row),
+            id: `player-draft-steal-${row.providerPickId}-${row.providerPlayerId}`,
+            label: row.playerName,
+            value: `+${row.value}`,
+          }))}
+          title="Draft steals"
+        />
+        <CompactList
+          items={players.draftBusts.map((row) => ({
+            context: draftContext(row),
+            id: `player-draft-bust-${row.providerPickId}-${row.providerPlayerId}`,
+            label: row.playerName,
+            value: `+${row.value}`,
+          }))}
+          title="Draft busts"
+        />
+      </div>
+    </Section>
+  );
+}
+
 function AchievementsSection({ data }: { data: RecordsPageData }) {
   const records = recordGroup(data.currentRecords, [
     "best_score_in_loss",
@@ -828,6 +948,7 @@ export function LeagueRecordsView({ data }: { data: RecordsPageData }) {
           <RegularSeasonSection data={data} />
           <PlayoffSection data={data} />
           <HeadToHeadSection data={data} />
+          <PlayersSection data={data} />
           <AchievementsSection data={data} />
           <LowlightsSection data={data} />
         </>

@@ -428,3 +428,20 @@
   - Desktop Weeks roster shows `W8 / MONROE_REBS` with Luke Kuechly decoded as `DL / CAR / active` in slot `LB`.
   - Records shows real standings/records, pushed seasons, and the `12-team era (2013-2014)` chip.
   - Screenshot run log duplicate-key grep: `0`.
+
+## T19 player records
+
+- Verified at: 2026-07-09T21:29:00.000Z
+- Provider identity: ESPN 95050 (`NHS Alumni Annual`)
+- Verification mode: read-only against the shared dev DB; no curation push or provider mutation performed.
+- Live substrate rows present: `fantasy_players=761`, `fantasy_roster_entries=24433`, `fantasy_draft_picks=2968`.
+- Existing pushed season snapshots: `16`.
+- Existing pushed snapshots with T19 player arrays: `0` (all pushes predate the T19 snapshot extension).
+- Pushed Record Book player samples from `getLeagueRecordsPageData`: best week `null`, QB/RB/WR bests `null`, bench tragedy `null`, draft steal `null`, draft bust `null`.
+
+### T19 Checks
+
+- PASS - real league resolves by provider id `95050`, not hardcoded internal UUID.
+- PASS - live player-level substrate exists for the league.
+- PASS - pushed Record Book does not quietly read live player tables when pushed snapshots lack player arrays.
+- NOTE - sample player records will populate after a steward saves and pushes new season snapshots that include T19 player facts.

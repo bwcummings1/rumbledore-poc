@@ -12,6 +12,8 @@ import {
 } from "./curated-state";
 import {
   buildRecordsCatalog,
+  type PlayerDraftRecordInput,
+  type PlayerWeekRecordInput,
   type RecordBookLens,
   type RecordBookSegment,
   type RecordsCatalog,
@@ -260,6 +262,225 @@ export function groupingOptionsFromSnapshot(
 
 function dateFromSnapshot(value: string | undefined): Date {
   return value ? new Date(value) : SNAPSHOT_ROW_DATE;
+}
+
+function providerScopedKey(input: {
+  leagueProviderId: string;
+  provider: string;
+  providerPlayerId: string;
+}): string {
+  return `${input.provider}\u001f${input.leagueProviderId}\u001f${input.providerPlayerId}`;
+}
+
+function teamSeasonProviderKey(input: {
+  leagueProviderId: string;
+  provider: string;
+  providerTeamId: string;
+  season: number;
+}): string {
+  return `${input.provider}\u001f${input.leagueProviderId}\u001f${input.season}\u001f${input.providerTeamId}`;
+}
+
+function metadataString(
+  metadata: Record<string, unknown>,
+  keys: readonly string[],
+): string | null {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function playerNameFor(
+  player:
+    | ComposedCanonicalSnapshot["fantasyPlayers"][number]
+    | null
+    | undefined,
+  metadata: Record<string, unknown>,
+  providerPlayerId: string,
+): string {
+  return (
+    player?.fullName ||
+    metadataString(metadata, ["playerName", "fullName", "name"]) ||
+    providerPlayerId
+  );
+}
+
+function playerPositionFor(
+  player:
+    | ComposedCanonicalSnapshot["fantasyPlayers"][number]
+    | null
+    | undefined,
+  metadata: Record<string, unknown>,
+): string {
+  return (
+    player?.position ||
+    metadataString(metadata, ["position", "defaultPosition"]) ||
+    "unknown"
+  );
+}
+
+function playerProTeamFor(
+  player:
+    | ComposedCanonicalSnapshot["fantasyPlayers"][number]
+    | null
+    | undefined,
+  metadata: Record<string, unknown>,
+): string | null {
+  return player?.proTeam ?? metadataString(metadata, ["proTeam", "team"]);
+}
+
+function playerIndexes(snapshot: ComposedCanonicalSnapshot): {
+  byId: Map<string, ComposedCanonicalSnapshot["fantasyPlayers"][number]>;
+  byProvider: Map<string, ComposedCanonicalSnapshot["fantasyPlayers"][number]>;
+} {
+  const byId = new Map<
+    string,
+    ComposedCanonicalSnapshot["fantasyPlayers"][number]
+  >();
+  const byProvider = new Map<
+    string,
+    ComposedCanonicalSnapshot["fantasyPlayers"][number]
+  >();
+  for (const row of snapshot.fantasyPlayers) {
+    byId.set(row.id, row);
+    byProvider.set(providerScopedKey(row), row);
+  }
+  return { byId, byProvider };
+}
+
+function personIdByTeamSeason(
+  snapshot: ComposedCanonicalSnapshot,
+): Map<string, string> {
+  const mapping = new Map<string, string>();
+  for (const row of snapshot.identityMappings) {
+    mapping.set(teamSeasonProviderKey(row), row.personId);
+  }
+  return mapping;
+}
+
+function playoffPeriodKeys(
+  weeklyRows: readonly WeeklyStatisticsRow[],
+): Set<string> {
+  const keys = new Set<string>();
+  for (const row of weeklyRows) {
+    if (!row.isPlayoff) {
+      continue;
+    }
+    const span = Math.max(1, row.scoringPeriodSpan);
+    const start = row.periodStart ?? row.scoringPeriod;
+    for (let offset = 0; offset < span; offset += 1) {
+      keys.add(`${row.personId}\u001f${row.season}\u001f${start + offset}`);
+    }
+  }
+  return keys;
+}
+
+function playerForRosterEntry(
+  indexes: ReturnType<typeof playerIndexes>,
+  row: ComposedCanonicalSnapshot["fantasyRosterEntries"][number],
+): ComposedCanonicalSnapshot["fantasyPlayers"][number] | null {
+  return (
+    (row.fantasyPlayerId ? indexes.byId.get(row.fantasyPlayerId) : null) ??
+    indexes.byProvider.get(providerScopedKey(row)) ??
+    null
+  );
+}
+
+function playerForDraftPick(
+  indexes: ReturnType<typeof playerIndexes>,
+  row: ComposedCanonicalSnapshot["fantasyDraftPicks"][number],
+): ComposedCanonicalSnapshot["fantasyPlayers"][number] | null {
+  if (!row.providerPlayerId) {
+    return null;
+  }
+  return (
+    (row.fantasyPlayerId ? indexes.byId.get(row.fantasyPlayerId) : null) ??
+    indexes.byProvider.get(
+      providerScopedKey({
+        leagueProviderId: row.leagueProviderId,
+        provider: row.provider,
+        providerPlayerId: row.providerPlayerId,
+      }),
+    ) ??
+    null
+  );
+}
+
+export function playerWeekRowsFromSnapshot(
+  snapshot: ComposedCanonicalSnapshot,
+  weeklyRows: readonly WeeklyStatisticsRow[],
+): PlayerWeekRecordInput[] {
+  const indexes = playerIndexes(snapshot);
+  const teamPersonIds = personIdByTeamSeason(snapshot);
+  const playoffKeys = playoffPeriodKeys(weeklyRows);
+  return snapshot.fantasyRosterEntries
+    .map((row) => {
+      const points = row.actualPoints ?? row.points;
+      if (points === null || points === undefined) {
+        return null;
+      }
+      const personId = teamPersonIds.get(teamSeasonProviderKey(row));
+      if (!personId) {
+        return null;
+      }
+      const player = playerForRosterEntry(indexes, row);
+      return {
+        id: row.id,
+        isPlayoff: playoffKeys.has(
+          `${personId}\u001f${row.season}\u001f${row.scoringPeriod}`,
+        ),
+        personId,
+        playerName: playerNameFor(player, row.metadata, row.providerPlayerId),
+        points,
+        position: playerPositionFor(player, row.metadata),
+        proTeam: playerProTeamFor(player, row.metadata),
+        providerPlayerId: row.providerPlayerId,
+        providerTeamId: row.providerTeamId,
+        scoringPeriod: row.scoringPeriod,
+        season: row.season,
+        slot: row.slot,
+        started: row.started,
+      } satisfies PlayerWeekRecordInput;
+    })
+    .filter((row): row is PlayerWeekRecordInput => Boolean(row));
+}
+
+export function playerDraftRowsFromSnapshot(
+  snapshot: ComposedCanonicalSnapshot,
+): PlayerDraftRecordInput[] {
+  const indexes = playerIndexes(snapshot);
+  const teamPersonIds = personIdByTeamSeason(snapshot);
+  return snapshot.fantasyDraftPicks
+    .map((row) => {
+      if (!row.providerPlayerId) {
+        return null;
+      }
+      const personId = teamPersonIds.get(teamSeasonProviderKey(row));
+      if (!personId) {
+        return null;
+      }
+      const player = playerForDraftPick(indexes, row);
+      return {
+        id: row.id,
+        isKeeper: row.isKeeper,
+        personId,
+        pickInRound: row.pickInRound,
+        pickOverall: row.pickOverall,
+        playerName: playerNameFor(player, row.metadata, row.providerPlayerId),
+        position: playerPositionFor(player, row.metadata),
+        proTeam: playerProTeamFor(player, row.metadata),
+        providerPickId: row.providerPickId,
+        providerPlayerId: row.providerPlayerId,
+        providerTeamId: row.providerTeamId,
+        round: row.round,
+        season: row.season,
+      } satisfies PlayerDraftRecordInput;
+    })
+    .filter((row): row is PlayerDraftRecordInput => Boolean(row));
 }
 
 export function weeklyRowsFromSnapshot(
@@ -653,6 +874,8 @@ export async function getLeagueCanonRecordsContext(
     groupings,
   );
   const weeklyRowsAll = weeklyRowsFromSnapshot(snapshot);
+  const playerWeekRows = playerWeekRowsFromSnapshot(snapshot, weeklyRowsAll);
+  const playerDraftRows = playerDraftRowsFromSnapshot(snapshot);
   const championshipRowsAll = championshipRowsFromWeeklyRows(weeklyRowsAll);
   const seasonRowsAll = derivedSeasonRowsFromWeeklyRows(
     weeklyRowsAll,
@@ -675,6 +898,8 @@ export async function getLeagueCanonRecordsContext(
     lens: toRecordBookLens(lens),
     limit: input.limit,
     personNames,
+    playerDraftRows,
+    playerWeekRows,
     seasonRows: seasonRowsAll,
     weeklyRows: weeklyRowsAll,
   }) as CanonCatalog;

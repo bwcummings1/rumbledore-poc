@@ -6,7 +6,10 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  fantasyDraftPicks,
   fantasyMatchups,
+  fantasyPlayers,
+  fantasyRosterEntries,
   fantasyTeams,
   identityMappings,
   leagueGroupingSeasons,
@@ -42,6 +45,7 @@ interface SeededRecordsLeague {
   groupingId: string | null;
   leagueId: string;
   matchup2012Id: string;
+  playerRoster2012Id: string;
   providerLeagueId: string;
 }
 
@@ -106,6 +110,7 @@ async function seedRecordsLeague(
   let alicePersonId = "";
   let bobPersonId = "";
   let matchup2012Id = "";
+  let playerRoster2012Id = "";
   let groupingId: string | null = null;
 
   await withLeagueContext(handle.db, league.id, async (tx) => {
@@ -146,6 +151,53 @@ async function seedRecordsLeague(
     bobPersonId = bob.id;
 
     const teamSeasonIdsByPersonSeason = new Map<string, string>();
+    const [alphaQb] = await tx
+      .insert(fantasyPlayers)
+      .values({
+        contentHash: `${marker}-${tag}-player-alpha-qb`,
+        fullName: "Alpha Quarterback",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        position: "QB",
+        proTeam: "ATL",
+        provider: "espn",
+        providerPlayerId: "alpha-qb",
+      })
+      .returning({ id: fantasyPlayers.id });
+    const [lateRb] = await tx
+      .insert(fantasyPlayers)
+      .values({
+        contentHash: `${marker}-${tag}-player-late-rb`,
+        fullName: "Late Rocket",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        position: "RB",
+        proTeam: "BAL",
+        provider: "espn",
+        providerPlayerId: "late-rb",
+      })
+      .returning({ id: fantasyPlayers.id });
+    const [benchWr] = await tx
+      .insert(fantasyPlayers)
+      .values({
+        contentHash: `${marker}-${tag}-player-bench-wr`,
+        fullName: "Bench Comet",
+        leagueId: league.id,
+        leagueProviderId: providerLeagueId,
+        position: "WR",
+        proTeam: "CHI",
+        provider: "espn",
+        providerPlayerId: "bench-wr",
+      })
+      .returning({ id: fantasyPlayers.id });
+    if (!alphaQb || !lateRb || !benchWr) {
+      throw new Error("fantasy players were not created");
+    }
+    const fantasyPlayerIds = new Map([
+      ["alpha-qb", alphaQb.id],
+      ["late-rb", lateRb.id],
+      ["bench-wr", benchWr.id],
+    ]);
 
     for (const season of [2011, 2012]) {
       await tx.insert(leagueSeasonSettings).values({
@@ -297,6 +349,104 @@ async function seedRecordsLeague(
           weeklyRank: 2,
         },
       ]);
+
+      const [editedRosterEntry] = await tx
+        .insert(fantasyRosterEntries)
+        .values([
+          {
+            actualPoints: season === 2011 ? 31 : 41,
+            contentHash: `${marker}-${tag}-roster-alpha-qb-${season}`,
+            fantasyPlayerId: fantasyPlayerIds.get("alpha-qb"),
+            leagueId: league.id,
+            leagueProviderId: providerLeagueId,
+            points: season === 2011 ? 31 : 41,
+            projectedPoints: season === 2011 ? 22 : 24,
+            provider: "espn",
+            providerPlayerId: "alpha-qb",
+            providerTeamId: "1",
+            scoringPeriod: 1,
+            season,
+            slot: "QB",
+            started: true,
+            status: "active",
+          },
+          {
+            actualPoints: season === 2011 ? 18 : 36,
+            contentHash: `${marker}-${tag}-roster-late-rb-${season}`,
+            fantasyPlayerId: fantasyPlayerIds.get("late-rb"),
+            leagueId: league.id,
+            leagueProviderId: providerLeagueId,
+            points: season === 2011 ? 18 : 36,
+            projectedPoints: 15,
+            provider: "espn",
+            providerPlayerId: "late-rb",
+            providerTeamId: "2",
+            scoringPeriod: 1,
+            season,
+            slot: "RB",
+            started: true,
+            status: "active",
+          },
+          {
+            actualPoints: season === 2011 ? 12 : 39,
+            contentHash: `${marker}-${tag}-roster-bench-wr-${season}`,
+            fantasyPlayerId: fantasyPlayerIds.get("bench-wr"),
+            leagueId: league.id,
+            leagueProviderId: providerLeagueId,
+            points: season === 2011 ? 12 : 39,
+            projectedPoints: 11,
+            provider: "espn",
+            providerPlayerId: "bench-wr",
+            providerTeamId: "2",
+            scoringPeriod: 1,
+            season,
+            slot: "Bench",
+            started: false,
+            status: "bench",
+          },
+        ])
+        .returning({
+          id: fantasyRosterEntries.id,
+          providerPlayerId: fantasyRosterEntries.providerPlayerId,
+          season: fantasyRosterEntries.season,
+        });
+      if (
+        editedRosterEntry?.season === 2012 &&
+        editedRosterEntry.providerPlayerId === "alpha-qb"
+      ) {
+        playerRoster2012Id = editedRosterEntry.id;
+      }
+
+      await tx.insert(fantasyDraftPicks).values([
+        {
+          contentHash: `${marker}-${tag}-draft-alpha-qb-${season}`,
+          fantasyPlayerId: fantasyPlayerIds.get("alpha-qb"),
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          pickInRound: 1,
+          pickOverall: 1,
+          provider: "espn",
+          providerPickId: `${season}-pick-1`,
+          providerPlayerId: "alpha-qb",
+          providerTeamId: "1",
+          round: 1,
+          season,
+        },
+        {
+          contentHash: `${marker}-${tag}-draft-late-rb-${season}`,
+          fantasyPlayerId: fantasyPlayerIds.get("late-rb"),
+          leagueId: league.id,
+          leagueProviderId: providerLeagueId,
+          pickInRound: 8,
+          pickOverall: 8,
+          provider: "espn",
+          providerPickId: `${season}-pick-8`,
+          providerPlayerId: "late-rb",
+          providerTeamId: "2",
+          round: 4,
+          season,
+        },
+      ]);
     }
 
     if (input.withGrouping) {
@@ -325,6 +475,10 @@ async function seedRecordsLeague(
     }
   });
 
+  if (!playerRoster2012Id) {
+    throw new Error("editable 2012 player roster row was not created");
+  }
+
   return {
     actorUserId,
     alicePersonId,
@@ -332,6 +486,7 @@ async function seedRecordsLeague(
     groupingId,
     leagueId: league.id,
     matchup2012Id,
+    playerRoster2012Id,
     providerLeagueId,
   };
 }
@@ -346,6 +501,10 @@ function biggestLossRecord(data: RecordsPageData) {
   return data.currentRecords.find(
     (record) => record.recordType === "biggest_loss",
   );
+}
+
+function bestPlayerWeek(data: RecordsPageData) {
+  return data.catalog.players.bestWeeks[0];
 }
 
 async function pushBaseline(seeded: SeededRecordsLeague) {
@@ -470,6 +629,83 @@ describe("records page pushed snapshot read model", () => {
       personName: "Alice 2012 Brand (Alice Real)",
       pointsFor: 350,
       seasons: 2,
+    });
+  });
+
+  it("keeps player records on the pushed canonical snapshot boundary", async () => {
+    const seeded = await seedRecordsLeague("player-push-boundary");
+    await pushBaseline(seeded);
+
+    let result = await getLeagueRecordsPageData(handle.db, {
+      leagueId: seeded.leagueId,
+    });
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(bestPlayerWeek(result.data)).toMatchObject({
+      personName: "Alice 2012 Brand (Alice Real)",
+      playerName: "Alpha Quarterback",
+      recordType: "best_single_player_week",
+      season: 2012,
+      value: 41,
+    });
+    expect(result.data.catalog.players.benchTragedies[0]).toMatchObject({
+      playerName: "Bench Comet",
+      value: 39,
+    });
+
+    await withLeagueContext(handle.db, seeded.leagueId, async (tx) => {
+      await tx
+        .update(fantasyRosterEntries)
+        .set({
+          actualPoints: 88,
+          contentHash: `${marker}-player-push-boundary-roster-alpha-qb-2012-edited`,
+          points: 88,
+        })
+        .where(eq(fantasyRosterEntries.id, seeded.playerRoster2012Id));
+    });
+    const saved2012 = await createCurationCheckpoint(handle.db, {
+      actorUserId: seeded.actorUserId,
+      label: "saved 2012 player edit",
+      leagueId: seeded.leagueId,
+    });
+
+    result = await getLeagueRecordsPageData(handle.db, {
+      leagueId: seeded.leagueId,
+    });
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(bestPlayerWeek(result.data)).toMatchObject({
+      season: 2012,
+      value: 41,
+    });
+
+    await pushCurationSeason(handle.db, {
+      actorUserId: seeded.actorUserId,
+      checkpointId: saved2012.id,
+      leagueId: seeded.leagueId,
+      season: 2012,
+    });
+
+    result = await getLeagueRecordsPageData(handle.db, {
+      leagueId: seeded.leagueId,
+    });
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(bestPlayerWeek(result.data)).toMatchObject({
+      personName: "Alice 2012 Brand (Alice Real)",
+      playerName: "Alpha Quarterback",
+      season: 2012,
+      value: 88,
+    });
+    expect(result.data.catalog.players.draftSteals[0]).toMatchObject({
+      playerName: "Late Rocket",
+      recordType: "best_draft_steal",
     });
   });
 
