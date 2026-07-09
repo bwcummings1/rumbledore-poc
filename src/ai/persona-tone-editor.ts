@@ -796,6 +796,11 @@ function buildPreviewContext(input: {
       season: input.league.season,
       status: input.league.status,
     },
+    generalNfl: {
+      boundary: "general_nfl_context_not_league_canon",
+      facts: [],
+      source: null,
+    },
     memory: [],
     persona: input.card,
     priorPosts: [],

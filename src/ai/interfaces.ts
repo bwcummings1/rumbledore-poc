@@ -275,6 +275,77 @@ export interface LeagueContextArena {
   topLeagueStandings: LeagueContextArenaStanding[];
 }
 
+export interface LeagueContextGeneralNflWeekStats {
+  fantasyPoints: number;
+  interceptions: number;
+  opponentTeam: string;
+  passingTouchdowns: number;
+  passingYards: number;
+  receptions: number;
+  receivingTouchdowns: number;
+  receivingYards: number;
+  rushingTouchdowns: number;
+  rushingYards: number;
+  targets: number;
+  team: string;
+  week: number;
+}
+
+export interface LeagueContextGeneralNflScheduleGame {
+  awayScore: number | null;
+  awayTeam: string;
+  gameTime: string;
+  homeScore: number | null;
+  homeTeam: string;
+  status: "scheduled" | "in_progress" | "final";
+  week: number;
+}
+
+export interface LeagueContextGeneralNflSeasonTotals {
+  fantasyPoints: number;
+  games: number;
+  interceptions: number;
+  passingTouchdowns: number;
+  passingYards: number;
+  receptions: number;
+  receivingTouchdowns: number;
+  receivingYards: number;
+  rushingTouchdowns: number;
+  rushingYards: number;
+  targets: number;
+}
+
+export interface LeagueContextGeneralNflPlayerFact {
+  boundary: "general_nfl_context_not_league_canon";
+  confidence: "provider_id" | "name";
+  latestWeek: LeagueContextGeneralNflWeekStats | null;
+  player: {
+    fullName: string;
+    position: string;
+    sourcePlayerId: string;
+    team: string;
+  };
+  roster: {
+    leagueTeamName: string | null;
+    playerName: string | null;
+    provider: string | null;
+    providerPlayerId: string | null;
+    providerTeamId: string | null;
+    rosterSlot: string | null;
+    started: boolean | null;
+  };
+  schedule: LeagueContextGeneralNflScheduleGame[];
+  season: number;
+  seasonTotals: LeagueContextGeneralNflSeasonTotals;
+  source: string;
+}
+
+export interface LeagueContextGeneralNfl {
+  boundary: "general_nfl_context_not_league_canon";
+  facts: LeagueContextGeneralNflPlayerFact[];
+  source: string | null;
+}
+
 export interface LeaguePersonaCard {
   id: string;
   persona: AiPersona;
@@ -312,6 +383,7 @@ export interface LeagueBlogContext {
   memory: LeagueContextMemory[];
   trigger: LeagueContextTrigger;
   arena: LeagueContextArena;
+  generalNfl: LeagueContextGeneralNfl;
 }
 
 export interface PromptParts {

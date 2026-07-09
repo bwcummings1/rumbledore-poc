@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
@@ -15,6 +15,7 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { ingestMockGeneralStats } from "@/general-stats";
 import {
   type CentralNewsSource,
   type CentralNewsSourceItem,
@@ -56,6 +57,9 @@ beforeAll(async () => {
     );
   }
   await migrateSerialized(handle);
+  await ingestMockGeneralStats(handle.db, {
+    fetchedAt: new Date("2026-06-11T16:45:00.000Z"),
+  });
 
   const [user] = await handle.db
     .insert(users)
@@ -132,6 +136,20 @@ beforeAll(async () => {
       scoringPeriod: 2,
       season: 2026,
       slot: "RB",
+      status: "active",
+    });
+    await tx.insert(fantasyRosterEntries).values({
+      contentHash: `${marker}-roster-a-mahomes-hash`,
+      leagueId: leagueAId,
+      leagueProviderId: leagueA.providerLeagueId,
+      metadata: { playerName: "Patrick Mahomes", proTeam: "KC" },
+      provider: "espn",
+      providerPlayerId: "3139477",
+      providerTeamId: "1",
+      scoringPeriod: 2,
+      season: 2026,
+      slot: "QB",
+      started: true,
       status: "active",
     });
   });
@@ -416,5 +434,111 @@ describe("central news tailoring hand-off", () => {
         },
       ]),
     );
+  });
+
+  it("adds substrate-B general NFL context to league-specific central-news framing", async () => {
+    const sourceUrl = `https://news.example.com/${marker}/mahomes-general-context`;
+    const source = new StaticCentralNewsSource([
+      {
+        body: "A national report says Patrick Mahomes is steering the Week 2 slate.",
+        id: `${marker}-mahomes-context`,
+        playerRefs: [
+          {
+            label: "Patrick Mahomes",
+            provider: "espn",
+            providerId: "3139477",
+          },
+        ],
+        publishedAt: new Date("2026-06-11T19:00:00.000Z"),
+        source: "NFL Wire",
+        sourceType: "web",
+        sourceUrl,
+        summary: "Patrick Mahomes shapes the national fantasy slate.",
+        title: "Mahomes shapes the Week 2 fantasy slate",
+        topics: ["fantasy", "quarterbacks"],
+      },
+    ]);
+
+    const result = await refreshCentralNews({
+      deps: {
+        db: handle.db,
+        now: () => new Date("2026-06-11T19:05:00.000Z"),
+        source,
+      },
+      input: { limit: 5, topic: "fantasy quarterbacks" },
+    });
+
+    expect(result).toMatchObject({
+      inserted: 1,
+      tailoredReferences: 1,
+    });
+
+    const [centralRow] = await handle.db
+      .select({
+        id: contentItems.id,
+        leagueId: contentItems.leagueId,
+        metadata: contentItems.metadata,
+        summary: contentItems.summary,
+      })
+      .from(contentItems)
+      .where(eq(contentItems.sourceUrl, sourceUrl));
+    expect(centralRow).toMatchObject({
+      leagueId: null,
+      summary: "Patrick Mahomes shapes the national fantasy slate.",
+    });
+    expect(centralRow?.metadata).toMatchObject({
+      playerRefs: [
+        {
+          label: "Patrick Mahomes",
+          provider: "espn",
+          providerId: "3139477",
+        },
+      ],
+    });
+    if (!centralRow) {
+      throw new Error("central row was not inserted");
+    }
+
+    const leagueAReferences = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      (tx) =>
+        tx
+          .select({
+            contentItemId: leagueFeedReferences.contentItemId,
+            reason: leagueFeedReferences.reason,
+          })
+          .from(leagueFeedReferences)
+          .where(
+            and(
+              eq(leagueFeedReferences.leagueId, leagueAId),
+              eq(leagueFeedReferences.contentItemId, centralRow.id),
+            ),
+          ),
+    );
+    expect(leagueAReferences).toEqual([
+      expect.objectContaining({
+        contentItemId: centralRow.id,
+        reason: expect.stringContaining(
+          "Tailor Team A rosters Patrick Mahomes. General NFL context: Patrick Mahomes (QB, KC) logged 27.78 fantasy points in Week 2 vs DAL; KC at DAL finished 28-30.",
+        ),
+      }),
+    ]);
+
+    const leagueBReferences = await withLeagueContext(
+      handle.db,
+      leagueBId,
+      (tx) =>
+        tx
+          .select({ id: leagueFeedReferences.id })
+          .from(leagueFeedReferences)
+          .where(
+            and(
+              eq(leagueFeedReferences.leagueId, leagueBId),
+              eq(leagueFeedReferences.contentItemId, centralRow.id),
+            ),
+          ),
+    );
+    expect(leagueBReferences).toHaveLength(0);
   });
 });

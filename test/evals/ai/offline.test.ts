@@ -165,11 +165,24 @@ describe("offline AI judge eval gate", () => {
           throw new Error(`${contentType} has no default persona`);
         }
         const context = contextFor({ fixture, persona });
+        const generalNflPlayer = context.generalNfl.facts[0]?.player.fullName;
+        if (!generalNflPlayer) {
+          throw new Error(`${fixture.leagueName} has no general NFL fixture`);
+        }
         const otherFixture =
           fixture.leagueId === league95050.leagueId
             ? isolationLeague
             : league95050;
         const draft = await generateEvalDraft({ contentType, context, llm });
+        expect(draft.body, `${fixture.leagueName}:${contentType}`).toContain(
+          "General NFL context (non-canon):",
+        );
+        expect(draft.body, `${fixture.leagueName}:${contentType}`).toContain(
+          generalNflPlayer,
+        );
+        expect(draft.citedCanonClaimIds).toEqual([
+          context.authenticity.canonLore[0]?.id,
+        ]);
         const score = await judge.score({
           leagueFacts: {
             context,

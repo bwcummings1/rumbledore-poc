@@ -139,6 +139,38 @@ function formatMoney(cents: number): string {
   return `${sign}$${Math.round(absolute / 100).toLocaleString("en-US")}`;
 }
 
+function formatStatNumber(value: number): string {
+  return Number.isInteger(value)
+    ? value.toLocaleString("en-US")
+    : value.toLocaleString("en-US", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 0,
+      });
+}
+
+function generalNflContextLine(
+  context: LlmGenerateRequest["context"],
+): string | null {
+  const fact = context.generalNfl.facts[0];
+  if (!fact) {
+    return null;
+  }
+
+  const latest = fact.latestWeek;
+  const weekLine = latest
+    ? `${formatStatNumber(latest.fantasyPoints)} fantasy points in Week ${latest.week} vs ${latest.opponentTeam}`
+    : `${formatStatNumber(fact.seasonTotals.fantasyPoints)} fantasy points across ${fact.seasonTotals.games} games`;
+  const schedule = latest
+    ? fact.schedule.find((game) => game.week === latest.week)
+    : fact.schedule[0];
+  const scoreLine =
+    schedule && schedule.awayScore !== null && schedule.homeScore !== null
+      ? `; ${schedule.awayTeam} at ${schedule.homeTeam} finished ${schedule.awayScore}-${schedule.homeScore}`
+      : "";
+
+  return `General NFL context (non-canon): ${fact.player.fullName} (${fact.player.position}, ${fact.player.team}) logged ${weekLine}${scoreLine}.`;
+}
+
 function firstManager(team: LeagueContextTeam | null): string {
   return team?.managerNames[0] ?? "the league room";
 }
@@ -752,6 +784,7 @@ export class MockLlmClient implements LlmClient {
     const rivalryLine = rivalry
       ? `Rivalry file: ${rivalry.personAName} and ${rivalry.personBName} have met ${rivalry.meetings} times.`
       : "No head-to-head rivalry is being forced into the story.";
+    const generalNflLine = generalNflContextLine(request.context);
     const teamLine = team
       ? `${team.name}, managed by ${manager}, is the first team to watch at ${team.wins}-${team.losses}-${team.ties}.`
       : `${manager} has the quietest board because no teams have been ingested yet.`;
@@ -771,7 +804,9 @@ export class MockLlmClient implements LlmClient {
     const bodyBlocks: BlogDraftBodyBlock[] = [
       ...blocksForStructure(request, structure),
       {
-        text: `${teamLine} ${recordLine} ${rivalryLine} ${canonLine} ${pendingLine} ${disputedLine} ${refutedLine} Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
+        text: `${teamLine} ${recordLine} ${rivalryLine} ${canonLine} ${pendingLine} ${disputedLine} ${refutedLine} ${
+          generalNflLine ?? ""
+        } Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
         type: "paragraph",
       },
     ];

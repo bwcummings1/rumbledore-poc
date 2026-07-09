@@ -20,6 +20,7 @@ import {
   contentItems,
   dataIntegrityChecks,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
   headToHeadRecords,
   instigations,
@@ -37,6 +38,11 @@ import {
   type EntitlementTier,
   resolveEntitlement,
 } from "@/entitlements";
+import {
+  GENERAL_STATS_MOCK_SOURCE,
+  getLeagueRosterGeneralNflFacts,
+  type LeagueRosterGeneralStatsFact,
+} from "@/general-stats";
 import {
   mostRestrictiveRoastLevel,
   type RoastLevel,
@@ -68,6 +74,8 @@ import type {
   LeagueContextCanonLore,
   LeagueContextCorrection,
   LeagueContextDisputedLore,
+  LeagueContextGeneralNfl,
+  LeagueContextGeneralNflPlayerFact,
   LeagueContextInstigation,
   LeagueContextLore,
   LeagueContextLoreClaim,
@@ -648,6 +656,179 @@ function emptyArenaContext(): LeagueContextArena {
   };
 }
 
+function emptyGeneralNflContext(): LeagueContextGeneralNfl {
+  return {
+    boundary: "general_nfl_context_not_league_canon",
+    facts: [],
+    source: null,
+  };
+}
+
+function compactGeneralNflWeek(
+  week: LeagueRosterGeneralStatsFact["latestWeek"],
+): LeagueContextGeneralNflPlayerFact["latestWeek"] {
+  return week
+    ? {
+        fantasyPoints: week.fantasyPoints,
+        interceptions: week.interceptions,
+        opponentTeam: week.opponentTeam,
+        passingTouchdowns: week.passingTouchdowns,
+        passingYards: week.passingYards,
+        receptions: week.receptions,
+        receivingTouchdowns: week.receivingTouchdowns,
+        receivingYards: week.receivingYards,
+        rushingTouchdowns: week.rushingTouchdowns,
+        rushingYards: week.rushingYards,
+        targets: week.targets,
+        team: week.team,
+        week: week.week,
+      }
+    : null;
+}
+
+function compactGeneralNflFact(
+  fact: LeagueRosterGeneralStatsFact,
+): LeagueContextGeneralNflPlayerFact {
+  return {
+    boundary: "general_nfl_context_not_league_canon",
+    confidence: fact.confidence,
+    latestWeek: compactGeneralNflWeek(fact.latestWeek),
+    player: {
+      fullName: fact.player.fullName,
+      position: fact.player.position,
+      sourcePlayerId: fact.player.sourcePlayerId,
+      team: fact.player.team,
+    },
+    roster: {
+      leagueTeamName: fact.original.leagueTeamName ?? null,
+      playerName: fact.original.playerName ?? null,
+      provider: fact.original.provider ?? null,
+      providerPlayerId: fact.original.providerPlayerId ?? null,
+      providerTeamId: fact.original.providerTeamId ?? null,
+      rosterSlot: fact.original.rosterSlot ?? null,
+      started: fact.original.started ?? null,
+    },
+    schedule: fact.schedule.map((game) => ({
+      awayScore: game.awayScore,
+      awayTeam: game.awayTeam,
+      gameTime: game.gameTime.toISOString(),
+      homeScore: game.homeScore,
+      homeTeam: game.homeTeam,
+      status: game.status,
+      week: game.week,
+    })),
+    season: fact.season,
+    seasonTotals: fact.seasonTotals,
+    source: fact.source,
+  };
+}
+
+async function loadGeneralNflContext({
+  db,
+  league,
+}: {
+  db: Db;
+  league: LeagueBlogContext["league"];
+}): Promise<LeagueContextGeneralNfl> {
+  const rosterFacts = await withLeagueContext(db, league.id, async (tx) => {
+    const [period] = await tx
+      .select({
+        scoringPeriod: sql<
+          number | null
+        >`max(${fantasyRosterEntries.scoringPeriod})`,
+      })
+      .from(fantasyRosterEntries)
+      .where(
+        and(
+          eq(fantasyRosterEntries.leagueId, league.id),
+          eq(fantasyRosterEntries.leagueProviderId, league.providerLeagueId),
+          eq(fantasyRosterEntries.season, league.season),
+        ),
+      );
+    const scoringPeriod = Number(period?.scoringPeriod ?? Number.NaN);
+    if (!Number.isFinite(scoringPeriod)) {
+      return [];
+    }
+
+    const rows = await tx
+      .select({
+        leagueTeamName: fantasyTeams.name,
+        metadata: fantasyRosterEntries.metadata,
+        provider: fantasyRosterEntries.provider,
+        providerPlayerId: fantasyRosterEntries.providerPlayerId,
+        providerTeamId: fantasyRosterEntries.providerTeamId,
+        slot: fantasyRosterEntries.slot,
+        started: fantasyRosterEntries.started,
+      })
+      .from(fantasyRosterEntries)
+      .leftJoin(
+        fantasyTeams,
+        and(
+          eq(fantasyTeams.leagueId, fantasyRosterEntries.leagueId),
+          eq(fantasyTeams.provider, fantasyRosterEntries.provider),
+          eq(
+            fantasyTeams.leagueProviderId,
+            fantasyRosterEntries.leagueProviderId,
+          ),
+          eq(fantasyTeams.providerTeamId, fantasyRosterEntries.providerTeamId),
+          eq(fantasyTeams.season, fantasyRosterEntries.season),
+        ),
+      )
+      .where(
+        and(
+          eq(fantasyRosterEntries.leagueId, league.id),
+          eq(fantasyRosterEntries.leagueProviderId, league.providerLeagueId),
+          eq(fantasyRosterEntries.season, league.season),
+          eq(fantasyRosterEntries.scoringPeriod, scoringPeriod),
+        ),
+      )
+      .orderBy(
+        desc(fantasyRosterEntries.started),
+        fantasyRosterEntries.providerTeamId,
+        fantasyRosterEntries.slot,
+        fantasyRosterEntries.providerPlayerId,
+      )
+      .limit(48);
+
+    return rows.map((row) => {
+      const metadata =
+        row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      const playerName =
+        typeof metadata.playerName === "string" ? metadata.playerName : null;
+      const team =
+        typeof metadata.proTeam === "string" ? metadata.proTeam : null;
+      return {
+        leagueTeamName: row.leagueTeamName,
+        playerName,
+        provider: row.provider,
+        providerPlayerId: row.providerPlayerId,
+        providerTeamId: row.providerTeamId,
+        rosterSlot: row.slot,
+        started: row.started,
+        team,
+      };
+    });
+  });
+
+  if (rosterFacts.length === 0) {
+    return emptyGeneralNflContext();
+  }
+
+  const facts = await getLeagueRosterGeneralNflFacts(db, {
+    limit: 8,
+    rosterFacts,
+    season: league.season,
+    source: GENERAL_STATS_MOCK_SOURCE,
+    week: league.currentScoringPeriod,
+  });
+
+  return {
+    boundary: "general_nfl_context_not_league_canon",
+    facts: facts.map(compactGeneralNflFact),
+    source: facts[0]?.source ?? GENERAL_STATS_MOCK_SOURCE,
+  };
+}
+
 function arenaStandingFromLeaderboardRow(
   row: ArenaLeaderboardRow,
 ): LeagueContextArenaStanding {
@@ -1083,6 +1264,7 @@ export function buildPromptParts({
     arena: context.arena,
     currentScoringPeriod: context.league.currentScoringPeriod,
     duplicateNudge: duplicateNudge ?? null,
+    generalNflContext: context.generalNfl,
     priorPosts: context.priorPosts.map((post) => ({
       publishedAt: post.publishedAt.toISOString(),
       summary: post.summary,
@@ -2061,6 +2243,7 @@ async function prepareGeneration({
       league,
       arena: emptyArenaContext(),
       authenticity,
+      generalNfl: emptyGeneralNflContext(),
       memory,
       persona,
       priorPosts,
@@ -2466,6 +2649,10 @@ export async function generateLeagueBlogPost({
     arena: await loadArenaContext({
       db: deps.db,
       leagueId: input.leagueId,
+    }),
+    generalNfl: await loadGeneralNflContext({
+      db: deps.db,
+      league: prepared.context.league,
     }),
   };
 

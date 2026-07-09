@@ -36,6 +36,7 @@ import {
   contentItems,
   dataIntegrityChecks,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
   headToHeadRecords,
   leagues,
@@ -44,6 +45,7 @@ import {
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
+import { ingestMockGeneralStats } from "@/general-stats";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
 import type { WebhookDeliverer } from "@/webhooks";
@@ -349,6 +351,31 @@ async function seedLeague(tag: string) {
   });
 
   return league;
+}
+
+async function seedMockNflRosteredPlayer(
+  league: Awaited<ReturnType<typeof seedLeague>>,
+) {
+  const tag = league.providerLeagueId.replace(`${marker}-`, "");
+  await ingestMockGeneralStats(handle.db, {
+    fetchedAt: new Date("2026-06-11T10:00:00.000Z"),
+  });
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    await tx.insert(fantasyRosterEntries).values({
+      contentHash: `${marker}-${league.providerLeagueId}-mahomes-roster-hash`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      metadata: { playerName: "Patrick Mahomes", proTeam: "KC" },
+      provider: "espn",
+      providerPlayerId: "3139477",
+      providerTeamId: `${tag}-team`,
+      scoringPeriod: league.currentScoringPeriod,
+      season: league.season,
+      slot: "QB",
+      started: true,
+      status: "active",
+    });
+  });
 }
 
 beforeAll(async () => {
@@ -660,6 +687,99 @@ describe("generateLeagueBlogPost", () => {
       status: "blocked_entitlement",
       triggerKey: "weekly_recap:weekly:premium-required",
     });
+  });
+
+  it("adds substrate-B roster-matched NFL facts to volatile AI context only", async () => {
+    const league = await seedLeague("substrate-b");
+    await seedMockNflRosteredPlayer(league);
+    const llm = new MockLlmClient();
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        triggerKey: "weekly:substrate-b",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests).toHaveLength(1);
+    expect(llm.requests[0]?.context.generalNfl).toMatchObject({
+      boundary: "general_nfl_context_not_league_canon",
+      facts: [
+        expect.objectContaining({
+          boundary: "general_nfl_context_not_league_canon",
+          latestWeek: expect.objectContaining({
+            fantasyPoints: 25.8,
+            opponentTeam: "MIN",
+            week: 1,
+          }),
+          player: {
+            fullName: "Patrick Mahomes",
+            position: "QB",
+            sourcePlayerId: "mock-patrick-mahomes",
+            team: "KC",
+          },
+          roster: expect.objectContaining({
+            leagueTeamName: "substrate-b Team",
+            providerPlayerId: "3139477",
+            rosterSlot: "QB",
+            started: true,
+          }),
+          schedule: expect.arrayContaining([
+            expect.objectContaining({
+              awayTeam: "KC",
+              homeTeam: "MIN",
+              week: 1,
+            }),
+          ]),
+          seasonTotals: expect.objectContaining({
+            fantasyPoints: 53.58,
+            games: 2,
+          }),
+        }),
+      ],
+      source: "mock-nfl-general-stats",
+    });
+
+    const stablePrefix = llm.requests[0]?.prompt.systemPrefix ?? "";
+    const volatileContext = llm.requests[0]?.prompt.volatileContext ?? "";
+    expect(stablePrefix).not.toContain("Patrick Mahomes");
+    expect(volatileContext).toContain("Patrick Mahomes");
+    expect(volatileContext).toContain("general_nfl_context_not_league_canon");
+
+    const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ body: contentItems.body })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+            eq(
+              contentItems.dedupKey,
+              "blog:analyst:weekly_recap:weekly:substrate-b",
+            ),
+          ),
+        )
+        .limit(1),
+    );
+    expect(post?.body).toContain(
+      "General NFL context (non-canon): Patrick Mahomes (QB, KC) logged 25.8 fantasy points in Week 1 vs MIN; KC at MIN finished 31-27.",
+    );
   });
 
   it("publishes separate structured artifacts for different content types on the same trigger", async () => {

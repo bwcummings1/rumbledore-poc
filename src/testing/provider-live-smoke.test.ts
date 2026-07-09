@@ -106,6 +106,11 @@ function requestFor(
         rivalries: [],
         roastConsent: { full_send: [], light: [], off_limits: [] },
       },
+      generalNfl: {
+        boundary: "general_nfl_context_not_league_canon",
+        facts: [],
+        source: null,
+      },
       memory: [],
       persona: {
         beat: "League-official framing",

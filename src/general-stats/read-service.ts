@@ -13,6 +13,8 @@ import type {
   GeneralStatsScheduleGame,
   GeneralStatsTeamBoxScore,
   LeagueRosterFactForEnrichment,
+  LeagueRosterGeneralStatsFact,
+  LeagueRosterGeneralStatsSeasonTotals,
 } from "./types";
 
 function normalizeSource(value: string | undefined): string | undefined {
@@ -22,6 +24,13 @@ function normalizeSource(value: string | undefined): string | undefined {
 
 function normalizeTeam(value: string): string {
   return value.trim().toUpperCase();
+}
+
+function normalizeLimit(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return 8;
+  }
+  return Math.min(Math.max(Math.trunc(value), 1), 24);
 }
 
 function sourceClause(source: string | undefined): SQL | undefined {
@@ -289,4 +298,162 @@ export async function enrichLeagueRosterFactWithGeneralStats(
     : candidates[0];
 
   return player ? { confidence: "name", original: fact, player } : null;
+}
+
+function emptySeasonTotals(): LeagueRosterGeneralStatsSeasonTotals {
+  return {
+    fantasyPoints: 0,
+    games: 0,
+    interceptions: 0,
+    passingTouchdowns: 0,
+    passingYards: 0,
+    receptions: 0,
+    receivingTouchdowns: 0,
+    receivingYards: 0,
+    rushingTouchdowns: 0,
+    rushingYards: 0,
+    targets: 0,
+  };
+}
+
+function seasonTotals(
+  stats: readonly GeneralStatsPlayerWeekStats[],
+): LeagueRosterGeneralStatsSeasonTotals {
+  return stats.reduce((totals, stat) => {
+    totals.fantasyPoints += stat.fantasyPoints;
+    totals.games += 1;
+    totals.interceptions += stat.interceptions;
+    totals.passingTouchdowns += stat.passingTouchdowns;
+    totals.passingYards += stat.passingYards;
+    totals.receptions += stat.receptions;
+    totals.receivingTouchdowns += stat.receivingTouchdowns;
+    totals.receivingYards += stat.receivingYards;
+    totals.rushingTouchdowns += stat.rushingTouchdowns;
+    totals.rushingYards += stat.rushingYards;
+    totals.targets += stat.targets;
+    return totals;
+  }, emptySeasonTotals());
+}
+
+function latestWeekFor(
+  stats: readonly GeneralStatsPlayerWeekStats[],
+  week: number | undefined,
+): GeneralStatsPlayerWeekStats | null {
+  if (stats.length === 0) {
+    return null;
+  }
+
+  const sorted = [...stats].sort(
+    (left, right) =>
+      right.week - left.week ||
+      left.player.fullName.localeCompare(right.player.fullName),
+  );
+  if (week === undefined || !Number.isFinite(week)) {
+    return sorted[0] ?? null;
+  }
+
+  return (
+    sorted.find((stat) => stat.week === week) ??
+    sorted.find((stat) => stat.week <= week) ??
+    sorted[0] ??
+    null
+  );
+}
+
+function scheduleWindow(
+  games: readonly GeneralStatsScheduleGame[],
+  week: number | undefined,
+): GeneralStatsScheduleGame[] {
+  const sorted = [...games].sort(
+    (left, right) =>
+      left.week - right.week ||
+      left.gameTime.getTime() - right.gameTime.getTime(),
+  );
+  if (week === undefined || !Number.isFinite(week)) {
+    return sorted.slice(0, 4);
+  }
+
+  const nearWeek = sorted.filter(
+    (game) => game.week >= week - 1 && game.week <= week + 1,
+  );
+  return (nearWeek.length > 0 ? nearWeek : sorted).slice(0, 4);
+}
+
+function rosterFactKey(fact: LeagueRosterFactForEnrichment): string {
+  if (fact.provider && fact.providerPlayerId) {
+    return `${fact.provider.toLowerCase()}:${fact.providerPlayerId}`;
+  }
+  return `${fact.playerName ?? ""}:${fact.team ?? ""}`.toLowerCase();
+}
+
+export async function getLeagueRosterGeneralNflFacts(
+  db: Db,
+  input: {
+    limit?: number;
+    rosterFacts: readonly LeagueRosterFactForEnrichment[];
+    season: number;
+    source?: string;
+    week?: number;
+  },
+): Promise<LeagueRosterGeneralStatsFact[]> {
+  const limit = normalizeLimit(input.limit);
+  const seenRosterFacts = new Set<string>();
+  const seenPlayers = new Set<string>();
+  const results: LeagueRosterGeneralStatsFact[] = [];
+
+  for (const rosterFact of input.rosterFacts) {
+    const factKey = rosterFactKey(rosterFact);
+    if (!factKey || seenRosterFacts.has(factKey)) {
+      continue;
+    }
+    seenRosterFacts.add(factKey);
+
+    const enriched = await enrichLeagueRosterFactWithGeneralStats(
+      db,
+      rosterFact,
+      { source: input.source },
+    );
+    if (!enriched) {
+      continue;
+    }
+
+    const playerKey = `${enriched.player.source}:${enriched.player.sourcePlayerId}`;
+    if (seenPlayers.has(playerKey)) {
+      continue;
+    }
+    seenPlayers.add(playerKey);
+
+    const stats = await getGeneralStatsPlayerStats(db, {
+      season: input.season,
+      source: enriched.player.source,
+      sourcePlayerId: enriched.player.sourcePlayerId,
+    });
+    const schedule = await getGeneralStatsSchedule(db, {
+      season: input.season,
+      source: enriched.player.source,
+      team: enriched.player.team,
+    });
+
+    results.push({
+      confidence: enriched.confidence,
+      latestWeek: latestWeekFor(stats, input.week),
+      original: enriched.original,
+      player: enriched.player,
+      schedule: scheduleWindow(schedule, input.week),
+      season: input.season,
+      seasonTotals: seasonTotals(stats),
+      source: enriched.player.source,
+    });
+
+    if (results.length >= limit) {
+      break;
+    }
+  }
+
+  return results.sort(
+    (left, right) =>
+      (left.original.leagueTeamName ?? "").localeCompare(
+        right.original.leagueTeamName ?? "",
+      ) || left.player.fullName.localeCompare(right.player.fullName),
+  );
 }
