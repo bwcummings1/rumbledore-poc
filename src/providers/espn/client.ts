@@ -16,6 +16,7 @@ import {
   type NormalizedMember,
   type NormalizedMemberRole,
   type NormalizedPlayer,
+  type NormalizedPlayerStatBreakdown,
   type NormalizedPostseasonSettings,
   type NormalizedRoster,
   type NormalizedRosterSettings,
@@ -1259,6 +1260,74 @@ function statAppliedTotal(
   return undefined;
 }
 
+function numericStatRecord(value: unknown): Map<number, number> {
+  if (!isRecord(value)) {
+    return new Map();
+  }
+
+  const entries = Object.entries(value).flatMap(([key, raw]) => {
+    const statId = Number(key);
+    const numeric = numberFromUnknown(raw);
+    if (!Number.isInteger(statId) || numeric === undefined) {
+      return [];
+    }
+    return [[statId, numeric] as const];
+  });
+  return new Map(entries);
+}
+
+function statAppliedBreakdown(
+  playerRecord: Record<string, unknown>,
+  scoringPeriod: number,
+  statSourceId: number,
+  statSource: NormalizedPlayerStatBreakdown["statSource"],
+): NormalizedPlayerStatBreakdown[] {
+  const rows: NormalizedPlayerStatBreakdown[] = [];
+  for (const stat of recordArray(playerRecord, "stats")) {
+    const source = numberFromUnknown(recordValue(stat, "statSourceId"));
+    if (source !== statSourceId) {
+      continue;
+    }
+    const period = numberFromUnknown(recordValue(stat, "scoringPeriodId"));
+    if (period !== undefined && period !== scoringPeriod && period !== 0) {
+      continue;
+    }
+    const appliedStats = recordValue(stat, "appliedStats");
+    if (!isRecord(appliedStats)) {
+      continue;
+    }
+    const values = numericStatRecord(recordValue(stat, "stats"));
+    const points = numericStatRecord(appliedStats);
+    const statIds = [...new Set([...values.keys(), ...points.keys()])].sort(
+      (left, right) => left - right,
+    );
+    for (const statId of statIds) {
+      const definition = decodeEspnScoringStatId(statId);
+      if (!definition) {
+        continue;
+      }
+      const statValue = values.get(statId) ?? 0;
+      const fantasyPoints = points.get(statId) ?? 0;
+      if (statValue === 0 && fantasyPoints === 0) {
+        continue;
+      }
+      rows.push({
+        fantasyPoints,
+        metadata: {
+          scoringPeriodId: period ?? null,
+          statSourceId,
+        },
+        providerStatId: statId,
+        statCategory: definition.category,
+        statKey: definition.key,
+        statSource,
+        statValue,
+      });
+    }
+  }
+  return rows;
+}
+
 function normalizeRosterEntry(
   entry: Record<string, unknown>,
   league: ProviderLeagueRef,
@@ -1294,6 +1363,12 @@ function normalizeRosterEntry(
   const projectedPoints = isRecord(playerRecord)
     ? statAppliedTotal(playerRecord, scoringPeriod, 1)
     : undefined;
+  const statBreakdown = isRecord(playerRecord)
+    ? [
+        ...statAppliedBreakdown(playerRecord, scoringPeriod, 0, "actual"),
+        ...statAppliedBreakdown(playerRecord, scoringPeriod, 1, "projected"),
+      ]
+    : [];
 
   return {
     actualPoints,
@@ -1304,6 +1379,7 @@ function normalizeRosterEntry(
       providerId: player.providerId,
     },
     slot,
+    ...(statBreakdown.length > 0 ? { statBreakdown } : {}),
     status:
       stringFromUnknown(recordValue(entry, "status")) ??
       stringFromUnknown(recordValue(entry, "injuryStatus")) ??
@@ -1381,6 +1457,7 @@ function withoutRosterEntryScores(
     actualPoints: undefined,
     points: undefined,
     projectedPoints: undefined,
+    statBreakdown: undefined,
   };
 }
 

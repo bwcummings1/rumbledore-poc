@@ -180,6 +180,18 @@ export interface NormalizedPlayer extends ProviderEntityRef {
   status?: string;
 }
 
+export type NormalizedPlayerStatSource = "actual" | "projected";
+
+export interface NormalizedPlayerStatBreakdown {
+  fantasyPoints: number;
+  metadata?: NormalizedJsonObject;
+  providerStatId: number;
+  statCategory: string;
+  statKey: string;
+  statSource: NormalizedPlayerStatSource;
+  statValue: number;
+}
+
 export interface NormalizedRosterEntry {
   actualPoints?: number;
   projectedPoints?: number;
@@ -187,6 +199,7 @@ export interface NormalizedRosterEntry {
   player?: NormalizedPlayer;
   playerRef: ProviderEntityRef;
   slot: string;
+  statBreakdown?: readonly NormalizedPlayerStatBreakdown[];
   status: string;
   points?: number;
   isKeeper?: boolean;

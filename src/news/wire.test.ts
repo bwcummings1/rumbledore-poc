@@ -167,7 +167,7 @@ beforeAll(async () => {
       kind: "news",
       leagueId: null,
       metadata: {
-        editorialImportance: 40,
+        editorialImportance: 100,
         playerRefs: [
           {
             label: "Star Runner",
@@ -177,7 +177,7 @@ beforeAll(async () => {
         ],
         section: "injuries",
       },
-      publishedAt: new Date("2026-06-11T14:00:00.000Z"),
+      publishedAt: new Date("2099-06-12T14:00:00.000Z"),
       source: "Wire Desk",
       sourceUrl: `https://news.example.com/${marker}/star-runner`,
       summary: "Star Runner is the tagged personal story.",
@@ -190,6 +190,7 @@ beforeAll(async () => {
       kind: "news",
       leagueId: null,
       metadata: {
+        editorialImportance: 100,
         playerRefs: [
           {
             label: "Deep Threat",
@@ -199,7 +200,7 @@ beforeAll(async () => {
         ],
         section: "rankings",
       },
-      publishedAt: new Date("2026-06-11T15:00:00.000Z"),
+      publishedAt: new Date("2099-06-12T13:00:00.000Z"),
       source: "Wire Desk",
       sourceUrl: `https://news.example.com/${marker}/deep-threat`,
       summary: "A tagged story for a player outside the member roster.",
@@ -211,8 +212,8 @@ beforeAll(async () => {
       dedupKey: `${marker}-general`,
       kind: "news",
       leagueId: null,
-      metadata: { section: "headlines" },
-      publishedAt: new Date("2026-06-11T13:00:00.000Z"),
+      metadata: { editorialImportance: 100, section: "headlines" },
+      publishedAt: new Date("2099-06-12T12:00:00.000Z"),
       source: "Wire Desk",
       sourceUrl: `https://news.example.com/${marker}/general`,
       summary: "A general story without player tags.",

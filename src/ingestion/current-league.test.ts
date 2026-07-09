@@ -14,6 +14,7 @@ import {
   fantasyMatchups,
   fantasyMembers,
   fantasyPlayers,
+  fantasyPlayerWeekStatBreakdowns,
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
@@ -235,6 +236,32 @@ function rosterCapableProviderFor(
               playerRef: { provider: "espn" as const, providerId: "101" },
               slot: "QB",
               started: true,
+              statBreakdown: [
+                {
+                  fantasyPoints: 12,
+                  providerStatId: 4,
+                  statCategory: "passing",
+                  statKey: "passingTouchdowns",
+                  statSource: "actual" as const,
+                  statValue: 2,
+                },
+                {
+                  fantasyPoints: 12.2,
+                  providerStatId: 3,
+                  statCategory: "passing",
+                  statKey: "passingYards",
+                  statSource: "actual" as const,
+                  statValue: 305,
+                },
+                {
+                  fantasyPoints: 25.1,
+                  providerStatId: 3,
+                  statCategory: "passing",
+                  statKey: "passingYards",
+                  statSource: "projected" as const,
+                  statValue: 251,
+                },
+              ],
               status: "active",
               points: 24.2,
               projectedPoints: 25.1,
@@ -412,6 +439,15 @@ async function selectIngestedRows(leagueId: string) {
       .from(fantasyRosterEntries)
       .where(eq(fantasyRosterEntries.leagueId, leagueId))
       .orderBy(asc(fantasyRosterEntries.providerPlayerId));
+    const playerStatBreakdowns = await tx
+      .select()
+      .from(fantasyPlayerWeekStatBreakdowns)
+      .where(eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId))
+      .orderBy(
+        asc(fantasyPlayerWeekStatBreakdowns.providerPlayerId),
+        asc(fantasyPlayerWeekStatBreakdowns.statSource),
+        asc(fantasyPlayerWeekStatBreakdowns.providerStatId),
+      );
     const players = await tx
       .select()
       .from(fantasyPlayers)
@@ -449,6 +485,7 @@ async function selectIngestedRows(leagueId: string) {
       members,
       persons: personRows,
       players,
+      playerStatBreakdowns,
       draftPicks,
       rosterEntries,
       settings,
@@ -1410,6 +1447,11 @@ describe("syncCurrentLeague", () => {
       changed: 1,
       unchanged: 0,
     });
+    expect(synced.value.playerStatBreakdowns).toEqual({
+      total: 3,
+      changed: 3,
+      unchanged: 0,
+    });
 
     const rows = await selectIngestedRows(synced.value.league.id);
     expect(rows.rosterEntries).toHaveLength(1);
@@ -1432,6 +1474,38 @@ describe("syncCurrentLeague", () => {
       providerPlayerId: "101",
       proTeam: "ATL",
     });
+    expect(rows.playerStatBreakdowns).toHaveLength(3);
+    expect(rows.playerStatBreakdowns).toEqual([
+      expect.objectContaining({
+        fantasyPoints: 12.2,
+        providerPlayerId: "101",
+        providerStatId: 3,
+        providerTeamId: "1",
+        statCategory: "passing",
+        statKey: "passingYards",
+        statSource: "actual" as const,
+        statValue: 305,
+      }),
+      expect.objectContaining({
+        fantasyPoints: 12,
+        providerPlayerId: "101",
+        providerStatId: 4,
+        providerTeamId: "1",
+        statCategory: "passing",
+        statKey: "passingTouchdowns",
+        statSource: "actual" as const,
+        statValue: 2,
+      }),
+      expect.objectContaining({
+        fantasyPoints: 25.1,
+        providerPlayerId: "101",
+        providerStatId: 3,
+        providerTeamId: "1",
+        statKey: "passingYards",
+        statSource: "projected" as const,
+        statValue: 251,
+      }),
+    ]);
     const rosterCoverage = rows.coverage.find(
       (coverage) => coverage.dataClass === "rosters",
     );
@@ -1473,6 +1547,16 @@ describe("syncCurrentLeague", () => {
                 projectedPoints: 18.2,
                 slot: "RB",
                 started: true,
+                statBreakdown: [
+                  {
+                    fantasyPoints: 31.4,
+                    providerStatId: 24,
+                    statCategory: "rushing",
+                    statKey: "rushingYards",
+                    statSource: "actual" as const,
+                    statValue: 314,
+                  },
+                ],
                 status: "active",
               },
             ],
@@ -1499,6 +1583,15 @@ describe("syncCurrentLeague", () => {
     expect(repeatedRows.players[0]).toMatchObject({
       fullName: "Roster Player Two",
       providerPlayerId: "102",
+    });
+    expect(repeatedRows.playerStatBreakdowns).toHaveLength(1);
+    expect(repeatedRows.playerStatBreakdowns[0]).toMatchObject({
+      fantasyPoints: 31.4,
+      providerPlayerId: "102",
+      providerStatId: 24,
+      statKey: "rushingYards",
+      statSource: "actual" as const,
+      statValue: 314,
     });
   });
 
@@ -1574,7 +1667,7 @@ describe("syncCurrentLeague", () => {
     ).toMatchObject({
       divisions: { itemCount: 2, status: "complete" },
       keeper_dynasty: { itemCount: 2, status: "complete" },
-      scoring_detail: { itemCount: 1, status: "partial" },
+      scoring_detail: { itemCount: 4, status: "partial" },
     });
   });
 

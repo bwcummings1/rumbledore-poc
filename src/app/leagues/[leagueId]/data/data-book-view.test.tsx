@@ -198,6 +198,32 @@ const data: DataBookPageData = {
               projectedPoints: 17.1,
               proTeam: "ATL",
               slot: "RB",
+              statBreakdown: [
+                {
+                  fantasyPoints: 12,
+                  providerStatId: 25,
+                  statCategory: "rushing",
+                  statKey: "rushingTouchdowns",
+                  statSource: "actual",
+                  statValue: 2,
+                },
+                {
+                  fantasyPoints: 16.4,
+                  providerStatId: 24,
+                  statCategory: "rushing",
+                  statKey: "rushingYards",
+                  statSource: "actual",
+                  statValue: 164,
+                },
+                {
+                  fantasyPoints: 17.1,
+                  providerStatId: 24,
+                  statCategory: "rushing",
+                  statKey: "rushingYards",
+                  statSource: "projected",
+                  statValue: 171,
+                },
+              ],
               started: true,
               status: "active",
             },
@@ -209,6 +235,7 @@ const data: DataBookPageData = {
               projectedPoints: 6.4,
               proTeam: "TB",
               slot: "BE",
+              statBreakdown: [],
               started: false,
               status: "active",
             },
@@ -418,6 +445,9 @@ test("Data Book switches grains with the secondary selector", () => {
   ).toBeDefined();
   expect(screen.getByText("Bijan Robinson")).toBeDefined();
   expect(screen.getByText("28.4")).toBeDefined();
+  fireEvent.click(screen.getByText("28.4 stat pts"));
+  expect(screen.getByText("rushingTouchdowns")).toBeDefined();
+  expect(screen.getAllByText(/rushingYards/).length).toBeGreaterThan(0);
 });
 
 test("Settings grain confirms adjusted era proposals", async () => {

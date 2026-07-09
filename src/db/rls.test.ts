@@ -53,6 +53,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "data_coverage",
     "data_integrity_check",
     "editorial_actions",
+    "fantasy_player_week_stat_breakdowns",
     "fantasy_roster_entries",
     "fantasy_teams",
     "fantasy_members",

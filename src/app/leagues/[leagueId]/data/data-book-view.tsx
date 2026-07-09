@@ -43,6 +43,7 @@ import type {
   DataBookGrain,
   DataBookPageData,
   DataBookPersonRow,
+  DataBookRosterEntry,
   DataBookSeason,
   DataBookSeasonCurationState,
   DataBookSettingRow,
@@ -1877,6 +1878,17 @@ function rosterPoints(value: number | null): string {
   return value === null ? "-" : formatNumber(value);
 }
 
+function statSourceLabel(value: string): string {
+  return value === "projected" ? "Projected" : "Actual";
+}
+
+function statBreakdownSummary(entry: DataBookRosterEntry): string {
+  const actual = entry.statBreakdown
+    .filter((stat) => stat.statSource === "actual")
+    .reduce((total, stat) => total + stat.fantasyPoints, 0);
+  return actual === 0 ? "Stat detail" : `${formatNumber(actual)} stat pts`;
+}
+
 function WeekRosterPanel({ week }: { week: DataBookWeekRow | null }) {
   if (!week || week.roster.length === 0) {
     return (
@@ -1951,6 +1963,35 @@ function WeekRosterPanel({ week }: { week: DataBookWeekRow | null }) {
                         .filter(Boolean)
                         .join(" / ")}
                     </span>
+                    {entry.statBreakdown.length > 0 ? (
+                      <details className="mt-2 max-w-xl rounded-control border border-[var(--hair)] bg-[var(--panel-muted)] text-xs">
+                        <summary className="cursor-pointer px-2 py-1 font-mono uppercase tracking-[0.12em] text-ink-3">
+                          {statBreakdownSummary(entry)}
+                        </summary>
+                        <div className="grid gap-1 border-t border-[var(--hair)] px-2 py-2">
+                          {entry.statBreakdown.map((stat) => (
+                            <div
+                              className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2"
+                              key={`${entry.id}:${stat.statSource}:${stat.providerStatId}`}
+                            >
+                              <span className="min-w-0 truncate">
+                                {stat.statKey}
+                                <span className="ml-1 text-muted-foreground">
+                                  #{stat.providerStatId} / {stat.statCategory} /{" "}
+                                  {statSourceLabel(stat.statSource)}
+                                </span>
+                              </span>
+                              <span className="font-mono text-muted-foreground">
+                                {formatNumber(stat.statValue)}
+                              </span>
+                              <span className="font-mono text-foreground">
+                                {formatNumber(stat.fantasyPoints)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                 </td>
                 <td className="px-3 py-2 text-right font-mono sm:px-4">

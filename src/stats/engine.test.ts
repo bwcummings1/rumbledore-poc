@@ -17,6 +17,7 @@ import {
   fantasyMatchups,
   fantasyMembers,
   fantasyPlayers,
+  fantasyPlayerWeekStatBreakdowns,
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
@@ -4010,6 +4011,40 @@ describe("recomputeLeagueStatistics", () => {
           status: "active",
         })),
       ]);
+      await tx.insert(fantasyPlayerWeekStatBreakdowns).values([
+        {
+          contentHash: `${marker}-player-rollup-1a-stat`,
+          fantasyPoints: 35,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-1a",
+          providerStatId: 24,
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2025,
+          statCategory: "rushing",
+          statKey: "rushingYards",
+          statSource: "actual",
+          statValue: 350,
+        },
+        {
+          contentHash: `${marker}-player-rollup-1b-stat`,
+          fantasyPoints: 40,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-1b",
+          providerStatId: 24,
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2025,
+          statCategory: "rushing",
+          statKey: "rushingYards",
+          statSource: "actual",
+          statValue: 400,
+        },
+      ]);
     });
 
     await recomputeLeagueStatistics(handle.db, { leagueId });
@@ -4038,6 +4073,36 @@ describe("recomputeLeagueStatistics", () => {
         }),
       ]),
     });
+    const failedBreakdown = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "stat_breakdown_coverage" &&
+        row.season === 2025 &&
+        row.status === "fail",
+    );
+    expect(failedBreakdown?.detail).toMatchObject({
+      checkedPlayerWeeks: 2,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          breakdownPoints: 35,
+          playerPoints: 40,
+          providerPlayerId: "rollup-1a",
+          providerTeamId: "1",
+          scoringPeriod: 1,
+        }),
+      ]),
+      skippedPlayerWeeks: expect.arrayContaining([
+        expect.objectContaining({
+          providerPlayerId: "rollup-2b",
+          reason: "missing_player_points",
+          scoringPeriod: 1,
+        }),
+        expect.objectContaining({
+          providerPlayerId: "rollup-2a",
+          reason: "missing_stat_breakdown",
+          scoringPeriod: 1,
+        }),
+      ]),
+    });
 
     await withLeagueContext(handle.db, leagueId, async (tx) => {
       await tx
@@ -4047,6 +4112,19 @@ describe("recomputeLeagueStatistics", () => {
           and(
             eq(fantasyRosterEntries.leagueId, leagueId),
             eq(fantasyRosterEntries.providerPlayerId, "rollup-1a"),
+          ),
+        );
+      await tx
+        .update(fantasyPlayerWeekStatBreakdowns)
+        .set({
+          contentHash: `${marker}-player-rollup-1a-stat-fixed`,
+          fantasyPoints: 60,
+          statValue: 600,
+        })
+        .where(
+          and(
+            eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId),
+            eq(fantasyPlayerWeekStatBreakdowns.providerPlayerId, "rollup-1a"),
           ),
         );
     });
@@ -4068,6 +4146,22 @@ describe("recomputeLeagueStatistics", () => {
           providerTeamId: "2",
           reason: "partial_started_player_points",
           scoringPeriod: 1,
+        }),
+      ]),
+    });
+    const passingBreakdown = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "stat_breakdown_coverage" &&
+        row.season === 2025 &&
+        row.status === "pass",
+    );
+    expect(passingBreakdown?.detail).toMatchObject({
+      checkedPlayerWeeks: 2,
+      issues: [],
+      skippedPlayerWeeks: expect.arrayContaining([
+        expect.objectContaining({
+          providerPlayerId: "rollup-2a",
+          reason: "missing_stat_breakdown",
         }),
       ]),
     });

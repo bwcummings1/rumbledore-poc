@@ -113,6 +113,7 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "provider_code_decoding",
   "roster_coverage",
   "player_points_rollup",
+  "stat_breakdown_coverage",
 ]);
 
 export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [
@@ -994,6 +995,81 @@ export const fantasyRosterEntries = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+  ],
+);
+
+export const fantasyPlayerWeekStatBreakdowns = pgTable(
+  "fantasy_player_week_stat_breakdowns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    providerTeamId: text("provider_team_id").notNull(),
+    providerPlayerId: text("provider_player_id").notNull(),
+    fantasyPlayerId: uuid("fantasy_player_id").references(
+      () => fantasyPlayers.id,
+      { onDelete: "set null" },
+    ),
+    season: integer("season").notNull(),
+    scoringPeriod: integer("scoring_period").notNull(),
+    statSource: text("stat_source").notNull().default("actual"),
+    providerStatId: integer("provider_stat_id").notNull(),
+    statCategory: text("stat_category").notNull(),
+    statKey: text("stat_key").notNull(),
+    statValue: doublePrecision("stat_value").notNull(),
+    fantasyPoints: doublePrecision("fantasy_points").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_player_week_stat_breakdowns_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.providerTeamId,
+      table.season,
+      table.scoringPeriod,
+      table.providerPlayerId,
+      table.statSource,
+      table.providerStatId,
+    ),
+    index("fantasy_player_week_stat_breakdowns_team_period_idx").on(
+      table.leagueId,
+      table.season,
+      table.scoringPeriod,
+      table.providerTeamId,
+    ),
+    index("fantasy_player_week_stat_breakdowns_player_idx").on(
+      table.fantasyPlayerId,
+    ),
+    index("fantasy_player_week_stat_breakdowns_stat_idx").on(
+      table.leagueId,
+      table.providerStatId,
+    ),
+    pgPolicy("fantasy_player_week_stat_breakdowns_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "fantasy_player_week_stat_breakdowns_provider_player_nonempty",
+      sql`length(${table.providerPlayerId}) > 0`,
+    ),
+    check(
+      "fantasy_player_week_stat_breakdowns_stat_source_valid",
+      sql`${table.statSource} in ('actual', 'projected')`,
+    ),
+    check(
+      "fantasy_player_week_stat_breakdowns_provider_stat_nonnegative",
+      sql`${table.providerStatId} >= 0`,
+    ),
   ],
 );
 
@@ -4417,6 +4493,10 @@ export type FantasyPlayer = typeof fantasyPlayers.$inferSelect;
 export type NewFantasyPlayer = typeof fantasyPlayers.$inferInsert;
 export type FantasyRosterEntry = typeof fantasyRosterEntries.$inferSelect;
 export type NewFantasyRosterEntry = typeof fantasyRosterEntries.$inferInsert;
+export type FantasyPlayerWeekStatBreakdown =
+  typeof fantasyPlayerWeekStatBreakdowns.$inferSelect;
+export type NewFantasyPlayerWeekStatBreakdown =
+  typeof fantasyPlayerWeekStatBreakdowns.$inferInsert;
 export type FantasyDraftPick = typeof fantasyDraftPicks.$inferSelect;
 export type NewFantasyDraftPick = typeof fantasyDraftPicks.$inferInsert;
 export type FantasyTransaction = typeof fantasyTransactions.$inferSelect;

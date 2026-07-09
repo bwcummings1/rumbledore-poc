@@ -10,6 +10,7 @@ import {
   fantasyMatchups,
   fantasyMembers,
   fantasyPlayers,
+  fantasyPlayerWeekStatBreakdowns,
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
@@ -2841,6 +2842,19 @@ async function buildDataIntegrityCheckDrafts(
     })
     .from(fantasyRosterEntries)
     .where(eq(fantasyRosterEntries.leagueId, leagueId));
+  const statBreakdownRows = await tx
+    .select({
+      fantasyPoints: fantasyPlayerWeekStatBreakdowns.fantasyPoints,
+      provider: fantasyPlayerWeekStatBreakdowns.provider,
+      providerPlayerId: fantasyPlayerWeekStatBreakdowns.providerPlayerId,
+      providerStatId: fantasyPlayerWeekStatBreakdowns.providerStatId,
+      providerTeamId: fantasyPlayerWeekStatBreakdowns.providerTeamId,
+      scoringPeriod: fantasyPlayerWeekStatBreakdowns.scoringPeriod,
+      season: fantasyPlayerWeekStatBreakdowns.season,
+      statSource: fantasyPlayerWeekStatBreakdowns.statSource,
+    })
+    .from(fantasyPlayerWeekStatBreakdowns)
+    .where(eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId));
   const playerRows = await tx
     .select({
       metadata: fantasyPlayers.metadata,
@@ -3107,6 +3121,10 @@ async function buildDataIntegrityCheckDrafts(
       observed.lineupSlots.add(lineupSlotId);
     }
   }
+  for (const breakdown of statBreakdownRows) {
+    const observed = observedCodesFor(breakdown.provider);
+    observed.scoringStats.add(breakdown.providerStatId);
+  }
   for (const draft of draftRows) {
     const observed = observedCodesFor(draft.provider);
     const lineupSlotId = numberFromUnknown(
@@ -3273,6 +3291,24 @@ async function buildDataIntegrityCheckDrafts(
       row,
     ]);
   }
+  const statBreakdownsByPlayerWeek = new Map<
+    string,
+    typeof statBreakdownRows
+  >();
+  for (const row of statBreakdownRows.filter(
+    (entry) => entry.statSource === "actual",
+  )) {
+    const key = [
+      row.providerTeamId,
+      row.season,
+      row.scoringPeriod,
+      row.providerPlayerId,
+    ].join(":");
+    statBreakdownsByPlayerWeek.set(key, [
+      ...(statBreakdownsByPlayerWeek.get(key) ?? []),
+      row,
+    ]);
+  }
   const rosterSeasons = seasonKeys(
     coverageRows
       .filter(
@@ -3288,6 +3324,9 @@ async function buildDataIntegrityCheckDrafts(
     const coverageIssues: Record<string, unknown>[] = [];
     const rollupIssues: Record<string, unknown>[] = [];
     const rollupSkipped: Record<string, unknown>[] = [];
+    const statBreakdownIssues: Record<string, unknown>[] = [];
+    const statBreakdownSkipped: Record<string, unknown>[] = [];
+    let checkedStatBreakdownPlayerWeeks = 0;
     const finalizedTeamWeeks = weeklyRows.filter(
       (row) => row.season === season && row.result !== "bye",
     );
@@ -3368,6 +3407,55 @@ async function buildDataIntegrityCheckDrafts(
       }
     }
 
+    for (const roster of rosterRows.filter((row) => row.season === season)) {
+      const playerPoints = roster.actualPoints ?? roster.points;
+      if (typeof playerPoints !== "number" || !Number.isFinite(playerPoints)) {
+        statBreakdownSkipped.push({
+          providerPlayerId: roster.providerPlayerId,
+          providerTeamId: roster.providerTeamId,
+          reason: "missing_player_points",
+          scoringPeriod: roster.scoringPeriod,
+        });
+        continue;
+      }
+      const key = [
+        roster.providerTeamId,
+        roster.season,
+        roster.scoringPeriod,
+        roster.providerPlayerId,
+      ].join(":");
+      const breakdowns = statBreakdownsByPlayerWeek.get(key) ?? [];
+      if (breakdowns.length === 0) {
+        statBreakdownSkipped.push({
+          playerPoints,
+          providerPlayerId: roster.providerPlayerId,
+          providerTeamId: roster.providerTeamId,
+          reason: "missing_stat_breakdown",
+          scoringPeriod: roster.scoringPeriod,
+        });
+        continue;
+      }
+      checkedStatBreakdownPlayerWeeks += 1;
+      const breakdownPoints = round(
+        breakdowns.reduce((total, breakdown) => {
+          return total + breakdown.fantasyPoints;
+        }, 0),
+        2,
+      );
+      if (!amountEqual(playerPoints, breakdownPoints, 0.1)) {
+        statBreakdownIssues.push({
+          breakdownPoints,
+          playerPoints,
+          providerPlayerId: roster.providerPlayerId,
+          providerStatIds: breakdowns
+            .map((breakdown) => breakdown.providerStatId)
+            .sort((left, right) => left - right),
+          providerTeamId: roster.providerTeamId,
+          scoringPeriod: roster.scoringPeriod,
+        });
+      }
+    }
+
     drafts.push({
       checkKey: "roster_coverage",
       detail: {
@@ -3390,6 +3478,17 @@ async function buildDataIntegrityCheckDrafts(
       },
       season,
       status: checkStatus(rollupIssues),
+    });
+    drafts.push({
+      checkKey: "stat_breakdown_coverage",
+      detail: {
+        checkedPlayerWeeks: checkedStatBreakdownPlayerWeeks,
+        issues: statBreakdownIssues,
+        skippedPlayerWeeks: statBreakdownSkipped,
+        tolerance: 0.1,
+      },
+      season,
+      status: checkStatus(statBreakdownIssues),
     });
   }
   const standingsSeasons = seasonKeys(
