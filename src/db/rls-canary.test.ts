@@ -19,7 +19,9 @@ import {
   type DataIntegrityCheck,
   dataIntegrityChecks,
   type EditorialAction,
+  type EmailDigestDeliveryRecord,
   editorialActions,
+  emailDigestDeliveryRecords,
   type FantasyTeam,
   fantasyTeams,
   type Instigation,
@@ -93,6 +95,8 @@ let leagueWebhookA: LeagueWebhook;
 let leagueWebhookB: LeagueWebhook;
 let webhookDeliveryA: WebhookDeliveryRecord;
 let webhookDeliveryB: WebhookDeliveryRecord;
+let emailDigestDeliveryA: EmailDigestDeliveryRecord;
+let emailDigestDeliveryB: EmailDigestDeliveryRecord;
 let editorialActionA: EditorialAction;
 let editorialActionB: EditorialAction;
 let personaCardA: AiPersonaCard;
@@ -172,7 +176,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, email_digest_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -329,6 +333,36 @@ beforeAll(async () => {
         payload: { marker, side: "b" },
         targetKind: "generic",
         webhookId: leagueWebhookB.id,
+      },
+    ])
+    .returning();
+
+  [emailDigestDeliveryA, emailDigestDeliveryB] = await admin.db
+    .insert(emailDigestDeliveryRecords)
+    .values([
+      {
+        contentItemIds: [contentA.id],
+        deliveredAt: new Date("2026-06-13T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        digestKey: `${marker}:weekly:a`,
+        leagueId: leagueA,
+        payload: { marker, side: "a" },
+        recipientEmailHash: `${marker}-digest-email-hash-a`,
+        recipientUserId: userA.id,
+        windowEndAt: new Date("2026-06-13T00:00:00.000Z"),
+        windowStartAt: new Date("2026-06-06T00:00:00.000Z"),
+      },
+      {
+        contentItemIds: [contentB.id],
+        deliveredAt: new Date("2026-06-13T00:00:00.000Z"),
+        deliveryStatus: "delivered",
+        digestKey: `${marker}:weekly:b`,
+        leagueId: leagueB,
+        payload: { marker, side: "b" },
+        recipientEmailHash: `${marker}-digest-email-hash-b`,
+        recipientUserId: userB.id,
+        windowEndAt: new Date("2026-06-13T00:00:00.000Z"),
+        windowStartAt: new Date("2026-06-06T00:00:00.000Z"),
       },
     ])
     .returning();
@@ -1187,6 +1221,16 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows.deliveries.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
+  it("scoped to league A, unfiltered digest delivery scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(emailDigestDeliveryRecords),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(emailDigestDeliveryA.id);
+    expect(rows.map((row) => row.id)).not.toContain(emailDigestDeliveryB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
   it("scoped to league A, content scans include central rows and league A only", async () => {
     const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
       tx
@@ -1463,6 +1507,27 @@ describe("two-league isolation under withLeagueContext", () => {
     ).toBe("42501");
   });
 
+  it("rejects writing a league B digest delivery from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(emailDigestDeliveryRecords).values({
+            contentItemIds: [contentB.id],
+            deliveredAt: new Date("2026-06-13T00:00:00.000Z"),
+            deliveryStatus: "delivered",
+            digestKey: `${marker}:weekly:bad`,
+            leagueId: leagueB,
+            payload: { marker, bad: true },
+            recipientEmailHash: `${marker}-bad-digest-email-hash`,
+            recipientUserId: userB.id,
+            windowEndAt: new Date("2026-06-13T00:00:00.000Z"),
+            windowStartAt: new Date("2026-06-06T00:00:00.000Z"),
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
   it("enforces one claim vote per member", async () => {
     expect(
       await sqlstateOf(
@@ -1574,6 +1639,19 @@ describe("two-league isolation under withLeagueContext", () => {
             .update(webhookDeliveryRecords)
             .set({ errorMessage: "mutated" })
             .where(eq(webhookDeliveryRecords.id, webhookDeliveryA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct digest delivery mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(emailDigestDeliveryRecords)
+            .set({ errorMessage: "mutated" })
+            .where(eq(emailDigestDeliveryRecords.id, emailDigestDeliveryA.id)),
         ),
       ),
     ).toBe("55000");

@@ -12,6 +12,7 @@ export const JOB_EVENTS = {
   bankrollRollover: "bankroll.rollover",
   oddsPoll: "odds.poll",
   newsRefresh: "news.refresh",
+  weeklyDigest: "digest.weekly",
   contentGenerate: "content.generate",
   contentCorrectionNeeded: "content.correction.needed",
   instigationSeed: "instigation.seed",
@@ -196,6 +197,14 @@ export interface GameFinalData {
 export interface NewsRefreshData {
   topic?: string;
   limit?: number;
+}
+
+export interface WeeklyDigestData {
+  leagueId?: string;
+  leagueIds?: string[];
+  limit?: number;
+  windowEnd?: string;
+  windowStart?: string;
 }
 
 export interface OddsPollData {

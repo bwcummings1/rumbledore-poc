@@ -470,6 +470,13 @@
       "when": 1781595200000,
       "tag": "0066_league_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1781598800000,
+      "tag": "0067_email_digest_deliveries",
+      "breakpoints": true
     }
   ]
 }

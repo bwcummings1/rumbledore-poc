@@ -32,6 +32,7 @@ import { loreVoteClose } from "./functions/lore-vote-close";
 import { newsRefresh } from "./functions/news-refresh";
 import { oddsPoll } from "./functions/odds-poll";
 import { pollClose } from "./functions/poll-close";
+import { weeklyDigest } from "./functions/weekly-digest";
 
 export { inngest } from "./client";
 export { JOB_EVENTS } from "./events";
@@ -69,6 +70,11 @@ export { loreVoteClose } from "./functions/lore-vote-close";
 export { newsRefresh } from "./functions/news-refresh";
 export { oddsPoll } from "./functions/odds-poll";
 export { pollClose } from "./functions/poll-close";
+export {
+  createWeeklyDigestFunction,
+  runWeeklyDigest,
+  weeklyDigest,
+} from "./functions/weekly-digest";
 
 export const functions = [
   appPing,
@@ -99,4 +105,5 @@ export const functions = [
   bettingSettleGameFinal,
   newsRefresh,
   oddsPoll,
+  weeklyDigest,
 ] as const;

@@ -461,6 +461,11 @@ export const webhookDeliveryStatus = pgEnum("webhook_delivery_status", [
   "failed",
 ]);
 
+export const emailDigestDeliveryStatus = pgEnum(
+  "email_digest_delivery_status",
+  ["delivered", "failed"],
+);
+
 export const memberRoastLevel = pgEnum("member_roast_level", [
   "full_send",
   "light",
@@ -3205,6 +3210,91 @@ export const webhookDeliveryRecords = pgTable(
   ],
 );
 
+export const emailDigestDeliveryRecords = pgTable(
+  "email_digest_delivery_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    recipientUserId: uuid("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    digestKey: text("digest_key").notNull(),
+    windowStartAt: timestamp("window_start_at", {
+      withTimezone: true,
+    }).notNull(),
+    windowEndAt: timestamp("window_end_at", { withTimezone: true }).notNull(),
+    recipientEmailHash: text("recipient_email_hash").notNull(),
+    deliveryStatus: emailDigestDeliveryStatus("delivery_status").notNull(),
+    deliveryMode: text("delivery_mode").notNull().default("mock"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    contentItemIds: jsonb("content_item_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    errorMessage: text("error_message"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("email_digest_delivery_records_user_window_unique").on(
+      table.leagueId,
+      table.recipientUserId,
+      table.digestKey,
+    ),
+    index("email_digest_delivery_records_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("email_digest_delivery_records_user_idx").on(
+      table.leagueId,
+      table.recipientUserId,
+    ),
+    index("email_digest_delivery_records_status_idx").on(
+      table.leagueId,
+      table.deliveryStatus,
+      table.createdAt,
+    ),
+    pgPolicy("email_digest_delivery_records_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "email_digest_delivery_records_digest_key_not_blank",
+      sql`length(btrim(${table.digestKey})) > 0`,
+    ),
+    check(
+      "email_digest_delivery_records_email_hash_not_blank",
+      sql`length(btrim(${table.recipientEmailHash})) > 0`,
+    ),
+    check(
+      "email_digest_delivery_records_attempt_count_positive",
+      sql`${table.attemptCount} > 0`,
+    ),
+    check(
+      "email_digest_delivery_records_window_order",
+      sql`${table.windowEndAt} > ${table.windowStartAt}`,
+    ),
+    check(
+      "email_digest_delivery_records_delivered_at_required",
+      sql`${table.deliveryStatus} <> 'delivered' OR ${table.deliveredAt} IS NOT NULL`,
+    ),
+    check(
+      "email_digest_delivery_records_failed_at_required",
+      sql`${table.deliveryStatus} <> 'failed' OR ${table.failedAt} IS NOT NULL`,
+    ),
+  ],
+);
+
 export const aiPersonaCards = pgTable(
   "ai_persona_card",
   {
@@ -4360,6 +4450,10 @@ export type NewLeagueWebhook = typeof leagueWebhooks.$inferInsert;
 export type WebhookDeliveryRecord = typeof webhookDeliveryRecords.$inferSelect;
 export type NewWebhookDeliveryRecord =
   typeof webhookDeliveryRecords.$inferInsert;
+export type EmailDigestDeliveryRecord =
+  typeof emailDigestDeliveryRecords.$inferSelect;
+export type NewEmailDigestDeliveryRecord =
+  typeof emailDigestDeliveryRecords.$inferInsert;
 export type AiPersonaCard = typeof aiPersonaCards.$inferSelect;
 export type NewAiPersonaCard = typeof aiPersonaCards.$inferInsert;
 export type AiPersonaToneHistory = typeof aiPersonaToneHistory.$inferSelect;
