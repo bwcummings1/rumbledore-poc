@@ -6,6 +6,7 @@ import {
   Landmark,
   Newspaper,
   Tag,
+  UserPlus,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -20,6 +21,7 @@ import type {
 import { buttonVariants } from "../ui/button";
 import { StatusPill } from "../ui/status-pill";
 import { ArticleEmbedBlock } from "./article-embeds";
+import { ArticleShareActions } from "./article-share-actions";
 import { EditorialArticleActions } from "./editorial-actions";
 import { ContentReactionStrip } from "./reaction-strip";
 import { ReadingProgress } from "./reading-progress";
@@ -313,6 +315,38 @@ function ArticleInlineDataBlock({
   );
 }
 
+function ArticleArrivalCta({
+  cta,
+}: {
+  cta: NonNullable<PublicationArticleViewData["arrivalCta"]>;
+}) {
+  return (
+    <aside
+      aria-label="Claim your league"
+      className="panel mx-auto grid w-full max-w-[72ch] gap-3 border-primary/35 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-5"
+      data-slot="article-arrival-cta"
+    >
+      <span className="chip-glyph flex size-10 items-center justify-center">
+        <UserPlus className="size-4 text-primary" aria-hidden="true" />
+      </span>
+      <div className="grid gap-1">
+        <p className="eyebrow text-primary">Guest arrival</p>
+        <h2 className="font-display text-base font-medium text-foreground">
+          {cta.title}
+        </h2>
+        <p className="text-sm leading-6 text-muted-foreground">{cta.body}</p>
+      </div>
+      <Link
+        href={cta.href}
+        className={cn(buttonVariants({ className: "w-fit", size: "sm" }))}
+      >
+        {cta.label}
+        <ArrowRight data-icon="inline-end" />
+      </Link>
+    </aside>
+  );
+}
+
 export function PublicationArticleView({
   data,
 }: {
@@ -324,6 +358,7 @@ export function PublicationArticleView({
       : parseArticleBodyBlocks(data.article.body, data.article.dek);
   const readMinutes = estimatedReadMinutes(data.article.body, data.article.dek);
   const isCastArticle = data.article.kind === "blog";
+  const isPublished = data.article.lifecycle.status === "published";
   const isRetracted = data.article.lifecycle.status === "retracted";
   const isSuperseded = data.article.lifecycle.status === "superseded";
   const bodyId = `article-body-${data.article.id}`;
@@ -430,7 +465,16 @@ export function PublicationArticleView({
               <span className="sr-only"> opens in new tab</span>
             </a>
           ) : null}
+          {isPublished && data.article.share ? (
+            <ArticleShareActions
+              text={data.article.share.text}
+              title={data.article.share.title}
+              url={data.article.share.href}
+            />
+          ) : null}
         </header>
+
+        {data.arrivalCta ? <ArticleArrivalCta cta={data.arrivalCta} /> : null}
 
         {data.article.heroImageUrl ? (
           <div className="panel mx-auto w-full max-w-5xl overflow-hidden p-2">

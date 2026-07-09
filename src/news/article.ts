@@ -85,6 +85,12 @@ export interface PublicationArticleViewData {
   backHref: string;
   backLabel: string;
   tagHrefBase: string;
+  arrivalCta?: {
+    body: string;
+    href: string;
+    label: string;
+    title: string;
+  };
   article: {
     id: string;
     kind: "news" | "blog";
@@ -112,6 +118,11 @@ export interface PublicationArticleViewData {
       replacementTitle?: string;
       retractionReason?: string;
     };
+    share?: {
+      href: string;
+      text: string;
+      title: string;
+    };
   };
   editorial?: {
     canManage: boolean;
@@ -138,6 +149,37 @@ export interface LeaguePressArticleData extends PublicationArticleViewData {
   userRole: Member["role"];
 }
 
+export interface LeaguePressArticleTeaserData {
+  scope: "league";
+  publicationLabel: string;
+  publicationHref: string;
+  articleHref: string;
+  article: {
+    byline: string;
+    bylineDetail: string;
+    dek: string;
+    headline: string;
+    id: string;
+    lede: string;
+    lifecycle: {
+      status: "published" | "retracted" | "superseded";
+      statusChangedAt: string;
+    };
+    publishedAt: string;
+    section: {
+      href: string;
+      label: string;
+    };
+  };
+  league: {
+    id: string;
+    provider: FantasyProviderId;
+    providerLeagueId: string;
+    name: string;
+    season: number;
+  };
+}
+
 export type CentralNewsArticleLoadResult =
   | { status: "ready"; data: CentralNewsArticleData }
   | { status: "not_found" };
@@ -146,6 +188,10 @@ export type LeaguePressArticleLoadResult =
   | { status: "ready"; data: LeaguePressArticleData }
   | { status: "not_found" }
   | { status: "forbidden" };
+
+export type LeaguePressArticleTeaserLoadResult =
+  | { status: "ready"; data: LeaguePressArticleTeaserData }
+  | { status: "not_found" };
 
 interface RelatedCandidate extends PublicationArticleStory {
   editorialImportance?: number;
@@ -170,6 +216,36 @@ function metadataArray(value: unknown): unknown[] {
 
 function metadataText(value: unknown): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function cappedTeaserText(value: string, limit = 320): string {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= limit) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
+
+function teaserLedeFromBody(body: string, fallback: string): string {
+  const paragraphs = body
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    if (/^#{1,6}\s+/.test(paragraph)) {
+      continue;
+    }
+    if (/^[-*]\s+/.test(paragraph) || /^\d+[.)]\s+/.test(paragraph)) {
+      continue;
+    }
+    if (paragraph.startsWith(">")) {
+      continue;
+    }
+    return cappedTeaserText(paragraph);
+  }
+
+  return cappedTeaserText(fallback);
 }
 
 function metadataNumber(value: unknown): number | null {
@@ -809,6 +885,11 @@ export async function getCentralNewsArticleData(
           status: "published",
           statusChangedAt: row.publishedAt.toISOString(),
         },
+        share: {
+          href: `/news/articles/${row.id}`,
+          text: articleDek(row.metadata, row.summary),
+          title: row.title,
+        },
       },
       backHref: "/news",
       backLabel: "News front",
@@ -1164,6 +1245,11 @@ export async function getLeaguePressArticleData(
             ? { retractionReason: retraction.reason }
             : {}),
         },
+        share: {
+          href: `/leagues/${input.leagueId}/press/${articleRow.id}`,
+          text: articleDek(articleRow.metadata, articleRow.summary),
+          title: articleRow.title,
+        },
       },
       editorial: {
         canManage: canManageEditorial(userRole),
@@ -1196,6 +1282,144 @@ export async function getLeaguePressArticleData(
       scope: "league",
       tagHrefBase: `/leagues/${league.id}/press`,
       userRole,
+    },
+    status: "ready",
+  };
+}
+
+export async function getLeaguePressArticleTeaserData(
+  db: Db,
+  input: { leagueId: string; postId: string },
+): Promise<LeaguePressArticleTeaserLoadResult> {
+  if (!UUID_RE.test(input.leagueId) || !UUID_RE.test(input.postId)) {
+    return { status: "not_found" };
+  }
+
+  const [league] = await db
+    .select({
+      id: leagues.id,
+      name: leagues.name,
+      provider: leagues.provider,
+      providerLeagueId: leagues.providerLeagueId,
+      season: leagues.season,
+    })
+    .from(leagues)
+    .where(eq(leagues.id, input.leagueId))
+    .limit(1);
+
+  if (!league) {
+    return { status: "not_found" };
+  }
+
+  const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
+    // Intentionally open teaser query: body is read only to derive a capped
+    // first paragraph. The returned DTO never carries raw body, embeds, canon
+    // citations, reactions, editorial rows, or member-derived data.
+    const [articleRow] = await tx
+      .select({
+        authorPersona: contentItems.authorPersona,
+        body: contentItems.body,
+        id: contentItems.id,
+        metadata: contentItems.metadata,
+        publishedAt: contentItems.publishedAt,
+        status: contentItems.status,
+        statusChangedAt: contentItems.statusChangedAt,
+        summary: contentItems.summary,
+        title: contentItems.title,
+      })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.id, input.postId),
+          eq(contentItems.leagueId, input.leagueId),
+          eq(contentItems.kind, "blog"),
+        ),
+      )
+      .limit(1);
+
+    if (!articleRow) {
+      return null;
+    }
+
+    const personaBylines = buildPersonaBylineMap(
+      await tx
+        .select({
+          name: aiPersonaCards.name,
+          persona: aiPersonaCards.persona,
+          purpose: aiPersonaCards.purpose,
+        })
+        .from(aiPersonaCards)
+        .where(eq(aiPersonaCards.leagueId, input.leagueId)),
+    );
+    const articleSection = resolveLeaguePublicationSection({
+      authorPersona: articleRow.authorPersona,
+      kind: "blog",
+      metadata: articleRow.metadata,
+      summary: articleRow.summary,
+      title: articleRow.title,
+    });
+
+    if (articleRow.status !== "published") {
+      return {
+        article: {
+          byline: "Rumbledore Press",
+          bylineDetail: "Editorial lifecycle notice",
+          dek: "",
+          headline: "No longer available",
+          id: articleRow.id,
+          lede: "",
+          lifecycle: {
+            status: articleRow.status,
+            statusChangedAt: articleRow.statusChangedAt.toISOString(),
+          },
+          publishedAt: articleRow.publishedAt.toISOString(),
+          section: {
+            href: `/leagues/${input.leagueId}/press/${articleSection.slug}`,
+            label: articleSection.label,
+          },
+        },
+      };
+    }
+
+    const byline = resolvePersonaByline(
+      articleRow.authorPersona,
+      personaBylines,
+    );
+    const dek = articleDek(articleRow.metadata, articleRow.summary);
+
+    return {
+      article: {
+        byline: byline.label,
+        bylineDetail: byline.detail,
+        dek,
+        headline: articleRow.title,
+        id: articleRow.id,
+        lede: teaserLedeFromBody(articleRow.body, dek),
+        lifecycle: {
+          status: articleRow.status,
+          statusChangedAt: articleRow.statusChangedAt.toISOString(),
+        },
+        publishedAt: articleRow.publishedAt.toISOString(),
+        section: {
+          href: `/leagues/${input.leagueId}/press/${articleSection.slug}`,
+          label: articleSection.label,
+        },
+      },
+    };
+  });
+
+  if (!scoped) {
+    return { status: "not_found" };
+  }
+
+  return {
+    data: {
+      ...scoped,
+      articleHref: `/leagues/${league.id}/press/${scoped.article.id}`,
+      league,
+      publicationHref: `/leagues/${league.id}/press`,
+      publicationLabel: `The ${league.name} Press`,
+      scope: "league",
     },
     status: "ready",
   };

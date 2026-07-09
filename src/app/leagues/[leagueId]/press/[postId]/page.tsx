@@ -2,15 +2,18 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
+import { LeagueArticleTeaserView } from "@/components/publication/article-teaser-view";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import {
   getLeagueFeedData,
   getLeaguePressArticleData,
   getLeaguePressArticleShareMetadata,
+  getLeaguePressArticleTeaserData,
   getLeagueRouteShareMetadata,
 } from "@/news";
 import { getLeaguePublicationSectionBySlug } from "@/news/sections";
+import { withReturnTo } from "@/onboarding/return-to";
 import {
   leagueArticleMetadata,
   leaguePressFrontMetadata,
@@ -19,6 +22,7 @@ import {
 import { LeagueFeedView } from "../../feed/league-feed-view";
 import {
   type LeagueDeepLinkSearchParams,
+  leagueDeepLinkPath,
   redirectToLeagueDeepLinkOnboarding,
 } from "../../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../../league-section-access-state";
@@ -42,30 +46,36 @@ export async function generateMetadata({
   const section = getLeaguePublicationSectionBySlug(postId);
   if (section) {
     const league = await getLeagueRouteShareMetadata(getDb(), { leagueId });
-    return league.status === "ready"
-      ? leaguePressSectionMetadata(league.data, section)
-      : leaguePressFrontMetadata({
+    switch (league.status) {
+      case "ready":
+        return leaguePressSectionMetadata(league.data, section);
+      case "not_found":
+        return leaguePressFrontMetadata({
           id: leagueId,
           name: "League",
           provider: "espn",
           providerLeagueId: "unknown",
           season: 0,
         });
+    }
   }
 
   const result = await getLeaguePressArticleShareMetadata(getDb(), {
     leagueId,
     postId,
   });
-  return result.status === "ready"
-    ? leagueArticleMetadata(result.data)
-    : leaguePressFrontMetadata({
+  switch (result.status) {
+    case "ready":
+      return leagueArticleMetadata(result.data);
+    case "not_found":
+      return leaguePressFrontMetadata({
         id: leagueId,
         name: "League",
         provider: "espn",
         providerLeagueId: "unknown",
         season: 0,
       });
+  }
 }
 
 export default async function LeaguePressPostPage({
@@ -88,6 +98,30 @@ export default async function LeaguePressPostPage({
       notFound();
     }
     if (access.error.status === 401) {
+      const section = getLeaguePublicationSectionBySlug(postId);
+      if (!section) {
+        const teaser = await getLeaguePressArticleTeaserData(db, {
+          leagueId,
+          postId,
+        });
+        if (teaser.status === "ready") {
+          const articlePath = leagueDeepLinkPath({
+            leagueId,
+            searchParams: query,
+            segments: ["press", postId],
+          });
+          return (
+            <LeagueArticleTeaserView
+              claimHref={withReturnTo(
+                `/onboarding/${teaser.data.league.provider}`,
+                articlePath,
+              )}
+              data={teaser.data}
+            />
+          );
+        }
+        notFound();
+      }
       redirectToLeagueDeepLinkOnboarding({
         leagueId,
         searchParams: query,

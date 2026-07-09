@@ -3,8 +3,11 @@ export {
   type CentralNewsArticleLoadResult,
   getCentralNewsArticleData,
   getLeaguePressArticleData,
+  getLeaguePressArticleTeaserData,
   type LeaguePressArticleData,
   type LeaguePressArticleLoadResult,
+  type LeaguePressArticleTeaserData,
+  type LeaguePressArticleTeaserLoadResult,
   type PublicationArticleStory,
   type PublicationArticleViewData,
 } from "./article";

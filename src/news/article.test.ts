@@ -21,6 +21,7 @@ import { migrateSerialized } from "@/db/test-support";
 import {
   getCentralNewsArticleData,
   getLeaguePressArticleData,
+  getLeaguePressArticleTeaserData,
 } from "./article";
 import { upsertLeagueFeedReference } from "./league-feed";
 
@@ -621,6 +622,65 @@ describe("publication articles", () => {
     expect(
       result.data.relatedStories.map((story) => story.headline),
     ).not.toContain("League B should not leak");
+  });
+
+  it("returns a public league article teaser without serializing full body or member data", async () => {
+    const [article] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: [
+              "## Public gate",
+              "Public lede for a shared visitor.",
+              "Private second paragraph names Manager One and the hidden bench.",
+            ].join("\n\n"),
+            contentHash: `${marker}-league-teaser-article-hash`,
+            dedupKey: `${marker}-league-teaser-article`,
+            kind: "blog",
+            leagueId: leagueAId,
+            metadata: {
+              canonCitations: [{ claimId: canonCitationId }],
+              dek: "A public teaser dek.",
+              section: "recaps",
+              tags: ["Manager One"],
+            },
+            publishedAt: new Date("2026-06-11T20:00:00.000Z"),
+            summary: "Teaser article summary.",
+            title: "Narrator opens a shared teaser",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!article) {
+      throw new Error("teaser article was not inserted");
+    }
+
+    const result = await getLeaguePressArticleTeaserData(handle.db, {
+      leagueId: leagueAId,
+      postId: article.id,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected teaser result: ${result.status}`);
+    }
+
+    expect(result.data.article).toMatchObject({
+      byline: "Rivalry Desk",
+      dek: "A public teaser dek.",
+      headline: "Narrator opens a shared teaser",
+      lede: "Public lede for a shared visitor.",
+      lifecycle: { status: "published" },
+    });
+
+    const serialized = JSON.stringify(result.data);
+    expect(serialized).not.toContain("Private second paragraph");
+    expect(serialized).not.toContain("Manager One");
+    expect(serialized).not.toContain("canonCitations");
+    expect(serialized).not.toContain("bodyBlocks");
   });
 
   it("loads a superseded league article old link with replacement lineage", async () => {
