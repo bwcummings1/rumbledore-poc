@@ -2392,6 +2392,103 @@ describe("recomputeLeagueStatistics", () => {
     }
   });
 
+  it("lenses confirmed best-ball format groupings without a traditional-only break", async () => {
+    const { leagueId } = await seedStatsLeague("best-ball-lens");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const groupingId = await withLeagueContext(
+      handle.db,
+      leagueId,
+      async (tx) => {
+        const [grouping] = await tx
+          .insert(leagueSeasonGroupings)
+          .values({
+            config: {
+              format_type: "best_ball",
+              notes: "Best-ball era should still produce a catalog slice.",
+              scoring_format: { scoring_type: "H2H_POINTS" },
+            },
+            derivedFrom: { source: "test-best-ball" },
+            kind: "era",
+            leagueId,
+            name: "Best Ball Era",
+            ordinal: 1,
+            status: "confirmed",
+          })
+          .returning({ id: leagueSeasonGroupings.id });
+        if (!grouping) {
+          throw new Error("best-ball grouping was not created");
+        }
+        await tx.insert(leagueGroupingSeasons).values({
+          groupingId: grouping.id,
+          leagueId,
+          season: 2025,
+        });
+        return grouping.id;
+      },
+    );
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      lens: { groupingId, segment: "both" },
+      limit: 5,
+    });
+
+    expect(catalog.integrityBlocked).toBe(false);
+    expect(catalog.allTimeStandings.length).toBeGreaterThan(0);
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      season: 2025,
+      value: 120,
+    });
+    expect(
+      catalog.highLow.highestScores.every((row) => row.season === 2025),
+    ).toBe(true);
+  });
+
+  it("rejects negative optional scoring-period boundary edits", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague(
+      "negative-boundary-edit",
+    );
+    const actorUserId = await seedActor("negative-boundary-edit-actor");
+
+    const settingId = await withLeagueContext(
+      handle.db,
+      leagueId,
+      async (tx) => {
+        const [settings] = await tx
+          .insert(leagueSeasonSettings)
+          .values({
+            contentHash: `${marker}-negative-boundary-settings`,
+            leagueId,
+            leagueProviderId: providerLeagueId,
+            provider: "espn",
+            regularSeasonEndScoringPeriod: 14,
+            season: 2025,
+          })
+          .returning({ id: leagueSeasonSettings.id });
+        if (!settings) {
+          throw new Error("negative-boundary settings row was not created");
+        }
+        return settings.id;
+      },
+    );
+
+    await expect(
+      applyLeagueDataEdit(handle.db, {
+        actorUserId,
+        editClass: "substantive",
+        field: "regular_season_end_scoring_period",
+        leagueId,
+        reason: "negative boundaries should be rejected",
+        targetId: settingId,
+        targetKind: "season_setting",
+        value: -1,
+      }),
+    ).rejects.toThrow(
+      "regular_season_end_scoring_period must be a positive integer or null",
+    );
+  });
+
   oldLeagueFixtureIt(
     "proposes old-league era boundaries from the historical fixture and confirms arbitrary season sets",
     async () => {

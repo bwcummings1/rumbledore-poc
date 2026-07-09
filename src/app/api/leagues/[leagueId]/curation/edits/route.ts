@@ -29,6 +29,23 @@ const curationEditSchema = z.object({
   value: z.unknown(),
 });
 
+type CurationEditPayload = z.infer<typeof curationEditSchema>;
+
+const cosmeticEditKeys = new Set([
+  "grouping:name",
+  "person:canonical_name",
+  "team_season:division",
+  "team_season:team_name",
+]);
+
+function serverEditClassFor(
+  input: CurationEditPayload,
+): CurationEditPayload["editClass"] {
+  return cosmeticEditKeys.has(`${input.targetKind}:${input.field}`)
+    ? input.editClass
+    : "substantive";
+}
+
 interface CurationEditsRouteContext {
   params: Promise<{ leagueId: string }>;
 }
@@ -70,7 +87,7 @@ async function curationEditsPost(
       ok(
         await applyCuratedDataEdit(db, {
           actorUserId: access.value.userId,
-          editClass: parsed.data.editClass,
+          editClass: serverEditClassFor(parsed.data),
           field: parsed.data.field,
           leagueId,
           reason: parsed.data.reason,
