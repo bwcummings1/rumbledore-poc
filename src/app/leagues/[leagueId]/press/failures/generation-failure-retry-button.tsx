@@ -14,6 +14,8 @@ interface GenerationFailureRetryButtonProps {
 
 function resultMessage(result: GenerationFailureRetryResult): string {
   switch (result.status) {
+    case "already_current":
+      return "Retry already current.";
     case "published":
       return "Retry published.";
     case "skipped":

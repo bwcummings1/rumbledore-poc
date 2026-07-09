@@ -64,6 +64,24 @@ async function editorialRegeneratePost(
         reason: parsed.data.reason,
       },
     );
+    if (result.status === "conflict") {
+      return errorJson(
+        new AppError({
+          code: "EDITORIAL_REGENERATE_CONFLICT",
+          message: "Post could not be regenerated because its state changed",
+          status: 409,
+        }),
+      );
+    }
+    if (result.status === "not_found") {
+      return errorJson(
+        new AppError({
+          code: "EDITORIAL_CONTENT_NOT_FOUND",
+          message: "Editorial content item could not be found",
+          status: 404,
+        }),
+      );
+    }
     return okJson(result);
   } catch (error) {
     return errorJson(

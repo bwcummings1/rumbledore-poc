@@ -129,11 +129,27 @@ export interface GenerateLeagueBlogPostInput {
   contentType: AiContentType;
   triggerKey: string;
   correction?: LeagueContextCorrection;
+  editorialContext?: GenerationEditorialContext;
   supersedes?: {
     contentItemId: string;
     dedupKey: string;
+    dedupNonce?: string;
   };
 }
+
+export type GenerationEditorialContext =
+  | {
+      actorUserId: string | null;
+      kind: "regenerate";
+      originalContentItemId: string;
+      reason: string;
+    }
+  | ({
+      actorUserId: string | null;
+      kind: "correction";
+      originalContentItemId: string;
+      reason: string;
+    } & LeagueContextCorrection);
 
 export interface AiGenerationDependencies {
   db: Db;
@@ -268,12 +284,26 @@ function generationRunTriggerKey(input: GenerateLeagueBlogPostInput): string {
 
 function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
   if (input.supersedes) {
+    if (input.supersedes.dedupNonce) {
+      const source = `${input.supersedes.contentItemId}:${input.supersedes.dedupKey}:${input.supersedes.dedupNonce}`;
+      const digest = createHash("sha256")
+        .update(source)
+        .digest("hex")
+        .slice(0, 16);
+      return `supersedes:${input.supersedes.contentItemId}:${digest}`;
+    }
     return supersedingContentDedupKey({
       dedupKey: input.supersedes.dedupKey,
       id: input.supersedes.contentItemId,
     });
   }
   return `blog:${input.persona}:${input.contentType}:${input.triggerKey}`;
+}
+
+function generationRunMetadata(
+  input: GenerateLeagueBlogPostInput,
+): Record<string, unknown> {
+  return input.editorialContext ? { editorial: input.editorialContext } : {};
 }
 
 function estimateTokenCount(text: string): number {
@@ -634,6 +664,9 @@ async function loadNearestBlogMemories({
 
   const queryVector = JSON.stringify(embedding);
   const distance = sql`${aiMemory.embedding} <=> ${queryVector}::vector`;
+  const supersededContentFilter = input.supersedes
+    ? sql`${contentItems.id} <> ${input.supersedes.contentItemId} AND (${contentItems.supersedesContentItemId} IS NULL OR ${contentItems.supersedesContentItemId} <> ${input.supersedes.contentItemId})`
+    : undefined;
   return withLeagueContext(deps.db, input.leagueId, (tx) =>
     tx
       .select({
@@ -652,6 +685,7 @@ async function loadNearestBlogMemories({
           eq(aiMemory.embeddingModel, deps.embeddings.model),
           contentItemIsPublished(),
           sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
+          supersededContentFilter,
         ),
       )
       .orderBy(distance)
@@ -1781,6 +1815,7 @@ async function prepareGeneration({
   tx: LeagueScopedTx;
 }): Promise<PreparedGeneration | GenerateLeagueBlogPostResult> {
   const runTriggerKey = generationRunTriggerKey(input);
+  const runMetadata = generationRunMetadata(input);
   const [existingRun] = await tx
     .select({
       contentItemId: aiGenerationRuns.contentItemId,
@@ -1836,16 +1871,60 @@ async function prepareGeneration({
     };
   }
 
-  const [run] = existingRun
-    ? [existingRun]
-    : await tx
-        .insert(aiGenerationRuns)
-        .values({
-          leagueId: input.leagueId,
-          persona: input.persona,
-          triggerKey: runTriggerKey,
+  let run: { id: string } | undefined = existingRun
+    ? { id: existingRun.id }
+    : undefined;
+  if (run) {
+    if (Object.keys(runMetadata).length > 0) {
+      await tx
+        .update(aiGenerationRuns)
+        .set({
+          metadata: runMetadata,
+          updatedAt: new Date(),
         })
-        .returning({ id: aiGenerationRuns.id });
+        .where(eq(aiGenerationRuns.id, run.id));
+    }
+  } else {
+    const [inserted] = await tx
+      .insert(aiGenerationRuns)
+      .values({
+        leagueId: input.leagueId,
+        metadata: runMetadata,
+        persona: input.persona,
+        triggerKey: runTriggerKey,
+      })
+      .onConflictDoNothing({
+        target: [
+          aiGenerationRuns.leagueId,
+          aiGenerationRuns.persona,
+          aiGenerationRuns.triggerKey,
+        ],
+      })
+      .returning({ id: aiGenerationRuns.id });
+    run = inserted;
+    if (!run) {
+      const [raced] = await tx
+        .select({ id: aiGenerationRuns.id })
+        .from(aiGenerationRuns)
+        .where(
+          and(
+            eq(aiGenerationRuns.leagueId, input.leagueId),
+            eq(aiGenerationRuns.persona, input.persona),
+            eq(aiGenerationRuns.triggerKey, runTriggerKey),
+          ),
+        )
+        .limit(1);
+      run = raced;
+    }
+  }
+
+  if (!run) {
+    throw new AppError({
+      code: "AI_GENERATION_RUN_NOT_CREATED",
+      message: "AI generation run could not be created",
+      status: 500,
+    });
+  }
 
   const [league] = await tx
     .select({
@@ -2442,6 +2521,7 @@ async function markBlockedByEntitlement({
 }): Promise<GenerateLeagueBlogPostResult> {
   const timestamp = now(deps);
   const runTriggerKey = generationRunTriggerKey(input);
+  const runMetadata = generationRunMetadata(input);
   const skipReason = blockedEntitlementReason({
     capability: "ai.cast.generate",
     reason,
@@ -2470,6 +2550,7 @@ async function markBlockedByEntitlement({
         .set({
           contentItemId: null,
           errorMessage: null,
+          metadata: runMetadata,
           promptPrefixHash: null,
           skipReason,
           status: "blocked_entitlement",
@@ -2481,6 +2562,7 @@ async function markBlockedByEntitlement({
 
     await tx.insert(aiGenerationRuns).values({
       leagueId: input.leagueId,
+      metadata: runMetadata,
       persona: input.persona,
       promptPrefixHash: null,
       skipReason,

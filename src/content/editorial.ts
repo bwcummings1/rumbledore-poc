@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import {
   type AiContentType,
@@ -21,9 +22,10 @@ import type {
   CorrectionMatchupWeek,
 } from "./corrections";
 import {
+  type ContentLifecycleTransitionCommit,
   type ContentLifecycleTransitionResult,
-  retractContentItem,
-  supersedeContentItem,
+  retractContentItemInLeagueTx,
+  supersedeContentItemInLeagueTx,
 } from "./lifecycle";
 
 const MAX_EDITORIAL_REASON_LENGTH = 500;
@@ -59,6 +61,7 @@ export interface RetractEditorialContentResult {
 export interface RegenerateEditorialContentInput {
   actorUserId: string;
   contentItemId: string;
+  generationTriggerKey?: string;
   leagueId: string;
   reason?: string;
 }
@@ -84,6 +87,7 @@ export interface CorrectEditorialContentInput {
   changedMatchups: CorrectionChangedMatchup[];
   contentItemId: string;
   correctionHash: string;
+  generationTriggerKey?: string;
   leagueId: string;
   reason?: string;
 }
@@ -160,15 +164,19 @@ function contentTypeFromMetadata(metadata: Record<string, unknown>) {
   return contentType;
 }
 
-function editorialRegenerationTriggerKey(contentItemId: string): string {
-  return `editorial-regenerate:${contentItemId}`;
+function editorialRegenerationTriggerKey(
+  contentItemId: string,
+  nonce = randomUUID(),
+): string {
+  return `editorial-regenerate:${contentItemId}:${nonce}`;
 }
 
 function correctionTriggerKey(
   contentItemId: string,
   correctionHash: string,
+  nonce = randomUUID(),
 ): string {
-  return `correction:${contentItemId}:${correctionHash}`;
+  return `correction:${contentItemId}:${correctionHash}:${nonce}`;
 }
 
 async function loadEditorialContentRow(
@@ -203,20 +211,51 @@ async function latestReplacement(
   tx: LeagueScopedTx,
   input: { contentItemId: string; leagueId: string },
 ): Promise<{ id: string } | null> {
-  const [row] = await tx
-    .select({ id: contentItems.id })
+  const rows = await tx
+    .select({
+      createdAt: contentItems.createdAt,
+      id: contentItems.id,
+      publishedAt: contentItems.publishedAt,
+      status: contentItems.status,
+      supersedesContentItemId: contentItems.supersedesContentItemId,
+    })
     .from(contentItems)
     .where(
       and(
         eq(contentItems.leagueId, input.leagueId),
         eq(contentItems.kind, "blog"),
-        eq(contentItems.supersedesContentItemId, input.contentItemId),
-        eq(contentItems.status, "published"),
       ),
-    )
-    .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
-    .limit(1);
-  return row ?? null;
+    );
+
+  const childrenByParent = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!row.supersedesContentItemId) {
+      continue;
+    }
+    const existing = childrenByParent.get(row.supersedesContentItemId) ?? [];
+    existing.push(row);
+    childrenByParent.set(row.supersedesContentItemId, existing);
+  }
+
+  const descendants: typeof rows = [];
+  const stack = [...(childrenByParent.get(input.contentItemId) ?? [])];
+  while (stack.length > 0) {
+    const row = stack.pop();
+    if (!row) {
+      continue;
+    }
+    descendants.push(row);
+    stack.push(...(childrenByParent.get(row.id) ?? []));
+  }
+
+  const [published] = descendants
+    .filter((row) => row.status === "published")
+    .sort(
+      (left, right) =>
+        right.publishedAt.getTime() - left.publishedAt.getTime() ||
+        right.createdAt.getTime() - left.createdAt.getTime(),
+    );
+  return published ? { id: published.id } : null;
 }
 
 async function latestEditorialAction(
@@ -296,6 +335,30 @@ async function insertEditorialAction(
   return row.id;
 }
 
+async function withdrawPublishedReplacementInTx(
+  tx: LeagueScopedTx,
+  input: {
+    contentItemId: string;
+    leagueId: string;
+    now: Date;
+  },
+): Promise<void> {
+  await tx
+    .update(contentItems)
+    .set({
+      status: "retracted",
+      statusChangedAt: input.now,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(contentItems.id, input.contentItemId),
+        eq(contentItems.leagueId, input.leagueId),
+        eq(contentItems.status, "published"),
+      ),
+    );
+}
+
 function editorialNotFound(): AppError {
   return new AppError({
     code: "EDITORIAL_CONTENT_NOT_FOUND",
@@ -317,51 +380,55 @@ export async function retractEditorialContentItem(
   input: RetractEditorialContentInput,
 ): Promise<RetractEditorialContentResult> {
   const reason = cleanReason(input.reason, { required: true });
-  const existingAction = await withLeagueContext(
+  const result = await withLeagueContext(
     deps.db,
     input.leagueId,
-    async (tx) => {
+    async (
+      tx,
+    ): Promise<{
+      actionId: string | null;
+      commit: ContentLifecycleTransitionCommit;
+    }> => {
       const row = await loadEditorialContentRow(tx, input);
       if (!row) {
         throw editorialNotFound();
       }
-      return latestEditorialAction(tx, {
+      const existingAction = await latestEditorialAction(tx, {
         action: "retract",
         contentItemId: input.contentItemId,
         leagueId: input.leagueId,
       });
+      const commit = await retractContentItemInLeagueTx(deps, tx, {
+        contentItemId: input.contentItemId,
+        leagueId: input.leagueId,
+      });
+
+      let actionId = existingAction?.id ?? null;
+      if (commit.transition.status === "changed" && !actionId) {
+        actionId = await insertEditorialAction(tx, {
+          action: "retract",
+          actorUserId: input.actorUserId,
+          beforeContentItemId: input.contentItemId,
+          leagueId: input.leagueId,
+          metadata: {
+            status: commit.transition.status,
+            statusChangedAt: commit.transition.statusChangedAt,
+          },
+          reason,
+          targetContentItemId: input.contentItemId,
+        });
+      }
+      return { actionId, commit };
     },
   );
-
-  const transition = await retractContentItem(deps, {
-    contentItemId: input.contentItemId,
-    leagueId: input.leagueId,
-  });
-
-  let actionId = existingAction?.id ?? null;
-  if (transition.status === "changed" && !actionId) {
-    actionId = await withLeagueContext(deps.db, input.leagueId, (tx) =>
-      insertEditorialAction(tx, {
-        action: "retract",
-        actorUserId: input.actorUserId,
-        beforeContentItemId: input.contentItemId,
-        leagueId: input.leagueId,
-        metadata: {
-          status: transition.status,
-          statusChangedAt: transition.statusChangedAt,
-        },
-        reason,
-        targetContentItemId: input.contentItemId,
-      }),
-    );
-  }
+  await result.commit.notify();
 
   return {
-    actionId,
+    actionId: result.actionId,
     contentItemId: input.contentItemId,
     reason,
-    status: transition.status,
-    transition,
+    status: result.commit.transition.status,
+    transition: result.commit.transition,
   };
 }
 
@@ -370,6 +437,9 @@ export async function regenerateEditorialContentItem(
   input: RegenerateEditorialContentInput,
 ): Promise<RegenerateEditorialContentResult> {
   const reason = cleanReason(input.reason, { required: false });
+  const triggerKey =
+    input.generationTriggerKey ??
+    editorialRegenerationTriggerKey(input.contentItemId);
   const original = await withLeagueContext(
     deps.db,
     input.leagueId,
@@ -398,7 +468,9 @@ export async function regenerateEditorialContentItem(
     };
   }
 
-  if (original.row.status !== "published") {
+  const regeneratesDeadEndSuperseded =
+    original.row.status === "superseded" && !original.replacement;
+  if (original.row.status !== "published" && !regeneratesDeadEndSuperseded) {
     throw unsupportedStatus(original.row.status);
   }
   if (!original.row.authorPersona) {
@@ -418,11 +490,18 @@ export async function regenerateEditorialContentItem(
         contentType,
         leagueId: input.leagueId,
         persona,
+        editorialContext: {
+          actorUserId: input.actorUserId,
+          kind: "regenerate",
+          originalContentItemId: original.row.id,
+          reason,
+        },
         supersedes: {
           contentItemId: original.row.id,
           dedupKey: original.row.dedupKey,
+          dedupNonce: regeneratesDeadEndSuperseded ? triggerKey : undefined,
         },
-        triggerKey: editorialRegenerationTriggerKey(input.contentItemId),
+        triggerKey,
       },
     }),
   );
@@ -439,7 +518,7 @@ export async function regenerateEditorialContentItem(
           metadata: {
             generation,
             reason,
-            triggerKey: editorialRegenerationTriggerKey(input.contentItemId),
+            triggerKey,
           },
           reason,
           targetContentItemId: input.contentItemId,
@@ -454,37 +533,80 @@ export async function regenerateEditorialContentItem(
     };
   }
 
-  const transition = await supersedeContentItem(deps, {
-    contentItemId: input.contentItemId,
-    leagueId: input.leagueId,
-    replacementContentItemId: generation.contentItemId,
-  });
+  const committed = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (
+      tx,
+    ): Promise<
+      | {
+          actionId: string;
+          commit: ContentLifecycleTransitionCommit;
+          status: "already_current" | "published";
+        }
+      | {
+          actionId: null;
+          commit: ContentLifecycleTransitionCommit;
+          status: "conflict" | "not_found";
+        }
+    > => {
+      const commit = await supersedeContentItemInLeagueTx(deps, tx, {
+        contentItemId: input.contentItemId,
+        leagueId: input.leagueId,
+        replacementContentItemId: generation.contentItemId,
+      });
 
-  const actionId = await withLeagueContext(deps.db, input.leagueId, (tx) =>
-    insertEditorialAction(tx, {
-      action: "regenerate",
-      actorUserId: input.actorUserId,
-      afterContentItemId: generation.contentItemId,
-      beforeContentItemId: input.contentItemId,
-      leagueId: input.leagueId,
-      metadata: {
-        generation,
+      if (
+        commit.transition.status === "conflict" ||
+        commit.transition.status === "not_found"
+      ) {
+        await withdrawPublishedReplacementInTx(tx, {
+          contentItemId: generation.contentItemId,
+          leagueId: input.leagueId,
+          now: deps.now?.() ?? new Date(),
+        });
+        return {
+          actionId: null,
+          commit,
+          status:
+            commit.transition.status === "not_found" ? "not_found" : "conflict",
+        };
+      }
+
+      const actionId = await insertEditorialAction(tx, {
+        action: "regenerate",
+        actorUserId: input.actorUserId,
+        afterContentItemId: generation.contentItemId,
+        beforeContentItemId: input.contentItemId,
+        leagueId: input.leagueId,
+        metadata: {
+          generation,
+          reason,
+          transition: commit.transition,
+          triggerKey,
+        },
         reason,
-        transition,
-        triggerKey: editorialRegenerationTriggerKey(input.contentItemId),
-      },
-      reason,
-      targetContentItemId: input.contentItemId,
-    }),
+        targetContentItemId: input.contentItemId,
+      });
+      return {
+        actionId,
+        commit,
+        status: generation.reused ? "already_current" : "published",
+      };
+    },
   );
+  await committed.commit.notify();
 
   return {
-    actionId,
+    actionId: committed.actionId,
     generation,
     originalContentItemId: input.contentItemId,
-    replacementContentItemId: generation.contentItemId,
-    status: generation.reused ? "already_current" : "published",
-    transition,
+    replacementContentItemId:
+      committed.status === "published" || committed.status === "already_current"
+        ? generation.contentItemId
+        : null,
+    status: committed.status,
+    transition: committed.commit.transition,
   };
 }
 
@@ -497,6 +619,9 @@ export async function correctEditorialContentItem(
       "Score correction changed a published post's referenced week.",
     { required: false },
   );
+  const triggerKey =
+    input.generationTriggerKey ??
+    correctionTriggerKey(input.contentItemId, input.correctionHash);
   const original = await withLeagueContext(
     deps.db,
     input.leagueId,
@@ -536,6 +661,8 @@ export async function correctEditorialContentItem(
     };
   }
 
+  const correctsDeadEndSuperseded =
+    original.row.status === "superseded" && !original.replacement;
   if (original.row.status === "superseded" && original.replacement) {
     return {
       actionId: null,
@@ -546,7 +673,7 @@ export async function correctEditorialContentItem(
     };
   }
 
-  if (original.row.status !== "published") {
+  if (original.row.status !== "published" && !correctsDeadEndSuperseded) {
     return {
       actionId: null,
       generation: null,
@@ -566,10 +693,6 @@ export async function correctEditorialContentItem(
 
   const persona = original.row.authorPersona;
   const contentType = contentTypeFromMetadata(original.row.metadata);
-  const triggerKey = correctionTriggerKey(
-    input.contentItemId,
-    input.correctionHash,
-  );
   const correction = {
     affectedWeeks: input.affectedWeeks,
     changedMatchups: input.changedMatchups,
@@ -585,9 +708,19 @@ export async function correctEditorialContentItem(
         correction,
         leagueId: input.leagueId,
         persona,
+        editorialContext: {
+          actorUserId: input.actorUserId ?? null,
+          affectedWeeks: input.affectedWeeks,
+          changedMatchups: input.changedMatchups,
+          correctionHash: input.correctionHash,
+          kind: "correction",
+          originalContentItemId: original.row.id,
+          reason,
+        },
         supersedes: {
           contentItemId: original.row.id,
           dedupKey: original.row.dedupKey,
+          dedupNonce: correctsDeadEndSuperseded ? triggerKey : undefined,
         },
         triggerKey,
       },
@@ -595,10 +728,59 @@ export async function correctEditorialContentItem(
   );
 
   if (generation.status !== "published") {
-    const actionId = await withLeagueContext(deps.db, input.leagueId, (tx) =>
-      insertEditorialAction(tx, {
+    return {
+      actionId: null,
+      generation,
+      originalContentItemId: input.contentItemId,
+      replacementContentItemId: null,
+      status: generation.status,
+    };
+  }
+
+  const committed = await withLeagueContext(
+    deps.db,
+    input.leagueId,
+    async (
+      tx,
+    ): Promise<
+      | {
+          actionId: string;
+          commit: ContentLifecycleTransitionCommit;
+          status: "already_current" | "published";
+        }
+      | {
+          actionId: null;
+          commit: ContentLifecycleTransitionCommit;
+          status: "conflict" | "not_found";
+        }
+    > => {
+      const commit = await supersedeContentItemInLeagueTx(deps, tx, {
+        contentItemId: input.contentItemId,
+        leagueId: input.leagueId,
+        replacementContentItemId: generation.contentItemId,
+      });
+
+      if (
+        commit.transition.status === "conflict" ||
+        commit.transition.status === "not_found"
+      ) {
+        await withdrawPublishedReplacementInTx(tx, {
+          contentItemId: generation.contentItemId,
+          leagueId: input.leagueId,
+          now: deps.now?.() ?? new Date(),
+        });
+        return {
+          actionId: null,
+          commit,
+          status:
+            commit.transition.status === "not_found" ? "not_found" : "conflict",
+        };
+      }
+
+      const actionId = await insertEditorialAction(tx, {
         action: "correct",
         actorUserId: input.actorUserId ?? null,
+        afterContentItemId: generation.contentItemId,
         beforeContentItemId: input.contentItemId,
         leagueId: input.leagueId,
         metadata: {
@@ -607,54 +789,30 @@ export async function correctEditorialContentItem(
           correctionHash: input.correctionHash,
           generation,
           reason,
+          transition: commit.transition,
           triggerKey,
         },
         reason,
         targetContentItemId: input.contentItemId,
-      }),
-    );
-    return {
-      actionId,
-      generation,
-      originalContentItemId: input.contentItemId,
-      replacementContentItemId: null,
-      status: generation.status,
-    };
-  }
-
-  const transition = await supersedeContentItem(deps, {
-    contentItemId: input.contentItemId,
-    leagueId: input.leagueId,
-    replacementContentItemId: generation.contentItemId,
-  });
-
-  const actionId = await withLeagueContext(deps.db, input.leagueId, (tx) =>
-    insertEditorialAction(tx, {
-      action: "correct",
-      actorUserId: input.actorUserId ?? null,
-      afterContentItemId: generation.contentItemId,
-      beforeContentItemId: input.contentItemId,
-      leagueId: input.leagueId,
-      metadata: {
-        affectedWeeks: input.affectedWeeks,
-        changedMatchups: input.changedMatchups,
-        correctionHash: input.correctionHash,
-        generation,
-        reason,
-        transition,
-        triggerKey,
-      },
-      reason,
-      targetContentItemId: input.contentItemId,
-    }),
+      });
+      return {
+        actionId,
+        commit,
+        status: generation.reused ? "already_current" : "published",
+      };
+    },
   );
+  await committed.commit.notify();
 
   return {
-    actionId,
+    actionId: committed.actionId,
     generation,
     originalContentItemId: input.contentItemId,
-    replacementContentItemId: generation.contentItemId,
-    status: generation.reused ? "already_current" : "published",
-    transition,
+    replacementContentItemId:
+      committed.status === "published" || committed.status === "already_current"
+        ? generation.contentItemId
+        : null,
+    status: committed.status,
+    transition: committed.commit.transition,
   };
 }

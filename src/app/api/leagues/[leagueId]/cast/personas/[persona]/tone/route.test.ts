@@ -78,7 +78,11 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone", () => {
     });
 
     const response = await POST(
-      request({ reason: "Sharper.", toneProfile: toneProfile() }),
+      request({
+        expectedToneVersion: 1,
+        reason: "Sharper.",
+        toneProfile: toneProfile(),
+      }),
       routeContext(),
     );
 
@@ -94,6 +98,7 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone", () => {
       { db: mocks.db },
       {
         actorUserId: userId,
+        expectedToneVersion: 1,
         leagueId,
         persona: "narrator",
         reason: "Sharper.",

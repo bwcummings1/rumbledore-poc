@@ -748,6 +748,71 @@ describe("publication articles", () => {
     });
   });
 
+  it("masks retracted league article body fields in the DTO", async () => {
+    const [article] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: "Retracted body must not serialize.",
+            contentHash: `${marker}-league-retracted-dto-hash`,
+            dedupKey: `${marker}-league-retracted-dto`,
+            kind: "blog",
+            leagueId: leagueAId,
+            metadata: {
+              bodyBlocks: [
+                {
+                  text: "Retracted structured body must not serialize.",
+                  type: "paragraph",
+                },
+              ],
+              dek: "Retracted dek must not serialize.",
+              section: "recaps",
+              structure: {
+                kicker: "Hidden kicker.",
+                type: "weekly_recap",
+              },
+              tags: ["Retracted"],
+            },
+            publishedAt: new Date("2026-06-11T21:00:00.000Z"),
+            status: "retracted",
+            summary: "Retracted summary must not serialize.",
+            title: "Retracted league article DTO",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!article) {
+      throw new Error("retracted league article was not inserted");
+    }
+
+    const result = await getLeaguePressArticleData(handle.db, {
+      leagueId: leagueAId,
+      postId: article.id,
+      userId,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected retracted result: ${result.status}`);
+    }
+    expect(result.data.article).toMatchObject({
+      body: "",
+      bodyBlocks: [],
+      dek: "",
+      inlineDataBlocks: [],
+      lifecycle: { status: "retracted" },
+      share: {
+        text: "",
+      },
+    });
+    expect(JSON.stringify(result.data.article)).not.toContain(
+      "must not serialize",
+    );
+  });
+
   it("does not expose league articles to non-members", async () => {
     await expect(
       getLeaguePressArticleData(handle.db, {

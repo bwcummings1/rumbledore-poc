@@ -128,6 +128,11 @@ export interface WebhookDeliveryOutcome {
 export interface WebhookDeliverer {
   readonly config: { mock: true } | { mock: false };
   deliver(attempt: WebhookDeliveryAttempt): Promise<WebhookDeliveryOutcome>;
+  /**
+   * Known limitation: this T18/T19 mock contract fans out publish/correct
+   * events only. Retract/supersede notices currently travel over realtime and
+   * push; real webhook activation must add an explicit retraction event shape.
+   */
   deliverPublishedContent(input: {
     contentItemId: string;
     leagueId: string;

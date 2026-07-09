@@ -324,4 +324,46 @@ describe("persona tone editor", () => {
       ]),
     );
   });
+
+  it("rejects stale tone edits before writing history or ledger rows", async () => {
+    const { league, user } = await seedLeague("stale-edit");
+
+    await expect(
+      editPersonaToneProfile(
+        {
+          db: handle.db,
+          now: () => new Date("2026-07-09T14:00:00.000Z"),
+        },
+        {
+          actorUserId: user.id,
+          expectedToneVersion: 99,
+          leagueId: league.id,
+          persona: "narrator",
+          reason: "Stale browser tab.",
+          toneProfile: DEFAULT_TONE_PROFILES.narrator,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "PERSONA_TONE_VERSION_CONFLICT" });
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      actions: await tx
+        .select()
+        .from(editorialActions)
+        .where(eq(editorialActions.leagueId, league.id)),
+      cards: await tx
+        .select({
+          toneVersion: aiPersonaCards.toneVersion,
+        })
+        .from(aiPersonaCards)
+        .where(eq(aiPersonaCards.leagueId, league.id)),
+      history: await tx
+        .select()
+        .from(aiPersonaToneHistory)
+        .where(eq(aiPersonaToneHistory.leagueId, league.id)),
+    }));
+
+    expect(rows.cards).toEqual([]);
+    expect(rows.history).toEqual([]);
+    expect(rows.actions).toEqual([]);
+  });
 });

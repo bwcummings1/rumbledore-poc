@@ -498,6 +498,13 @@
       "when": 1781609600000,
       "tag": "0070_ai_usage_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1781613200000,
+      "tag": "0071_editorial_retry_hardening",
+      "breakpoints": true
     }
   ]
 }

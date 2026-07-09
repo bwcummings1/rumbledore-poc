@@ -22,6 +22,7 @@ const toneProfileSchema = z
   .passthrough();
 
 const toneEditBodySchema = z.object({
+  expectedToneVersion: z.number().int().positive().optional(),
   reason: z.string().trim().max(500).optional(),
   toneProfile: toneProfileSchema,
 });
@@ -67,6 +68,7 @@ async function personaTonePost(
       { db },
       {
         actorUserId: access.value.userId,
+        expectedToneVersion: parsed.data.expectedToneVersion,
         leagueId,
         persona: parseAiPersona(personaParam),
         reason: parsed.data.reason,

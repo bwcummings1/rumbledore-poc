@@ -16,9 +16,11 @@ import { withLeagueContext } from "@/db/rls";
 import {
   aiGenerationRuns,
   contentItems,
+  editorialActions,
   fantasyMembers,
   fantasyTeams,
   leagues,
+  users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 
@@ -104,6 +106,9 @@ afterAll(async () => {
   await handle.db
     .delete(leagues)
     .where(sql`${leagues.providerLeagueId} like ${`${marker}-%`}`);
+  await handle.db
+    .delete(users)
+    .where(sql`${users.email} like ${`${marker}-%`}`);
   await handle.pool.end();
 });
 
@@ -340,6 +345,214 @@ describe("generation failure queue", () => {
     expect(row).toMatchObject({
       errorMessage: expect.stringContaining("AI draft"),
       status: "failed",
+    });
+  });
+
+  it("retries an editorial regenerate run with supersede context and ledger", async () => {
+    const league = await seedLeague("retry-editorial-regenerate");
+    const now = new Date("2026-07-09T13:00:00.000Z");
+    const [actor] = await handle.db
+      .insert(users)
+      .values({
+        displayName: "Failure Queue Actor",
+        email: `${marker}-retry-editorial-regenerate@example.test`,
+      })
+      .returning({ id: users.id });
+    if (!actor) {
+      throw new Error("actor user was not inserted");
+    }
+
+    const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .insert(contentItems)
+        .values({
+          authorPersona: "narrator",
+          body: "Original regenerate retry body.",
+          contentHash: `${marker}-retry-editorial-regenerate-post-hash`,
+          dedupKey: `${marker}-retry-editorial-regenerate-post`,
+          kind: "blog",
+          leagueId: league.id,
+          metadata: { contentType: "weekly_recap", section: "recaps" },
+          publishedAt: now,
+          summary: "Original regenerate retry summary.",
+          title: "Original regenerate retry",
+        })
+        .returning({ id: contentItems.id }),
+    );
+    if (!post) {
+      throw new Error("post was not inserted");
+    }
+
+    const [run] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .insert(aiGenerationRuns)
+        .values({
+          createdAt: now,
+          leagueId: league.id,
+          metadata: {
+            editorial: {
+              actorUserId: actor.id,
+              kind: "regenerate",
+              originalContentItemId: post.id,
+              reason: "Retry with full context.",
+            },
+          },
+          persona: "narrator",
+          skipReason: "llm_judge:persona:0.20",
+          status: "skipped",
+          triggerKey: `weekly_recap:editorial-regenerate:${post.id}:retry`,
+          updatedAt: now,
+        })
+        .returning({ id: aiGenerationRuns.id }),
+    );
+    if (!run) {
+      throw new Error("run was not inserted");
+    }
+
+    const result = await retryGenerationFailureRun(
+      {
+        ...createMockAiDependencies(handle.db),
+        duplicateThreshold: 1.1,
+        judge: new MockLlmJudge(),
+        now: () => now,
+      },
+      { actorUserId: actor.id, leagueId: league.id, now, runId: run.id },
+    );
+
+    expect(result.status).toBe("published");
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      actions: await tx
+        .select()
+        .from(editorialActions)
+        .where(eq(editorialActions.targetContentItemId, post.id)),
+      posts: await tx
+        .select({
+          id: contentItems.id,
+          status: contentItems.status,
+          supersedesContentItemId: contentItems.supersedesContentItemId,
+        })
+        .from(contentItems)
+        .where(eq(contentItems.leagueId, league.id)),
+    }));
+    expect(rows.posts.find((row) => row.id === post.id)).toMatchObject({
+      status: "superseded",
+    });
+    expect(
+      rows.posts.find((row) => row.supersedesContentItemId === post.id),
+    ).toMatchObject({ status: "published" });
+    expect(rows.actions).toHaveLength(1);
+    expect(rows.actions[0]).toMatchObject({
+      action: "regenerate",
+      actorUserId: actor.id,
+      reason: "Retry with full context.",
+    });
+  });
+
+  it("retries an editorial correction run with correction context and ledger", async () => {
+    const league = await seedLeague("retry-editorial-correction");
+    const now = new Date("2026-07-09T13:30:00.000Z");
+    const correctionHash = "e".repeat(64);
+    const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .insert(contentItems)
+        .values({
+          authorPersona: "analyst",
+          body: "Original correction retry body.",
+          contentHash: `${marker}-retry-editorial-correction-post-hash`,
+          dedupKey: `${marker}-retry-editorial-correction-post`,
+          kind: "blog",
+          leagueId: league.id,
+          metadata: { contentType: "weekly_recap", section: "recaps" },
+          publishedAt: now,
+          summary: "Original correction retry summary.",
+          title: "Original correction retry",
+        })
+        .returning({ id: contentItems.id }),
+    );
+    if (!post) {
+      throw new Error("post was not inserted");
+    }
+
+    const [run] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .insert(aiGenerationRuns)
+        .values({
+          createdAt: now,
+          errorMessage: "Provider timeout",
+          leagueId: league.id,
+          metadata: {
+            editorial: {
+              actorUserId: null,
+              affectedWeeks: [{ scoringPeriod: 5, season: 2026 }],
+              changedMatchups: [
+                {
+                  contentHash: "f".repeat(64),
+                  id: randomUUID(),
+                  scoringPeriod: 5,
+                  season: 2026,
+                },
+              ],
+              correctionHash,
+              kind: "correction",
+              originalContentItemId: post.id,
+              reason: "Retry correction with full context.",
+            },
+          },
+          persona: "analyst",
+          status: "failed",
+          triggerKey: `weekly_recap:correction:${post.id}:${correctionHash}:retry`,
+          updatedAt: now,
+        })
+        .returning({ id: aiGenerationRuns.id }),
+    );
+    if (!run) {
+      throw new Error("run was not inserted");
+    }
+
+    const result = await retryGenerationFailureRun(
+      {
+        ...createMockAiDependencies(handle.db),
+        duplicateThreshold: 1.1,
+        judge: new MockLlmJudge(),
+        now: () => now,
+      },
+      { leagueId: league.id, now, runId: run.id },
+    );
+
+    expect(result.status).toBe("published");
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      actions: await tx
+        .select()
+        .from(editorialActions)
+        .where(eq(editorialActions.targetContentItemId, post.id)),
+      posts: await tx
+        .select({
+          id: contentItems.id,
+          metadata: contentItems.metadata,
+          status: contentItems.status,
+          supersedesContentItemId: contentItems.supersedesContentItemId,
+        })
+        .from(contentItems)
+        .where(eq(contentItems.leagueId, league.id)),
+    }));
+    expect(rows.posts.find((row) => row.id === post.id)).toMatchObject({
+      status: "superseded",
+    });
+    const replacement = rows.posts.find(
+      (row) => row.supersedesContentItemId === post.id,
+    );
+    expect(replacement).toMatchObject({ status: "published" });
+    expect(replacement?.metadata).toMatchObject({
+      editorial: {
+        correctionHash,
+        kind: "correction",
+        originalContentItemId: post.id,
+      },
+    });
+    expect(rows.actions).toHaveLength(1);
+    expect(rows.actions[0]).toMatchObject({
+      action: "correct",
+      reason: "Retry correction with full context.",
     });
   });
 });

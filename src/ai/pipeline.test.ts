@@ -14,6 +14,7 @@ import type {
 } from "@/ai";
 import {
   ConstantEmbeddingProvider,
+  createMockAiDependencies,
   DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
   DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
   DEFAULT_TONE_PROFILES,
@@ -642,6 +643,47 @@ describe("generateLeagueBlogPost", () => {
           ?.bodyBlocks as unknown[] | undefined
       )?.length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("reuses a raced first generation run instead of failing idempotency", async () => {
+    const league = await seedLeague("first-race");
+    const input = {
+      contentType: "weekly_recap" as const,
+      leagueId: league.id,
+      persona: "narrator" as const,
+      triggerKey: "weekly:first-race",
+    };
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      now: () => new Date("2026-06-11T13:00:00.000Z"),
+    };
+
+    const [left, right] = await Promise.all([
+      generateLeagueBlogPost({ deps, input }),
+      generateLeagueBlogPost({ deps, input }),
+    ]);
+
+    expect(left.status).toBe("published");
+    expect(right.status).toBe("published");
+    if (left.status !== "published" || right.status !== "published") {
+      throw new Error("expected both raced generations to publish/reuse");
+    }
+    expect(left.contentItemId).toBe(right.contentItemId);
+    expect([left.reused, right.reused].sort()).toEqual([false, true]);
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      posts: await tx
+        .select()
+        .from(contentItems)
+        .where(eq(contentItems.leagueId, league.id)),
+      runs: await tx
+        .select()
+        .from(aiGenerationRuns)
+        .where(eq(aiGenerationRuns.leagueId, league.id)),
+    }));
+    expect(rows.posts).toHaveLength(1);
+    expect(rows.runs).toHaveLength(1);
   });
 
   it("blocks AI generation for free leagues before web, LLM, embedding, or publish work", async () => {
@@ -1654,6 +1696,72 @@ describe("generateLeagueBlogPost", () => {
       status: "published",
     });
     expect(realtime.blogPublished).toHaveLength(1);
+  });
+
+  it("excludes the superseded source post from near-duplicate checks", async () => {
+    const league = await seedLeague("self-duplicate");
+    const embeddings = new ConstantEmbeddingProvider();
+    const [prior] = await withLeagueContext(
+      handle.db,
+      league.id,
+      async (tx) => {
+        const [row] = await tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "analyst",
+            body: "This source body is intentionally similar.",
+            contentHash: `${marker}-self-duplicate-content-hash`,
+            dedupKey: `${marker}-self-duplicate-prior`,
+            kind: "blog",
+            leagueId: league.id,
+            metadata: { contentType: "weekly_recap" },
+            publishedAt: new Date("2026-06-10T12:00:00.000Z"),
+            summary: "This source summary is intentionally similar.",
+            title: "Source editorial note",
+          })
+          .returning({ dedupKey: contentItems.dedupKey, id: contentItems.id });
+        if (!row) {
+          throw new Error("prior content was not inserted");
+        }
+        await tx.insert(aiMemory).values({
+          contentItemId: row.id,
+          embedding: await embeddings.embed("same editorial source"),
+          embeddingDimensions: 8,
+          embeddingModel: embeddings.model,
+          leagueId: league.id,
+          metadata: { contentType: "weekly_recap" },
+          source: "blog_post",
+          textContent: "same editorial source",
+        });
+        return [row] as const;
+      },
+    );
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        embeddings,
+        entitlements: openEntitlementEnv,
+        judge: new PassingLlmJudge(),
+        llm: new MockLlmClient(),
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        supersedes: {
+          contentItemId: prior.id,
+          dedupKey: prior.dedupKey,
+        },
+        triggerKey: "weekly:self-duplicate",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
   });
 
   it("orders near-duplicate memory by vector distance before applying the limit", async () => {

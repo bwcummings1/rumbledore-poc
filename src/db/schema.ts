@@ -3504,7 +3504,7 @@ export const editorialActions = pgTable(
     action: editorialAction("action").notNull(),
     targetContentItemId: uuid("target_content_item_id").references(
       () => contentItems.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
     targetPersonaCardId: uuid("target_persona_card_id").references(
       () => aiPersonaCards.id,
@@ -3565,10 +3565,6 @@ export const editorialActions = pgTable(
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
     check(
-      "editorial_actions_target_required",
-      sql`${table.targetContentItemId} IS NOT NULL OR ${table.targetPersonaCardId} IS NOT NULL OR ${table.targetMemberId} IS NOT NULL OR ${table.targetFantasyMemberId} IS NOT NULL`,
-    ),
-    check(
       "editorial_actions_retract_reason_required",
       sql`${table.action} <> 'retract' OR length(btrim(${table.reason})) > 0`,
     ),
@@ -3595,6 +3591,10 @@ export const aiGenerationRuns = pgTable(
     toneVersion: integer("tone_version"),
     modelProviderKey: text("model_provider_key"),
     errorMessage: text("error_message"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ...timestamps,
   },
   (table) => [

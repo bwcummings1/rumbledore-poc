@@ -1211,17 +1211,23 @@ export async function getLeaguePressArticleData(
       articleRow.authorPersona,
       personaBylines,
     );
+    const isRetracted = articleRow.status === "retracted";
+    const visibleDek = isRetracted
+      ? ""
+      : articleDek(articleRow.metadata, articleRow.summary);
     return {
       article: {
-        body: articleRow.body,
-        bodyBlocks,
+        body: isRetracted ? "" : articleRow.body,
+        bodyBlocks: isRetracted ? [] : bodyBlocks,
         byline: byline.label,
         bylineDetail: byline.detail,
-        dek: articleDek(articleRow.metadata, articleRow.summary),
+        dek: visibleDek,
         headline: articleRow.title,
         heroImageUrl: articleHeroImageUrl(articleRow.metadata),
         id: articleRow.id,
-        inlineDataBlocks: articleInlineDataBlocks(articleRow.metadata),
+        inlineDataBlocks: isRetracted
+          ? []
+          : articleInlineDataBlocks(articleRow.metadata),
         kind: "blog" as const,
         publishedAt: articleRow.publishedAt.toISOString(),
         reactions: reactionSummaries.get(articleRow.id),
@@ -1247,7 +1253,7 @@ export async function getLeaguePressArticleData(
         },
         share: {
           href: `/leagues/${input.leagueId}/press/${articleRow.id}`,
-          text: articleDek(articleRow.metadata, articleRow.summary),
+          text: visibleDek,
           title: articleRow.title,
         },
       },

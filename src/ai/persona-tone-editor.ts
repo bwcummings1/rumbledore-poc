@@ -98,6 +98,7 @@ export interface PersonaToneMutationDeps {
 
 export interface EditPersonaToneProfileInput {
   actorUserId: string | null;
+  expectedToneVersion?: number;
   leagueId: string;
   persona: AiPersona;
   reason?: string;
@@ -513,6 +514,16 @@ export async function editPersonaToneProfile(
 
   return withLeagueContext(deps.db, input.leagueId, async (tx) => {
     const current = await getOrCreatePersonaCard(tx, input);
+    if (
+      input.expectedToneVersion !== undefined &&
+      input.expectedToneVersion !== current.toneVersion
+    ) {
+      throw new AppError({
+        code: "PERSONA_TONE_VERSION_CONFLICT",
+        message: "Persona tone changed before this edit could be saved",
+        status: 409,
+      });
+    }
     await insertHistoryVersion(tx, {
       card: current,
       leagueId: input.leagueId,
@@ -542,11 +553,20 @@ export async function editPersonaToneProfile(
         and(
           eq(aiPersonaCards.leagueId, input.leagueId),
           eq(aiPersonaCards.persona, input.persona),
+          eq(aiPersonaCards.toneVersion, current.toneVersion),
         ),
       )
       .returning(selectPersonaCardFields());
 
     if (!updated) {
+      const raced = await loadPersonaCard(tx, input);
+      if (raced) {
+        throw new AppError({
+          code: "PERSONA_TONE_VERSION_CONFLICT",
+          message: "Persona tone changed before this edit could be saved",
+          status: 409,
+        });
+      }
       throw new AppError({
         code: "PERSONA_TONE_CARD_MISSING",
         message: "Persona card could not be updated",
@@ -655,11 +675,20 @@ export async function rollbackPersonaToneProfile(
         and(
           eq(aiPersonaCards.leagueId, input.leagueId),
           eq(aiPersonaCards.persona, input.persona),
+          eq(aiPersonaCards.toneVersion, current.toneVersion),
         ),
       )
       .returning(selectPersonaCardFields());
 
     if (!updated) {
+      const raced = await loadPersonaCard(tx, input);
+      if (raced) {
+        throw new AppError({
+          code: "PERSONA_TONE_VERSION_CONFLICT",
+          message: "Persona tone changed before this rollback could be saved",
+          status: 409,
+        });
+      }
       throw new AppError({
         code: "PERSONA_TONE_CARD_MISSING",
         message: "Persona card could not be updated",
