@@ -25,6 +25,7 @@ import type {
   LeagueContextTeam,
   LlmClient,
   LlmGenerateRequest,
+  LlmGenerateResult,
   LlmJudge,
   LlmJudgeRequest,
   LlmJudgeScore,
@@ -66,6 +67,11 @@ function cleanSummary(text: string): string {
 
 function includesToken(text: string, token: string): boolean {
   return text.toLocaleLowerCase().includes(token.toLocaleLowerCase());
+}
+
+function estimateTokenCount(text: string): number {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact ? Math.max(1, Math.ceil(compact.length / 4)) : 0;
 }
 
 function uniqueJudgeTokens(values: readonly (string | null | undefined)[]) {
@@ -749,6 +755,36 @@ export class MockLlmClient implements LlmClient {
 
   resolveModelProviderKey(): string {
     return "mock";
+  }
+
+  resolveModelName(): string {
+    return "mock-rumbledore-llm-v1";
+  }
+
+  async generateWithUsage(
+    request: LlmGenerateRequest,
+  ): Promise<LlmGenerateResult> {
+    const draft = await this.generate(request);
+    return {
+      draft,
+      estimated: true,
+      usage: {
+        cacheCreationInputTokens: estimateTokenCount(
+          request.prompt.systemPrefix,
+        ),
+        cacheReadInputTokens: 0,
+        inputTokens: estimateTokenCount(
+          [
+            request.prompt.systemInstructions,
+            request.prompt.volatileContext,
+            request.prompt.userTask,
+            request.duplicateNudge,
+            ...request.newsItems.map((item) => `${item.title} ${item.text}`),
+          ].join("\n"),
+        ),
+        outputTokens: estimateTokenCount(blogDraftText(draft)),
+      },
+    };
   }
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {

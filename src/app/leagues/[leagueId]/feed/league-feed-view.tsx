@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  Gauge,
   Landmark,
   Newspaper,
   PlugZap,
@@ -112,6 +113,11 @@ export function LeagueFeedView({ data }: { data: LeagueFeedData }) {
                   href: `/leagues/${data.league.id}/press/failures`,
                   icon: <AlertTriangle data-icon="inline-start" />,
                   label: "Failure queue",
+                },
+                {
+                  href: `/leagues/${data.league.id}/press/usage`,
+                  icon: <Gauge data-icon="inline-start" />,
+                  label: "AI usage",
                 },
                 {
                   href: `/leagues/${data.league.id}/press/webhooks`,

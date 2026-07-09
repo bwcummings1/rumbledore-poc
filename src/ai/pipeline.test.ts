@@ -30,6 +30,7 @@ import {
   aiGenerationRuns,
   aiMemory,
   aiPersonaCards,
+  aiUsageEvents,
   allTimeRecords,
   arenaSeasons,
   arenaStandings,
@@ -574,11 +575,34 @@ describe("generateLeagueBlogPost", () => {
         .select()
         .from(aiGenerationRuns)
         .where(eq(aiGenerationRuns.leagueId, league.id));
-      return { memory, posts, runs };
+      const usage = await tx
+        .select()
+        .from(aiUsageEvents)
+        .where(eq(aiUsageEvents.leagueId, league.id));
+      return { memory, posts, runs, usage };
     });
 
     expect(rows.posts).toHaveLength(2);
     expect(rows.memory).toHaveLength(2);
+    expect(rows.usage).toHaveLength(2);
+    expect(rows.usage.map((event) => event.triggerKey).sort()).toEqual([
+      "weekly:2026:1",
+      "weekly:2026:2",
+    ]);
+    expect(rows.usage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contentType: "matchup_preview",
+          costMicrosUsd: 0,
+          estimated: true,
+          model: "mock-rumbledore-llm-v1",
+          persona: "commissioner",
+          provider: "mock",
+        }),
+      ]),
+    );
+    expect(rows.usage.every((event) => event.totalTokens > 0)).toBe(true);
+    expect(rows.usage.every((event) => event.generationRunId)).toBe(true);
     expect(rows.runs.map((run) => run.status).sort()).toEqual([
       "published",
       "published",
@@ -1400,6 +1424,19 @@ describe("generateLeagueBlogPost", () => {
     expect(judge.requests[0]?.piece.title).toBe("judge-retry Team local recap");
     expect(judge.requests[1]?.piece.title).toBe(
       `Narrator: ${marker} judge-retry snapshot`,
+    );
+    const usage = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select()
+        .from(aiUsageEvents)
+        .where(eq(aiUsageEvents.leagueId, league.id)),
+    );
+    expect(usage).toHaveLength(2);
+    expect(usage.map((event) => event.metadata)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ attempt: 1, duplicateNudge: false }),
+        expect.objectContaining({ attempt: 2, duplicateNudge: true }),
+      ]),
     );
   });
 

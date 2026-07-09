@@ -427,12 +427,35 @@ export interface LlmGenerateRequest {
   duplicateNudge?: string;
 }
 
+export interface LlmUsageBreakdown {
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface LlmGenerateResult {
+  draft: BlogDraft;
+  estimated?: boolean;
+  usage: LlmUsageBreakdown;
+}
+
 export interface LlmClient {
   generate(request: LlmGenerateRequest): Promise<BlogDraft>;
 }
 
+export interface UsageReportingLlmClient extends LlmClient {
+  generateWithUsage(request: LlmGenerateRequest): Promise<LlmGenerateResult>;
+}
+
 export interface LlmModelProviderKeyResolver {
   resolveModelProviderKey(
+    request: Pick<LlmGenerateRequest, "contentType" | "persona">,
+  ): string | null;
+}
+
+export interface LlmModelMetadataResolver {
+  resolveModelName(
     request: Pick<LlmGenerateRequest, "contentType" | "persona">,
   ): string | null;
 }

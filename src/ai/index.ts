@@ -45,14 +45,18 @@ export type {
   LeaguePersonaCard,
   LlmClient,
   LlmGenerateRequest,
+  LlmGenerateResult,
   LlmJudge,
   LlmJudgeLeagueFacts,
   LlmJudgeRequest,
   LlmJudgeRubric,
   LlmJudgeScore,
+  LlmModelMetadataResolver,
   LlmModelProviderKeyResolver,
+  LlmUsageBreakdown,
   NewsItem,
   PromptParts,
+  UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
 export {
@@ -110,3 +114,14 @@ export {
   type PromptTemplate,
   renderPromptTemplate,
 } from "./prompt-templates";
+export {
+  type AiUsageRecentCall,
+  type AiUsageRollupData,
+  type AiUsageRollupLoadResult,
+  type AiUsageRollupSummary,
+  type AiUsageWeeklyBreakdown,
+  type AiUsageWeeklyRollup,
+  getAiUsageRollupData,
+  type RecordAiUsageEventInput,
+  recordAiUsageEvent,
+} from "./usage-attribution";

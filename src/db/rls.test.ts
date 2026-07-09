@@ -41,6 +41,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "ai_memory",
     "ai_persona_card",
     "ai_persona_tone_history",
+    "ai_usage_event",
     "all_time_record",
     "bankroll_ledger",
     "bankroll_weeks",

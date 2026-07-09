@@ -3615,6 +3615,84 @@ export const aiGenerationRuns = pgTable(
   ],
 );
 
+export const aiUsageEvents = pgTable(
+  "ai_usage_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    generationRunId: uuid("generation_run_id").references(
+      () => aiGenerationRuns.id,
+      { onDelete: "set null" },
+    ),
+    persona: aiPersona("persona").notNull(),
+    contentType: text("content_type").notNull(),
+    triggerKey: text("trigger_key").notNull(),
+    operation: text("operation").notNull().default("llm.generate"),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheCreationInputTokens: integer("cache_creation_input_tokens")
+      .notNull()
+      .default(0),
+    cacheReadInputTokens: integer("cache_read_input_tokens")
+      .notNull()
+      .default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    billableUnits: integer("billable_units").notNull().default(0),
+    estimated: boolean("estimated").notNull().default(true),
+    costMicrosUsd: integer("cost_micros_usd").notNull().default(0),
+    metadata: jsonb("metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("ai_usage_event_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("ai_usage_event_generation_run_idx").on(table.generationRunId),
+    index("ai_usage_event_league_persona_created_idx").on(
+      table.leagueId,
+      table.persona,
+      table.createdAt,
+    ),
+    pgPolicy("ai_usage_event_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "ai_usage_event_content_type_not_blank",
+      sql`length(btrim(${table.contentType})) > 0`,
+    ),
+    check(
+      "ai_usage_event_trigger_key_not_blank",
+      sql`length(btrim(${table.triggerKey})) > 0`,
+    ),
+    check(
+      "ai_usage_event_operation_not_blank",
+      sql`length(btrim(${table.operation})) > 0`,
+    ),
+    check(
+      "ai_usage_event_provider_not_blank",
+      sql`length(btrim(${table.provider})) > 0`,
+    ),
+    check(
+      "ai_usage_event_model_not_blank",
+      sql`length(btrim(${table.model})) > 0`,
+    ),
+    check(
+      "ai_usage_event_tokens_nonnegative",
+      sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.cacheCreationInputTokens} >= 0 AND ${table.cacheReadInputTokens} >= 0 AND ${table.totalTokens} >= 0 AND ${table.billableUnits} >= 0`,
+    ),
+    check("ai_usage_event_cost_nonnegative", sql`${table.costMicrosUsd} >= 0`),
+  ],
+);
+
 export const aiMemory = pgTable(
   "ai_memory",
   {
@@ -4561,6 +4639,8 @@ export type EditorialAction = typeof editorialActions.$inferSelect;
 export type NewEditorialAction = typeof editorialActions.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;
 export type NewAiGenerationRun = typeof aiGenerationRuns.$inferInsert;
+export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
+export type NewAiUsageEvent = typeof aiUsageEvents.$inferInsert;
 export type AiMemory = typeof aiMemory.$inferSelect;
 export type NewAiMemory = typeof aiMemory.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

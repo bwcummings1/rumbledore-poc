@@ -89,11 +89,15 @@ import type {
   LeagueContextTrigger,
   LeaguePersonaCard,
   LlmClient,
+  LlmGenerateRequest,
+  LlmGenerateResult,
   LlmJudge,
   LlmJudgeScore,
+  LlmModelMetadataResolver,
   LlmModelProviderKeyResolver,
   NewsItem,
   PromptParts,
+  UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
 import { assertLlmJudgeScorePasses, DEFAULT_LLM_JUDGE_RUBRIC } from "./judge";
@@ -115,6 +119,7 @@ import {
   type PromptTemplate,
   renderPromptTemplate,
 } from "./prompt-templates";
+import { recordAiUsageEvent } from "./usage-attribution";
 
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.92;
 
@@ -219,6 +224,24 @@ function resolveLlmModelProviderKey({
   return resolver.resolveModelProviderKey?.({ contentType, persona }) ?? "mock";
 }
 
+function resolveLlmModelName({
+  contentType,
+  llm,
+  modelProviderKey,
+  persona,
+}: {
+  contentType: AiContentType;
+  llm: LlmClient;
+  modelProviderKey: string;
+  persona: AiPersona;
+}): string {
+  const resolver = llm as Partial<LlmModelMetadataResolver>;
+  return (
+    resolver.resolveModelName?.({ contentType, persona }) ??
+    (modelProviderKey === "mock" ? "mock-rumbledore-llm-v1" : modelProviderKey)
+  );
+}
+
 function promptProvenance({
   context,
   modelProviderKey,
@@ -251,6 +274,93 @@ function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
     });
   }
   return `blog:${input.persona}:${input.contentType}:${input.triggerKey}`;
+}
+
+function estimateTokenCount(text: string): number {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact ? Math.max(1, Math.ceil(compact.length / 4)) : 0;
+}
+
+function draftTextForUsage(draft: BlogDraft): string {
+  try {
+    return blogDraftText(draft);
+  } catch {
+    return [draft.title, draft.summary, draft.body]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n");
+  }
+}
+
+async function generateDraftWithUsage(
+  llm: LlmClient,
+  request: LlmGenerateRequest,
+): Promise<LlmGenerateResult> {
+  const usageClient = llm as Partial<UsageReportingLlmClient>;
+  if (usageClient.generateWithUsage) {
+    return usageClient.generateWithUsage(request);
+  }
+
+  const draft = await llm.generate(request);
+  return {
+    draft,
+    estimated: true,
+    usage: {
+      cacheCreationInputTokens: estimateTokenCount(request.prompt.systemPrefix),
+      cacheReadInputTokens: 0,
+      inputTokens: estimateTokenCount(
+        [
+          request.prompt.systemInstructions,
+          request.prompt.volatileContext,
+          request.prompt.userTask,
+          request.duplicateNudge,
+          ...request.newsItems.map((item) => `${item.title} ${item.text}`),
+        ].join("\n"),
+      ),
+      outputTokens: estimateTokenCount(draftTextForUsage(draft)),
+    },
+  };
+}
+
+async function generateAttributedDraft({
+  createdAt,
+  deps,
+  input,
+  modelName,
+  modelProviderKey,
+  promptPrefixHash,
+  request,
+  runId,
+}: {
+  createdAt: Date;
+  deps: AiGenerationDependencies;
+  input: GenerateLeagueBlogPostInput;
+  modelName: string;
+  modelProviderKey: string;
+  promptPrefixHash: string;
+  request: LlmGenerateRequest;
+  runId: string;
+}): Promise<BlogDraft> {
+  const result = await generateDraftWithUsage(deps.llm, request);
+  await recordAiUsageEvent(deps.db, {
+    contentType: input.contentType,
+    createdAt,
+    estimated: result.estimated ?? false,
+    generationRunId: runId,
+    leagueId: input.leagueId,
+    metadata: {
+      attempt: request.attempt,
+      duplicateNudge: Boolean(request.duplicateNudge),
+      promptPrefixHash,
+      rawTriggerKey: input.triggerKey,
+      runTriggerKey: generationRunTriggerKey(input),
+    },
+    model: modelName,
+    persona: input.persona,
+    provider: modelProviderKey,
+    triggerKey: input.triggerKey,
+    usage: result.usage,
+  });
+  return result.draft;
 }
 
 type TriggerContextTarget =
@@ -2674,25 +2784,41 @@ export async function generateLeagueBlogPost({
     triggerKey: input.triggerKey,
   });
   const promptPrefixHash = hashText(prompt.systemPrefix);
+  const modelProviderKey = resolveLlmModelProviderKey({
+    contentType: input.contentType,
+    llm: deps.llm,
+    persona: input.persona,
+  });
+  const modelName = resolveLlmModelName({
+    contentType: input.contentType,
+    llm: deps.llm,
+    modelProviderKey,
+    persona: input.persona,
+  });
   const provenance = promptProvenance({
     context,
-    modelProviderKey: resolveLlmModelProviderKey({
-      contentType: input.contentType,
-      llm: deps.llm,
-      persona: input.persona,
-    }),
+    modelProviderKey,
     prompt,
   });
   const initialDraft = validateDraftOrGeneric({
     contentType: input.contentType,
     context,
-    draft: await deps.llm.generate({
-      attempt: 1,
-      context,
-      contentType: input.contentType,
-      newsItems,
-      persona: input.persona,
-      prompt,
+    draft: await generateAttributedDraft({
+      createdAt: now(deps),
+      deps,
+      input,
+      modelName,
+      modelProviderKey,
+      promptPrefixHash,
+      request: {
+        attempt: 1,
+        context,
+        contentType: input.contentType,
+        newsItems,
+        persona: input.persona,
+        prompt,
+      },
+      runId: prepared.runId,
     }),
   });
   let draft = initialDraft;
@@ -2710,14 +2836,23 @@ export async function generateLeagueBlogPost({
     draft = validateDraftOrGeneric({
       contentType: input.contentType,
       context,
-      draft: await deps.llm.generate({
-        attempt: 2,
-        context,
-        contentType: input.contentType,
-        duplicateNudge: authenticityNudge,
-        newsItems,
-        persona: input.persona,
-        prompt: retryPrompt,
+      draft: await generateAttributedDraft({
+        createdAt: now(deps),
+        deps,
+        input,
+        modelName,
+        modelProviderKey,
+        promptPrefixHash,
+        request: {
+          attempt: 2,
+          context,
+          contentType: input.contentType,
+          duplicateNudge: authenticityNudge,
+          newsItems,
+          persona: input.persona,
+          prompt: retryPrompt,
+        },
+        runId: prepared.runId,
       }),
     });
     alreadyRetried = true;
@@ -2755,14 +2890,23 @@ export async function generateLeagueBlogPost({
     const duplicateDraft = validateDraftOrGeneric({
       contentType: input.contentType,
       context,
-      draft: await deps.llm.generate({
-        attempt: 2,
-        context,
-        contentType: input.contentType,
-        duplicateNudge,
-        newsItems,
-        persona: input.persona,
-        prompt: retryPrompt,
+      draft: await generateAttributedDraft({
+        createdAt: now(deps),
+        deps,
+        input,
+        modelName,
+        modelProviderKey,
+        promptPrefixHash,
+        request: {
+          attempt: 2,
+          context,
+          contentType: input.contentType,
+          duplicateNudge,
+          newsItems,
+          persona: input.persona,
+          prompt: retryPrompt,
+        },
+        runId: prepared.runId,
       }),
     });
     if (!duplicateDraft) {
@@ -2823,14 +2967,23 @@ export async function generateLeagueBlogPost({
     const judgedDraft = validateDraftOrGeneric({
       contentType: input.contentType,
       context,
-      draft: await deps.llm.generate({
-        attempt: 2,
-        context,
-        contentType: input.contentType,
-        duplicateNudge: judgeNudge,
-        newsItems,
-        persona: input.persona,
-        prompt: retryPrompt,
+      draft: await generateAttributedDraft({
+        createdAt: now(deps),
+        deps,
+        input,
+        modelName,
+        modelProviderKey,
+        promptPrefixHash,
+        request: {
+          attempt: 2,
+          context,
+          contentType: input.contentType,
+          duplicateNudge: judgeNudge,
+          newsItems,
+          persona: input.persona,
+          prompt: retryPrompt,
+        },
+        runId: prepared.runId,
       }),
     });
     if (
