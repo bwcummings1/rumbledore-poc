@@ -169,12 +169,16 @@ function playerPoolEntry({
         stats: [
           {
             appliedTotal: appliedStatTotal,
+            appliedStats: { "24": appliedStatTotal },
             scoringPeriodId: 1,
+            stats: { "24": appliedStatTotal * 10 },
             statSourceId: 0,
           },
           {
             appliedTotal: projected,
+            appliedStats: { "24": projected },
             scoringPeriodId: 1,
+            stats: { "24": projected * 10 },
             statSourceId: 1,
           },
         ],
@@ -682,6 +686,24 @@ describe("ESPN current league client", () => {
           projectedPoints: 17.1,
           slot: "RB",
           started: true,
+          statBreakdown: [
+            {
+              fantasyPoints: 18.4,
+              providerStatId: 24,
+              statCategory: "rushing",
+              statKey: "rushingYards",
+              statSource: "actual",
+              statValue: 184,
+            },
+            {
+              fantasyPoints: 17.1,
+              providerStatId: 24,
+              statCategory: "rushing",
+              statKey: "rushingYards",
+              statSource: "projected",
+              statValue: 171,
+            },
+          ],
           player: {
             fullName: "Bijan Robinson",
             position: "RB",

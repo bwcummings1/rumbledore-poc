@@ -11,6 +11,7 @@ export {
   getGeneralStatsPlayerStats,
   getGeneralStatsSchedule,
   getGeneralStatsTeamBoxScore,
+  getLeagueRosterGeneralNflFacts,
 } from "./read-service";
 export {
   parseGeneralStatsFixture,
@@ -31,6 +32,8 @@ export type {
   GeneralStatsTeamBoxScore,
   GeneralStatsTeamStatInput,
   LeagueRosterFactForEnrichment,
+  LeagueRosterGeneralStatsFact,
+  LeagueRosterGeneralStatsSeasonTotals,
   NflGameStatus,
 } from "./types";
 export { GENERAL_STATS_MOCK_SOURCE } from "./types";

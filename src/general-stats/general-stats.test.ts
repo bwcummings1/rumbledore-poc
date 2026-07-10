@@ -19,6 +19,7 @@ import {
   getGeneralStatsPlayerStats,
   getGeneralStatsSchedule,
   getGeneralStatsTeamBoxScore,
+  getLeagueRosterGeneralNflFacts,
   ingestMockGeneralStats,
   loadMockGeneralStatsFixture,
   runGeneralStatsIntegrityChecks,
@@ -315,5 +316,55 @@ describe("general NFL stats substrate", () => {
         { source },
       ),
     ).resolves.toBeNull();
+
+    await expect(
+      getLeagueRosterGeneralNflFacts(handle.db, {
+        rosterFacts: [
+          {
+            leagueTeamName: "Fixture Dallas",
+            playerName: "CeeDee Lamb",
+            provider: "espn",
+            providerPlayerId: "4241389",
+            providerTeamId: "1",
+            rosterSlot: "WR",
+            started: true,
+            team: "DAL",
+          },
+        ],
+        season: 2026,
+        source,
+        week: 2,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        confidence: "provider_id",
+        latestWeek: expect.objectContaining({
+          fantasyPoints: 34.2,
+          opponentTeam: "KC",
+          week: 2,
+        }),
+        original: expect.objectContaining({
+          leagueTeamName: "Fixture Dallas",
+          rosterSlot: "WR",
+        }),
+        player: expect.objectContaining({
+          fullName: "CeeDee Lamb",
+          position: "WR",
+          team: "DAL",
+        }),
+        schedule: expect.arrayContaining([
+          expect.objectContaining({
+            awayTeam: "KC",
+            homeTeam: "DAL",
+            week: 2,
+          }),
+        ]),
+        seasonTotals: expect.objectContaining({
+          fantasyPoints: 57,
+          games: 2,
+          receivingTouchdowns: 3,
+        }),
+      }),
+    ]);
   });
 });

@@ -33,7 +33,7 @@ async function generationFailureRetryPost(
   try {
     const result = await retryGenerationFailureRun(
       createAiDependencies(db, getEnv()),
-      { leagueId, runId },
+      { actorUserId: access.value.userId, leagueId, runId },
     );
     return okJson(result);
   } catch (error) {

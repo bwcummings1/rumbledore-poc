@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
+import { logger } from "@/core/logging";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -14,7 +15,8 @@ import {
 import { DIGEST_NOTIFICATION_EVENT_FAMILY } from "@/push/interfaces";
 
 const MAX_DIGEST_ERROR_LENGTH = 500;
-const DEFAULT_DIGEST_LIMIT = 100;
+const DEFAULT_DIGEST_PAGE_SIZE = 100;
+const MAX_DIGEST_PAGE_SIZE = 200;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface EmailMessage {
@@ -174,17 +176,34 @@ export function resolveWeeklyDigestWindow(
   return { end, start };
 }
 
-export function weeklyDigestKey(window: WeeklyDigestWindow): string {
-  return `weekly:${window.start.toISOString()}:${window.end.toISOString()}`;
+function isoWeekKey(date: Date): string {
+  const utc = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(
+    ((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
+  );
+  return `${utc.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
-function normalizeLimit(limit: number | undefined): number {
+export function weeklyDigestKey(input: {
+  leagueId: string;
+  window: WeeklyDigestWindow;
+}): string {
+  const digestWeek = new Date(input.window.end.getTime() - 1);
+  return `weekly:${input.leagueId}:${isoWeekKey(digestWeek)}`;
+}
+
+function normalizePageSize(limit: number | undefined): number {
   if (limit === undefined) {
-    return DEFAULT_DIGEST_LIMIT;
+    return DEFAULT_DIGEST_PAGE_SIZE;
   }
   return Number.isInteger(limit) && limit > 0
-    ? Math.min(limit, DEFAULT_DIGEST_LIMIT)
-    : DEFAULT_DIGEST_LIMIT;
+    ? Math.min(limit, MAX_DIGEST_PAGE_SIZE)
+    : DEFAULT_DIGEST_PAGE_SIZE;
 }
 
 function emailHash(email: string): string {
@@ -252,7 +271,7 @@ function composeDigestEmail(input: {
     content: input.content,
     leagueId: input.league.id,
   });
-  const subject = `${input.league.name} weekly digest`;
+  const subject = plain(`${input.league.name} weekly digest`);
   const previewText = `${input.content.length} published ${input.content.length === 1 ? "story" : "stories"} from Rumbledore this week.`;
   const htmlItems = content
     .map(
@@ -511,7 +530,8 @@ export async function sendWeeklyDigestForLeague(
     windowEnd: input.windowEnd,
     windowStart: input.windowStart,
   });
-  const digestKey = input.digestKey ?? weeklyDigestKey(window);
+  const digestKey =
+    input.digestKey ?? weeklyDigestKey({ leagueId: input.leagueId, window });
   const source = await loadDigestSource(deps.db, {
     leagueId: input.leagueId,
     window,
@@ -591,24 +611,37 @@ async function loadDigestLeagueIds(
     ...(input.leagueId ? [input.leagueId] : []),
     ...(input.leagueIds ?? []),
   ].filter((leagueId, index, values) => values.indexOf(leagueId) === index);
-  const limit = normalizeLimit(input.limit);
+  const pageSize = normalizePageSize(input.limit);
 
   if (leagueIds.length > 0) {
     const rows = await db
       .select({ id: leagues.id })
       .from(leagues)
       .where(inArray(leagues.id, leagueIds))
-      .orderBy(asc(leagues.createdAt))
-      .limit(limit);
+      .orderBy(asc(leagues.createdAt));
     return rows.map((row) => row.id);
   }
 
-  const rows = await db
-    .select({ id: leagues.id })
-    .from(leagues)
-    .orderBy(asc(leagues.createdAt))
-    .limit(limit);
-  return rows.map((row) => row.id);
+  const ids: string[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const rows = await db
+      .select({ id: leagues.id })
+      .from(leagues)
+      .orderBy(asc(leagues.createdAt), asc(leagues.id))
+      .limit(pageSize)
+      .offset(offset);
+    ids.push(...rows.map((row) => row.id));
+    if (rows.length < pageSize) {
+      break;
+    }
+  }
+  if (ids.length > pageSize) {
+    logger.info("Weekly digest batch paginated leagues", {
+      leagueCount: ids.length,
+      pageSize,
+    });
+  }
+  return ids;
 }
 
 export async function sendWeeklyDigests(
@@ -626,7 +659,7 @@ export async function sendWeeklyDigests(
   for (const leagueId of leagueIds) {
     results.push(
       await sendWeeklyDigestForLeague(deps, {
-        digestKey: weeklyDigestKey(window),
+        digestKey: weeklyDigestKey({ leagueId, window }),
         leagueId,
         windowEnd: window.end,
         windowStart: window.start,

@@ -63,6 +63,7 @@ export interface HistoricalImportResult {
   members: EntitySyncStats;
   matchups: EntitySyncStats;
   players: EntitySyncStats;
+  playerStatBreakdowns: EntitySyncStats;
   rosters: EntitySyncStats;
   draftPicks: EntitySyncStats;
   finalStandings: EntitySyncStats;
@@ -748,6 +749,7 @@ export async function importLeagueHistory<
       members: emptyStats(),
       matchups: emptyStats(),
       players: emptyStats(),
+      playerStatBreakdowns: emptyStats(),
       rosters: emptyStats(),
       draftPicks: emptyStats(),
       finalStandings: emptyStats(),
@@ -792,6 +794,7 @@ export async function importLeagueHistory<
   let members = emptyStats();
   let matchups = emptyStats();
   let players = emptyStats();
+  let playerStatBreakdowns = emptyStats();
   let rosters = emptyStats();
   let draftPicks = emptyStats();
   let finalStandings = emptyStats();
@@ -877,6 +880,10 @@ export async function importLeagueHistory<
       members = addStats(members, persisted.memberStats);
       matchups = addStats(matchups, persisted.matchupStats);
       players = addStats(players, persisted.playerStats);
+      playerStatBreakdowns = addStats(
+        playerStatBreakdowns,
+        persisted.playerStatBreakdownStats,
+      );
       rosters = addStats(rosters, persisted.rosterStats);
       draftPicks = addStats(draftPicks, persisted.draftPickStats);
       finalStandings = addStats(finalStandings, persisted.finalStandingStats);
@@ -935,6 +942,7 @@ export async function importLeagueHistory<
     members,
     matchups,
     players,
+    playerStatBreakdowns,
     rosters,
     draftPicks,
     finalStandings,

@@ -35,6 +35,18 @@ function canEditDataBook(role: LeagueRole): boolean {
   }
 }
 
+function selectedSeasonFromSearchParams(
+  searchParams: LeagueDeepLinkSearchParams | undefined,
+): number | undefined {
+  const raw = searchParams?.season;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export default async function LeagueDataBookPage({
   params,
   searchParams,
@@ -74,6 +86,7 @@ export default async function LeagueDataBookPage({
   const result = await getLeagueDataBookData(db, {
     canManageEras: canEditData,
     leagueId,
+    selectedSeason: selectedSeasonFromSearchParams(query),
   });
 
   switch (result.status) {

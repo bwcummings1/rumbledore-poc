@@ -141,6 +141,7 @@ export function leagueArticleMetadata(
       leagueName: article.league.name,
       section: article.section.label,
     },
+    noIndex: true,
     path,
     title: `${article.title} | ${article.league.name}`,
     type: "article",

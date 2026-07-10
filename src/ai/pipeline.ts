@@ -20,6 +20,7 @@ import {
   contentItems,
   dataIntegrityChecks,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
   headToHeadRecords,
   instigations,
@@ -37,6 +38,11 @@ import {
   type EntitlementTier,
   resolveEntitlement,
 } from "@/entitlements";
+import {
+  GENERAL_STATS_MOCK_SOURCE,
+  getLeagueRosterGeneralNflFacts,
+  type LeagueRosterGeneralStatsFact,
+} from "@/general-stats";
 import {
   mostRestrictiveRoastLevel,
   type RoastLevel,
@@ -68,6 +74,8 @@ import type {
   LeagueContextCanonLore,
   LeagueContextCorrection,
   LeagueContextDisputedLore,
+  LeagueContextGeneralNfl,
+  LeagueContextGeneralNflPlayerFact,
   LeagueContextInstigation,
   LeagueContextLore,
   LeagueContextLoreClaim,
@@ -81,11 +89,15 @@ import type {
   LeagueContextTrigger,
   LeaguePersonaCard,
   LlmClient,
+  LlmGenerateRequest,
+  LlmGenerateResult,
   LlmJudge,
   LlmJudgeScore,
+  LlmModelMetadataResolver,
   LlmModelProviderKeyResolver,
   NewsItem,
   PromptParts,
+  UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
 import { assertLlmJudgeScorePasses, DEFAULT_LLM_JUDGE_RUBRIC } from "./judge";
@@ -107,6 +119,7 @@ import {
   type PromptTemplate,
   renderPromptTemplate,
 } from "./prompt-templates";
+import { recordAiUsageEvent } from "./usage-attribution";
 
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.92;
 
@@ -116,11 +129,27 @@ export interface GenerateLeagueBlogPostInput {
   contentType: AiContentType;
   triggerKey: string;
   correction?: LeagueContextCorrection;
+  editorialContext?: GenerationEditorialContext;
   supersedes?: {
     contentItemId: string;
     dedupKey: string;
+    dedupNonce?: string;
   };
 }
+
+export type GenerationEditorialContext =
+  | {
+      actorUserId: string | null;
+      kind: "regenerate";
+      originalContentItemId: string;
+      reason: string;
+    }
+  | ({
+      actorUserId: string | null;
+      kind: "correction";
+      originalContentItemId: string;
+      reason: string;
+    } & LeagueContextCorrection);
 
 export interface AiGenerationDependencies {
   db: Db;
@@ -211,6 +240,24 @@ function resolveLlmModelProviderKey({
   return resolver.resolveModelProviderKey?.({ contentType, persona }) ?? "mock";
 }
 
+function resolveLlmModelName({
+  contentType,
+  llm,
+  modelProviderKey,
+  persona,
+}: {
+  contentType: AiContentType;
+  llm: LlmClient;
+  modelProviderKey: string;
+  persona: AiPersona;
+}): string {
+  const resolver = llm as Partial<LlmModelMetadataResolver>;
+  return (
+    resolver.resolveModelName?.({ contentType, persona }) ??
+    (modelProviderKey === "mock" ? "mock-rumbledore-llm-v1" : modelProviderKey)
+  );
+}
+
 function promptProvenance({
   context,
   modelProviderKey,
@@ -237,12 +284,113 @@ function generationRunTriggerKey(input: GenerateLeagueBlogPostInput): string {
 
 function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
   if (input.supersedes) {
+    if (input.supersedes.dedupNonce) {
+      const source = `${input.supersedes.contentItemId}:${input.supersedes.dedupKey}:${input.supersedes.dedupNonce}`;
+      const digest = createHash("sha256")
+        .update(source)
+        .digest("hex")
+        .slice(0, 16);
+      return `supersedes:${input.supersedes.contentItemId}:${digest}`;
+    }
     return supersedingContentDedupKey({
       dedupKey: input.supersedes.dedupKey,
       id: input.supersedes.contentItemId,
     });
   }
   return `blog:${input.persona}:${input.contentType}:${input.triggerKey}`;
+}
+
+function generationRunMetadata(
+  input: GenerateLeagueBlogPostInput,
+): Record<string, unknown> {
+  return input.editorialContext ? { editorial: input.editorialContext } : {};
+}
+
+function estimateTokenCount(text: string): number {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact ? Math.max(1, Math.ceil(compact.length / 4)) : 0;
+}
+
+function draftTextForUsage(draft: BlogDraft): string {
+  try {
+    return blogDraftText(draft);
+  } catch {
+    return [draft.title, draft.summary, draft.body]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n");
+  }
+}
+
+async function generateDraftWithUsage(
+  llm: LlmClient,
+  request: LlmGenerateRequest,
+): Promise<LlmGenerateResult> {
+  const usageClient = llm as Partial<UsageReportingLlmClient>;
+  if (usageClient.generateWithUsage) {
+    return usageClient.generateWithUsage(request);
+  }
+
+  const draft = await llm.generate(request);
+  return {
+    draft,
+    estimated: true,
+    usage: {
+      cacheCreationInputTokens: estimateTokenCount(request.prompt.systemPrefix),
+      cacheReadInputTokens: 0,
+      inputTokens: estimateTokenCount(
+        [
+          request.prompt.systemInstructions,
+          request.prompt.volatileContext,
+          request.prompt.userTask,
+          request.duplicateNudge,
+          ...request.newsItems.map((item) => `${item.title} ${item.text}`),
+        ].join("\n"),
+      ),
+      outputTokens: estimateTokenCount(draftTextForUsage(draft)),
+    },
+  };
+}
+
+async function generateAttributedDraft({
+  createdAt,
+  deps,
+  input,
+  modelName,
+  modelProviderKey,
+  promptPrefixHash,
+  request,
+  runId,
+}: {
+  createdAt: Date;
+  deps: AiGenerationDependencies;
+  input: GenerateLeagueBlogPostInput;
+  modelName: string;
+  modelProviderKey: string;
+  promptPrefixHash: string;
+  request: LlmGenerateRequest;
+  runId: string;
+}): Promise<BlogDraft> {
+  const result = await generateDraftWithUsage(deps.llm, request);
+  await recordAiUsageEvent(deps.db, {
+    contentType: input.contentType,
+    createdAt,
+    estimated: result.estimated ?? false,
+    generationRunId: runId,
+    leagueId: input.leagueId,
+    metadata: {
+      attempt: request.attempt,
+      duplicateNudge: Boolean(request.duplicateNudge),
+      promptPrefixHash,
+      rawTriggerKey: input.triggerKey,
+      runTriggerKey: generationRunTriggerKey(input),
+    },
+    model: modelName,
+    persona: input.persona,
+    provider: modelProviderKey,
+    triggerKey: input.triggerKey,
+    usage: result.usage,
+  });
+  return result.draft;
 }
 
 type TriggerContextTarget =
@@ -516,6 +664,9 @@ async function loadNearestBlogMemories({
 
   const queryVector = JSON.stringify(embedding);
   const distance = sql`${aiMemory.embedding} <=> ${queryVector}::vector`;
+  const supersededContentFilter = input.supersedes
+    ? sql`${contentItems.id} <> ${input.supersedes.contentItemId} AND (${contentItems.supersedesContentItemId} IS NULL OR ${contentItems.supersedesContentItemId} <> ${input.supersedes.contentItemId})`
+    : undefined;
   return withLeagueContext(deps.db, input.leagueId, (tx) =>
     tx
       .select({
@@ -534,6 +685,7 @@ async function loadNearestBlogMemories({
           eq(aiMemory.embeddingModel, deps.embeddings.model),
           contentItemIsPublished(),
           sql`${aiMemory.metadata}->>'contentType' = ${input.contentType}`,
+          supersededContentFilter,
         ),
       )
       .orderBy(distance)
@@ -645,6 +797,179 @@ function emptyArenaContext(): LeagueContextArena {
     movers: { fallers: [], risers: [] },
     season: null,
     topLeagueStandings: [],
+  };
+}
+
+function emptyGeneralNflContext(): LeagueContextGeneralNfl {
+  return {
+    boundary: "general_nfl_context_not_league_canon",
+    facts: [],
+    source: null,
+  };
+}
+
+function compactGeneralNflWeek(
+  week: LeagueRosterGeneralStatsFact["latestWeek"],
+): LeagueContextGeneralNflPlayerFact["latestWeek"] {
+  return week
+    ? {
+        fantasyPoints: week.fantasyPoints,
+        interceptions: week.interceptions,
+        opponentTeam: week.opponentTeam,
+        passingTouchdowns: week.passingTouchdowns,
+        passingYards: week.passingYards,
+        receptions: week.receptions,
+        receivingTouchdowns: week.receivingTouchdowns,
+        receivingYards: week.receivingYards,
+        rushingTouchdowns: week.rushingTouchdowns,
+        rushingYards: week.rushingYards,
+        targets: week.targets,
+        team: week.team,
+        week: week.week,
+      }
+    : null;
+}
+
+function compactGeneralNflFact(
+  fact: LeagueRosterGeneralStatsFact,
+): LeagueContextGeneralNflPlayerFact {
+  return {
+    boundary: "general_nfl_context_not_league_canon",
+    confidence: fact.confidence,
+    latestWeek: compactGeneralNflWeek(fact.latestWeek),
+    player: {
+      fullName: fact.player.fullName,
+      position: fact.player.position,
+      sourcePlayerId: fact.player.sourcePlayerId,
+      team: fact.player.team,
+    },
+    roster: {
+      leagueTeamName: fact.original.leagueTeamName ?? null,
+      playerName: fact.original.playerName ?? null,
+      provider: fact.original.provider ?? null,
+      providerPlayerId: fact.original.providerPlayerId ?? null,
+      providerTeamId: fact.original.providerTeamId ?? null,
+      rosterSlot: fact.original.rosterSlot ?? null,
+      started: fact.original.started ?? null,
+    },
+    schedule: fact.schedule.map((game) => ({
+      awayScore: game.awayScore,
+      awayTeam: game.awayTeam,
+      gameTime: game.gameTime.toISOString(),
+      homeScore: game.homeScore,
+      homeTeam: game.homeTeam,
+      status: game.status,
+      week: game.week,
+    })),
+    season: fact.season,
+    seasonTotals: fact.seasonTotals,
+    source: fact.source,
+  };
+}
+
+async function loadGeneralNflContext({
+  db,
+  league,
+}: {
+  db: Db;
+  league: LeagueBlogContext["league"];
+}): Promise<LeagueContextGeneralNfl> {
+  const rosterFacts = await withLeagueContext(db, league.id, async (tx) => {
+    const [period] = await tx
+      .select({
+        scoringPeriod: sql<
+          number | null
+        >`max(${fantasyRosterEntries.scoringPeriod})`,
+      })
+      .from(fantasyRosterEntries)
+      .where(
+        and(
+          eq(fantasyRosterEntries.leagueId, league.id),
+          eq(fantasyRosterEntries.leagueProviderId, league.providerLeagueId),
+          eq(fantasyRosterEntries.season, league.season),
+        ),
+      );
+    const scoringPeriod = Number(period?.scoringPeriod ?? Number.NaN);
+    if (!Number.isFinite(scoringPeriod)) {
+      return [];
+    }
+
+    const rows = await tx
+      .select({
+        leagueTeamName: fantasyTeams.name,
+        metadata: fantasyRosterEntries.metadata,
+        provider: fantasyRosterEntries.provider,
+        providerPlayerId: fantasyRosterEntries.providerPlayerId,
+        providerTeamId: fantasyRosterEntries.providerTeamId,
+        slot: fantasyRosterEntries.slot,
+        started: fantasyRosterEntries.started,
+      })
+      .from(fantasyRosterEntries)
+      .leftJoin(
+        fantasyTeams,
+        and(
+          eq(fantasyTeams.leagueId, fantasyRosterEntries.leagueId),
+          eq(fantasyTeams.provider, fantasyRosterEntries.provider),
+          eq(
+            fantasyTeams.leagueProviderId,
+            fantasyRosterEntries.leagueProviderId,
+          ),
+          eq(fantasyTeams.providerTeamId, fantasyRosterEntries.providerTeamId),
+          eq(fantasyTeams.season, fantasyRosterEntries.season),
+        ),
+      )
+      .where(
+        and(
+          eq(fantasyRosterEntries.leagueId, league.id),
+          eq(fantasyRosterEntries.leagueProviderId, league.providerLeagueId),
+          eq(fantasyRosterEntries.season, league.season),
+          eq(fantasyRosterEntries.scoringPeriod, scoringPeriod),
+        ),
+      )
+      .orderBy(
+        desc(fantasyRosterEntries.started),
+        fantasyRosterEntries.providerTeamId,
+        fantasyRosterEntries.slot,
+        fantasyRosterEntries.providerPlayerId,
+      )
+      .limit(48);
+
+    return rows.map((row) => {
+      const metadata =
+        row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      const playerName =
+        typeof metadata.playerName === "string" ? metadata.playerName : null;
+      const team =
+        typeof metadata.proTeam === "string" ? metadata.proTeam : null;
+      return {
+        leagueTeamName: row.leagueTeamName,
+        playerName,
+        provider: row.provider,
+        providerPlayerId: row.providerPlayerId,
+        providerTeamId: row.providerTeamId,
+        rosterSlot: row.slot,
+        started: row.started,
+        team,
+      };
+    });
+  });
+
+  if (rosterFacts.length === 0) {
+    return emptyGeneralNflContext();
+  }
+
+  const facts = await getLeagueRosterGeneralNflFacts(db, {
+    limit: 8,
+    rosterFacts,
+    season: league.season,
+    source: GENERAL_STATS_MOCK_SOURCE,
+    week: league.currentScoringPeriod,
+  });
+
+  return {
+    boundary: "general_nfl_context_not_league_canon",
+    facts: facts.map(compactGeneralNflFact),
+    source: facts[0]?.source ?? GENERAL_STATS_MOCK_SOURCE,
   };
 }
 
@@ -1083,6 +1408,7 @@ export function buildPromptParts({
     arena: context.arena,
     currentScoringPeriod: context.league.currentScoringPeriod,
     duplicateNudge: duplicateNudge ?? null,
+    generalNflContext: context.generalNfl,
     priorPosts: context.priorPosts.map((post) => ({
       publishedAt: post.publishedAt.toISOString(),
       summary: post.summary,
@@ -1489,6 +1815,7 @@ async function prepareGeneration({
   tx: LeagueScopedTx;
 }): Promise<PreparedGeneration | GenerateLeagueBlogPostResult> {
   const runTriggerKey = generationRunTriggerKey(input);
+  const runMetadata = generationRunMetadata(input);
   const [existingRun] = await tx
     .select({
       contentItemId: aiGenerationRuns.contentItemId,
@@ -1544,16 +1871,60 @@ async function prepareGeneration({
     };
   }
 
-  const [run] = existingRun
-    ? [existingRun]
-    : await tx
-        .insert(aiGenerationRuns)
-        .values({
-          leagueId: input.leagueId,
-          persona: input.persona,
-          triggerKey: runTriggerKey,
+  let run: { id: string } | undefined = existingRun
+    ? { id: existingRun.id }
+    : undefined;
+  if (run) {
+    if (Object.keys(runMetadata).length > 0) {
+      await tx
+        .update(aiGenerationRuns)
+        .set({
+          metadata: runMetadata,
+          updatedAt: new Date(),
         })
-        .returning({ id: aiGenerationRuns.id });
+        .where(eq(aiGenerationRuns.id, run.id));
+    }
+  } else {
+    const [inserted] = await tx
+      .insert(aiGenerationRuns)
+      .values({
+        leagueId: input.leagueId,
+        metadata: runMetadata,
+        persona: input.persona,
+        triggerKey: runTriggerKey,
+      })
+      .onConflictDoNothing({
+        target: [
+          aiGenerationRuns.leagueId,
+          aiGenerationRuns.persona,
+          aiGenerationRuns.triggerKey,
+        ],
+      })
+      .returning({ id: aiGenerationRuns.id });
+    run = inserted;
+    if (!run) {
+      const [raced] = await tx
+        .select({ id: aiGenerationRuns.id })
+        .from(aiGenerationRuns)
+        .where(
+          and(
+            eq(aiGenerationRuns.leagueId, input.leagueId),
+            eq(aiGenerationRuns.persona, input.persona),
+            eq(aiGenerationRuns.triggerKey, runTriggerKey),
+          ),
+        )
+        .limit(1);
+      run = raced;
+    }
+  }
+
+  if (!run) {
+    throw new AppError({
+      code: "AI_GENERATION_RUN_NOT_CREATED",
+      message: "AI generation run could not be created",
+      status: 500,
+    });
+  }
 
   const [league] = await tx
     .select({
@@ -2061,6 +2432,7 @@ async function prepareGeneration({
       league,
       arena: emptyArenaContext(),
       authenticity,
+      generalNfl: emptyGeneralNflContext(),
       memory,
       persona,
       priorPosts,
@@ -2149,6 +2521,7 @@ async function markBlockedByEntitlement({
 }): Promise<GenerateLeagueBlogPostResult> {
   const timestamp = now(deps);
   const runTriggerKey = generationRunTriggerKey(input);
+  const runMetadata = generationRunMetadata(input);
   const skipReason = blockedEntitlementReason({
     capability: "ai.cast.generate",
     reason,
@@ -2177,6 +2550,7 @@ async function markBlockedByEntitlement({
         .set({
           contentItemId: null,
           errorMessage: null,
+          metadata: runMetadata,
           promptPrefixHash: null,
           skipReason,
           status: "blocked_entitlement",
@@ -2188,6 +2562,7 @@ async function markBlockedByEntitlement({
 
     await tx.insert(aiGenerationRuns).values({
       leagueId: input.leagueId,
+      metadata: runMetadata,
       persona: input.persona,
       promptPrefixHash: null,
       skipReason,
@@ -2467,6 +2842,10 @@ export async function generateLeagueBlogPost({
       db: deps.db,
       leagueId: input.leagueId,
     }),
+    generalNfl: await loadGeneralNflContext({
+      db: deps.db,
+      league: prepared.context.league,
+    }),
   };
 
   let newsItems: NewsItem[] = [];
@@ -2487,25 +2866,41 @@ export async function generateLeagueBlogPost({
     triggerKey: input.triggerKey,
   });
   const promptPrefixHash = hashText(prompt.systemPrefix);
+  const modelProviderKey = resolveLlmModelProviderKey({
+    contentType: input.contentType,
+    llm: deps.llm,
+    persona: input.persona,
+  });
+  const modelName = resolveLlmModelName({
+    contentType: input.contentType,
+    llm: deps.llm,
+    modelProviderKey,
+    persona: input.persona,
+  });
   const provenance = promptProvenance({
     context,
-    modelProviderKey: resolveLlmModelProviderKey({
-      contentType: input.contentType,
-      llm: deps.llm,
-      persona: input.persona,
-    }),
+    modelProviderKey,
     prompt,
   });
   const initialDraft = validateDraftOrGeneric({
     contentType: input.contentType,
     context,
-    draft: await deps.llm.generate({
-      attempt: 1,
-      context,
-      contentType: input.contentType,
-      newsItems,
-      persona: input.persona,
-      prompt,
+    draft: await generateAttributedDraft({
+      createdAt: now(deps),
+      deps,
+      input,
+      modelName,
+      modelProviderKey,
+      promptPrefixHash,
+      request: {
+        attempt: 1,
+        context,
+        contentType: input.contentType,
+        newsItems,
+        persona: input.persona,
+        prompt,
+      },
+      runId: prepared.runId,
     }),
   });
   let draft = initialDraft;
@@ -2523,14 +2918,23 @@ export async function generateLeagueBlogPost({
     draft = validateDraftOrGeneric({
       contentType: input.contentType,
       context,
-      draft: await deps.llm.generate({
-        attempt: 2,
-        context,
-        contentType: input.contentType,
-        duplicateNudge: authenticityNudge,
-        newsItems,
-        persona: input.persona,
-        prompt: retryPrompt,
+      draft: await generateAttributedDraft({
+        createdAt: now(deps),
+        deps,
+        input,
+        modelName,
+        modelProviderKey,
+        promptPrefixHash,
+        request: {
+          attempt: 2,
+          context,
+          contentType: input.contentType,
+          duplicateNudge: authenticityNudge,
+          newsItems,
+          persona: input.persona,
+          prompt: retryPrompt,
+        },
+        runId: prepared.runId,
       }),
     });
     alreadyRetried = true;
@@ -2568,14 +2972,23 @@ export async function generateLeagueBlogPost({
     const duplicateDraft = validateDraftOrGeneric({
       contentType: input.contentType,
       context,
-      draft: await deps.llm.generate({
-        attempt: 2,
-        context,
-        contentType: input.contentType,
-        duplicateNudge,
-        newsItems,
-        persona: input.persona,
-        prompt: retryPrompt,
+      draft: await generateAttributedDraft({
+        createdAt: now(deps),
+        deps,
+        input,
+        modelName,
+        modelProviderKey,
+        promptPrefixHash,
+        request: {
+          attempt: 2,
+          context,
+          contentType: input.contentType,
+          duplicateNudge,
+          newsItems,
+          persona: input.persona,
+          prompt: retryPrompt,
+        },
+        runId: prepared.runId,
       }),
     });
     if (!duplicateDraft) {
@@ -2636,14 +3049,23 @@ export async function generateLeagueBlogPost({
     const judgedDraft = validateDraftOrGeneric({
       contentType: input.contentType,
       context,
-      draft: await deps.llm.generate({
-        attempt: 2,
-        context,
-        contentType: input.contentType,
-        duplicateNudge: judgeNudge,
-        newsItems,
-        persona: input.persona,
-        prompt: retryPrompt,
+      draft: await generateAttributedDraft({
+        createdAt: now(deps),
+        deps,
+        input,
+        modelName,
+        modelProviderKey,
+        promptPrefixHash,
+        request: {
+          attempt: 2,
+          context,
+          contentType: input.contentType,
+          duplicateNudge: judgeNudge,
+          newsItems,
+          persona: input.persona,
+          prompt: retryPrompt,
+        },
+        runId: prepared.runId,
       }),
     });
     if (

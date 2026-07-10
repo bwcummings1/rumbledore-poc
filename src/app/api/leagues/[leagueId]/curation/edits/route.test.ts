@@ -127,6 +127,43 @@ describe("POST /api/leagues/[leagueId]/curation/edits", () => {
     expect(applyCuratedDataEdit).not.toHaveBeenCalled();
   });
 
+  it("forces substantive class for record-affecting fields", async () => {
+    mockAccess();
+    const matchupId = "00000000-0000-4000-8000-000000000007";
+    mocks.applyCuratedDataEdit.mockResolvedValue({
+      afterValue: 141.2,
+      affectedTargetIds: [matchupId],
+      beforeValue: 137.8,
+      editId: "00000000-0000-4000-8000-000000000008",
+      editIds: ["00000000-0000-4000-8000-000000000008"],
+      recompute: { matchups: 1, records: 8 },
+      scope: "smart",
+    });
+
+    const response = await POST(
+      request({
+        editClass: "cosmetic",
+        field: "home_score",
+        reason: "official scoring correction",
+        targetId: matchupId,
+        targetKind: "matchup",
+        value: 141.2,
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(applyCuratedDataEdit).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({
+        editClass: "substantive",
+        field: "home_score",
+        targetId: matchupId,
+        targetKind: "matchup",
+      }),
+    );
+  });
+
   it("passes this-year-only scope and season to scoped dimension edits", async () => {
     mockAccess();
     const teamSeasonId = "00000000-0000-4000-8000-000000000005";

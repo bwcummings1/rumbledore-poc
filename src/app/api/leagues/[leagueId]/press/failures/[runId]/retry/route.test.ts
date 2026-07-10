@@ -91,6 +91,7 @@ describe("POST /api/leagues/[leagueId]/press/failures/[runId]/retry", () => {
     );
     expect(createAiDependencies).toHaveBeenCalledWith(mocks.db, mocks.env);
     expect(retryGenerationFailureRun).toHaveBeenCalledWith(mocks.aiDeps, {
+      actorUserId: userId,
       leagueId,
       runId,
     });

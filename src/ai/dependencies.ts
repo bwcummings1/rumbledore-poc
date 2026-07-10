@@ -15,11 +15,14 @@ import type {
   EmbeddingProvider,
   LlmClient,
   LlmGenerateRequest,
+  LlmGenerateResult,
   LlmJudge,
   LlmJudgeRequest,
   LlmJudgeScore,
+  LlmModelMetadataResolver,
   LlmModelProviderKeyResolver,
   NewsItem,
+  UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
 import {
@@ -36,7 +39,6 @@ import {
   AnthropicLlmJudge,
   type AnthropicUsageBreakdown,
   TavilyWebGrounding,
-  type UsageReportingLlmClient,
   type UsageReportingLlmJudge,
   VoyageEmbeddingProvider,
 } from "./real";
@@ -81,13 +83,31 @@ export class GuardedLlmClient implements LlmClient {
     );
   }
 
+  resolveModelName(
+    request: Pick<LlmGenerateRequest, "contentType" | "persona">,
+  ): string | null {
+    const realResolver = this.real as Partial<LlmModelMetadataResolver>;
+    const mockResolver = this.mock as Partial<LlmModelMetadataResolver>;
+    return (
+      realResolver.resolveModelName?.(request) ??
+      mockResolver.resolveModelName?.(request) ??
+      null
+    );
+  }
+
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
+    return (await this.generateWithUsage(request)).draft;
+  }
+
+  async generateWithUsage(
+    request: LlmGenerateRequest,
+  ): Promise<LlmGenerateResult> {
     return runGuardedProviderCall({
       fallbackOnError: (error) =>
         isAppErrorCode(error, LLM_MOCK_FALLBACK_CODES),
       guard: this.guard,
       logger: this.logger,
-      mockCall: () => this.mock.generate(request),
+      mockCall: () => this.mockGenerateWithUsage(request),
       operation: "llm.generate",
       provider: "anthropic",
       realCall: async () => {
@@ -102,10 +122,29 @@ export class GuardedLlmClient implements LlmClient {
             },
             units: anthropicUsageUnits(result.usage),
           },
-          value: result.draft,
+          value: result,
         };
       },
     });
+  }
+
+  private async mockGenerateWithUsage(
+    request: LlmGenerateRequest,
+  ): Promise<LlmGenerateResult> {
+    const mockUsage = this.mock as Partial<UsageReportingLlmClient>;
+    if (mockUsage.generateWithUsage) {
+      return mockUsage.generateWithUsage(request);
+    }
+    return {
+      draft: await this.mock.generate(request),
+      estimated: true,
+      usage: {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+      },
+    };
   }
 }
 
@@ -241,6 +280,7 @@ export function createAiDependencies(
     Env,
     | "ai"
     | "auth"
+    | "credentials"
     | "entitlements"
     | "push"
     | "realtime"

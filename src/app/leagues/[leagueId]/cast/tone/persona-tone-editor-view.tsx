@@ -146,6 +146,7 @@ function PersonaToneCard({
     try {
       const response = await fetchWithTimeout(endpoint, {
         body: JSON.stringify({
+          expectedToneVersion: card.toneVersion,
           reason: form.reason,
           toneProfile: profile,
         }),

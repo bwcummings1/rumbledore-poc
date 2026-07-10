@@ -53,6 +53,74 @@ export const isolationLeague = {
 
 export const EVAL_LEAGUE_FIXTURES = [league95050, isolationLeague] as const;
 
+function generalNflFactForFixture(
+  fixture: EvalLeagueFixture,
+): LeagueBlogContext["generalNfl"]["facts"][number] {
+  const isPrimary = fixture.leagueId === league95050.leagueId;
+  return {
+    boundary: "general_nfl_context_not_league_canon",
+    confidence: "provider_id",
+    latestWeek: {
+      fantasyPoints: isPrimary ? 27.78 : 14.4,
+      interceptions: isPrimary ? 1 : 0,
+      opponentTeam: isPrimary ? "DAL" : "SF",
+      passingTouchdowns: isPrimary ? 2 : 0,
+      passingYards: isPrimary ? 292 : 0,
+      receptions: isPrimary ? 0 : 6,
+      receivingTouchdowns: 0,
+      receivingYards: isPrimary ? 0 : 84,
+      rushingTouchdowns: isPrimary ? 1 : 0,
+      rushingYards: isPrimary ? 31 : 0,
+      targets: isPrimary ? 0 : 9,
+      team: isPrimary ? "KC" : "MIN",
+      week: 2,
+    },
+    player: {
+      fullName: isPrimary ? "Patrick Mahomes" : "Justin Jefferson",
+      position: isPrimary ? "QB" : "WR",
+      sourcePlayerId: isPrimary
+        ? "mock-patrick-mahomes"
+        : "mock-justin-jefferson",
+      team: isPrimary ? "KC" : "MIN",
+    },
+    roster: {
+      leagueTeamName: fixture.primaryTeam,
+      playerName: isPrimary ? "Patrick Mahomes" : "Justin Jefferson",
+      provider: "espn",
+      providerPlayerId: isPrimary ? "3139477" : "4262921",
+      providerTeamId: "1",
+      rosterSlot: isPrimary ? "QB" : "WR",
+      started: true,
+    },
+    schedule: [
+      {
+        awayScore: isPrimary ? 28 : 20,
+        awayTeam: isPrimary ? "KC" : "MIN",
+        gameTime: "2026-09-20T00:20:00.000Z",
+        homeScore: isPrimary ? 30 : 26,
+        homeTeam: isPrimary ? "DAL" : "SF",
+        status: "final",
+        week: 2,
+      },
+    ],
+    season: 2026,
+    seasonTotals: {
+      fantasyPoints: isPrimary ? 53.58 : 40,
+      games: 2,
+      interceptions: isPrimary ? 2 : 0,
+      passingTouchdowns: isPrimary ? 5 : 0,
+      passingYards: isPrimary ? 607 : 0,
+      receptions: isPrimary ? 0 : 14,
+      receivingTouchdowns: isPrimary ? 0 : 1,
+      receivingYards: isPrimary ? 0 : 200,
+      rushingTouchdowns: isPrimary ? 1 : 0,
+      rushingYards: isPrimary ? 53 : 0,
+      targets: isPrimary ? 0 : 20,
+    },
+    source: "mock-nfl-general-stats",
+  };
+}
+
 export function uniqueTokens(
   values: readonly (string | null | undefined)[],
 ): string[] {
@@ -324,6 +392,11 @@ export function contextFor({
       scoringType: "H2H_POINTS",
       season: 2026,
       status: "in_season",
+    },
+    generalNfl: {
+      boundary: "general_nfl_context_not_league_canon",
+      facts: [generalNflFactForFixture(fixture)],
+      source: "mock-nfl-general-stats",
     },
     memory: [],
     persona: personaCard ?? evalPersonaCard({ persona }),

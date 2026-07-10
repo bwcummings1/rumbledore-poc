@@ -113,6 +113,7 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "provider_code_decoding",
   "roster_coverage",
   "player_points_rollup",
+  "stat_breakdown_coverage",
 ]);
 
 export const dataIntegrityCheckStatus = pgEnum("data_integrity_check_status", [
@@ -994,6 +995,81 @@ export const fantasyRosterEntries = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+  ],
+);
+
+export const fantasyPlayerWeekStatBreakdowns = pgTable(
+  "fantasy_player_week_stat_breakdowns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    leagueProviderId: text("league_provider_id").notNull(),
+    providerTeamId: text("provider_team_id").notNull(),
+    providerPlayerId: text("provider_player_id").notNull(),
+    fantasyPlayerId: uuid("fantasy_player_id").references(
+      () => fantasyPlayers.id,
+      { onDelete: "set null" },
+    ),
+    season: integer("season").notNull(),
+    scoringPeriod: integer("scoring_period").notNull(),
+    statSource: text("stat_source").notNull().default("actual"),
+    providerStatId: integer("provider_stat_id").notNull(),
+    statCategory: text("stat_category").notNull(),
+    statKey: text("stat_key").notNull(),
+    statValue: doublePrecision("stat_value").notNull(),
+    fantasyPoints: doublePrecision("fantasy_points").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("fantasy_player_week_stat_breakdowns_identity_unique").on(
+      table.leagueId,
+      table.provider,
+      table.leagueProviderId,
+      table.providerTeamId,
+      table.season,
+      table.scoringPeriod,
+      table.providerPlayerId,
+      table.statSource,
+      table.providerStatId,
+    ),
+    index("fantasy_player_week_stat_breakdowns_team_period_idx").on(
+      table.leagueId,
+      table.season,
+      table.scoringPeriod,
+      table.providerTeamId,
+    ),
+    index("fantasy_player_week_stat_breakdowns_player_idx").on(
+      table.fantasyPlayerId,
+    ),
+    index("fantasy_player_week_stat_breakdowns_stat_idx").on(
+      table.leagueId,
+      table.providerStatId,
+    ),
+    pgPolicy("fantasy_player_week_stat_breakdowns_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "fantasy_player_week_stat_breakdowns_provider_player_nonempty",
+      sql`length(${table.providerPlayerId}) > 0`,
+    ),
+    check(
+      "fantasy_player_week_stat_breakdowns_stat_source_valid",
+      sql`${table.statSource} in ('actual', 'projected')`,
+    ),
+    check(
+      "fantasy_player_week_stat_breakdowns_provider_stat_nonnegative",
+      sql`${table.providerStatId} >= 0`,
+    ),
   ],
 );
 
@@ -3184,10 +3260,9 @@ export const webhookDeliveryRecords = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("webhook_delivery_records_webhook_event_unique").on(
-      table.webhookId,
-      table.eventKey,
-    ),
+    uniqueIndex("webhook_delivery_records_webhook_event_unique")
+      .on(table.webhookId, table.eventKey)
+      .where(sql`${table.deliveryStatus} = 'delivered'`),
     index("webhook_delivery_records_league_created_idx").on(
       table.leagueId,
       table.createdAt,
@@ -3428,7 +3503,7 @@ export const editorialActions = pgTable(
     action: editorialAction("action").notNull(),
     targetContentItemId: uuid("target_content_item_id").references(
       () => contentItems.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
     targetPersonaCardId: uuid("target_persona_card_id").references(
       () => aiPersonaCards.id,
@@ -3489,10 +3564,6 @@ export const editorialActions = pgTable(
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
     check(
-      "editorial_actions_target_required",
-      sql`${table.targetContentItemId} IS NOT NULL OR ${table.targetPersonaCardId} IS NOT NULL OR ${table.targetMemberId} IS NOT NULL OR ${table.targetFantasyMemberId} IS NOT NULL`,
-    ),
-    check(
       "editorial_actions_retract_reason_required",
       sql`${table.action} <> 'retract' OR length(btrim(${table.reason})) > 0`,
     ),
@@ -3519,6 +3590,10 @@ export const aiGenerationRuns = pgTable(
     toneVersion: integer("tone_version"),
     modelProviderKey: text("model_provider_key"),
     errorMessage: text("error_message"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ...timestamps,
   },
   (table) => [
@@ -3536,6 +3611,84 @@ export const aiGenerationRuns = pgTable(
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
     }),
+  ],
+);
+
+export const aiUsageEvents = pgTable(
+  "ai_usage_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    generationRunId: uuid("generation_run_id").references(
+      () => aiGenerationRuns.id,
+      { onDelete: "set null" },
+    ),
+    persona: aiPersona("persona").notNull(),
+    contentType: text("content_type").notNull(),
+    triggerKey: text("trigger_key").notNull(),
+    operation: text("operation").notNull().default("llm.generate"),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheCreationInputTokens: integer("cache_creation_input_tokens")
+      .notNull()
+      .default(0),
+    cacheReadInputTokens: integer("cache_read_input_tokens")
+      .notNull()
+      .default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    billableUnits: integer("billable_units").notNull().default(0),
+    estimated: boolean("estimated").notNull().default(true),
+    costMicrosUsd: integer("cost_micros_usd").notNull().default(0),
+    metadata: jsonb("metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("ai_usage_event_league_created_idx").on(
+      table.leagueId,
+      table.createdAt,
+    ),
+    index("ai_usage_event_generation_run_idx").on(table.generationRunId),
+    index("ai_usage_event_league_persona_created_idx").on(
+      table.leagueId,
+      table.persona,
+      table.createdAt,
+    ),
+    pgPolicy("ai_usage_event_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+    check(
+      "ai_usage_event_content_type_not_blank",
+      sql`length(btrim(${table.contentType})) > 0`,
+    ),
+    check(
+      "ai_usage_event_trigger_key_not_blank",
+      sql`length(btrim(${table.triggerKey})) > 0`,
+    ),
+    check(
+      "ai_usage_event_operation_not_blank",
+      sql`length(btrim(${table.operation})) > 0`,
+    ),
+    check(
+      "ai_usage_event_provider_not_blank",
+      sql`length(btrim(${table.provider})) > 0`,
+    ),
+    check(
+      "ai_usage_event_model_not_blank",
+      sql`length(btrim(${table.model})) > 0`,
+    ),
+    check(
+      "ai_usage_event_tokens_nonnegative",
+      sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.cacheCreationInputTokens} >= 0 AND ${table.cacheReadInputTokens} >= 0 AND ${table.totalTokens} >= 0 AND ${table.billableUnits} >= 0`,
+    ),
+    check("ai_usage_event_cost_nonnegative", sql`${table.costMicrosUsd} >= 0`),
   ],
 );
 
@@ -4417,6 +4570,10 @@ export type FantasyPlayer = typeof fantasyPlayers.$inferSelect;
 export type NewFantasyPlayer = typeof fantasyPlayers.$inferInsert;
 export type FantasyRosterEntry = typeof fantasyRosterEntries.$inferSelect;
 export type NewFantasyRosterEntry = typeof fantasyRosterEntries.$inferInsert;
+export type FantasyPlayerWeekStatBreakdown =
+  typeof fantasyPlayerWeekStatBreakdowns.$inferSelect;
+export type NewFantasyPlayerWeekStatBreakdown =
+  typeof fantasyPlayerWeekStatBreakdowns.$inferInsert;
 export type FantasyDraftPick = typeof fantasyDraftPicks.$inferSelect;
 export type NewFantasyDraftPick = typeof fantasyDraftPicks.$inferInsert;
 export type FantasyTransaction = typeof fantasyTransactions.$inferSelect;
@@ -4481,6 +4638,8 @@ export type EditorialAction = typeof editorialActions.$inferSelect;
 export type NewEditorialAction = typeof editorialActions.$inferInsert;
 export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;
 export type NewAiGenerationRun = typeof aiGenerationRuns.$inferInsert;
+export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
+export type NewAiUsageEvent = typeof aiUsageEvents.$inferInsert;
 export type AiMemory = typeof aiMemory.$inferSelect;
 export type NewAiMemory = typeof aiMemory.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

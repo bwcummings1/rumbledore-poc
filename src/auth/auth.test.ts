@@ -67,6 +67,7 @@ beforeAll(async () => {
     secret: "auth-test-secret", // ubs:ignore — test fixture
     baseURL: "http://localhost:3000",
     google: { mock: true },
+    redisUrl: parseEnv(process.env).redisUrl,
   });
 });
 

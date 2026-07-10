@@ -14,6 +14,7 @@ import {
   fantasyMatchups,
   fantasyMembers,
   fantasyPlayers,
+  fantasyPlayerWeekStatBreakdowns,
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
@@ -97,6 +98,7 @@ export interface CurrentLeagueSyncResult {
   members: EntitySyncStats;
   matchups: EntitySyncStats;
   players?: EntitySyncStats;
+  playerStatBreakdowns?: EntitySyncStats;
   rosters: EntitySyncStats;
   draftPicks?: EntitySyncStats;
   transactions: EntitySyncStats;
@@ -131,6 +133,7 @@ export interface PersistNormalizedLeagueRowsResult {
   memberStats: EntitySyncStats;
   matchupStats: EntitySyncStats;
   playerStats: EntitySyncStats;
+  playerStatBreakdownStats: EntitySyncStats;
   rosterStats: EntitySyncStats;
   draftPickStats: EntitySyncStats;
   transactionStats: EntitySyncStats;
@@ -883,6 +886,61 @@ function rosterEntryHashPayload({
   };
 }
 
+function statBreakdownHashPayload({
+  breakdown,
+  entry,
+  roster,
+}: {
+  breakdown: NonNullable<
+    NormalizedRoster["entries"][number]["statBreakdown"]
+  >[number];
+  entry: NormalizedRoster["entries"][number];
+  roster: NormalizedRoster;
+}) {
+  return {
+    fantasyPoints: breakdown.fantasyPoints,
+    metadata: breakdown.metadata ?? {},
+    playerProviderId: entry.playerRef.providerId,
+    provider: roster.teamRef.provider,
+    providerStatId: breakdown.providerStatId,
+    providerTeamId: roster.teamRef.providerId,
+    scoringPeriod: roster.scoringPeriod,
+    season: roster.season,
+    statCategory: breakdown.statCategory,
+    statKey: breakdown.statKey,
+    statSource: breakdown.statSource,
+    statValue: breakdown.statValue,
+  };
+}
+
+function statBreakdownRowHashPayload(row: {
+  fantasyPoints: number;
+  metadata: Record<string, unknown>;
+  providerPlayerId: string;
+  providerStatId: number;
+  providerTeamId: string;
+  scoringPeriod: number;
+  season: number;
+  statCategory: string;
+  statKey: string;
+  statSource: string;
+  statValue: number;
+}) {
+  return {
+    fantasyPoints: row.fantasyPoints,
+    metadata: row.metadata,
+    providerPlayerId: row.providerPlayerId,
+    providerStatId: row.providerStatId,
+    providerTeamId: row.providerTeamId,
+    scoringPeriod: row.scoringPeriod,
+    season: row.season,
+    statCategory: row.statCategory,
+    statKey: row.statKey,
+    statSource: row.statSource,
+    statValue: row.statValue,
+  };
+}
+
 function playerHashPayload(player: NormalizedPlayer) {
   return {
     fullName: player.fullName,
@@ -1575,6 +1633,21 @@ async function reconcileImportedRosters({
         ),
       ),
     );
+    const validStatKeys = new Set(
+      seasonRosters.flatMap((roster) =>
+        roster.entries.flatMap((entry) =>
+          (entry.statBreakdown ?? []).map((breakdown) =>
+            [
+              roster.teamRef.providerId,
+              String(roster.scoringPeriod),
+              entry.playerRef.providerId,
+              breakdown.statSource,
+              String(breakdown.providerStatId),
+            ].join(":"),
+          ),
+        ),
+      ),
+    );
     if (validKeys.size === 0) {
       await tx
         .delete(fantasyRosterEntries)
@@ -1584,6 +1657,19 @@ async function reconcileImportedRosters({
             eq(fantasyRosterEntries.provider, provider),
             eq(fantasyRosterEntries.leagueProviderId, leagueProviderId),
             eq(fantasyRosterEntries.season, season),
+          ),
+        );
+      await tx
+        .delete(fantasyPlayerWeekStatBreakdowns)
+        .where(
+          and(
+            eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId),
+            eq(fantasyPlayerWeekStatBreakdowns.provider, provider),
+            eq(
+              fantasyPlayerWeekStatBreakdowns.leagueProviderId,
+              leagueProviderId,
+            ),
+            eq(fantasyPlayerWeekStatBreakdowns.season, season),
           ),
         );
       continue;
@@ -1621,6 +1707,64 @@ async function reconcileImportedRosters({
       await tx
         .delete(fantasyRosterEntries)
         .where(inArray(fantasyRosterEntries.id, staleIds));
+    }
+
+    if (validStatKeys.size === 0) {
+      await tx
+        .delete(fantasyPlayerWeekStatBreakdowns)
+        .where(
+          and(
+            eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId),
+            eq(fantasyPlayerWeekStatBreakdowns.provider, provider),
+            eq(
+              fantasyPlayerWeekStatBreakdowns.leagueProviderId,
+              leagueProviderId,
+            ),
+            eq(fantasyPlayerWeekStatBreakdowns.season, season),
+          ),
+        );
+      continue;
+    }
+
+    const existingStatRows = await tx
+      .select({
+        id: fantasyPlayerWeekStatBreakdowns.id,
+        providerPlayerId: fantasyPlayerWeekStatBreakdowns.providerPlayerId,
+        providerStatId: fantasyPlayerWeekStatBreakdowns.providerStatId,
+        providerTeamId: fantasyPlayerWeekStatBreakdowns.providerTeamId,
+        scoringPeriod: fantasyPlayerWeekStatBreakdowns.scoringPeriod,
+        statSource: fantasyPlayerWeekStatBreakdowns.statSource,
+      })
+      .from(fantasyPlayerWeekStatBreakdowns)
+      .where(
+        and(
+          eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId),
+          eq(fantasyPlayerWeekStatBreakdowns.provider, provider),
+          eq(
+            fantasyPlayerWeekStatBreakdowns.leagueProviderId,
+            leagueProviderId,
+          ),
+          eq(fantasyPlayerWeekStatBreakdowns.season, season),
+        ),
+      );
+    const staleStatIds = existingStatRows
+      .filter(
+        (row) =>
+          !validStatKeys.has(
+            [
+              row.providerTeamId,
+              String(row.scoringPeriod),
+              row.providerPlayerId,
+              row.statSource,
+              String(row.providerStatId),
+            ].join(":"),
+          ),
+      )
+      .map((row) => row.id);
+    if (staleStatIds.length > 0) {
+      await tx
+        .delete(fantasyPlayerWeekStatBreakdowns)
+        .where(inArray(fantasyPlayerWeekStatBreakdowns.id, staleStatIds));
     }
   }
 }
@@ -1815,6 +1959,13 @@ async function cleanupOrphanFantasyPlayers({
           and pick.provider = player.provider
           and pick.league_provider_id = player.league_provider_id
           and pick.provider_player_id = player.provider_player_id
+      )
+      and not exists (
+        select 1 from fantasy_player_week_stat_breakdowns breakdown
+        where breakdown.league_id = player.league_id
+          and breakdown.provider = player.provider
+          and breakdown.league_provider_id = player.league_provider_id
+          and breakdown.provider_player_id = player.provider_player_id
       )
       and not exists (
         select 1 from fantasy_transactions txn
@@ -2264,6 +2415,132 @@ async function upsertRosterEntries(
   return stats(rows.length, changed.length);
 }
 
+async function upsertPlayerWeekStatBreakdowns(
+  tx: LeagueScopedTx,
+  leagueId: string,
+  leagueProviderId: string,
+  rosters: readonly NormalizedRoster[],
+  playerIdByIdentity: ReadonlyMap<string, string>,
+): Promise<EntitySyncStats> {
+  const rowsByKey = new Map<
+    string,
+    typeof fantasyPlayerWeekStatBreakdowns.$inferInsert
+  >();
+
+  for (const roster of rosters) {
+    for (const entry of roster.entries) {
+      const playerLeagueProviderId =
+        entry.player?.leagueProviderId ?? leagueProviderId;
+      for (const breakdown of entry.statBreakdown ?? []) {
+        const key = [
+          roster.teamRef.providerId,
+          String(roster.scoringPeriod),
+          entry.playerRef.providerId,
+          breakdown.statSource,
+          String(breakdown.providerStatId),
+        ].join(":");
+        const metadata = breakdown.metadata ?? {};
+        const row = {
+          contentHash: stableContentHash(
+            statBreakdownHashPayload({ breakdown, entry, roster }),
+          ),
+          fantasyPlayerId:
+            playerIdByIdentity.get(
+              playerIdentityKey({
+                leagueProviderId: playerLeagueProviderId,
+                provider: entry.playerRef.provider,
+                providerPlayerId: entry.playerRef.providerId,
+              }),
+            ) ?? null,
+          fantasyPoints: breakdown.fantasyPoints,
+          leagueId,
+          leagueProviderId,
+          metadata,
+          provider: roster.teamRef.provider,
+          providerPlayerId: entry.playerRef.providerId,
+          providerStatId: breakdown.providerStatId,
+          providerTeamId: roster.teamRef.providerId,
+          scoringPeriod: roster.scoringPeriod,
+          season: roster.season,
+          statCategory: breakdown.statCategory,
+          statKey: breakdown.statKey,
+          statSource: breakdown.statSource,
+          statValue: breakdown.statValue,
+        };
+        const existing = rowsByKey.get(key);
+        if (!existing) {
+          rowsByKey.set(key, row);
+          continue;
+        }
+        const mergedMetadata = {
+          ...(existing.metadata ?? {}),
+          ...metadata,
+          mergedProviderRows: true,
+        };
+        const merged = {
+          ...existing,
+          fantasyPoints:
+            Number(existing.fantasyPoints) + breakdown.fantasyPoints,
+          metadata: mergedMetadata,
+          statValue: Number(existing.statValue) + breakdown.statValue,
+        };
+        merged.contentHash = stableContentHash(
+          statBreakdownRowHashPayload({
+            fantasyPoints: merged.fantasyPoints,
+            metadata: mergedMetadata,
+            providerPlayerId: merged.providerPlayerId,
+            providerStatId: merged.providerStatId,
+            providerTeamId: merged.providerTeamId,
+            scoringPeriod: merged.scoringPeriod,
+            season: merged.season,
+            statCategory: merged.statCategory,
+            statKey: merged.statKey,
+            statSource: merged.statSource ?? breakdown.statSource,
+            statValue: merged.statValue,
+          }),
+        );
+        rowsByKey.set(key, merged);
+      }
+    }
+  }
+
+  const rows = [...rowsByKey.values()];
+  if (rows.length === 0) {
+    return emptyStats();
+  }
+
+  const changed = await tx
+    .insert(fantasyPlayerWeekStatBreakdowns)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        fantasyPlayerWeekStatBreakdowns.leagueId,
+        fantasyPlayerWeekStatBreakdowns.provider,
+        fantasyPlayerWeekStatBreakdowns.leagueProviderId,
+        fantasyPlayerWeekStatBreakdowns.providerTeamId,
+        fantasyPlayerWeekStatBreakdowns.season,
+        fantasyPlayerWeekStatBreakdowns.scoringPeriod,
+        fantasyPlayerWeekStatBreakdowns.providerPlayerId,
+        fantasyPlayerWeekStatBreakdowns.statSource,
+        fantasyPlayerWeekStatBreakdowns.providerStatId,
+      ],
+      set: {
+        contentHash: sql`excluded.content_hash`,
+        fantasyPlayerId: sql`excluded.fantasy_player_id`,
+        fantasyPoints: sql`excluded.fantasy_points`,
+        metadata: sql`excluded.metadata`,
+        statCategory: sql`excluded.stat_category`,
+        statKey: sql`excluded.stat_key`,
+        statValue: sql`excluded.stat_value`,
+        updatedAt: sql`now()`,
+      },
+      where: sql`${fantasyPlayerWeekStatBreakdowns.contentHash} is distinct from excluded.content_hash`,
+    })
+    .returning({ id: fantasyPlayerWeekStatBreakdowns.id });
+
+  return stats(rows.length, changed.length);
+}
+
 async function upsertDraftPicks(
   tx: LeagueScopedTx,
   leagueId: string,
@@ -2557,6 +2834,13 @@ export async function persistNormalizedLeagueRows({
       rosters,
       playerUpsert.playerIdByIdentity,
     );
+    const playerStatBreakdownStats = await upsertPlayerWeekStatBreakdowns(
+      tx,
+      leagueId,
+      resolvedLeagueProviderId,
+      rosters,
+      playerUpsert.playerIdByIdentity,
+    );
     const draftPickStats = await upsertDraftPicks(
       tx,
       leagueId,
@@ -2582,6 +2866,7 @@ export async function persistNormalizedLeagueRows({
       finalStandingStats,
       leagueSeasonSettingsStats,
       matchupStats: matchupUpsert.stats,
+      playerStatBreakdownStats,
       memberStats,
       playerStats: playerUpsert.stats,
       rosterStats,
@@ -2740,6 +3025,20 @@ function countKeeperRosterEntries(
   );
 }
 
+function countPlayerStatBreakdownRows(
+  rosters: readonly NormalizedRoster[],
+): number {
+  return rosters.reduce(
+    (total, roster) =>
+      total +
+      roster.entries.reduce(
+        (entryTotal, entry) => entryTotal + (entry.statBreakdown?.length ?? 0),
+        0,
+      ),
+    0,
+  );
+}
+
 export function edgeCaseCoverageObservations({
   finalStandings = [],
   league,
@@ -2762,8 +3061,11 @@ export function edgeCaseCoverageObservations({
   ).length;
   const divisionItemCount = teamsWithDivision + standingsWithDivision;
   const keeperRosterEntries = countKeeperRosterEntries(rosters);
+  const playerStatBreakdownRows = countPlayerStatBreakdownRows(rosters);
   const hasKeeperSettings = hasOwnKeys(league.keeperSettings);
   const keeperItemCount = (hasKeeperSettings ? 1 : 0) + keeperRosterEntries;
+  const scoringDetailItemCount =
+    (hasOwnKeys(league.scoringSettings) ? 1 : 0) + playerStatBreakdownRows;
 
   return {
     divisions: {
@@ -2781,11 +3083,12 @@ export function edgeCaseCoverageObservations({
     },
     scoring_detail: {
       details: {
+        playerStatBreakdownRows,
         scoringSettingsKeys: Object.keys(league.scoringSettings ?? {}).sort(),
         scoringType: league.scoringType,
         source: scoringDetailSource,
       },
-      itemCount: hasOwnKeys(league.scoringSettings) ? 1 : 0,
+      itemCount: scoringDetailItemCount,
     },
   };
 }
@@ -3107,6 +3410,7 @@ export async function syncCurrentLeague<Session extends FantasyProviderSession>(
     members: scoped.memberStats,
     matchups: scoped.matchupStats,
     players: scoped.playerStats,
+    playerStatBreakdowns: scoped.playerStatBreakdownStats,
     rosters: scoped.rosterStats,
     draftPicks: scoped.draftPickStats,
     transactions: scoped.transactionStats,

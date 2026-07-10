@@ -1,15 +1,23 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-09 — **Task T18 on `ws/t18-editorial-canon`**:
-`specs/45` and `specs/46` are implemented through the requested build scope. The AI/editorial stack now reads pushed
-canon through a branded `CanonCatalog`; published content has lifecycle state, ledgered commissioner controls,
-corrections, failure visibility, tone editing, live embed blocks, reactions, and roast-consent guardrails. Distribution
-now has social metadata/OG cards, logged-out article teasers, launch-edition planning, mock league webhooks, mock weekly
-digests, and one notification preference matrix for push/digest/none. New RLS/FORCE tables and migrations run through
-`0068`; `$0`/mock boundaries remain for real webhook/email/provider activation. Standard fixture screenshots were
-refreshed with `SCREENSHOTS=1 PATH=/usr/bin:$PATH pnpm exec playwright test e2e/screenshots.spec.ts` (passed; one
-non-fatal React hydration warning appeared on the members screenshot path). Prior state: **Task T17 on
+Keep it current. Last updated: 2026-07-10 — **Task T19 on `ws/t19-records-substance`**:
+the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
+roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
+steals/busts, and bench tragedies. ESPN imports now persist per-player-week scoring-stat breakdowns with a
+`stat_breakdown_coverage` integrity check and Data Book player-detail expansion. AI generation consumes mock substrate B
+as explicitly non-canon general NFL context, records per-league mock-cost usage rows, and exposes a steward/commissioner
+AI usage rollup. The quick-win hardening batch landed season-scoped Data Book reads, Better Auth/Redis rate limits,
+security headers, CI Playwright coverage, dev-DB dump/restore scripts, arena timeout posture, and Inngest env parity.
+`specs/42` H1-12..H1-17 are closed, and the T18 editorial/webhook/digest/OG review findings are fixed. New migrations
+run through `0072`; `$0`/mock boundaries remain for real paid-provider and real delivery activation. Standard fixture
+screenshots were refreshed with `SCREENSHOTS=1 PATH=/usr/bin:$PATH pnpm exec playwright test e2e/screenshots.spec.ts`.
+Prior state: **Task T18 on `ws/t18-editorial-canon`**:
+`specs/45` and `specs/46` implemented the editorial control plane and distribution/arrival stack: pushed-canon AI
+context through a branded `CanonCatalog`, content lifecycle state, ledgered commissioner controls, corrections, failure
+visibility, tone editing, live embed blocks, reactions, roast-consent guardrails, social metadata/OG cards, logged-out
+article teasers, launch-edition planning, mock league webhooks, mock weekly digests, and one notification preference
+matrix for push/digest/none. Prior state: **Task T17 on
 `ws/t17-doc-sync`**: documentation had been reconciled to the T13-T16 state. The shared dev DB used by the running app contains the real ESPN
 validation league, provider `espn` / provider id `95050`, **"NHS Alumni Annual"**, with player depth and complete
 decoding. Do not document a volatile internal league UUID for this league; it changes across local DB resets. The shared
@@ -168,9 +176,10 @@ the live, up-to-date branch.**
 ---
 
 ## 0. TL;DR for whoever picks this up
-- The clean, first-principles rebuild is **delivered**; `main` currently carries the full build through T16, while
-  `ws/t18-editorial-canon` carries the completed `specs/45`/`specs/46` editorial-control and distribution arc for the
-  orchestrator merge. `rebuild/foundation` was the autonomous-build branch (historical).
+- The clean, first-principles rebuild is **delivered**; `main` carries the integrated build through T18, while
+  `ws/t19-records-substance` carries the final agent-buildable backlog: player records, per-stat breakdowns,
+  substrate-B AI enrichment, AI usage attribution, quick-win hardening, `specs/42` closure, and T18 review hardening for
+  orchestrator review/merge. `rebuild/foundation` was the autonomous-build branch (historical).
 - The autonomous **Ralph loop** is retired (`loop.sh` guarded). Current work uses the **orchestrated workstream** model
   in `ORCHESTRATION.md`: workstream agents work on `ws/*` branches/worktrees, commit and push their branch, and the
   orchestrator owns merges to `main`.
@@ -194,7 +203,7 @@ fixture-backed; production-real provider breadth is deferred), ingest current + 
 - **Bar:** new, snappy, mobile-first (distributed via a shareable link), desktop parity, nothing dated.
 
 ## 2. Branch reality
-- `main` is the live/integration branch and is current through T16. Workstream agents still work on `ws/*` branches and
+- `main` is the live/integration branch and is current through T18. Workstream agents still work on `ws/*` branches and
   must not merge to or force-push `main`; the orchestrator owns merges.
 - Old version branches such as **`v0.62`** are historical mining references only. They contain useful domain clues
   (schema/domain modeling, `lib/crypto/encryption.ts`, ESPN request/header learnings, identity-resolution logic), but
@@ -242,9 +251,9 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **AI:** treat all web/RSS as untrusted (prompt-injection); enforce league isolation in SQL (`WHERE league_id`) + RLS, never trust the model; near-dup check generated posts (cosine > ~0.92).
 
 ## 7. Current state & next steps
-All planned rebuild product scope (P0-P5), AUSPEX overhaul, Increment 1, data foundation T1-T16, and real ESPN 95050
-dev-DB population are on `main`; T18 adds the editorial-control plane plus distribution/arrival stack on
-`ws/t18-editorial-canon` for orchestrator review/merge. Gates remain mandatory backpressure for code work. See §8 for
+All planned rebuild product scope (P0-P5), AUSPEX overhaul, Increment 1, data foundation T1-T16, real ESPN 95050
+dev-DB population, and T18 editorial/distribution work are on `main`; T19 adds the final agent-buildable backlog on
+`ws/t19-records-substance` for orchestrator review/merge. Gates remain mandatory backpressure for code work. See §8 for
 the build log and `docs/HISTORY.md` for the trajectory + independent review.
 - **Data Foundation T1 delivered (2026-06-22):** `league_season_settings` now captures `league_size`,
   matchup/regular/playoff/championship schedule fields, `playoff_matchup_period_length`, playoff teams, scoring type
@@ -319,7 +328,8 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   stats. `nfl_players`, `nfl_schedule`, `nfl_team_stats`, and `nfl_player_week_stats` are central tables with
   source/fetch-time/content-hash provenance; the committed mock fixture ingests idempotently after integrity checks;
   and `src/general-stats` provides read-only player/team/schedule/stat lookups plus roster-fact enrichment. Verification
-  is in `.orchestration/import-summary.md`; live News/AI wiring remains future consumer work.
+  is in `.orchestration/import-summary.md`; T19 wires the mock substrate into News/AI prompts as explicitly non-canon
+  general NFL context.
 - **Task T13 delivered (2026-06-23):** imports converge per season to the provider payload. The ESPN fixture offender
   now lives in a reserved non-real namespace and cleans up after e2e runs; current and historical import paths delete
   stale member/team rows only for fetched seasons, then re-resolve identities and remove orphan people. The new
@@ -350,6 +360,13 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   Arrival now includes share metadata and OG cards, logged-out league teasers, launch editions, mock outbound webhooks,
   mock weekly digest email, and a shared push/digest/none notification matrix. Real webhook/email sends and live paid
   provider calls remain Phase 4 key/domain work behind the new boundaries.
+- **Task T19 delivered (2026-07-10):** player-level Record Book categories now ride pushed canonical snapshot player/
+  draft/roster facts; ESPN imports persist per-player-week scoring-stat breakdowns with `stat_breakdown_coverage`;
+  Data Book Weeks exposes expandable player stat detail; AI generation and central-news tailoring consume substrate B
+  as non-canon general NFL context; per-league AI usage attribution records mock-cost rows and exposes a steward/
+  commissioner rollup; quick wins landed for Data Book season reads, rate limits, security headers, CI e2e, dev-DB
+  backups, arena timeouts, and Inngest env validation; `specs/42` H1-12..H1-17 plus T18 editorial/webhook/digest/OG
+  adversarial-review findings are fixed.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN ingestion against provider
   id `95050` / **"NHS Alumni Annual"**, stats/records/identity, AI content pipeline behind mocks, betting engine +
   rolling-min bankroll + central arena, realtime + push. Sleeper/Yahoo adapters exist with fixture-backed coverage;
@@ -357,11 +374,16 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
 - **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Deferred/follow-on:** full per-stat scoring persistence; player-level records in the Record Book; draft/transactions
-  UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real substrate-B source wiring; production-real
-  paid-provider keys/capture plus real webhook/email delivery domains; minor owner-set-aside UI tweaks.
+- **Deferred/follow-on:** draft/transactions UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real
+  substrate-B source wiring; production-real paid-provider keys/capture plus real webhook/email delivery domains; final
+  AI voice/persona tuning with the owner; Stripe/beta/legal/observability launch hardening; minor owner-set-aside UI
+  tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-10: Task T19 landed on `ws/t19-records-substance` — the remaining agent-buildable backlog is complete:
+  pushed-canon player records, per-stat scoring persistence and Data Book expansion, substrate-B AI/News enrichment,
+  per-league AI usage attribution, the efficiency/hardening quick wins, `specs/42` H1-12..H1-17, and T18 editorial/
+  webhook/digest/OG review hardening. Standard fixture screenshots were refreshed and include the AI usage rollup.
 - 2026-07-09: Task T18 landed on `ws/t18-editorial-canon` — the editorial control plane and distribution/arrival arc
   from `specs/45`/`specs/46` are implemented through the requested scope: pushed-canon AI context, content lifecycle,
   editorial ledger/actions, corrections, failure queue, tone editor, live embeds, reactions/roast consent, OG cards,

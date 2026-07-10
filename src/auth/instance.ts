@@ -13,6 +13,7 @@ import {
   verifications,
 } from "@/db/schema";
 import { ac, roles } from "./permissions";
+import { createRedisSecondaryStorage } from "./redis-secondary-storage";
 
 /**
  * Pure Better Auth factory (mirrors `createDb`): no env/server-only imports,
@@ -24,6 +25,7 @@ export interface AuthOptions {
   secret: string;
   baseURL: string;
   google: GoogleOAuthConfig;
+  redisUrl: string;
 }
 
 // Placeholder Google creds keep the OAuth routes mounted with zero config;
@@ -51,6 +53,19 @@ export function createAuth(db: Db, options: AuthOptions) {
         invitation: invitations,
       },
     }),
+    rateLimit: {
+      enabled: true,
+      storage: "secondary-storage",
+      window: 60,
+      max: 100,
+      customRules: {
+        "/api/auth/sign-in/*": { max: 5, window: 60 },
+        "/api/auth/sign-up/*": { max: 5, window: 60 },
+        "/sign-in/*": { max: 5, window: 60 },
+        "/sign-up/*": { max: 5, window: 60 },
+      },
+    },
+    secondaryStorage: createRedisSecondaryStorage(options.redisUrl),
     // All ids are uuid columns with DB defaults — let Postgres generate them.
     advanced: { database: { generateId: false } },
     user: {

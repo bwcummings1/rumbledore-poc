@@ -25,6 +25,7 @@ import type {
   LlmJudgeRequest,
   LlmJudgeScore,
   NewsItem,
+  UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
 import {
@@ -42,7 +43,6 @@ import {
   AnthropicLlmJudge,
   OpenAiCompatibleLlmClient,
   TavilyWebGrounding,
-  type UsageReportingLlmClient,
   type UsageReportingLlmJudge,
   VOYAGE_EMBEDDING_MODEL,
   VoyageEmbeddingProvider,

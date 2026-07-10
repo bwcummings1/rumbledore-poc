@@ -1,4 +1,4 @@
-import type { UsageReportingLlmClient } from "./real";
+import type { UsageReportingLlmClient } from "./interfaces";
 import { AnthropicLlmClient, OpenAiCompatibleLlmClient } from "./real";
 
 export type ModelProviderKind =

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { logger } from "@/core/logging";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
@@ -54,6 +54,7 @@ export interface SupersedeContentItemInput {
 
 type ContentLifecycleDb = Db | LeagueScopedTx;
 type LifecycleTargetStatus = Exclude<ContentItemStatus, "published">;
+type ContentLifecycleNotifyDeps = Omit<ContentLifecycleDeps, "db">;
 
 interface ContentLifecycleRow {
   id: string;
@@ -61,6 +62,11 @@ interface ContentLifecycleRow {
   status: ContentItemStatus;
   statusChangedAt: Date;
   title: string;
+}
+
+export interface ContentLifecycleTransitionCommit {
+  notify: () => Promise<void>;
+  transition: ContentLifecycleTransitionResult;
 }
 
 export function supersedingContentDedupKey(
@@ -75,38 +81,89 @@ export async function retractContentItem(
   deps: ContentLifecycleDeps,
   input: RetractContentItemInput,
 ): Promise<ContentLifecycleTransitionResult> {
-  const transition = await transitionContentItemStatus(deps, {
+  const commit = await runContentLifecycleQuery(deps.db, input.leagueId, (db) =>
+    retractContentItemInDb(deps, db, input),
+  );
+  await commit.notify();
+  return commit.transition;
+}
+
+export async function retractContentItemInLeagueTx(
+  deps: ContentLifecycleNotifyDeps,
+  tx: LeagueScopedTx,
+  input: RetractContentItemInput,
+): Promise<ContentLifecycleTransitionCommit> {
+  return retractContentItemInDb(deps, tx, input);
+}
+
+async function retractContentItemInDb(
+  deps: ContentLifecycleNotifyDeps,
+  db: ContentLifecycleDb,
+  input: RetractContentItemInput,
+): Promise<ContentLifecycleTransitionCommit> {
+  const transition = await transitionContentItemStatusInTx(db, deps, {
     contentItemId: input.contentItemId,
     leagueId: input.leagueId,
     targetStatus: "retracted",
   });
 
-  if (transition.status === "changed" && transition.row) {
-    await emitRetracted(deps, transition.row);
-  }
-
-  return transitionResult(input.contentItemId, transition);
+  return {
+    notify: async () => {
+      if (transition.status === "changed" && transition.row) {
+        await emitRetracted(deps, transition.row);
+      }
+    },
+    transition: transitionResult(input.contentItemId, transition),
+  };
 }
 
 export async function supersedeContentItem(
   deps: ContentLifecycleDeps,
   input: SupersedeContentItemInput,
 ): Promise<ContentLifecycleTransitionResult> {
-  const transition = await transitionContentItemStatus(deps, {
+  const commit = await runContentLifecycleQuery(deps.db, input.leagueId, (db) =>
+    supersedeContentItemInDb(deps, db, input),
+  );
+  await commit.notify();
+  return commit.transition;
+}
+
+export async function supersedeContentItemInLeagueTx(
+  deps: ContentLifecycleNotifyDeps,
+  tx: LeagueScopedTx,
+  input: SupersedeContentItemInput,
+): Promise<ContentLifecycleTransitionCommit> {
+  return supersedeContentItemInDb(deps, tx, input);
+}
+
+async function supersedeContentItemInDb(
+  deps: ContentLifecycleNotifyDeps,
+  db: ContentLifecycleDb,
+  input: SupersedeContentItemInput,
+): Promise<ContentLifecycleTransitionCommit> {
+  const transition = await transitionContentItemStatusInTx(db, deps, {
     contentItemId: input.contentItemId,
     leagueId: input.leagueId,
     targetStatus: "superseded",
   });
 
-  if (transition.status === "changed" && transition.row) {
-    await emitSuperseded(deps, transition.row, input.replacementContentItemId);
-  }
-
-  return transitionResult(input.contentItemId, transition);
+  return {
+    notify: async () => {
+      if (transition.status === "changed" && transition.row) {
+        await emitSuperseded(
+          deps,
+          transition.row,
+          input.replacementContentItemId,
+        );
+      }
+    },
+    transition: transitionResult(input.contentItemId, transition),
+  };
 }
 
-async function transitionContentItemStatus(
-  deps: ContentLifecycleDeps,
+async function transitionContentItemStatusInTx(
+  db: ContentLifecycleDb,
+  deps: ContentLifecycleNotifyDeps,
   input: {
     contentItemId: string;
     leagueId: string | null;
@@ -117,72 +174,74 @@ async function transitionContentItemStatus(
   status: ContentLifecycleStatus;
   previousStatus?: ContentItemStatus;
 }> {
-  return runContentLifecycleQuery(deps.db, input.leagueId, async (db) => {
-    const row = await loadContentLifecycleRow(db, input);
-    if (!row) {
-      return { status: "not_found" };
-    }
+  const row = await loadContentLifecycleRow(db, input);
+  if (!row) {
+    return { status: "not_found" };
+  }
 
-    if (row.status === input.targetStatus) {
-      return {
-        previousStatus: row.status,
-        row,
-        status: "already_current",
-      };
-    }
-
-    if (row.status !== PUBLISHED_CONTENT_STATUS) {
-      return {
-        previousStatus: row.status,
-        row,
-        status: "conflict",
-      };
-    }
-
-    const timestamp = deps.now?.() ?? new Date();
-    const [updated] = await db
-      .update(contentItems)
-      .set({
-        status: input.targetStatus,
-        statusChangedAt: timestamp,
-        updatedAt: timestamp,
-      })
-      .where(
-        and(
-          eq(contentItems.id, input.contentItemId),
-          eq(contentItems.status, PUBLISHED_CONTENT_STATUS),
-          scopedContentPredicate(input.leagueId),
-        ),
-      )
-      .returning({
-        id: contentItems.id,
-        leagueId: contentItems.leagueId,
-        status: contentItems.status,
-        statusChangedAt: contentItems.statusChangedAt,
-        title: contentItems.title,
-      });
-
-    if (!updated) {
-      const current = await loadContentLifecycleRow(db, input);
-      return current?.status === input.targetStatus
-        ? {
-            previousStatus: current.status,
-            row: current,
-            status: "already_current",
-          }
-        : {
-            previousStatus: current?.status,
-            row: current ?? undefined,
-            status: current ? "conflict" : "not_found",
-          };
-    }
-
+  if (row.status === input.targetStatus) {
     return {
       previousStatus: row.status,
-      row: updated,
-      status: "changed",
+      row,
+      status: "already_current",
     };
-  });
+  }
+
+  const allowedPreviousStatuses: ContentItemStatus[] =
+    input.targetStatus === "retracted"
+      ? [PUBLISHED_CONTENT_STATUS, "superseded"]
+      : [PUBLISHED_CONTENT_STATUS];
+  if (!allowedPreviousStatuses.includes(row.status)) {
+    return {
+      previousStatus: row.status,
+      row,
+      status: "conflict",
+    };
+  }
+
+  const timestamp = deps.now?.() ?? new Date();
+  const [updated] = await db
+    .update(contentItems)
+    .set({
+      status: input.targetStatus,
+      statusChangedAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .where(
+      and(
+        eq(contentItems.id, input.contentItemId),
+        inArray(contentItems.status, allowedPreviousStatuses),
+        scopedContentPredicate(input.leagueId),
+      ),
+    )
+    .returning({
+      id: contentItems.id,
+      leagueId: contentItems.leagueId,
+      status: contentItems.status,
+      statusChangedAt: contentItems.statusChangedAt,
+      title: contentItems.title,
+    });
+
+  if (!updated) {
+    const current = await loadContentLifecycleRow(db, input);
+    return current?.status === input.targetStatus
+      ? {
+          previousStatus: current.status,
+          row: current,
+          status: "already_current",
+        }
+      : {
+          previousStatus: current?.status,
+          row: current ?? undefined,
+          status: current ? "conflict" : "not_found",
+        };
+  }
+
+  return {
+    previousStatus: row.status,
+    row: updated,
+    status: "changed",
+  };
 }
 
 async function runContentLifecycleQuery<T>(
@@ -240,7 +299,7 @@ function transitionResult(
 }
 
 async function emitRetracted(
-  deps: ContentLifecycleDeps,
+  deps: ContentLifecycleNotifyDeps,
   row: ContentLifecycleRow,
 ): Promise<void> {
   const at = deps.now?.() ?? new Date();
@@ -286,7 +345,7 @@ async function emitRetracted(
 }
 
 async function emitSuperseded(
-  deps: ContentLifecycleDeps,
+  deps: ContentLifecycleNotifyDeps,
   row: ContentLifecycleRow,
   replacementContentItemId: string,
 ): Promise<void> {

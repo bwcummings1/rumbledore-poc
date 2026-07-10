@@ -17,6 +17,7 @@ import {
   fantasyMatchups,
   fantasyMembers,
   fantasyPlayers,
+  fantasyPlayerWeekStatBreakdowns,
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
@@ -2391,6 +2392,103 @@ describe("recomputeLeagueStatistics", () => {
     }
   });
 
+  it("lenses confirmed best-ball format groupings without a traditional-only break", async () => {
+    const { leagueId } = await seedStatsLeague("best-ball-lens");
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const groupingId = await withLeagueContext(
+      handle.db,
+      leagueId,
+      async (tx) => {
+        const [grouping] = await tx
+          .insert(leagueSeasonGroupings)
+          .values({
+            config: {
+              format_type: "best_ball",
+              notes: "Best-ball era should still produce a catalog slice.",
+              scoring_format: { scoring_type: "H2H_POINTS" },
+            },
+            derivedFrom: { source: "test-best-ball" },
+            kind: "era",
+            leagueId,
+            name: "Best Ball Era",
+            ordinal: 1,
+            status: "confirmed",
+          })
+          .returning({ id: leagueSeasonGroupings.id });
+        if (!grouping) {
+          throw new Error("best-ball grouping was not created");
+        }
+        await tx.insert(leagueGroupingSeasons).values({
+          groupingId: grouping.id,
+          leagueId,
+          season: 2025,
+        });
+        return grouping.id;
+      },
+    );
+
+    const catalog = await getLeagueRecordsCatalog(handle.db, {
+      leagueId,
+      lens: { groupingId, segment: "both" },
+      limit: 5,
+    });
+
+    expect(catalog.integrityBlocked).toBe(false);
+    expect(catalog.allTimeStandings.length).toBeGreaterThan(0);
+    expect(catalog.highLow.highestScores[0]).toMatchObject({
+      season: 2025,
+      value: 120,
+    });
+    expect(
+      catalog.highLow.highestScores.every((row) => row.season === 2025),
+    ).toBe(true);
+  });
+
+  it("rejects negative optional scoring-period boundary edits", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague(
+      "negative-boundary-edit",
+    );
+    const actorUserId = await seedActor("negative-boundary-edit-actor");
+
+    const settingId = await withLeagueContext(
+      handle.db,
+      leagueId,
+      async (tx) => {
+        const [settings] = await tx
+          .insert(leagueSeasonSettings)
+          .values({
+            contentHash: `${marker}-negative-boundary-settings`,
+            leagueId,
+            leagueProviderId: providerLeagueId,
+            provider: "espn",
+            regularSeasonEndScoringPeriod: 14,
+            season: 2025,
+          })
+          .returning({ id: leagueSeasonSettings.id });
+        if (!settings) {
+          throw new Error("negative-boundary settings row was not created");
+        }
+        return settings.id;
+      },
+    );
+
+    await expect(
+      applyLeagueDataEdit(handle.db, {
+        actorUserId,
+        editClass: "substantive",
+        field: "regular_season_end_scoring_period",
+        leagueId,
+        reason: "negative boundaries should be rejected",
+        targetId: settingId,
+        targetKind: "season_setting",
+        value: -1,
+      }),
+    ).rejects.toThrow(
+      "regular_season_end_scoring_period must be a positive integer or null",
+    );
+  });
+
   oldLeagueFixtureIt(
     "proposes old-league era boundaries from the historical fixture and confirms arbitrary season sets",
     async () => {
@@ -4010,6 +4108,40 @@ describe("recomputeLeagueStatistics", () => {
           status: "active",
         })),
       ]);
+      await tx.insert(fantasyPlayerWeekStatBreakdowns).values([
+        {
+          contentHash: `${marker}-player-rollup-1a-stat`,
+          fantasyPoints: 35,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-1a",
+          providerStatId: 24,
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2025,
+          statCategory: "rushing",
+          statKey: "rushingYards",
+          statSource: "actual",
+          statValue: 350,
+        },
+        {
+          contentHash: `${marker}-player-rollup-1b-stat`,
+          fantasyPoints: 40,
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerPlayerId: "rollup-1b",
+          providerStatId: 24,
+          providerTeamId: "1",
+          scoringPeriod: 1,
+          season: 2025,
+          statCategory: "rushing",
+          statKey: "rushingYards",
+          statSource: "actual",
+          statValue: 400,
+        },
+      ]);
     });
 
     await recomputeLeagueStatistics(handle.db, { leagueId });
@@ -4038,6 +4170,36 @@ describe("recomputeLeagueStatistics", () => {
         }),
       ]),
     });
+    const failedBreakdown = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "stat_breakdown_coverage" &&
+        row.season === 2025 &&
+        row.status === "fail",
+    );
+    expect(failedBreakdown?.detail).toMatchObject({
+      checkedPlayerWeeks: 2,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          breakdownPoints: 35,
+          playerPoints: 40,
+          providerPlayerId: "rollup-1a",
+          providerTeamId: "1",
+          scoringPeriod: 1,
+        }),
+      ]),
+      skippedPlayerWeeks: expect.arrayContaining([
+        expect.objectContaining({
+          providerPlayerId: "rollup-2b",
+          reason: "missing_player_points",
+          scoringPeriod: 1,
+        }),
+        expect.objectContaining({
+          providerPlayerId: "rollup-2a",
+          reason: "missing_stat_breakdown",
+          scoringPeriod: 1,
+        }),
+      ]),
+    });
 
     await withLeagueContext(handle.db, leagueId, async (tx) => {
       await tx
@@ -4047,6 +4209,19 @@ describe("recomputeLeagueStatistics", () => {
           and(
             eq(fantasyRosterEntries.leagueId, leagueId),
             eq(fantasyRosterEntries.providerPlayerId, "rollup-1a"),
+          ),
+        );
+      await tx
+        .update(fantasyPlayerWeekStatBreakdowns)
+        .set({
+          contentHash: `${marker}-player-rollup-1a-stat-fixed`,
+          fantasyPoints: 60,
+          statValue: 600,
+        })
+        .where(
+          and(
+            eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId),
+            eq(fantasyPlayerWeekStatBreakdowns.providerPlayerId, "rollup-1a"),
           ),
         );
     });
@@ -4068,6 +4243,22 @@ describe("recomputeLeagueStatistics", () => {
           providerTeamId: "2",
           reason: "partial_started_player_points",
           scoringPeriod: 1,
+        }),
+      ]),
+    });
+    const passingBreakdown = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "stat_breakdown_coverage" &&
+        row.season === 2025 &&
+        row.status === "pass",
+    );
+    expect(passingBreakdown?.detail).toMatchObject({
+      checkedPlayerWeeks: 2,
+      issues: [],
+      skippedPlayerWeeks: expect.arrayContaining([
+        expect.objectContaining({
+          providerPlayerId: "rollup-2a",
+          reason: "missing_stat_breakdown",
         }),
       ]),
     });

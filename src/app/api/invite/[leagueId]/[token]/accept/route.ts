@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimit } from "@/core/rate-limit";
 import { AppError } from "@/core/result";
 import { getDb } from "@/db";
 import {
@@ -15,6 +16,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_ACCEPT_BODY_BYTES = 1024;
+const RATE_LIMIT_RETRY_AFTER_SECONDS = "60";
 
 const acceptInviteSchema = z
   .object({
@@ -33,6 +35,26 @@ async function inviteAcceptPost(
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
+  }
+  const limit = await enforceApiRateLimit({
+    max: 10,
+    scope: "invite-accept",
+    subject: userId.value,
+    windowSeconds: 60,
+  });
+  if (!limit.allowed) {
+    return Response.json(
+      {
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many invite accept attempts. Try again shortly.",
+        },
+      },
+      {
+        headers: { "Retry-After": RATE_LIMIT_RETRY_AFTER_SECONDS },
+        status: 429,
+      },
+    );
   }
 
   const { leagueId, token } = await context.params;

@@ -14,12 +14,14 @@ import {
 import type {
   BlogDraft,
   EmbeddingProvider,
-  LlmClient,
   LlmGenerateRequest,
+  LlmGenerateResult,
   LlmJudge,
   LlmJudgeRequest,
   LlmJudgeScore,
+  LlmUsageBreakdown,
   NewsItem,
+  UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
 import {
@@ -243,24 +245,8 @@ export interface AnthropicLlmJudgeOptions {
   model?: string;
 }
 
-export interface LlmUsageBreakdown {
-  cacheCreationInputTokens: number;
-  cacheReadInputTokens: number;
-  inputTokens: number;
-  outputTokens: number;
-}
-
-export interface LlmGenerateResult {
-  draft: BlogDraft;
-  usage: LlmUsageBreakdown;
-}
-
 export type AnthropicUsageBreakdown = LlmUsageBreakdown;
 export type AnthropicGenerateResult = LlmGenerateResult;
-
-export interface UsageReportingLlmClient extends LlmClient {
-  generateWithUsage(request: LlmGenerateRequest): Promise<LlmGenerateResult>;
-}
 
 export interface LlmJudgeResult {
   score: LlmJudgeScore;
@@ -458,6 +444,12 @@ export class AnthropicLlmClient implements UsageReportingLlmClient {
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
     return (await this.generateWithUsage(request)).draft;
+  }
+
+  resolveModelName(
+    request: Pick<LlmGenerateRequest, "contentType" | "persona">,
+  ): string {
+    return this.modelForPersona(request.persona);
   }
 
   async generateWithUsage(
@@ -674,6 +666,10 @@ export class OpenAiCompatibleLlmClient implements UsageReportingLlmClient {
 
   async generate(request: LlmGenerateRequest): Promise<BlogDraft> {
     return (await this.generateWithUsage(request)).draft;
+  }
+
+  resolveModelName(): string {
+    return this.model;
   }
 
   async generateWithUsage(

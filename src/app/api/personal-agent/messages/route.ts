@@ -4,10 +4,14 @@ import { getPersonalAgentAnswer } from "@/ai/personal-agent";
 import { requireLeagueRoleForUser, requireSession } from "@/auth/guards";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimit } from "@/core/rate-limit";
 import { getDb } from "@/db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const MAX_PERSONAL_AGENT_BODY_BYTES = 4096;
+const RATE_LIMIT_RETRY_AFTER_SECONDS = "60";
 
 const personalAgentMessageSchema = z.object({
   context: z
@@ -27,6 +31,39 @@ async function personalAgentMessagePost(request: Request) {
     return NextResponse.json(
       { error: session.error.toJSON() },
       { status: session.error.status },
+    );
+  }
+  const limit = await enforceApiRateLimit({
+    max: 20,
+    scope: "personal-agent-messages",
+    subject: session.value.userId,
+    windowSeconds: 60,
+  });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many personal agent messages. Try again shortly.",
+        },
+      },
+      {
+        headers: { "Retry-After": RATE_LIMIT_RETRY_AFTER_SECONDS },
+        status: 429,
+      },
+    );
+  }
+
+  const contentLength = request.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_PERSONAL_AGENT_BODY_BYTES) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "PERSONAL_AGENT_MESSAGE_TOO_LARGE",
+          message: "Personal agent requests must be 4KB or smaller.",
+        },
+      },
+      { status: 413 },
     );
   }
 

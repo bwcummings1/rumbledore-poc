@@ -62,6 +62,11 @@ function requestFor(
         season: null,
         topLeagueStandings: [],
       },
+      generalNfl: {
+        boundary: "general_nfl_context_not_league_canon",
+        facts: [],
+        source: null,
+      },
       memory: [],
       persona: {
         beat: "League-official framing",

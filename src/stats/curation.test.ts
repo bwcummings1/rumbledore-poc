@@ -150,6 +150,39 @@ describe("detectSeasonGroupingProposals", () => {
     ).toEqual([]);
   });
 
+  it("does not split eras for routine scoring-setting point tweaks", () => {
+    const proposals = detectSeasonGroupingProposals({
+      descriptors: [
+        descriptor(2024, {
+          scoringSettings: {
+            scoringItems: [
+              { points: 1, statId: 3 },
+              { points: 6, statId: 4 },
+            ],
+          },
+        }),
+        descriptor(2025, {
+          scoringSettings: {
+            scoringItems: [
+              { points: 1, statId: 3 },
+              { points: 5, statId: 4 },
+            ],
+          },
+        }),
+        descriptor(2026, {
+          scoringSettings: {
+            scoringItems: [
+              { points: 1, statId: 3 },
+              { points: 4, statId: 4 },
+            ],
+          },
+        }),
+      ],
+    });
+
+    expect(proposals).toEqual([]);
+  });
+
   it("does not propose regular/playoff segments as eras", () => {
     const proposals = detectSeasonGroupingProposals({
       descriptors: [

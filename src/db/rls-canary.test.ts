@@ -8,8 +8,10 @@ import { withLeagueContext } from "./rls";
 import {
   type AiPersonaCard,
   type AiPersonaToneHistory,
+  type AiUsageEvent,
   aiPersonaCards,
   aiPersonaToneHistory,
+  aiUsageEvents,
   bankrollLedger,
   bankrollWeeks,
   type ContentItem,
@@ -22,7 +24,9 @@ import {
   type EmailDigestDeliveryRecord,
   editorialActions,
   emailDigestDeliveryRecords,
+  type FantasyPlayerWeekStatBreakdown,
   type FantasyTeam,
+  fantasyPlayerWeekStatBreakdowns,
   fantasyTeams,
   type Instigation,
   instigations,
@@ -86,6 +90,8 @@ let leagueA: string;
 let leagueB: string;
 let teamA: FantasyTeam;
 let teamB: FantasyTeam;
+let statBreakdownA: FantasyPlayerWeekStatBreakdown;
+let statBreakdownB: FantasyPlayerWeekStatBreakdown;
 let contentA: ContentItem;
 let contentB: ContentItem;
 let centralContent: ContentItem;
@@ -103,6 +109,8 @@ let personaCardA: AiPersonaCard;
 let personaCardB: AiPersonaCard;
 let toneHistoryA: AiPersonaToneHistory;
 let toneHistoryB: AiPersonaToneHistory;
+let aiUsageEventA: AiUsageEvent;
+let aiUsageEventB: AiUsageEvent;
 let userA: User;
 let userB: User;
 let bankrollWeekA: { id: string; leagueId: string };
@@ -176,7 +184,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, email_digest_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_player_week_stat_breakdowns, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_coverage, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_usage_event, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, email_digest_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -244,6 +252,44 @@ beforeAll(async () => {
         name: "Team B",
         abbrev: "B",
         contentHash: `${marker}-team-b-hash`,
+      },
+    ])
+    .returning();
+
+  [statBreakdownA, statBreakdownB] = await admin.db
+    .insert(fantasyPlayerWeekStatBreakdowns)
+    .values([
+      {
+        contentHash: `${marker}-stat-breakdown-a-hash`,
+        fantasyPoints: 4,
+        leagueId: leagueA,
+        leagueProviderId: `${marker}-a`,
+        provider: "espn",
+        providerPlayerId: `${marker}-player-a`,
+        providerStatId: 4,
+        providerTeamId: teamA.providerTeamId,
+        scoringPeriod: 1,
+        season: 2026,
+        statCategory: "passing",
+        statKey: "passingTouchdowns",
+        statSource: "actual",
+        statValue: 1,
+      },
+      {
+        contentHash: `${marker}-stat-breakdown-b-hash`,
+        fantasyPoints: 6,
+        leagueId: leagueB,
+        leagueProviderId: `${marker}-b`,
+        provider: "espn",
+        providerPlayerId: `${marker}-player-b`,
+        providerStatId: 25,
+        providerTeamId: teamB.providerTeamId,
+        scoringPeriod: 1,
+        season: 2026,
+        statCategory: "rushing",
+        statKey: "rushingTouchdowns",
+        statSource: "actual",
+        statValue: 1,
       },
     ])
     .returning();
@@ -457,6 +503,40 @@ beforeAll(async () => {
         toneProfile: personaCardB.toneProfile,
         toneUpdatedBy: "canary",
         toneVersion: 1,
+      },
+    ])
+    .returning();
+
+  [aiUsageEventA, aiUsageEventB] = await admin.db
+    .insert(aiUsageEvents)
+    .values([
+      {
+        billableUnits: 42,
+        cacheCreationInputTokens: 3,
+        cacheReadInputTokens: 4,
+        contentType: "weekly_recap",
+        inputTokens: 25,
+        leagueId: leagueA,
+        model: "mock-canary-model",
+        outputTokens: 10,
+        persona: "commissioner",
+        provider: "mock",
+        totalTokens: 42,
+        triggerKey: "weekly_recap:canary:a",
+      },
+      {
+        billableUnits: 84,
+        cacheCreationInputTokens: 6,
+        cacheReadInputTokens: 8,
+        contentType: "weekly_recap",
+        inputTokens: 50,
+        leagueId: leagueB,
+        model: "mock-canary-model",
+        outputTokens: 20,
+        persona: "commissioner",
+        provider: "mock",
+        totalTokens: 84,
+        triggerKey: "weekly_recap:canary:b",
       },
     ])
     .returning();
@@ -863,6 +943,19 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("sees no player stat breakdown rows at all outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(fantasyPlayerWeekStatBreakdowns)
+      .where(
+        inArray(fantasyPlayerWeekStatBreakdowns.id, [
+          statBreakdownA.id,
+          statBreakdownB.id,
+        ]),
+      );
+    expect(rows).toHaveLength(0);
+  });
+
   it("outside a league context sees central content but no league blog rows", async () => {
     const rows = await canary.db
       .select({
@@ -911,6 +1004,15 @@ describe("two-league isolation under withLeagueContext", () => {
       .where(
         inArray(aiPersonaToneHistory.id, [toneHistoryA.id, toneHistoryB.id]),
       );
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it("sees no AI usage event rows outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(aiUsageEvents)
+      .where(inArray(aiUsageEvents.id, [aiUsageEventA.id, aiUsageEventB.id]));
 
     expect(rows).toHaveLength(0);
   });
@@ -1065,6 +1167,16 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(all.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
+  it("scoped to league A, unfiltered player stat breakdown scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(fantasyPlayerWeekStatBreakdowns),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(statBreakdownA.id);
+    expect(rows.map((row) => row.id)).not.toContain(statBreakdownB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
   it("scoped to league A, unfiltered bankroll scans still yield only league A rows", async () => {
     const { ledger, weeks } = await withLeagueContext(
       canary.db,
@@ -1120,6 +1232,16 @@ describe("two-league isolation under withLeagueContext", () => {
 
     expect(rows.map((row) => row.id)).toContain(toneHistoryA.id);
     expect(rows.map((row) => row.id)).not.toContain(toneHistoryB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, unfiltered AI usage scans yield only league A rows", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(aiUsageEvents),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(aiUsageEventA.id);
+    expect(rows.map((row) => row.id)).not.toContain(aiUsageEventB.id);
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
@@ -1274,6 +1396,31 @@ describe("two-league isolation under withLeagueContext", () => {
     ).toBe("42501"); // insufficient_privilege: new row violates row-level security policy
   });
 
+  it("rejects writing a league B player stat breakdown from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(fantasyPlayerWeekStatBreakdowns).values({
+            contentHash: `${marker}-bad-stat-breakdown-hash`,
+            fantasyPoints: 4,
+            leagueId: leagueB,
+            leagueProviderId: `${marker}-b`,
+            provider: "espn",
+            providerPlayerId: `${marker}-bad-player`,
+            providerStatId: 4,
+            providerTeamId: teamB.providerTeamId,
+            scoringPeriod: 1,
+            season: 2026,
+            statCategory: "passing",
+            statKey: "passingTouchdowns",
+            statSource: "actual",
+            statValue: 1,
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
   it("rejects writing a league B bankroll week from league A context", async () => {
     expect(
       await sqlstateOf(
@@ -1395,6 +1542,26 @@ describe("two-league isolation under withLeagueContext", () => {
             leagueId: leagueB,
             targetId: leagueSeasonGroupingB.id,
             targetKind: "grouping",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B AI usage event from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(aiUsageEvents).values({
+            contentType: "weekly_recap",
+            inputTokens: 10,
+            leagueId: leagueB,
+            model: "mock-cross-league",
+            outputTokens: 5,
+            persona: "commissioner",
+            provider: "mock",
+            totalTokens: 15,
+            triggerKey: "weekly_recap:bad",
           }),
         ),
       ),
@@ -1632,6 +1799,19 @@ describe("two-league isolation under withLeagueContext", () => {
             .update(aiPersonaToneHistory)
             .set({ reason: "mutated" })
             .where(eq(aiPersonaToneHistory.id, toneHistoryA.id)),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct AI usage event mutation while allowing append-only reads", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(aiUsageEvents)
+            .set({ costMicrosUsd: 1 })
+            .where(eq(aiUsageEvents.id, aiUsageEventA.id)),
         ),
       ),
     ).toBe("55000");

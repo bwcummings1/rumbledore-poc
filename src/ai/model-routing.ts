@@ -1,13 +1,17 @@
 import { AppError } from "@/core/result";
 import { AI_CONTENT_TYPES, type AiContentType } from "./content-types";
-import type { LlmGenerateRequest } from "./interfaces";
+import type {
+  LlmGenerateRequest,
+  LlmGenerateResult,
+  LlmModelMetadataResolver,
+  UsageReportingLlmClient,
+} from "./interfaces";
 import {
   ANTHROPIC_FLAGSHIP_PERSONAS,
   type AnthropicModelTier,
 } from "./model-config";
 import type { ModelProvider } from "./model-providers";
 import { AI_PERSONAS, type AiPersona } from "./personas";
-import type { LlmGenerateResult, UsageReportingLlmClient } from "./real";
 
 export const MODEL_ROUTE_PROVIDER_KEYS = [
   "bulk",
@@ -276,6 +280,14 @@ export class RoutedLlmClient implements UsageReportingLlmClient {
     request: Pick<LlmGenerateRequest, "contentType" | "persona">,
   ): ModelRouteProviderKey | null {
     return this.resolve(request)?.providerKey ?? null;
+  }
+
+  resolveModelName(
+    request: Pick<LlmGenerateRequest, "contentType" | "persona">,
+  ): string | null {
+    const provider = this.resolve(request)?.provider;
+    const resolver = provider as Partial<LlmModelMetadataResolver>;
+    return resolver.resolveModelName?.(request) ?? null;
   }
 
   async generate(request: LlmGenerateRequest) {

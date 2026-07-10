@@ -670,6 +670,7 @@ describe("publication articles", () => {
 
     expect(result.data.article).toMatchObject({
       byline: "Rivalry Desk",
+      bylineDetail: "",
       dek: "A public teaser dek.",
       headline: "Narrator opens a shared teaser",
       lede: "Public lede for a shared visitor.",
@@ -681,6 +682,49 @@ describe("publication articles", () => {
     expect(serialized).not.toContain("Manager One");
     expect(serialized).not.toContain("canonCitations");
     expect(serialized).not.toContain("bodyBlocks");
+  });
+
+  it("caps public league teaser dek text before serialization", async () => {
+    const longDek = `${"Long teaser sentence. ".repeat(30)}Private tail`;
+    const [article] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: "Short public teaser body.",
+            contentHash: `${marker}-league-long-teaser-hash`,
+            dedupKey: `${marker}-league-long-teaser`,
+            kind: "blog",
+            leagueId: leagueAId,
+            metadata: {
+              dek: longDek,
+              section: "recaps",
+            },
+            publishedAt: new Date("2026-06-11T20:30:00.000Z"),
+            summary: "Fallback teaser summary.",
+            title: "Narrator opens a capped teaser",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!article) {
+      throw new Error("long teaser article was not inserted");
+    }
+
+    const result = await getLeaguePressArticleTeaserData(handle.db, {
+      leagueId: leagueAId,
+      postId: article.id,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected teaser result: ${result.status}`);
+    }
+    expect(result.data.article.dek.length).toBeLessThanOrEqual(320);
+    expect(result.data.article.dek.endsWith("…")).toBe(true);
+    expect(result.data.article.dek).not.toContain("Private tail");
   });
 
   it("loads a superseded league article old link with replacement lineage", async () => {
@@ -746,6 +790,71 @@ describe("publication articles", () => {
       replacementTitle: "Replacement league article",
       status: "superseded",
     });
+  });
+
+  it("masks retracted league article body fields in the DTO", async () => {
+    const [article] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: "Retracted body must not serialize.",
+            contentHash: `${marker}-league-retracted-dto-hash`,
+            dedupKey: `${marker}-league-retracted-dto`,
+            kind: "blog",
+            leagueId: leagueAId,
+            metadata: {
+              bodyBlocks: [
+                {
+                  text: "Retracted structured body must not serialize.",
+                  type: "paragraph",
+                },
+              ],
+              dek: "Retracted dek must not serialize.",
+              section: "recaps",
+              structure: {
+                kicker: "Hidden kicker.",
+                type: "weekly_recap",
+              },
+              tags: ["Retracted"],
+            },
+            publishedAt: new Date("2026-06-11T21:00:00.000Z"),
+            status: "retracted",
+            summary: "Retracted summary must not serialize.",
+            title: "Retracted league article DTO",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!article) {
+      throw new Error("retracted league article was not inserted");
+    }
+
+    const result = await getLeaguePressArticleData(handle.db, {
+      leagueId: leagueAId,
+      postId: article.id,
+      userId,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected retracted result: ${result.status}`);
+    }
+    expect(result.data.article).toMatchObject({
+      body: "",
+      bodyBlocks: [],
+      dek: "",
+      inlineDataBlocks: [],
+      lifecycle: { status: "retracted" },
+      share: {
+        text: "",
+      },
+    });
+    expect(JSON.stringify(result.data.article)).not.toContain(
+      "must not serialize",
+    );
   });
 
   it("does not expose league articles to non-members", async () => {

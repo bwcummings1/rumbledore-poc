@@ -216,11 +216,96 @@ export interface KeeperMilestoneCatalog {
   summary: string | null;
 }
 
+export type PlayerPositionCategory = "D-ST" | "K" | "QB" | "RB" | "TE" | "WR";
+
+export interface PlayerWeekRecordInput {
+  id: string;
+  isPlayoff: boolean;
+  personId: string;
+  playerName: string;
+  points: number;
+  position: string;
+  proTeam: string | null;
+  providerPlayerId: string;
+  providerTeamId: string;
+  scoringPeriod: number;
+  season: number;
+  slot: string;
+  started: boolean;
+}
+
+export interface PlayerDraftRecordInput {
+  id: string;
+  isKeeper: boolean;
+  personId: string;
+  pickInRound: number | null;
+  pickOverall: number | null;
+  playerName: string;
+  position: string;
+  proTeam: string | null;
+  providerPickId: string;
+  providerPlayerId: string;
+  providerTeamId: string;
+  round: number;
+  season: number;
+}
+
+export interface PlayerWeekCatalogEntry extends PersonCatalogRef {
+  playerName: string;
+  position: string;
+  positionCategory: PlayerPositionCategory | null;
+  proTeam: string | null;
+  providerPlayerId: string;
+  providerTeamId: string;
+  recordType: Extract<
+    RecordType,
+    | "best_benched_player_week"
+    | "best_dst_week"
+    | "best_k_week"
+    | "best_qb_week"
+    | "best_rb_week"
+    | "best_single_player_week"
+    | "best_te_week"
+    | "best_wr_week"
+  >;
+  scoringPeriod: number;
+  season: number;
+  slot: string;
+  started: boolean;
+  value: number;
+}
+
+export interface PlayerDraftCatalogEntry extends PersonCatalogRef {
+  isKeeper: boolean;
+  pickInRound: number | null;
+  pickOverall: number;
+  playerName: string;
+  position: string;
+  proTeam: string | null;
+  providerPickId: string;
+  providerPlayerId: string;
+  providerTeamId: string;
+  recordType: Extract<RecordType, "best_draft_steal" | "biggest_draft_bust">;
+  round: number;
+  season: number;
+  seasonPoints: number;
+  value: number;
+}
+
+export interface PlayerRecordsCatalog {
+  benchTragedies: PlayerWeekCatalogEntry[];
+  bestWeeks: PlayerWeekCatalogEntry[];
+  draftBusts: PlayerDraftCatalogEntry[];
+  draftSteals: PlayerDraftCatalogEntry[];
+  positionalBests: Record<PlayerPositionCategory, PlayerWeekCatalogEntry[]>;
+}
+
 export type RecordsCategoryId =
   | "achievements"
   | "all-time"
   | "head-to-head"
   | "lowlights"
+  | "players"
   | "playoff"
   | "regular-season";
 
@@ -255,6 +340,13 @@ export const RECORD_CATEGORY_REGISTRY = [
     description: "Rivalries, lopsided series, and H2H streaks.",
     id: "head-to-head",
     label: "Head-to-head",
+  },
+  {
+    anchorId: "players",
+    description:
+      "Player weeks, positional peaks, draft values, and bench pain.",
+    id: "players",
+    label: "Players",
   },
   {
     anchorId: "achievements",
@@ -389,6 +481,7 @@ export interface RecordsCatalog {
     keeper: KeeperMilestoneCatalog;
   };
   playoff: SegmentRecordSet;
+  players: PlayerRecordsCatalog;
   regularSeason: SegmentRecordSet;
   streaks: {
     longestLosses: StreakCatalogEntry[];
@@ -1526,6 +1619,7 @@ function emptyRecordsCatalog(integrityBlocked: boolean): RecordsCatalog {
       },
     },
     playoff: emptySegmentRecordSet(),
+    players: emptyPlayerRecordsCatalog(),
     regularSeason: emptySegmentRecordSet(),
     streaks: { longestLosses: [], longestWins: [] },
   };
@@ -2509,6 +2603,322 @@ function buildLowlightCatalog({
   };
 }
 
+const PLAYER_POSITION_CATEGORIES = [
+  "QB",
+  "RB",
+  "WR",
+  "TE",
+  "K",
+  "D-ST",
+] as const satisfies readonly PlayerPositionCategory[];
+
+const PLAYER_POSITION_RECORD_TYPES = {
+  "D-ST": "best_dst_week",
+  K: "best_k_week",
+  QB: "best_qb_week",
+  RB: "best_rb_week",
+  TE: "best_te_week",
+  WR: "best_wr_week",
+} as const satisfies Record<
+  PlayerPositionCategory,
+  PlayerWeekCatalogEntry["recordType"]
+>;
+
+function emptyPlayerRecordsCatalog(): PlayerRecordsCatalog {
+  return {
+    benchTragedies: [],
+    bestWeeks: [],
+    draftBusts: [],
+    draftSteals: [],
+    positionalBests: {
+      "D-ST": [],
+      K: [],
+      QB: [],
+      RB: [],
+      TE: [],
+      WR: [],
+    },
+  };
+}
+
+function normalizePlayerPosition(
+  position: string,
+): PlayerPositionCategory | null {
+  const normalized = position.trim().toUpperCase().replaceAll("/", "-");
+  if (normalized === "DST" || normalized === "D-ST" || normalized === "D ST") {
+    return "D-ST";
+  }
+  if (
+    PLAYER_POSITION_CATEGORIES.includes(normalized as PlayerPositionCategory)
+  ) {
+    return normalized as PlayerPositionCategory;
+  }
+  return null;
+}
+
+function playerWeekEntry(
+  row: PlayerWeekRecordInput,
+  personNames: ReadonlyMap<string, string>,
+  recordType: PlayerWeekCatalogEntry["recordType"],
+): PlayerWeekCatalogEntry {
+  return {
+    personId: row.personId,
+    personName: personName(personNames, row.personId),
+    playerName: row.playerName,
+    position: row.position,
+    positionCategory: normalizePlayerPosition(row.position),
+    proTeam: row.proTeam,
+    providerPlayerId: row.providerPlayerId,
+    providerTeamId: row.providerTeamId,
+    recordType,
+    scoringPeriod: row.scoringPeriod,
+    season: row.season,
+    slot: row.slot,
+    started: row.started,
+    value: round(row.points, 4),
+  };
+}
+
+function comparePlayerWeek(
+  left: PlayerWeekRecordInput,
+  right: PlayerWeekRecordInput,
+): number {
+  return (
+    right.points - left.points ||
+    left.season - right.season ||
+    left.scoringPeriod - right.scoringPeriod ||
+    compareStable(left.playerName, right.playerName) ||
+    compareStable(left.personId, right.personId) ||
+    compareStable(left.providerPlayerId, right.providerPlayerId)
+  );
+}
+
+function playerWeekTop(
+  rows: readonly PlayerWeekRecordInput[],
+  personNames: ReadonlyMap<string, string>,
+  recordType: PlayerWeekCatalogEntry["recordType"],
+  limit: number,
+): PlayerWeekCatalogEntry[] {
+  return [...rows]
+    .filter((row) => row.points > 0)
+    .sort(comparePlayerWeek)
+    .slice(0, limit)
+    .map((row) => playerWeekEntry(row, personNames, recordType));
+}
+
+function filterPlayerWeekRowsByLens(
+  rows: readonly PlayerWeekRecordInput[],
+  lens?: RecordBookLens,
+): PlayerWeekRecordInput[] {
+  const seasons = lensSeasonSet(lens);
+  const segment = lens?.segment ?? "both";
+  return rows.filter((row) => {
+    if (seasons && !seasons.has(row.season)) {
+      return false;
+    }
+    if (segment === "regular" && row.isPlayoff) {
+      return false;
+    }
+    if (segment === "playoff" && !row.isPlayoff) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function filterPlayerDraftRowsByLens(
+  rows: readonly PlayerDraftRecordInput[],
+  lens?: RecordBookLens,
+): PlayerDraftRecordInput[] {
+  const seasons = lensSeasonSet(lens);
+  return seasons ? rows.filter((row) => seasons.has(row.season)) : [...rows];
+}
+
+function playerSeasonOutputKey(input: {
+  providerPlayerId: string;
+  providerTeamId: string;
+  season: number;
+}): string {
+  return `${input.season}\u001f${input.providerTeamId}\u001f${input.providerPlayerId}`;
+}
+
+function compareDraftPickOrder(
+  left: PlayerDraftRecordInput,
+  right: PlayerDraftRecordInput,
+): number {
+  return (
+    (left.pickOverall ?? Number.MAX_SAFE_INTEGER) -
+      (right.pickOverall ?? Number.MAX_SAFE_INTEGER) ||
+    left.round - right.round ||
+    (left.pickInRound ?? Number.MAX_SAFE_INTEGER) -
+      (right.pickInRound ?? Number.MAX_SAFE_INTEGER) ||
+    compareStable(left.playerName, right.playerName) ||
+    compareStable(left.providerPickId, right.providerPickId)
+  );
+}
+
+function buildDraftPlayerRecords({
+  draftRows,
+  limit,
+  personNames,
+  recordType,
+  weekRows,
+}: {
+  draftRows: readonly PlayerDraftRecordInput[];
+  limit: number;
+  personNames: ReadonlyMap<string, string>;
+  recordType: PlayerDraftCatalogEntry["recordType"];
+  weekRows: readonly PlayerWeekRecordInput[];
+}): PlayerDraftCatalogEntry[] {
+  const pointsByPlayerTeamSeason = new Map<string, number>();
+  for (const row of weekRows) {
+    const key = playerSeasonOutputKey(row);
+    pointsByPlayerTeamSeason.set(
+      key,
+      round((pointsByPlayerTeamSeason.get(key) ?? 0) + row.points, 4),
+    );
+  }
+
+  const bySeason = new Map<number, PlayerDraftRecordInput[]>();
+  for (const row of draftRows) {
+    if (!row.providerPlayerId || row.isKeeper || !row.pickOverall) {
+      continue;
+    }
+    bySeason.set(row.season, [...(bySeason.get(row.season) ?? []), row]);
+  }
+
+  const entries: PlayerDraftCatalogEntry[] = [];
+  for (const rows of bySeason.values()) {
+    const draftOrdered = [...rows].sort(compareDraftPickOrder);
+    const draftRankByPickId = new Map(
+      draftOrdered.map((row, index) => [row.id, index + 1]),
+    );
+    const outputOrdered = [...rows].sort((left, right) => {
+      const leftPoints =
+        pointsByPlayerTeamSeason.get(playerSeasonOutputKey(left)) ?? 0;
+      const rightPoints =
+        pointsByPlayerTeamSeason.get(playerSeasonOutputKey(right)) ?? 0;
+      return rightPoints - leftPoints || compareDraftPickOrder(left, right);
+    });
+    const outputRankByPickId = new Map(
+      outputOrdered.map((row, index) => [row.id, index + 1]),
+    );
+
+    for (const row of rows) {
+      const draftRank = draftRankByPickId.get(row.id) ?? 0;
+      const draftSlot = row.pickOverall ?? draftRank;
+      const outputRank = outputRankByPickId.get(row.id) ?? 0;
+      const seasonPoints =
+        pointsByPlayerTeamSeason.get(playerSeasonOutputKey(row)) ?? 0;
+      const value =
+        recordType === "best_draft_steal"
+          ? draftSlot - outputRank
+          : outputRank - draftSlot;
+      if (value <= 0) {
+        continue;
+      }
+      entries.push({
+        isKeeper: row.isKeeper,
+        personId: row.personId,
+        personName: personName(personNames, row.personId),
+        pickInRound: row.pickInRound,
+        pickOverall: draftSlot,
+        playerName: row.playerName,
+        position: row.position,
+        proTeam: row.proTeam,
+        providerPickId: row.providerPickId,
+        providerPlayerId: row.providerPlayerId,
+        providerTeamId: row.providerTeamId,
+        recordType,
+        round: row.round,
+        season: row.season,
+        seasonPoints: round(seasonPoints, 4),
+        value,
+      });
+    }
+  }
+
+  return entries
+    .sort((left, right) => {
+      if (recordType === "best_draft_steal") {
+        return (
+          right.value - left.value ||
+          right.seasonPoints - left.seasonPoints ||
+          right.pickOverall - left.pickOverall ||
+          compareStable(left.playerName, right.playerName) ||
+          compareStable(left.personName, right.personName)
+        );
+      }
+      return (
+        right.value - left.value ||
+        left.pickOverall - right.pickOverall ||
+        left.seasonPoints - right.seasonPoints ||
+        compareStable(left.playerName, right.playerName) ||
+        compareStable(left.personName, right.personName)
+      );
+    })
+    .slice(0, limit);
+}
+
+function buildPlayerRecordsCatalog({
+  draftRows,
+  lens,
+  limit,
+  personNames,
+  weekRows,
+}: {
+  draftRows: readonly PlayerDraftRecordInput[];
+  lens?: RecordBookLens;
+  limit: number;
+  personNames: ReadonlyMap<string, string>;
+  weekRows: readonly PlayerWeekRecordInput[];
+}): PlayerRecordsCatalog {
+  const scopedWeekRows = filterPlayerWeekRowsByLens(weekRows, lens);
+  const scopedDraftRows = filterPlayerDraftRowsByLens(draftRows, lens);
+  const positionalBests = emptyPlayerRecordsCatalog().positionalBests;
+
+  for (const position of PLAYER_POSITION_CATEGORIES) {
+    positionalBests[position] = playerWeekTop(
+      scopedWeekRows.filter(
+        (row) => normalizePlayerPosition(row.position) === position,
+      ),
+      personNames,
+      PLAYER_POSITION_RECORD_TYPES[position],
+      limit,
+    );
+  }
+
+  return {
+    benchTragedies: playerWeekTop(
+      scopedWeekRows.filter((row) => !row.started),
+      personNames,
+      "best_benched_player_week",
+      limit,
+    ),
+    bestWeeks: playerWeekTop(
+      scopedWeekRows,
+      personNames,
+      "best_single_player_week",
+      limit,
+    ),
+    draftBusts: buildDraftPlayerRecords({
+      draftRows: scopedDraftRows,
+      limit,
+      personNames,
+      recordType: "biggest_draft_bust",
+      weekRows: scopedWeekRows,
+    }),
+    draftSteals: buildDraftPlayerRecords({
+      draftRows: scopedDraftRows,
+      limit,
+      personNames,
+      recordType: "best_draft_steal",
+      weekRows: scopedWeekRows,
+    }),
+    positionalBests,
+  };
+}
+
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(stableJson).join(",")}]`;
@@ -2988,6 +3398,8 @@ export function buildRecordsCatalog(input: {
   limit?: number;
   milestoneRows?: readonly RecordBookMilestoneRow[];
   personNames: ReadonlyMap<string, string>;
+  playerDraftRows?: readonly PlayerDraftRecordInput[];
+  playerWeekRows?: readonly PlayerWeekRecordInput[];
   seasonRows: readonly SeasonStatisticsRow[];
   weeklyRows: readonly WeeklyStatisticsRow[];
 }): RecordsCatalog {
@@ -3189,6 +3601,13 @@ export function buildRecordsCatalog(input: {
       ),
     },
     playoff,
+    players: buildPlayerRecordsCatalog({
+      draftRows: input.playerDraftRows ?? [],
+      lens: input.lens,
+      limit,
+      personNames: input.personNames,
+      weekRows: input.playerWeekRows ?? [],
+    }),
     regularSeason,
     streaks,
   };

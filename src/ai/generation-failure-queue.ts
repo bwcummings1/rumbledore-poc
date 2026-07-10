@@ -77,6 +77,11 @@ export type GenerationFailureQueueLoadResult =
 
 export type GenerationFailureRetryResult =
   | {
+      readonly generation: GenerateLeagueBlogPostResult | null;
+      readonly runId: string;
+      readonly status: "already_current";
+    }
+  | {
       readonly generation: Extract<
         GenerateLeagueBlogPostResult,
         { status: "published" }
@@ -114,6 +119,36 @@ interface ParsedRunTriggerKey {
   readonly triggerKey: string;
 }
 
+type EditorialRetryContext =
+  | {
+      readonly actorUserId: string | null;
+      readonly kind: "regenerate";
+      readonly originalContentItemId: string;
+      readonly reason: string;
+    }
+  | {
+      readonly actorUserId: string | null;
+      readonly affectedWeeks: readonly {
+        readonly scoringPeriod: number;
+        readonly season: number;
+      }[];
+      readonly changedMatchups: readonly {
+        readonly contentHash: string;
+        readonly id: string;
+        readonly scoringPeriod: number;
+        readonly season: number;
+      }[];
+      readonly correctionHash: string;
+      readonly kind: "correction";
+      readonly originalContentItemId: string;
+      readonly reason: string;
+    };
+
+type EditorialRetryChangedMatchup = Extract<
+  EditorialRetryContext,
+  { kind: "correction" }
+>["changedMatchups"][number];
+
 type GenerationFailureRunRow = {
   readonly contentItemId: string | null;
   readonly contentItemStatus: "published" | "retracted" | "superseded" | null;
@@ -124,6 +159,7 @@ type GenerationFailureRunRow = {
   readonly persona: AiPersona;
   readonly promptPrefixHash: string | null;
   readonly skipReason: string | null;
+  readonly metadata: Record<string, unknown>;
   readonly status:
     | "blocked_entitlement"
     | "failed"
@@ -164,6 +200,117 @@ function parseRunTriggerKey(value: string): ParsedRunTriggerKey | null {
     contentType,
     triggerKey: value.slice(separator + 1),
   };
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function nullableStringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function integerValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+function parseCorrectionWeeks(
+  value: unknown,
+): { scoringPeriod: number; season: number }[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const weeks = value.map((entry) => {
+    const record = recordValue(entry);
+    const scoringPeriod = integerValue(record.scoringPeriod);
+    const season = integerValue(record.season);
+    return scoringPeriod !== null && season !== null
+      ? { scoringPeriod, season }
+      : null;
+  });
+  return weeks.every(
+    (week): week is { scoringPeriod: number; season: number } => Boolean(week),
+  )
+    ? weeks
+    : null;
+}
+
+function parseChangedMatchups(
+  value: unknown,
+): EditorialRetryChangedMatchup[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const matchups = value.map((entry) => {
+    const record = recordValue(entry);
+    const contentHash = stringValue(record.contentHash);
+    const id = stringValue(record.id);
+    const scoringPeriod = integerValue(record.scoringPeriod);
+    const season = integerValue(record.season);
+    return contentHash && id && scoringPeriod !== null && season !== null
+      ? { contentHash, id, scoringPeriod, season }
+      : null;
+  });
+  return matchups.every(
+    (
+      matchup,
+    ): matchup is {
+      contentHash: string;
+      id: string;
+      scoringPeriod: number;
+      season: number;
+    } => Boolean(matchup),
+  )
+    ? matchups
+    : null;
+}
+
+function editorialRetryContext(
+  metadata: Record<string, unknown>,
+): EditorialRetryContext | null {
+  const editorial = recordValue(metadata.editorial);
+  const kind = editorial.kind;
+  const originalContentItemId = stringValue(editorial.originalContentItemId);
+  const reason = typeof editorial.reason === "string" ? editorial.reason : "";
+  const actorUserId = nullableStringValue(editorial.actorUserId);
+  if (!originalContentItemId) {
+    return null;
+  }
+
+  if (kind === "regenerate") {
+    return {
+      actorUserId,
+      kind,
+      originalContentItemId,
+      reason,
+    };
+  }
+
+  if (kind === "correction") {
+    const affectedWeeks = parseCorrectionWeeks(editorial.affectedWeeks);
+    const changedMatchups = parseChangedMatchups(editorial.changedMatchups);
+    const correctionHash = stringValue(editorial.correctionHash);
+    if (!affectedWeeks || !changedMatchups || !correctionHash) {
+      return null;
+    }
+    return {
+      actorUserId,
+      affectedWeeks,
+      changedMatchups,
+      correctionHash,
+      kind,
+      originalContentItemId,
+      reason,
+    };
+  }
+
+  return null;
 }
 
 function isJudgeSkip(reason: string | null): boolean {
@@ -314,6 +461,159 @@ async function markRunFailed(
   });
 }
 
+async function retryEditorialFailureRun({
+  context,
+  deps,
+  input,
+  parsed,
+  runId,
+}: {
+  context: EditorialRetryContext;
+  deps: AiGenerationDependencies;
+  input: { actorUserId?: string | null; leagueId: string };
+  parsed: ParsedRunTriggerKey;
+  runId: string;
+}): Promise<GenerationFailureRetryResult> {
+  if (context.kind === "regenerate") {
+    const { regenerateEditorialContentItem } = await import(
+      "@/content/editorial"
+    );
+    const actorUserId = input.actorUserId ?? context.actorUserId;
+    if (!actorUserId) {
+      throw new AppError({
+        code: "EDITORIAL_RETRY_ACTOR_MISSING",
+        message: "Editorial regenerate retry requires an audit actor",
+        status: 409,
+      });
+    }
+    const result = await regenerateEditorialContentItem(deps, {
+      actorUserId,
+      contentItemId: context.originalContentItemId,
+      generationTriggerKey: parsed.triggerKey,
+      leagueId: input.leagueId,
+      reason: context.reason,
+    });
+    switch (result.status) {
+      case "published":
+        if (result.generation?.status === "published") {
+          return { generation: result.generation, runId, status: "published" };
+        }
+        return {
+          generation: result.generation,
+          runId,
+          status: "already_current",
+        };
+      case "already_current":
+        return {
+          generation: result.generation,
+          runId,
+          status: "already_current",
+        };
+      case "blocked":
+        if (result.generation?.status === "blocked") {
+          return {
+            generation: result.generation,
+            reason: result.generation.reason,
+            runId,
+            status: "blocked",
+          };
+        }
+        return {
+          generation: result.generation,
+          runId,
+          status: "already_current",
+        };
+      case "skipped":
+        if (result.generation?.status === "skipped") {
+          return {
+            generation: result.generation,
+            reason: result.generation.skipReason,
+            runId,
+            status: "skipped",
+          };
+        }
+        return {
+          generation: result.generation,
+          runId,
+          status: "already_current",
+        };
+      case "conflict":
+        throw new AppError({
+          code: "EDITORIAL_RETRY_CONFLICT",
+          message: "Editorial retry conflicted with the current post state",
+          status: 409,
+        });
+      case "not_found":
+        throw failureRunNotFound();
+    }
+  }
+
+  const { correctEditorialContentItem } = await import("@/content/editorial");
+  const result = await correctEditorialContentItem(deps, {
+    actorUserId: input.actorUserId ?? context.actorUserId,
+    affectedWeeks: [...context.affectedWeeks],
+    changedMatchups: [...context.changedMatchups],
+    contentItemId: context.originalContentItemId,
+    correctionHash: context.correctionHash,
+    generationTriggerKey: parsed.triggerKey,
+    leagueId: input.leagueId,
+    reason: context.reason,
+  });
+  switch (result.status) {
+    case "published":
+      if (result.generation?.status === "published") {
+        return { generation: result.generation, runId, status: "published" };
+      }
+      return {
+        generation: result.generation,
+        runId,
+        status: "already_current",
+      };
+    case "already_current":
+      return {
+        generation: result.generation,
+        runId,
+        status: "already_current",
+      };
+    case "blocked":
+      if (result.generation?.status === "blocked") {
+        return {
+          generation: result.generation,
+          reason: result.generation.reason,
+          runId,
+          status: "blocked",
+        };
+      }
+      return {
+        generation: result.generation,
+        runId,
+        status: "already_current",
+      };
+    case "skipped":
+      if (result.generation?.status === "skipped") {
+        return {
+          generation: result.generation,
+          reason: result.generation.skipReason,
+          runId,
+          status: "skipped",
+        };
+      }
+      return {
+        generation: result.generation,
+        runId,
+        status: "already_current",
+      };
+    case "conflict":
+      throw new AppError({
+        code: "EDITORIAL_RETRY_CONFLICT",
+        message: "Editorial retry conflicted with the current post state",
+        status: 409,
+      });
+    case "not_found":
+      throw failureRunNotFound();
+  }
+}
+
 export async function getGenerationFailureQueueData(
   db: Db,
   input: {
@@ -354,6 +654,7 @@ export async function getGenerationFailureQueueData(
         createdAt: aiGenerationRuns.createdAt,
         errorMessage: aiGenerationRuns.errorMessage,
         id: aiGenerationRuns.id,
+        metadata: aiGenerationRuns.metadata,
         persona: aiGenerationRuns.persona,
         promptPrefixHash: aiGenerationRuns.promptPrefixHash,
         skipReason: aiGenerationRuns.skipReason,
@@ -408,6 +709,7 @@ export async function getGenerationFailureQueueData(
 export async function retryGenerationFailureRun(
   deps: AiGenerationDependencies,
   input: {
+    actorUserId?: string | null;
     leagueId: string;
     now?: Date;
     runId: string;
@@ -420,6 +722,7 @@ export async function retryGenerationFailureRun(
     const [row] = await tx
       .select({
         id: aiGenerationRuns.id,
+        metadata: aiGenerationRuns.metadata,
         persona: aiGenerationRuns.persona,
         status: aiGenerationRuns.status,
         triggerKey: aiGenerationRuns.triggerKey,
@@ -471,6 +774,17 @@ export async function retryGenerationFailureRun(
   });
 
   try {
+    const editorialContext = editorialRetryContext(run.metadata);
+    if (editorialContext) {
+      return await retryEditorialFailureRun({
+        context: editorialContext,
+        deps,
+        input,
+        parsed,
+        runId: input.runId,
+      });
+    }
+
     const generation = await generateLeagueBlogPost({
       deps,
       input: {

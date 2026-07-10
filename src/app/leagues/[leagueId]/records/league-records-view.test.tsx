@@ -191,6 +191,20 @@ const data: RecordsPageData = {
         summary: null,
       },
     },
+    players: {
+      benchTragedies: [],
+      bestWeeks: [],
+      draftBusts: [],
+      draftSteals: [],
+      positionalBests: {
+        "D-ST": [],
+        K: [],
+        QB: [],
+        RB: [],
+        TE: [],
+        WR: [],
+      },
+    },
     playoff: {
       highestScoringAverages: [],
       highestScoringSeasons: [],

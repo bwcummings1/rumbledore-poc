@@ -593,6 +593,11 @@ describe("leaguemate invites", () => {
     expect(
       landing.value.claimTargets.map((target) => target.providerMemberId),
     ).toEqual([imported.invited.providerMemberId]);
+    expect(JSON.stringify(landing.value.claimTargets)).not.toContain(
+      imported.invited.id,
+    );
+    expect(landing.value.claimTargets[0]).not.toHaveProperty("fantasyMemberId");
+    expect(landing.value.claimTargets[0]).not.toHaveProperty("providerTeamIds");
 
     const accepted = await acceptLeagueInvite(
       { db: handle.db, now: () => new Date("2026-06-12T12:05:00.000Z") },

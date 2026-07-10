@@ -112,6 +112,7 @@ export interface SeasonGroupingSettingsDescriptor {
   playoffMatchupPeriodLength?: number | null;
   playoffTeamCount?: number | null;
   regularSeasonEndScoringPeriod?: number | null;
+  scoringSettings?: Record<string, unknown> | null;
   scoringType?: string | null;
   season: number;
   teamCount?: number | null;
@@ -198,6 +199,14 @@ function optionalInteger(value: unknown, field: string): number | null {
     throw new Error(`${field} must be an integer or null`);
   }
   return Number(value);
+}
+
+function optionalPositiveInteger(value: unknown, field: string): number | null {
+  const integer = optionalInteger(value, field);
+  if (integer !== null && integer < 1) {
+    throw new Error(`${field} must be a positive integer or null`);
+  }
+  return integer;
 }
 
 function requireObject(value: unknown, field: string): Record<string, unknown> {
@@ -427,7 +436,7 @@ async function applyTargetUpdate(
       };
     }
     if (input.field === "period_start") {
-      const afterValue = optionalInteger(input.value, input.field);
+      const afterValue = optionalPositiveInteger(input.value, input.field);
       await tx
         .update(fantasyMatchups)
         .set({ periodStart: afterValue, updatedAt: new Date() })
@@ -608,7 +617,7 @@ async function applyTargetUpdate(
       };
     }
     if (input.field === "period_start") {
-      const afterValue = optionalInteger(input.value, input.field);
+      const afterValue = optionalPositiveInteger(input.value, input.field);
       if (backingMatchup) {
         await tx
           .update(fantasyMatchups)
@@ -684,7 +693,7 @@ async function applyTargetUpdate(
       regular_season_end_scoring_period: "regularSeasonEndScoringPeriod",
     } as const;
     if (input.field in boundaryFields) {
-      const afterValue = optionalInteger(input.value, input.field);
+      const afterValue = optionalPositiveInteger(input.value, input.field);
       const property =
         boundaryFields[input.field as keyof typeof boundaryFields];
       await tx
@@ -1343,6 +1352,8 @@ function descriptorChanges(
   next: EraDescriptor,
 ): EraBoundaryReason[] {
   const changes: EraBoundaryReason[] = [];
+  // Raw point-value scoring settings can drift often; auto-eras only split on
+  // durable league structure so one-point scoring tweaks do not over-segment.
   if (
     formatValuesDiffer(previous.signature.leagueSize, next.signature.leagueSize)
   ) {
@@ -1604,6 +1615,7 @@ async function loadSeasonDescriptors(
       playoffTeamCount: leagueSeasonSettings.playoffTeamCount,
       regularSeasonEndScoringPeriod:
         leagueSeasonSettings.regularSeasonEndScoringPeriod,
+      scoringSettings: leagueSeasonSettings.scoringSettings,
       scoringType: leagueSeasonSettings.scoringType,
       season: leagueSeasonSettings.season,
     })
@@ -1643,6 +1655,7 @@ async function loadSeasonDescriptors(
       playoffTeamCount: settings?.playoffTeamCount ?? null,
       regularSeasonEndScoringPeriod:
         settings?.regularSeasonEndScoringPeriod ?? null,
+      scoringSettings: settings?.scoringSettings ?? null,
       scoringType: settings?.scoringType ?? null,
       season,
       teamCount: teamsBySeason.get(season)?.size ?? null,

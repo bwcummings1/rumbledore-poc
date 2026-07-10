@@ -14,6 +14,7 @@ import type {
 } from "@/ai";
 import {
   ConstantEmbeddingProvider,
+  createMockAiDependencies,
   DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_ID,
   DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE_VERSION,
   DEFAULT_TONE_PROFILES,
@@ -30,12 +31,14 @@ import {
   aiGenerationRuns,
   aiMemory,
   aiPersonaCards,
+  aiUsageEvents,
   allTimeRecords,
   arenaSeasons,
   arenaStandings,
   contentItems,
   dataIntegrityChecks,
   fantasyMembers,
+  fantasyRosterEntries,
   fantasyTeams,
   headToHeadRecords,
   leagues,
@@ -44,6 +47,7 @@ import {
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
+import { ingestMockGeneralStats } from "@/general-stats";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
 import type { WebhookDeliverer } from "@/webhooks";
@@ -351,6 +355,31 @@ async function seedLeague(tag: string) {
   return league;
 }
 
+async function seedMockNflRosteredPlayer(
+  league: Awaited<ReturnType<typeof seedLeague>>,
+) {
+  const tag = league.providerLeagueId.replace(`${marker}-`, "");
+  await ingestMockGeneralStats(handle.db, {
+    fetchedAt: new Date("2026-06-11T10:00:00.000Z"),
+  });
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    await tx.insert(fantasyRosterEntries).values({
+      contentHash: `${marker}-${league.providerLeagueId}-mahomes-roster-hash`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      metadata: { playerName: "Patrick Mahomes", proTeam: "KC" },
+      provider: "espn",
+      providerPlayerId: "3139477",
+      providerTeamId: `${tag}-team`,
+      scoringPeriod: league.currentScoringPeriod,
+      season: league.season,
+      slot: "QB",
+      started: true,
+      status: "active",
+    });
+  });
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -547,11 +576,34 @@ describe("generateLeagueBlogPost", () => {
         .select()
         .from(aiGenerationRuns)
         .where(eq(aiGenerationRuns.leagueId, league.id));
-      return { memory, posts, runs };
+      const usage = await tx
+        .select()
+        .from(aiUsageEvents)
+        .where(eq(aiUsageEvents.leagueId, league.id));
+      return { memory, posts, runs, usage };
     });
 
     expect(rows.posts).toHaveLength(2);
     expect(rows.memory).toHaveLength(2);
+    expect(rows.usage).toHaveLength(2);
+    expect(rows.usage.map((event) => event.triggerKey).sort()).toEqual([
+      "weekly:2026:1",
+      "weekly:2026:2",
+    ]);
+    expect(rows.usage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contentType: "matchup_preview",
+          costMicrosUsd: 0,
+          estimated: true,
+          model: "mock-rumbledore-llm-v1",
+          persona: "commissioner",
+          provider: "mock",
+        }),
+      ]),
+    );
+    expect(rows.usage.every((event) => event.totalTokens > 0)).toBe(true);
+    expect(rows.usage.every((event) => event.generationRunId)).toBe(true);
     expect(rows.runs.map((run) => run.status).sort()).toEqual([
       "published",
       "published",
@@ -591,6 +643,47 @@ describe("generateLeagueBlogPost", () => {
           ?.bodyBlocks as unknown[] | undefined
       )?.length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("reuses a raced first generation run instead of failing idempotency", async () => {
+    const league = await seedLeague("first-race");
+    const input = {
+      contentType: "weekly_recap" as const,
+      leagueId: league.id,
+      persona: "narrator" as const,
+      triggerKey: "weekly:first-race",
+    };
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      now: () => new Date("2026-06-11T13:00:00.000Z"),
+    };
+
+    const [left, right] = await Promise.all([
+      generateLeagueBlogPost({ deps, input }),
+      generateLeagueBlogPost({ deps, input }),
+    ]);
+
+    expect(left.status).toBe("published");
+    expect(right.status).toBe("published");
+    if (left.status !== "published" || right.status !== "published") {
+      throw new Error("expected both raced generations to publish/reuse");
+    }
+    expect(left.contentItemId).toBe(right.contentItemId);
+    expect([left.reused, right.reused].sort()).toEqual([false, true]);
+
+    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
+      posts: await tx
+        .select()
+        .from(contentItems)
+        .where(eq(contentItems.leagueId, league.id)),
+      runs: await tx
+        .select()
+        .from(aiGenerationRuns)
+        .where(eq(aiGenerationRuns.leagueId, league.id)),
+    }));
+    expect(rows.posts).toHaveLength(1);
+    expect(rows.runs).toHaveLength(1);
   });
 
   it("blocks AI generation for free leagues before web, LLM, embedding, or publish work", async () => {
@@ -660,6 +753,99 @@ describe("generateLeagueBlogPost", () => {
       status: "blocked_entitlement",
       triggerKey: "weekly_recap:weekly:premium-required",
     });
+  });
+
+  it("adds substrate-B roster-matched NFL facts to volatile AI context only", async () => {
+    const league = await seedLeague("substrate-b");
+    await seedMockNflRosteredPlayer(league);
+    const llm = new MockLlmClient();
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        duplicateThreshold: 1.1,
+        embeddings: new DeterministicEmbeddingProvider(),
+        entitlements: openEntitlementEnv,
+        judge: new MockLlmJudge(),
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        triggerKey: "weekly:substrate-b",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
+    expect(llm.requests).toHaveLength(1);
+    expect(llm.requests[0]?.context.generalNfl).toMatchObject({
+      boundary: "general_nfl_context_not_league_canon",
+      facts: [
+        expect.objectContaining({
+          boundary: "general_nfl_context_not_league_canon",
+          latestWeek: expect.objectContaining({
+            fantasyPoints: 25.8,
+            opponentTeam: "MIN",
+            week: 1,
+          }),
+          player: {
+            fullName: "Patrick Mahomes",
+            position: "QB",
+            sourcePlayerId: "mock-patrick-mahomes",
+            team: "KC",
+          },
+          roster: expect.objectContaining({
+            leagueTeamName: "substrate-b Team",
+            providerPlayerId: "3139477",
+            rosterSlot: "QB",
+            started: true,
+          }),
+          schedule: expect.arrayContaining([
+            expect.objectContaining({
+              awayTeam: "KC",
+              homeTeam: "MIN",
+              week: 1,
+            }),
+          ]),
+          seasonTotals: expect.objectContaining({
+            fantasyPoints: 53.58,
+            games: 2,
+          }),
+        }),
+      ],
+      source: "mock-nfl-general-stats",
+    });
+
+    const stablePrefix = llm.requests[0]?.prompt.systemPrefix ?? "";
+    const volatileContext = llm.requests[0]?.prompt.volatileContext ?? "";
+    expect(stablePrefix).not.toContain("Patrick Mahomes");
+    expect(volatileContext).toContain("Patrick Mahomes");
+    expect(volatileContext).toContain("general_nfl_context_not_league_canon");
+
+    const [post] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ body: contentItems.body })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.leagueId, league.id),
+            eq(contentItems.kind, "blog"),
+            eq(
+              contentItems.dedupKey,
+              "blog:analyst:weekly_recap:weekly:substrate-b",
+            ),
+          ),
+        )
+        .limit(1),
+    );
+    expect(post?.body).toContain(
+      "General NFL context (non-canon): Patrick Mahomes (QB, KC) logged 25.8 fantasy points in Week 1 vs MIN; KC at MIN finished 31-27.",
+    );
   });
 
   it("publishes separate structured artifacts for different content types on the same trigger", async () => {
@@ -1281,6 +1467,19 @@ describe("generateLeagueBlogPost", () => {
     expect(judge.requests[1]?.piece.title).toBe(
       `Narrator: ${marker} judge-retry snapshot`,
     );
+    const usage = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select()
+        .from(aiUsageEvents)
+        .where(eq(aiUsageEvents.leagueId, league.id)),
+    );
+    expect(usage).toHaveLength(2);
+    expect(usage.map((event) => event.metadata)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ attempt: 1, duplicateNudge: false }),
+        expect.objectContaining({ attempt: 2, duplicateNudge: true }),
+      ]),
+    );
   });
 
   it("skips a draft when the LLM judge rejects the retry", async () => {
@@ -1497,6 +1696,72 @@ describe("generateLeagueBlogPost", () => {
       status: "published",
     });
     expect(realtime.blogPublished).toHaveLength(1);
+  });
+
+  it("excludes the superseded source post from near-duplicate checks", async () => {
+    const league = await seedLeague("self-duplicate");
+    const embeddings = new ConstantEmbeddingProvider();
+    const [prior] = await withLeagueContext(
+      handle.db,
+      league.id,
+      async (tx) => {
+        const [row] = await tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "analyst",
+            body: "This source body is intentionally similar.",
+            contentHash: `${marker}-self-duplicate-content-hash`,
+            dedupKey: `${marker}-self-duplicate-prior`,
+            kind: "blog",
+            leagueId: league.id,
+            metadata: { contentType: "weekly_recap" },
+            publishedAt: new Date("2026-06-10T12:00:00.000Z"),
+            summary: "This source summary is intentionally similar.",
+            title: "Source editorial note",
+          })
+          .returning({ dedupKey: contentItems.dedupKey, id: contentItems.id });
+        if (!row) {
+          throw new Error("prior content was not inserted");
+        }
+        await tx.insert(aiMemory).values({
+          contentItemId: row.id,
+          embedding: await embeddings.embed("same editorial source"),
+          embeddingDimensions: 8,
+          embeddingModel: embeddings.model,
+          leagueId: league.id,
+          metadata: { contentType: "weekly_recap" },
+          source: "blog_post",
+          textContent: "same editorial source",
+        });
+        return [row] as const;
+      },
+    );
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        db: handle.db,
+        embeddings,
+        entitlements: openEntitlementEnv,
+        judge: new PassingLlmJudge(),
+        llm: new MockLlmClient(),
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+        push: new NoopPushNotifier(),
+        realtime: new RecordingRealtimePublisher(),
+        web: new MockWebGrounding(),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "analyst",
+        supersedes: {
+          contentItemId: prior.id,
+          dedupKey: prior.dedupKey,
+        },
+        triggerKey: "weekly:self-duplicate",
+      },
+    });
+
+    expect(result).toMatchObject({ reused: false, status: "published" });
   });
 
   it("orders near-duplicate memory by vector distance before applying the limit", async () => {

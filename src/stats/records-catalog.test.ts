@@ -9,7 +9,11 @@ import type {
   seasonStatistics,
   weeklyStatistics,
 } from "@/db/schema";
-import { buildRecordsCatalog } from "./records-catalog";
+import {
+  buildRecordsCatalog,
+  type PlayerDraftRecordInput,
+  type PlayerWeekRecordInput,
+} from "./records-catalog";
 
 type ChampionshipRow = typeof championshipRecords.$inferSelect;
 type HeadToHeadRow = typeof headToHeadRecords.$inferSelect;
@@ -389,6 +393,56 @@ function milestoneRow(
     id: `milestone-${input.milestoneKey}`,
     leagueId: LEAGUE_ID,
     updatedAt: NOW,
+    ...input,
+  };
+}
+
+function playerWeekRow(
+  input: Pick<
+    PlayerWeekRecordInput,
+    | "personId"
+    | "playerName"
+    | "points"
+    | "position"
+    | "providerPlayerId"
+    | "providerTeamId"
+    | "scoringPeriod"
+    | "season"
+    | "started"
+  > &
+    Partial<Pick<PlayerWeekRecordInput, "isPlayoff" | "proTeam" | "slot">>,
+): PlayerWeekRecordInput {
+  return {
+    id: `player-week-${input.season}-${input.scoringPeriod}-${input.providerTeamId}-${input.providerPlayerId}`,
+    isPlayoff: input.isPlayoff ?? false,
+    proTeam: input.proTeam ?? null,
+    slot: input.slot ?? (input.started ? "starter" : "bench"),
+    ...input,
+  };
+}
+
+function playerDraftRow(
+  input: Pick<
+    PlayerDraftRecordInput,
+    | "personId"
+    | "pickOverall"
+    | "playerName"
+    | "position"
+    | "providerPickId"
+    | "providerPlayerId"
+    | "providerTeamId"
+    | "round"
+    | "season"
+  > &
+    Partial<
+      Pick<PlayerDraftRecordInput, "isKeeper" | "pickInRound" | "proTeam">
+    >,
+): PlayerDraftRecordInput {
+  return {
+    id: `draft-${input.season}-${input.providerPickId}`,
+    isKeeper: input.isKeeper ?? false,
+    pickInRound: input.pickInRound ?? input.pickOverall,
+    proTeam: input.proTeam ?? null,
     ...input,
   };
 }
@@ -1001,6 +1055,139 @@ describe("buildRecordsCatalog", () => {
       playoffPointsFor: 205,
       playoffTies: 0,
       playoffWins: 0,
+    });
+  });
+
+  it("builds player week, positional, bench, and draft value records", () => {
+    const playerWeekRows: PlayerWeekRecordInput[] = [
+      playerWeekRow({
+        personId: PEOPLE.alpha,
+        playerName: "Alpha Quarterback",
+        points: 31,
+        position: "QB",
+        providerPlayerId: "qb-alpha",
+        providerTeamId: "1",
+        scoringPeriod: 1,
+        season: 2026,
+        started: true,
+      }),
+      playerWeekRow({
+        personId: PEOPLE.beta,
+        playerName: "Late Rocket",
+        points: 48,
+        position: "RB",
+        providerPlayerId: "rb-late",
+        providerTeamId: "2",
+        scoringPeriod: 1,
+        season: 2026,
+        started: true,
+      }),
+      playerWeekRow({
+        personId: PEOPLE.gamma,
+        playerName: "Bench Comet",
+        points: 44,
+        position: "WR",
+        providerPlayerId: "wr-bench",
+        providerTeamId: "3",
+        scoringPeriod: 1,
+        season: 2026,
+        started: false,
+      }),
+      playerWeekRow({
+        personId: PEOPLE.alpha,
+        playerName: "Early Anchor",
+        points: 12,
+        position: "TE",
+        providerPlayerId: "te-early",
+        providerTeamId: "1",
+        scoringPeriod: 1,
+        season: 2026,
+        started: true,
+      }),
+      playerWeekRow({
+        personId: PEOPLE.alpha,
+        playerName: "Early Anchor",
+        points: 14,
+        position: "TE",
+        providerPlayerId: "te-early",
+        providerTeamId: "1",
+        scoringPeriod: 2,
+        season: 2026,
+        started: true,
+      }),
+    ];
+    const playerDraftRows: PlayerDraftRecordInput[] = [
+      playerDraftRow({
+        personId: PEOPLE.alpha,
+        pickOverall: 1,
+        playerName: "Early Anchor",
+        position: "TE",
+        providerPickId: "pick-1",
+        providerPlayerId: "te-early",
+        providerTeamId: "1",
+        round: 1,
+        season: 2026,
+      }),
+      playerDraftRow({
+        personId: PEOPLE.beta,
+        pickOverall: 8,
+        playerName: "Late Rocket",
+        position: "RB",
+        providerPickId: "pick-8",
+        providerPlayerId: "rb-late",
+        providerTeamId: "2",
+        round: 4,
+        season: 2026,
+      }),
+      playerDraftRow({
+        personId: PEOPLE.gamma,
+        pickOverall: 9,
+        playerName: "Bench Comet",
+        position: "WR",
+        providerPickId: "pick-9",
+        providerPlayerId: "wr-bench",
+        providerTeamId: "3",
+        round: 5,
+        season: 2026,
+      }),
+    ];
+
+    const catalog = buildRecordsCatalog({
+      personNames,
+      playerDraftRows,
+      playerWeekRows,
+      seasonRows: [],
+      weeklyRows: [],
+    });
+
+    expect(catalog.players.bestWeeks[0]).toMatchObject({
+      playerName: "Late Rocket",
+      recordType: "best_single_player_week",
+      value: 48,
+    });
+    expect(catalog.players.positionalBests.QB[0]).toMatchObject({
+      playerName: "Alpha Quarterback",
+      recordType: "best_qb_week",
+      value: 31,
+    });
+    expect(catalog.players.benchTragedies[0]).toMatchObject({
+      playerName: "Bench Comet",
+      recordType: "best_benched_player_week",
+      value: 44,
+    });
+    expect(catalog.players.draftSteals[0]).toMatchObject({
+      pickOverall: 8,
+      playerName: "Late Rocket",
+      recordType: "best_draft_steal",
+      seasonPoints: 48,
+      value: 7,
+    });
+    expect(catalog.players.draftBusts[0]).toMatchObject({
+      pickOverall: 1,
+      playerName: "Early Anchor",
+      recordType: "biggest_draft_bust",
+      seasonPoints: 26,
+      value: 2,
     });
   });
 

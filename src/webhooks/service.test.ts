@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -19,7 +19,9 @@ import {
   deleteLeagueWebhook,
   getLeagueWebhookManagerData,
   MockWebhookDeliverer,
+  sanitizeWebhookMentionText,
   updateLeagueWebhook,
+  type WebhookHostnameResolver,
 } from "./service";
 
 const marker = `webhooks-${randomUUID()}`;
@@ -28,10 +30,22 @@ const encryptionKey = Array.from(
   (_, index) => `webhook-fixture-part-${index}`,
 ).join("-");
 const actorEmail = `${marker}@example.test`;
+const publicResolver: WebhookHostnameResolver = async () => ["1.1.1.1"];
 
 let handle: DbHandle;
 let actorUserId: string;
 let leagueId: string;
+
+function webhookDeps(
+  overrides: Partial<Parameters<typeof createLeagueWebhook>[0]> = {},
+) {
+  return {
+    db: handle.db,
+    encryptionKey,
+    resolveHostname: publicResolver,
+    ...overrides,
+  };
+}
 
 async function seedLeague() {
   const [user] = await handle.db
@@ -93,6 +107,15 @@ async function insertContent(input: {
   return content;
 }
 
+async function disableExistingWebhooks() {
+  await withLeagueContext(handle.db, leagueId, (tx) =>
+    tx
+      .update(leagueWebhooks)
+      .set({ status: "disabled" })
+      .where(eq(leagueWebhooks.leagueId, leagueId)),
+  );
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -121,20 +144,17 @@ describe("league webhook CRUD", () => {
     const secretUrl =
       "https://chat.example.test/hooks/super-secret-token?room=league";
 
-    const result = await createLeagueWebhook(
-      { db: handle.db, encryptionKey },
-      {
-        actorUserId,
-        eventSelection: {
-          contentSections: ["recaps"],
-          events: ["content.published"],
-        },
-        leagueId,
-        name: "League group chat",
-        targetKind: "generic",
-        url: secretUrl,
+    const result = await createLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      eventSelection: {
+        contentSections: ["recaps"],
+        events: ["content.published"],
       },
-    );
+      leagueId,
+      name: "League group chat",
+      targetKind: "generic",
+      url: secretUrl,
+    });
 
     expect(result).toMatchObject({
       status: "created",
@@ -176,20 +196,17 @@ describe("league webhook CRUD", () => {
     ]);
     expect(JSON.stringify(data)).not.toContain("super-secret-token");
 
-    const updated = await updateLeagueWebhook(
-      { db: handle.db, encryptionKey },
-      {
-        actorUserId,
-        eventSelection: {
-          contentSections: ["records"],
-          events: ["content.corrected"],
-        },
-        leagueId,
-        name: "League alerts",
-        status: "disabled",
-        webhookId: result.webhook?.id ?? "",
+    const updated = await updateLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      eventSelection: {
+        contentSections: ["records"],
+        events: ["content.corrected"],
       },
-    );
+      leagueId,
+      name: "League alerts",
+      status: "disabled",
+      webhookId: result.webhook?.id ?? "",
+    });
     expect(updated).toMatchObject({
       status: "updated",
       webhook: {
@@ -212,82 +229,64 @@ describe("league webhook CRUD", () => {
 
   it("rejects non-HTTPS URLs and Discord targets outside Discord hosts", async () => {
     await expect(
-      createLeagueWebhook(
-        { db: handle.db, encryptionKey },
-        {
-          actorUserId,
-          leagueId,
-          name: "Bad generic",
-          targetKind: "generic",
-          url: "http://chat.example.test/hooks/token",
-        },
-      ),
+      createLeagueWebhook(webhookDeps(), {
+        actorUserId,
+        leagueId,
+        name: "Bad generic",
+        targetKind: "generic",
+        url: "http://chat.example.test/hooks/token",
+      }),
     ).rejects.toMatchObject({ code: "WEBHOOK_URL_INVALID" });
 
     await expect(
-      createLeagueWebhook(
-        { db: handle.db, encryptionKey },
-        {
-          actorUserId,
-          leagueId,
-          name: "Bad Discord",
-          targetKind: "discord",
-          url: "https://chat.example.test/hooks/token",
-        },
-      ),
+      createLeagueWebhook(webhookDeps(), {
+        actorUserId,
+        leagueId,
+        name: "Bad Discord",
+        targetKind: "discord",
+        url: "https://chat.example.test/hooks/token",
+      }),
     ).rejects.toMatchObject({ code: "WEBHOOK_DISCORD_URL_INVALID" });
   });
 
   it("validates URL rotation against the stored target kind", async () => {
-    const webhook = await createLeagueWebhook(
-      { db: handle.db, encryptionKey },
-      {
-        actorUserId,
-        leagueId,
-        name: "Discord rotation",
-        targetKind: "discord",
-        url: "https://discord.com/api/webhooks/original",
-      },
-    );
+    const webhook = await createLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      leagueId,
+      name: "Discord rotation",
+      targetKind: "discord",
+      url: "https://discord.com/api/webhooks/original",
+    });
     const webhookId = webhook.webhook?.id ?? "";
 
     await expect(
-      updateLeagueWebhook(
-        { db: handle.db, encryptionKey },
-        {
-          actorUserId,
-          leagueId,
-          url: "https://chat.example.test/hooks/not-discord",
-          webhookId,
-        },
-      ),
+      updateLeagueWebhook(webhookDeps(), {
+        actorUserId,
+        leagueId,
+        url: "https://chat.example.test/hooks/not-discord",
+        webhookId,
+      }),
     ).rejects.toMatchObject({ code: "WEBHOOK_DISCORD_URL_INVALID" });
 
     await expect(
-      updateLeagueWebhook(
-        { db: handle.db, encryptionKey },
-        {
-          actorUserId,
-          leagueId,
-          targetKind: "generic",
-          webhookId,
-        },
-      ),
+      updateLeagueWebhook(webhookDeps(), {
+        actorUserId,
+        leagueId,
+        targetKind: "generic",
+        webhookId,
+      }),
     ).rejects.toMatchObject({
       code: "WEBHOOK_URL_REQUIRED_FOR_TARGET_CHANGE",
     });
 
     await expect(
-      updateLeagueWebhook(
-        { db: handle.db, encryptionKey },
-        {
-          actorUserId,
-          leagueId,
-          targetKind: "generic",
-          url: "https://chat.example.test/hooks/rotated",
-          webhookId,
-        },
-      ),
+      updateLeagueWebhook(webhookDeps(), {
+        actorUserId,
+        leagueId,
+        targetKind: "generic",
+        url: "https://chat.example.test/hooks/rotated",
+        webhookId,
+      }),
     ).resolves.toMatchObject({
       status: "updated",
       webhook: {
@@ -298,20 +297,56 @@ describe("league webhook CRUD", () => {
 
     await deleteLeagueWebhook({ db: handle.db }, { leagueId, webhookId });
   });
+
+  it("rejects IP literals, localhost, and hostnames resolving to private addresses", async () => {
+    await expect(
+      createLeagueWebhook(webhookDeps(), {
+        actorUserId,
+        leagueId,
+        name: "IP literal",
+        targetKind: "generic",
+        url: "https://127.0.0.1/hooks/token",
+      }),
+    ).rejects.toMatchObject({ code: "WEBHOOK_URL_IP_LITERAL" });
+
+    await expect(
+      createLeagueWebhook(webhookDeps(), {
+        actorUserId,
+        leagueId,
+        name: "Localhost",
+        targetKind: "generic",
+        url: "https://localhost/hooks/token",
+      }),
+    ).rejects.toMatchObject({ code: "WEBHOOK_URL_HOST_PRIVATE" });
+
+    await expect(
+      createLeagueWebhook(
+        webhookDeps({ resolveHostname: async () => ["10.0.0.5"] }),
+        {
+          actorUserId,
+          leagueId,
+          name: "Private DNS",
+          targetKind: "generic",
+          url: "https://chat.example.test/hooks/token",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "WEBHOOK_URL_HOST_PRIVATE" });
+  });
 });
 
 describe("mock webhook fan-out", () => {
+  beforeEach(async () => {
+    await disableExistingWebhooks();
+  });
+
   it("records idempotent mock deliveries for published content only", async () => {
-    const webhook = await createLeagueWebhook(
-      { db: handle.db, encryptionKey },
-      {
-        actorUserId,
-        leagueId,
-        name: "Published fan-out",
-        targetKind: "generic",
-        url: "https://chat.example.test/hooks/published",
-      },
-    );
+    const webhook = await createLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      leagueId,
+      name: "Published fan-out",
+      targetKind: "generic",
+      url: "https://chat.example.test/hooks/published",
+    });
     const content = await insertContent({
       dedupSuffix: "published-delivery",
       metadata: { leagueSection: "recaps" },
@@ -320,6 +355,8 @@ describe("mock webhook fan-out", () => {
     const deliverer = new MockWebhookDeliverer({
       appUrl: "https://app.example.test",
       db: handle.db,
+      encryptionKey,
+      resolveHostname: publicResolver,
     });
 
     await expect(
@@ -361,16 +398,13 @@ describe("mock webhook fan-out", () => {
   });
 
   it("does not deliver retracted content", async () => {
-    await createLeagueWebhook(
-      { db: handle.db, encryptionKey },
-      {
-        actorUserId,
-        leagueId,
-        name: "Retracted fan-out",
-        targetKind: "generic",
-        url: "https://chat.example.test/hooks/retracted",
-      },
-    );
+    await createLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      leagueId,
+      name: "Retracted fan-out",
+      targetKind: "generic",
+      url: "https://chat.example.test/hooks/retracted",
+    });
     const content = await insertContent({
       dedupSuffix: "retracted-delivery",
       status: "retracted",
@@ -378,6 +412,8 @@ describe("mock webhook fan-out", () => {
     const deliverer = new MockWebhookDeliverer({
       appUrl: "https://app.example.test",
       db: handle.db,
+      encryptionKey,
+      resolveHostname: publicResolver,
     });
 
     await expect(
@@ -397,16 +433,13 @@ describe("mock webhook fan-out", () => {
   });
 
   it("records failed mock deliveries for manager visibility", async () => {
-    const webhook = await createLeagueWebhook(
-      { db: handle.db, encryptionKey },
-      {
-        actorUserId,
-        leagueId,
-        name: "Failing fan-out",
-        targetKind: "generic",
-        url: "https://chat.example.test/hooks/failing",
-      },
-    );
+    const webhook = await createLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      leagueId,
+      name: "Failing fan-out",
+      targetKind: "generic",
+      url: "https://chat.example.test/hooks/failing",
+    });
     const content = await insertContent({
       dedupSuffix: "failed-delivery",
       title: "Failed webhook post",
@@ -415,7 +448,9 @@ describe("mock webhook fan-out", () => {
     const deliverer = new MockWebhookDeliverer({
       appUrl: "https://app.example.test",
       db: handle.db,
+      encryptionKey,
       failWebhookIds: new Set([webhookId]),
+      resolveHostname: publicResolver,
     });
 
     const fanout = await deliverer.deliverPublishedContent({
@@ -440,5 +475,113 @@ describe("mock webhook fan-out", () => {
       webhookId,
       webhookName: "Failing fan-out",
     });
+  });
+
+  it("does not let a failed attempt consume the successful delivery slot", async () => {
+    const webhook = await createLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      leagueId,
+      name: "Retrying fan-out",
+      targetKind: "generic",
+      url: "https://chat.example.test/hooks/retry",
+    });
+    const webhookId = webhook.webhook?.id ?? "";
+    const content = await insertContent({
+      dedupSuffix: "retry-delivery",
+      title: "Retry webhook post",
+    });
+    const failing = new MockWebhookDeliverer({
+      appUrl: "https://app.example.test",
+      db: handle.db,
+      encryptionKey,
+      failWebhookIds: new Set([webhookId]),
+      resolveHostname: publicResolver,
+    });
+    const succeeding = new MockWebhookDeliverer({
+      appUrl: "https://app.example.test",
+      db: handle.db,
+      encryptionKey,
+      resolveHostname: publicResolver,
+    });
+
+    await expect(
+      failing.deliverPublishedContent({
+        contentItemId: content.id,
+        leagueId,
+      }),
+    ).resolves.toEqual({ delivered: 0, failed: 1, skipped: 0 });
+    await expect(
+      succeeding.deliverPublishedContent({
+        contentItemId: content.id,
+        leagueId,
+      }),
+    ).resolves.toEqual({ delivered: 1, failed: 0, skipped: 0 });
+    await expect(
+      succeeding.deliverPublishedContent({
+        contentItemId: content.id,
+        leagueId,
+      }),
+    ).resolves.toEqual({ delivered: 0, failed: 0, skipped: 1 });
+
+    const deliveries = await withLeagueContext(handle.db, leagueId, (tx) =>
+      tx
+        .select({
+          attemptCount: webhookDeliveryRecords.attemptCount,
+          deliveryStatus: webhookDeliveryRecords.deliveryStatus,
+        })
+        .from(webhookDeliveryRecords)
+        .where(eq(webhookDeliveryRecords.webhookId, webhookId)),
+    );
+    expect(deliveries).toEqual(
+      expect.arrayContaining([
+        { attemptCount: 1, deliveryStatus: "failed" },
+        { attemptCount: 2, deliveryStatus: "delivered" },
+      ]),
+    );
+  });
+
+  it("neutralizes Discord mentions and redacts URL-shaped delivery errors", async () => {
+    const webhook = await createLeagueWebhook(webhookDeps(), {
+      actorUserId,
+      leagueId,
+      name: "Sanitizing fan-out",
+      targetKind: "generic",
+      url: "https://chat.example.test/hooks/sanitize",
+    });
+    const content = await insertContent({
+      dedupSuffix: "sanitized-delivery",
+      title: "Alert @everyone <@12345>",
+    });
+    class ThrowingDeliverer extends MockWebhookDeliverer {
+      override async deliver(): Promise<never> {
+        throw new Error("POST https://discord.com/api/webhooks/token failed");
+      }
+    }
+    const deliverer = new ThrowingDeliverer({
+      appUrl: "https://app.example.test",
+      db: handle.db,
+      encryptionKey,
+      resolveHostname: publicResolver,
+    });
+
+    await expect(
+      deliverer.deliverPublishedContent({
+        contentItemId: content.id,
+        leagueId,
+      }),
+    ).resolves.toMatchObject({ failed: 1 });
+
+    const [delivery] = await withLeagueContext(handle.db, leagueId, (tx) =>
+      tx
+        .select()
+        .from(webhookDeliveryRecords)
+        .where(eq(webhookDeliveryRecords.webhookId, webhook.webhook?.id ?? "")),
+    );
+    expect(delivery?.errorMessage).toBe("POST [redacted-url] failed");
+    expect(JSON.stringify(delivery?.payload)).not.toContain("@everyone");
+    expect(JSON.stringify(delivery?.payload)).not.toContain("<@12345>");
+    expect(sanitizeWebhookMentionText("@here <#123>")).toBe(
+      "@\u200bhere <#\u200b123>",
+    );
   });
 });

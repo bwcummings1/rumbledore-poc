@@ -9,6 +9,11 @@ import {
   type LeagueFeedMatchedEntity,
   leagues,
 } from "@/db/schema";
+import {
+  GENERAL_STATS_MOCK_SOURCE,
+  getLeagueRosterGeneralNflFacts,
+  type LeagueRosterGeneralStatsFact,
+} from "@/general-stats";
 import type { CentralNewsPlayerRef } from "./interfaces";
 import { upsertLeagueFeedReference } from "./league-feed";
 
@@ -45,6 +50,7 @@ type RosterMatch = {
   provider: string;
   providerPlayerId: string;
   providerTeamId: string;
+  scoringPeriod: number;
   teamLabel: string;
 };
 
@@ -110,19 +116,54 @@ function scoreFor(matches: readonly RosterMatch[]): number {
   return Math.min(100, 55 + uniquePlayers.size * 10 + uniqueTeams.size * 5);
 }
 
-function reasonFor(matches: readonly RosterMatch[]): string {
+function formatNumber(value: number): string {
+  return Number.isInteger(value)
+    ? value.toLocaleString("en-US")
+    : value.toLocaleString("en-US", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 0,
+      });
+}
+
+function generalNflFactSentence(fact: LeagueRosterGeneralStatsFact): string {
+  const latest = fact.latestWeek;
+  const schedule = latest
+    ? fact.schedule.find((game) => game.week === latest.week)
+    : fact.schedule[0];
+  const weekText = latest
+    ? `${formatNumber(latest.fantasyPoints)} fantasy points in Week ${latest.week} vs ${latest.opponentTeam}`
+    : `${formatNumber(fact.seasonTotals.fantasyPoints)} fantasy points across ${fact.seasonTotals.games} games`;
+  const scheduleText =
+    schedule && schedule.awayScore !== null && schedule.homeScore !== null
+      ? `; ${schedule.awayTeam} at ${schedule.homeTeam} finished ${schedule.awayScore}-${schedule.homeScore}`
+      : "";
+
+  return `${fact.player.fullName} (${fact.player.position}, ${fact.player.team}) logged ${weekText}${scheduleText}.`;
+}
+
+function reasonFor(
+  matches: readonly RosterMatch[],
+  generalFacts: readonly LeagueRosterGeneralStatsFact[] = [],
+): string {
   const teamLabels = sortedUnique(matches.map((match) => match.teamLabel));
   const playerLabels = sortedUnique(matches.map((match) => match.playerLabel));
+  const generalContext =
+    generalFacts.length > 0
+      ? ` General NFL context: ${generalFacts
+          .slice(0, 2)
+          .map(generalNflFactSentence)
+          .join(" ")}`
+      : "";
 
   if (teamLabels.length === 1 && playerLabels.length === 1) {
-    return `${teamLabels[0]} rosters ${playerLabels[0]}.`;
+    return `${teamLabels[0]} rosters ${playerLabels[0]}.${generalContext}`;
   }
 
   if (teamLabels.length === 1) {
-    return `${teamLabels[0]} rosters ${playerLabels.length} players mentioned in this story.`;
+    return `${teamLabels[0]} rosters ${playerLabels.length} players mentioned in this story.${generalContext}`;
   }
 
-  return `${teamLabels.length} league teams roster ${playerLabels.length} players mentioned in this story.`;
+  return `${teamLabels.length} league teams roster ${playerLabels.length} players mentioned in this story.${generalContext}`;
 }
 
 function matchedEntitiesFor(
@@ -248,9 +289,39 @@ async function rosterMatchesForLeague({
         provider: row.provider,
         providerPlayerId: row.providerPlayerId,
         providerTeamId: row.providerTeamId,
+        scoringPeriod: latestScoringPeriod,
         teamLabel: row.teamName ?? `Team ${row.providerTeamId}`,
       };
     });
+  });
+}
+
+async function generalNflFactsForMatches({
+  db,
+  league,
+  matches,
+}: {
+  db: Db;
+  league: LeagueRow;
+  matches: readonly RosterMatch[];
+}): Promise<LeagueRosterGeneralStatsFact[]> {
+  const scoringPeriod = matches[0]?.scoringPeriod;
+  if (matches.length === 0 || scoringPeriod === undefined) {
+    return [];
+  }
+
+  return getLeagueRosterGeneralNflFacts(db, {
+    limit: 4,
+    rosterFacts: matches.map((match) => ({
+      leagueTeamName: match.teamLabel,
+      playerName: match.playerLabel,
+      provider: match.provider,
+      providerPlayerId: match.providerPlayerId,
+      providerTeamId: match.providerTeamId,
+    })),
+    season: league.season,
+    source: GENERAL_STATS_MOCK_SOURCE,
+    week: scoringPeriod,
   });
 }
 
@@ -320,7 +391,12 @@ export async function tailorCentralNewsToLeagues(
         continue;
       }
 
-      const reason = reasonFor(matches);
+      const generalFacts = await generalNflFactsForMatches({
+        db,
+        league,
+        matches,
+      });
+      const reason = reasonFor(matches, generalFacts);
       await upsertLeagueFeedReference(db, {
         contentItemId: row.id,
         framingSummary: reason,

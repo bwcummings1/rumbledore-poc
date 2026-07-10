@@ -168,9 +168,13 @@ export interface GeneralStatsPlayerWeekStats {
 }
 
 export interface LeagueRosterFactForEnrichment {
+  leagueTeamName?: string | null;
   playerName?: string | null;
   provider?: string | null;
   providerPlayerId?: string | null;
+  providerTeamId?: string | null;
+  rosterSlot?: string | null;
+  started?: boolean | null;
   team?: string | null;
 }
 
@@ -178,4 +182,29 @@ export interface EnrichedRosterFact {
   confidence: "provider_id" | "name";
   original: LeagueRosterFactForEnrichment;
   player: GeneralStatsPlayer;
+}
+
+export interface LeagueRosterGeneralStatsSeasonTotals {
+  fantasyPoints: number;
+  games: number;
+  interceptions: number;
+  passingTouchdowns: number;
+  passingYards: number;
+  receptions: number;
+  receivingTouchdowns: number;
+  receivingYards: number;
+  rushingTouchdowns: number;
+  rushingYards: number;
+  targets: number;
+}
+
+export interface LeagueRosterGeneralStatsFact {
+  confidence: EnrichedRosterFact["confidence"];
+  latestWeek: GeneralStatsPlayerWeekStats | null;
+  original: LeagueRosterFactForEnrichment;
+  player: GeneralStatsPlayer;
+  schedule: GeneralStatsScheduleGame[];
+  season: number;
+  seasonTotals: LeagueRosterGeneralStatsSeasonTotals;
+  source: string;
 }

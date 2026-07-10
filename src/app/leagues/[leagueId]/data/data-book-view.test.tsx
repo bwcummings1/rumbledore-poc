@@ -15,11 +15,14 @@ import type {
 import { DataBookView } from "./data-book-view";
 
 const router = vi.hoisted(() => ({
+  push: vi.fn(),
   refresh: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/leagues/00000000-0000-4000-8000-000000000001/data",
   useRouter: () => router,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const leagueId = "00000000-0000-4000-8000-000000000001";
@@ -121,6 +124,7 @@ const data: DataBookPageData = {
     size: 12,
     status: "in_season",
   },
+  selectedSeason: 2026,
   seasons: [
     season({
       people: [
@@ -198,6 +202,32 @@ const data: DataBookPageData = {
               projectedPoints: 17.1,
               proTeam: "ATL",
               slot: "RB",
+              statBreakdown: [
+                {
+                  fantasyPoints: 12,
+                  providerStatId: 25,
+                  statCategory: "rushing",
+                  statKey: "rushingTouchdowns",
+                  statSource: "actual",
+                  statValue: 2,
+                },
+                {
+                  fantasyPoints: 16.4,
+                  providerStatId: 24,
+                  statCategory: "rushing",
+                  statKey: "rushingYards",
+                  statSource: "actual",
+                  statValue: 164,
+                },
+                {
+                  fantasyPoints: 17.1,
+                  providerStatId: 24,
+                  statCategory: "rushing",
+                  statKey: "rushingYards",
+                  statSource: "projected",
+                  statValue: 171,
+                },
+              ],
               started: true,
               status: "active",
             },
@@ -209,6 +239,7 @@ const data: DataBookPageData = {
               projectedPoints: 6.4,
               proTeam: "TB",
               slot: "BE",
+              statBreakdown: [],
               started: false,
               status: "active",
             },
@@ -325,6 +356,7 @@ const data: DataBookPageData = {
 
 afterEach(() => {
   cleanup();
+  router.push.mockClear();
   router.refresh.mockClear();
   vi.restoreAllMocks();
 });
@@ -418,6 +450,9 @@ test("Data Book switches grains with the secondary selector", () => {
   ).toBeDefined();
   expect(screen.getByText("Bijan Robinson")).toBeDefined();
   expect(screen.getByText("28.4")).toBeDefined();
+  fireEvent.click(screen.getByText("28.4 stat pts"));
+  expect(screen.getByText("rushingTouchdowns")).toBeDefined();
+  expect(screen.getAllByText(/rushingYards/).length).toBeGreaterThan(0);
 });
 
 test("Settings grain confirms adjusted era proposals", async () => {
@@ -495,6 +530,9 @@ test("Data Book year dropdown changes the displayed season", () => {
   fireEvent.change(screen.getByLabelText("Data Book season"), {
     target: { value: "2025" },
   });
+  expect(router.push).toHaveBeenCalledWith(
+    "/leagues/00000000-0000-4000-8000-000000000001/data?season=2025",
+  );
 
   const peopleTable = screen.getByRole("table", {
     name: "2025 Data Book people",
