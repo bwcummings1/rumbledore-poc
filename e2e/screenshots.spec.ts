@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import { eq, sql } from "drizzle-orm";
+import { recordAiUsageEvent } from "../src/ai/usage-attribution";
 import { parseEnv } from "../src/core/env/schema";
 import { createDb } from "../src/db/client";
 import { leagues, users } from "../src/db/schema";
@@ -317,6 +318,62 @@ async function seedDataBookSavePushState(page: Page, leagueId: string) {
   await applyVisibleRealNameEdit(page, "Screenshot Unsaved Steward");
 }
 
+async function seedAiUsageActivity(leagueId: string) {
+  const handle = createDb(parseEnv(process.env).databaseUrl);
+  try {
+    await recordAiUsageEvent(handle.db, {
+      contentType: "weekly_recap",
+      createdAt: new Date("2026-07-09T12:00:00.000Z"),
+      estimated: true,
+      leagueId,
+      model: "mock-rumbledore-llm-v1",
+      persona: "narrator",
+      provider: "mock",
+      triggerKey: `${runMarker}:weekly-recap`,
+      usage: {
+        cacheCreationInputTokens: 4,
+        cacheReadInputTokens: 10,
+        inputTokens: 80,
+        outputTokens: 30,
+      },
+    });
+    await recordAiUsageEvent(handle.db, {
+      contentType: "power_rankings",
+      createdAt: new Date("2026-07-08T12:00:00.000Z"),
+      estimated: true,
+      leagueId,
+      model: "mock-rumbledore-llm-v1",
+      persona: "analyst",
+      provider: "mock",
+      triggerKey: `${runMarker}:power-rankings`,
+      usage: {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 50,
+        outputTokens: 20,
+      },
+    });
+    await recordAiUsageEvent(handle.db, {
+      contentType: "matchup_preview",
+      createdAt: new Date("2026-07-01T12:00:00.000Z"),
+      estimated: true,
+      leagueId,
+      model: "mock-rumbledore-llm-v1",
+      persona: "commissioner",
+      provider: "mock",
+      triggerKey: `${runMarker}:matchup-preview`,
+      usage: {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 64,
+        outputTokens: 42,
+      },
+    });
+  } finally {
+    await handle.pool.end();
+  }
+}
+
 async function shootDataBookPushConfirm(
   page: Page,
   vp: string,
@@ -437,6 +494,7 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
   const leagueId = homeHref.split("/").pop() ?? "";
   console.log(`seeded league home: ${homeHref}`);
   await seedDataBookSavePushState(page, leagueId);
+  await seedAiUsageActivity(leagueId);
 
   // Pass B — populated league screens.
   const leagueRoutes: Array<[string, string]> = [
@@ -447,6 +505,7 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
     ["11-cast", `/leagues/${leagueId}/cast`],
     ["12-bet", `/leagues/${leagueId}/bet`],
     ["13-press", `/leagues/${leagueId}/press`],
+    ["13-press-ai-usage", `/leagues/${leagueId}/press/usage`],
     ["14-lore", `/leagues/${leagueId}/lore`],
     ["15-members", `/leagues/${leagueId}/members`],
     ["17-data-book", `/leagues/${leagueId}/data`],

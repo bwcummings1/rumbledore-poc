@@ -2,16 +2,17 @@
 
 The durable phase plan toward the North Star (`docs/NORTH-STAR.md`). Live state lives in `docs/PROGRESS.md`; this file is the stable map of what each phase is and what still remains. (The old `IMPLEMENTATION_PLAN.md` loop-backlog is retired/historical — see the banner atop that file.) Timeline anchors: **~1 month to football buzz, ~3 months to the season** (season opens ~Sept 2026; this was written in the June 2026 offseason).
 
-> **Status (2026-07-09) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3,
-> the AUSPEX UI/UX overhaul, Increment 1 (`specs/36`–`41`), the data-foundation T1–T16 arc, and the T18 editorial/
-> distribution arc (`specs/45`/`46`) are **done or ready for orchestrator merge**. The app now has clean-import
-> invariants, player-depth substrate A, complete ESPN decoding, pushed-canon editorial provenance, content lifecycle/
-> correction/governance tools, share/teaser/launch arrival, mock webhook/email delivery, and the real ESPN validation
-> league `95050` / **"NHS Alumni Annual"** populated in the shared dev DB with screenshots. The remaining roadmap items
-> are deliberate follow-ons: production-real paid-provider keys/capture (Phase 4), real webhook/email credentials and
-> domains, real substrate-B source wiring, player-level records and draft/transaction UI, Sleeper/Yahoo dictionaries,
-> minor owner-set-aside UI tweaks, and Stripe/beta hardening (Phase 6). Work now runs per **`ORCHESTRATION.md`**; the
-> Ralph loop is retired.
+> **Status (2026-07-10) — this phased plan is essentially delivered; `docs/PROGRESS.md` is the live state.** Phases 1–3,
+> the AUSPEX UI/UX overhaul, Increment 1 (`specs/36`–`41`), the data-foundation T1–T16 arc, the T18 editorial/
+> distribution arc (`specs/45`/`46`), and T19's remaining agent-buildable backlog are **done or ready for orchestrator
+> merge**. The app now has clean-import invariants, player-depth substrate A, complete ESPN decoding, pushed-canon
+> player records, per-stat scoring persistence, pushed-canon editorial provenance, substrate-B AI/News enrichment behind
+> mocks, per-league AI usage attribution, content lifecycle/correction/governance tools, hardened share/teaser/launch/
+> webhook/digest/OG surfaces, and the real ESPN validation league `95050` / **"NHS Alumni Annual"** populated in the
+> shared dev DB with screenshots. The remaining roadmap items are deliberate follow-ons: production-real paid-provider
+> keys/capture (Phase 4), real webhook/email credentials and domains, real substrate-B source wiring, draft/transaction
+> UI polish, Sleeper/Yahoo dictionaries, final voice tuning, minor owner-set-aside UI tweaks, and Stripe/beta hardening
+> (Phase 6). Work now runs per **`ORCHESTRATION.md`**; the Ralph loop is retired.
 
 The work splits along one line: **orchestrated-agent buildable** (functional, fully mockable, gateable) vs
 **human-paired** (needs the user and/or real API keys — voice, design, real integrations).
@@ -29,6 +30,10 @@ The work splits along one line: **orchestrated-agent buildable** (functional, fu
   append-only editorial actions, commissioner retract/regenerate/correction controls, failure queue, persona tone editor,
   live article embeds, reactions and roast consent, OG/share/teaser surfaces, launch edition, mock webhooks/digests, and
   shared notification channel preferences.
+- **T19 records/substance + hardening:** pushed-canon player Record Book categories, per-stat scoring breakdown
+  persistence and Data Book expansion, substrate-B AI/News enrichment as non-canon general NFL context, per-league AI
+  usage attribution, efficiency/security/CI/dev-backup quick wins, `specs/42` H1 closure, and T18 review hardening for
+  editorial/webhook/digest/OG state machines.
 
 ---
 
@@ -60,7 +65,8 @@ Flip the discriminated-union mocks to live.
 The part that comes after functionality, iterated **with** the user.
 - **AI voice / persona tuning** — the editable/versioned tone tools exist, but the cast's actual voice
   (Commissioner, Narrator, Trash-Talker…) still needs human-paired direction; the LLM-judge eval gate remains the ruler.
-- **UI/UX overhaul** — the user's style reference applied; snappy, mobile-first, the editorial identity of *The {League} Press*. *(User to provide the visual reference.)*
+- **UI/UX polish** — the AUSPEX overhaul is applied; remaining UI work is selective owner-set-aside polish, not another
+  rebuild.
 
 → Turns a working app into the *experience* that creates the football buzz.
 
@@ -85,7 +91,6 @@ The part that comes after functionality, iterated **with** the user.
 
 ## Sequencing
 Current next work is selective, not phase-bulk: choose among production-real provider/key capture, delivery-provider
-activation, substrate-B real-source wiring, player-level records/draft/transaction UI, Sleeper/Yahoo dictionaries, owner
-UI tweaks, and launch/billing work. The biggest user-provided inputs still gating production are real API/provider
-credentials, hosted capture posture, email/webhook provider/domain choices, final voice direction, pricing, and beta/legal
-choices.
+activation, substrate-B real-source wiring, draft/transaction UI polish, Sleeper/Yahoo dictionaries, owner UI tweaks, and
+launch/billing work. The biggest user-provided inputs still gating production are real API/provider credentials, hosted
+capture posture, email/webhook provider/domain choices, final voice direction, pricing, and beta/legal choices.
