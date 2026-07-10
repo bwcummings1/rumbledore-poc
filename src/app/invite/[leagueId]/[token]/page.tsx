@@ -72,6 +72,9 @@ export default async function InvitePreviewPage({
   const teamNames = isOpenInvite
     ? invite.value.claimTargets.map((target) => teamLabel(target.teamNames))
     : [teamLabel(invite.value.teamNames)];
+  const authenticatedClaimTargets = isAuthenticated
+    ? invite.value.claimTargets
+    : [];
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col justify-center gap-5 px-4 py-6 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -133,7 +136,7 @@ export default async function InvitePreviewPage({
       <InviteAcceptPanel
         acceptUrl={`/api/invite/${leagueId}/${token}/accept`}
         claimMode={invite.value.claimMode}
-        claimTargets={invite.value.claimTargets}
+        claimTargets={authenticatedClaimTargets}
         isAuthenticated={isAuthenticated}
         onboardingUrl={onboardingUrl}
       />

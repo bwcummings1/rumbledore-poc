@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getEnv } from "@/core/env";
 import type { OgCardKind, OgCardStatus } from "./og-card";
+import { attachOgImageSignature, ogImageVersionKey } from "./og-signature";
 
 const SITE_NAME = "Rumbledore";
 const DEFAULT_DESCRIPTION =
@@ -108,6 +109,7 @@ export function buildOgImageUrl(
   input: ShareImageInput,
   base: URL = siteBaseUrl(),
 ): URL {
+  const secret = getEnv().share.ogImageSigningSecret;
   const url = absoluteAppUrl("/api/og", base);
   const params = url.searchParams;
 
@@ -117,7 +119,7 @@ export function buildOgImageUrl(
   setOptionalParam(params, "league", input.leagueName);
   setOptionalParam(params, "section", input.section);
   setOptionalParam(params, "status", input.status);
-  setOptionalParam(params, "v", input.hash);
+  setOptionalParam(params, "v", ogImageVersionKey(input.hash, secret));
 
   if (input.kind === "central_article") {
     setOptionalParam(
@@ -127,7 +129,7 @@ export function buildOgImageUrl(
     );
   }
 
-  return url;
+  return attachOgImageSignature(url, secret);
 }
 
 function setOptionalParam(

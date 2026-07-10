@@ -14,7 +14,12 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { MockEmailSender, sendWeeklyDigestForLeague } from "./digest";
+import {
+  MockEmailSender,
+  sendWeeklyDigestForLeague,
+  sendWeeklyDigests,
+  weeklyDigestKey,
+} from "./digest";
 
 const marker = `digest-${randomUUID()}`;
 
@@ -213,6 +218,7 @@ describe("weekly digest email", () => {
       contentItemIds: [published.id],
       deliveryMode: "mock",
       deliveryStatus: "delivered",
+      digestKey: `weekly:${leagueId}:2026-W24`,
       leagueId,
       recipientUserId: userAId,
     });
@@ -269,6 +275,69 @@ describe("weekly digest email", () => {
     expect(sender.messages).toHaveLength(0);
   });
 
+  it("uses deterministic per-league ISO-week digest keys", () => {
+    const window = {
+      end: new Date("2026-06-14T00:00:00.999Z"),
+      start: new Date("2026-06-07T00:00:00.123Z"),
+    };
+    expect(weeklyDigestKey({ leagueId, window })).toBe(
+      `weekly:${leagueId}:2026-W24`,
+    );
+    expect(
+      weeklyDigestKey({
+        leagueId,
+        window: {
+          end: new Date("2026-06-14T00:00:00.001Z"),
+          start: new Date("2026-06-07T00:00:00.001Z"),
+        },
+      }),
+    ).toBe(`weekly:${leagueId}:2026-W24`);
+    expect(weeklyDigestKey({ leagueId: "other-league", window })).toBe(
+      "weekly:other-league:2026-W24",
+    );
+  });
+
+  it("does not cap explicit digest batches to the page size", async () => {
+    const rows = await handle.db
+      .insert(leagues)
+      .values(
+        Array.from({ length: 6 }, (_, index) => ({
+          currentScoringPeriod: 7,
+          name: `${marker} Batch ${index}`,
+          provider: "espn" as const,
+          providerLeagueId: `${marker}-batch-${index}`,
+          season: 2026,
+          size: 12,
+          sport: "ffl" as const,
+          status: "in_season" as const,
+        })),
+      )
+      .returning({ id: leagues.id });
+    const sender = new MockEmailSender();
+
+    await expect(
+      sendWeeklyDigests(
+        {
+          appUrl: "https://app.example.test",
+          db: handle.db,
+          emailSender: sender,
+          now: () => new Date("2026-09-14T00:00:00.000Z"),
+        },
+        {
+          leagueIds: rows.map((row) => row.id),
+          limit: 2,
+          windowEnd: new Date("2026-09-14T00:00:00.000Z"),
+          windowStart: new Date("2026-09-07T00:00:00.000Z"),
+        },
+      ),
+    ).resolves.toMatchObject({
+      delivered: 0,
+      failed: 0,
+      leagueCount: 6,
+      skipped: 0,
+    });
+  });
+
   it("records mock email failures for visibility", async () => {
     await insertContent({
       dedupSuffix: "failed-window",
@@ -311,5 +380,34 @@ describe("weekly digest email", () => {
         }),
       ]),
     );
+  });
+
+  it("strips newlines from digest subjects", async () => {
+    await handle.db
+      .update(leagues)
+      .set({ name: `${marker}\nLeague` })
+      .where(eq(leagues.id, leagueId));
+    await insertContent({
+      dedupSuffix: "subject-window",
+      publishedAt: new Date("2026-10-10T12:00:00.000Z"),
+      title: "Subject digest recap",
+    });
+    const sender = new MockEmailSender();
+
+    await sendWeeklyDigestForLeague(
+      {
+        appUrl: "https://app.example.test",
+        db: handle.db,
+        emailSender: sender,
+        now: () => new Date("2026-10-14T00:00:00.000Z"),
+      },
+      {
+        leagueId,
+        windowEnd: new Date("2026-10-14T00:00:00.000Z"),
+        windowStart: new Date("2026-10-07T00:00:00.000Z"),
+      },
+    );
+
+    expect(sender.messages[0]?.subject).toBe(`${marker} League weekly digest`);
   });
 });

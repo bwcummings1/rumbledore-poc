@@ -1,6 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
+import { DEV_OG_IMAGE_SIGNING_SECRET } from "@/core/env/schema";
 import { buildOgImageUrl, buildShareMetadata } from "./metadata";
+import { ogImageVersionKey, verifyOgImageSignature } from "./og-signature";
+import {
+  centralNewsArticleMetadata,
+  leagueArticleMetadata,
+} from "./route-metadata";
 
 vi.mock("server-only", () => ({}));
 
@@ -36,7 +42,21 @@ describe("share metadata", () => {
       title: "Quarterback injury changes Sunday | Rumbledore News",
     });
     expect(JSON.stringify(metadata.openGraph)).toContain("/api/og?");
-    expect(JSON.stringify(metadata.openGraph)).toContain("v=hash-123");
+    expect(JSON.stringify(metadata.openGraph)).toContain("s=");
+    expect(JSON.stringify(metadata.openGraph)).not.toContain("hash-123");
+    const [image] = Array.isArray(metadata.openGraph?.images)
+      ? metadata.openGraph.images
+      : [];
+    const imageUrl = new URL(String((image as { url: URL }).url));
+    expect(imageUrl.searchParams.get("v")).toBe(
+      ogImageVersionKey("hash-123", DEV_OG_IMAGE_SIGNING_SECRET),
+    );
+    expect(
+      verifyOgImageSignature(
+        imageUrl.searchParams,
+        DEV_OG_IMAGE_SIGNING_SECRET,
+      ),
+    ).toBe(true);
   });
 
   it("allows central cards to carry summary copy", () => {
@@ -54,6 +74,9 @@ describe("share metadata", () => {
     expect(url.searchParams.get("summary")).toBe(
       "Central summary is allowed on open central content.",
     );
+    expect(
+      verifyOgImageSignature(url.searchParams, DEV_OG_IMAGE_SIGNING_SECRET),
+    ).toBe(true);
   });
 
   it("never serializes league article summaries into share-card URLs", () => {
@@ -71,5 +94,62 @@ describe("share metadata", () => {
 
     expect(url.searchParams.has("summary")).toBe(false);
     expect(url.toString()).not.toContain("PRIVATE");
+  });
+
+  it("rejects unsigned or tampered OG image params", () => {
+    const url = buildOgImageUrl(
+      {
+        byline: "Central Wire",
+        headline: "Central story",
+        kind: "central_article",
+        section: "Headlines",
+        summary: "Central summary.",
+      },
+      base,
+    );
+
+    const unsigned = new URL(url);
+    unsigned.searchParams.delete("s");
+    expect(
+      verifyOgImageSignature(
+        unsigned.searchParams,
+        DEV_OG_IMAGE_SIGNING_SECRET,
+      ),
+    ).toBe(false);
+
+    url.searchParams.set("title", "Tampered");
+    expect(
+      verifyOgImageSignature(url.searchParams, DEV_OG_IMAGE_SIGNING_SECRET),
+    ).toBe(false);
+  });
+
+  it("noindexes league article teasers while keeping central articles indexable", () => {
+    const league = leagueArticleMetadata({
+      byline: "Narrator",
+      contentHash: "league-hash",
+      id: "post-1",
+      league: {
+        id: "league-1",
+        name: "Fixture League",
+        provider: "espn",
+        providerLeagueId: "95050",
+        season: 2026,
+      },
+      section: { label: "Recaps", slug: "recaps" },
+      status: "published",
+      title: "League story",
+    });
+    const central = centralNewsArticleMetadata({
+      byline: "Central Wire",
+      contentHash: "central-hash",
+      dek: "Central summary.",
+      id: "article-1",
+      section: { label: "Injuries", slug: "injuries" },
+      status: "published",
+      title: "Central story",
+    });
+
+    expect(league.robots).toEqual({ follow: false, index: false });
+    expect(central.robots).toBeUndefined();
   });
 });

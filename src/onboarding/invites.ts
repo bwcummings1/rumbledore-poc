@@ -30,6 +30,12 @@ export interface LeagueInviteTarget {
   teamNames: string[];
 }
 
+export interface LeagueInviteClaimTarget {
+  displayName: string;
+  providerMemberId: string;
+  teamNames: string[];
+}
+
 export interface LeagueInviteSummary {
   league: {
     id: string;
@@ -65,7 +71,7 @@ export interface CreatedOpenLeagueInvite {
 
 export interface LeagueInviteLanding {
   claimMode: "targeted" | "open";
-  claimTargets: LeagueInviteTarget[];
+  claimTargets: LeagueInviteClaimTarget[];
   expiresAt: string;
   inviteeDisplayName: string;
   league: {
@@ -394,6 +400,16 @@ function openClaimTargets(
   targets: readonly LeagueInviteTarget[],
 ): LeagueInviteTarget[] {
   return targets.filter((target) => target.providerTeamIds.length > 0);
+}
+
+function toPublicClaimTarget(
+  target: LeagueInviteTarget,
+): LeagueInviteClaimTarget {
+  return {
+    displayName: target.displayName,
+    providerMemberId: target.providerMemberId,
+    teamNames: target.teamNames,
+  };
 }
 
 async function authorizeLeagueMember(
@@ -859,7 +875,7 @@ export async function getLeagueInviteLanding(
             userId: invite.inviterUserId,
           })
         ).targets,
-      );
+      ).map(toPublicClaimTarget);
 
   return ok({
     claimMode: invite.providerMemberId ? "targeted" : "open",

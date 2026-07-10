@@ -164,6 +164,8 @@ export const DEFAULT_SPEND_GUARD_CAPS = {
 export const DEV_AUTH_SECRET = "rumbledore-dev-only-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
 export const DEV_CREDENTIAL_ENCRYPTION_KEY =
   "rumbledore-dev-only-credential-key-32chars"; // ubs:ignore — not a credential, dev placeholder rejected in production
+export const DEV_OG_IMAGE_SIGNING_SECRET =
+  "rumbledore-dev-only-og-image-signing-secret"; // ubs:ignore — not a credential, dev placeholder rejected in production
 export const DEV_PUSH_PUBLIC_KEY =
   "BF_-asb0YkmLyoUqIg_c4WoJJHyU0xf1kviNES_xMb-a_41mQdPMnlBa_7r4rjFb8dnk6X4XuGp8-P95kLLLTjc";
 
@@ -222,6 +224,7 @@ const baseSchema = z.object({
 
   BETTER_AUTH_SECRET: secret.optional(),
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
+  OG_IMAGE_SIGNING_SECRET: secret.optional(),
   GOOGLE_CLIENT_ID: secret.optional(),
   GOOGLE_CLIENT_SECRET: secret.optional(),
   YAHOO_CLIENT_ID: secret.optional(),
@@ -359,6 +362,9 @@ export interface Env {
   credentials: {
     encryptionKey: string;
   };
+  share: {
+    ogImageSigningSecret: string;
+  };
   realtime: RealtimeConfig;
   jobs: {
     inngest: InngestConfig;
@@ -411,6 +417,11 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
       if (!("CREDENTIAL_ENCRYPTION_KEY" in present)) {
         problems.push(
           "✖ CREDENTIAL_ENCRYPTION_KEY is required when NODE_ENV=production\n  → at CREDENTIAL_ENCRYPTION_KEY",
+        );
+      }
+      if (!("OG_IMAGE_SIGNING_SECRET" in present)) {
+        problems.push(
+          "✖ OG_IMAGE_SIGNING_SECRET is required when NODE_ENV=production\n  → at OG_IMAGE_SIGNING_SECRET",
         );
       }
       {
@@ -819,6 +830,10 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     credentials: {
       encryptionKey:
         parsed.CREDENTIAL_ENCRYPTION_KEY ?? DEV_CREDENTIAL_ENCRYPTION_KEY,
+    },
+    share: {
+      ogImageSigningSecret:
+        parsed.OG_IMAGE_SIGNING_SECRET ?? DEV_OG_IMAGE_SIGNING_SECRET,
     },
     realtime: realtimeIsReal
       ? {

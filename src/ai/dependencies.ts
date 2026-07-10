@@ -280,6 +280,7 @@ export function createAiDependencies(
     Env,
     | "ai"
     | "auth"
+    | "credentials"
     | "entitlements"
     | "push"
     | "realtime"

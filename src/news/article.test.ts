@@ -670,6 +670,7 @@ describe("publication articles", () => {
 
     expect(result.data.article).toMatchObject({
       byline: "Rivalry Desk",
+      bylineDetail: "",
       dek: "A public teaser dek.",
       headline: "Narrator opens a shared teaser",
       lede: "Public lede for a shared visitor.",
@@ -681,6 +682,49 @@ describe("publication articles", () => {
     expect(serialized).not.toContain("Manager One");
     expect(serialized).not.toContain("canonCitations");
     expect(serialized).not.toContain("bodyBlocks");
+  });
+
+  it("caps public league teaser dek text before serialization", async () => {
+    const longDek = `${"Long teaser sentence. ".repeat(30)}Private tail`;
+    const [article] = await withLeagueContext(
+      handle.db,
+      leagueAId,
+      async (tx) =>
+        tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: "Short public teaser body.",
+            contentHash: `${marker}-league-long-teaser-hash`,
+            dedupKey: `${marker}-league-long-teaser`,
+            kind: "blog",
+            leagueId: leagueAId,
+            metadata: {
+              dek: longDek,
+              section: "recaps",
+            },
+            publishedAt: new Date("2026-06-11T20:30:00.000Z"),
+            summary: "Fallback teaser summary.",
+            title: "Narrator opens a capped teaser",
+          })
+          .returning({ id: contentItems.id }),
+    );
+    if (!article) {
+      throw new Error("long teaser article was not inserted");
+    }
+
+    const result = await getLeaguePressArticleTeaserData(handle.db, {
+      leagueId: leagueAId,
+      postId: article.id,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error(`unexpected teaser result: ${result.status}`);
+    }
+    expect(result.data.article.dek.length).toBeLessThanOrEqual(320);
+    expect(result.data.article.dek.endsWith("…")).toBe(true);
+    expect(result.data.article.dek).not.toContain("Private tail");
   });
 
   it("loads a superseded league article old link with replacement lineage", async () => {

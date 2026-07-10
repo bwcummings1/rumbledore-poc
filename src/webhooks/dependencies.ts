@@ -4,10 +4,11 @@ import { MockWebhookDeliverer, type WebhookDeliverer } from "./service";
 
 export function createWebhookDeliverer(
   db: Db,
-  env: Pick<Env, "auth">,
+  env: Pick<Env, "auth" | "credentials">,
 ): WebhookDeliverer {
   return new MockWebhookDeliverer({
     appUrl: env.auth.url,
     db,
+    encryptionKey: env.credentials.encryptionKey,
   });
 }

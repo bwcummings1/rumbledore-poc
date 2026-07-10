@@ -3260,10 +3260,9 @@ export const webhookDeliveryRecords = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("webhook_delivery_records_webhook_event_unique").on(
-      table.webhookId,
-      table.eventKey,
-    ),
+    uniqueIndex("webhook_delivery_records_webhook_event_unique")
+      .on(table.webhookId, table.eventKey)
+      .where(sql`${table.deliveryStatus} = 'delivered'`),
     index("webhook_delivery_records_league_created_idx").on(
       table.leagueId,
       table.createdAt,

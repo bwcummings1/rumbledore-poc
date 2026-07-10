@@ -6,6 +6,7 @@ import {
   DEFAULT_SPEND_GUARD_CAPS,
   DEV_AUTH_SECRET,
   DEV_CREDENTIAL_ENCRYPTION_KEY,
+  DEV_OG_IMAGE_SIGNING_SECRET,
   DEV_PUSH_PUBLIC_KEY,
   INNGEST_CLOUD_API_BASE_URL,
   INNGEST_CLOUD_EVENT_BASE_URL,
@@ -51,6 +52,7 @@ describe("parseEnv", () => {
     expect(env.jobs.inngest).toEqual({ mode: "mock" });
     expect(env.push).toEqual({ mock: true, publicKey: DEV_PUSH_PUBLIC_KEY });
     expect(env.credentials.encryptionKey).toBe(DEV_CREDENTIAL_ENCRYPTION_KEY);
+    expect(env.share.ogImageSigningSecret).toBe(DEV_OG_IMAGE_SIGNING_SECRET);
     expect(env.ingestion).toEqual({ pollPolicyConfig: undefined });
     expect(env.ai).toEqual({
       anthropicModelTier: "cheap",
@@ -526,6 +528,7 @@ describe("parseEnv", () => {
         CREDENTIAL_ENCRYPTION_KEY: fixtureValue("credential", "key", "prod"),
         INNGEST_DEV: "true",
         NODE_ENV: "production",
+        OG_IMAGE_SIGNING_SECRET: fixtureValue("og", "signing", "prod"),
       }),
     ).toThrow(/Inngest dev mode is not allowed/);
   });
@@ -537,6 +540,7 @@ describe("parseEnv", () => {
         CREDENTIAL_ENCRYPTION_KEY: fixtureValue("credential", "key", "prod"),
         INNGEST_EVENT_KEY: fixtureValue("inngest", "event", "prod"),
         NODE_ENV: "production",
+        OG_IMAGE_SIGNING_SECRET: fixtureValue("og", "signing", "prod"),
       }),
     ).toThrow(/INNGEST_SIGNING_KEY/);
 
@@ -546,6 +550,7 @@ describe("parseEnv", () => {
       INNGEST_EVENT_KEY: fixtureValue("inngest", "event", "prod"),
       INNGEST_SIGNING_KEY: fixtureValue("inngest", "signing", "prod"),
       NODE_ENV: "production",
+      OG_IMAGE_SIGNING_SECRET: fixtureValue("og", "signing", "prod"),
     });
     expect(env.jobs.inngest).toMatchObject({
       mode: "cloud",
@@ -651,11 +656,13 @@ describe("parseEnv", () => {
       NODE_ENV: "production",
       BETTER_AUTH_SECRET: "prod-secret", // ubs:ignore — fake fixture value
       CREDENTIAL_ENCRYPTION_KEY: "prod-credential-key-minimum-32-chars", // ubs:ignore — fake fixture value
+      OG_IMAGE_SIGNING_SECRET: "prod-og-image-signing-secret", // secret-scan:ignore — fake fixture value; ubs:ignore — fake fixture value
     });
     expect(env.auth.secret).toBe("prod-secret");
     expect(env.credentials.encryptionKey).toBe(
       "prod-credential-key-minimum-32-chars",
     );
+    expect(env.share.ogImageSigningSecret).toBe("prod-og-image-signing-secret");
     // TEMPORARY (pre-pricing): dev-override defaults ON everywhere — nothing gated.
     expect(env.entitlements.devOverride).toBe(true);
   });
@@ -674,6 +681,7 @@ describe("parseEnv", () => {
         BETTER_AUTH_SECRET: "prod-secret", // ubs:ignore — fake fixture value
         ENTITLEMENTS_DEV_OVERRIDE: "1",
         NODE_ENV: "production",
+        OG_IMAGE_SIGNING_SECRET: "prod-og-image-signing-secret", // secret-scan:ignore — fake fixture value; ubs:ignore — fake fixture value
       }),
     ).toThrow(/ENTITLEMENTS_DEV_OVERRIDE=true is not allowed/);
   });

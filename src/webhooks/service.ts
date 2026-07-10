@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { domainToASCII } from "node:url";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { AiPersona } from "@/ai";
+import { DEV_CREDENTIAL_ENCRYPTION_KEY } from "@/core/env/schema";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
@@ -115,6 +119,7 @@ export interface WebhookDeliveryAttempt {
   eventType: LeagueWebhookContentEvent;
   leagueId: string;
   payload: Record<string, unknown>;
+  target: ValidatedWebhookTarget;
   targetKind: LeagueWebhookTargetKind;
   webhookId: string;
   webhookName: string;
@@ -127,6 +132,13 @@ export interface WebhookDeliveryOutcome {
 
 export interface WebhookDeliverer {
   readonly config: { mock: true } | { mock: false };
+  /**
+   * Delivery is intentionally at-least-once: the transport call happens before
+   * the append-only delivery record is inserted, so a crash can duplicate a
+   * future real send. Real Discord delivery must also set
+   * `allowed_mentions: { parse: [] }`; payload text is sanitized here as a
+   * defense-in-depth layer.
+   */
   deliver(attempt: WebhookDeliveryAttempt): Promise<WebhookDeliveryOutcome>;
   /**
    * Known limitation: this T18/T19 mock contract fans out publish/correct
@@ -171,8 +183,40 @@ interface WebhookContentRow {
   title: string;
 }
 
+interface LeagueWebhookFanoutRow extends LeagueWebhookRow {
+  encryptedUrl: string;
+}
+
+interface WebhookFanoutPlan {
+  content: WebhookContentRow;
+  eventKey: string;
+  eventType: LeagueWebhookContentEvent;
+  league: { id: string; name: string };
+  payload: Record<string, unknown>;
+  webhooks: LeagueWebhookFanoutRow[];
+}
+
+interface WebhookDeliveryRetryState {
+  attemptCount: number;
+  delivered: boolean;
+}
+
+export interface ValidatedWebhookTarget {
+  hostname: string;
+  redirectPolicy: "none";
+  targetKind: LeagueWebhookTargetKind;
+  url: string;
+  urlHash: string;
+  urlLabel: string;
+}
+
+export type WebhookHostnameResolver = (
+  hostname: string,
+) => Promise<readonly string[]>;
+
 const MAX_WEBHOOK_NAME_LENGTH = 80;
 const MAX_WEBHOOK_ERROR_LENGTH = 500;
+const MAX_WEBHOOK_DELIVERY_ATTEMPTS = 3;
 
 function now(): Date {
   return new Date();
@@ -227,26 +271,200 @@ function parseWebhookUrl(url: string): URL {
       status: 400,
     });
   }
+  if (parsed.username || parsed.password) {
+    throw new AppError({
+      code: "WEBHOOK_URL_INVALID",
+      message: "Webhook URL must not include credentials",
+      status: 400,
+    });
+  }
 
   return parsed;
 }
 
-function validateUrlForTargetKind(
+function invalidWebhookTarget(
+  code:
+    | "WEBHOOK_URL_HOST_PRIVATE"
+    | "WEBHOOK_URL_INVALID"
+    | "WEBHOOK_URL_IP_LITERAL"
+    | "WEBHOOK_URL_UNRESOLVABLE",
+  message: string,
+  cause?: unknown,
+): AppError {
+  return new AppError({
+    cause,
+    code,
+    message,
+    status: 400,
+  });
+}
+
+function normalizedHostname(parsed: URL): string {
+  const raw = parsed.hostname.replace(/^\[/u, "").replace(/\]$/u, "");
+  const ascii = domainToASCII(raw).toLowerCase();
+  if (!ascii || ascii.includes("%")) {
+    throw invalidWebhookTarget(
+      "WEBHOOK_URL_INVALID",
+      "Webhook URL hostname is invalid",
+    );
+  }
+  return ascii;
+}
+
+function ipv4Octets(address: string): number[] | null {
+  const octets = address.split(".");
+  if (octets.length !== 4) {
+    return null;
+  }
+  const parsed = octets.map((part) => Number(part));
+  return parsed.every(
+    (part) => Number.isInteger(part) && part >= 0 && part <= 255,
+  )
+    ? parsed
+    : null;
+}
+
+function isBlockedIpv4(address: string): boolean {
+  const octets = ipv4Octets(address);
+  if (!octets) {
+    return true;
+  }
+  const [a = 0, b = 0] = octets;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function firstIpv6Group(address: string): number {
+  const first = address.split(":", 1)[0] ?? "0";
+  return Number.parseInt(first || "0", 16);
+}
+
+function isBlockedIpv6(address: string): boolean {
+  const normalized = address.toLowerCase();
+  const mappedIpv4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/u);
+  if (mappedIpv4?.[1]) {
+    return isBlockedIpv4(mappedIpv4[1]);
+  }
+  if (normalized === "::" || normalized === "::1") {
+    return true;
+  }
+  const first = firstIpv6Group(normalized);
+  return (
+    (first & 0xfe00) === 0xfc00 ||
+    (first & 0xffc0) === 0xfe80 ||
+    (first & 0xff00) === 0xff00 ||
+    first === 0
+  );
+}
+
+function isBlockedIpAddress(address: string): boolean {
+  const normalized = address.replace(/^\[/u, "").replace(/\]$/u, "");
+  switch (isIP(normalized)) {
+    case 4:
+      return isBlockedIpv4(normalized);
+    case 6:
+      return isBlockedIpv6(normalized);
+    default:
+      return true;
+  }
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname.endsWith(".localhost");
+}
+
+async function defaultResolveHostname(hostname: string): Promise<string[]> {
+  const records = await lookup(hostname, { all: true, verbatim: true });
+  return records.map((record) => record.address);
+}
+
+async function resolvePublicAddresses(
+  hostname: string,
+  resolver: WebhookHostnameResolver,
+): Promise<void> {
+  let addresses: readonly string[];
+  try {
+    addresses = await resolver(hostname);
+  } catch (cause) {
+    throw invalidWebhookTarget(
+      "WEBHOOK_URL_UNRESOLVABLE",
+      "Webhook URL hostname could not be resolved",
+      cause,
+    );
+  }
+  if (addresses.length === 0) {
+    throw invalidWebhookTarget(
+      "WEBHOOK_URL_UNRESOLVABLE",
+      "Webhook URL hostname could not be resolved",
+    );
+  }
+  for (const address of addresses) {
+    if (isBlockedIpAddress(address)) {
+      throw invalidWebhookTarget(
+        "WEBHOOK_URL_HOST_PRIVATE",
+        "Webhook URL must resolve to public internet addresses",
+      );
+    }
+  }
+}
+
+export async function validateWebhookTargetUrl(
   url: string,
   targetKind: LeagueWebhookTargetKind,
-): URL {
+  options: { resolveHostname?: WebhookHostnameResolver } = {},
+): Promise<ValidatedWebhookTarget> {
   const parsed = parseWebhookUrl(url);
-  if (
-    targetKind === "discord" &&
-    !/(^|\.)discord(?:app)?\.com$/u.test(parsed.hostname)
-  ) {
-    throw new AppError({
-      code: "WEBHOOK_DISCORD_URL_INVALID",
-      message: "Discord webhooks must point at discord.com",
-      status: 400,
-    });
+  const hostname = normalizedHostname(parsed);
+  if (isIP(hostname)) {
+    throw invalidWebhookTarget(
+      "WEBHOOK_URL_IP_LITERAL",
+      "Webhook URL must use a public hostname, not an IP literal",
+    );
   }
-  return parsed;
+  if (isLocalHostname(hostname)) {
+    throw invalidWebhookTarget(
+      "WEBHOOK_URL_HOST_PRIVATE",
+      "Webhook URL must not target localhost",
+    );
+  }
+  switch (targetKind) {
+    case "discord":
+      if (!/(^|\.)discord(?:app)?\.com$/u.test(hostname)) {
+        throw new AppError({
+          code: "WEBHOOK_DISCORD_URL_INVALID",
+          message: "Discord webhooks must point at discord.com",
+          status: 400,
+        });
+      }
+      break;
+    case "generic":
+      break;
+  }
+  parsed.hostname = hostname;
+  parsed.hash = "";
+  await resolvePublicAddresses(
+    hostname,
+    options.resolveHostname ?? defaultResolveHostname,
+  );
+  const normalizedUrl = parsed.toString();
+  return {
+    hostname,
+    redirectPolicy: "none",
+    targetKind,
+    url: normalizedUrl,
+    urlHash: webhookUrlHash(normalizedUrl),
+    urlLabel: urlLabel(parsed),
+  };
 }
 
 function urlLabel(parsed: URL): string {
@@ -263,6 +481,41 @@ function createCipher(encryptionKey: string): CredentialCipher {
 
 function encryptWebhookUrl(cipher: CredentialCipher, url: string): string {
   return cipher.encryptJson({ url });
+}
+
+function decryptWebhookUrl(
+  cipher: CredentialCipher,
+  encryptedUrl: string,
+): string {
+  const payload = cipher.decryptJson<{ url?: unknown }>(encryptedUrl);
+  switch (typeof payload.url) {
+    case "string":
+      if (payload.url.trim().length > 0) {
+        return payload.url;
+      }
+      break;
+    default:
+      break;
+  }
+  throw new AppError({
+    code: "WEBHOOK_URL_INVALID",
+    message: "Stored webhook URL payload is invalid",
+    status: 400,
+  });
+}
+
+async function validateStoredWebhookTarget(input: {
+  encryptedUrl: string;
+  encryptionKey: string;
+  resolveHostname?: WebhookHostnameResolver;
+  targetKind: LeagueWebhookTargetKind;
+}): Promise<ValidatedWebhookTarget> {
+  const cipher = createCipher(input.encryptionKey);
+  return validateWebhookTargetUrl(
+    decryptWebhookUrl(cipher, input.encryptedUrl),
+    input.targetKind,
+    { resolveHostname: input.resolveHostname },
+  );
 }
 
 function normalizeEventSelection(
@@ -385,13 +638,23 @@ function deliveryPayload(input: {
         contentItemId: input.content.id,
         leagueId: input.league.id,
       }),
-      summary: input.content.summary,
-      title: input.content.title,
+      summary: sanitizeWebhookMentionText(input.content.summary),
+      title: sanitizeWebhookMentionText(input.content.title),
     },
     eventType: input.eventType,
-    league: input.league,
+    league: {
+      id: input.league.id,
+      name: sanitizeWebhookMentionText(input.league.name),
+    },
     v: 1,
   };
+}
+
+export function sanitizeWebhookMentionText(value: string): string {
+  return value
+    .replace(/@(everyone|here)\b/giu, "@\u200b$1")
+    .replace(/<@([!&]?\d+)>/gu, "<@\u200b$1>")
+    .replace(/<#(\d+)>/gu, "<#\u200b$1>");
 }
 
 async function loadWebhook(
@@ -447,6 +710,32 @@ async function listWebhookRows(
     .orderBy(desc(leagueWebhooks.createdAt));
 
   return rows.map(toWebhookSummary);
+}
+
+async function listWebhookFanoutRows(
+  tx: LeagueScopedTx,
+  leagueId: string,
+): Promise<LeagueWebhookFanoutRow[]> {
+  const rows = await tx
+    .select({
+      createdAt: leagueWebhooks.createdAt,
+      encryptedUrl: leagueWebhooks.encryptedUrl,
+      eventSelection: leagueWebhooks.eventSelection,
+      id: leagueWebhooks.id,
+      lastDeliveryAt: leagueWebhooks.lastDeliveryAt,
+      lastFailureAt: leagueWebhooks.lastFailureAt,
+      name: leagueWebhooks.name,
+      status: leagueWebhooks.status,
+      targetKind: leagueWebhooks.targetKind,
+      updatedAt: leagueWebhooks.updatedAt,
+      urlHash: leagueWebhooks.urlHash,
+      urlLabel: leagueWebhooks.urlLabel,
+    })
+    .from(leagueWebhooks)
+    .where(eq(leagueWebhooks.leagueId, leagueId))
+    .orderBy(desc(leagueWebhooks.createdAt));
+
+  return rows;
 }
 
 async function listRecentDeliveries(
@@ -538,11 +827,22 @@ export async function getLeagueWebhookManagerData(
 }
 
 export async function createLeagueWebhook(
-  deps: { db: Db; encryptionKey: string; now?: () => Date },
+  deps: {
+    db: Db;
+    encryptionKey: string;
+    now?: () => Date;
+    resolveHostname?: WebhookHostnameResolver;
+  },
   input: CreateLeagueWebhookInput,
 ): Promise<LeagueWebhookMutationResult> {
   const targetKind = parseTargetKind(input.targetKind);
-  const parsedUrl = validateUrlForTargetKind(input.url, targetKind);
+  const validatedTarget = await validateWebhookTargetUrl(
+    input.url,
+    targetKind,
+    {
+      resolveHostname: deps.resolveHostname,
+    },
+  );
   const cipher = createCipher(deps.encryptionKey);
   const timestamp = deps.now?.() ?? now();
 
@@ -551,15 +851,15 @@ export async function createLeagueWebhook(
       .insert(leagueWebhooks)
       .values({
         createdByUserId: input.actorUserId,
-        encryptedUrl: encryptWebhookUrl(cipher, parsedUrl.toString()),
+        encryptedUrl: encryptWebhookUrl(cipher, validatedTarget.url),
         eventSelection: normalizeEventSelection(input.eventSelection),
         leagueId: input.leagueId,
         name: cleanName(input.name),
         targetKind,
         updatedAt: timestamp,
         updatedByUserId: input.actorUserId,
-        urlHash: webhookUrlHash(parsedUrl.toString()),
-        urlLabel: urlLabel(parsedUrl),
+        urlHash: validatedTarget.urlHash,
+        urlLabel: validatedTarget.urlLabel,
       })
       .returning({
         createdAt: leagueWebhooks.createdAt,
@@ -588,7 +888,12 @@ export async function createLeagueWebhook(
 }
 
 export async function updateLeagueWebhook(
-  deps: { db: Db; encryptionKey: string; now?: () => Date },
+  deps: {
+    db: Db;
+    encryptionKey: string;
+    now?: () => Date;
+    resolveHostname?: WebhookHostnameResolver;
+  },
   input: UpdateLeagueWebhookInput,
 ): Promise<LeagueWebhookMutationResult> {
   return withLeagueContext(deps.db, input.leagueId, async (tx) => {
@@ -622,26 +927,29 @@ export async function updateLeagueWebhook(
       update.eventSelection = normalizeEventSelection(input.eventSelection);
     }
 
-    const targetKind =
-      input.targetKind !== undefined
-        ? parseTargetKind(input.targetKind)
-        : existing.targetKind;
-    if (input.targetKind !== undefined) {
+    const targetKind = input.targetKind
+      ? parseTargetKind(input.targetKind)
+      : existing.targetKind;
+    if (input.targetKind) {
       update.targetKind = targetKind;
     }
-    if (targetKind !== existing.targetKind && input.url === undefined) {
+    if (Boolean(targetKind.localeCompare(existing.targetKind)) && !input.url) {
       throw new AppError({
         code: "WEBHOOK_URL_REQUIRED_FOR_TARGET_CHANGE",
         message: "Changing a webhook target kind requires a new webhook URL",
         status: 400,
       });
     }
-    if (input.url !== undefined) {
-      const parsedUrl = validateUrlForTargetKind(input.url, targetKind);
+    if (input.url) {
+      const validatedTarget = await validateWebhookTargetUrl(
+        input.url,
+        targetKind,
+        { resolveHostname: deps.resolveHostname },
+      );
       const cipher = createCipher(deps.encryptionKey);
-      update.encryptedUrl = encryptWebhookUrl(cipher, parsedUrl.toString());
-      update.urlHash = webhookUrlHash(parsedUrl.toString());
-      update.urlLabel = urlLabel(parsedUrl);
+      update.encryptedUrl = encryptWebhookUrl(cipher, validatedTarget.url);
+      update.urlHash = validatedTarget.urlHash;
+      update.urlLabel = validatedTarget.urlLabel;
     }
 
     const [row] = await tx
@@ -699,7 +1007,7 @@ export async function deleteLeagueWebhook(
 function errorMessage(value: unknown): string {
   const message =
     value instanceof Error ? value.message : "Webhook delivery failed";
-  return message.slice(0, MAX_WEBHOOK_ERROR_LENGTH);
+  return redactDeliveryError(message).slice(0, MAX_WEBHOOK_ERROR_LENGTH);
 }
 
 function timestampsForOutcome(
@@ -721,11 +1029,14 @@ function errorMessageForOutcome(
     case "delivered":
       return null;
     case "failed":
-      return (outcome.errorMessage ?? "Webhook delivery failed").slice(
-        0,
-        MAX_WEBHOOK_ERROR_LENGTH,
-      );
+      return redactDeliveryError(
+        outcome.errorMessage ?? "Webhook delivery failed",
+      ).slice(0, MAX_WEBHOOK_ERROR_LENGTH);
   }
+}
+
+export function redactDeliveryError(value: string): string {
+  return value.replace(/https?:\/\/[^\s"'<>]+/giu, "[redacted-url]");
 }
 
 export class MockWebhookDeliverer implements WebhookDeliverer {
@@ -735,8 +1046,10 @@ export class MockWebhookDeliverer implements WebhookDeliverer {
     private readonly options: {
       appUrl: string;
       db: Db;
+      encryptionKey?: string;
       failWebhookIds?: ReadonlySet<string>;
       now?: () => Date;
+      resolveHostname?: WebhookHostnameResolver;
     },
   ) {}
 
@@ -760,26 +1073,24 @@ export class MockWebhookDeliverer implements WebhookDeliverer {
       appUrl: this.options.appUrl,
       db: this.options.db,
       deliverer: this,
+      encryptionKey:
+        this.options.encryptionKey ?? DEV_CREDENTIAL_ENCRYPTION_KEY,
       input,
       now: this.options.now,
+      resolveHostname: this.options.resolveHostname,
     });
   }
 }
 
-async function deliverPublishedContentToWebhooks({
+async function loadWebhookFanoutPlan({
   appUrl,
   db,
-  deliverer,
   input,
-  now: nowFn,
 }: {
   appUrl: string;
   db: Db;
-  deliverer: WebhookDeliverer;
   input: { contentItemId: string; leagueId: string };
-  now?: () => Date;
-}): Promise<LeagueWebhookFanoutSummary> {
-  const timestamp = nowFn?.() ?? now();
+}): Promise<WebhookFanoutPlan | null> {
   return withLeagueContext(db, input.leagueId, async (tx) => {
     const [league] = await tx
       .select({ id: leagues.id, name: leagues.name })
@@ -808,7 +1119,7 @@ async function deliverPublishedContentToWebhooks({
       .limit(1);
 
     if (!league || !content || content.status !== "published") {
-      return { delivered: 0, failed: 0, skipped: 0 };
+      return null;
     }
 
     const eventType = contentEventType(content);
@@ -821,64 +1132,101 @@ async function deliverPublishedContentToWebhooks({
       section,
     });
     const eventKey = `content:${content.id}`;
-    const webhooks = (await listWebhookRows(tx, input.leagueId)).filter(
-      (webhook) => webhookWantsContent(webhook, { eventType, section }),
+    const webhooks = (await listWebhookFanoutRows(tx, input.leagueId)).filter(
+      (webhook) =>
+        webhookWantsContent(toWebhookSummary(webhook), { eventType, section }),
     );
-    const summary: LeagueWebhookFanoutSummary = {
-      delivered: 0,
-      failed: 0,
-      skipped: 0,
-    };
+    return { content, eventKey, eventType, league, payload, webhooks };
+  });
+}
 
-    for (const webhook of webhooks) {
-      const [existing] = await tx
-        .select({ id: webhookDeliveryRecords.id })
-        .from(webhookDeliveryRecords)
-        .where(
-          and(
-            eq(webhookDeliveryRecords.webhookId, webhook.id),
-            eq(webhookDeliveryRecords.eventKey, eventKey),
-          ),
-        )
-        .limit(1);
-      if (existing) {
-        summary.skipped += 1;
-        continue;
-      }
+async function loadDeliveryRetryState(
+  db: Db,
+  input: { eventKey: string; leagueId: string; webhookId: string },
+): Promise<WebhookDeliveryRetryState> {
+  const [state] = await withLeagueContext(db, input.leagueId, (tx) =>
+    tx
+      .select({
+        attemptCount: sql<number>`coalesce(max(${webhookDeliveryRecords.attemptCount}), 0)::int`,
+        delivered: sql<boolean>`coalesce(bool_or(${webhookDeliveryRecords.deliveryStatus} = 'delivered'), false)`,
+      })
+      .from(webhookDeliveryRecords)
+      .where(
+        and(
+          eq(webhookDeliveryRecords.webhookId, input.webhookId),
+          eq(webhookDeliveryRecords.eventKey, input.eventKey),
+        ),
+      ),
+  );
 
-      let outcome: WebhookDeliveryOutcome;
-      try {
-        outcome = await deliverer.deliver({
-          contentItemId: content.id,
-          eventKey,
-          eventType,
+  return {
+    attemptCount: state?.attemptCount ?? 0,
+    delivered: state?.delivered ?? false,
+  };
+}
+
+async function recordWebhookDelivery(input: {
+  content: WebhookContentRow;
+  db: Db;
+  deliveryMode: "mock" | "real";
+  eventKey: string;
+  eventType: LeagueWebhookContentEvent;
+  leagueId: string;
+  outcome: WebhookDeliveryOutcome;
+  payload: Record<string, unknown>;
+  targetKind: LeagueWebhookTargetKind;
+  timestamp: Date;
+  webhookId: string;
+}): Promise<"inserted" | "skipped"> {
+  const timestamps = timestampsForOutcome(
+    input.outcome.status,
+    input.timestamp,
+  );
+  const values = {
+    attemptCount:
+      (
+        await loadDeliveryRetryState(input.db, {
+          eventKey: input.eventKey,
           leagueId: input.leagueId,
-          payload,
-          targetKind: webhook.targetKind,
-          webhookId: webhook.id,
-          webhookName: webhook.name,
-        });
-      } catch (error) {
-        outcome = { errorMessage: errorMessage(error), status: "failed" };
+          webhookId: input.webhookId,
+        })
+      ).attemptCount + 1,
+    contentItemId: input.content.id,
+    deliveredAt: timestamps.deliveredAt,
+    deliveryMode: input.deliveryMode,
+    deliveryStatus: input.outcome.status,
+    errorMessage: errorMessageForOutcome(input.outcome),
+    eventKey: input.eventKey,
+    eventType: input.eventType,
+    failedAt: timestamps.failedAt,
+    leagueId: input.leagueId,
+    payload: input.payload,
+    targetKind: input.targetKind,
+    webhookId: input.webhookId,
+  };
+
+  const [inserted] = await withLeagueContext(
+    input.db,
+    input.leagueId,
+    async (tx) => {
+      if (input.outcome.status === "failed") {
+        const [delivered] = await tx
+          .select({ id: webhookDeliveryRecords.id })
+          .from(webhookDeliveryRecords)
+          .where(
+            and(
+              eq(webhookDeliveryRecords.webhookId, input.webhookId),
+              eq(webhookDeliveryRecords.eventKey, input.eventKey),
+              eq(webhookDeliveryRecords.deliveryStatus, "delivered"),
+            ),
+          )
+          .limit(1);
+        if (delivered) {
+          return [];
+        }
       }
 
-      const timestamps = timestampsForOutcome(outcome.status, timestamp);
-      const values = {
-        contentItemId: content.id,
-        deliveredAt: timestamps.deliveredAt,
-        deliveryMode: deliverer.config.mock ? "mock" : "real",
-        deliveryStatus: outcome.status,
-        errorMessage: errorMessageForOutcome(outcome),
-        eventKey,
-        eventType,
-        failedAt: timestamps.failedAt,
-        leagueId: input.leagueId,
-        payload,
-        targetKind: webhook.targetKind,
-        webhookId: webhook.id,
-      };
-
-      const [inserted] = await tx
+      return tx
         .insert(webhookDeliveryRecords)
         .values(values)
         .onConflictDoNothing({
@@ -886,50 +1234,146 @@ async function deliverPublishedContentToWebhooks({
             webhookDeliveryRecords.webhookId,
             webhookDeliveryRecords.eventKey,
           ],
+          where: sql`${webhookDeliveryRecords.deliveryStatus} = 'delivered'`,
         })
         .returning({ id: webhookDeliveryRecords.id });
+    },
+  );
 
-      if (!inserted) {
-        summary.skipped += 1;
-        continue;
-      }
+  if (!inserted) {
+    return "skipped";
+  }
 
-      if (outcome.status === "delivered") {
-        summary.delivered += 1;
-        await tx
-          .update(leagueWebhooks)
-          .set({ lastDeliveryAt: timestamp, updatedAt: timestamp })
-          .where(
-            and(
-              eq(leagueWebhooks.id, webhook.id),
-              eq(leagueWebhooks.leagueId, input.leagueId),
-            ),
-          );
-      } else {
-        summary.failed += 1;
-        await tx
-          .update(leagueWebhooks)
-          .set({ lastFailureAt: timestamp, updatedAt: timestamp })
-          .where(
-            and(
-              eq(leagueWebhooks.id, webhook.id),
-              eq(leagueWebhooks.leagueId, input.leagueId),
-            ),
-          );
-      }
+  await withLeagueContext(input.db, input.leagueId, (tx) =>
+    tx
+      .update(leagueWebhooks)
+      .set(
+        input.outcome.status === "delivered"
+          ? { lastDeliveryAt: input.timestamp, updatedAt: input.timestamp }
+          : { lastFailureAt: input.timestamp, updatedAt: input.timestamp },
+      )
+      .where(
+        and(
+          eq(leagueWebhooks.id, input.webhookId),
+          eq(leagueWebhooks.leagueId, input.leagueId),
+        ),
+      ),
+  );
+
+  return "inserted";
+}
+
+async function deliverPublishedContentToWebhooks({
+  appUrl,
+  db,
+  deliverer,
+  encryptionKey,
+  input,
+  now: nowFn,
+  resolveHostname,
+}: {
+  appUrl: string;
+  db: Db;
+  deliverer: WebhookDeliverer;
+  encryptionKey: string;
+  input: { contentItemId: string; leagueId: string };
+  now?: () => Date;
+  resolveHostname?: WebhookHostnameResolver;
+}): Promise<LeagueWebhookFanoutSummary> {
+  const timestamp = nowFn?.() ?? now();
+  const plan = await loadWebhookFanoutPlan({ appUrl, db, input });
+  if (!plan) {
+    return { delivered: 0, failed: 0, skipped: 0 };
+  }
+
+  const summary: LeagueWebhookFanoutSummary = {
+    delivered: 0,
+    failed: 0,
+    skipped: 0,
+  };
+
+  for (const webhook of plan.webhooks) {
+    const retryState = await loadDeliveryRetryState(db, {
+      eventKey: plan.eventKey,
+      leagueId: input.leagueId,
+      webhookId: webhook.id,
+    });
+    if (
+      retryState.delivered ||
+      retryState.attemptCount >= MAX_WEBHOOK_DELIVERY_ATTEMPTS
+    ) {
+      summary.skipped += 1;
+      continue;
     }
 
-    return summary;
-  });
+    let outcome: WebhookDeliveryOutcome;
+    try {
+      const target = await validateStoredWebhookTarget({
+        encryptedUrl: webhook.encryptedUrl,
+        encryptionKey,
+        resolveHostname,
+        targetKind: webhook.targetKind,
+      });
+      outcome = await deliverer.deliver({
+        contentItemId: plan.content.id,
+        eventKey: plan.eventKey,
+        eventType: plan.eventType,
+        leagueId: input.leagueId,
+        payload: plan.payload,
+        target,
+        targetKind: webhook.targetKind,
+        webhookId: webhook.id,
+        webhookName: webhook.name,
+      });
+    } catch (error) {
+      outcome = { errorMessage: errorMessage(error), status: "failed" };
+    }
+
+    const recorded = await recordWebhookDelivery({
+      content: plan.content,
+      db,
+      deliveryMode: deliverer.config.mock ? "mock" : "real",
+      eventKey: plan.eventKey,
+      eventType: plan.eventType,
+      leagueId: input.leagueId,
+      outcome,
+      payload: plan.payload,
+      targetKind: webhook.targetKind,
+      timestamp,
+      webhookId: webhook.id,
+    });
+    switch (recorded) {
+      case "skipped":
+        summary.skipped += 1;
+        continue;
+      case "inserted":
+        break;
+    }
+    switch (outcome.status) {
+      case "delivered":
+        summary.delivered += 1;
+        break;
+      case "failed":
+        summary.failed += 1;
+        break;
+    }
+  }
+
+  return summary;
 }
 
 export function createMockWebhookDeliverer(input: {
   appUrl: string;
   db: Db;
   encryptionKey?: string;
+  resolveHostname?: WebhookHostnameResolver;
 }) {
   // The encryption key is accepted here so dependency factories can pass the
-  // same credential config used by CRUD; mock delivery never decrypts URLs.
-  void input.encryptionKey;
-  return new MockWebhookDeliverer({ appUrl: input.appUrl, db: input.db });
+  // same credential config used by CRUD; mock delivery never sends network IO.
+  return new MockWebhookDeliverer({
+    appUrl: input.appUrl,
+    db: input.db,
+    encryptionKey: input.encryptionKey,
+    resolveHostname: input.resolveHostname,
+  });
 }

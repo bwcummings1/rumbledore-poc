@@ -1391,12 +1391,14 @@ export async function getLeaguePressArticleTeaserData(
       articleRow.authorPersona,
       personaBylines,
     );
-    const dek = articleDek(articleRow.metadata, articleRow.summary);
+    const dek = cappedTeaserText(
+      articleDek(articleRow.metadata, articleRow.summary),
+    );
 
     return {
       article: {
         byline: byline.label,
-        bylineDetail: byline.detail,
+        bylineDetail: "",
         dek,
         headline: articleRow.title,
         id: articleRow.id,
