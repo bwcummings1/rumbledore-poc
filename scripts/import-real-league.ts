@@ -57,6 +57,29 @@ function passFail(pass: boolean): string {
 loadEnvLocal(process.env);
 
 async function main(): Promise<void> {
+  // DESTRUCTIVE VERIFICATION HARNESS: this script DELETES the league row
+  // before importing, which cascades away ALL league-scoped curated state —
+  // pushed canonical snapshots, curation checkpoints, the edit ledger,
+  // content, and lore. (2026-07-10 incident: a routine "backfill" run wiped
+  // the dev league's canon.) It must never run without an explicit ack.
+  if (!process.argv.includes("--reset-league")) {
+    console.error(
+      [
+        "REFUSING TO RUN: scripts/import-real-league.ts is a RESET harness.",
+        "It deletes the league row first, cascading away pushed canonical",
+        "snapshots, checkpoints, the edit ledger, content, and lore.",
+        "",
+        "If you really want a from-scratch reset-and-verify import:",
+        "  1. Back up first:  bash scripts/dev-db-dump.sh",
+        "  2. Re-run with:    ... import-real-league.ts --reset-league",
+        "  3. Restore canon:  ... repush-all-seasons.ts <providerLeagueId> <actorUserId>",
+        "",
+        "For a routine data refresh, use the product import/sync APIs instead.",
+      ].join("\n"),
+    );
+    process.exit(2);
+  }
+
   const { parseEnv } = await import("../src/core/env/schema");
   const { createDb } = await import("../src/db/client");
   const { migrateSerialized } = await import("../src/db/test-support");
