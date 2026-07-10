@@ -2082,6 +2082,74 @@ describe("syncCurrentLeague", () => {
     });
   });
 
+  it("chunks season-scale roster and stat-breakdown upserts past the bind-parameter cap", async () => {
+    const providerLeagueId = `${marker}-chunked-breakdowns`;
+    const baseProvider = rosterCapableProviderFor(providerLeagueId);
+    const entries = Array.from({ length: 60 }, (_, playerIndex) => ({
+      actualPoints: 10,
+      player: {
+        provider: "espn" as const,
+        providerId: String(1000 + playerIndex),
+        leagueProviderId: providerLeagueId,
+        fullName: `Bulk Player ${playerIndex}`,
+        position: "RB",
+        proTeam: "ATL",
+        status: "active",
+      },
+      playerRef: {
+        provider: "espn" as const,
+        providerId: String(1000 + playerIndex),
+      },
+      slot: "RB",
+      started: true,
+      statBreakdown: Array.from({ length: 80 }, (_, statIndex) => ({
+        fantasyPoints: 0.1,
+        providerStatId: statIndex,
+        statCategory: "rushing",
+        statKey: `stat_${statIndex}`,
+        statSource: "actual" as const,
+        statValue: statIndex,
+      })),
+      status: "active",
+      points: 10,
+      projectedPoints: 11,
+    }));
+    const provider = {
+      ...baseProvider,
+      async getRosters() {
+        return ok([
+          {
+            teamRef: {
+              provider: "espn" as const,
+              providerId: "1",
+              season: 2026,
+            },
+            season: 2026,
+            scoringPeriod: 1,
+            entries,
+          },
+        ]);
+      },
+    };
+
+    // 4,800 breakdown rows x 16 bound columns = ~76,800 parameters, past the
+    // 65,535-parameter statement cap this regression guards.
+    const result = await syncCurrentLeague({
+      db: handle.db,
+      provider,
+      ref: fixtureRef(providerLeagueId),
+      session: fixtureSession(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value.rosters).toMatchObject({ changed: 60, total: 60 });
+    expect(result.value.playerStatBreakdowns).toMatchObject({
+      changed: 4800,
+      total: 4800,
+    });
+  });
+
   it("runs targeted stats recompute only when changed matchup rows are finalized", async () => {
     const providerLeagueId = `${marker}-95050-finalized-stats`;
     const firstProvider = providerFor(leagueFixtureFor(providerLeagueId));

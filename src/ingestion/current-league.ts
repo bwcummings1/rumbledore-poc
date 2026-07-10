@@ -2336,6 +2336,18 @@ async function upsertFantasyPlayers(
   return { playerIdByIdentity, stats: stats(rows.length, changed.length) };
 }
 
+// Postgres caps one statement at 65,535 bind parameters; season-scale roster
+// and stat-breakdown batches exceed it, so bulk upserts run in bounded chunks.
+const UPSERT_CHUNK_SIZE = 1000;
+
+function upsertChunks<T>(rows: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < rows.length; index += UPSERT_CHUNK_SIZE) {
+    chunks.push(rows.slice(index, index + UPSERT_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
 async function upsertRosterEntries(
   tx: LeagueScopedTx,
   leagueId: string,
@@ -2382,37 +2394,41 @@ async function upsertRosterEntries(
     return emptyStats();
   }
 
-  const changed = await tx
-    .insert(fantasyRosterEntries)
-    .values(rows)
-    .onConflictDoUpdate({
-      target: [
-        fantasyRosterEntries.leagueId,
-        fantasyRosterEntries.provider,
-        fantasyRosterEntries.leagueProviderId,
-        fantasyRosterEntries.providerTeamId,
-        fantasyRosterEntries.season,
-        fantasyRosterEntries.scoringPeriod,
-        fantasyRosterEntries.providerPlayerId,
-      ],
-      set: {
-        actualPoints: sql`excluded.actual_points`,
-        contentHash: sql`excluded.content_hash`,
-        fantasyPlayerId: sql`excluded.fantasy_player_id`,
-        isKeeper: sql`excluded.is_keeper`,
-        metadata: sql`excluded.metadata`,
-        points: sql`excluded.points`,
-        projectedPoints: sql`excluded.projected_points`,
-        slot: sql`excluded.slot`,
-        started: sql`excluded.started`,
-        status: sql`excluded.status`,
-        updatedAt: sql`now()`,
-      },
-      where: sql`${fantasyRosterEntries.contentHash} is distinct from excluded.content_hash`,
-    })
-    .returning({ id: fantasyRosterEntries.id });
+  let changedCount = 0;
+  for (const chunk of upsertChunks(rows)) {
+    const changed = await tx
+      .insert(fantasyRosterEntries)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [
+          fantasyRosterEntries.leagueId,
+          fantasyRosterEntries.provider,
+          fantasyRosterEntries.leagueProviderId,
+          fantasyRosterEntries.providerTeamId,
+          fantasyRosterEntries.season,
+          fantasyRosterEntries.scoringPeriod,
+          fantasyRosterEntries.providerPlayerId,
+        ],
+        set: {
+          actualPoints: sql`excluded.actual_points`,
+          contentHash: sql`excluded.content_hash`,
+          fantasyPlayerId: sql`excluded.fantasy_player_id`,
+          isKeeper: sql`excluded.is_keeper`,
+          metadata: sql`excluded.metadata`,
+          points: sql`excluded.points`,
+          projectedPoints: sql`excluded.projected_points`,
+          slot: sql`excluded.slot`,
+          started: sql`excluded.started`,
+          status: sql`excluded.status`,
+          updatedAt: sql`now()`,
+        },
+        where: sql`${fantasyRosterEntries.contentHash} is distinct from excluded.content_hash`,
+      })
+      .returning({ id: fantasyRosterEntries.id });
+    changedCount += changed.length;
+  }
 
-  return stats(rows.length, changed.length);
+  return stats(rows.length, changedCount);
 }
 
 async function upsertPlayerWeekStatBreakdowns(
@@ -2509,36 +2525,40 @@ async function upsertPlayerWeekStatBreakdowns(
     return emptyStats();
   }
 
-  const changed = await tx
-    .insert(fantasyPlayerWeekStatBreakdowns)
-    .values(rows)
-    .onConflictDoUpdate({
-      target: [
-        fantasyPlayerWeekStatBreakdowns.leagueId,
-        fantasyPlayerWeekStatBreakdowns.provider,
-        fantasyPlayerWeekStatBreakdowns.leagueProviderId,
-        fantasyPlayerWeekStatBreakdowns.providerTeamId,
-        fantasyPlayerWeekStatBreakdowns.season,
-        fantasyPlayerWeekStatBreakdowns.scoringPeriod,
-        fantasyPlayerWeekStatBreakdowns.providerPlayerId,
-        fantasyPlayerWeekStatBreakdowns.statSource,
-        fantasyPlayerWeekStatBreakdowns.providerStatId,
-      ],
-      set: {
-        contentHash: sql`excluded.content_hash`,
-        fantasyPlayerId: sql`excluded.fantasy_player_id`,
-        fantasyPoints: sql`excluded.fantasy_points`,
-        metadata: sql`excluded.metadata`,
-        statCategory: sql`excluded.stat_category`,
-        statKey: sql`excluded.stat_key`,
-        statValue: sql`excluded.stat_value`,
-        updatedAt: sql`now()`,
-      },
-      where: sql`${fantasyPlayerWeekStatBreakdowns.contentHash} is distinct from excluded.content_hash`,
-    })
-    .returning({ id: fantasyPlayerWeekStatBreakdowns.id });
+  let changedCount = 0;
+  for (const chunk of upsertChunks(rows)) {
+    const changed = await tx
+      .insert(fantasyPlayerWeekStatBreakdowns)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [
+          fantasyPlayerWeekStatBreakdowns.leagueId,
+          fantasyPlayerWeekStatBreakdowns.provider,
+          fantasyPlayerWeekStatBreakdowns.leagueProviderId,
+          fantasyPlayerWeekStatBreakdowns.providerTeamId,
+          fantasyPlayerWeekStatBreakdowns.season,
+          fantasyPlayerWeekStatBreakdowns.scoringPeriod,
+          fantasyPlayerWeekStatBreakdowns.providerPlayerId,
+          fantasyPlayerWeekStatBreakdowns.statSource,
+          fantasyPlayerWeekStatBreakdowns.providerStatId,
+        ],
+        set: {
+          contentHash: sql`excluded.content_hash`,
+          fantasyPlayerId: sql`excluded.fantasy_player_id`,
+          fantasyPoints: sql`excluded.fantasy_points`,
+          metadata: sql`excluded.metadata`,
+          statCategory: sql`excluded.stat_category`,
+          statKey: sql`excluded.stat_key`,
+          statValue: sql`excluded.stat_value`,
+          updatedAt: sql`now()`,
+        },
+        where: sql`${fantasyPlayerWeekStatBreakdowns.contentHash} is distinct from excluded.content_hash`,
+      })
+      .returning({ id: fantasyPlayerWeekStatBreakdowns.id });
+    changedCount += changed.length;
+  }
 
-  return stats(rows.length, changed.length);
+  return stats(rows.length, changedCount);
 }
 
 async function upsertDraftPicks(
