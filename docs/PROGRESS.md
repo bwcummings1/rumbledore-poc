@@ -380,6 +380,18 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-10: **Dev-DB canon reset incident + recovery.** `scripts/import-real-league.ts` (a reset-and-verify
+  harness that DELETES the league row first) was run as a routine backfill; the cascade wiped the dev league's
+  pushed snapshots, checkpoints, edit ledger, content, and lore (all were harness/test artifacts — no
+  owner-authored curation existed). The first run also crashed mid-import on an unchunked season-scale stat-
+  breakdown insert (> pg's 65,535 bind-param cap). Recovery, all landed on `main`: bulk upserts now chunk at
+  1,000 rows with a 4,800-row regression test (`e60842e`); the harness now refuses to run without
+  `--reset-league` and prints the backup/restore procedure (`b300879`); a first dev-DB backup was taken via
+  `scripts/dev-db-dump.sh`; the league was re-imported (new internal UUID — provider id `espn/95050` remains the
+  stable reference) and canon re-pushed via `scripts/repush-all-seasons.ts` (`cbefaa5`) with player facts —
+  Record Book incl. player records verified, all 14 integrity check keys PASS. Established twice-over: ESPN
+  exposes player depth for this league only for 2011–2017 + current season, and per-stat breakdowns only for the
+  current season — 2018–2025 player-level records are a provider limitation, not an import gap.
 - 2026-07-10: Task T19 landed on `ws/t19-records-substance` — the remaining agent-buildable backlog is complete:
   pushed-canon player records, per-stat scoring persistence and Data Book expansion, substrate-B AI/News enrichment,
   per-league AI usage attribution, the efficiency/hardening quick wins, `specs/42` H1-12..H1-17, and T18 editorial/
