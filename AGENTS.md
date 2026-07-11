@@ -12,9 +12,12 @@ current state, what's left, and this reading order). Then, in order:
 3. **`docs/PROGRESS.md`** — the SINGLE SOURCE OF TRUTH for live state: what's built, what's current, what's next.
    Read this first to know where the project actually is. (State/status notes go HERE.)
 4. **`docs/ROADMAP.md`** — the durable phase plan toward the North Star (done vs. next; the deferred follow-ons).
-5. **`docs/DATA-FOUNDATION-{DESIGN,PLAN,AUDIT}.md`** + **`.orchestration/handoff/T*.md`** — the recent data-foundation
+5. **`docs/HANDOFF-NEXT-AGENT.md`** — continuity context for whoever picks up next: the July 2026 arc (T18/T19 +
+   review + incident), owner discussions/decisions, open owner-gated items, and operational knowledge (harness,
+   accounts, scripts, dev-DB facts). Read after PROGRESS/ROADMAP.
+6. **`docs/DATA-FOUNDATION-{DESIGN,PLAN,AUDIT}.md`** + **`.orchestration/handoff/T*.md`** — the recent data-foundation
    arc (T1–T17): substrate/curation/records model, the ESPN decoding audit, and the per-task handoffs (task ledger).
-6. **`ORCHESTRATION.md`** (operating model — orchestrator + workstream agents) + **`DESIGN.md`** (AUSPEX design).
+7. **`ORCHESTRATION.md`** (operating model — orchestrator + workstream agents) + **`DESIGN.md`** (AUSPEX design).
 
 > **Retired relics — do NOT treat as live:** `IMPLEMENTATION_PLAN.md`, `loop.sh`, `PROMPT_build.md`/`PROMPT_harden.md`/
 > `PROMPT_plan.md` (the autonomous Ralph loop). Live state → `docs/PROGRESS.md`; plan → `docs/ROADMAP.md`.

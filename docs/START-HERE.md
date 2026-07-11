@@ -25,7 +25,11 @@ Drizzle/Postgres + RLS, Better Auth, Inngest, Anthropic; ESPN now, Sleeper/Yahoo
 - **IGNORE as retired/historical:** `IMPLEMENTATION_PLAN.md`, `loop.sh`, `PROMPT_*.md` (the old autonomous "Ralph loop").
   Live state lives in `docs/PROGRESS.md`, not these.
 
-## 2. Current state (through T19; migrations through 0072; T19 ready for orchestrator merge)
+> **Continuity note:** for the full context of the July 2026 arc — T18/T19 (both MERGED to `main`), the post-merge
+> adversarial review, the 2026-07-10 dev-DB incident + recovery, provider reliability posture, and the agreed next
+> steps — read **`docs/HANDOFF-NEXT-AGENT.md`** after this page.
+
+## 2. Current state (through T19, merged to `main`; migrations through 0072)
 The **data substrate (layer 1) is built and hardened**:
 - Per-league **curated data** with a save→push state machine + edit ledger + eras, and a read-only **Record Book**
   projected from pushed snapshots, including player-level records from pushed player/draft/roster facts (T1–T11, T19).

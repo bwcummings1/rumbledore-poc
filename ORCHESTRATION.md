@@ -2,6 +2,12 @@
 
 **This supersedes the Ralph loop.** The autonomous loop is retired (`loop.sh` is guarded off; `PROMPT_build.md` / `PROMPT_harden.md` / `PROMPT_plan.md` and the "pick the next `IMPLEMENTATION_PLAN.md` task and loop forever" model are historical). This file is how the Rumbledore build runs now.
 
+> **Posture update (owner decision, recorded in `docs/PROGRESS.md` §2; banner added 2026-07-11):** the
+> `review/increment-1` integration branch below is **historical** — everything now merges to **`main`**. The
+> operating model itself (orchestrator + workstream agents on `ws/*` branches in worktrees; agents never merge;
+> the orchestrator merges after a full gate run) is unchanged and remains authoritative. Recent working examples
+> of the full harness: `.orchestration/prompts/prompt-T18.md` / `prompt-T19.md` + `.orchestration/track-runner.sh`.
+
 Base: **`main`** (untouched this increment). Integration/review branch: **`review/increment-1`** (cut from `main`; the owner reviews this). Specs of record: `specs/00–35` (delivered) + **`specs/36+`** (this increment). Conventions/gates: `AGENTS.md`. Vision: `docs/NORTH-STAR.md`. Visual system (a hard gate): `DESIGN.md`.
 
 ---
