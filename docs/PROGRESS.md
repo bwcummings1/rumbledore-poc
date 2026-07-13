@@ -1,7 +1,13 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-10 — **Task T19 on `ws/t19-records-substance`**:
+Keep it current. Last updated: 2026-07-13 — **Track 47B on `ws/47b-property-suite`**:
+Spec 47 §C now has seeded, shrinkable `fast-check` generators over the normalized season schema plus DB-backed
+properties proving import idempotence, season/league-scoped reconciliation, bind-cap-safe volume, loud integrity
+failure, same-season co-owner identity separation, and ESPN provider-code decoding coverage. The default property
+budget is bounded for CI (three ordinary DB runs and one season-scale volume run), with deeper dispatches available
+through `PROPERTY_RUNS`; removing row chunking makes the volume regression fail above PostgreSQL's 65,535 bind cap.
+Prior state: **Task T19 on `ws/t19-records-substance`**:
 the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
 roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
 steals/busts, and bench tragedies. ESPN imports now persist per-player-week scoring-stat breakdowns with a
@@ -381,6 +387,9 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track 47B landed Spec 47 §C's seeded normalized-schema generators and all six ingestion properties;
+  default CI runs stay bounded, `PROPERTY_RUNS` enables deeper dispatches, and a temporary no-chunk mutation proved
+  the season-scale regression fails above PostgreSQL's bind-parameter cap before production chunking was restored.
 - 2026-07-10: **Dev-DB canon reset incident + recovery.** `scripts/import-real-league.ts` (a reset-and-verify
   harness that DELETES the league row first) was run as a routine backfill; the cascade wiped the dev league's
   pushed snapshots, checkpoints, edit ledger, content, and lore (all were harness/test artifacts — no
