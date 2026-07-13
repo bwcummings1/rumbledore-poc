@@ -3,7 +3,7 @@
     "roster_id": 1,
     "matchup_id": 1,
     "points": 12,
-    "players": ["QB1", "RB1", "WR1", "BN1", "IR1"],
+    "players": ["QB1", "RB1", "WR1", "BN1", "IR1", "ARI"],
     "starters": ["QB1", "RB1", "WR1"]
   },
   {

@@ -11,3 +11,11 @@ export {
   type SleeperProvider,
   type SleeperSession,
 } from "./client";
+export {
+  CachedSleeperPlayerCatalog,
+  createSleeperPlayerCatalog,
+  type SleeperCatalogFetch,
+  type SleeperCatalogPlayer,
+  type SleeperPlayerCatalog,
+  type SleeperPlayerCatalogOptions,
+} from "./player-catalog";

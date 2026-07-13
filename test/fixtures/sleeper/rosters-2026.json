@@ -4,7 +4,7 @@
     "owner_id": "user-1",
     "co_owners": ["user-3"],
     "league_id": "sleeper-2026",
-    "players": ["QB1", "RB1", "WR1", "BN1", "IR1"],
+    "players": ["QB1", "RB1", "WR1", "BN1", "IR1", "ARI"],
     "starters": ["QB1", "RB1", "WR1"],
     "reserve": ["IR1"],
     "settings": {

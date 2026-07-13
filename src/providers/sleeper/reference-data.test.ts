@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import league2025Fixture from "../../../test/fixtures/sleeper/league-2025.json";
 import leagues2026Fixture from "../../../test/fixtures/sleeper/leagues-2026.json";
+import playersFixture from "../../../test/fixtures/sleeper/players-nfl.json";
 import transactionsWeek1Fixture from "../../../test/fixtures/sleeper/transactions-2026-week1.json";
 import {
   decodeSleeperPosition,
@@ -87,6 +88,22 @@ describe("Sleeper reference data", () => {
         decodeSleeperTransactionType(transaction.type),
         `unknown fixture transaction type ${transaction.type}`,
       ).toBeDefined();
+    }
+    for (const player of Object.values(playersFixture)) {
+      expect(
+        decodeSleeperPosition(player.position),
+        `unknown fixture position ${player.position}`,
+      ).toBe(player.position);
+      for (const position of player.fantasy_positions) {
+        expect(
+          decodeSleeperRosterSlot(position),
+          `unknown fixture eligible slot ${position}`,
+        ).toBe(position);
+      }
+      expect(
+        decodeSleeperProTeam(player.team),
+        `unknown fixture pro team ${player.team}`,
+      ).toBe(player.team);
     }
   });
 

@@ -5,11 +5,13 @@ import league2025Fixture from "../../../test/fixtures/sleeper/league-2025.json";
 import leagues2026Fixture from "../../../test/fixtures/sleeper/leagues-2026.json";
 import matchupsWeek1Fixture from "../../../test/fixtures/sleeper/matchups-2026-week1.json";
 import matchupsWeek2Fixture from "../../../test/fixtures/sleeper/matchups-2026-week2.json";
+import playersFixture from "../../../test/fixtures/sleeper/players-nfl.json";
 import rostersFixture from "../../../test/fixtures/sleeper/rosters-2026.json";
 import stateFixture from "../../../test/fixtures/sleeper/state-2026.json";
 import transactionsWeek1Fixture from "../../../test/fixtures/sleeper/transactions-2026-week1.json";
 import userFixture from "../../../test/fixtures/sleeper/user-fixture.json";
 import usersFixture from "../../../test/fixtures/sleeper/users-2026.json";
+import { providerCodeDecodingIssues } from "../decoding";
 import {
   AuthExpiredError,
   ProviderBlockedError,
@@ -17,18 +19,56 @@ import {
   ProviderParseError,
 } from "../model";
 import {
-  createSleeperClient,
-  createSleeperProvider,
+  createSleeperClient as createBaseSleeperClient,
+  createSleeperProvider as createBaseSleeperProvider,
+  type SleeperClientOptions,
   type SleeperFetch,
   type SleeperSession,
 } from "./client";
+import type {
+  SleeperCatalogPlayer,
+  SleeperPlayerCatalog,
+} from "./player-catalog";
 import {
+  encodeSleeperPosition,
   encodeSleeperRosterSlot,
   encodeSleeperScoringSetting,
   encodeSleeperTransactionType,
 } from "./reference-data";
 
 const league2026Fixture = leagues2026Fixture[0];
+
+const fixtureCatalogPlayers = new Map<string, SleeperCatalogPlayer>(
+  Object.entries(playersFixture).map(([id, player]) => [
+    id,
+    {
+      active: player.active,
+      fantasyPositions: player.fantasy_positions,
+      fullName: player.full_name,
+      playerId: player.player_id,
+      position: player.position,
+      proTeam: player.team,
+      status: player.status,
+    },
+  ]),
+);
+const fixturePlayerCatalog: SleeperPlayerCatalog = {
+  load: async () => ({ ok: true, value: fixtureCatalogPlayers }),
+};
+
+function createSleeperClient(options: SleeperClientOptions = {}) {
+  return createBaseSleeperClient({
+    ...options,
+    playerCatalog: options.playerCatalog ?? fixturePlayerCatalog,
+  });
+}
+
+function createSleeperProvider(options: SleeperClientOptions = {}) {
+  return createBaseSleeperProvider({
+    ...options,
+    playerCatalog: options.playerCatalog ?? fixturePlayerCatalog,
+  });
+}
 
 const leagueRef = {
   provider: "sleeper",
@@ -86,6 +126,7 @@ function fixtureRoutes(): Record<string, FixtureRouteValue> {
   return {
     "https://api.sleeper.app/v1/user/fixture_sleeper": userFixture,
     "https://api.sleeper.app/v1/user/user-123": userFixture,
+    "https://api.sleeper.app/v1/players/nfl": playersFixture,
     "https://api.sleeper.app/v1/state/nfl": stateFixture,
     "https://api.sleeper.app/v1/user/user-123/leagues/nfl/2026":
       leagues2026Fixture,
@@ -350,7 +391,7 @@ describe("Sleeper provider", () => {
     expect(result.value[1].role).toBe("member");
   });
 
-  it("normalizes roster entries with slots, statuses, and week points", async () => {
+  it("attaches named players, decoded identity, lineup state, and weekly actuals", async () => {
     const { fetch } = createFixtureFetch();
     const client = createSleeperClient({ fetch, retryDelayMs: 0 });
 
@@ -364,58 +405,73 @@ describe("Sleeper provider", () => {
       season: 2026,
       scoringPeriod: 1,
     });
-    expect(result.value[0].entries).toEqual([
-      {
-        playerRef: { provider: "sleeper", providerId: "QB1" },
-        slot: "QB",
-        status: "active",
-        points: 22.4,
+    const entries = result.value[0].entries;
+    expect(entries).toHaveLength(6);
+    expect(entries[0]).toMatchObject({
+      actualPoints: 22.4,
+      player: {
+        provider: "sleeper",
+        providerId: "QB1",
+        leagueProviderId: "sleeper-2026",
+        fullName: "Quentin Banks",
+        position: "QB",
+        proTeam: "BUF",
         metadata: {
-          lineupSlotId: requiredCode(encodeSleeperRosterSlot("QB")),
-          lineupSlotLabel: "QB",
+          catalogMissing: false,
+          catalogSource: "sleeper.players.nfl",
+          rawPosition: "QB",
+          rawProTeam: "BUF",
         },
       },
-      {
-        playerRef: { provider: "sleeper", providerId: "RB1" },
-        slot: "RB",
-        status: "active",
-        points: 18.1,
+      playerRef: { provider: "sleeper", providerId: "QB1" },
+      points: 22.4,
+      slot: "QB",
+      started: true,
+      status: "active",
+      metadata: {
+        lineupSlotId: requiredCode(encodeSleeperRosterSlot("QB")),
+        lineupSlotLabel: "QB",
+        rawLineupSlot: "QB",
+      },
+    });
+    expect(
+      entries.find((entry) => entry.playerRef.providerId === "BN1"),
+    ).toMatchObject({
+      actualPoints: 7,
+      player: { fullName: "Bennett North", position: "TE" },
+      slot: "BN",
+      started: false,
+      status: "bench",
+    });
+    expect(
+      entries.find((entry) => entry.playerRef.providerId === "IR1"),
+    ).toMatchObject({
+      actualPoints: 0,
+      player: { fullName: "Isaiah Rivers", position: "RB" },
+      slot: "IR",
+      started: false,
+      status: "reserve",
+    });
+    expect(
+      entries.find((entry) => entry.playerRef.providerId === "ARI"),
+    ).toMatchObject({
+      actualPoints: 8,
+      player: {
+        fullName: "Arizona Cardinals",
+        position: "DEF",
+        proTeam: "ARI",
         metadata: {
-          lineupSlotId: requiredCode(encodeSleeperRosterSlot("RB")),
-          lineupSlotLabel: "RB",
+          defenseProviderIdConvention: "nfl_team_code",
+          isTeamDefense: true,
         },
       },
-      {
-        playerRef: { provider: "sleeper", providerId: "WR1" },
-        slot: "WR",
-        status: "active",
-        points: 14.2,
-        metadata: {
-          lineupSlotId: requiredCode(encodeSleeperRosterSlot("WR")),
-          lineupSlotLabel: "WR",
-        },
-      },
-      {
-        playerRef: { provider: "sleeper", providerId: "BN1" },
-        slot: "BN",
-        status: "bench",
-        points: 7,
-        metadata: {
-          lineupSlotId: requiredCode(encodeSleeperRosterSlot("BN")),
-          lineupSlotLabel: "BN",
-        },
-      },
-      {
-        playerRef: { provider: "sleeper", providerId: "IR1" },
-        slot: "IR",
-        status: "reserve",
-        points: 0,
-        metadata: {
-          lineupSlotId: requiredCode(encodeSleeperRosterSlot("IR")),
-          lineupSlotLabel: "IR",
-        },
-      },
-    ]);
+      playerRef: { provider: "sleeper", providerId: "ARI" },
+      slot: "BN",
+      started: false,
+    });
+    expect(entries.map((entry) => entry.player?.position)).not.toContain(
+      "unknown",
+    );
   });
 
   it("defaults rosters to the current NFL display week", async () => {
@@ -435,6 +491,48 @@ describe("Sleeper provider", () => {
     );
   });
 
+  it("persists an unknown catalog position as a loud decoding issue", async () => {
+    const players = new Map(fixtureCatalogPlayers);
+    const qb = players.get("QB1");
+    if (!qb) throw new Error("QB1 fixture player is missing");
+    players.set("QB1", { ...qb, position: "MYSTERY_POSITION" });
+    const playerCatalog: SleeperPlayerCatalog = {
+      load: async () => ({ ok: true, value: players }),
+    };
+    const { fetch } = createFixtureFetch();
+    const client = createSleeperClient({
+      fetch,
+      playerCatalog,
+      retryDelayMs: 0,
+    });
+
+    const result = await client.getRosters(fixtureSession(), leagueRef, 1);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    const normalized = result.value[0].entries.find(
+      (entry) => entry.playerRef.providerId === "QB1",
+    )?.player;
+    expect(normalized?.position).toBe("unknown");
+    const positionId = normalized?.metadata?.defaultPositionId;
+    expect(positionId).toBe(
+      requiredCode(encodeSleeperPosition("MYSTERY_POSITION")),
+    );
+    expect(positionId).toBeTypeOf("number");
+    expect(
+      providerCodeDecodingIssues("sleeper", {
+        positions: [positionId as number],
+      }),
+    ).toEqual([
+      {
+        id: positionId,
+        kind: "position",
+        provider: "sleeper",
+        reason: "unknown_code",
+      },
+    ]);
+  });
+
   it("normalizes one week of paired Sleeper matchup rows", async () => {
     const { fetch } = createFixtureFetch();
     const client = createSleeperClient({ fetch, retryDelayMs: 0 });
@@ -452,9 +550,9 @@ describe("Sleeper provider", () => {
         scoringPeriod: 1,
         homeTeamRef: { provider: "sleeper", providerId: "1", season: 2026 },
         awayTeamRef: { provider: "sleeper", providerId: "2", season: 2026 },
-        homeScore: 125.75,
+        homeScore: 54.7,
         awayScore: 110.02,
-        winner: "home",
+        winner: "away",
         status: "final",
       },
       {
@@ -517,6 +615,28 @@ describe("Sleeper provider", () => {
     expect(result.value[0].teams).toHaveLength(4);
     expect(result.value[0].members).toHaveLength(4);
     expect(result.value[0].matchups).toHaveLength(4);
+    expect(result.value[0].rosters).toHaveLength(8);
+    expect(result.value[0].players).toHaveLength(15);
+    expect(result.value[0].players).toContainEqual(
+      expect.objectContaining({
+        providerId: "QB1",
+        fullName: "Quentin Banks",
+        position: "QB",
+        proTeam: "BUF",
+      }),
+    );
+    expect(
+      result.value[0].rosters
+        ?.find(
+          (roster) =>
+            roster.teamRef.providerId === "1" && roster.scoringPeriod === 1,
+        )
+        ?.entries.find((entry) => entry.playerRef.providerId === "QB1"),
+    ).toMatchObject({
+      actualPoints: 22.4,
+      player: { fullName: "Quentin Banks", position: "QB" },
+      started: true,
+    });
     expect(result.value[0].finalStandings[0]).toMatchObject({
       rank: 1,
       teamRef: { provider: "sleeper", providerId: "1", season: 2025 },

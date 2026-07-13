@@ -12,6 +12,7 @@ import {
   type NormalizedMatchupStatus,
   type NormalizedMatchupWinner,
   type NormalizedMember,
+  type NormalizedPlayer,
   type NormalizedPostseasonSettings,
   type NormalizedRoster,
   type NormalizedRosterEntry,
@@ -29,6 +30,16 @@ import {
   type SeasonScopedProviderEntityRef,
 } from "../model";
 import {
+  createSleeperPlayerCatalog,
+  type SleeperCatalogPlayer,
+  type SleeperPlayerCatalog,
+} from "./player-catalog";
+import {
+  decodeSleeperPosition,
+  decodeSleeperProTeam,
+  decodeSleeperRosterSlot,
+  encodeSleeperPosition,
+  encodeSleeperProTeam,
   encodeSleeperRosterSlot,
   encodeSleeperScoringSetting,
   encodeSleeperTransactionType,
@@ -57,6 +68,8 @@ export type SleeperFetch = (
 export interface SleeperClientOptions {
   fetch?: SleeperFetch;
   maxAttempts?: number;
+  playerCatalog?: SleeperPlayerCatalog;
+  playerCatalogCacheFilePath?: string;
   retryDelayMs?: number;
   timeoutMs?: number;
 }
@@ -785,7 +798,91 @@ function normalizeTeam(
 }
 
 function playerIds(values: readonly (string | number)[] | null | undefined) {
-  return compactUnique((values ?? []).map(toId));
+  return compactUnique((values ?? []).map(toId)).filter(
+    (playerId) => playerId !== "0",
+  );
+}
+
+function normalizedSleeperPlayer({
+  catalogPlayer,
+  playerId,
+  ref,
+}: {
+  catalogPlayer?: SleeperCatalogPlayer;
+  playerId: string;
+  ref: ProviderLeagueRef;
+}): NormalizedPlayer {
+  // Sleeper represents NFL team defenses with the team abbreviation itself as
+  // the durable player id (for example "ARI"). Preserve that real id verbatim,
+  // just as ESPN preserves its negative D/ST ids, and synthesize catalog depth
+  // only when the large player dump omits the team row.
+  const defenseTeam =
+    catalogPlayer === undefined && playerId !== "FA"
+      ? decodeSleeperProTeam(playerId)
+      : undefined;
+  const resolvedPlayer =
+    catalogPlayer ??
+    (defenseTeam
+      ? {
+          active: true,
+          fantasyPositions: ["DEF"],
+          fullName: `${defenseTeam} D/ST`,
+          playerId,
+          position: "DEF",
+          proTeam: defenseTeam,
+          status: "Active",
+        }
+      : undefined);
+  const rawPosition =
+    resolvedPlayer?.position ??
+    resolvedPlayer?.fantasyPositions[0] ??
+    "CATALOG_MISSING";
+  const rawProTeam = resolvedPlayer?.proTeam;
+  const positionId = encodeSleeperPosition(rawPosition);
+  const proTeamId = rawProTeam ? encodeSleeperProTeam(rawProTeam) : undefined;
+  const eligibleSlotCodes = resolvedPlayer?.fantasyPositions ?? [];
+  const eligibleSlots = eligibleSlotCodes
+    .map(encodeSleeperRosterSlot)
+    .filter((slotId): slotId is number => slotId !== undefined);
+  const position = decodeSleeperPosition(rawPosition) ?? "unknown";
+  const proTeam = rawProTeam
+    ? (decodeSleeperProTeam(rawProTeam) ?? "unknown")
+    : undefined;
+  const isTeamDefense = position === "DEF";
+  const catalogSource = catalogPlayer
+    ? "sleeper.players.nfl"
+    : defenseTeam
+      ? "sleeper.team-defense-id"
+      : "sleeper.players.nfl.missing";
+
+  return {
+    provider: SLEEPER_PROVIDER_ID,
+    providerId: playerId,
+    leagueProviderId: ref.providerId,
+    fullName: resolvedPlayer?.fullName ?? `Sleeper Player ${playerId}`,
+    position,
+    ...(proTeam ? { proTeam } : {}),
+    ...(resolvedPlayer?.status
+      ? { status: resolvedPlayer.status }
+      : resolvedPlayer?.active === undefined
+        ? {}
+        : { status: resolvedPlayer.active ? "Active" : "Inactive" }),
+    metadata: {
+      catalogMissing: resolvedPlayer === undefined,
+      catalogSource,
+      ...(positionId === undefined ? {} : { defaultPositionId: positionId }),
+      eligibleSlotLabels: eligibleSlotCodes.map(
+        (slot) => decodeSleeperRosterSlot(slot) ?? "unknown",
+      ),
+      eligibleSlots,
+      ...(isTeamDefense
+        ? { defenseProviderIdConvention: "nfl_team_code", isTeamDefense: true }
+        : {}),
+      ...(proTeamId === undefined ? {} : { proTeamId }),
+      rawPosition,
+      ...(rawProTeam ? { rawProTeam } : {}),
+    },
+  };
 }
 
 function matchupPoints(matchup: SleeperMatchup): number {
@@ -933,18 +1030,28 @@ function normalizeMatchupsForWeek({
 function normalizeRosterEntries({
   league,
   matchup,
+  playerCatalog,
+  ref,
   roster,
 }: {
   league: SleeperLeague;
   matchup?: SleeperMatchup;
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
+  ref: ProviderLeagueRef;
   roster: SleeperRoster;
 }): NormalizedRosterEntry[] {
-  const players = playerIds(roster.players);
-  const starters = playerIds(roster.starters);
+  const players = compactUnique([
+    ...playerIds(matchup?.players ?? roster.players),
+    ...Object.keys(matchup?.players_points ?? {}),
+  ]).filter((playerId) => playerId !== "0");
+  const starterValues = matchup?.starters ?? roster.starters ?? [];
   const reserve = new Set(playerIds(roster.reserve));
   const taxi = new Set(playerIds(roster.taxi));
-  const starterIndexByPlayer = new Map(
-    starters.map((playerId, index) => [playerId, index]),
+  const starterIndexByPlayer = new Map<string, number>(
+    starterValues.flatMap((value, index) => {
+      const playerId = toId(value);
+      return playerId && playerId !== "0" ? ([[playerId, index]] as const) : [];
+    }),
   );
   const rosterPositions = league.roster_positions ?? [];
 
@@ -957,7 +1064,8 @@ function normalizeRosterEntries({
           : taxi.has(playerId)
             ? "TAXI"
             : "BN"
-        : (rosterPositions[starterIndex] ?? "starter");
+        : (rosterPositions[starterIndex] ?? "UNKNOWN_STARTER");
+    const normalizedSlot = decodeSleeperRosterSlot(slot) ?? "unknown";
     const status =
       starterIndex === undefined
         ? reserve.has(playerId)
@@ -970,16 +1078,29 @@ function normalizeRosterEntries({
     const lineupSlotId = encodeSleeperRosterSlot(slot);
 
     return {
+      ...(points === undefined ? {} : { actualPoints: points }),
+      player: normalizedSleeperPlayer({
+        catalogPlayer: playerCatalog.get(playerId),
+        playerId,
+        ref,
+      }),
       playerRef: {
         provider: SLEEPER_PROVIDER_ID,
         providerId: playerId,
       },
-      slot,
+      slot: normalizedSlot,
+      started: starterIndex !== undefined,
       status,
       ...(points === undefined ? {} : { points }),
       ...(lineupSlotId === undefined
         ? {}
-        : { metadata: { lineupSlotId, lineupSlotLabel: slot } }),
+        : {
+            metadata: {
+              lineupSlotId,
+              lineupSlotLabel: normalizedSlot,
+              rawLineupSlot: slot,
+            },
+          }),
     };
   });
 }
@@ -987,12 +1108,14 @@ function normalizeRosterEntries({
 function normalizeRoster({
   league,
   matchup,
+  playerCatalog,
   ref,
   roster,
   scoringPeriod,
 }: {
   league: SleeperLeague;
   matchup?: SleeperMatchup;
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
   ref: ProviderLeagueRef;
   roster: SleeperRoster;
   scoringPeriod: number;
@@ -1006,8 +1129,32 @@ function normalizeRoster({
     },
     season: ref.season,
     scoringPeriod,
-    entries: normalizeRosterEntries({ league, matchup, roster }),
+    entries: normalizeRosterEntries({
+      league,
+      matchup,
+      playerCatalog,
+      ref,
+      roster,
+    }),
   };
+}
+
+function normalizedPlayersFromRosters(
+  rosters: readonly NormalizedRoster[],
+): NormalizedPlayer[] {
+  const players = new Map<string, NormalizedPlayer>();
+  for (const roster of rosters) {
+    for (const entry of roster.entries) {
+      if (entry.player) {
+        players.set(entry.player.providerId, entry.player);
+      }
+    }
+  }
+  return [...players.values()].sort((left, right) =>
+    left.providerId.localeCompare(right.providerId, undefined, {
+      numeric: true,
+    }),
+  );
 }
 
 function finalStandingsFromTeams(
@@ -1146,6 +1293,7 @@ function normalizeTransactions(
 export class SleeperClient {
   private readonly fetchImpl: SleeperFetch;
   private readonly maxAttempts: number;
+  private readonly playerCatalog: SleeperPlayerCatalog;
   private readonly retryDelayMs: number;
   private readonly timeoutMs: number;
 
@@ -1157,6 +1305,15 @@ export class SleeperClient {
       options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS,
     );
     this.timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    this.playerCatalog =
+      options.playerCatalog ??
+      createSleeperPlayerCatalog({
+        ...(options.playerCatalogCacheFilePath
+          ? { cacheFilePath: options.playerCatalogCacheFilePath }
+          : {}),
+        fetch: this.fetchImpl,
+        timeoutMs: this.timeoutMs,
+      });
   }
 
   async authenticate(
@@ -1320,6 +1477,10 @@ export class SleeperClient {
     if (!rosters.ok) {
       return rosters;
     }
+    const playerCatalog = await this.playerCatalog.load();
+    if (!playerCatalog.ok) {
+      return playerCatalog;
+    }
 
     let state: SleeperState | undefined;
     if (scoringPeriod === undefined) {
@@ -1353,6 +1514,7 @@ export class SleeperClient {
         return normalizeRoster({
           league: league.value,
           matchup: matchupsByRosterId.get(providerId),
+          playerCatalog: playerCatalog.value,
           ref,
           roster,
           scoringPeriod: period,
@@ -1508,9 +1670,10 @@ export class SleeperClient {
     league: SleeperLeague,
   ): Promise<ProviderResult<NormalizedSeasonBundle>> {
     const ref = sleeperLeagueRef(league);
-    const [users, rosters] = await Promise.all([
+    const [users, rosters, playerCatalog] = await Promise.all([
       this.fetchLeagueUsers(ref.providerId),
       this.fetchRosters(ref.providerId),
+      this.playerCatalog.load(),
     ]);
     if (!users.ok) {
       return users;
@@ -1518,17 +1681,22 @@ export class SleeperClient {
     if (!rosters.ok) {
       return rosters;
     }
+    if (!playerCatalog.ok) {
+      return playerCatalog;
+    }
 
     const teams = rosters.value.map((roster) =>
       normalizeTeam(roster, ref, userById(users.value)),
     );
     const members = users.value.map((user) => normalizeMember(user, ref));
-    const matchups = await this.fetchAllNormalizedMatchups({
+    const weeklyDepth = await this.fetchAllNormalizedMatchupsAndRosters({
       league,
+      playerCatalog: playerCatalog.value,
       ref,
+      rosterRows: rosters.value,
     });
-    if (!matchups.ok) {
-      return matchups;
+    if (!weeklyDepth.ok) {
+      return weeklyDepth;
     }
     const transactions = await this.fetchAllNormalizedTransactions({
       league,
@@ -1542,26 +1710,38 @@ export class SleeperClient {
       league: normalizeLeague(league),
       teams,
       members,
-      matchups: matchups.value,
+      matchups: weeklyDepth.value.matchups,
       finalStandings: finalStandingsFromTeams(teams),
+      players: normalizedPlayersFromRosters(weeklyDepth.value.rosters),
+      rosters: weeklyDepth.value.rosters,
       transactions: transactions.value,
     });
   }
 
-  private async fetchAllNormalizedMatchups({
+  private async fetchAllNormalizedMatchupsAndRosters({
     league,
+    playerCatalog,
     ref,
+    rosterRows,
   }: {
     league: SleeperLeague;
+    playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
     ref: ProviderLeagueRef;
-  }): Promise<ProviderResult<NormalizedMatchup[]>> {
-    const normalized: NormalizedMatchup[] = [];
+    rosterRows: readonly SleeperRoster[];
+  }): Promise<
+    ProviderResult<{
+      matchups: NormalizedMatchup[];
+      rosters: NormalizedRoster[];
+    }>
+  > {
+    const normalizedMatchups: NormalizedMatchup[] = [];
+    const normalizedRosters: NormalizedRoster[] = [];
     for (let week = 1; week <= maxWeekForLeague(league); week += 1) {
       const matchups = await this.fetchMatchups(ref.providerId, week);
       if (!matchups.ok) {
         return matchups;
       }
-      normalized.push(
+      normalizedMatchups.push(
         ...normalizeMatchupsForWeek({
           league,
           matchups: matchups.value,
@@ -1569,9 +1749,28 @@ export class SleeperClient {
           scoringPeriod: week,
         }),
       );
+      const matchupByRosterId = new Map(
+        matchups.value.map((matchup) => [
+          String(toInteger(matchup.roster_id) ?? matchup.roster_id),
+          matchup,
+        ]),
+      );
+      normalizedRosters.push(
+        ...rosterRows.map((roster) => {
+          const providerId = rosterProviderId(roster);
+          return normalizeRoster({
+            league,
+            matchup: matchupByRosterId.get(providerId),
+            playerCatalog,
+            ref,
+            roster,
+            scoringPeriod: week,
+          });
+        }),
+      );
     }
 
-    return ok(normalized);
+    return ok({ matchups: normalizedMatchups, rosters: normalizedRosters });
   }
 
   private async fetchAllNormalizedTransactions({

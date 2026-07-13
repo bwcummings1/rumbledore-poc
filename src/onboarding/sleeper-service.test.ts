@@ -6,6 +6,8 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import {
   fantasyMatchups,
+  fantasyPlayers,
+  fantasyRosterEntries,
   leagues,
   members,
   onboardingDiscoveredLeagues,
@@ -18,10 +20,15 @@ import {
   type SleeperFetch,
   type SleeperProvider,
 } from "@/providers/sleeper/client";
+import type {
+  SleeperCatalogPlayer,
+  SleeperPlayerCatalog,
+} from "@/providers/sleeper/player-catalog";
 import league2025Fixture from "../../test/fixtures/sleeper/league-2025.json";
 import leagues2026Fixture from "../../test/fixtures/sleeper/leagues-2026.json";
 import matchupsWeek1Fixture from "../../test/fixtures/sleeper/matchups-2026-week1.json";
 import matchupsWeek2Fixture from "../../test/fixtures/sleeper/matchups-2026-week2.json";
+import playersFixture from "../../test/fixtures/sleeper/players-nfl.json";
 import rostersFixture from "../../test/fixtures/sleeper/rosters-2026.json";
 import stateFixture from "../../test/fixtures/sleeper/state-2026.json";
 import transactionsWeek1Fixture from "../../test/fixtures/sleeper/transactions-2026-week1.json";
@@ -40,6 +47,23 @@ const masterKey = "test-sleeper-onboarding-master-key-32"; // ubs:ignore — fak
 
 let handle: DbHandle;
 const providerLeagueIds = new Set<string>();
+const fixtureCatalogPlayers = new Map<string, SleeperCatalogPlayer>(
+  Object.entries(playersFixture).map(([id, player]) => [
+    id,
+    {
+      active: player.active,
+      fantasyPositions: player.fantasy_positions,
+      fullName: player.full_name,
+      playerId: player.player_id,
+      position: player.position,
+      proTeam: player.team,
+      status: player.status,
+    },
+  ]),
+);
+const fixturePlayerCatalog: SleeperPlayerCatalog = {
+  load: async () => ({ ok: true, value: fixtureCatalogPlayers }),
+};
 
 type SleeperLeagueFixture = (typeof leagues2026Fixture)[number];
 type FixtureRouteValue = Response | unknown;
@@ -78,6 +102,7 @@ function fixtureProvider({
   previousLeague.name = `${marker} Sleeper League 2025`;
 
   const routes: Record<string, FixtureRouteValue> = {
+    "https://api.sleeper.app/v1/players/nfl": playersFixture,
     "https://api.sleeper.app/v1/state/nfl": stateFixture,
     "https://api.sleeper.app/v1/user/fixture_sleeper": userFixture,
     "https://api.sleeper.app/v1/user/user-123/leagues/nfl/2026": [
@@ -128,7 +153,11 @@ function fixtureProvider({
     return route instanceof Response ? route : jsonResponse(route);
   };
 
-  return createSleeperProvider({ fetch, retryDelayMs: 0 });
+  return createSleeperProvider({
+    fetch,
+    playerCatalog: fixturePlayerCatalog,
+    retryDelayMs: 0,
+  });
 }
 
 async function seedUser(tag: string) {
@@ -321,6 +350,32 @@ describe("Sleeper onboarding service", () => {
       .from(fantasyMatchups)
       .where(eq(fantasyMatchups.leagueId, imported.value.leagueId));
     expect(matchupRows).toHaveLength(4);
+
+    const playerRows = await handle.db
+      .select()
+      .from(fantasyPlayers)
+      .where(eq(fantasyPlayers.leagueId, imported.value.leagueId));
+    expect(playerRows).toHaveLength(15);
+    expect(
+      playerRows.find((player) => player.providerPlayerId === "QB1"),
+    ).toMatchObject({
+      fullName: "Quentin Banks",
+      position: "QB",
+      proTeam: "BUF",
+    });
+
+    const rosterEntryRows = await handle.db
+      .select()
+      .from(fantasyRosterEntries)
+      .where(eq(fantasyRosterEntries.leagueId, imported.value.leagueId));
+    expect(rosterEntryRows).toHaveLength(15);
+    expect(
+      rosterEntryRows.find((entry) => entry.providerPlayerId === "QB1"),
+    ).toMatchObject({
+      scoringPeriod: 2,
+      slot: "QB",
+      started: true,
+    });
 
     const discoveredRows = await handle.db
       .select()
