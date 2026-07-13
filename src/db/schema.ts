@@ -1327,6 +1327,12 @@ export const providerPayloadObservations = pgTable(
       .$type<Array<"shape_additive" | "shape_changed" | "semantic">>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    acknowledgedByUserId: uuid("acknowledged_by_user_id").references(
+      () => users.id,
+      { onDelete: "set null" },
+    ),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgementReason: text("acknowledgement_reason"),
     addedPaths: jsonb("added_paths")
       .$type<string[]>()
       .notNull()
@@ -1374,6 +1380,11 @@ export const providerPayloadObservations = pgTable(
       table.outcome,
       table.observedAt,
     ),
+    index("provider_payload_observation_unacknowledged_alert_idx")
+      .on(table.leagueId, table.observedAt)
+      .where(
+        sql`${table.outcome} = 'alert' AND ${table.acknowledgedAt} IS NULL`,
+      ),
     pgPolicy("provider_payload_observation_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,

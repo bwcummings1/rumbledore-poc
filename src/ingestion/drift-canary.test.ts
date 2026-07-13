@@ -5,14 +5,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
-import { leagues } from "@/db/schema";
+import { leagues, users } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import {
   createFixtureEspnProvider,
   FIXTURE_ESPN_PROVIDER_LEAGUE_ID,
 } from "@/onboarding/fixture-espn";
 import type { FantasyProviderSession } from "@/providers/model";
-import { listDataStewardReview } from "@/stats";
+import {
+  acknowledgeProviderPayloadDriftAlert,
+  listDataStewardReview,
+} from "@/stats";
 import {
   type ProviderPayloadCanaryProvider,
   providerPayloadSchemaShape,
@@ -27,6 +30,7 @@ const fixtureCredentials = {
 let handle: DbHandle;
 let leagueId: string;
 let session: FantasyProviderSession;
+let stewardUserId: string;
 
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
@@ -48,6 +52,17 @@ beforeAll(async () => {
     throw new Error("drift canary fixture league was not created");
   }
   leagueId = league.id;
+  const [steward] = await handle.db
+    .insert(users)
+    .values({
+      displayName: "Payload Drift Steward",
+      email: `${marker}@example.test`,
+    })
+    .returning({ id: users.id });
+  if (!steward) {
+    throw new Error("drift canary steward was not created");
+  }
+  stewardUserId = steward.id;
 
   const auth =
     await createFixtureEspnProvider().authenticate(fixtureCredentials);
@@ -61,6 +76,9 @@ afterAll(async () => {
   if (handle) {
     if (leagueId) {
       await handle.db.delete(leagues).where(eq(leagues.id, leagueId));
+    }
+    if (stewardUserId) {
+      await handle.db.delete(users).where(eq(users.id, stewardUserId));
     }
     await handle.pool.end();
   }
@@ -136,7 +154,7 @@ describe("provider payload drift canary", () => {
     ]);
   });
 
-  it("keeps identical fixture re-fetches stable and exposes shape/semantic alerts to stewards", async () => {
+  it("keeps alerts visible through stable ticks until acknowledgement and re-alerts on new drift", async () => {
     const provider = createFixtureEspnProvider();
     const first = await runProviderPayloadCanary({
       db: handle.db,
@@ -191,6 +209,22 @@ describe("provider payload drift canary", () => {
       '$["scoringSettings"]["canaryAddedScoringField"]:number',
     );
 
+    const stableAfterAlert = await runProviderPayloadCanary({
+      db: handle.db,
+      leagueId,
+      observedAt: new Date("2026-07-13T10:12:00.000Z"),
+      provider: settingsMutatedProvider(provider),
+      providerId: "espn",
+      providerLeagueId: marker,
+      ref: ref(),
+      session,
+    });
+    expect(stableAfterAlert.alerts).toBe(0);
+    expect(stableAfterAlert.observations.map((row) => row.outcome)).toEqual([
+      "stable",
+      "stable",
+    ]);
+
     const shapeReview = await listDataStewardReview(handle.db, { leagueId });
     expect(shapeReview.ok).toBe(true);
     if (!shapeReview.ok) {
@@ -202,6 +236,31 @@ describe("provider payload drift canary", () => {
         view: "settings",
       }),
     ]);
+    if (!settingsAlert) {
+      throw new Error("settings drift alert was not recorded");
+    }
+
+    const acknowledged = await acknowledgeProviderPayloadDriftAlert(handle.db, {
+      actorUserId: stewardUserId,
+      alertId: settingsAlert.id,
+      leagueId,
+      reason: "provider field addition reviewed",
+    });
+    expect(acknowledged).toMatchObject({
+      ok: true,
+      value: {
+        acknowledgedByUserId: stewardUserId,
+        acknowledgementReason: "provider field addition reviewed",
+        id: settingsAlert.id,
+      },
+    });
+    const afterAcknowledgement = await listDataStewardReview(handle.db, {
+      leagueId,
+    });
+    expect(afterAcknowledgement).toMatchObject({
+      ok: true,
+      value: { payloadDriftAlerts: [] },
+    });
 
     const semanticMutation = await runProviderPayloadCanary({
       db: handle.db,
