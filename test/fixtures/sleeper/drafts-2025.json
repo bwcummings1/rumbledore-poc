@@ -1,0 +1,18 @@
+[
+  {
+    "draft_id": "draft-sleeper-2025",
+    "league_id": "sleeper-2025",
+    "season": "2025",
+    "sport": "nfl",
+    "status": "complete",
+    "type": "linear",
+    "settings": {
+      "rounds": 1,
+      "teams": 4
+    },
+    "metadata": {
+      "name": "Sleeper Fixture Draft 2025",
+      "scoring_type": "ppr"
+    }
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "draft_id": "draft-sleeper-2026",
+    "draft_slot": 1,
+    "is_keeper": true,
+    "metadata": {
+      "first_name": "Quentin",
+      "last_name": "Banks",
+      "player_id": "QB1",
+      "position": "QB",
+      "status": "Active",
+      "team": "BUF"
+    },
+    "pick_no": 1,
+    "picked_by": "user-1",
+    "player_id": "QB1",
+    "roster_id": 1,
+    "round": 1
+  },
+  {
+    "draft_id": "draft-sleeper-2026",
+    "draft_slot": 2,
+    "is_keeper": null,
+    "metadata": {
+      "first_name": "Riley",
+      "last_name": "Brooks",
+      "player_id": "RB2",
+      "position": "RB",
+      "status": "Active",
+      "team": "ATL"
+    },
+    "pick_no": 2,
+    "picked_by": "user-2",
+    "player_id": "RB2",
+    "roster_id": 2,
+    "round": 1
+  },
+  {
+    "draft_id": "draft-sleeper-2026",
+    "draft_slot": 4,
+    "is_keeper": false,
+    "metadata": {
+      "first_name": "Wesley",
+      "last_name": "Dunn",
+      "player_id": "WR4",
+      "position": "WR",
+      "status": "Active",
+      "team": "DEN"
+    },
+    "pick_no": 5,
+    "picked_by": "user-4",
+    "player_id": "WR4",
+    "roster_id": 4,
+    "round": 2
+  }
+]

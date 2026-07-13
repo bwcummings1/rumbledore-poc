@@ -4,10 +4,13 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
+import { withLeagueContext } from "@/db/rls";
 import {
+  fantasyDraftPicks,
   fantasyMatchups,
   fantasyPlayers,
   fantasyRosterEntries,
+  identityMappings,
   leagues,
   members,
   onboardingDiscoveredLeagues,
@@ -24,6 +27,8 @@ import type {
   SleeperCatalogPlayer,
   SleeperPlayerCatalog,
 } from "@/providers/sleeper/player-catalog";
+import draftPicks2026Fixture from "../../test/fixtures/sleeper/draft-picks-2026.json";
+import drafts2026Fixture from "../../test/fixtures/sleeper/drafts-2026.json";
 import league2025Fixture from "../../test/fixtures/sleeper/league-2025.json";
 import leagues2026Fixture from "../../test/fixtures/sleeper/leagues-2026.json";
 import matchupsWeek1Fixture from "../../test/fixtures/sleeper/matchups-2026-week1.json";
@@ -121,6 +126,10 @@ function fixtureProvider({
       usersFixture,
     [`https://api.sleeper.app/v1/league/${previousLeagueId}/users`]:
       usersFixture,
+    [`https://api.sleeper.app/v1/league/${currentLeagueId}/drafts`]:
+      drafts2026Fixture,
+    "https://api.sleeper.app/v1/draft/draft-sleeper-2026/picks":
+      draftPicks2026Fixture,
     [`https://api.sleeper.app/v1/league/${currentLeagueId}/matchups/1`]:
       matchupsWeek1Fixture,
     [`https://api.sleeper.app/v1/league/${currentLeagueId}/matchups/2`]:
@@ -314,6 +323,11 @@ describe("Sleeper onboarding service", () => {
       changed: 4,
       unchanged: 0,
     });
+    expect(imported.value.sync.draftPicks).toEqual({
+      total: 3,
+      changed: 3,
+      unchanged: 0,
+    });
     expect(imported.value.leaguemateInvites).toMatchObject({
       importedMembers: 4,
       inviteTargets: 4,
@@ -364,6 +378,22 @@ describe("Sleeper onboarding service", () => {
       proTeam: "BUF",
     });
 
+    const draftRows = await handle.db
+      .select()
+      .from(fantasyDraftPicks)
+      .where(eq(fantasyDraftPicks.leagueId, imported.value.leagueId));
+    expect(draftRows).toHaveLength(3);
+    expect(
+      draftRows.find((pick) => pick.providerPickId === "draft-sleeper-2026:1"),
+    ).toMatchObject({
+      isKeeper: true,
+      pickInRound: 1,
+      pickOverall: 1,
+      providerPlayerId: "QB1",
+      providerTeamId: "1",
+      round: 1,
+    });
+
     const rosterEntryRows = await handle.db
       .select()
       .from(fantasyRosterEntries)
@@ -376,6 +406,25 @@ describe("Sleeper onboarding service", () => {
       slot: "QB",
       started: true,
     });
+
+    const identityRows = await withLeagueContext(
+      handle.db,
+      imported.value.leagueId,
+      (tx) =>
+        tx
+          .select()
+          .from(identityMappings)
+          .where(eq(identityMappings.leagueId, imported.value.leagueId)),
+    );
+    const sharedOwnerTeam = identityRows.find(
+      (mapping) => mapping.providerTeamId === "1" && mapping.season === 2026,
+    );
+    const directOwnerTeam = identityRows.find(
+      (mapping) => mapping.providerTeamId === "3" && mapping.season === 2026,
+    );
+    expect(sharedOwnerTeam).toBeDefined();
+    expect(directOwnerTeam).toBeDefined();
+    expect(sharedOwnerTeam?.personId).not.toBe(directOwnerTeam?.personId);
 
     const discoveredRows = await handle.db
       .select()

@@ -5,6 +5,7 @@ import {
   type FantasyProvider,
   type FantasyProviderCapabilities,
   type FantasyProviderSession,
+  type NormalizedDraftPick,
   type NormalizedFinalStanding,
   type NormalizedKeeperSettings,
   type NormalizedLeague,
@@ -126,6 +127,9 @@ const numericValue = z.union([z.number(), z.string()]);
 const nullableIdValue = z.union([z.string(), z.number()]).nullable();
 const nullableString = z.string().nullable().optional();
 const nullableNumericValue = z.union([z.number(), z.string()]).nullable();
+const nullableBooleanValue = z
+  .union([z.boolean(), z.number(), z.string()])
+  .nullable();
 const playerIdArray = z.array(idValue);
 const recordNumberSchema = z.union([z.number(), z.string(), z.null()]);
 
@@ -166,6 +170,7 @@ const sleeperLeagueSchema = z
     settings: z
       .object({
         last_scored_leg: numericValue.optional(),
+        playoff_teams: numericValue.optional(),
         playoff_week_start: numericValue.optional(),
         start_week: numericValue.optional(),
       })
@@ -259,6 +264,69 @@ const sleeperTransactionSchema = z
 
 const sleeperTransactionListSchema = z.array(sleeperTransactionSchema);
 
+const sleeperDraftSchema = z
+  .object({
+    draft_id: idValue,
+    league_id: idValue.optional(),
+    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+    season: numericValue.optional(),
+    settings: z
+      .object({
+        rounds: numericValue.optional(),
+        teams: numericValue.optional(),
+      })
+      .catchall(z.unknown())
+      .optional(),
+    sport: z.string().optional(),
+    status: z.string().optional(),
+    type: z.string().optional(),
+  })
+  .passthrough();
+
+const sleeperDraftListSchema = z.array(sleeperDraftSchema);
+
+const sleeperDraftPickSchema = z
+  .object({
+    draft_id: idValue,
+    draft_slot: numericValue.optional(),
+    is_keeper: nullableBooleanValue.optional(),
+    metadata: z
+      .object({
+        first_name: nullableString,
+        last_name: nullableString,
+        player_id: nullableIdValue.optional(),
+        position: nullableString,
+        status: nullableString,
+        team: nullableString,
+      })
+      .catchall(z.unknown())
+      .nullable()
+      .optional(),
+    pick_no: numericValue,
+    picked_by: nullableIdValue.optional(),
+    player_id: nullableIdValue.optional(),
+    roster_id: nullableNumericValue,
+    round: numericValue,
+  })
+  .passthrough();
+
+const sleeperDraftPickListSchema = z.array(sleeperDraftPickSchema);
+
+const sleeperBracketMatchSchema = z
+  .object({
+    l: nullableNumericValue.optional(),
+    m: numericValue.optional(),
+    p: nullableNumericValue.optional(),
+    r: numericValue.optional(),
+    w: nullableNumericValue.optional(),
+  })
+  .passthrough();
+
+const sleeperBracketSchema = z.array(sleeperBracketMatchSchema);
+
+type SleeperBracketMatch = z.infer<typeof sleeperBracketMatchSchema>;
+type SleeperDraft = z.infer<typeof sleeperDraftSchema>;
+type SleeperDraftPick = z.infer<typeof sleeperDraftPickSchema>;
 type SleeperLeague = z.infer<typeof sleeperLeagueSchema>;
 type SleeperLeagueUser = z.infer<typeof sleeperLeagueUserSchema>;
 type SleeperMatchup = z.infer<typeof sleeperMatchupSchema>;
@@ -369,6 +437,22 @@ function leagueRostersUrl(leagueId: string): string {
 
 function leagueUsersUrl(leagueId: string): string {
   return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/users`);
+}
+
+function leagueDraftsUrl(leagueId: string): string {
+  return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/drafts`);
+}
+
+function draftPicksUrl(draftId: string): string {
+  return apiUrl(`/v1/draft/${encodeURIComponent(draftId)}/picks`);
+}
+
+function leagueWinnersBracketUrl(leagueId: string): string {
+  return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/winners_bracket`);
+}
+
+function leagueLosersBracketUrl(leagueId: string): string {
+  return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/losers_bracket`);
 }
 
 function leagueMatchupsUrl(leagueId: string, week: number): string {
@@ -502,6 +586,30 @@ function booleanSetting(
   return undefined;
 }
 
+function booleanValue(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value === 1 ? true : value === 0 ? false : undefined;
+  }
+  if (typeof value === "string") {
+    switch (value.trim().toLowerCase()) {
+      case "1":
+      case "true":
+      case "yes":
+        return true;
+      case "0":
+      case "false":
+      case "no":
+        return false;
+      default:
+        return undefined;
+    }
+  }
+  return undefined;
+}
+
 function normalizeScoringSettings(
   league: SleeperLeague,
 ): Record<string, unknown> {
@@ -618,7 +726,11 @@ function positiveInteger(
 function normalizePostseasonSettings(
   league: SleeperLeague,
 ): NormalizedPostseasonSettings | undefined {
+  const rawSettings = isPlainObject(league.settings) ? league.settings : {};
   const playoffStart = positiveInteger(league.settings?.playoff_week_start);
+  const playoffTeamCount = positiveInteger(
+    numberSetting(rawSettings, "playoff_teams"),
+  );
   const lastScoredLeg = positiveInteger(league.settings?.last_scored_leg);
   const isComplete = normalizeLeagueStatus(league.status) === "complete";
   const championshipScoringPeriod =
@@ -628,6 +740,7 @@ function normalizePostseasonSettings(
       ? lastScoredLeg
       : undefined;
   const settings: NormalizedPostseasonSettings = {
+    ...(playoffTeamCount ? { playoffTeamCount } : {}),
     ...(playoffStart
       ? {
           playoffStartScoringPeriod: playoffStart,
@@ -1157,35 +1270,238 @@ function normalizedPlayersFromRosters(
   );
 }
 
+function catalogPlayerFromDraftPick(
+  pick: SleeperDraftPick,
+  playerId: string,
+): SleeperCatalogPlayer | undefined {
+  const rawPosition = pick.metadata?.position?.trim();
+  const fullName = compactUnique([
+    pick.metadata?.first_name,
+    pick.metadata?.last_name,
+  ]).join(" ");
+  if (!rawPosition || !fullName) {
+    return undefined;
+  }
+
+  const status = pick.metadata?.status?.trim();
+  const proTeam = pick.metadata?.team?.trim();
+  return {
+    fantasyPositions: [rawPosition],
+    fullName,
+    playerId,
+    position: rawPosition,
+    ...(proTeam ? { proTeam } : {}),
+    ...(status ? { active: status.toLowerCase() === "active", status } : {}),
+  };
+}
+
+function normalizeDraftPick({
+  draft,
+  pick,
+  playerCatalog,
+  ref,
+}: {
+  draft: SleeperDraft;
+  pick: SleeperDraftPick;
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
+  ref: ProviderLeagueRef;
+}): NormalizedDraftPick | undefined {
+  const draftId = toId(draft.draft_id);
+  const pickOverall = positiveInteger(pick.pick_no);
+  const rosterId = toId(pick.roster_id);
+  const round = positiveInteger(pick.round);
+  if (!draftId || !pickOverall || !rosterId || !round) {
+    return undefined;
+  }
+
+  const teamCount = positiveInteger(draft.settings?.teams);
+  const draftSlot = positiveInteger(pick.draft_slot);
+  const pickInRound = teamCount
+    ? ((pickOverall - 1) % teamCount) + 1
+    : draftSlot;
+  const playerId =
+    toId(pick.player_id) ?? toId(pick.metadata?.player_id ?? undefined);
+  const catalogPlayer = playerId
+    ? (playerCatalog.get(playerId) ??
+      catalogPlayerFromDraftPick(pick, playerId))
+    : undefined;
+  const isKeeper = booleanValue(pick.is_keeper);
+  const player =
+    playerId && catalogPlayer
+      ? normalizedSleeperPlayer({ catalogPlayer, playerId, ref })
+      : undefined;
+
+  return {
+    provider: SLEEPER_PROVIDER_ID,
+    providerId: `${draftId}:${pickOverall}`,
+    leagueProviderId: ref.providerId,
+    season: ref.season,
+    round,
+    pickOverall,
+    ...(pickInRound ? { pickInRound } : {}),
+    teamRef: {
+      provider: SLEEPER_PROVIDER_ID,
+      providerId: rosterId,
+      season: ref.season,
+    },
+    ...(playerId
+      ? {
+          playerRef: {
+            provider: SLEEPER_PROVIDER_ID,
+            providerId: playerId,
+          },
+        }
+      : {}),
+    ...(player ? { player } : {}),
+    ...(isKeeper === undefined ? {} : { isKeeper }),
+    metadata: {
+      draftId,
+      ...(draftSlot ? { draftSlot } : {}),
+      ...(draft.status ? { draftStatus: draft.status } : {}),
+      ...(draft.type ? { draftType: draft.type } : {}),
+      ...(toId(pick.picked_by) ? { pickedBy: toId(pick.picked_by) } : {}),
+    },
+  };
+}
+
+function normalizeDraftPicks({
+  draftsWithPicks,
+  playerCatalog,
+  ref,
+}: {
+  draftsWithPicks: readonly {
+    draft: SleeperDraft;
+    picks: readonly SleeperDraftPick[];
+  }[];
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
+  ref: ProviderLeagueRef;
+}): NormalizedDraftPick[] {
+  return draftsWithPicks
+    .flatMap(({ draft, picks }) =>
+      picks.flatMap((pick) => {
+        const normalized = normalizeDraftPick({
+          draft,
+          pick,
+          playerCatalog,
+          ref,
+        });
+        return normalized ? [normalized] : [];
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.providerId.localeCompare(right.providerId, undefined, {
+          numeric: true,
+        }) || (left.pickOverall ?? 0) - (right.pickOverall ?? 0),
+    );
+}
+
+function sortedTeamsByRegularSeason(
+  teams: readonly NormalizedTeam[],
+): NormalizedTeam[] {
+  return [...teams].sort((left, right) => {
+    return (
+      right.record.wins - left.record.wins ||
+      right.record.ties - left.record.ties ||
+      right.record.pointsFor - left.record.pointsFor ||
+      left.name.localeCompare(right.name) ||
+      left.providerId.localeCompare(right.providerId)
+    );
+  });
+}
+
+function bracketPlacements(
+  bracket: readonly SleeperBracketMatch[],
+  rankOffset: number,
+): { rank: number; teamProviderId: string }[] {
+  return bracket.flatMap((matchup) => {
+    const placement = positiveInteger(matchup.p);
+    const winner = toId(matchup.w);
+    const loser = toId(matchup.l);
+    if (!placement || !winner || !loser) {
+      return [];
+    }
+    return [
+      { rank: rankOffset + placement, teamProviderId: winner },
+      { rank: rankOffset + placement + 1, teamProviderId: loser },
+    ];
+  });
+}
+
 function finalStandingsFromTeams(
   teams: readonly NormalizedTeam[],
+  options: {
+    losersBracket?: readonly SleeperBracketMatch[];
+    playoffTeamCount?: number;
+    winnersBracket?: readonly SleeperBracketMatch[];
+  } = {},
 ): NormalizedFinalStanding[] {
-  return [...teams]
-    .sort((left, right) => {
-      return (
-        right.record.wins - left.record.wins ||
-        right.record.ties - left.record.ties ||
-        right.record.pointsFor - left.record.pointsFor ||
-        left.name.localeCompare(right.name) ||
-        left.providerId.localeCompare(right.providerId)
-      );
-    })
-    .map((team, index) => ({
-      leagueProviderId: team.leagueProviderId,
-      teamRef: {
-        provider: team.provider,
-        providerId: team.providerId,
-        season: team.season,
-      },
-      rank: index + 1,
-      rankConfidence: "low",
-      rankSource: "regular_season_fallback",
-      wins: team.record.wins,
-      losses: team.record.losses,
-      ties: team.record.ties,
-      pointsFor: team.record.pointsFor,
-      pointsAgainst: team.record.pointsAgainst,
-    }));
+  const regularSeasonOrder = sortedTeamsByRegularSeason(teams);
+  const winnersPlacements = bracketPlacements(options.winnersBracket ?? [], 0);
+  const inferredPlayoffTeamCount = winnersPlacements.reduce(
+    (maximum, placement) => Math.max(maximum, placement.rank),
+    0,
+  );
+  const playoffTeamCount = options.playoffTeamCount ?? inferredPlayoffTeamCount;
+  const reportedPlacements = [
+    ...winnersPlacements,
+    ...bracketPlacements(options.losersBracket ?? [], playoffTeamCount),
+  ].filter(
+    ({ rank, teamProviderId }) =>
+      rank <= teams.length &&
+      teams.some((team) => team.providerId === teamProviderId),
+  );
+  const reportedRankByTeam = new Map<string, number>();
+  const usedRanks = new Set<number>();
+  for (const { rank, teamProviderId } of reportedPlacements) {
+    if (reportedRankByTeam.has(teamProviderId) || usedRanks.has(rank)) {
+      continue;
+    }
+    reportedRankByTeam.set(teamProviderId, rank);
+    usedRanks.add(rank);
+  }
+  const fallbackRanks = Array.from(
+    { length: teams.length },
+    (_, index) => index + 1,
+  ).filter((rank) => !usedRanks.has(rank));
+  const rankByTeam = new Map(reportedRankByTeam);
+  for (const team of regularSeasonOrder) {
+    if (!rankByTeam.has(team.providerId)) {
+      const rank = fallbackRanks.shift();
+      if (rank !== undefined) {
+        rankByTeam.set(team.providerId, rank);
+      }
+    }
+  }
+
+  return regularSeasonOrder
+    .map(
+      (team): NormalizedFinalStanding => ({
+        leagueProviderId: team.leagueProviderId,
+        teamRef: {
+          provider: team.provider,
+          providerId: team.providerId,
+          season: team.season,
+        },
+        rank: rankByTeam.get(team.providerId) ?? teams.length,
+        rankConfidence: reportedRankByTeam.has(team.providerId)
+          ? "high"
+          : "low",
+        rankSource: reportedRankByTeam.has(team.providerId)
+          ? "provider_calculated_final"
+          : "regular_season_fallback",
+        wins: team.record.wins,
+        losses: team.record.losses,
+        ties: team.record.ties,
+        pointsFor: team.record.pointsFor,
+        pointsAgainst: team.record.pointsAgainst,
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        left.teamRef.providerId.localeCompare(right.teamRef.providerId),
+    );
 }
 
 function normalizeTransactionType(
@@ -1523,6 +1839,17 @@ export class SleeperClient {
     );
   }
 
+  async getDraftPicks(
+    _session: SleeperSession,
+    ref: ProviderLeagueRef,
+  ): Promise<ProviderResult<NormalizedDraftPick[]>> {
+    const playerCatalog = await this.playerCatalog.load();
+    if (!playerCatalog.ok) {
+      return playerCatalog;
+    }
+    return this.loadDraftPicks(ref, playerCatalog.value);
+  }
+
   async getMatchups(
     _session: SleeperSession,
     ref: ProviderLeagueRef,
@@ -1705,17 +2032,90 @@ export class SleeperClient {
     if (!transactions.ok) {
       return transactions;
     }
+    const draftPicks = await this.loadDraftPicks(ref, playerCatalog.value);
+    if (!draftPicks.ok) {
+      return draftPicks;
+    }
+    const finalStandings = await this.fetchFinalStandings(league, teams);
+    if (!finalStandings.ok) {
+      return finalStandings;
+    }
 
     return ok({
       league: normalizeLeague(league),
       teams,
       members,
       matchups: weeklyDepth.value.matchups,
-      finalStandings: finalStandingsFromTeams(teams),
+      finalStandings: finalStandings.value,
       players: normalizedPlayersFromRosters(weeklyDepth.value.rosters),
       rosters: weeklyDepth.value.rosters,
+      draftPicks: draftPicks.value,
       transactions: transactions.value,
     });
+  }
+
+  private async loadDraftPicks(
+    ref: ProviderLeagueRef,
+    playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>,
+  ): Promise<ProviderResult<NormalizedDraftPick[]>> {
+    const drafts = await this.fetchDrafts(ref.providerId);
+    if (!drafts.ok) {
+      return drafts;
+    }
+
+    const draftsWithPicks: {
+      draft: SleeperDraft;
+      picks: SleeperDraftPick[];
+    }[] = [];
+    for (const draft of drafts.value) {
+      const draftId = toId(draft.draft_id);
+      if (!draftId) {
+        continue;
+      }
+      const picks = await this.fetchDraftPicks(draftId);
+      if (!picks.ok) {
+        return picks;
+      }
+      draftsWithPicks.push({ draft, picks: picks.value });
+    }
+
+    return ok(normalizeDraftPicks({ draftsWithPicks, playerCatalog, ref }));
+  }
+
+  private async fetchFinalStandings(
+    league: SleeperLeague,
+    teams: readonly NormalizedTeam[],
+  ): Promise<ProviderResult<NormalizedFinalStanding[]>> {
+    const leagueId = toId(league.league_id);
+    if (!leagueId) {
+      return ok(finalStandingsFromTeams(teams));
+    }
+
+    const winnersBracket = await this.fetchBracket(
+      leagueWinnersBracketUrl(leagueId),
+      "league-winners-bracket",
+    );
+    if (!winnersBracket.ok) {
+      return winnersBracket;
+    }
+    const losersBracket = await this.fetchBracket(
+      leagueLosersBracketUrl(leagueId),
+      "league-losers-bracket",
+    );
+    if (!losersBracket.ok) {
+      return losersBracket;
+    }
+    const settings = isPlainObject(league.settings) ? league.settings : {};
+
+    return ok(
+      finalStandingsFromTeams(teams, {
+        losersBracket: losersBracket.value,
+        playoffTeamCount: positiveInteger(
+          numberSetting(settings, "playoff_teams"),
+        ),
+        winnersBracket: winnersBracket.value,
+      }),
+    );
   }
 
   private async fetchAllNormalizedMatchupsAndRosters({
@@ -1846,6 +2246,37 @@ export class SleeperClient {
     );
   }
 
+  private async fetchDrafts(
+    leagueId: string,
+  ): Promise<ProviderResult<SleeperDraft[]>> {
+    return this.fetchJson(
+      leagueDraftsUrl(leagueId),
+      sleeperDraftListSchema,
+      "league-drafts",
+    );
+  }
+
+  private async fetchDraftPicks(
+    draftId: string,
+  ): Promise<ProviderResult<SleeperDraftPick[]>> {
+    return this.fetchJson(
+      draftPicksUrl(draftId),
+      sleeperDraftPickListSchema,
+      "draft-picks",
+    );
+  }
+
+  private async fetchBracket(
+    url: string,
+    resource: string,
+  ): Promise<ProviderResult<SleeperBracketMatch[]>> {
+    const bracket = await this.fetchJson(url, sleeperBracketSchema, resource);
+    if (!bracket.ok && bracket.error instanceof ProviderNotFoundError) {
+      return ok([]);
+    }
+    return bracket;
+  }
+
   private async fetchMatchups(
     leagueId: string,
     scoringPeriod: number,
@@ -1959,6 +2390,7 @@ export function createSleeperProvider(
     discoverLeagues: (session) => client.discoverLeagues(session),
     getHistory: (session, ref, options) =>
       client.getHistory(session, ref, options),
+    getDraftPicks: (session, ref) => client.getDraftPicks(session, ref),
     getLeague: (session, ref) => client.getLeague(session, ref),
     getMatchups: (session, ref, scoringPeriod) =>
       client.getMatchups(session, ref, scoringPeriod),

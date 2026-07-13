@@ -1,8 +1,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import draftPicks2025Fixture from "../../../test/fixtures/sleeper/draft-picks-2025.json";
+import draftPicks2026Fixture from "../../../test/fixtures/sleeper/draft-picks-2026.json";
+import drafts2025Fixture from "../../../test/fixtures/sleeper/drafts-2025.json";
+import drafts2026Fixture from "../../../test/fixtures/sleeper/drafts-2026.json";
+import league2024Fixture from "../../../test/fixtures/sleeper/league-2024.json";
 import league2025Fixture from "../../../test/fixtures/sleeper/league-2025.json";
 import leagues2026Fixture from "../../../test/fixtures/sleeper/leagues-2026.json";
+import losersBracket2025Fixture from "../../../test/fixtures/sleeper/losers-bracket-2025.json";
 import matchupsWeek1Fixture from "../../../test/fixtures/sleeper/matchups-2026-week1.json";
 import matchupsWeek2Fixture from "../../../test/fixtures/sleeper/matchups-2026-week2.json";
 import playersFixture from "../../../test/fixtures/sleeper/players-nfl.json";
@@ -11,6 +17,7 @@ import stateFixture from "../../../test/fixtures/sleeper/state-2026.json";
 import transactionsWeek1Fixture from "../../../test/fixtures/sleeper/transactions-2026-week1.json";
 import userFixture from "../../../test/fixtures/sleeper/user-fixture.json";
 import usersFixture from "../../../test/fixtures/sleeper/users-2026.json";
+import winnersBracket2025Fixture from "../../../test/fixtures/sleeper/winners-bracket-2025.json";
 import { providerCodeDecodingIssues } from "../decoding";
 import {
   AuthExpiredError,
@@ -139,6 +146,18 @@ function fixtureRoutes(): Record<string, FixtureRouteValue> {
     "https://api.sleeper.app/v1/league/sleeper-2025/rosters": rostersFixture,
     "https://api.sleeper.app/v1/league/sleeper-2026/users": usersFixture,
     "https://api.sleeper.app/v1/league/sleeper-2025/users": usersFixture,
+    "https://api.sleeper.app/v1/league/sleeper-2026/drafts": drafts2026Fixture,
+    "https://api.sleeper.app/v1/league/sleeper-2025/drafts": drafts2025Fixture,
+    "https://api.sleeper.app/v1/draft/draft-sleeper-2026/picks":
+      draftPicks2026Fixture,
+    "https://api.sleeper.app/v1/draft/draft-sleeper-2025/picks":
+      draftPicks2025Fixture,
+    "https://api.sleeper.app/v1/league/sleeper-2026/winners_bracket": [],
+    "https://api.sleeper.app/v1/league/sleeper-2026/losers_bracket": [],
+    "https://api.sleeper.app/v1/league/sleeper-2025/winners_bracket":
+      winnersBracket2025Fixture,
+    "https://api.sleeper.app/v1/league/sleeper-2025/losers_bracket":
+      losersBracket2025Fixture,
     "https://api.sleeper.app/v1/league/sleeper-2026/matchups/1":
       matchupsWeek1Fixture,
     "https://api.sleeper.app/v1/league/sleeper-2026/matchups/2":
@@ -239,6 +258,7 @@ describe("Sleeper provider", () => {
       },
     });
     expect(provider.getRosters).toBeTypeOf("function");
+    expect(provider.getDraftPicks).toBeTypeOf("function");
     await expect(
       provider.authenticate({
         usernameOrUserId: "fixture_sleeper",
@@ -337,6 +357,7 @@ describe("Sleeper provider", () => {
       currentScoringPeriod: 2,
       status: "in_season",
       postseason: {
+        playoffTeamCount: 2,
         playoffStartScoringPeriod: 15,
         regularSeasonEndScoringPeriod: 14,
       },
@@ -491,6 +512,50 @@ describe("Sleeper provider", () => {
     );
   });
 
+  it("normalizes listed Sleeper drafts and their picks", async () => {
+    const { fetch } = createFixtureFetch();
+    const client = createSleeperClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getDraftPicks(fixtureSession(), leagueRef);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value).toHaveLength(3);
+    expect(result.value[0]).toMatchObject({
+      provider: "sleeper",
+      providerId: "draft-sleeper-2026:1",
+      leagueProviderId: "sleeper-2026",
+      season: 2026,
+      round: 1,
+      pickOverall: 1,
+      pickInRound: 1,
+      isKeeper: true,
+      teamRef: { provider: "sleeper", providerId: "1", season: 2026 },
+      playerRef: { provider: "sleeper", providerId: "QB1" },
+      player: {
+        fullName: "Quentin Banks",
+        position: "QB",
+        proTeam: "BUF",
+      },
+      metadata: {
+        draftId: "draft-sleeper-2026",
+        draftSlot: 1,
+        draftStatus: "complete",
+        draftType: "snake",
+        pickedBy: "user-1",
+      },
+    });
+    expect(result.value[2]).toMatchObject({
+      providerId: "draft-sleeper-2026:5",
+      round: 2,
+      pickOverall: 5,
+      pickInRound: 1,
+      isKeeper: false,
+      teamRef: { providerId: "4" },
+      metadata: { draftSlot: 4 },
+    });
+  });
+
   it("persists an unknown catalog position as a loud decoding issue", async () => {
     const players = new Map(fixtureCatalogPlayers);
     const qb = players.get("QB1");
@@ -608,6 +673,7 @@ describe("Sleeper provider", () => {
       scoringType: "HALF_PPR",
       status: "complete",
       postseason: {
+        playoffTeamCount: 2,
         playoffStartScoringPeriod: 15,
         regularSeasonEndScoringPeriod: 14,
       },
@@ -639,8 +705,20 @@ describe("Sleeper provider", () => {
     });
     expect(result.value[0].finalStandings[0]).toMatchObject({
       rank: 1,
-      teamRef: { provider: "sleeper", providerId: "1", season: 2025 },
-      pointsFor: 250.75,
+      rankConfidence: "high",
+      rankSource: "provider_calculated_final",
+      teamRef: { provider: "sleeper", providerId: "2", season: 2025 },
+      pointsFor: 210.02,
+    });
+    expect(
+      result.value[0].finalStandings.map((standing) => standing.rank),
+    ).toEqual([1, 2, 3, 4]);
+    expect(result.value[0].draftPicks).toHaveLength(2);
+    expect(result.value[0].draftPicks?.[0]).toMatchObject({
+      providerId: "draft-sleeper-2025:1",
+      isKeeper: true,
+      teamRef: { providerId: "2", season: 2025 },
+      player: { fullName: "Caleb Stone", position: "QB" },
     });
     expect(result.value[0].transactions).toEqual([
       {
@@ -684,6 +762,69 @@ describe("Sleeper provider", () => {
         },
       },
     ]);
+  });
+
+  it("keeps a changing roster vocabulary across a multi-season history chain", async () => {
+    const league2025WithHistory = {
+      ...league2025Fixture,
+      previous_league_id: "sleeper-2024",
+    };
+    const { fetch } = createFixtureFetch({
+      ...fixtureRoutes(),
+      "https://api.sleeper.app/v1/league/sleeper-2025": league2025WithHistory,
+      "https://api.sleeper.app/v1/league/sleeper-2024": league2024Fixture,
+      "https://api.sleeper.app/v1/league/sleeper-2024/rosters": rostersFixture,
+      "https://api.sleeper.app/v1/league/sleeper-2024/users": usersFixture,
+      "https://api.sleeper.app/v1/league/sleeper-2024/drafts": [],
+      "https://api.sleeper.app/v1/league/sleeper-2024/winners_bracket": [],
+      "https://api.sleeper.app/v1/league/sleeper-2024/losers_bracket": [],
+      "https://api.sleeper.app/v1/league/sleeper-2024/matchups/1":
+        matchupsWeek1Fixture,
+      "https://api.sleeper.app/v1/league/sleeper-2024/matchups/2":
+        matchupsWeek2Fixture,
+      "https://api.sleeper.app/v1/league/sleeper-2024/transactions/1": [],
+      "https://api.sleeper.app/v1/league/sleeper-2024/transactions/2": [],
+    });
+    const client = createSleeperClient({ fetch, retryDelayMs: 0 });
+
+    const result = await client.getHistory(fixtureSession(), leagueRef, {
+      seasons: [2025, 2024],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw result.error;
+    expect(result.value.map((bundle) => bundle.league.season)).toEqual([
+      2025, 2024,
+    ]);
+    expect(result.value[0].league.scoringSettings?.rosterPositions).toEqual([
+      "QB",
+      "RB",
+      "WR",
+      "TE",
+      "FLEX",
+      "BN",
+      "BN",
+      "IR",
+    ]);
+    expect(result.value[1].league.scoringSettings?.rosterPositions).toEqual([
+      "SUPER_FLEX",
+      "WRRB_FLEX",
+      "REC_FLEX",
+      "BN",
+      "BN",
+      "TAXI",
+      "IR",
+    ]);
+    expect(
+      result.value[1].rosters?.[0]?.entries.find(
+        (entry) => entry.playerRef.providerId === "QB1",
+      ),
+    ).toMatchObject({ slot: "SUPER_FLEX", started: true });
+    expect(result.value[1].finalStandings[0]).toMatchObject({
+      rankConfidence: "low",
+      rankSource: "regular_season_fallback",
+      teamRef: { providerId: "1", season: 2024 },
+    });
   });
 
   it("rejects an empty username before making requests", async () => {

@@ -5,6 +5,7 @@
     "sport": "nfl",
     "settings": {
       "last_scored_leg": 1,
+      "playoff_teams": 2,
       "playoff_week_start": 15,
       "start_week": 1
     },

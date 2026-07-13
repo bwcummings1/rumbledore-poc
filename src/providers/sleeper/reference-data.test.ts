@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import draftPicks2025Fixture from "../../../test/fixtures/sleeper/draft-picks-2025.json";
+import draftPicks2026Fixture from "../../../test/fixtures/sleeper/draft-picks-2026.json";
+import league2024Fixture from "../../../test/fixtures/sleeper/league-2024.json";
 import league2025Fixture from "../../../test/fixtures/sleeper/league-2025.json";
 import leagues2026Fixture from "../../../test/fixtures/sleeper/leagues-2026.json";
 import playersFixture from "../../../test/fixtures/sleeper/players-nfl.json";
@@ -69,7 +72,11 @@ function assertClosure<T>({
 
 describe("Sleeper reference data", () => {
   it("decodes every string code carried by the Sleeper fixtures", () => {
-    for (const league of [league2025Fixture, ...leagues2026Fixture]) {
+    for (const league of [
+      league2024Fixture,
+      league2025Fixture,
+      ...leagues2026Fixture,
+    ]) {
       for (const slot of league.roster_positions) {
         expect(
           decodeSleeperRosterSlot(slot),
@@ -104,6 +111,16 @@ describe("Sleeper reference data", () => {
         decodeSleeperProTeam(player.team),
         `unknown fixture pro team ${player.team}`,
       ).toBe(player.team);
+    }
+    for (const pick of [...draftPicks2025Fixture, ...draftPicks2026Fixture]) {
+      expect(
+        decodeSleeperPosition(pick.metadata.position),
+        `unknown draft position ${pick.metadata.position}`,
+      ).toBe(pick.metadata.position);
+      expect(
+        decodeSleeperProTeam(pick.metadata.team),
+        `unknown draft pro team ${pick.metadata.team}`,
+      ).toBe(pick.metadata.team);
     }
   });
 
