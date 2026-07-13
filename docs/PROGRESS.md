@@ -1,13 +1,13 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-13 — **`specs/47` wave-1 review fixes COMPLETE on
-`ws/f47-review-fixes`, pending orchestrator merge; tracks 47A + 47B + 47C are merged**:
-**F47 review remediation:** stale or exhausted shadow imports recover instead of remaining permanently in flight;
-capability downgrades fail loud; payload-drift alerts persist until steward acknowledgement; concurrent import claims,
-enqueue rollback, quarantine/promotion races, corpus privacy, and legacy-era property coverage are hardened. The ESPN
-vocabulary corpus was independently re-derived from training knowledge and committed payload evidence, with four
-intentional contextual-label deltas and no missing production codes or era gaps; approved multi-league harvest
+Keep it current. Last updated: 2026-07-13 — **`specs/47` wave 1 + review fixes MERGED (47A/47B/47C/F47/P);
+Browserbase adapter wired, owner live smoke pending.**
+**F47 review remediation (merged):** stale or exhausted shadow imports recover instead of remaining permanently in
+flight; capability downgrades fail loud; payload-drift alerts persist until steward acknowledgement; concurrent import
+claims, enqueue rollback, quarantine/promotion races, corpus privacy, and legacy-era property coverage are hardened.
+The ESPN vocabulary corpus was independently re-derived from training knowledge and committed payload evidence, with
+four intentional contextual-label deltas and no missing production codes or era gaps; approved multi-league harvest
 validation remains pending. Migrations now run through `0077`; no live harvest or paid-provider call was made.
 **47A (`ws/47a-vocab-corpus`)**: ESPN's independently re-derived, training-knowledge-based vocabulary corpus proves
 numeric closure for positions, lineup slots, pro teams, activity codes, and player/scoring stat ids, including
@@ -35,6 +35,11 @@ verification for ESPN `95050` found 176 latest-map dimensions, the documented 20
 current-only stat breakdowns, 136/136 PASS integrity rows, and zero decoded unknowns. Affected Data Book, Records, and
 steward screenshots were refreshed. Its original migrations run through `0075`; F47 review fixes extend the current
 migration head through `0077`.
+**Track BB (`ws/bb-browserbase-adapter`)**: the hosted ESPN cookie-capture seam now has a guarded Browserbase REST/CDP
+adapter behind the existing `BrowserSession` boundary. Real configuration requires both key and project id, session
+creation is spend-capped, all fixture contract/capture/persistence/redaction tests pass, and mock onboarding remains the
+default unchanged path. No live Browserbase call was made; the single live validation is owner-gated by
+`docs/runbooks/browserbase-live-smoke.md`.
 Prior state: **Task T19 on `ws/t19-records-substance`**:
 the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
 roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
@@ -406,16 +411,23 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   id `95050` / **"NHS Alumni Annual"**, stats/records/identity, AI content pipeline behind mocks, betting engine +
   rolling-min bankroll + central arena, realtime + push. Sleeper/Yahoo adapters exist with fixture-backed coverage;
   production-real provider breadth is deferred.
-- **Mocked (drop-in keys later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase. Real Browserbase cookie-capture is the one un-wired seam (ESPN onboarding runs fixture-backed by default).
+- **Mocked by default (drop-in activation later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase.
+  The guarded Browserbase cookie-capture adapter is wired and fixture-proven while ESPN onboarding remains
+  fixture-backed by default; its one-session live smoke is pending the owner.
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
 - **Deferred/follow-on:** draft/transactions UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real
-  substrate-B source wiring; production-real paid-provider keys/capture plus real webhook/email delivery domains; final
+  substrate-B source wiring; production-real paid-provider activation/smokes plus real webhook/email delivery domains; final
   AI voice/persona tuning with the owner; Stripe/beta/legal/observability launch hardening; minor owner-set-aside UI
   tweaks; replace the `import.requested` non-shadow `legacy` idempotency bucket before multiple rollover/backfill
   producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track BB wired the guarded Browserbase REST/CDP adapter behind the existing ESPN hosted-browser contract,
+  including real-config validation, a session-count spend cap, bounded capture/release, typed failures, fixture-only
+  encrypted-persistence proof, and secret/cookie/session-id redaction coverage. Mock mode remains the default unchanged
+  path; no live call was made, and the single live smoke remains owner-gated by
+  `docs/runbooks/browserbase-live-smoke.md`.
 - 2026-07-13: Track F47 completed all verified wave-1 review fixes on `ws/f47-review-fixes`: recoverable shadow-import
   leases and failure quarantine, loud capability regressions, acknowledged persistent drift alerts, independently
   re-derived vocabulary closure, corpus sanitizer/privacy gates, atomic concurrent import claims and rollback, forced

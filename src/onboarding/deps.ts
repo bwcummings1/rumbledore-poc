@@ -1,5 +1,6 @@
 import "server-only";
-import { getEnv } from "@/core/env";
+import { type Env, getEnv } from "@/core/env";
+import { createSpendGuard, type SpendGuard } from "@/core/spend-guard";
 import { getDb } from "@/db";
 import { inngest } from "@/jobs/client";
 import {
@@ -12,6 +13,7 @@ import { createSleeperProvider } from "@/providers/sleeper";
 import { createYahooProvider } from "@/providers/yahoo";
 import { createRealtimePublisher } from "@/realtime";
 import { type BrowserSession, MockBrowserSession } from "./browser-session";
+import { createBrowserbaseSession } from "./browserbase-session";
 import { createCredentialCipher } from "./credential-crypto";
 import type { EspnOnboardingDependencies } from "./espn-service";
 import { createFixtureEspnProvider } from "./fixture-espn";
@@ -26,21 +28,27 @@ import {
   type YahooOnboardingDependencies,
 } from "./yahoo-service";
 
-class BrowserbaseSessionNotConfigured implements BrowserSession {
-  async start(): Promise<never> {
-    throw new Error("Real Browserbase sessions are not wired yet");
-  }
+const inviteNotifier = new RecordingInviteNotifier();
 
-  async captureCredentials(): Promise<never> {
-    throw new Error("Real Browserbase sessions are not wired yet");
-  }
-
-  async end(): Promise<void> {
-    return;
-  }
+export interface OnboardingDependencyFactoryOptions {
+  spendGuard?: SpendGuard;
 }
 
-const inviteNotifier = new RecordingInviteNotifier();
+export function createEspnBrowserSession(
+  env: Pick<Env, "redisUrl" | "services" | "spendGuard">,
+  options: OnboardingDependencyFactoryOptions = {},
+): BrowserSession {
+  const browserbase = env.services.browserbase;
+  if (browserbase.mock) {
+    return new MockBrowserSession();
+  }
+
+  return createBrowserbaseSession({
+    apiKey: browserbase.apiKey,
+    projectId: browserbase.projectId,
+    spendGuard: options.spendGuard ?? createSpendGuard(env),
+  });
+}
 
 async function requestHistoricalImport(
   data: ImportRequestedData,
@@ -78,9 +86,7 @@ export function getEspnOnboardingDependencies(): EspnOnboardingDependencies {
   const env = getEnv();
   const browserbase = env.services.browserbase;
   return {
-    browserSession: browserbase.mock
-      ? new MockBrowserSession()
-      : new BrowserbaseSessionNotConfigured(),
+    browserSession: createEspnBrowserSession(env),
     cipher: createCredentialCipher(env.credentials.encryptionKey),
     db: getDb(),
     provider: browserbase.mock
