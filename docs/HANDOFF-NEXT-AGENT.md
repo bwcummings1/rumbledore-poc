@@ -103,12 +103,21 @@ behavior; back up before any destructive dev-DB operation; volume-scale properti
 
 ## 6. Recommended next work (agent-buildable, in order)
 
-1. **Write + build `specs/47-ingestion-bulletproofing`** (§3.4 above) — the highest-value $0 work remaining;
-   directly converts the reliability posture from "validated on one league" toward "validated against the
-   input space". Well-shaped for the T-loop harness (see §7).
-2. **Sleeper decoding dictionary + unknown-code invariant** — cheapest path to a second real provider.
-3. Small follow-ons: backup cron (once owner approves), the OG-card polish pass, `specs/20` living-doc
-   notification copy nits — batch with whatever runs next.
+> **STATUS 2026-07-13: items 1–3 below are ALL DONE and merged** (specs/47 built via three parallel tracks +
+> a three-lens adversarial review + a 13-finding fix tranche; specs/48 Sleeper parity verified against two
+> real public leagues 14/14 integrity PASS; OG-card/copy polish landed; a guarded Browserbase cookie-capture
+> adapter was additionally wired, mock-pinned, with the owner's one-session live smoke pending per
+> `docs/runbooks/browserbase-live-smoke.md`). The Codex GPT-5.6 Sol fleet + prompts that built this live in
+> `.orchestration/{prompts,fleet-dispatch.sh,watch-fleet.sh,analysis/WAVE-PLAN-2026-07-13.md}` (untracked).
+> Account note: the primary `codex` account is usage-exhausted until ~Jul 19. Remaining agent-buildable
+> follow-ons: Yahoo parity pass (zod validation + dictionary, needs owner's Yahoo dev-app for live), the
+> deferred S6 idempotency-bucket fix, draft/transactions UI. Owner-gated: harvester ToS review + live
+> harvest targets, Browserbase live smoke, backup cron, real-key smoke test, substrate-B source.
+
+1. **Write + build `specs/47-ingestion-bulletproofing`** (§3.4 above) — ✅ DONE 2026-07-13.
+2. **Sleeper decoding dictionary + unknown-code invariant** — ✅ DONE 2026-07-13 (full parity, specs/48).
+3. Small follow-ons: OG-card polish pass, `specs/20` notification copy nits — ✅ DONE 2026-07-13;
+   backup cron still awaits owner approval.
 
 ## 7. Operational knowledge (hard-won; verify before relying, but all true as of writing)
 
