@@ -121,6 +121,7 @@ export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "identity_sanity",
   "no_silent_empty",
   "finalized_state_regression",
+  "capability_regression",
   "grouping_season_coverage",
   "matchup_span_sanity",
   "data_edit_ledger_completeness",
