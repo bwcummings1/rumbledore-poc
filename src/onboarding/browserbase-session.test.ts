@@ -1,14 +1,29 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createLogger } from "@/core/logging";
 import { MemorySpendCounterStore, SpendGuard } from "@/core/spend-guard";
+import { createDb, type DbHandle } from "@/db/client";
+import {
+  onboardingBrowserSessions,
+  providerCredentials,
+  users,
+} from "@/db/schema";
+import { migrateSerialized } from "@/db/test-support";
 import { MockBrowserSession } from "./browser-session";
 import {
   BrowserbaseBrowserSession,
   BrowserbaseSessionError,
 } from "./browserbase-session";
+import { createCredentialCipher } from "./credential-crypto";
 import { createEspnBrowserSession } from "./deps";
+import {
+  completeEspnBrowserConnect,
+  startEspnBrowserConnect,
+} from "./espn-service";
+import { createFixtureEspnProvider } from "./fixture-espn";
 
 vi.mock("server-only", () => ({}));
 
@@ -64,18 +79,20 @@ function urlFromRequest(input: RequestInfo | URL): URL {
 
 interface HttpFixtureOptions {
   debugStatus?: number;
+  sessionId?: string;
 }
 
 function browserbaseHttpFixture(options: HttpFixtureOptions = {}) {
+  const sessionId = options.sessionId ?? VENDOR_SESSION_ID;
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = urlFromRequest(input);
     const method = init?.method ?? "GET";
 
     if (url.pathname === "/v1/sessions" && method === "POST") {
-      return jsonResponse({ id: VENDOR_SESSION_ID, status: "RUNNING" });
+      return jsonResponse({ id: sessionId, status: "RUNNING" });
     }
     if (
-      url.pathname === `/v1/sessions/${VENDOR_SESSION_ID}/debug` &&
+      url.pathname === `/v1/sessions/${sessionId}/debug` &&
       method === "GET"
     ) {
       if (options.debugStatus) {
@@ -86,10 +103,7 @@ function browserbaseHttpFixture(options: HttpFixtureOptions = {}) {
         wsUrl: CDP_URL,
       });
     }
-    if (
-      url.pathname === `/v1/sessions/${VENDOR_SESSION_ID}` &&
-      method === "POST"
-    ) {
+    if (url.pathname === `/v1/sessions/${sessionId}` && method === "POST") {
       return new Response(null, { status: 204 });
     }
     return jsonResponse({}, { status: 500 });
@@ -304,6 +318,7 @@ describe("BrowserbaseBrowserSession", () => {
 
     const serializedLogs = lines.join("\n");
     expect(serializedLogs).not.toContain(fixtureApiKey());
+    expect(serializedLogs).not.toContain(APP_SESSION_ID);
     expect(serializedLogs).not.toContain(VENDOR_SESSION_ID);
     expect(serializedLogs).not.toContain(fixtureSwid());
     expect(serializedLogs).not.toContain(fixtureEspnS2());
@@ -398,5 +413,159 @@ describe("createEspnBrowserSession", () => {
     expect(
       createEspnBrowserSession(env, { spendGuard: spendGuard() }),
     ).toBeInstanceOf(BrowserbaseBrowserSession);
+  });
+});
+
+describe("Browserbase capture through the ESPN onboarding service", () => {
+  const marker = `browserbase-flow-${randomUUID()}`;
+  const masterKey = "fixture-browserbase-capture-master-key-32"; // ubs:ignore — test-only encryption key
+  let handle: DbHandle;
+  let userId: string;
+
+  beforeAll(async () => {
+    handle = createDb(parseEnv(process.env).databaseUrl);
+    try {
+      await handle.pool.query("select 1");
+    } catch (cause) {
+      throw new Error(
+        "Postgres is unreachable — start the local stack with `pnpm db:up` before running tests.",
+        { cause },
+      );
+    }
+    await migrateSerialized(handle);
+    const [user] = await handle.db
+      .insert(users)
+      .values({
+        displayName: marker,
+        email: `${marker}@example.com`,
+      })
+      .returning({ id: users.id });
+    if (!user) {
+      throw new Error("Browserbase flow test user was not created");
+    }
+    userId = user.id;
+  });
+
+  afterAll(async () => {
+    if (!handle) {
+      return;
+    }
+    if (userId) {
+      await handle.db.delete(users).where(eq(users.id, userId));
+    }
+    await handle.pool.end();
+  });
+
+  it("encrypts captured fixture cookies through the existing service path without global network access", async () => {
+    const vendorSessionId = randomUUID();
+    const lines: string[] = [];
+    const logger = createLogger({
+      extraSecrets: [
+        fixtureApiKey(),
+        fixtureProjectId(),
+        fixtureSwid(),
+        fixtureEspnS2(),
+        vendorSessionId,
+      ],
+      sink: (line) => lines.push(line),
+    });
+    const fetch = browserbaseHttpFixture({ sessionId: vendorSessionId });
+    const { adapter } = createAdapter({
+      cookieBatches: [
+        [
+          { domain: ".espn.com", name: "SWID", value: fixtureSwid() },
+          {
+            domain: "secure.espn.com",
+            name: "espn_s2",
+            value: fixtureEspnS2(),
+          },
+        ],
+      ],
+      fetch,
+      logger,
+    });
+    const cipher = createCredentialCipher(masterKey);
+    const unexpectedNetwork = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Unexpected global network call"));
+
+    try {
+      const deps = {
+        browserSession: adapter,
+        cipher,
+        db: handle.db,
+        provider: createFixtureEspnProvider(),
+      };
+      const started = await startEspnBrowserConnect(deps, userId);
+      expect(started.ok).toBe(true);
+      if (!started.ok) {
+        throw started.error;
+      }
+      expect(started.value).toMatchObject({
+        liveViewUrl: LIVE_VIEW_URL,
+        sessionId: vendorSessionId,
+      });
+
+      const connected = await completeEspnBrowserConnect(deps, {
+        sessionId: started.value.sessionId,
+        userId,
+      });
+      expect(connected.ok).toBe(true);
+      if (!connected.ok) {
+        throw connected.error;
+      }
+      expect(JSON.stringify(connected.value)).not.toContain(fixtureSwid());
+      expect(JSON.stringify(connected.value)).not.toContain(fixtureEspnS2());
+
+      const [credential] = await handle.db
+        .select()
+        .from(providerCredentials)
+        .where(eq(providerCredentials.id, connected.value.credentialId));
+      if (!credential) {
+        throw new Error("Captured Browserbase credential was not persisted");
+      }
+      expect(credential).toMatchObject({
+        connectionFlow: "browser",
+        status: "connected",
+        userId,
+      });
+      expect(credential.encryptedPayload).not.toContain(fixtureSwid());
+      expect(credential.encryptedPayload).not.toContain(fixtureEspnS2());
+      expect(cipher.decryptJson(credential.encryptedPayload)).toEqual({
+        espn_s2: fixtureEspnS2(),
+        swid: fixtureSwid(),
+      });
+
+      const [session] = await handle.db
+        .select()
+        .from(onboardingBrowserSessions)
+        .where(eq(onboardingBrowserSessions.id, vendorSessionId));
+      expect(session).toMatchObject({
+        credentialId: credential.id,
+        status: "connected",
+        userId,
+      });
+
+      expect(fetch).toHaveBeenCalledTimes(4);
+      expect(
+        fetch.mock.calls.every(
+          ([input]) => urlFromRequest(input).hostname === "api.browserbase.com",
+        ),
+      ).toBe(true);
+      expect(unexpectedNetwork).not.toHaveBeenCalled();
+
+      const serializedLogs = lines.join("\n");
+      for (const privateValue of [
+        fixtureApiKey(),
+        fixtureProjectId(),
+        fixtureSwid(),
+        fixtureEspnS2(),
+        vendorSessionId,
+      ]) {
+        expect(serializedLogs).not.toContain(privateValue);
+      }
+    } finally {
+      unexpectedNetwork.mockRestore();
+    }
   });
 });
