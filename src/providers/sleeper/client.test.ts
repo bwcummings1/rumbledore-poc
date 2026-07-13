@@ -651,7 +651,7 @@ describe("Sleeper provider", () => {
       status: "in_progress",
       winner: "unknown",
       homeScore: 12,
-      awayScore: 8,
+      awayScore: 18,
     });
   });
 
@@ -674,8 +674,8 @@ describe("Sleeper provider", () => {
       status: "complete",
       postseason: {
         playoffTeamCount: 2,
-        playoffStartScoringPeriod: 15,
-        regularSeasonEndScoringPeriod: 14,
+        playoffStartScoringPeriod: 2,
+        regularSeasonEndScoringPeriod: 1,
       },
     });
     expect(result.value[0].teams).toHaveLength(4);

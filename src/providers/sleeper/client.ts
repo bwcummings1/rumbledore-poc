@@ -31,6 +31,10 @@ import {
   type SeasonScopedProviderEntityRef,
 } from "../model";
 import {
+  isFixtureSleeperCredential,
+  isFixtureSleeperSession,
+} from "./fixture-values";
+import {
   createSleeperPlayerCatalog,
   type SleeperCatalogPlayer,
   type SleeperPlayerCatalog,
@@ -2378,10 +2382,7 @@ export function createSleeperClient(
   return new SleeperClient(options);
 }
 
-export function createSleeperProvider(
-  options?: SleeperClientOptions,
-): SleeperProvider {
-  const client = createSleeperClient(options);
+function providerForClient(client: SleeperClient): SleeperProvider {
   return {
     id: SLEEPER_PROVIDER_ID,
     name: "Sleeper Fantasy Football",
@@ -2400,5 +2401,81 @@ export function createSleeperProvider(
     getTeams: (session, ref) => client.getTeams(session, ref),
     getTransactions: (session, ref, scoringPeriod) =>
       client.getTransactions(session, ref, scoringPeriod),
+  };
+}
+
+export function createSleeperProvider(
+  options?: SleeperClientOptions,
+): SleeperProvider {
+  const networkProvider = providerForClient(createSleeperClient(options));
+  if (options !== undefined) {
+    return networkProvider;
+  }
+
+  let fixtureProviderPromise: Promise<SleeperProvider> | undefined;
+  let fixtureAllowedPromise: Promise<boolean> | undefined;
+  const fixtureAllowed = (): Promise<boolean> => {
+    fixtureAllowedPromise ??= import("@/core/env").then(
+      ({ getEnv }) => getEnv().nodeEnv !== "production",
+    );
+    return fixtureAllowedPromise;
+  };
+  const fixtureProvider = (): Promise<SleeperProvider> => {
+    fixtureProviderPromise ??= import("./fixture-sleeper").then(
+      ({ createFixtureSleeperProvider }) => createFixtureSleeperProvider(),
+    );
+    return fixtureProviderPromise;
+  };
+  const providerForSession = async (
+    session: SleeperSession,
+  ): Promise<SleeperProvider> =>
+    isFixtureSleeperSession(session) && (await fixtureAllowed())
+      ? fixtureProvider()
+      : networkProvider;
+
+  return {
+    id: networkProvider.id,
+    name: networkProvider.name,
+    capabilities: networkProvider.capabilities,
+    authenticate: async (credentials) =>
+      isFixtureSleeperCredential(credentials.usernameOrUserId) &&
+      (await fixtureAllowed())
+        ? (await fixtureProvider()).authenticate(credentials)
+        : networkProvider.authenticate(credentials),
+    discoverLeagues: async (session) =>
+      (await providerForSession(session)).discoverLeagues(session),
+    getHistory: async (session, ref, historyOptions) =>
+      (await providerForSession(session)).getHistory(
+        session,
+        ref,
+        historyOptions,
+      ),
+    getDraftPicks: async (session, ref) =>
+      (await providerForSession(session)).getDraftPicks?.(session, ref) ??
+      ok([]),
+    getLeague: async (session, ref) =>
+      (await providerForSession(session)).getLeague(session, ref),
+    getMatchups: async (session, ref, scoringPeriod) =>
+      (await providerForSession(session)).getMatchups(
+        session,
+        ref,
+        scoringPeriod,
+      ),
+    getMembers: async (session, ref) =>
+      (await providerForSession(session)).getMembers(session, ref),
+    getRosters: async (session, ref, scoringPeriod) =>
+      (await providerForSession(session)).getRosters(
+        session,
+        ref,
+        scoringPeriod,
+      ),
+    getTeams: async (session, ref) =>
+      (await providerForSession(session)).getTeams(session, ref),
+    getTransactions: async (session, ref, scoringPeriod) =>
+      (await providerForSession(session)).getTransactions(
+        session,
+        ref,
+        scoringPeriod,
+      ),
   };
 }

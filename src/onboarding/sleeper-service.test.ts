@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
+import { err } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
@@ -18,27 +19,9 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import {
-  createSleeperProvider,
-  type SleeperFetch,
-  type SleeperProvider,
-} from "@/providers/sleeper/client";
-import type {
-  SleeperCatalogPlayer,
-  SleeperPlayerCatalog,
-} from "@/providers/sleeper/player-catalog";
-import draftPicks2026Fixture from "../../test/fixtures/sleeper/draft-picks-2026.json";
-import drafts2026Fixture from "../../test/fixtures/sleeper/drafts-2026.json";
-import league2025Fixture from "../../test/fixtures/sleeper/league-2025.json";
-import leagues2026Fixture from "../../test/fixtures/sleeper/leagues-2026.json";
-import matchupsWeek1Fixture from "../../test/fixtures/sleeper/matchups-2026-week1.json";
-import matchupsWeek2Fixture from "../../test/fixtures/sleeper/matchups-2026-week2.json";
-import playersFixture from "../../test/fixtures/sleeper/players-nfl.json";
-import rostersFixture from "../../test/fixtures/sleeper/rosters-2026.json";
-import stateFixture from "../../test/fixtures/sleeper/state-2026.json";
-import transactionsWeek1Fixture from "../../test/fixtures/sleeper/transactions-2026-week1.json";
-import userFixture from "../../test/fixtures/sleeper/user-fixture.json";
-import usersFixture from "../../test/fixtures/sleeper/users-2026.json";
+import { AuthExpiredError } from "@/providers/model";
+import type { SleeperProvider } from "@/providers/sleeper/client";
+import { createFixtureSleeperProvider } from "@/providers/sleeper/fixture-sleeper";
 import { createCredentialCipher } from "./credential-crypto";
 import {
   connectSleeperPublic,
@@ -52,36 +35,6 @@ const masterKey = "test-sleeper-onboarding-master-key-32"; // ubs:ignore — fak
 
 let handle: DbHandle;
 const providerLeagueIds = new Set<string>();
-const fixtureCatalogPlayers = new Map<string, SleeperCatalogPlayer>(
-  Object.entries(playersFixture).map(([id, player]) => [
-    id,
-    {
-      active: player.active,
-      fantasyPositions: player.fantasy_positions,
-      fullName: player.full_name,
-      playerId: player.player_id,
-      position: player.position,
-      proTeam: player.team,
-      status: player.status,
-    },
-  ]),
-);
-const fixturePlayerCatalog: SleeperPlayerCatalog = {
-  load: async () => ({ ok: true, value: fixtureCatalogPlayers }),
-};
-
-type SleeperLeagueFixture = (typeof leagues2026Fixture)[number];
-type FixtureRouteValue = Response | unknown;
-
-function jsonResponse(body: unknown, init: ResponseInit = {}) {
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...init.headers,
-    },
-  });
-}
 
 function fixtureProvider({
   currentLeagueId,
@@ -92,81 +45,26 @@ function fixtureProvider({
 }): SleeperProvider {
   providerLeagueIds.add(currentLeagueId);
   providerLeagueIds.add(previousLeagueId);
-
-  const currentLeague = structuredClone(
-    leagues2026Fixture[0],
-  ) as SleeperLeagueFixture;
-  currentLeague.league_id = currentLeagueId;
-  currentLeague.previous_league_id = previousLeagueId;
-  currentLeague.name = `${marker} Sleeper League`;
-
-  const previousLeague = structuredClone(
-    league2025Fixture,
-  ) as unknown as SleeperLeagueFixture;
-  previousLeague.league_id = previousLeagueId;
-  previousLeague.name = `${marker} Sleeper League 2025`;
-
-  const routes: Record<string, FixtureRouteValue> = {
-    "https://api.sleeper.app/v1/players/nfl": playersFixture,
-    "https://api.sleeper.app/v1/state/nfl": stateFixture,
-    "https://api.sleeper.app/v1/user/fixture_sleeper": userFixture,
-    "https://api.sleeper.app/v1/user/user-123/leagues/nfl/2026": [
-      currentLeague,
-    ],
-    "https://api.sleeper.app/v1/user/user-123/leagues/nfl/2025": [
-      previousLeague,
-    ],
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}`]: currentLeague,
-    [`https://api.sleeper.app/v1/league/${previousLeagueId}`]: previousLeague,
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}/rosters`]:
-      rostersFixture,
-    [`https://api.sleeper.app/v1/league/${previousLeagueId}/rosters`]:
-      rostersFixture,
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}/users`]:
-      usersFixture,
-    [`https://api.sleeper.app/v1/league/${previousLeagueId}/users`]:
-      usersFixture,
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}/drafts`]:
-      drafts2026Fixture,
-    "https://api.sleeper.app/v1/draft/draft-sleeper-2026/picks":
-      draftPicks2026Fixture,
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}/matchups/1`]:
-      matchupsWeek1Fixture,
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}/matchups/2`]:
-      matchupsWeek2Fixture,
-    [`https://api.sleeper.app/v1/league/${previousLeagueId}/matchups/1`]:
-      matchupsWeek1Fixture,
-    [`https://api.sleeper.app/v1/league/${previousLeagueId}/matchups/2`]:
-      matchupsWeek2Fixture,
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}/transactions/1`]:
-      transactionsWeek1Fixture,
-    [`https://api.sleeper.app/v1/league/${currentLeagueId}/transactions/2`]: [],
-    [`https://api.sleeper.app/v1/league/${previousLeagueId}/transactions/1`]:
-      transactionsWeek1Fixture,
-    [`https://api.sleeper.app/v1/league/${previousLeagueId}/transactions/2`]:
-      [],
-  };
-
-  const fetch: SleeperFetch = async (input) => {
-    const url = input.toString();
-    if (!(url in routes)) {
-      return jsonResponse(
-        { message: `missing fixture for ${url}` },
-        {
-          status: 404,
-        },
-      );
-    }
-
-    const route = routes[url];
-    return route instanceof Response ? route : jsonResponse(route);
-  };
-
-  return createSleeperProvider({
-    fetch,
-    playerCatalog: fixturePlayerCatalog,
-    retryDelayMs: 0,
+  return createFixtureSleeperProvider({
+    currentLeagueId,
+    currentLeagueName: `${marker} Sleeper League`,
+    previousLeagueId,
+    previousLeagueName: `${marker} Sleeper League 2025`,
   });
+}
+
+function fixtureProviderFor(tag: string): SleeperProvider {
+  return fixtureProvider({
+    currentLeagueId: `${marker}-${tag}-2026`,
+    previousLeagueId: `${marker}-${tag}-2025`,
+  });
+}
+
+function authExpiredProvider(provider: SleeperProvider): SleeperProvider {
+  return {
+    ...provider,
+    authenticate: async () => err(new AuthExpiredError("sleeper")),
+  };
 }
 
 async function seedUser(tag: string) {
@@ -216,6 +114,161 @@ afterAll(async () => {
 });
 
 describe("Sleeper onboarding service", () => {
+  it("rejects blank public credentials before calling the provider", async () => {
+    const user = await seedUser("blank");
+    const result = await connectSleeperPublic(
+      deps(fixtureProviderFor("blank")),
+      {
+        credentials: { usernameOrUserId: "   " },
+        userId: user.id,
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected blank Sleeper connect to fail");
+    expect(result.error).toMatchObject({
+      code: "ONBOARDING_INVALID_PUBLIC_CREDENTIALS",
+      status: 400,
+    });
+    const rows = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.userId, user.id));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("does not persist credentials when Sleeper rejects the public identity", async () => {
+    const user = await seedUser("identity-rejected");
+    const provider = fixtureProviderFor("identity-rejected");
+    const result = await connectSleeperPublic(
+      deps(authExpiredProvider(provider)),
+      {
+        credentials: { usernameOrUserId: "missing-sleeper-user" },
+        userId: user.id,
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected rejected Sleeper connect to fail");
+    expect(result.error.code).toBe("PROVIDER_AUTH_EXPIRED");
+    const rows = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.userId, user.id));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("reconnects idempotently without duplicating credentials or discovery rows", async () => {
+    const user = await seedUser("reconnect");
+    const provider = fixtureProviderFor("reconnect");
+    const testDeps = deps(provider);
+    const input = {
+      credentials: {
+        seasons: [2026, 2025],
+        usernameOrUserId: "fixture_sleeper",
+      },
+      userId: user.id,
+    };
+
+    const first = await connectSleeperPublic(testDeps, input);
+    const second = await connectSleeperPublic(testDeps, input);
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok) throw first.error;
+    if (!second.ok) throw second.error;
+    expect(second.value.credentialId).toBe(first.value.credentialId);
+
+    const credentials = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.userId, user.id));
+    expect(credentials).toHaveLength(1);
+    const discovered = await handle.db
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.userId, user.id));
+    expect(discovered).toHaveLength(2);
+  });
+
+  it("surfaces stored invalid credentials with a Sleeper reconnect action", async () => {
+    const user = await seedUser("stored-invalid");
+    const provider = fixtureProviderFor("stored-invalid");
+    const testDeps = deps(provider);
+    const connected = await connectSleeperPublic(testDeps, {
+      credentials: {
+        seasons: [2026],
+        usernameOrUserId: "fixture_sleeper",
+      },
+      userId: user.id,
+    });
+    expect(connected.ok).toBe(true);
+    if (!connected.ok) throw connected.error;
+
+    await handle.db
+      .update(providerCredentials)
+      .set({
+        invalidAt: new Date("2026-07-13T00:00:00.000Z"),
+        status: "invalid",
+      })
+      .where(eq(providerCredentials.id, connected.value.credentialId));
+    const listed = await listSleeperDiscoveredLeagues(testDeps, {
+      userId: user.id,
+    });
+    expect(listed.ok).toBe(true);
+    if (!listed.ok) throw listed.error;
+    expect(listed.value[0]).toMatchObject({
+      connectionState: "invalid",
+      isRecommendedImport: false,
+      reconnect: {
+        href: "/onboarding/sleeper",
+        label: "Reconnect Sleeper",
+        provider: "sleeper",
+      },
+    });
+  });
+
+  it("marks a connected credential invalid when import authentication expires", async () => {
+    const currentLeagueId = `${marker}-expired-2026`;
+    const previousLeagueId = `${marker}-expired-2025`;
+    const user = await seedUser("import-expired");
+    const provider = fixtureProvider({ currentLeagueId, previousLeagueId });
+    const connected = await connectSleeperPublic(deps(provider), {
+      credentials: {
+        seasons: [2026],
+        usernameOrUserId: "fixture_sleeper",
+      },
+      userId: user.id,
+    });
+    expect(connected.ok).toBe(true);
+    if (!connected.ok) throw connected.error;
+
+    const imported = await importSleeperDiscoveredLeague(
+      deps(authExpiredProvider(provider)),
+      {
+        providerLeagueId: currentLeagueId,
+        season: 2026,
+        userId: user.id,
+      },
+    );
+    expect(imported.ok).toBe(false);
+    if (imported.ok) throw new Error("expected expired Sleeper import to fail");
+    expect(imported.error).toMatchObject({
+      code: "PROVIDER_AUTH_EXPIRED",
+      details: {
+        reconnect: {
+          href: "/onboarding/sleeper",
+          label: "Reconnect Sleeper",
+        },
+      },
+      status: 401,
+    });
+    const [credential] = await handle.db
+      .select()
+      .from(providerCredentials)
+      .where(eq(providerCredentials.id, connected.value.credentialId));
+    expect(credential).toMatchObject({ status: "invalid" });
+  });
+
   it("discovers public Sleeper leagues and imports the selected league", async () => {
     const currentLeagueId = `${marker}-2026`;
     const previousLeagueId = `${marker}-2025`;
@@ -319,8 +372,8 @@ describe("Sleeper onboarding service", () => {
       unchanged: 0,
     });
     expect(imported.value.sync.matchups).toEqual({
-      total: 4,
-      changed: 4,
+      total: 2,
+      changed: 2,
       unchanged: 0,
     });
     expect(imported.value.sync.draftPicks).toEqual({
@@ -363,7 +416,7 @@ describe("Sleeper onboarding service", () => {
       .select()
       .from(fantasyMatchups)
       .where(eq(fantasyMatchups.leagueId, imported.value.leagueId));
-    expect(matchupRows).toHaveLength(4);
+    expect(matchupRows).toHaveLength(2);
 
     const playerRows = await handle.db
       .select()
@@ -384,7 +437,9 @@ describe("Sleeper onboarding service", () => {
       .where(eq(fantasyDraftPicks.leagueId, imported.value.leagueId));
     expect(draftRows).toHaveLength(3);
     expect(
-      draftRows.find((pick) => pick.providerPickId === "draft-sleeper-2026:1"),
+      draftRows.find(
+        (pick) => pick.providerPickId === `draft-${currentLeagueId}:1`,
+      ),
     ).toMatchObject({
       isKeeper: true,
       pickInRound: 1,
@@ -402,7 +457,7 @@ describe("Sleeper onboarding service", () => {
     expect(
       rosterEntryRows.find((entry) => entry.providerPlayerId === "QB1"),
     ).toMatchObject({
-      scoringPeriod: 2,
+      scoringPeriod: 1,
       slot: "QB",
       started: true,
     });

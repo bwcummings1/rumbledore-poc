@@ -12,6 +12,17 @@ export {
   type SleeperSession,
 } from "./client";
 export {
+  createFixtureSleeperFetch,
+  createFixtureSleeperProvider,
+  type FixtureSleeperOptions,
+} from "./fixture-sleeper";
+export {
+  FIXTURE_SLEEPER_PREVIOUS_PROVIDER_LEAGUE_ID,
+  FIXTURE_SLEEPER_PROVIDER_LEAGUE_ID,
+  FIXTURE_SLEEPER_USER_ID,
+  FIXTURE_SLEEPER_USERNAME,
+} from "./fixture-values";
+export {
   CachedSleeperPlayerCatalog,
   createSleeperPlayerCatalog,
   type SleeperCatalogFetch,
