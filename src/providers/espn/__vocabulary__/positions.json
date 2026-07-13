@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "code": 0,
+      "label": "QB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 1,
+      "label": "TQB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 2,
+      "label": "RB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 3,
+      "label": "RB/WR",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 4,
+      "label": "WR",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 5,
+      "label": "WR/TE",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 6,
+      "label": "TE",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 7,
+      "label": "OP",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 8,
+      "label": "DT",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 9,
+      "label": "DE",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 10,
+      "label": "LB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 11,
+      "label": "DL",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 12,
+      "label": "CB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 13,
+      "label": "S",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 14,
+      "label": "DB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 15,
+      "label": "DP",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 16,
+      "label": "D/ST",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 17,
+      "label": "K",
+      "historicalLabels": ["PK"],
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 18,
+      "label": "P",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 19,
+      "label": "HC",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 20,
+      "label": "BE",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 21,
+      "label": "IR",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 22,
+      "label": "N/A",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 23,
+      "label": "RB/WR/TE",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 24,
+      "label": "ER",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 25,
+      "label": "Rookie",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "provenance": {
+    "leagueIdHash": "524be01a895a1684c2a23e71",
+    "season": 2026,
+    "view": "kona_player_info",
+    "fetchedAt": "2026-07-13T00:00:00.000Z",
+    "contentHash": "8825baaab0e41594efb01261e2d24cabad1422744b88e909bf3db06ab616ceb7",
+    "harvesterVersion": "1.0.0"
+  },
+  "payload": [
+    {
+      "id": 631818284,
+      "scoringPeriodId": 0,
+      "seasonId": 2026,
+      "players": [
+        {
+          "id": 4430807,
+          "player": {
+            "active": true,
+            "defaultPositionId": 2,
+            "eligibleSlots": [2, 20, 21],
+            "firstName": "Bijan",
+            "fullName": "Bijan Robinson",
+            "id": 4430807,
+            "injured": false,
+            "injuryStatus": "ACTIVE",
+            "lastName": "Robinson",
+            "proTeamId": 1,
+            "stats": [
+              {
+                "appliedTotal": 18.4,
+                "appliedStats": { "24": 18.4 },
+                "scoringPeriodId": 1,
+                "stats": { "24": 184 },
+                "statSourceId": 0
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,333 @@
+{
+  "provenance": {
+    "leagueIdHash": "524be01a895a1684c2a23e71",
+    "season": 2026,
+    "view": "mTeam",
+    "fetchedAt": "2026-07-13T00:00:00.000Z",
+    "contentHash": "9f07aacb070fdf82f80e16b3ac3323746e59bc1142ebbb0468ccef5b313a854c",
+    "harvesterVersion": "1.0.0"
+  },
+  "payload": [
+    {
+      "id": 631818284,
+      "scoringPeriodId": 0,
+      "seasonId": 2026,
+      "members": [
+        {
+          "id": "member-4651a3505fe44ee68970",
+          "displayName": "Cobalt Raven 764",
+          "firstName": "Cobalt",
+          "lastName": "Raven 764"
+        },
+        {
+          "id": "member-bcf46979e22143f3182d",
+          "displayName": "Harbor Otter 716",
+          "firstName": "Harbor",
+          "lastName": "Otter 716"
+        },
+        {
+          "id": "member-d4723ae0dbaa05e79c08",
+          "displayName": "Cobalt Raven 422",
+          "firstName": "Cobalt",
+          "lastName": "Raven 422"
+        },
+        {
+          "id": "member-13d793238ce010c50139",
+          "displayName": "Brisk Meteor 781",
+          "firstName": "Brisk",
+          "lastName": "Meteor 781"
+        },
+        {
+          "id": "member-0847553429df244231e6",
+          "displayName": "Brisk Raven 168",
+          "firstName": "Brisk",
+          "lastName": "Raven 168"
+        },
+        {
+          "id": "member-1cc71723ef1ce144df6f",
+          "displayName": "Brisk Wizard 601",
+          "firstName": "Brisk",
+          "lastName": "Wizard 601"
+        },
+        {
+          "id": "member-492b7b82c881193888a7",
+          "displayName": "Lunar Otter 037",
+          "firstName": "Lunar",
+          "lastName": "Otter 037"
+        },
+        {
+          "id": "member-b7a95c5e4e8c8b2899bc",
+          "displayName": "Nimble Falcon 307",
+          "firstName": "Nimble",
+          "lastName": "Falcon 307"
+        },
+        {
+          "id": "member-a3d760fa979408ff5480",
+          "displayName": "Ember Knight 790",
+          "firstName": "Ember",
+          "lastName": "Knight 790"
+        },
+        {
+          "id": "member-47dae306acb7285aa593",
+          "displayName": "Keen Heron 203",
+          "firstName": "Keen",
+          "lastName": "Heron 203"
+        },
+        {
+          "id": "member-05ae0a842ae3898f2e08",
+          "displayName": "Amber Tiger 225",
+          "firstName": "Amber",
+          "lastName": "Tiger 225"
+        },
+        {
+          "id": "member-358e203c40255e5b175a",
+          "displayName": "Daring Griffin 882",
+          "firstName": "Daring",
+          "lastName": "Griffin 882"
+        },
+        {
+          "id": "member-d6a0eb4aa74a542d8b61",
+          "displayName": "Amber Meteor 763",
+          "firstName": "Amber",
+          "lastName": "Meteor 763"
+        },
+        {
+          "id": "member-bfb10bb79fbb6e8c7bb7",
+          "displayName": "Cobalt Meteor 149",
+          "firstName": "Cobalt",
+          "lastName": "Meteor 149"
+        },
+        {
+          "id": "member-a55d0778aa73befb8633",
+          "displayName": "Fabled Tiger 794",
+          "firstName": "Fabled",
+          "lastName": "Tiger 794"
+        },
+        {
+          "id": "member-3ab90d2e7c2e84a5e56c",
+          "displayName": "Amber Griffin 357",
+          "firstName": "Amber",
+          "lastName": "Griffin 357"
+        }
+      ],
+      "teams": [
+        {
+          "id": 1,
+          "abbrev": "T01",
+          "name": "Fixture Team 01",
+          "logo": "https://example.invalid/rumbledore/team-01.png",
+          "owners": ["member-358e203c40255e5b175a"],
+          "primaryOwner": "member-358e203c40255e5b175a",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 2,
+          "abbrev": "T02",
+          "name": "Fixture Team 02",
+          "logo": "https://example.invalid/rumbledore/team-02.png",
+          "owners": ["member-a55d0778aa73befb8633"],
+          "primaryOwner": "member-a55d0778aa73befb8633",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 3,
+          "abbrev": "T03",
+          "name": "Fixture Team 03",
+          "logo": "https://example.invalid/rumbledore/team-03.png",
+          "owners": ["member-47dae306acb7285aa593"],
+          "primaryOwner": "member-47dae306acb7285aa593",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 4,
+          "abbrev": "T04",
+          "name": "Fixture Team 04",
+          "logo": "https://example.invalid/rumbledore/team-04.png",
+          "owners": [
+            "member-13d793238ce010c50139",
+            "member-a3d760fa979408ff5480"
+          ],
+          "primaryOwner": "member-13d793238ce010c50139",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 5,
+          "abbrev": "T05",
+          "name": "Fixture Team 05",
+          "logo": "https://example.invalid/rumbledore/team-05.png",
+          "owners": [
+            "member-d4723ae0dbaa05e79c08",
+            "member-492b7b82c881193888a7"
+          ],
+          "primaryOwner": "member-d4723ae0dbaa05e79c08",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 6,
+          "abbrev": "T06",
+          "name": "Fixture Team 06",
+          "logo": "https://example.invalid/rumbledore/team-06.png",
+          "owners": ["member-0847553429df244231e6"],
+          "primaryOwner": "member-0847553429df244231e6",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 7,
+          "abbrev": "T07",
+          "name": "Fixture Team 07",
+          "logo": "https://example.invalid/rumbledore/team-07.png",
+          "owners": ["member-b7a95c5e4e8c8b2899bc"],
+          "primaryOwner": "member-b7a95c5e4e8c8b2899bc",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 8,
+          "abbrev": "T08",
+          "name": "Fixture Team 08",
+          "logo": "https://example.invalid/rumbledore/team-08.png",
+          "owners": ["member-4651a3505fe44ee68970"],
+          "primaryOwner": "member-4651a3505fe44ee68970",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 9,
+          "abbrev": "T09",
+          "name": "Fixture Team 09",
+          "logo": "https://example.invalid/rumbledore/team-09.png",
+          "owners": ["member-3ab90d2e7c2e84a5e56c"],
+          "primaryOwner": "member-3ab90d2e7c2e84a5e56c",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 10,
+          "abbrev": "T10",
+          "name": "Fixture Team 10",
+          "logo": "https://example.invalid/rumbledore/team-10.png",
+          "owners": [
+            "member-bcf46979e22143f3182d",
+            "member-05ae0a842ae3898f2e08"
+          ],
+          "primaryOwner": "member-05ae0a842ae3898f2e08",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 11,
+          "abbrev": "T11",
+          "name": "Fixture Team 11",
+          "logo": "https://example.invalid/rumbledore/team-11.png",
+          "owners": [
+            "member-1cc71723ef1ce144df6f",
+            "member-d6a0eb4aa74a542d8b61"
+          ],
+          "primaryOwner": "member-d6a0eb4aa74a542d8b61",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        },
+        {
+          "id": 12,
+          "abbrev": "T12",
+          "name": "Fixture Team 12",
+          "logo": "https://example.invalid/rumbledore/team-12.png",
+          "owners": ["member-bfb10bb79fbb6e8c7bb7"],
+          "primaryOwner": "member-bfb10bb79fbb6e8c7bb7",
+          "record": {
+            "overall": {
+              "losses": 0,
+              "pointsAgainst": 0,
+              "pointsFor": 0,
+              "ties": 0,
+              "wins": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

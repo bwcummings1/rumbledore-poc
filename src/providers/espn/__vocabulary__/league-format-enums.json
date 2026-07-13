@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "field": "settings.scoringSettings.scoringType",
+      "kind": "scoring_type",
+      "code": "H2H_POINTS",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "field": "settings.scoringSettings.scoringType",
+      "kind": "scoring_type",
+      "code": "TOTAL_POINTS",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "field": "settings.scheduleSettings.playoffSeedingRule",
+      "kind": "playoff_seeding_rule",
+      "code": "H2H_RECORD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "field": "settings.scheduleSettings.playoffSeedingRule",
+      "kind": "playoff_seeding_rule",
+      "code": "TOTAL_POINTS_SCORED",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "field": "settings.scheduleSettings.playoffSeedingRule",
+      "kind": "playoff_seeding_rule",
+      "code": "INTRA_DIVISION_RECORD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "field": "settings.draftSettings.type",
+      "kind": "draft_type",
+      "code": "SNAKE",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "field": "settings.draftSettings.type",
+      "kind": "draft_type",
+      "code": "AUCTION",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "field": "settings.draftSettings.type",
+      "kind": "draft_type",
+      "code": "OFFLINE",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "field": "settings.draftSettings.leagueSubType",
+      "kind": "league_sub_type",
+      "code": "NONE",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "field": "settings.draftSettings.leagueSubType",
+      "kind": "league_sub_type",
+      "code": "KEEPER",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "field": "settings.draftSettings.keeperOrderType",
+      "kind": "keeper_order_type",
+      "code": "TRADITIONAL",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "field": "settings.draftSettings.keeperOrderType",
+      "kind": "keeper_order_type",
+      "code": "DRAFT_ROUND",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "field": "settings.acquisitionSettings.acquisitionType",
+      "kind": "acquisition_type",
+      "code": "WAIVERS_TRADITIONAL",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "field": "settings.acquisitionSettings.acquisitionType",
+      "kind": "acquisition_type",
+      "code": "WAIVERS_CONTINUOUS",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "field": "settings.acquisitionSettings.acquisitionType",
+      "kind": "acquisition_type",
+      "code": "FREE_AGENT_BUDGET",
+      "source": "Rumbledore:test/fixtures/espn/league-95050-2026.json"
+    },
+    {
+      "field": "settings.acquisitionSettings.acquisitionType",
+      "kind": "acquisition_type",
+      "code": "FREE_AGENT",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    }
+  ],
+  "dynamicFields": [
+    {
+      "field": "settings.scheduleSettings.divisions[].id",
+      "representation": "league-authored numeric identifier (not a closed vendor enum)",
+      "source": "Rumbledore:test/fixtures/espn/league-95050-2026.json"
+    },
+    {
+      "field": "settings.scheduleSettings.divisions[].name",
+      "representation": "league-authored display string (not a closed vendor enum)",
+      "source": "Rumbledore:test/fixtures/espn/league-95050-2026.json"
+    }
+  ]
+}

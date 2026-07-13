@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "code": 0,
+      "abbreviation": "FA",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 1,
+      "abbreviation": "ATL",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 2,
+      "abbreviation": "BUF",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 3,
+      "abbreviation": "CHI",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 4,
+      "abbreviation": "CIN",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 5,
+      "abbreviation": "CLE",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 6,
+      "abbreviation": "DAL",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 7,
+      "abbreviation": "DEN",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 8,
+      "abbreviation": "DET",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 9,
+      "abbreviation": "GB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 10,
+      "abbreviation": "TEN",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 11,
+      "abbreviation": "IND",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 12,
+      "abbreviation": "KC",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 13,
+      "abbreviation": "LV",
+      "historicalAbbreviations": ["OAK"],
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 14,
+      "abbreviation": "LAR",
+      "historicalAbbreviations": ["STL"],
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 15,
+      "abbreviation": "MIA",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 16,
+      "abbreviation": "MIN",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 17,
+      "abbreviation": "NE",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 18,
+      "abbreviation": "NO",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 19,
+      "abbreviation": "NYG",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 20,
+      "abbreviation": "NYJ",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 21,
+      "abbreviation": "PHI",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 22,
+      "abbreviation": "ARI",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 23,
+      "abbreviation": "PIT",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 24,
+      "abbreviation": "LAC",
+      "historicalAbbreviations": ["SD"],
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 25,
+      "abbreviation": "SF",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 26,
+      "abbreviation": "SEA",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 27,
+      "abbreviation": "TB",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 28,
+      "abbreviation": "WSH",
+      "historicalAbbreviations": ["WAS"],
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 29,
+      "abbreviation": "CAR",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 30,
+      "abbreviation": "JAX",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 33,
+      "abbreviation": "BAL",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 34,
+      "abbreviation": "HOU",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    }
+  ]
+}

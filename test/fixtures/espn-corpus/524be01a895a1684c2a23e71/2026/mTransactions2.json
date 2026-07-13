@@ -1,0 +1,27 @@
+{
+  "provenance": {
+    "leagueIdHash": "524be01a895a1684c2a23e71",
+    "season": 2026,
+    "view": "mTransactions2",
+    "fetchedAt": "2026-07-13T00:00:00.000Z",
+    "contentHash": "a69301cb6659247c999a209ed0ea340aea2e484cbe5c2b101e014a1353ab17c8",
+    "harvesterVersion": "1.0.0"
+  },
+  "payload": [
+    {
+      "id": 631818284,
+      "scoringPeriodId": 0,
+      "seasonId": 2026,
+      "transactions": [
+        {
+          "id": 99,
+          "items": [{ "playerId": 4430807, "teamId": 1, "type": 180 }],
+          "processDate": 1788220800000,
+          "scoringPeriodId": 1,
+          "teamId": 1,
+          "type": 180
+        }
+      ]
+    }
+  ]
+}

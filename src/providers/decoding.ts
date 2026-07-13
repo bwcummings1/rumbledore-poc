@@ -14,11 +14,21 @@ export type ProviderCodeKind =
   | "pro_team"
   | "scoring_stat";
 
-export interface ProviderCodeDecodingIssue {
+export interface ProviderCodeDictionaryMissingIssue {
+  provider: FantasyProviderId;
+  reason: "dictionary_missing";
+}
+
+export interface ProviderCodeUnknownIssue {
   id: number;
   kind: ProviderCodeKind;
   provider: FantasyProviderId;
+  reason: "unknown_code";
 }
+
+export type ProviderCodeDecodingIssue =
+  | ProviderCodeDictionaryMissingIssue
+  | ProviderCodeUnknownIssue;
 
 export interface ObservedProviderCodes {
   activities?: Iterable<number>;
@@ -67,7 +77,7 @@ function missingIssues({
 }): ProviderCodeDecodingIssue[] {
   return uniqueIntegers(ids)
     .filter((id) => dictionary[id] === undefined)
-    .map((id) => ({ id, kind, provider }));
+    .map((id) => ({ id, kind, provider, reason: "unknown_code" }));
 }
 
 export function providerCodeDecodingIssues(
@@ -76,7 +86,7 @@ export function providerCodeDecodingIssues(
 ): ProviderCodeDecodingIssue[] {
   const dictionary = PROVIDER_DECODING_DICTIONARIES[provider];
   if (!dictionary) {
-    return [];
+    return [{ provider, reason: "dictionary_missing" }];
   }
 
   return [
@@ -114,6 +124,12 @@ export function providerCodeDecodingIssues(
     const providerOrder = left.provider.localeCompare(right.provider);
     if (providerOrder !== 0) {
       return providerOrder;
+    }
+    if (left.reason === "dictionary_missing") {
+      return right.reason === "dictionary_missing" ? 0 : -1;
+    }
+    if (right.reason === "dictionary_missing") {
+      return 1;
     }
     const kindOrder = left.kind.localeCompare(right.kind);
     return kindOrder !== 0 ? kindOrder : left.id - right.id;

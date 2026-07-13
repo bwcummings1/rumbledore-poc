@@ -1,12 +1,20 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-13 — **Track 47B on `ws/47b-property-suite`**:
-Spec 47 §C now has seeded, shrinkable `fast-check` generators over the normalized season schema plus DB-backed
-properties proving import idempotence, season/league-scoped reconciliation, bind-cap-safe volume, loud integrity
-failure, same-season co-owner identity separation, and ESPN provider-code decoding coverage. The default property
-budget is bounded for CI (three ordinary DB runs and one season-scale volume run), with deeper dispatches available
-through `PROPERTY_RUNS`; removing row chunking makes the volume regression fail above PostgreSQL's 65,535 bind cap.
+Keep it current. Last updated: 2026-07-13 — **`specs/47` wave 1 — tracks 47A + 47B merged, 47C in flight**:
+**47A (`ws/47a-vocab-corpus`)**: ESPN's vendored vocabulary corpus now proves bidirectional closure for positions,
+lineup slots, pro teams, activity codes, player/scoring stat ids, and `mSettings` enums, including old-era labels.
+Missing provider dictionaries now fail `provider_code_decoding` explicitly for Sleeper/Yahoo while registered ESPN
+stays green. A ToS-guarded, no-cookie, rate/budget-bounded public-league harvester sanitizes identities and writes
+provenance-stamped atomic fixtures; no live harvest was run. The seeded eight-view ESPN corpus replays through
+production parsing, normalization, persistence/reconciliation, and integrity checks in an isolated DB, with malformed
+views failing under league-shape/view attribution.
+**47B (`ws/47b-property-suite`)**: Spec 47 §C now has seeded, shrinkable `fast-check` generators over the normalized
+season schema plus DB-backed properties proving import idempotence, season/league-scoped reconciliation, bind-cap-safe
+volume, loud integrity failure, same-season co-owner identity separation, and ESPN provider-code decoding coverage.
+The default property budget is bounded for CI (three ordinary DB runs and one season-scale volume run), with deeper
+dispatches available through `PROPERTY_RUNS`; removing row chunking makes the volume regression fail above
+PostgreSQL's 65,535 bind cap.
 Prior state: **Task T19 on `ws/t19-records-substance`**:
 the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
 roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
@@ -387,6 +395,10 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track 47A completed `specs/47` §A/§B acceptance criteria 1–4 on `ws/47a-vocab-corpus`: bidirectional
+  ESPN vocabulary closure, loud missing-provider-dictionary failures, a guarded/bounded identity-sanitizing harvester,
+  and an eight-view isolated-DB corpus-replay oracle with malformed-view attribution; fixture tests and full gates pass,
+  and no live harvest, credential use, mock-flag change, migration, or owner-data mutation occurred.
 - 2026-07-13: Track 47B landed Spec 47 §C's seeded normalized-schema generators and all six ingestion properties;
   default CI runs stay bounded, `PROPERTY_RUNS` enables deeper dispatches, and a temporary no-chunk mutation proved
   the season-scale regression fails above PostgreSQL's bind-parameter cap before production chunking was restored.
