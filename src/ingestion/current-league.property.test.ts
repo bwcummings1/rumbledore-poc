@@ -24,17 +24,21 @@ import type { NormalizedSeasonBundle } from "@/providers/model";
 import {
   buildNormalizedSeasonBundle,
   normalizedSeasonShapeArbitrary,
+  normalizedVolumeSeasonShapeArbitrary,
 } from "@/testing/arbitraries";
 import { persistNormalizedLeagueRows } from "./current-league";
 
 const marker = `property-ingest-${randomUUID()}`;
 const PROPERTY_SEED = 0x47b2;
 const DEFAULT_PROPERTY_RUNS = 3;
+const POSTGRES_MAX_BIND_PARAMETERS = 65_535;
+const ROSTER_INSERT_BOUND_COLUMNS = 17;
+const STAT_BREAKDOWN_INSERT_BOUND_COLUMNS = 16;
 let handle: DbHandle;
 
-function configuredPropertyRuns(): number {
+function configuredPropertyRuns(defaultRuns = DEFAULT_PROPERTY_RUNS): number {
   const configured = process.env.PROPERTY_RUNS;
-  if (!configured) return DEFAULT_PROPERTY_RUNS;
+  if (!configured) return defaultRuns;
   const parsed = Number(configured);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error("PROPERTY_RUNS must be a positive integer");
@@ -417,6 +421,77 @@ describe("normalized ingestion properties", () => {
         }
       }),
       { numRuns: configuredPropertyRuns(), seed: PROPERTY_SEED + 1 },
+    );
+  });
+
+  it("persists generated season-scale volume past the bind-parameter cap", async () => {
+    await fc.assert(
+      fc.asyncProperty(normalizedVolumeSeasonShapeArbitrary, async (shape) => {
+        const providerLeagueId = `${marker}-volume-${shape.caseId}`;
+        const bundle = buildNormalizedSeasonBundle(shape, providerLeagueId);
+        const rosterRowCount =
+          bundle.rosters?.reduce(
+            (total, roster) => total + roster.entries.length,
+            0,
+          ) ?? 0;
+        const breakdownRowCount =
+          bundle.rosters?.reduce(
+            (total, roster) =>
+              total +
+              roster.entries.reduce(
+                (entryTotal, entry) =>
+                  entryTotal + (entry.statBreakdown?.length ?? 0),
+                0,
+              ),
+            0,
+          ) ?? 0;
+
+        expect(rosterRowCount * ROSTER_INSERT_BOUND_COLUMNS).toBeGreaterThan(
+          POSTGRES_MAX_BIND_PARAMETERS,
+        );
+        expect(
+          breakdownRowCount * STAT_BREAKDOWN_INSERT_BOUND_COLUMNS,
+        ).toBeGreaterThan(POSTGRES_MAX_BIND_PARAMETERS);
+
+        const leagueId = await insertLeague(bundle);
+        try {
+          const persisted = await persistBundle(leagueId, bundle);
+          expect(persisted.rosterStats).toMatchObject({
+            changed: rosterRowCount,
+            total: rosterRowCount,
+          });
+          expect(persisted.playerStatBreakdownStats).toMatchObject({
+            changed: breakdownRowCount,
+            total: breakdownRowCount,
+          });
+
+          const counts = await withLeagueContext(
+            handle.db,
+            leagueId,
+            async (tx) => {
+              const [rosters] = await tx
+                .select({ count: sql<number>`count(*)::int` })
+                .from(fantasyRosterEntries)
+                .where(eq(fantasyRosterEntries.leagueId, leagueId));
+              const [breakdowns] = await tx
+                .select({ count: sql<number>`count(*)::int` })
+                .from(fantasyPlayerWeekStatBreakdowns)
+                .where(eq(fantasyPlayerWeekStatBreakdowns.leagueId, leagueId));
+              return {
+                breakdowns: breakdowns?.count ?? 0,
+                rosters: rosters?.count ?? 0,
+              };
+            },
+          );
+          expect(counts).toEqual({
+            breakdowns: breakdownRowCount,
+            rosters: rosterRowCount,
+          });
+        } finally {
+          await deletePropertyLeagues([leagueId]);
+        }
+      }),
+      { numRuns: configuredPropertyRuns(1), seed: PROPERTY_SEED + 2 },
     );
   });
 });

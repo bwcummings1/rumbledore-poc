@@ -168,6 +168,52 @@ export const normalizedSeasonShapeArbitrary: fc.Arbitrary<NormalizedSeasonShape>
     ),
   );
 
+/**
+ * Season-scale shapes whose smallest shrink still produces 4,320 roster rows
+ * and 4,320 stat-breakdown rows. Those batches exceed Postgres' 65,535 bind
+ * parameters when either current 17/16-column upsert is executed unchunked.
+ */
+export const normalizedVolumeSeasonShapeArbitrary: fc.Arbitrary<NormalizedSeasonShape> =
+  fc.integer({ max: 20, min: 18 }).chain((leagueSize) =>
+    fc
+      .record({
+        caseId: fc.integer({ max: 999_999, min: 0 }),
+        era: fc.constantFrom<NormalizedEraVocabulary>(
+          "legacy",
+          "modern",
+          "mixed",
+        ),
+        nameStyle: fc.constantFrom<GeneratedNameStyle>(
+          "ascii",
+          "duplicate",
+          "unicode",
+        ),
+        ownerOverlap: fc.constantFrom<GeneratedOwnerOverlap>(
+          "none",
+          "shared_member",
+          "co_owned",
+        ),
+        playersPerTeam: fc.integer({ max: 18, min: 16 }),
+        playoffMatchupPeriodLength: fc.constantFrom<1 | 2>(1, 2),
+        playoffRounds: fc.integer({ max: 3, min: 2 }),
+        playoffTeamCount: fc.integer({ max: leagueSize, min: 2 }),
+        regularSeasonWeeks: fc.integer({ max: 14, min: 13 }),
+        season: fc.integer({ max: 2026, min: 2000 }),
+        zeroScoreWeek: fc.oneof(
+          fc.constant(null),
+          fc.integer({ max: 13, min: 1 }),
+        ),
+      })
+      .map((generated) => ({
+        ...generated,
+        draft: false,
+        leagueSize,
+        playerDepth: true,
+        statBreakdowns: true,
+        transactions: false,
+      })),
+  );
+
 export const normalizedPlayerStatBreakdownArbitrary: fc.Arbitrary<NormalizedPlayerStatBreakdown> =
   fc.record({
     fantasyPoints: fc.double({ max: 100, min: -20, noNaN: true }),
