@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -68,7 +68,47 @@ function readCorpusEntry(path: string): EspnCorpusEntry {
   }
 }
 
+function listJsonFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return listJsonFiles(path);
+    return entry.isFile() && entry.name.endsWith(".json") ? [path] : [];
+  });
+}
+
 describe("public ESPN corpus harvester", () => {
+  it("keeps the committed corpus free of embedded identifiers and the known source league name", () => {
+    const corpusDirectory = join(
+      process.cwd(),
+      "test",
+      "fixtures",
+      "espn-corpus",
+    );
+    const forbiddenPatterns = [
+      {
+        label: "embedded GUID",
+        pattern: /\{?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}?/gi,
+      },
+      {
+        label: "embedded email",
+        pattern: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,
+      },
+      {
+        label: "known source league name",
+        pattern: /NHS\s+Alumni\s+Annual/gi,
+      },
+    ];
+    const leaks = listJsonFiles(corpusDirectory).flatMap((path) => {
+      const contents = readFileSync(path, "utf8");
+      return forbiddenPatterns.flatMap(({ label, pattern }) => {
+        pattern.lastIndex = 0;
+        return pattern.test(contents) ? [`${label}: ${path}`] : [];
+      });
+    });
+
+    expect(leaks).toEqual([]);
+  });
+
   it("refuses before parsing or fetching unless the ToS acknowledgment is present", async () => {
     const errors: string[] = [];
     let fetchCalls = 0;

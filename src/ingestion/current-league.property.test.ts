@@ -36,6 +36,8 @@ import {
 import {
   buildNormalizedSeasonBundle,
   type GeneratedOwnerOverlap,
+  NORMALIZED_ERA_POSITION_VOCABULARIES,
+  type NormalizedSeasonShape,
   normalizedSeasonShapeArbitrary,
   normalizedVolumeSeasonShapeArbitrary,
 } from "@/testing/arbitraries";
@@ -64,6 +66,37 @@ const OVERLAPPING_OWNER_MODES: readonly GeneratedOwnerOverlap[] = [
   "co_owned",
   "shared_member",
 ];
+
+function generatedAndForcedLegacyShapes(
+  generated: NormalizedSeasonShape,
+): Array<{ label: "generated" | "legacy"; shape: NormalizedSeasonShape }> {
+  return [
+    { label: "generated", shape: generated },
+    {
+      label: "legacy",
+      shape: {
+        ...generated,
+        caseId: generated.caseId + 1_000_000,
+        era: "legacy",
+        playerDepth: true,
+        playersPerTeam: Math.max(
+          generated.playersPerTeam,
+          NORMALIZED_ERA_POSITION_VOCABULARIES.legacy.length,
+        ),
+      },
+    },
+  ];
+}
+
+function assertForcedLegacyVocabulary(
+  label: "generated" | "legacy",
+  bundle: NormalizedSeasonBundle,
+): void {
+  if (label !== "legacy") return;
+  expect(new Set(bundle.players?.map((player) => player.position))).toEqual(
+    new Set(NORMALIZED_ERA_POSITION_VOCABULARIES.legacy),
+  );
+}
 
 const providerCodeCaseArbitrary = fc
   .tuple(
@@ -534,32 +567,37 @@ afterAll(async () => {
 describe("normalized ingestion properties", () => {
   it("is idempotent for generated normalized season bundles", async () => {
     await fc.assert(
-      fc.asyncProperty(normalizedSeasonShapeArbitrary, async (shape) => {
-        const providerLeagueId = `${marker}-idempotent-${shape.caseId}`;
-        const bundle = buildNormalizedSeasonBundle(shape, providerLeagueId);
-        const leagueId = await insertLeague(bundle);
-        try {
-          await persistBundle(leagueId, bundle);
-          const firstRows = await selectPersistedRows(leagueId);
+      fc.asyncProperty(normalizedSeasonShapeArbitrary, async (generated) => {
+        for (const { label, shape } of generatedAndForcedLegacyShapes(
+          generated,
+        )) {
+          const providerLeagueId = `${marker}-idempotent-${label}-${shape.caseId}`;
+          const bundle = buildNormalizedSeasonBundle(shape, providerLeagueId);
+          assertForcedLegacyVocabulary(label, bundle);
+          const leagueId = await insertLeague(bundle);
+          try {
+            await persistBundle(leagueId, bundle);
+            const firstRows = await selectPersistedRows(leagueId);
 
-          const repeated = await persistBundle(leagueId, bundle);
-          const secondRows = await selectPersistedRows(leagueId);
+            const repeated = await persistBundle(leagueId, bundle);
+            const secondRows = await selectPersistedRows(leagueId);
 
-          expect(secondRows).toEqual(firstRows);
-          expect(repeated).toMatchObject({
-            draftPickStats: { changed: 0 },
-            finalStandingStats: { changed: 0 },
-            leagueSeasonSettingsStats: { changed: 0 },
-            matchupStats: { changed: 0 },
-            memberStats: { changed: 0 },
-            playerStatBreakdownStats: { changed: 0 },
-            playerStats: { changed: 0 },
-            rosterStats: { changed: 0 },
-            teamStats: { changed: 0 },
-            transactionStats: { changed: 0 },
-          });
-        } finally {
-          await deletePropertyLeagues([leagueId]);
+            expect(secondRows).toEqual(firstRows);
+            expect(repeated).toMatchObject({
+              draftPickStats: { changed: 0 },
+              finalStandingStats: { changed: 0 },
+              leagueSeasonSettingsStats: { changed: 0 },
+              matchupStats: { changed: 0 },
+              memberStats: { changed: 0 },
+              playerStatBreakdownStats: { changed: 0 },
+              playerStats: { changed: 0 },
+              rosterStats: { changed: 0 },
+              teamStats: { changed: 0 },
+              transactionStats: { changed: 0 },
+            });
+          } finally {
+            await deletePropertyLeagues([leagueId]);
+          }
         }
       }),
       { numRuns: configuredPropertyRuns(), seed: PROPERTY_SEED },
@@ -568,51 +606,56 @@ describe("normalized ingestion properties", () => {
 
   it("reconciles only the generated target season and league", async () => {
     await fc.assert(
-      fc.asyncProperty(normalizedSeasonShapeArbitrary, async (shape) => {
-        const otherSeason = shape.season === 2000 ? 2001 : shape.season - 1;
-        const primaryProviderLeagueId = `${marker}-scope-primary-${shape.caseId}`;
-        const targetBundle = buildNormalizedSeasonBundle(
-          shape,
-          primaryProviderLeagueId,
-        );
-        const otherSeasonBundle = buildNormalizedSeasonBundle(
-          { ...shape, season: otherSeason },
-          primaryProviderLeagueId,
-        );
-        const otherLeagueBundle = buildNormalizedSeasonBundle(
-          { ...shape, caseId: shape.caseId + 1_000_000 },
-          `${marker}-scope-secondary-${shape.caseId}`,
-        );
-        const primaryLeagueId = await insertLeague(targetBundle);
-        const otherLeagueId = await insertLeague(otherLeagueBundle);
-
-        try {
-          await persistBundle(primaryLeagueId, otherSeasonBundle);
-          await persistBundle(primaryLeagueId, targetBundle);
-          await persistBundle(otherLeagueId, otherLeagueBundle);
-          const otherSeasonBefore = await selectPersistedRows(
-            primaryLeagueId,
-            otherSeason,
+      fc.asyncProperty(normalizedSeasonShapeArbitrary, async (generated) => {
+        for (const { label, shape } of generatedAndForcedLegacyShapes(
+          generated,
+        )) {
+          const otherSeason = shape.season === 2000 ? 2001 : shape.season - 1;
+          const primaryProviderLeagueId = `${marker}-scope-primary-${label}-${shape.caseId}`;
+          const targetBundle = buildNormalizedSeasonBundle(
+            shape,
+            primaryProviderLeagueId,
           );
-          const otherLeagueBefore = await selectPersistedRows(otherLeagueId);
-
-          const prunedTarget = dropLastTeam(targetBundle);
-          await persistBundle(primaryLeagueId, prunedTarget);
-
-          const targetAfter = await selectPersistedRows(
-            primaryLeagueId,
-            shape.season,
+          assertForcedLegacyVocabulary(label, targetBundle);
+          const otherSeasonBundle = buildNormalizedSeasonBundle(
+            { ...shape, season: otherSeason },
+            primaryProviderLeagueId,
           );
-          const otherSeasonAfter = await selectPersistedRows(
-            primaryLeagueId,
-            otherSeason,
+          const otherLeagueBundle = buildNormalizedSeasonBundle(
+            { ...shape, caseId: shape.caseId + 2_000_000 },
+            `${marker}-scope-secondary-${label}-${shape.caseId}`,
           );
-          const otherLeagueAfter = await selectPersistedRows(otherLeagueId);
-          expect(targetAfter.teamRows).toHaveLength(shape.leagueSize - 1);
-          expect(otherSeasonAfter).toEqual(otherSeasonBefore);
-          expect(otherLeagueAfter).toEqual(otherLeagueBefore);
-        } finally {
-          await deletePropertyLeagues([primaryLeagueId, otherLeagueId]);
+          const primaryLeagueId = await insertLeague(targetBundle);
+          const otherLeagueId = await insertLeague(otherLeagueBundle);
+
+          try {
+            await persistBundle(primaryLeagueId, otherSeasonBundle);
+            await persistBundle(primaryLeagueId, targetBundle);
+            await persistBundle(otherLeagueId, otherLeagueBundle);
+            const otherSeasonBefore = await selectPersistedRows(
+              primaryLeagueId,
+              otherSeason,
+            );
+            const otherLeagueBefore = await selectPersistedRows(otherLeagueId);
+
+            const prunedTarget = dropLastTeam(targetBundle);
+            await persistBundle(primaryLeagueId, prunedTarget);
+
+            const targetAfter = await selectPersistedRows(
+              primaryLeagueId,
+              shape.season,
+            );
+            const otherSeasonAfter = await selectPersistedRows(
+              primaryLeagueId,
+              otherSeason,
+            );
+            const otherLeagueAfter = await selectPersistedRows(otherLeagueId);
+            expect(targetAfter.teamRows).toHaveLength(shape.leagueSize - 1);
+            expect(otherSeasonAfter).toEqual(otherSeasonBefore);
+            expect(otherLeagueAfter).toEqual(otherLeagueBefore);
+          } finally {
+            await deletePropertyLeagues([primaryLeagueId, otherLeagueId]);
+          }
         }
       }),
       { numRuns: configuredPropertyRuns(), seed: PROPERTY_SEED + 1 },
@@ -692,64 +735,75 @@ describe("normalized ingestion properties", () => {
 
   it("fails loudly for incomplete schedules and orphan standings", async () => {
     await fc.assert(
-      fc.asyncProperty(completePairingShapeArbitrary, async (shape) => {
-        const providerLeagueId = `${marker}-loud-${shape.caseId}`;
-        const generated = buildNormalizedSeasonBundle(shape, providerLeagueId);
-        const malformed = makeInconsistentBundle(generated);
-        const leagueId = await insertLeague(malformed.bundle);
+      fc.asyncProperty(
+        completePairingShapeArbitrary,
+        async (generatedShape) => {
+          for (const { label, shape } of generatedAndForcedLegacyShapes(
+            generatedShape,
+          )) {
+            const providerLeagueId = `${marker}-loud-${label}-${shape.caseId}`;
+            const generated = buildNormalizedSeasonBundle(
+              shape,
+              providerLeagueId,
+            );
+            assertForcedLegacyVocabulary(label, generated);
+            const malformed = makeInconsistentBundle(generated);
+            const leagueId = await insertLeague(malformed.bundle);
 
-        try {
-          const persisted = await persistBundle(leagueId, malformed.bundle);
-          expect(persisted.matchupStats.total).toBe(
-            malformed.bundle.matchups.length,
-          );
-          expect(persisted.finalStandingStats.total).toBe(
-            malformed.bundle.finalStandings?.length,
-          );
+            try {
+              const persisted = await persistBundle(leagueId, malformed.bundle);
+              expect(persisted.matchupStats.total).toBe(
+                malformed.bundle.matchups.length,
+              );
+              expect(persisted.finalStandingStats.total).toBe(
+                malformed.bundle.finalStandings?.length,
+              );
 
-          await resolveLeagueIdentities(handle.db, { leagueId });
-          const integrity = await runDataIntegrityChecks(handle.db, {
-            leagueId,
-          });
-          expect(integrity.failures).toBeGreaterThanOrEqual(2);
+              await resolveLeagueIdentities(handle.db, { leagueId });
+              const integrity = await runDataIntegrityChecks(handle.db, {
+                leagueId,
+              });
+              expect(integrity.failures).toBeGreaterThanOrEqual(2);
 
-          const scheduleCheck = await selectIntegrityCheck(
-            leagueId,
-            "schedule_coverage",
-            shape.season,
-          );
-          expect(scheduleCheck).toMatchObject({
-            status: "fail",
-            detail: expect.objectContaining({
-              gaps: expect.arrayContaining([
-                expect.objectContaining({
-                  missingTeamIds: malformed.missingTeamIds,
-                  scoringPeriod: 1,
+              const scheduleCheck = await selectIntegrityCheck(
+                leagueId,
+                "schedule_coverage",
+                shape.season,
+              );
+              expect(scheduleCheck).toMatchObject({
+                status: "fail",
+                detail: expect.objectContaining({
+                  gaps: expect.arrayContaining([
+                    expect.objectContaining({
+                      missingTeamIds: malformed.missingTeamIds,
+                      scoringPeriod: 1,
+                    }),
+                  ]),
                 }),
-              ]),
-            }),
-          });
+              });
 
-          const standingsCheck = await selectIntegrityCheck(
-            leagueId,
-            "standings_parity",
-            shape.season,
-          );
-          expect(standingsCheck).toMatchObject({
-            status: "fail",
-            detail: expect.objectContaining({
-              mismatches: expect.arrayContaining([
-                expect.objectContaining({
-                  providerTeamId: malformed.orphanStandingTeamId,
-                  reason: "missing_identity_mapping",
+              const standingsCheck = await selectIntegrityCheck(
+                leagueId,
+                "standings_parity",
+                shape.season,
+              );
+              expect(standingsCheck).toMatchObject({
+                status: "fail",
+                detail: expect.objectContaining({
+                  mismatches: expect.arrayContaining([
+                    expect.objectContaining({
+                      providerTeamId: malformed.orphanStandingTeamId,
+                      reason: "missing_identity_mapping",
+                    }),
+                  ]),
                 }),
-              ]),
-            }),
-          });
-        } finally {
-          await deletePropertyLeagues([leagueId]);
-        }
-      }),
+              });
+            } finally {
+              await deletePropertyLeagues([leagueId]);
+            }
+          }
+        },
+      ),
       { numRuns: configuredPropertyRuns(), seed: PROPERTY_SEED + 3 },
     );
   });

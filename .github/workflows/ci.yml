@@ -69,6 +69,20 @@ jobs:
       - name: Secret scan
         run: pnpm secret-scan
 
+      - name: ESPN corpus privacy tripwire
+        shell: bash
+        run: |
+          set -euo pipefail
+          corpus="test/fixtures/espn-corpus"
+          if rg --pcre2 --line-number --ignore-case \
+            -e '\{?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}?' \
+            -e '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' \
+            -e 'NHS\s+Alumni\s+Annual' \
+            "$corpus"; then
+            echo "Committed ESPN corpus contains a forbidden private identifier."
+            exit 1
+          fi
+
       - name: Typecheck
         run: pnpm typecheck
 

@@ -1153,6 +1153,113 @@ describe("import.requested Inngest function", () => {
     });
   });
 
+  it("fails loudly when a superseding attempt wins before quarantine persists", async () => {
+    const seeded = await seedShadowImport("shadow-quarantine-race");
+    const fixtureProvider = historyProvider();
+    await expect(
+      runImportRequested({
+        data: {
+          credentialId: seeded.credentialId,
+          leagueId: seeded.leagueId,
+          name: `${marker} shadow quarantine race`,
+          provider: "espn",
+          providerLeagueId: seeded.providerLeagueId,
+          season: 2026,
+          seasons: [2025],
+          shadowAttempt: 1,
+          size: 2,
+          sport: "ffl",
+        },
+        deps: {
+          cipher,
+          db: handle.db,
+          providers: { espn: fixtureProvider.provider },
+          quarantineWriter: {
+            async capture() {
+              await handle.db
+                .update(onboardingDiscoveredLeagues)
+                .set({ importAttempts: 2 })
+                .where(
+                  eq(
+                    onboardingDiscoveredLeagues.importedLeagueId,
+                    seeded.leagueId,
+                  ),
+                );
+              return [];
+            },
+          },
+          recomputeStats: async () => emptyStats,
+          runIntegrity: async (_db, input) =>
+            persistShadowIntegrity(input.leagueId, "fail"),
+        },
+      }),
+    ).rejects.toMatchObject({
+      cause: { code: "SHADOW_IMPORT_STATE_CHANGED" },
+    });
+
+    const [superseded] = await handle.db
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.importedLeagueId, seeded.leagueId));
+    expect(superseded).toMatchObject({
+      importAttempts: 2,
+      importState: "shadow_running",
+      quarantineManifest: null,
+      quarantinedAt: null,
+    });
+  });
+
+  it("reports a lost clean-promotion race as superseded instead of live", async () => {
+    const seeded = await seedShadowImport("shadow-promotion-race");
+    const fixtureProvider = historyProvider();
+    const response = await runImportRequested({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: `${marker} shadow promotion race`,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        seasons: [2025],
+        shadowAttempt: 1,
+        size: 2,
+        sport: "ffl",
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { espn: fixtureProvider.provider },
+        recomputeStats: async () => emptyStats,
+        runIntegrity: async (_db, input) => {
+          const integrity = await persistShadowIntegrity(
+            input.leagueId,
+            "pass",
+          );
+          await handle.db
+            .update(onboardingDiscoveredLeagues)
+            .set({ importAttempts: 2 })
+            .where(
+              eq(onboardingDiscoveredLeagues.importedLeagueId, seeded.leagueId),
+            );
+          return integrity;
+        },
+      },
+    });
+
+    expect(response.shadowRun).toEqual({
+      becameLive: false,
+      captures: [],
+      failures: 0,
+      state: "superseded",
+    });
+    expect(
+      await handle.db
+        .select()
+        .from(members)
+        .where(eq(members.organizationId, seeded.leagueId)),
+    ).toHaveLength(0);
+  });
+
   it("quarantines a shadow run when an uncaught job-body error exhausts retries", async () => {
     const seeded = await seedShadowImport("shadow-uncaught");
     const fixtureProvider = historyProvider();

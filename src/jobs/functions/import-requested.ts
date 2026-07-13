@@ -89,7 +89,7 @@ export interface ImportRequestedResponse extends HistoricalImportResult {
     becameLive: boolean;
     captures: QuarantineCaptureManifestEntry[];
     failures: number;
-    state: "quarantined" | "live";
+    state: "quarantined" | "live" | "superseded";
   };
 }
 
@@ -507,7 +507,7 @@ async function quarantineShadowImport({
   failures: Awaited<ReturnType<typeof loadUnresolvedIntegrityFailures>>;
   shadowImport: ShadowImportAuthorization;
 }): Promise<void> {
-  await deps.db
+  const [quarantined] = await deps.db
     .update(onboardingDiscoveredLeagues)
     .set({
       importState: "quarantined",
@@ -531,7 +531,17 @@ async function quarantineShadowImport({
           "quarantined",
         ]),
       ),
+    )
+    .returning({ id: onboardingDiscoveredLeagues.id });
+  if (!quarantined) {
+    throw toNonRetriable(
+      importJobError({
+        code: "SHADOW_IMPORT_STATE_CHANGED",
+        message: "Shadow import state changed before quarantine could persist",
+        status: 409,
+      }),
     );
+  }
 }
 
 function errorClassName(error: unknown): string {
@@ -795,7 +805,7 @@ export async function runImportRequested({
         becameLive,
         captures: [],
         failures: 0,
-        state: "live",
+        state: becameLive ? "live" : "superseded",
       },
       stats,
       ...history.value,
