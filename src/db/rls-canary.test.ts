@@ -52,9 +52,11 @@ import {
   members,
   type Poll,
   type PollVote,
+  type ProviderPayloadObservation,
   type PushNotificationPreference,
   polls,
   pollVotes,
+  providerPayloadObservations,
   pushNotificationPreferences,
   type User,
   users,
@@ -123,6 +125,8 @@ let integrityCheckA: DataIntegrityCheck;
 let integrityCheckB: DataIntegrityCheck;
 let capabilityObservationA: DataCapabilityObservation;
 let capabilityObservationB: DataCapabilityObservation;
+let payloadObservationA: ProviderPayloadObservation;
+let payloadObservationB: ProviderPayloadObservation;
 let leagueDataEditA: LeagueDataEdit;
 let leagueDataEditB: LeagueDataEdit;
 let leagueSeasonGroupingA: LeagueSeasonGrouping;
@@ -188,7 +192,7 @@ beforeAll(async () => {
   );
   await admin.pool.query(`GRANT USAGE ON SCHEMA public TO ${CANARY_ROLE}`);
   await admin.pool.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_player_week_stat_breakdowns, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_capability_observation, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_usage_event, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, email_digest_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON leagues, fantasy_teams, fantasy_members, fantasy_matchups, fantasy_roster_entries, fantasy_player_week_stat_breakdowns, fantasy_transactions, provider_final_standings, league_season_settings, historical_import_checkpoints, data_capability_observation, provider_payload_observation, data_integrity_check, data_correction_audit_log, league_data_edits, league_season_groupings, league_grouping_seasons, league_curation_season_states, person, team_season, identity_mapping, identity_audit_log, weekly_statistics, season_statistics, head_to_head_record, championship_record, all_time_record, content_item, content_reactions, editorial_actions, league_feed_reference, ai_persona_card, ai_persona_tone_history, ai_usage_event, ai_generation_run, ai_memory, instigations, polls, poll_votes, lore_claims, lore_subjects, lore_verifications, lore_votes, lore_events, push_subscription, push_notification_preferences, league_webhooks, webhook_delivery_records, email_digest_delivery_records, bankroll_weeks, bankroll_ledger, bet_slips, bet_legs, bet_settlements, league_invites, league_member_identity_claims TO ${CANARY_ROLE}`,
   );
 
   // Seed two leagues with one fantasy team each — as admin, outside any
@@ -671,6 +675,35 @@ beforeAll(async () => {
     ])
     .returning();
 
+  [payloadObservationA, payloadObservationB] = await admin.db
+    .insert(providerPayloadObservations)
+    .values([
+      {
+        contentHash: `${marker}-payload-a`,
+        leagueId: leagueA,
+        outcome: "baseline",
+        provider: "espn",
+        providerLeagueId: `${marker}-a`,
+        schemaHash: `${marker}-schema-a`,
+        schemaShape: ["$:object"],
+        season: 2026,
+        view: "settings",
+      },
+      {
+        contentHash: `${marker}-payload-b`,
+        leagueId: leagueB,
+        outcome: "alert",
+        provider: "espn",
+        providerLeagueId: `${marker}-b`,
+        schemaHash: `${marker}-schema-b`,
+        schemaShape: ["$:object", '$["added"]:number'],
+        scoringPeriod: 1,
+        season: 2026,
+        view: "scoreboard",
+      },
+    ])
+    .returning();
+
   [leagueSeasonGroupingA, leagueSeasonGroupingB] = await admin.db
     .insert(leagueSeasonGroupings)
     .values([
@@ -1095,6 +1128,19 @@ describe("two-league isolation under withLeagueContext", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("sees no payload observations outside a league context", async () => {
+    const rows = await canary.db
+      .select()
+      .from(providerPayloadObservations)
+      .where(
+        inArray(providerPayloadObservations.id, [
+          payloadObservationA.id,
+          payloadObservationB.id,
+        ]),
+      );
+    expect(rows).toHaveLength(0);
+  });
+
   it("sees no curation rows at all outside a league context", async () => {
     const edits = await canary.db
       .select()
@@ -1261,6 +1307,16 @@ describe("two-league isolation under withLeagueContext", () => {
 
     expect(rows.map((row) => row.id)).toContain(capabilityObservationA.id);
     expect(rows.map((row) => row.id)).not.toContain(capabilityObservationB.id);
+    expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
+  });
+
+  it("scoped to league A, payload observations never reveal league B", async () => {
+    const rows = await withLeagueContext(canary.db, leagueA, (tx) =>
+      tx.select().from(providerPayloadObservations),
+    );
+
+    expect(rows.map((row) => row.id)).toContain(payloadObservationA.id);
+    expect(rows.map((row) => row.id)).not.toContain(payloadObservationB.id);
     expect(rows.every((row) => row.leagueId === leagueA)).toBe(true);
   });
 
@@ -1495,6 +1551,26 @@ describe("two-league isolation under withLeagueContext", () => {
             rowCount: 0,
             season: 2026,
             status: "unavailable",
+          }),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects writing a league B payload observation from league A context", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx.insert(providerPayloadObservations).values({
+            contentHash: `${marker}-bad-payload`,
+            leagueId: leagueB,
+            outcome: "baseline",
+            provider: "espn",
+            providerLeagueId: `${marker}-b`,
+            schemaHash: `${marker}-bad-schema`,
+            schemaShape: ["$:object"],
+            season: 2026,
+            view: "settings",
           }),
         ),
       ),
@@ -1907,6 +1983,19 @@ describe("two-league isolation under withLeagueContext", () => {
             .where(
               eq(dataCapabilityObservations.id, capabilityObservationA.id),
             ),
+        ),
+      ),
+    ).toBe("55000");
+  });
+
+  it("rejects direct payload observation mutation", async () => {
+    expect(
+      await sqlstateOf(
+        withLeagueContext(canary.db, leagueA, (tx) =>
+          tx
+            .update(providerPayloadObservations)
+            .set({ contentHash: `${marker}-mutated-payload` })
+            .where(eq(providerPayloadObservations.id, payloadObservationA.id)),
         ),
       ),
     ).toBe("55000");

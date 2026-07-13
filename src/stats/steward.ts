@@ -8,6 +8,7 @@ import {
   identityAuditLog,
   identityMappings,
   persons,
+  providerPayloadObservations,
   teamSeasons,
 } from "@/db/schema";
 import { recomputeLeagueStatistics, runDataIntegrityChecks } from "./engine";
@@ -32,8 +33,26 @@ export interface SuggestedIdentityLink {
   teamSeasonId: string;
 }
 
+export interface ProviderPayloadDriftAlert {
+  addedPaths: string[];
+  contentHash: string;
+  detail: Record<string, unknown>;
+  driftKinds: Array<"shape_additive" | "shape_changed" | "semantic">;
+  id: string;
+  observedAt: string;
+  previousObservationId: string | null;
+  provider: "espn" | "sleeper" | "yahoo";
+  providerLeagueId: string;
+  removedPaths: string[];
+  schemaHash: string;
+  scoringPeriod: number | null;
+  season: number;
+  view: "settings" | "scoreboard";
+}
+
 export interface DataStewardReviewSummary {
   integrityChecks: DataIntegrityReviewItem[];
+  payloadDriftAlerts: ProviderPayloadDriftAlert[];
   suggestedIdentityLinks: SuggestedIdentityLink[];
 }
 
@@ -101,12 +120,61 @@ export async function listDataStewardReview(
         .orderBy(desc(identityMappings.confidence))
         .limit(limit);
 
+      const payloadRows = await tx
+        .select({
+          addedPaths: providerPayloadObservations.addedPaths,
+          contentHash: providerPayloadObservations.contentHash,
+          detail: providerPayloadObservations.detail,
+          driftKinds: providerPayloadObservations.driftKinds,
+          id: providerPayloadObservations.id,
+          observedAt: providerPayloadObservations.observedAt,
+          outcome: providerPayloadObservations.outcome,
+          previousObservationId:
+            providerPayloadObservations.previousObservationId,
+          provider: providerPayloadObservations.provider,
+          providerLeagueId: providerPayloadObservations.providerLeagueId,
+          removedPaths: providerPayloadObservations.removedPaths,
+          schemaHash: providerPayloadObservations.schemaHash,
+          scoringPeriod: providerPayloadObservations.scoringPeriod,
+          season: providerPayloadObservations.season,
+          view: providerPayloadObservations.view,
+        })
+        .from(providerPayloadObservations)
+        .where(eq(providerPayloadObservations.leagueId, input.leagueId))
+        .orderBy(
+          desc(providerPayloadObservations.observedAt),
+          desc(providerPayloadObservations.createdAt),
+          desc(providerPayloadObservations.id),
+        )
+        .limit(Math.min(1000, limit * 20));
+
+      const latestPayloadRows = new Map<string, (typeof payloadRows)[number]>();
+      for (const row of payloadRows) {
+        const key = [
+          row.provider,
+          row.providerLeagueId,
+          row.season,
+          row.view,
+          row.scoringPeriod ?? "settings",
+        ].join(":");
+        if (!latestPayloadRows.has(key)) {
+          latestPayloadRows.set(key, row);
+        }
+      }
+
       return {
         integrityChecks: checkRows.map((row) => ({
           ...row,
           createdAt: row.createdAt.toISOString(),
           reviewedAt: row.reviewedAt?.toISOString() ?? null,
         })),
+        payloadDriftAlerts: [...latestPayloadRows.values()]
+          .filter((row) => row.outcome === "alert")
+          .slice(0, limit)
+          .map(({ outcome: _outcome, ...row }) => ({
+            ...row,
+            observedAt: row.observedAt.toISOString(),
+          })),
         suggestedIdentityLinks: suggestedRows,
       };
     });

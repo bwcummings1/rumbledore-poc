@@ -526,6 +526,13 @@
       "when": 1783933200000,
       "tag": "0074_shadow_import_quarantine",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1783936800000,
+      "tag": "0075_provider_payload_drift_canary",
+      "breakpoints": true
     }
   ]
 }

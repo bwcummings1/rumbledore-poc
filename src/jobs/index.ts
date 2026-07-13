@@ -31,6 +31,10 @@ import { instigationSeed } from "./functions/instigation-seed";
 import { loreVoteClose } from "./functions/lore-vote-close";
 import { newsRefresh } from "./functions/news-refresh";
 import { oddsPoll } from "./functions/odds-poll";
+import {
+  payloadDriftCanary,
+  payloadDriftCanaryLeague,
+} from "./functions/payload-drift-canary";
 import { pollClose } from "./functions/poll-close";
 import { weeklyDigest } from "./functions/weekly-digest";
 
@@ -69,6 +73,10 @@ export { instigationSeed } from "./functions/instigation-seed";
 export { loreVoteClose } from "./functions/lore-vote-close";
 export { newsRefresh } from "./functions/news-refresh";
 export { oddsPoll } from "./functions/odds-poll";
+export {
+  payloadDriftCanary,
+  payloadDriftCanaryLeague,
+} from "./functions/payload-drift-canary";
 export { pollClose } from "./functions/poll-close";
 export {
   createWeeklyDigestFunction,
@@ -105,5 +113,7 @@ export const functions = [
   bettingSettleGameFinal,
   newsRefresh,
   oddsPoll,
+  payloadDriftCanary,
+  payloadDriftCanaryLeague,
   weeklyDigest,
 ] as const;

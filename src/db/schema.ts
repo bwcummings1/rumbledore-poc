@@ -103,6 +103,16 @@ export const providerProbeVerdict = pgEnum(
   PROVIDER_PROBE_VERDICTS,
 );
 
+export const providerPayloadView = pgEnum("provider_payload_view", [
+  "settings",
+  "scoreboard",
+]);
+
+export const providerPayloadObservationOutcome = pgEnum(
+  "provider_payload_observation_outcome",
+  ["baseline", "stable", "alert"],
+);
+
 export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "reconciliation_totals",
   "standings_parity",
@@ -1286,6 +1296,84 @@ export const dataCapabilityObservations = pgTable(
       table.status,
     ),
     pgPolicy("data_capability_observation_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const providerPayloadObservations = pgTable(
+  "provider_payload_observation",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerLeagueId: text("provider_league_id").notNull(),
+    season: integer("season").notNull(),
+    view: providerPayloadView("view").notNull(),
+    scoringPeriod: integer("scoring_period"),
+    schemaShape: jsonb("schema_shape")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    schemaHash: text("schema_hash").notNull(),
+    contentHash: text("content_hash").notNull(),
+    outcome: providerPayloadObservationOutcome("outcome").notNull(),
+    driftKinds: jsonb("drift_kinds")
+      .$type<Array<"shape_additive" | "shape_changed" | "semantic">>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    addedPaths: jsonb("added_paths")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    removedPaths: jsonb("removed_paths")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    previousObservationId: uuid("previous_observation_id").references(
+      (): AnyPgColumn => providerPayloadObservations.id,
+      { onDelete: "set null" },
+    ),
+    detail: jsonb("detail")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    observedAt: timestamp("observed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "provider_payload_observation_scoring_period_positive",
+      sql`${table.scoringPeriod} IS NULL OR ${table.scoringPeriod} >= 1`,
+    ),
+    check(
+      "provider_payload_observation_view_period_consistent",
+      sql`(${table.view} = 'settings' AND ${table.scoringPeriod} IS NULL) OR (${table.view} = 'scoreboard' AND ${table.scoringPeriod} IS NOT NULL)`,
+    ),
+    index("provider_payload_observation_latest_idx").on(
+      table.leagueId,
+      table.provider,
+      table.providerLeagueId,
+      table.season,
+      table.view,
+      table.scoringPeriod,
+      table.observedAt,
+      table.createdAt,
+    ),
+    index("provider_payload_observation_alert_idx").on(
+      table.leagueId,
+      table.outcome,
+      table.observedAt,
+    ),
+    pgPolicy("provider_payload_observation_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -4647,6 +4735,10 @@ export type DataCapabilityObservation =
   typeof dataCapabilityObservations.$inferSelect;
 export type NewDataCapabilityObservation =
   typeof dataCapabilityObservations.$inferInsert;
+export type ProviderPayloadObservation =
+  typeof providerPayloadObservations.$inferSelect;
+export type NewProviderPayloadObservation =
+  typeof providerPayloadObservations.$inferInsert;
 export type DataIntegrityCheck = typeof dataIntegrityChecks.$inferSelect;
 export type NewDataIntegrityCheck = typeof dataIntegrityChecks.$inferInsert;
 export type DataCorrectionAuditLog = typeof dataCorrectionAuditLog.$inferSelect;

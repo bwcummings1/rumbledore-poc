@@ -8,6 +8,8 @@ export const JOB_EVENTS = {
   ingestionTick: "ingestion.tick",
   leagueIngest: "league.ingest",
   seasonRolloverCheck: "season.rollover.check",
+  payloadDriftCanary: "payload.drift.canary",
+  payloadDriftCanaryLeague: "payload.drift.canary.league",
   importRequested: "import.requested",
   bankrollRollover: "bankroll.rollover",
   oddsPoll: "odds.poll",
@@ -80,6 +82,24 @@ export interface SeasonRolloverCheckData {
   leagueIds?: string[];
   limit?: number;
   now?: string;
+}
+
+export interface PayloadDriftCanaryData {
+  leagueIds?: string[];
+  limit?: number;
+  observedAt?: string;
+}
+
+export interface PayloadDriftCanaryLeagueData {
+  credentialId: string;
+  leagueId: string;
+  name: string;
+  observedAt: string;
+  provider: Extract<FantasyProviderId, "espn" | "sleeper" | "yahoo">;
+  providerLeagueId: string;
+  season: number;
+  size: number;
+  sport: "ffl" | "unknown";
 }
 
 export interface ContentGenerateData {
