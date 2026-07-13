@@ -1,7 +1,8 @@
 # Data Foundation — Design Doc
 
-> **Status (2026-06-24):** implemented through T16. Supersedes the old implicit "records page = data" model and now
-> documents the shipped data-foundation architecture plus current follow-ons.
+> **Status (2026-07-13):** implemented through T19 (player-level canon records, per-stat scoring persistence,
+> substrate-B AI consumption all landed; see `docs/PROGRESS.md`). Supersedes the old implicit "records page = data"
+> model and now documents the shipped data-foundation architecture plus current follow-ons.
 >
 > **One-line thesis:** A *rigid canonical substrate* that receives data, with *consumers* that read from it.
 > The substrate is the point of truth; consumers (the record book, the AI writers) are read-only projections.
@@ -193,8 +194,9 @@ before merge**. No context-free building, no cramming. The orchestrator enforces
 - EXISTS as of T12. The first implementation is mock/$0 and internal only: central tables `nfl_players`,
   `nfl_schedule`, `nfl_team_stats`, and `nfl_player_week_stats` store typed facts with `source`, `fetched_at`, and
   `content_hash` provenance. `src/general-stats` owns the mock fixture parser, pre-ingest integrity checks,
-  idempotent upsert, and read-only lookup/enrichment API. The News/AI generation flow is not wired to B yet; later
-  consumers should depend on that API rather than reading tables directly.
+  idempotent upsert, and read-only lookup/enrichment API. Since T19, league AI generation and central-news tailoring
+  consume B through that API as explicitly non-canon general NFL context; consumers should keep depending on the API
+  rather than reading tables directly.
 
 ---
 
@@ -316,7 +318,8 @@ They aren't separate patches — they're the Data page's first real content / th
    persist through identity resolution to non-manual `persons.canonical_name`, current/history imports reconcile away
    stale provider-member rows for fetched seasons, and `provider_identity_contamination` blocks invalid ids or fixture
    placeholder names in real provider namespaces. The People grid and edit-scope UI exist in the Data Book for dimension
-   edits; player-level records and draft/transaction UI remain follow-ons.
+   edits; player-level records landed in T19 (pushed-canon player facts + player record categories);
+   draft/transaction UI remains a follow-on.
 3. ✅ **Multi-week span** (the "325" record) — auto-detected from `playoffMatchupPeriodLength` (=2 for 2011-2012) and
    editable in the per-season grid. The 325 two-week playoff total is excluded from single-week records.
 4. ✅ **Settings ingest** — persist per-season `mSettings` and use them to auto-propose eras/spans.
@@ -340,9 +343,9 @@ They aren't separate patches — they're the Data page's first real content / th
 9. ✅ **Real-league proof**: T16 populated provider id `95050` / **"NHS Alumni Annual"** in the shared dev DB and captured
    real screenshots separate from fixture baselines.
 
-Current follow-ons: full per-stat scoring persistence, player-level Record Book records, draft/transaction UI,
-Sleeper/Yahoo dictionaries, real substrate-B provider/source wiring, News/AI substrate-B consumption, and the
-owner-set-aside minor UI tweaks.
+Current follow-ons (post-T19): draft/transaction UI, Sleeper/Yahoo decoding dictionaries, real substrate-B
+provider/source wiring (owner is choosing the source), and the owner-set-aside minor UI tweaks. (Per-stat scoring
+persistence, player-level Record Book records, and News/AI substrate-B consumption all landed in T19.)
 
 ---
 

@@ -1,3 +1,6 @@
+> **ARCHIVED (2026-07-13) — historical point-in-time document; superseded.** Live state → `docs/PROGRESS.md`;
+> phase plan → `docs/ROADMAP.md`. See `docs/archive/README.md` for why this file is here.
+
 # ESPN Data-Decoding Audit — toward complete, adaptive league-data organization
 
 > **Status:** T15 CLOSED. Owner-aligned principle: the system must correctly decode + organize

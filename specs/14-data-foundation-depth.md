@@ -150,7 +150,7 @@ a real human correction loop for what automation can't safely decide.
   - All steward actions are league-scoped, RLS-guarded, and restricted to the league's steward/commissioner.
 
 ## F. Known-bug correctness folded into the foundation
-These are tracked in `docs/PROGRESS.md` §7 / `IMPLEMENTATION_PLAN.md` Icebox; this spec makes their correctness a
+These are tracked in `docs/PROGRESS.md` §7 / the archived `docs/archive/IMPLEMENTATION_PLAN.md` Icebox; this spec makes their correctness a
 **foundation invariant**, not a later patch.
 
 - **Co-owner over-merge (identity).** Per `AGENTS.md`: "different same-season provider team slots must stay mapped to

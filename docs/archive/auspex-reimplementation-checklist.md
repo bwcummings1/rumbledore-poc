@@ -1,3 +1,6 @@
+> **ARCHIVED (2026-07-13) — historical point-in-time document; superseded.** Live state → `docs/PROGRESS.md`;
+> phase plan → `docs/ROADMAP.md`. See `docs/archive/README.md` for why this file is here.
+
 # AUSPEX Re-implementation — working checklist (resumable)
 
 Authoritative target: `DESIGN.md` + the byte-exact reference

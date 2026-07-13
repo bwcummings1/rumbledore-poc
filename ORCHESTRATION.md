@@ -1,12 +1,15 @@
 # ORCHESTRATION.md — the next-increment build model
 
-**This supersedes the Ralph loop.** The autonomous loop is retired (`loop.sh` is guarded off; `PROMPT_build.md` / `PROMPT_harden.md` / `PROMPT_plan.md` and the "pick the next `IMPLEMENTATION_PLAN.md` task and loop forever" model are historical). This file is how the Rumbledore build runs now.
+**This supersedes the Ralph loop.** The autonomous loop is retired (`loop.sh` is guarded off; the old `PROMPT_build.md` / `PROMPT_harden.md` / `PROMPT_plan.md` / `IMPLEMENTATION_PLAN.md` now live in `docs/archive/`). This file is how the Rumbledore build runs now.
 
 > **Posture update (owner decision, recorded in `docs/PROGRESS.md` §2; banner added 2026-07-11):** the
 > `review/increment-1` integration branch below is **historical** — everything now merges to **`main`**. The
 > operating model itself (orchestrator + workstream agents on `ws/*` branches in worktrees; agents never merge;
 > the orchestrator merges after a full gate run) is unchanged and remains authoritative. Recent working examples
 > of the full harness: `.orchestration/prompts/prompt-T18.md` / `prompt-T19.md` + `.orchestration/track-runner.sh`.
+> The Increment-1 scaffolding below (the `review/increment-1` branch, the specs-36–41 track assignments, and the
+> §7 `codex1/2/3` account table) is **historical**; current account/launcher reality lives in
+> `docs/HANDOFF-NEXT-AGENT.md` §7. The operating MODEL (roles, worktrees, gates, merge protocol) is live.
 
 Base: **`main`** (untouched this increment). Integration/review branch: **`review/increment-1`** (cut from `main`; the owner reviews this). Specs of record: `specs/00–35` (delivered) + **`specs/36+`** (this increment). Conventions/gates: `AGENTS.md`. Vision: `docs/NORTH-STAR.md`. Visual system (a hard gate): `DESIGN.md`.
 

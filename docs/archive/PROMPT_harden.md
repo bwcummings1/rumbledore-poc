@@ -1,3 +1,6 @@
+> **RETIRED — historical artifact of the autonomous "Ralph loop" (retired 2026-06-18).** Do NOT follow these
+> instructions. Live state → `docs/PROGRESS.md`; operating model → `ORCHESTRATION.md`; phase plan → `docs/ROADMAP.md`.
+
 # HARDEN MODE — spend each iteration on the HIGHEST-VALUE change, then stop. Bounded budget.
 
 The defined Scope is built and verified. You are now in a CAPPED hardening pass (default 10 iterations).

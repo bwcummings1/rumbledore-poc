@@ -1,3 +1,6 @@
+> **RETIRED — historical artifact of the autonomous "Ralph loop" (retired 2026-06-18).** Do NOT follow these
+> instructions. Live state → `docs/PROGRESS.md`; operating model → `ORCHESTRATION.md`; phase plan → `docs/ROADMAP.md`.
+
 # PLAN MODE — produce/refine the backlog. NO implementation, NO code changes.
 
 You are planning Rumbledore v2. Fresh context. Output is ONLY an updated `IMPLEMENTATION_PLAN.md`.

@@ -176,10 +176,10 @@ the live, up-to-date branch.**
 ---
 
 ## 0. TL;DR for whoever picks this up
-- The clean, first-principles rebuild is **delivered**; `main` carries the integrated build through T18, while
-  `ws/t19-records-substance` carries the final agent-buildable backlog: player records, per-stat breakdowns,
-  substrate-B AI enrichment, AI usage attribution, quick-win hardening, `specs/42` closure, and T18 review hardening for
-  orchestrator review/merge. `rebuild/foundation` was the autonomous-build branch (historical).
+- The clean, first-principles rebuild is **delivered**; `main` carries the integrated build through **T19 (merged)**:
+  player records, per-stat breakdowns, substrate-B AI enrichment, AI usage attribution, quick-win hardening, `specs/42`
+  closure, and T18 review hardening — plus the 2026-07-10 incident-recovery and docs commits.
+  `rebuild/foundation` was the autonomous-build branch (historical).
 - The autonomous **Ralph loop** is retired (`loop.sh` guarded). Current work uses the **orchestrated workstream** model
   in `ORCHESTRATION.md`: workstream agents work on `ws/*` branches/worktrees, commit and push their branch, and the
   orchestrator owns merges to `main`.
@@ -203,8 +203,9 @@ fixture-backed; production-real provider breadth is deferred), ingest current + 
 - **Bar:** new, snappy, mobile-first (distributed via a shareable link), desktop parity, nothing dated.
 
 ## 2. Branch reality
-- `main` is the live/integration branch and is current through T18. Workstream agents still work on `ws/*` branches and
-  must not merge to or force-push `main`; the orchestrator owns merges.
+- `main` is the live/integration branch and is current through T19 (merged), plus incident-recovery/docs commits.
+  Workstream agents still work on `ws/*` branches and must not merge to or force-push `main`; the orchestrator owns
+  merges.
 - Old version branches such as **`v0.62`** are historical mining references only. They contain useful domain clues
   (schema/domain modeling, `lib/crypto/encryption.ts`, ESPN request/header learnings, identity-resolution logic), but
   also the abandoned build's fatal patterns: disabled gates, fake auth, commented middleware, and low test coverage.

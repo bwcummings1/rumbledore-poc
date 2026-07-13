@@ -92,10 +92,12 @@ pnpm build
 ubs <changed files>
 ```
 
-If UI code changes, also run:
+Conditional gates:
 
 ```bash
-npx impeccable detect src/
+pnpm eval:ai:offline   # if AI/cast/content-quality code changed (offline mock LLM/judge)
+pnpm test:e2e          # if onboarding/flagship flows changed
+pnpm perf:pwa          # if shell/PWA/routes changed (run after build)
 ```
 
 Never commit `.env.local` or real credentials. CI runs the same core gates with Postgres/pgvector and Redis services.

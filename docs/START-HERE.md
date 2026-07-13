@@ -19,11 +19,11 @@ Drizzle/Postgres + RLS, Better Auth, Inngest, Anthropic; ESPN now, Sleeper/Yahoo
 - **`docs/PROGRESS.md`** — the **single source of truth** for live state (read fully; the top summarizes built/current/next).
 - **`docs/ROADMAP.md`** — the phased plan toward the North Star (done vs. next).
 - **`specs/00-09`** — the full product + architecture spec set (skim all; deep-read your work area).
-- **`docs/DATA-FOUNDATION-DESIGN.md`** + **`docs/ESPN-DATA-DECODING-AUDIT.md`** + **`.orchestration/handoff/T*.md`** —
-  the recent data-foundation/editorial/hardening arcs (T1–T19) and per-task handoffs (the task ledger).
+- **`docs/DATA-FOUNDATION-DESIGN.md`** + **`.orchestration/handoff/T*.md`** — the data-foundation/editorial/hardening
+  arcs (T1–T19) and per-task handoffs (the task ledger). (The completed plan + decoding audit are in `docs/archive/`.)
 - **`ORCHESTRATION.md`** (how work is done: orchestrator + workstream agents in git worktrees) + **`DESIGN.md`** (AUSPEX UI fidelity).
-- **IGNORE as retired/historical:** `IMPLEMENTATION_PLAN.md`, `loop.sh`, `PROMPT_*.md` (the old autonomous "Ralph loop").
-  Live state lives in `docs/PROGRESS.md`, not these.
+- **IGNORE as retired/historical:** `loop.sh` (guarded off) and everything in `docs/archive/` (the old autonomous
+  "Ralph loop" files, completed-phase plans, dated audits). Live state lives in `docs/PROGRESS.md`, not these.
 
 > **Continuity note:** for the full context of the July 2026 arc — T18/T19 (both MERGED to `main`), the post-merge
 > adversarial review, the 2026-07-10 dev-DB incident + recovery, provider reliability posture, and the agreed next

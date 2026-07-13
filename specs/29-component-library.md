@@ -5,8 +5,8 @@
 > reference: the implementing agent should never have to wonder how a component looks, what states it has,
 > or how it behaves at any breakpoint.
 >
-> READ FIRST: `phase5-staging/DESIGN.md` (design brief + inventory) and
-> `phase5-staging/specs/28-design-system-foundations.md` (tokens/type/motion/atmosphere/a11y — the substrate
+> READ FIRST: `DESIGN.md` (design brief + inventory) and
+> `specs/28-design-foundations.md` (tokens/type/motion/atmosphere/a11y — the substrate
 > this spec consumes). The interactive HTML reference lives at `docs/design/auspex-reference.html`.
 > The chart library (18 generators) is **out of scope here** — owned by spec `28`/data-viz; this spec covers
 > the meters/progress/pips/stat-tiles that are *not* chart generators.

@@ -37,3 +37,7 @@ next-env.d.ts
 
 # ralph loop runtime sentinels (build state, not code)
 /.loop/
+
+# orchestration operational files stay untracked (owner decision, docs/HANDOFF-NEXT-AGENT.md §4);
+# already-tracked files under it (handoff/T1-T16, import-summary.md) are unaffected by this rule
+/.orchestration/

@@ -15,14 +15,16 @@ current state, what's left, and this reading order). Then, in order:
 5. **`docs/HANDOFF-NEXT-AGENT.md`** — continuity context for whoever picks up next: the July 2026 arc (T18/T19 +
    review + incident), owner discussions/decisions, open owner-gated items, and operational knowledge (harness,
    accounts, scripts, dev-DB facts). Read after PROGRESS/ROADMAP.
-6. **`docs/DATA-FOUNDATION-{DESIGN,PLAN,AUDIT}.md`** + **`.orchestration/handoff/T*.md`** — the recent data-foundation
-   arc (T1–T17): substrate/curation/records model, the ESPN decoding audit, and the per-task handoffs (task ledger).
+6. **`docs/DATA-FOUNDATION-DESIGN.md`** + **`.orchestration/handoff/T*.md`** — the data-foundation arc (T1–T19):
+   substrate/curation/records model and the per-task handoffs (task ledger). The completed plan + decoding audit are
+   archived: `docs/archive/DATA-FOUNDATION-PLAN.md`, `docs/archive/ESPN-DATA-DECODING-AUDIT.md`.
 7. **`ORCHESTRATION.md`** (operating model — orchestrator + workstream agents) + **`DESIGN.md`** (AUSPEX design).
 
-> **Retired relics — do NOT treat as live:** `IMPLEMENTATION_PLAN.md`, `loop.sh`, `PROMPT_build.md`/`PROMPT_harden.md`/
-> `PROMPT_plan.md` (the autonomous Ralph loop). Live state → `docs/PROGRESS.md`; plan → `docs/ROADMAP.md`.
+> **Retired relics — do NOT treat as live:** `loop.sh` (guarded off) and the old Ralph-loop files, now in
+> `docs/archive/` (`IMPLEMENTATION_PLAN.md`, `PROMPT_build.md`/`PROMPT_harden.md`/`PROMPT_plan.md`).
+> Live state → `docs/PROGRESS.md`; plan → `docs/ROADMAP.md`.
 
-> **Operating model (2026-06-18): `ORCHESTRATION.md` is authoritative.** The autonomous Ralph loop is **retired** (`loop.sh` is guarded off; `PROMPT_build.md` / `PROMPT_harden.md` / `PROMPT_plan.md` and the "pick the next `IMPLEMENTATION_PLAN.md` task and loop" model are **historical** — do not follow them). You are either the **orchestrator** or a **workstream agent**: read `ORCHESTRATION.md` for your role, your file-ownership boundary, and the per-round commit→push→(orchestrator-)merge protocol. Everything below (gates, hard rules, conventions, gotchas) still applies.
+> **Operating model (2026-06-18): `ORCHESTRATION.md` is authoritative.** The autonomous Ralph loop is **retired** (`loop.sh` is guarded off; the old `PROMPT_*.md` / `IMPLEMENTATION_PLAN.md` are **historical**, archived in `docs/archive/` — do not follow them). You are either the **orchestrator** or a **workstream agent**: read `ORCHESTRATION.md` for your role, your file-ownership boundary, and the per-round commit→push→(orchestrator-)merge protocol. Everything below (gates, hard rules, conventions, gotchas) still applies.
 
 ## What this is
 Sandboxed per-league fantasy-football companion (ESPN now; Sleeper/Yahoo later): per-league home, AI blogger,

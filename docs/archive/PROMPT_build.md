@@ -1,3 +1,6 @@
+> **RETIRED — historical artifact of the autonomous "Ralph loop" (retired 2026-06-18).** Do NOT follow these
+> instructions. Live state → `docs/PROGRESS.md`; operating model → `ORCHESTRATION.md`; phase plan → `docs/ROADMAP.md`.
+
 # BUILD MODE (Scope phase) — one task, fully verified, then commit. Stops cleanly when Scope is done.
 
 You are an autonomous engineer on Rumbledore. Fresh context each iteration. Be decisive and complete.

@@ -83,7 +83,8 @@ behavior; back up before any destructive dev-DB operation; volume-scale properti
 - Everything merges to `main`; orchestrator owns merges after a full gate run (ORCHESTRATION.md banner).
 - No external CMS. Comments are a non-goal (reactions only). League teasers default `robots: noindex`
   (one-line reversible if the owner later wants crawler-driven growth).
-- `.orchestration/` operational files stay untracked (owner decision); `REPO-ANALYSIS/` is now committed.
+- `.orchestration/` operational files stay untracked (owner decision); `REPO-ANALYSIS/` is committed (now archived at
+  `docs/archive/REPO-ANALYSIS/`).
 - Mock-pinned/$0 posture holds until the owner flips keys; substrate-B real source is an owner choice
   (SportsDataIO key staged).
 
@@ -136,5 +137,5 @@ behavior; back up before any destructive dev-DB operation; volume-scale properti
 - **Real-league verification loop**: dev DB league = provider `espn`/`95050` "NHS Alumni Annual" (resolve the
   UUID at runtime); read-only for verification; screenshots via
   `SCREENSHOTS=1 PATH=/usr/bin:$PATH pnpm exec playwright test e2e/screenshots.spec.ts`.
-- The July 2026 deep audits live in `REPO-ANALYSIS/` (v1 + v2); T19 closed their entire agent-buildable
+- The July 2026 deep audits live in `docs/archive/REPO-ANALYSIS/` (v1 + v2); T19 closed their entire agent-buildable
   recommendation set — treat remaining items there as historical unless cross-checked against HEAD.
