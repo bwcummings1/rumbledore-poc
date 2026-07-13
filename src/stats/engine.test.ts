@@ -10,8 +10,8 @@ import { withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
   championshipRecords,
+  dataCapabilityObservations,
   dataCorrectionAuditLog,
-  dataCoverage,
   dataIntegrityChecks,
   fantasyDraftPicks,
   fantasyMatchups,
@@ -3891,13 +3891,15 @@ describe("recomputeLeagueStatistics", () => {
         .update(seasonStatistics)
         .set({ wins: seasonRow.wins + 1 })
         .where(eq(seasonStatistics.id, seasonRow.id));
-      await tx.insert(dataCoverage).values({
-        capability: "full",
+      await tx.insert(dataCapabilityObservations).values({
+        availability: "full",
         dataClass: "rosters",
-        itemCount: 0,
         leagueId,
         provider: "espn",
         providerLeagueId,
+        providerSupport: "full",
+        providerVerdict: "returned_empty",
+        rowCount: 0,
         season: 2025,
         status: "complete",
       });
@@ -4020,13 +4022,15 @@ describe("recomputeLeagueStatistics", () => {
       await seedStatsLeague("player-rollup");
 
     await withLeagueContext(handle.db, leagueId, async (tx) => {
-      await tx.insert(dataCoverage).values({
-        capability: "partial",
+      await tx.insert(dataCapabilityObservations).values({
+        availability: "partial",
         dataClass: "rosters",
-        itemCount: 10,
         leagueId,
         provider: "espn",
         providerLeagueId,
+        providerSupport: "partial",
+        providerVerdict: "returned_data",
+        rowCount: 10,
         season: 2025,
         status: "partial",
       });

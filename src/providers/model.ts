@@ -42,6 +42,16 @@ export const DATA_COVERAGE_STATUSES = [
 
 export type DataCoverageStatus = (typeof DATA_COVERAGE_STATUSES)[number];
 
+export const PROVIDER_PROBE_VERDICTS = [
+  "returned_data",
+  "returned_empty",
+  "not_requested",
+  "unsupported",
+  "request_failed",
+] as const;
+
+export type ProviderProbeVerdict = (typeof PROVIDER_PROBE_VERDICTS)[number];
+
 export type ProviderCapabilityMatrix = Record<
   ProviderDataClass,
   ProviderDataSupport

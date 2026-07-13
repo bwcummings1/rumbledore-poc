@@ -512,6 +512,13 @@
       "when": 1781616800000,
       "tag": "0072_webhook_delivery_retry",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1783929600000,
+      "tag": "0073_capability_observations",
+      "breakpoints": true
     }
   ]
 }

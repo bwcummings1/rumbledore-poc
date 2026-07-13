@@ -1,10 +1,10 @@
-import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
   championshipRecords,
-  dataCoverage,
+  dataCapabilityObservations,
   dataIntegrityChecks,
   fantasyDraftPicks,
   fantasyMatchups,
@@ -2884,16 +2884,35 @@ async function buildDataIntegrityCheckDrafts(
     })
     .from(fantasyTransactions)
     .where(eq(fantasyTransactions.leagueId, leagueId));
-  const coverageRows = await tx
+  const capabilityObservations = await tx
     .select({
-      capability: dataCoverage.capability,
-      dataClass: dataCoverage.dataClass,
-      itemCount: dataCoverage.itemCount,
-      season: dataCoverage.season,
-      status: dataCoverage.status,
+      capability: dataCapabilityObservations.availability,
+      createdAt: dataCapabilityObservations.createdAt,
+      dataClass: dataCapabilityObservations.dataClass,
+      itemCount: dataCapabilityObservations.rowCount,
+      probedAt: dataCapabilityObservations.probedAt,
+      providerSupport: dataCapabilityObservations.providerSupport,
+      providerVerdict: dataCapabilityObservations.providerVerdict,
+      season: dataCapabilityObservations.season,
+      status: dataCapabilityObservations.status,
     })
-    .from(dataCoverage)
-    .where(eq(dataCoverage.leagueId, leagueId));
+    .from(dataCapabilityObservations)
+    .where(eq(dataCapabilityObservations.leagueId, leagueId))
+    .orderBy(
+      desc(dataCapabilityObservations.probedAt),
+      desc(dataCapabilityObservations.createdAt),
+    );
+  const latestCapabilities = new Map<
+    string,
+    (typeof capabilityObservations)[number]
+  >();
+  for (const row of capabilityObservations) {
+    const key = `${row.season}:${row.dataClass}`;
+    if (!latestCapabilities.has(key)) {
+      latestCapabilities.set(key, row);
+    }
+  }
+  const coverageRows = [...latestCapabilities.values()];
   const settingsRows = await tx
     .select({
       id: leagueSeasonSettings.id,
@@ -3775,7 +3794,7 @@ async function buildDataIntegrityCheckDrafts(
   const emptyCompleteBySeason = new Map<number, Record<string, unknown>[]>();
   for (const row of coverageRows) {
     if (
-      row.capability === "none" ||
+      row.providerSupport === "none" ||
       !["complete", "partial"].includes(row.status) ||
       row.itemCount > 0
     ) {
@@ -3787,6 +3806,8 @@ async function buildDataIntegrityCheckDrafts(
         capability: row.capability,
         dataClass: row.dataClass,
         itemCount: row.itemCount,
+        providerSupport: row.providerSupport,
+        providerVerdict: row.providerVerdict,
         status: row.status,
       },
     ]);

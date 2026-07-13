@@ -51,7 +51,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "championship_record",
     "content_reactions",
     "data_correction_audit_log",
-    "data_coverage",
+    "data_capability_observation",
     "data_integrity_check",
     "editorial_actions",
     "fantasy_player_week_stat_breakdowns",

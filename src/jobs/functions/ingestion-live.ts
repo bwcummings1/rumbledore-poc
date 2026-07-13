@@ -7,7 +7,7 @@ import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
-  dataCoverage,
+  dataCapabilityObservations,
   leagues,
   members,
   onboardingDiscoveredLeagues,
@@ -1192,26 +1192,32 @@ async function loadCoverageByDataClass({
   const coverageRows = await withLeagueContext(db, row.leagueId, (tx) =>
     tx
       .select({
-        dataClass: dataCoverage.dataClass,
-        observedAt: dataCoverage.observedAt,
+        dataClass: dataCapabilityObservations.dataClass,
+        observedAt: sql<Date>`max(${dataCapabilityObservations.probedAt})`,
       })
-      .from(dataCoverage)
+      .from(dataCapabilityObservations)
       .where(
         and(
-          eq(dataCoverage.leagueId, row.leagueId),
-          eq(dataCoverage.provider, row.provider),
-          eq(dataCoverage.providerLeagueId, row.providerLeagueId),
-          eq(dataCoverage.season, row.season),
-          inArray(dataCoverage.dataClass, [...LIVE_INGESTION_DATA_CLASSES]),
+          eq(dataCapabilityObservations.leagueId, row.leagueId),
+          eq(dataCapabilityObservations.provider, row.provider),
+          eq(dataCapabilityObservations.providerLeagueId, row.providerLeagueId),
+          eq(dataCapabilityObservations.season, row.season),
+          inArray(dataCapabilityObservations.dataClass, [
+            ...LIVE_INGESTION_DATA_CLASSES,
+          ]),
         ),
-      ),
+      )
+      .groupBy(dataCapabilityObservations.dataClass),
   );
 
   return Object.fromEntries(
-    coverageRows.map((coverage) => [
-      coverage.dataClass as LiveIngestionDataClass,
-      coverage.observedAt,
-    ]),
+    coverageRows.map((coverage) => {
+      const observedAt = coverage.observedAt;
+      return [
+        coverage.dataClass as LiveIngestionDataClass,
+        observedAt instanceof Date ? observedAt : new Date(String(observedAt)),
+      ];
+    }),
   );
 }
 

@@ -7,7 +7,7 @@ import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
-  dataCoverage,
+  dataCapabilityObservations,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
@@ -279,10 +279,23 @@ function providerFor({
 async function selectHistoricalRows(leagueId: string) {
   return withLeagueContext(handle.db, leagueId, async (tx) => {
     const coverage = await tx
-      .select()
-      .from(dataCoverage)
-      .where(eq(dataCoverage.leagueId, leagueId))
-      .orderBy(asc(dataCoverage.season), asc(dataCoverage.dataClass));
+      .select({
+        capability: dataCapabilityObservations.availability,
+        dataClass: dataCapabilityObservations.dataClass,
+        details: dataCapabilityObservations.details,
+        itemCount: dataCapabilityObservations.rowCount,
+        providerSupport: dataCapabilityObservations.providerSupport,
+        providerVerdict: dataCapabilityObservations.providerVerdict,
+        season: dataCapabilityObservations.season,
+        status: dataCapabilityObservations.status,
+      })
+      .from(dataCapabilityObservations)
+      .where(eq(dataCapabilityObservations.leagueId, leagueId))
+      .orderBy(
+        asc(dataCapabilityObservations.season),
+        asc(dataCapabilityObservations.dataClass),
+        asc(dataCapabilityObservations.probedAt),
+      );
     const teams = await tx
       .select()
       .from(fantasyTeams)

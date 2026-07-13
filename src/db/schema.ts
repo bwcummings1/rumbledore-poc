@@ -24,6 +24,7 @@ import {
   type NormalizedFinalStandingRankSource,
   PROVIDER_DATA_CLASSES,
   PROVIDER_DATA_SUPPORT_LEVELS,
+  PROVIDER_PROBE_VERDICTS,
 } from "../providers/model";
 
 /**
@@ -95,6 +96,11 @@ export const dataCoverageCapability = pgEnum(
 export const dataCoverageStatus = pgEnum(
   "data_coverage_status",
   DATA_COVERAGE_STATUSES,
+);
+
+export const providerProbeVerdict = pgEnum(
+  "provider_probe_verdict",
+  PROVIDER_PROBE_VERDICTS,
 );
 
 export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
@@ -1226,8 +1232,8 @@ export const historicalImportCheckpoints = pgTable(
   ],
 );
 
-export const dataCoverage = pgTable(
-  "data_coverage",
+export const dataCapabilityObservations = pgTable(
+  "data_capability_observation",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     leagueId: uuid("league_id")
@@ -1237,10 +1243,12 @@ export const dataCoverage = pgTable(
     providerLeagueId: text("provider_league_id").notNull(),
     season: integer("season").notNull(),
     dataClass: dataCoverageClass("data_class").notNull(),
-    capability: dataCoverageCapability("capability").notNull(),
+    availability: dataCoverageCapability("availability").notNull(),
+    providerSupport: dataCoverageCapability("provider_support").notNull(),
+    providerVerdict: providerProbeVerdict("provider_verdict").notNull(),
     status: dataCoverageStatus("status").notNull(),
-    itemCount: integer("item_count").notNull().default(0),
-    observedAt: timestamp("observed_at", { withTimezone: true })
+    rowCount: integer("row_count").notNull().default(0),
+    probedAt: timestamp("probed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
     errorCode: text("error_code"),
@@ -1249,18 +1257,29 @@ export const dataCoverage = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
-    ...timestamps,
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
-    uniqueIndex("data_coverage_identity_unique").on(
+    check(
+      "data_capability_observation_row_count_nonnegative",
+      sql`${table.rowCount} >= 0`,
+    ),
+    index("data_capability_observation_latest_idx").on(
       table.leagueId,
       table.provider,
       table.providerLeagueId,
       table.season,
       table.dataClass,
+      table.probedAt,
+      table.createdAt,
     ),
-    index("data_coverage_league_status_idx").on(table.leagueId, table.status),
-    pgPolicy("data_coverage_isolation", {
+    index("data_capability_observation_league_status_idx").on(
+      table.leagueId,
+      table.status,
+    ),
+    pgPolicy("data_capability_observation_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -4582,8 +4601,10 @@ export type HistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferSelect;
 export type NewHistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferInsert;
-export type DataCoverage = typeof dataCoverage.$inferSelect;
-export type NewDataCoverage = typeof dataCoverage.$inferInsert;
+export type DataCapabilityObservation =
+  typeof dataCapabilityObservations.$inferSelect;
+export type NewDataCapabilityObservation =
+  typeof dataCapabilityObservations.$inferInsert;
 export type DataIntegrityCheck = typeof dataIntegrityChecks.$inferSelect;
 export type NewDataIntegrityCheck = typeof dataIntegrityChecks.$inferInsert;
 export type DataCorrectionAuditLog = typeof dataCorrectionAuditLog.$inferSelect;
