@@ -36,7 +36,9 @@ import {
 } from "@/components/ui/table";
 import { LeagueDataMasthead } from "../league-data-masthead";
 import type {
+  DataBookCapabilityRow,
   DataBookCheckpointOption,
+  DataBookCoverage,
   DataBookCurationMode,
   DataBookCurationState,
   DataBookEraProposal,
@@ -1693,6 +1695,111 @@ function SettingsTable({ season }: { season: DataBookSeason }) {
   );
 }
 
+function capabilityTone(row: DataBookCapabilityRow): StatusTone {
+  if (row.providerVerdict === "request_failed" || row.status === "error") {
+    return "danger";
+  }
+  if (row.availability === "full") {
+    return "success";
+  }
+  if (row.availability === "partial") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function probeVerdictLabel(value: DataBookCapabilityRow["providerVerdict"]) {
+  return value.replaceAll("_", " ");
+}
+
+function CoveragePanel({
+  coverage,
+  season,
+}: {
+  coverage: DataBookCoverage;
+  season: number;
+}) {
+  const rows = coverage.rows.filter((row) => row.season === season);
+  const latestProbe = rows
+    .map((row) => row.probedAt)
+    .sort((left, right) => right.localeCompare(left))[0];
+
+  return (
+    <section
+      aria-label={`${season} measured provider coverage`}
+      className="cell overflow-hidden p-0"
+    >
+      <div className="flex items-start gap-3 border-b border-[var(--hair)] px-3 py-3 sm:px-4">
+        <span
+          aria-hidden="true"
+          className="chip-glyph flex size-9 shrink-0 items-center justify-center"
+        >
+          <Database className="size-4 text-steel" />
+        </span>
+        <div className="grid min-w-0 gap-1">
+          <p className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3">
+            Declared coverage
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Latest measured provider response for each {season} data class.
+            {latestProbe
+              ? ` Probed ${latestProbe.slice(0, 16).replace("T", " ")} UTC.`
+              : ""}
+          </p>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-3 py-4 text-sm text-muted-foreground sm:px-4">
+          This season has not completed a capability probe yet.
+        </p>
+      ) : (
+        <div className="divide-y divide-[var(--hair)]">
+          {rows.map((row) => (
+            <div
+              className="grid gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-4"
+              key={`${row.season}:${row.dataClass}`}
+            >
+              <div className="min-w-0">
+                <p className="font-mono text-xs uppercase tracking-[0.1em] text-foreground">
+                  {row.label}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {probeVerdictLabel(row.providerVerdict)}
+                </p>
+              </div>
+              <span className="metric text-xs text-ink-3">
+                {row.rowCount.toLocaleString()} rows
+              </span>
+              <StatusPill showDot={false} tone={capabilityTone(row)}>
+                {row.availability}
+              </StatusPill>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PlayerDepthBasis({ basis }: { basis: string }) {
+  return (
+    <div className="cell flex items-start gap-3 p-3 sm:p-4">
+      <span
+        aria-hidden="true"
+        className="chip-glyph flex size-9 shrink-0 items-center justify-center"
+      >
+        <Database className="size-4 text-steel" />
+      </span>
+      <div className="grid gap-1">
+        <p className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3">
+          Measured season basis
+        </p>
+        <p className="text-sm text-foreground">{basis}</p>
+      </div>
+    </div>
+  );
+}
+
 function EraProposalCard({
   busy,
   canEditData,
@@ -2010,11 +2117,13 @@ function WeekRosterPanel({ week }: { week: DataBookWeekRow | null }) {
 }
 
 function WeeksTable({
+  coverage,
   canEditData,
   isDraftCell,
   onStartEdit,
   season,
 }: {
+  coverage: DataBookCoverage;
   canEditData: boolean;
   isDraftCell: DraftCellLookup;
   onStartEdit: (request: EditableCellRequest) => void;
@@ -2040,6 +2149,7 @@ function WeeksTable({
 
   return (
     <div className="grid gap-3">
+      <PlayerDepthBasis basis={coverage.playerDepthBasis} />
       <DataTable
         ariaLabel={`${season.season} Data Book weeks`}
         caption="Team-week matchup facts for the selected season"
@@ -2064,12 +2174,14 @@ function WeeksTable({
 function ActiveGrain({
   activeGrain,
   canEditData,
+  coverage,
   isDraftCell,
   onStartEdit,
   season,
 }: {
   activeGrain: DataBookGrain;
   canEditData: boolean;
+  coverage: DataBookCoverage;
   isDraftCell: DraftCellLookup;
   onStartEdit: (request: EditableCellRequest) => void;
   season: DataBookSeason;
@@ -2085,11 +2197,19 @@ function ActiveGrain({
         />
       );
     case "settings":
-      return <SettingsTable season={season} />;
+      return (
+        <div className="grid gap-3">
+          {canEditData ? (
+            <CoveragePanel coverage={coverage} season={season.season} />
+          ) : null}
+          <SettingsTable season={season} />
+        </div>
+      );
     case "weeks":
       return (
         <WeeksTable
           canEditData={canEditData}
+          coverage={coverage}
           isDraftCell={isDraftCell}
           onStartEdit={onStartEdit}
           season={season}
@@ -2530,6 +2650,7 @@ export function DataBookView({
           <ActiveGrain
             activeGrain={activeGrain}
             canEditData={canEditData}
+            coverage={draftData.coverage}
             isDraftCell={isDraftCell}
             onStartEdit={startEdit}
             season={season}

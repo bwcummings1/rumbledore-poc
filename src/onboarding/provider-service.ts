@@ -19,7 +19,11 @@ import type {
 } from "@/providers";
 import { yahooCredentialsSchema } from "@/providers/yahoo/client";
 import type { RealtimePublisher } from "@/realtime";
-import { recomputeLeagueStatistics } from "@/stats";
+import {
+  listDataStewardReview,
+  markIntegrityCheckReviewed,
+  recomputeLeagueStatistics,
+} from "@/stats";
 import type { CredentialCipher } from "./credential-crypto";
 import {
   type LeagueInviteTarget,
@@ -69,6 +73,23 @@ export interface DiscoveredLeagueImportCandidate extends DiscoveredLeague {
   isRecommendedImport: boolean;
   lastDiscoveredAt: Date;
   leagueId?: string;
+  onboardingState?: "shadow_running" | "quarantined" | "live";
+  quarantine?: {
+    captures: Array<{
+      contentHash: string;
+      path: string;
+      season: number;
+      view: string;
+    }>;
+    failures: Array<{
+      checkKey: string;
+      createdAt: string;
+      detail: Record<string, unknown>;
+      id: string;
+      season: number | null;
+    }>;
+    quarantinedAt: string;
+  };
   reconnect?: ProviderReconnectAction;
 }
 
@@ -88,7 +109,16 @@ export interface ProviderImportResult {
   credentialId: string;
   leagueId: string;
   leaguemateInvites: ProviderImportLeaguemateSummary;
+  onboardingState: "live" | "shadow_running";
   sync: CurrentLeagueSyncResult;
+}
+
+export interface QuarantineReviewResult {
+  becameLive: boolean;
+  checkId: string;
+  leagueId: string;
+  remainingFailures: number;
+  state: "quarantined" | "live";
 }
 
 export type RequestHistoricalImport = (
@@ -168,6 +198,7 @@ const storedCredentialSchemas = {
   yahoo: yahooCredentialsSchema,
 } satisfies Partial<Record<FantasyProviderId, z.ZodType<unknown>>>;
 type HistoricalImportProviderId = ImportRequestedData["provider"];
+const SHADOW_IMPORT_MAX_SEASONS = 25;
 
 function currentTime(deps: Pick<ProviderOnboardingDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
@@ -441,13 +472,17 @@ async function listDiscoveredLeagueCandidates(
       credentialId: onboardingDiscoveredLeagues.credentialId,
       connectionInvalidAt: providerCredentials.invalidAt,
       connectionState: providerCredentials.status,
+      importState: onboardingDiscoveredLeagues.importState,
       importedLeagueId: leagues.id,
+      persistedImportedLeagueId: onboardingDiscoveredLeagues.importedLeagueId,
       lastDiscoveredAt: onboardingDiscoveredLeagues.lastDiscoveredAt,
       memberUserId: members.userId,
       name: onboardingDiscoveredLeagues.name,
       provider: onboardingDiscoveredLeagues.provider,
       providerLeagueId: onboardingDiscoveredLeagues.providerLeagueId,
       providerTeamId: onboardingDiscoveredLeagues.providerTeamId,
+      quarantineManifest: onboardingDiscoveredLeagues.quarantineManifest,
+      quarantinedAt: onboardingDiscoveredLeagues.quarantinedAt,
       season: onboardingDiscoveredLeagues.season,
       size: onboardingDiscoveredLeagues.size,
       sport: onboardingDiscoveredLeagues.sport,
@@ -500,48 +535,93 @@ async function listDiscoveredLeagueCandidates(
     return latest === null ? row.season : Math.max(latest, row.season);
   }, null);
 
-  return ok(
-    rows.map((row) => {
-      const imported =
-        row.memberUserId !== null && row.importedLeagueId !== null;
-      let invalidConnection = false;
-      switch (row.connectionState) {
-        case "invalid":
-          invalidConnection = true;
-          break;
-        case "connected":
-          break;
+  const candidates: DiscoveredLeagueImportCandidate[] = [];
+  for (const row of rows) {
+    const hasMembership =
+      row.memberUserId !== null && row.importedLeagueId !== null;
+    const onboardingState =
+      row.importState ?? (hasMembership ? ("live" as const) : undefined);
+    const imported = hasMembership && onboardingState === "live";
+    let invalidConnection = false;
+    switch (row.connectionState) {
+      case "invalid":
+        invalidConnection = true;
+        break;
+      case "connected":
+        break;
+    }
+    let quarantine: DiscoveredLeagueImportCandidate["quarantine"];
+    if (
+      onboardingState === "quarantined" &&
+      row.quarantinedAt &&
+      row.persistedImportedLeagueId
+    ) {
+      const review = await listDataStewardReview(deps.db, {
+        leagueId: row.persistedImportedLeagueId,
+        limit: 100,
+      });
+      if (!review.ok) {
+        return err(
+          new OnboardingError({
+            cause: review.error,
+            code: "ONBOARDING_QUARANTINE_REVIEW_LOAD_FAILED",
+            message: "Quarantined integrity detail could not be loaded",
+            status: 500,
+          }),
+        );
       }
-      return {
-        credentialId: row.credentialId,
-        connectionState: row.connectionState,
-        imported,
-        isRecommendedImport:
-          !imported &&
-          !invalidConnection &&
-          row.sport === "ffl" &&
-          row.season === latestFflSeason,
-        lastDiscoveredAt: row.lastDiscoveredAt,
-        name: row.name,
-        provider: row.provider,
-        providerId: row.providerLeagueId,
-        ...(row.providerTeamId ? { providerTeamId: row.providerTeamId } : {}),
-        season: row.season,
-        sport: row.sport,
-        ...(row.teamName ? { teamName: row.teamName } : {}),
-        ...(row.size === null ? {} : { size: row.size }),
-        ...(row.connectionInvalidAt
-          ? { connectionInvalidAt: row.connectionInvalidAt }
-          : {}),
-        ...(imported && row.importedLeagueId
+      quarantine = {
+        captures: row.quarantineManifest?.captures ?? [],
+        failures: review.value.integrityChecks
+          .filter((check) => check.status === "fail")
+          .map((check) => ({
+            checkKey: check.checkKey,
+            createdAt: check.createdAt,
+            detail: check.detail,
+            id: check.id,
+            season: check.season,
+          })),
+        quarantinedAt: row.quarantinedAt.toISOString(),
+      };
+    }
+
+    candidates.push({
+      credentialId: row.credentialId,
+      connectionState: row.connectionState,
+      imported,
+      isRecommendedImport:
+        !imported &&
+        onboardingState !== "shadow_running" &&
+        onboardingState !== "quarantined" &&
+        !invalidConnection &&
+        row.sport === "ffl" &&
+        row.season === latestFflSeason,
+      lastDiscoveredAt: row.lastDiscoveredAt,
+      name: row.name,
+      provider: row.provider,
+      providerId: row.providerLeagueId,
+      ...(row.providerTeamId ? { providerTeamId: row.providerTeamId } : {}),
+      season: row.season,
+      sport: row.sport,
+      ...(row.teamName ? { teamName: row.teamName } : {}),
+      ...(row.size === null ? {} : { size: row.size }),
+      ...(onboardingState ? { onboardingState } : {}),
+      ...(quarantine ? { quarantine } : {}),
+      ...(row.connectionInvalidAt
+        ? { connectionInvalidAt: row.connectionInvalidAt }
+        : {}),
+      ...(row.persistedImportedLeagueId
+        ? { leagueId: row.persistedImportedLeagueId }
+        : imported && row.importedLeagueId
           ? { leagueId: row.importedLeagueId }
           : {}),
-        ...(invalidConnection
-          ? { reconnect: reconnectActionForProvider(row.provider) }
-          : {}),
-      };
-    }),
-  );
+      ...(invalidConnection
+        ? { reconnect: reconnectActionForProvider(row.provider) }
+        : {}),
+    });
+  }
+
+  return ok(candidates);
 }
 
 export async function listDiscoveredLeagues(
@@ -664,6 +744,18 @@ export async function importDiscoveredLeague(
       }),
     );
   }
+  switch (discovered.importState) {
+    case "live":
+      return err(
+        new OnboardingError({
+          code: "ONBOARDING_LEAGUE_ALREADY_LIVE",
+          message: "This league is already imported",
+          status: 409,
+        }),
+      );
+    default:
+      break;
+  }
 
   let credentials: unknown;
   try {
@@ -747,16 +839,31 @@ export async function importDiscoveredLeague(
 
   await recomputeLeagueStatistics(deps.db, { leagueId: sync.value.league.id });
 
-  await deps.db
-    .insert(members)
-    .values({
-      organizationId: sync.value.league.id,
-      role: "commissioner",
-      userId: input.userId,
+  const shadowStartedAt = currentTime(deps);
+  const [shadowImport] = await deps.db
+    .update(onboardingDiscoveredLeagues)
+    .set({
+      importAttempts: sql`${onboardingDiscoveredLeagues.importAttempts} + 1`,
+      importedLeagueId: sync.value.league.id,
+      importState: "shadow_running",
+      integrityFailureCount: 0,
+      liveAt: null,
+      quarantineManifest: null,
+      quarantinedAt: null,
+      shadowStartedAt,
+      updatedAt: shadowStartedAt,
     })
-    .onConflictDoNothing({
-      target: [members.organizationId, members.userId],
-    });
+    .where(eq(onboardingDiscoveredLeagues.id, discovered.id))
+    .returning({ attempt: onboardingDiscoveredLeagues.importAttempts });
+  if (!shadowImport) {
+    return err(
+      new OnboardingError({
+        code: "ONBOARDING_SHADOW_STATE_FAILED",
+        message: "Pre-live verification state could not be started",
+        status: 500,
+      }),
+    );
+  }
 
   const leaguemateInvites = await listLeaguemateInviteTargets(
     { db: deps.db },
@@ -782,15 +889,28 @@ export async function importDiscoveredLeague(
     await deps.requestHistoricalImport?.({
       credentialId: discovered.credentialId,
       leagueId: sync.value.league.id,
+      maxSeasons: SHADOW_IMPORT_MAX_SEASONS,
       name: ref.name,
       provider: importProvider satisfies HistoricalImportProviderId,
       providerLeagueId: ref.providerId,
       season: ref.season,
+      shadowAttempt: shadowImport.attempt,
       sport: ref.sport,
       ...(ref.teamName ? { teamName: ref.teamName } : {}),
       ...(ref.size === undefined ? {} : { size: ref.size }),
     });
   } catch (cause) {
+    await deps.db
+      .update(onboardingDiscoveredLeagues)
+      .set({
+        importState: discovered.importState,
+        integrityFailureCount: discovered.integrityFailureCount,
+        quarantineManifest: discovered.quarantineManifest,
+        quarantinedAt: discovered.quarantinedAt,
+        shadowStartedAt: discovered.shadowStartedAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(onboardingDiscoveredLeagues.id, discovered.id));
     return err(
       new OnboardingError({
         cause,
@@ -801,20 +921,13 @@ export async function importDiscoveredLeague(
     );
   }
 
-  try {
-    await deps.requestLeagueConnected?.({
-      leagueId: sync.value.league.id,
-    });
-  } catch (cause) {
-    return err(
-      new OnboardingError({
-        cause,
-        code: "ONBOARDING_LIVE_INGEST_JOB_ENQUEUE_FAILED",
-        message: "Live ingestion could not be enqueued",
-        status: 500,
-      }),
-    );
-  }
+  const [completedShadow] = await deps.db
+    .select({ importState: onboardingDiscoveredLeagues.importState })
+    .from(onboardingDiscoveredLeagues)
+    .where(eq(onboardingDiscoveredLeagues.id, discovered.id))
+    .limit(1);
+  const onboardingState =
+    completedShadow?.importState === "live" ? "live" : "shadow_running";
 
   return ok({
     credentialId: discovered.credentialId,
@@ -832,6 +945,125 @@ export async function importDiscoveredLeague(
         teamNames: target.teamNames,
       })),
     },
+    onboardingState,
     sync: sync.value,
+  });
+}
+
+export async function reviewQuarantinedIntegrityCheck(
+  deps: Pick<ProviderOnboardingDependencies, "db" | "requestLeagueConnected">,
+  input: {
+    checkId: string;
+    leagueId: string;
+    reason?: string;
+    userId: string;
+  },
+): Promise<Result<QuarantineReviewResult, ProviderOnboardingError>> {
+  const [discovered] = await deps.db
+    .select({ id: onboardingDiscoveredLeagues.id })
+    .from(onboardingDiscoveredLeagues)
+    .where(
+      and(
+        eq(onboardingDiscoveredLeagues.userId, input.userId),
+        eq(onboardingDiscoveredLeagues.importedLeagueId, input.leagueId),
+        eq(onboardingDiscoveredLeagues.importState, "quarantined"),
+      ),
+    )
+    .limit(1);
+  if (!discovered) {
+    return err(
+      new OnboardingError({
+        code: "ONBOARDING_QUARANTINE_NOT_FOUND",
+        message: "Quarantined league import was not found",
+        status: 404,
+      }),
+    );
+  }
+
+  const reviewed = await markIntegrityCheckReviewed(deps.db, {
+    actorUserId: input.userId,
+    checkId: input.checkId,
+    leagueId: input.leagueId,
+    reason: input.reason ?? "owner accepted quarantined integrity finding",
+  });
+  if (!reviewed.ok) {
+    return err(reviewed.error);
+  }
+
+  const review = await listDataStewardReview(deps.db, {
+    leagueId: input.leagueId,
+    limit: 100,
+  });
+  if (!review.ok) {
+    return err(review.error);
+  }
+  const remainingFailures = review.value.integrityChecks.filter(
+    (check) => check.status === "fail",
+  ).length;
+  if (remainingFailures > 0) {
+    return ok({
+      becameLive: false,
+      checkId: input.checkId,
+      leagueId: input.leagueId,
+      remainingFailures,
+      state: "quarantined",
+    });
+  }
+
+  const becameLive = await deps.db.transaction(async (tx) => {
+    const [promoted] = await tx
+      .update(onboardingDiscoveredLeagues)
+      .set({
+        importState: "live",
+        integrityFailureCount: 0,
+        liveAt: new Date(),
+        quarantineManifest: null,
+        quarantinedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(onboardingDiscoveredLeagues.id, discovered.id),
+          eq(onboardingDiscoveredLeagues.importState, "quarantined"),
+        ),
+      )
+      .returning({ id: onboardingDiscoveredLeagues.id });
+    if (!promoted) {
+      return false;
+    }
+    await tx
+      .insert(members)
+      .values({
+        organizationId: input.leagueId,
+        role: "commissioner",
+        userId: input.userId,
+      })
+      .onConflictDoNothing({
+        target: [members.organizationId, members.userId],
+      });
+    return true;
+  });
+
+  if (becameLive) {
+    try {
+      await deps.requestLeagueConnected?.({ leagueId: input.leagueId });
+    } catch (cause) {
+      return err(
+        new OnboardingError({
+          cause,
+          code: "ONBOARDING_LIVE_INGEST_JOB_ENQUEUE_FAILED",
+          message: "Live ingestion could not be enqueued",
+          status: 500,
+        }),
+      );
+    }
+  }
+
+  return ok({
+    becameLive,
+    checkId: input.checkId,
+    leagueId: input.leagueId,
+    remainingFailures: 0,
+    state: "live",
   });
 }

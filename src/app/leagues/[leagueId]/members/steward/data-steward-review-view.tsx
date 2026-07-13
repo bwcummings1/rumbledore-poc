@@ -9,6 +9,7 @@ import {
   Database,
   Edit3,
   ListFilter,
+  RadioTower,
   RefreshCcw,
   Save,
   ScrollText,
@@ -168,6 +169,7 @@ export function DataStewardReviewView({
   league,
 }: DataStewardReviewViewProps) {
   const [checks, setChecks] = useState(initialSummary.integrityChecks);
+  const driftAlerts = initialSummary.payloadDriftAlerts;
   const [suggestions, setSuggestions] = useState(
     initialSummary.suggestedIdentityLinks,
   );
@@ -595,7 +597,7 @@ export function DataStewardReviewView({
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-4">
         <StatTile
           label="Open flags"
           tone={unresolvedChecks.length > 0 ? "amber" : "default"}
@@ -604,6 +606,11 @@ export function DataStewardReviewView({
         <StatTile
           label="Identity suggestions"
           value={`${suggestions.length}`}
+        />
+        <StatTile
+          label="Drift alerts"
+          tone={driftAlerts.length > 0 ? "amber" : "default"}
+          value={`${driftAlerts.length}`}
         />
         <StatTile label="Recorded checks" value={`${checks.length}`} />
       </section>
@@ -693,7 +700,7 @@ export function DataStewardReviewView({
             />
           </section>
 
-          {curationState.access.canEditData ? (
+          {curationState?.access.canEditData ? (
             <section
               aria-label="Fixed variable edits"
               className="grid gap-3"
@@ -832,7 +839,7 @@ export function DataStewardReviewView({
             </section>
           ) : null}
 
-          {curationState.access.canEditData ? (
+          {curationState?.access.canEditData ? (
             <section
               aria-label="Structural matchup span edits"
               className="grid gap-3"
@@ -1133,6 +1140,86 @@ export function DataStewardReviewView({
               </EmptyState>
             )}
           </section>
+
+          {curationState?.access.canEditData ? (
+            <section
+              id="provider-drift-review"
+              aria-label="Provider drift alerts"
+              className="panel grid gap-4 p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="eyebrow text-highlight">Provider canaries</p>
+                  <h2 className="heading-auspex text-lg">Payload drift</h2>
+                </div>
+                <RadioTower className="size-5 text-highlight" aria-hidden />
+              </div>
+              {driftAlerts.length > 0 ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {driftAlerts.map((alert) => (
+                    <article key={alert.id} className="cell grid gap-3 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="font-display text-base font-medium capitalize">
+                            {alert.view} canary
+                          </h3>
+                          <p className="mt-1 font-mono text-xs text-muted-foreground">
+                            {alert.provider.toUpperCase()} · {alert.season}
+                            {alert.scoringPeriod
+                              ? ` · Week ${alert.scoringPeriod}`
+                              : ""}
+                          </p>
+                        </div>
+                        <StatusPill tone="danger">drift</StatusPill>
+                      </div>
+                      <KVList
+                        items={[
+                          {
+                            label: "Detected",
+                            value: new Date(alert.observedAt).toLocaleString(),
+                          },
+                          {
+                            label: "Signal",
+                            value: alert.driftKinds
+                              .map((kind) => kind.replaceAll("_", " "))
+                              .join(" + "),
+                          },
+                          {
+                            label: "Content hash",
+                            value: (
+                              <span className="font-mono text-xs">
+                                {alert.contentHash.slice(0, 16)}
+                              </span>
+                            ),
+                          },
+                        ]}
+                      />
+                      {alert.addedPaths.length > 0 ||
+                      alert.removedPaths.length > 0 ? (
+                        <p className="max-h-24 overflow-auto break-words rounded-control border border-border bg-background px-3 py-2 font-mono text-xs text-muted-foreground">
+                          {alert.addedPaths.length > 0
+                            ? `Added: ${alert.addedPaths.join(", ")}`
+                            : ""}
+                          {alert.addedPaths.length > 0 &&
+                          alert.removedPaths.length > 0
+                            ? " · "
+                            : ""}
+                          {alert.removedPaths.length > 0
+                            ? `Removed: ${alert.removedPaths.join(", ")}`
+                            : ""}
+                        </p>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <Banner title="No active drift alerts" tone="ok">
+                  Stable canaries and first-run baselines stay quiet; any
+                  normalized settings or scoreboard drift will appear here.
+                </Banner>
+              )}
+            </section>
+          ) : null}
 
           <section
             id="integrity-review"

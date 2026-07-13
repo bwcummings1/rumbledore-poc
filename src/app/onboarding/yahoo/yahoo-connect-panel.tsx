@@ -196,14 +196,16 @@ export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
   }
 
   function markLeagueImported(key: string, imported: ImportResult) {
+    const isLive = imported.onboardingState === "live";
     setDiscoveredLeagues((current) =>
       current.map((league) =>
         leagueKey(league) === key
           ? {
               ...league,
-              imported: true,
+              imported: isLive,
               isRecommendedImport: false,
               leagueId: imported.leagueId,
+              onboardingState: imported.onboardingState,
             }
           : league,
       ),
@@ -229,7 +231,9 @@ export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
-      continueToReturnTo(returnToAfterImport(returnTo, [imported.leagueId]));
+      if (imported.onboardingState === "live") {
+        continueToReturnTo(returnToAfterImport(returnTo, [imported.leagueId]));
+      }
     }
   }
 
@@ -260,12 +264,12 @@ export function YahooConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
-      continueToReturnTo(
-        returnToAfterImport(
-          returnTo,
-          Object.values(imported).map((result) => result.leagueId),
-        ),
-      );
+      const liveLeagueIds = Object.values(imported)
+        .filter((result) => result.onboardingState === "live")
+        .map((result) => result.leagueId);
+      if (liveLeagueIds.length > 0) {
+        continueToReturnTo(returnToAfterImport(returnTo, liveLeagueIds));
+      }
     }
   }
 

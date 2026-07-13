@@ -1,16 +1,29 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { z } from "zod";
 import type { Env } from "@/core/env/schema";
 import { recordJobRun } from "@/core/metrics";
 import { AppError, err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
-import { leagues, members, providerCredentials } from "@/db/schema";
-import { type HistoricalImportResult, importLeagueHistory } from "@/ingestion";
+import {
+  leagues,
+  members,
+  onboardingDiscoveredLeagues,
+  providerCredentials,
+} from "@/db/schema";
+import {
+  FileSystemQuarantineCorpusWriter,
+  type HistoricalImportResult,
+  importLeagueHistory,
+  type QuarantineCaptureManifestEntry,
+  type QuarantineCorpusWriter,
+} from "@/ingestion";
 import {
   type CredentialCipher,
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
+import { createFixtureEspnProvider } from "@/onboarding/fixture-espn";
+import { createFixtureYahooProvider } from "@/onboarding/fixture-yahoo";
 import { storedSleeperCredentialsSchema } from "@/onboarding/provider-service";
 import {
   refreshStoredYahooCredentials,
@@ -25,6 +38,7 @@ import type {
   FantasyProvider,
   FantasyProviderId,
   FantasyProviderSession,
+  NormalizedSeasonBundle,
   ProviderError,
   ProviderLeagueRef,
 } from "@/providers/model";
@@ -34,7 +48,11 @@ import {
   yahooCredentialsSchema,
 } from "@/providers/yahoo/client";
 import { createRealtimePublisher, type RealtimePublisher } from "@/realtime";
-import { recomputeLeagueStatistics } from "@/stats";
+import {
+  listDataStewardReview,
+  recomputeLeagueStatistics,
+  runDataIntegrityChecks,
+} from "@/stats";
 import { inngest } from "../client";
 import { type ImportRequestedData, JOB_EVENTS } from "../events";
 
@@ -54,7 +72,10 @@ interface ImportRequestedDependencies {
   cipher: CredentialCipher;
   db: Db;
   providers: ImportRequestedProviderRegistry;
+  loadIntegrityReview?: typeof listDataStewardReview;
+  quarantineWriter?: QuarantineCorpusWriter;
   recomputeStats?: typeof recomputeLeagueStatistics;
+  runIntegrity?: typeof runDataIntegrityChecks;
   now?: () => Date;
   realtime?: RealtimePublisher;
   yahooOAuthClient?: YahooCredentialRefresher;
@@ -64,6 +85,23 @@ export interface ImportRequestedResponse extends HistoricalImportResult {
   ok: true;
   eventName: typeof JOB_EVENTS.importRequested;
   stats: Awaited<ReturnType<typeof recomputeLeagueStatistics>>;
+  shadowRun?: {
+    becameLive: boolean;
+    captures: QuarantineCaptureManifestEntry[];
+    failures: number;
+    state: "quarantined" | "live";
+  };
+}
+
+interface ShadowImportAuthorization {
+  attempt: number;
+  discoveryId: string;
+  userId: string;
+}
+
+interface ImportAuthorization {
+  credentials: unknown;
+  shadowImport?: ShadowImportAuthorization;
 }
 
 const storedEspnCredentialsSchema = z.object({
@@ -98,7 +136,8 @@ const importRequestedDataSchema = z.object({
     .min(1)
     .max(10)
     .optional(),
-  maxSeasons: z.number().int().min(1).max(10).optional(),
+  maxSeasons: z.number().int().min(1).max(25).optional(),
+  shadowAttempt: z.number().int().positive().optional(),
 });
 
 function toNonRetriable(error: AppError): NonRetriableError {
@@ -169,31 +208,33 @@ function resolveProvider(
   return provider as ImportRequestedProvider;
 }
 
-async function loadCredentialsForImport({
+async function loadImportAuthorization({
   data,
   deps,
 }: {
   data: ImportRequestedData;
   deps: ImportRequestedDependencies;
-}): Promise<unknown> {
-  const [row] = await deps.db
+}): Promise<ImportAuthorization> {
+  const [credential] = await deps.db
     .select({
       encryptedPayload: providerCredentials.encryptedPayload,
       status: providerCredentials.status,
+      userId: providerCredentials.userId,
     })
     .from(providerCredentials)
-    .innerJoin(
-      members,
-      and(
-        eq(members.userId, providerCredentials.userId),
-        eq(members.organizationId, data.leagueId),
-      ),
-    )
-    .innerJoin(leagues, eq(leagues.id, members.organizationId))
     .where(
       and(
         eq(providerCredentials.id, data.credentialId),
         eq(providerCredentials.provider, data.provider),
+      ),
+    )
+    .limit(1);
+
+  const [league] = await deps.db
+    .select({ id: leagues.id })
+    .from(leagues)
+    .where(
+      and(
         eq(leagues.id, data.leagueId),
         eq(leagues.provider, data.provider),
         eq(leagues.providerLeagueId, data.providerLeagueId),
@@ -201,7 +242,7 @@ async function loadCredentialsForImport({
     )
     .limit(1);
 
-  if (!row) {
+  if (!credential || !league) {
     throw toNonRetriable(
       importJobError({
         code: "IMPORT_REQUEST_NOT_AUTHORIZED",
@@ -212,7 +253,7 @@ async function loadCredentialsForImport({
     );
   }
 
-  switch (row.status) {
+  switch (credential.status) {
     case "connected":
       break;
     default:
@@ -225,10 +266,62 @@ async function loadCredentialsForImport({
       );
   }
 
+  const [shadowImport] = await deps.db
+    .select({
+      attempt: onboardingDiscoveredLeagues.importAttempts,
+      discoveryId: onboardingDiscoveredLeagues.id,
+      userId: onboardingDiscoveredLeagues.userId,
+    })
+    .from(onboardingDiscoveredLeagues)
+    .where(
+      and(
+        eq(onboardingDiscoveredLeagues.credentialId, data.credentialId),
+        eq(onboardingDiscoveredLeagues.userId, credential.userId),
+        eq(onboardingDiscoveredLeagues.provider, data.provider),
+        eq(onboardingDiscoveredLeagues.providerLeagueId, data.providerLeagueId),
+        eq(onboardingDiscoveredLeagues.season, data.season),
+        eq(onboardingDiscoveredLeagues.importedLeagueId, data.leagueId),
+        data.shadowAttempt === undefined
+          ? undefined
+          : eq(onboardingDiscoveredLeagues.importAttempts, data.shadowAttempt),
+        inArray(onboardingDiscoveredLeagues.importState, [
+          "shadow_running",
+          "quarantined",
+        ]),
+      ),
+    )
+    .limit(1);
+
+  if (!shadowImport) {
+    const [membership] = await deps.db
+      .select({ id: members.id })
+      .from(members)
+      .where(
+        and(
+          eq(members.userId, credential.userId),
+          eq(members.organizationId, data.leagueId),
+        ),
+      )
+      .limit(1);
+    if (!membership) {
+      throw toNonRetriable(
+        importJobError({
+          code: "IMPORT_REQUEST_NOT_AUTHORIZED",
+          message:
+            "Historical import credential is not authorized for this league",
+          status: 403,
+        }),
+      );
+    }
+  }
+
   try {
-    return storedCredentialSchemas[data.provider].parse(
-      deps.cipher.decryptJson(row.encryptedPayload),
-    );
+    return {
+      credentials: storedCredentialSchemas[data.provider].parse(
+        deps.cipher.decryptJson(credential.encryptedPayload),
+      ),
+      ...(shadowImport ? { shadowImport } : {}),
+    };
   } catch (cause) {
     throw toNonRetriable(
       importJobError({
@@ -348,18 +441,148 @@ async function getDefaultImportRequestedDependencies(): Promise<ImportRequestedD
     import("@/db"),
   ]);
   const env = getEnv();
+  const browserbase = env.services.browserbase;
 
   return {
     cipher: createCredentialCipher(env.credentials.encryptionKey),
     db: getDb(),
+    quarantineWriter: new FileSystemQuarantineCorpusWriter(),
     providers: {
-      espn: createEspnDiscoveryProvider(),
+      espn: browserbase.mock
+        ? createFixtureEspnProvider()
+        : createEspnDiscoveryProvider(),
       sleeper: createSleeperProvider(),
-      yahoo: createYahooProvider(),
+      yahoo: env.auth.yahoo.mock
+        ? createFixtureYahooProvider()
+        : createYahooProvider(),
     },
     realtime: createRealtimePublisher(env),
     yahooOAuthClient: createYahooOAuthClientForEnv(env),
   };
+}
+
+export async function runImportRequestedWithDefaultDependencies(
+  data: unknown,
+): Promise<ImportRequestedResponse> {
+  return runImportRequested({
+    data,
+    deps: await getDefaultImportRequestedDependencies(),
+  });
+}
+
+async function loadUnresolvedIntegrityFailures(
+  deps: ImportRequestedDependencies,
+  leagueId: string,
+) {
+  const review = await (deps.loadIntegrityReview ?? listDataStewardReview)(
+    deps.db,
+    { leagueId, limit: 100 },
+  );
+  if (!review.ok) {
+    throw review.error;
+  }
+
+  return review.value.integrityChecks
+    .filter((check) => check.status === "fail")
+    .map((check) => ({
+      checkKey: check.checkKey,
+      detail: check.detail,
+      id: check.id,
+      season: check.season,
+    }));
+}
+
+async function quarantineShadowImport({
+  capturedAt,
+  captures,
+  data,
+  deps,
+  failures,
+  shadowImport,
+}: {
+  capturedAt: Date;
+  captures: QuarantineCaptureManifestEntry[];
+  data: ImportRequestedData;
+  deps: ImportRequestedDependencies;
+  failures: Awaited<ReturnType<typeof loadUnresolvedIntegrityFailures>>;
+  shadowImport: ShadowImportAuthorization;
+}): Promise<void> {
+  await deps.db
+    .update(onboardingDiscoveredLeagues)
+    .set({
+      importState: "quarantined",
+      integrityFailureCount: failures.length,
+      quarantinedAt: capturedAt,
+      quarantineManifest: {
+        capturedAt: capturedAt.toISOString(),
+        captures,
+        checkIds: failures.map((failure) => failure.id),
+        checkKeys: failures.map((failure) => failure.checkKey),
+      },
+      updatedAt: capturedAt,
+    })
+    .where(
+      and(
+        eq(onboardingDiscoveredLeagues.id, shadowImport.discoveryId),
+        eq(onboardingDiscoveredLeagues.importedLeagueId, data.leagueId),
+        eq(onboardingDiscoveredLeagues.importAttempts, shadowImport.attempt),
+        inArray(onboardingDiscoveredLeagues.importState, [
+          "shadow_running",
+          "quarantined",
+        ]),
+      ),
+    );
+}
+
+async function promoteShadowImport({
+  data,
+  deps,
+  shadowImport,
+}: {
+  data: ImportRequestedData;
+  deps: ImportRequestedDependencies;
+  shadowImport: ShadowImportAuthorization;
+}): Promise<boolean> {
+  const promotedAt = now(deps);
+  return deps.db.transaction(async (tx) => {
+    const [promoted] = await tx
+      .update(onboardingDiscoveredLeagues)
+      .set({
+        importState: "live",
+        integrityFailureCount: 0,
+        liveAt: promotedAt,
+        quarantineManifest: null,
+        quarantinedAt: null,
+        updatedAt: promotedAt,
+      })
+      .where(
+        and(
+          eq(onboardingDiscoveredLeagues.id, shadowImport.discoveryId),
+          eq(onboardingDiscoveredLeagues.importedLeagueId, data.leagueId),
+          eq(onboardingDiscoveredLeagues.importAttempts, shadowImport.attempt),
+          inArray(onboardingDiscoveredLeagues.importState, [
+            "shadow_running",
+            "quarantined",
+          ]),
+        ),
+      )
+      .returning({ id: onboardingDiscoveredLeagues.id });
+    if (!promoted) {
+      return false;
+    }
+
+    await tx
+      .insert(members)
+      .values({
+        organizationId: data.leagueId,
+        role: "commissioner",
+        userId: shadowImport.userId,
+      })
+      .onConflictDoNothing({
+        target: [members.organizationId, members.userId],
+      });
+    return true;
+  });
 }
 
 export async function runImportRequested({
@@ -371,7 +594,8 @@ export async function runImportRequested({
 }): Promise<ImportRequestedResponse> {
   const data = parseImportRequestedData(rawData);
   const provider = resolveProvider(data, deps);
-  const credentials = await loadCredentialsForImport({ data, deps });
+  const authorization = await loadImportAuthorization({ data, deps });
+  const credentials = authorization.credentials;
   let auth = await authenticateWithYahooRefresh({
     credentialId: data.credentialId,
     credentials,
@@ -387,10 +611,13 @@ export async function runImportRequested({
     throwProviderError(auth.error);
   }
 
+  const capturedBundles: NormalizedSeasonBundle[] = [];
   let history = await importLeagueHistory({
     db: deps.db,
+    forceReimport: Boolean(authorization.shadowImport),
     maxSeasons: data.maxSeasons,
     now: deps.now,
+    onBundleFetched: (bundle) => capturedBundles.push(bundle),
     provider,
     ref: toProviderRef(data),
     realtime: deps.realtime,
@@ -418,8 +645,10 @@ export async function runImportRequested({
         });
         history = await importLeagueHistory({
           db: deps.db,
+          forceReimport: Boolean(authorization.shadowImport),
           maxSeasons: data.maxSeasons,
           now: deps.now,
+          onBundleFetched: (bundle) => capturedBundles.push(bundle),
           provider,
           ref: toProviderRef(data),
           realtime: deps.realtime,
@@ -445,6 +674,74 @@ export async function runImportRequested({
     deps.db,
     { leagueId: data.leagueId },
   );
+  const integrity = await (deps.runIntegrity ?? runDataIntegrityChecks)(
+    deps.db,
+    { leagueId: data.leagueId },
+  );
+
+  if (authorization.shadowImport) {
+    const failures = await loadUnresolvedIntegrityFailures(deps, data.leagueId);
+    if (integrity.failures > 0 && failures.length === 0) {
+      throw importJobError({
+        code: "SHADOW_IMPORT_FAILURE_DETAIL_MISSING",
+        message: "Shadow import failed without persisted integrity detail",
+        status: 500,
+      });
+    }
+
+    if (failures.length > 0) {
+      const capturedAt = now(deps);
+      const captures = await (
+        deps.quarantineWriter ?? new FileSystemQuarantineCorpusWriter()
+      ).capture({
+        attempt: authorization.shadowImport.attempt,
+        bundles: capturedBundles,
+        capturedAt,
+        failures,
+        provider: data.provider,
+        providerLeagueId: data.providerLeagueId,
+        season: data.season,
+      });
+      await quarantineShadowImport({
+        capturedAt,
+        captures,
+        data,
+        deps,
+        failures,
+        shadowImport: authorization.shadowImport,
+      });
+      return {
+        ok: true,
+        eventName: JOB_EVENTS.importRequested,
+        shadowRun: {
+          becameLive: false,
+          captures,
+          failures: failures.length,
+          state: "quarantined",
+        },
+        stats,
+        ...history.value,
+      };
+    }
+
+    const becameLive = await promoteShadowImport({
+      data,
+      deps,
+      shadowImport: authorization.shadowImport,
+    });
+    return {
+      ok: true,
+      eventName: JOB_EVENTS.importRequested,
+      shadowRun: {
+        becameLive,
+        captures: [],
+        failures: 0,
+        state: "live",
+      },
+      stats,
+      ...history.value,
+    };
+  }
 
   return {
     ok: true,
@@ -467,14 +764,22 @@ export function createImportRequestedFunction(
         "Runs a resumable historical fantasy import from stored provider credentials.",
       triggers: [{ event: JOB_EVENTS.importRequested }],
       idempotency:
-        "event.data.leagueId + ':' + event.data.provider + ':' + event.data.providerLeagueId",
+        "event.data.leagueId + ':' + event.data.provider + ':' + event.data.providerLeagueId + ':' + (event.data.shadowAttempt || 'legacy')",
     },
     async ({ event, step }): Promise<ImportRequestedResponse> =>
       recordJobRun("import-requested", async () => {
         const deps = await resolveDeps();
-        return step.run("run-historical-import", () =>
+        const response = await step.run("run-historical-import", () =>
           runImportRequested({ data: event.data, deps }),
         );
+        if (response.shadowRun?.becameLive) {
+          await step.sendEvent("announce-league-connected", {
+            data: { leagueId: response.league.id },
+            id: `league.connected:${response.league.id}`,
+            name: JOB_EVENTS.leagueConnected,
+          });
+        }
+        return response;
       }),
   );
 }

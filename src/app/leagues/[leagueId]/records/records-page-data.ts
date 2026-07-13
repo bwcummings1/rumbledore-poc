@@ -1,6 +1,10 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { leagues } from "@/db/schema";
+import {
+  buildDeclaredCapabilityBasis,
+  listDeclaredCapabilityMap,
+} from "@/ingestion/capability-map";
 import type { FantasyProviderId } from "@/providers";
 import {
   type BlowoutCatalogEntry,
@@ -116,6 +120,7 @@ export interface RecordsPageData {
   league: RecordsLeagueSummary;
   lens: RecordsLensSelection;
   managers: RecordsPersonSummary[];
+  playerDataBasis: string;
 }
 
 export interface ManagerRecordsPageData extends RecordsPageData {
@@ -162,6 +167,7 @@ interface RecordsSourceData {
   league: RecordsLeagueSummary;
   lens: RecordsLensSelection;
   personRows: RecordsPersonRow[];
+  playerDataBasis: string;
   seasonRows: SeasonStatisticsRow[];
   weeklyRows: WeeklyStatisticsRow[];
 }
@@ -867,6 +873,7 @@ function toRecordsPageData(source: RecordsSourceData): RecordsPageData {
     league: source.league,
     lens: source.lens,
     managers: source.personRows.map(toPersonSummary),
+    playerDataBasis: source.playerDataBasis,
   };
 }
 
@@ -898,11 +905,24 @@ async function loadRecordsSourceData(
     lens: input.lens,
     limit: input.limit,
   });
+  const capabilityMap = await listDeclaredCapabilityMap({
+    db,
+    leagueId: input.leagueId,
+    provider: league.provider,
+    providerLeagueId: league.providerLeagueId,
+  });
+  const playerDataBasis = buildDeclaredCapabilityBasis({
+    currentSeason: league.season,
+    dataClass: "rosters",
+    label: "Player depth",
+    observations: capabilityMap,
+  });
   const scoped: Omit<RecordsSourceData, "league"> = {
     catalog: canon.catalog,
     championshipRows: canon.championshipRows,
     lens: canon.lens,
     personRows: canon.personRows,
+    playerDataBasis: playerDataBasis.label,
     seasonRows: canon.seasonRows,
     weeklyRows: canon.weeklyRows,
   };

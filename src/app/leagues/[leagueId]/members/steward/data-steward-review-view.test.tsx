@@ -27,6 +27,26 @@ const initialSummary = {
       status: "fail" as const,
     },
   ],
+  payloadDriftAlerts: [
+    {
+      addedPaths: ['$["newScoringField"]:number'],
+      contentHash: "a".repeat(64),
+      detail: { matchupCount: 2 },
+      driftKinds: ["shape_additive", "semantic"] as Array<
+        "shape_additive" | "shape_changed" | "semantic"
+      >,
+      id: "00000000-0000-4000-8000-000000000111",
+      observedAt: "2026-06-15T13:00:00.000Z",
+      previousObservationId: "00000000-0000-4000-8000-000000000110",
+      provider: "espn" as const,
+      providerLeagueId: "fixture-espn-95050",
+      removedPaths: [],
+      schemaHash: "b".repeat(64),
+      scoringPeriod: 1,
+      season: 2026,
+      view: "scoreboard" as const,
+    },
+  ],
   suggestedIdentityLinks: [
     {
       confidence: 0.72,
@@ -220,7 +240,11 @@ test("ordinary members can inspect the public ledger without edit controls", () 
         },
         commissionerCandidates: [],
       }}
-      initialSummary={{ integrityChecks: [], suggestedIdentityLinks: [] }}
+      initialSummary={{
+        integrityChecks: [],
+        payloadDriftAlerts: [],
+        suggestedIdentityLinks: [],
+      }}
       league={league}
     />,
   );
@@ -286,6 +310,12 @@ test("commissioners can submit curation edits, era confirms, and handoff actions
       league={league}
     />,
   );
+
+  expect(
+    screen.getByRole("region", { name: "Provider drift alerts" }),
+  ).toBeDefined();
+  expect(screen.getByText(/scoreboard canary/i)).toBeDefined();
+  expect(screen.getByText("shape additive + semantic")).toBeDefined();
 
   fireEvent.change(screen.getAllByDisplayValue("Fixture Manger")[0], {
     target: { value: "Fixture Manager" },

@@ -10,6 +10,7 @@ import { recordAiUsageEvent } from "../src/ai/usage-attribution";
 import { parseEnv } from "../src/core/env/schema";
 import { createDb } from "../src/db/client";
 import { leagues, users } from "../src/db/schema";
+import { appendProviderPayloadCanaryObservations } from "../src/ingestion/drift-canary";
 import { FIXTURE_ESPN_PROVIDER_LEAGUE_ID } from "../src/onboarding/fixture-espn";
 
 const runMarker = `shots-${randomUUID()}`;
@@ -133,6 +134,37 @@ async function shootDataBookScopePrompt(
   await page
     .getByRole("dialog", { name: "Apply data edit" })
     .waitFor({ timeout: 15_000 });
+
+  const dir = path.join(OUT, vp);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    await page.screenshot({
+      path: path.join(dir, `${name}.png`),
+      fullPage: true,
+    });
+    console.log(`  ok ${vp}/${name}.png`);
+  } catch (e) {
+    console.log(`  FAIL ${vp}/${name}: ${(e as Error).message}`);
+  }
+}
+
+async function shootDataBookSettings(
+  page: Page,
+  vp: string,
+  name: string,
+  route: string,
+) {
+  if (!shouldShoot(name)) {
+    return;
+  }
+  try {
+    await page.goto(route, { waitUntil: "networkidle", timeout: 30_000 });
+  } catch {
+    /* live routes may keep realtime handles open; screenshot anyway */
+  }
+  await page.getByRole("radio", { name: "Settings" }).click();
+  await page.getByText("Declared coverage").waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(900);
 
   const dir = path.join(OUT, vp);
   fs.mkdirSync(dir, { recursive: true });
@@ -282,7 +314,9 @@ async function seedDataBookSavePushState(page: Page, leagueId: string) {
     },
   );
   if (!mode.ok()) {
-    throw new Error(`season mode seed failed: ${mode.status()}`);
+    throw new Error(
+      `season mode seed failed: ${mode.status()} ${await mode.text()}`,
+    );
   }
 
   const pushCurrent = await page.request.post(
@@ -368,6 +402,50 @@ async function seedAiUsageActivity(leagueId: string) {
         inputTokens: 64,
         outputTokens: 42,
       },
+    });
+  } finally {
+    await handle.pool.end();
+  }
+}
+
+async function seedPayloadDriftActivity(leagueId: string) {
+  const handle = createDb(parseEnv(process.env).databaseUrl);
+  const baseline = {
+    captures: [
+      {
+        detail: { settingGroups: 2 },
+        normalized: { scoringType: "H2H_POINTS", size: 12 },
+        scoringPeriod: null,
+        view: "settings" as const,
+      },
+    ],
+    db: handle.db,
+    leagueId,
+    provider: "espn" as const,
+    providerLeagueId: FIXTURE_ESPN_PROVIDER_LEAGUE_ID,
+    season: 2026,
+  };
+
+  try {
+    await appendProviderPayloadCanaryObservations({
+      ...baseline,
+      observedAt: new Date("2026-07-12T12:00:00.000Z"),
+    });
+    await appendProviderPayloadCanaryObservations({
+      ...baseline,
+      captures: [
+        {
+          detail: { settingGroups: 3 },
+          normalized: {
+            playoffSeedingRule: "head_to_head",
+            scoringType: "H2H_POINTS",
+            size: 12,
+          },
+          scoringPeriod: null,
+          view: "settings" as const,
+        },
+      ],
+      observedAt: new Date("2026-07-13T12:00:00.000Z"),
     });
   } finally {
     await handle.pool.end();
@@ -495,6 +573,7 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
   console.log(`seeded league home: ${homeHref}`);
   await seedDataBookSavePushState(page, leagueId);
   await seedAiUsageActivity(leagueId);
+  await seedPayloadDriftActivity(leagueId);
 
   // Pass B — populated league screens.
   const leagueRoutes: Array<[string, string]> = [
@@ -508,12 +587,19 @@ test("capture UI screenshots at mobile/tablet/desktop", async ({
     ["13-press-ai-usage", `/leagues/${leagueId}/press/usage`],
     ["14-lore", `/leagues/${leagueId}/lore`],
     ["15-members", `/leagues/${leagueId}/members`],
+    ["15-data-steward", `/leagues/${leagueId}/members/steward`],
     ["17-data-book", `/leagues/${leagueId}/data`],
   ];
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     for (const [name, route] of leagueRoutes)
       await shoot(page, vp.name, name, route);
+    await shootDataBookSettings(
+      page,
+      vp.name,
+      "17-data-book-settings",
+      `/leagues/${leagueId}/data`,
+    );
     await shootDataBookScopePrompt(
       page,
       vp.name,

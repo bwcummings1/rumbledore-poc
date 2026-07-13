@@ -8,7 +8,7 @@ import { err, ok, type Result } from "@/core/result";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
-  dataCoverage,
+  dataCapabilityObservations,
   dataIntegrityChecks,
   fantasyDraftPicks,
   fantasyMatchups,
@@ -43,6 +43,7 @@ import type {
   ProviderDataSupport,
   ProviderError,
   ProviderLeagueRef,
+  ProviderProbeVerdict,
 } from "@/providers";
 import { PROVIDER_DATA_CLASSES } from "@/providers";
 import { REALTIME_EVENTS, type RealtimePublisher } from "@/realtime";
@@ -2942,6 +2943,51 @@ function dataCoverageStatus({
   return capability === "partial" ? "partial" : "complete";
 }
 
+function providerProbeVerdict({
+  capability,
+  observation,
+}: {
+  capability: ProviderDataSupport;
+  observation?: DataCoverageObservation;
+}): ProviderProbeVerdict {
+  if (observation?.error) {
+    return "request_failed";
+  }
+  if (capability === "none") {
+    return "unsupported";
+  }
+  if (!observation) {
+    return "not_requested";
+  }
+  if (observation.status === "unavailable" || observation.itemCount === 0) {
+    return "returned_empty";
+  }
+  return "returned_data";
+}
+
+function measuredAvailability({
+  capability,
+  observation,
+}: {
+  capability: ProviderDataSupport;
+  observation?: DataCoverageObservation;
+}): ProviderDataSupport {
+  if (
+    capability === "none" ||
+    !observation ||
+    observation.error ||
+    observation.status === "unavailable" ||
+    observation.status === "error" ||
+    observation.itemCount === 0
+  ) {
+    return "none";
+  }
+  if (capability === "partial" || observation.status === "partial") {
+    return "partial";
+  }
+  return "full";
+}
+
 function coverageDetails({
   defaultDetails,
   observation,
@@ -2971,16 +3017,18 @@ export async function recordDataCoverage({
     const observation = observations[dataClass];
     const capability = capabilities.dataClasses[dataClass];
     return {
-      capability,
+      availability: measuredAvailability({ capability, observation }),
       dataClass,
       details: coverageDetails({ defaultDetails, observation }),
       errorCode: observation?.error?.code ?? null,
       errorMessage: observation?.error?.message ?? null,
-      itemCount: observation?.itemCount ?? 0,
       leagueId,
-      observedAt,
+      probedAt: observedAt,
       provider,
       providerLeagueId,
+      providerSupport: capability,
+      providerVerdict: providerProbeVerdict({ capability, observation }),
+      rowCount: observation?.itemCount ?? 0,
       season,
       status: dataCoverageStatus({ capability, observation }),
     };
@@ -2990,28 +3038,7 @@ export async function recordDataCoverage({
   }
 
   await withLeagueContext(db, leagueId, (tx) =>
-    tx
-      .insert(dataCoverage)
-      .values(rows)
-      .onConflictDoUpdate({
-        target: [
-          dataCoverage.leagueId,
-          dataCoverage.provider,
-          dataCoverage.providerLeagueId,
-          dataCoverage.season,
-          dataCoverage.dataClass,
-        ],
-        set: {
-          capability: sql`excluded.capability`,
-          details: sql`excluded.details`,
-          errorCode: sql`excluded.error_code`,
-          errorMessage: sql`excluded.error_message`,
-          itemCount: sql`excluded.item_count`,
-          observedAt: sql`excluded.observed_at`,
-          status: sql`excluded.status`,
-          updatedAt: sql`now()`,
-        },
-      }),
+    tx.insert(dataCapabilityObservations).values(rows),
   );
 }
 

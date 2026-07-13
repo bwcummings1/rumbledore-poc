@@ -4,7 +4,9 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
+import { withLeagueContext } from "@/db/rls";
 import {
+  dataIntegrityChecks,
   fantasyMatchups,
   leagues,
   members,
@@ -31,6 +33,7 @@ import {
   listEspnDiscoveredLeagues,
   startEspnBrowserConnect,
 } from "./espn-service";
+import { reviewQuarantinedIntegrityCheck } from "./provider-service";
 
 const marker = `onboardingtest-${randomUUID()}`;
 const masterKey = "test-onboarding-master-key-minimum-32"; // ubs:ignore — fake fixture value
@@ -231,7 +234,7 @@ describe("ESPN onboarding service", () => {
     expect(rows).toHaveLength(0);
   });
 
-  it("imports a discovered league through current sync and grants membership", async () => {
+  it("starts a discovered league in shadow state without granting membership", async () => {
     const providerLeagueId = numericProviderLeagueId();
     const user = await seedUser("import");
     const provider = providerFor(providerLeagueId);
@@ -286,20 +289,19 @@ describe("ESPN onboarding service", () => {
       {
         credentialId: imported.value.credentialId,
         leagueId: imported.value.leagueId,
+        maxSeasons: 25,
         name: `${marker} league ${providerLeagueId}`,
         provider: "espn",
         providerLeagueId,
         season: 2026,
+        shadowAttempt: 1,
         size: 12,
         sport: "ffl",
         teamName: "Fixture Team",
       },
     ]);
-    expect(requestedLiveIngest).toEqual([
-      {
-        leagueId: imported.value.leagueId,
-      },
-    ]);
+    expect(requestedLiveIngest).toEqual([]);
+    expect(imported.value.onboardingState).toBe("shadow_running");
     expect(imported.value.sync.teams).toEqual({
       total: 12,
       changed: 12,
@@ -328,11 +330,7 @@ describe("ESPN onboarding service", () => {
       .select()
       .from(members)
       .where(eq(members.userId, user.id));
-    if (!membership) throw new Error("membership was not persisted");
-    expect(membership).toMatchObject({
-      organizationId: imported.value.leagueId,
-      role: "commissioner",
-    });
+    expect(membership).toBeUndefined();
 
     const matchupRows = await handle.db
       .select()
@@ -347,9 +345,64 @@ describe("ESPN onboarding service", () => {
     if (!listedAfterImport.ok) throw listedAfterImport.error;
     expect(listedAfterImport.value[0]).toMatchObject({
       connectionState: "connected",
-      imported: true,
+      imported: false,
       isRecommendedImport: false,
       leagueId: imported.value.leagueId,
+      onboardingState: "shadow_running",
+    });
+
+    await handle.db
+      .update(onboardingDiscoveredLeagues)
+      .set({
+        importState: "quarantined",
+        integrityFailureCount: 1,
+        quarantinedAt: new Date("2026-07-13T12:00:00.000Z"),
+      })
+      .where(eq(onboardingDiscoveredLeagues.userId, user.id));
+    const checkId = await withLeagueContext(
+      handle.db,
+      imported.value.leagueId,
+      async (tx) => {
+        await tx
+          .delete(dataIntegrityChecks)
+          .where(eq(dataIntegrityChecks.leagueId, imported.value.leagueId));
+        const [check] = await tx
+          .insert(dataIntegrityChecks)
+          .values({
+            checkKey: "schedule_coverage",
+            detail: { issues: [{ reason: "fixture_gap" }] },
+            leagueId: imported.value.leagueId,
+            season: 2026,
+            status: "fail",
+          })
+          .returning({ id: dataIntegrityChecks.id });
+        if (!check) throw new Error("integrity check was not created");
+        return check.id;
+      },
+    );
+    const reviewed = await reviewQuarantinedIntegrityCheck(testDeps, {
+      checkId,
+      leagueId: imported.value.leagueId,
+      userId: user.id,
+    });
+    expect(reviewed).toMatchObject({
+      ok: true,
+      value: {
+        becameLive: true,
+        remainingFailures: 0,
+        state: "live",
+      },
+    });
+    expect(requestedLiveIngest).toEqual([
+      { leagueId: imported.value.leagueId },
+    ]);
+    const [reviewedMembership] = await handle.db
+      .select()
+      .from(members)
+      .where(eq(members.userId, user.id));
+    expect(reviewedMembership).toMatchObject({
+      organizationId: imported.value.leagueId,
+      role: "commissioner",
     });
   });
 

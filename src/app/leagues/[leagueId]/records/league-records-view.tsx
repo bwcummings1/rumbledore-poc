@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Crown,
+  Database,
   Landmark,
   Swords,
   Trophy,
@@ -685,6 +686,20 @@ function PlayersSection({ data }: { data: RecordsPageData }) {
       id="players"
       title="Players"
     >
+      <div className="cell mb-3 flex items-start gap-3 p-3 sm:p-4">
+        <span
+          aria-hidden="true"
+          className="chip-glyph flex size-9 shrink-0 items-center justify-center"
+        >
+          <Database className="size-4 text-steel" />
+        </span>
+        <div className="grid gap-1">
+          <p className="font-mono text-xs uppercase tracking-[0.14em] text-ink-3">
+            Player record basis
+          </p>
+          <p className="text-sm text-foreground">{data.playerDataBasis}</p>
+        </div>
+      </div>
       <div className="grid gap-3 lg:grid-cols-3">
         <CompactList
           items={players.bestWeeks.map((row) => ({

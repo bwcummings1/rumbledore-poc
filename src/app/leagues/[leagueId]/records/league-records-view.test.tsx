@@ -320,6 +320,8 @@ const data: RecordsPageData = {
       seasonSpan: "2024-2026",
     },
   ],
+  playerDataBasis:
+    "Player depth: 2011\u20132017 + current \u2014 measured, provider-limited",
 };
 
 afterEach(() => {
@@ -386,6 +388,48 @@ test("league records view renders an empty state", () => {
 
   expect(
     screen.getByText("No pushed data yet \u2014 push from the Data Book"),
+  ).toBeDefined();
+});
+
+test("player categories state their measured provider-limited season basis", () => {
+  render(
+    <LeagueRecordsView
+      data={{
+        ...data,
+        catalog: {
+          ...data.catalog,
+          players: {
+            ...data.catalog.players,
+            bestWeeks: [
+              {
+                personId: managerAId,
+                personName: "Fixture Manager 12",
+                playerName: "Alpha Quarterback",
+                position: "QB",
+                positionCategory: "QB",
+                proTeam: "ATL",
+                providerPlayerId: "alpha-qb",
+                providerTeamId: "1",
+                recordType: "best_single_player_week",
+                scoringPeriod: 4,
+                season: 2025,
+                slot: "QB",
+                started: true,
+                value: 31.4,
+              },
+            ],
+          },
+        },
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("heading", { name: "Players" })).toBeDefined();
+  expect(screen.getByText("Player record basis")).toBeDefined();
+  expect(
+    screen.getByText(
+      "Player depth: 2011\u20132017 + current \u2014 measured, provider-limited",
+    ),
   ).toBeDefined();
 });
 

@@ -8,7 +8,7 @@ import { parseEnv } from "@/core/env/schema";
 import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import {
-  dataCoverage,
+  dataCapabilityObservations,
   leagues,
   members,
   onboardingDiscoveredLeagues,
@@ -288,17 +288,19 @@ async function seedDataCoverage(
   seed: SeededLiveLeague,
   observedAtByClass: Partial<Record<ProviderDataClass, Date>>,
 ) {
-  await handle.db.insert(dataCoverage).values(
+  await handle.db.insert(dataCapabilityObservations).values(
     primaryLiveDataClasses.map((dataClass) => ({
-      capability: "full" as const,
+      availability: "full" as const,
       dataClass,
       details: { test: marker },
-      itemCount: 1,
       leagueId: seed.leagueId,
-      observedAt:
+      probedAt:
         observedAtByClass[dataClass] ?? new Date("2026-09-13T18:00:00Z"),
       provider: seed.provider,
       providerLeagueId: seed.providerLeagueId,
+      providerSupport: "full" as const,
+      providerVerdict: "returned_data" as const,
+      rowCount: 1,
       season: 2026,
       status: "complete" as const,
     })),
@@ -307,9 +309,16 @@ async function seedDataCoverage(
 
 async function dataCoverageRowsFor(leagueId: string) {
   return handle.db
-    .select()
-    .from(dataCoverage)
-    .where(eq(dataCoverage.leagueId, leagueId));
+    .select({
+      dataClass: dataCapabilityObservations.dataClass,
+      details: dataCapabilityObservations.details,
+      errorCode: dataCapabilityObservations.errorCode,
+      itemCount: dataCapabilityObservations.rowCount,
+      providerVerdict: dataCapabilityObservations.providerVerdict,
+      status: dataCapabilityObservations.status,
+    })
+    .from(dataCapabilityObservations)
+    .where(eq(dataCapabilityObservations.leagueId, leagueId));
 }
 
 function successfulSyncResult(seed: SeededLiveLeague): CurrentLeagueSyncResult {

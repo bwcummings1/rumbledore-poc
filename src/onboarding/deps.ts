@@ -46,11 +46,15 @@ async function requestHistoricalImport(
   data: ImportRequestedData,
 ): Promise<void> {
   if (getEnv().jobs.inngest.mode === "mock") {
+    const { runImportRequestedWithDefaultDependencies } = await import(
+      "@/jobs/functions/import-requested"
+    );
+    await runImportRequestedWithDefaultDependencies(data);
     return;
   }
 
   await inngest.send({
-    id: `import.requested:${data.leagueId}:${data.provider}:${data.providerLeagueId}`,
+    id: `import.requested:${data.leagueId}:${data.provider}:${data.providerLeagueId}:${data.shadowAttempt ?? "legacy"}`,
     name: JOB_EVENTS.importRequested,
     data,
   });

@@ -2,13 +2,14 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getLeagueDataBookData } from "@/app/leagues/[leagueId]/data/data-book-data";
 import { parseEnv } from "@/core/env/schema";
 import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   contentItems,
-  dataCoverage,
+  dataCapabilityObservations,
   dataIntegrityChecks,
   fantasyDraftPicks,
   fantasyMatchups,
@@ -39,6 +40,7 @@ import {
 import { REALTIME_EVENTS, RecordingRealtimePublisher } from "@/realtime";
 import { resolveLeagueIdentities } from "@/stats";
 import leagueFixture from "../../test/fixtures/espn/league-95050-2026.json";
+import { listDeclaredCapabilityMap } from "./capability-map";
 import {
   persistNormalizedLeagueRows,
   syncCurrentLeague,
@@ -402,10 +404,24 @@ function edgeCaseProviderFor(providerLeagueId: string) {
 async function selectIngestedRows(leagueId: string) {
   return withLeagueContext(handle.db, leagueId, async (tx) => {
     const coverage = await tx
-      .select()
-      .from(dataCoverage)
-      .where(eq(dataCoverage.leagueId, leagueId))
-      .orderBy(asc(dataCoverage.dataClass));
+      .select({
+        capability: dataCapabilityObservations.availability,
+        dataClass: dataCapabilityObservations.dataClass,
+        details: dataCapabilityObservations.details,
+        errorCode: dataCapabilityObservations.errorCode,
+        itemCount: dataCapabilityObservations.rowCount,
+        observedAt: dataCapabilityObservations.probedAt,
+        providerSupport: dataCapabilityObservations.providerSupport,
+        providerVerdict: dataCapabilityObservations.providerVerdict,
+        season: dataCapabilityObservations.season,
+        status: dataCapabilityObservations.status,
+      })
+      .from(dataCapabilityObservations)
+      .where(eq(dataCapabilityObservations.leagueId, leagueId))
+      .orderBy(
+        asc(dataCapabilityObservations.dataClass),
+        asc(dataCapabilityObservations.probedAt),
+      );
     const teams = await tx
       .select()
       .from(fantasyTeams)
@@ -668,6 +684,8 @@ describe("syncCurrentLeague", () => {
           {
             capability: row.capability,
             itemCount: row.itemCount,
+            providerSupport: row.providerSupport,
+            providerVerdict: row.providerVerdict,
             status: row.status,
           },
         ]),
@@ -677,13 +695,27 @@ describe("syncCurrentLeague", () => {
       teams: { capability: "full", itemCount: 12, status: "complete" },
       members: { capability: "full", itemCount: 16, status: "complete" },
       matchups: { capability: "full", itemCount: 84, status: "complete" },
-      rosters: { capability: "partial", itemCount: 0, status: "unavailable" },
-      transactions: {
-        capability: "partial",
+      rosters: {
+        capability: "none",
         itemCount: 0,
+        providerSupport: "partial",
+        providerVerdict: "returned_empty",
         status: "unavailable",
       },
-      history: { capability: "partial", itemCount: 0, status: "stale" },
+      transactions: {
+        capability: "none",
+        itemCount: 0,
+        providerSupport: "partial",
+        providerVerdict: "returned_empty",
+        status: "unavailable",
+      },
+      history: {
+        capability: "none",
+        itemCount: 0,
+        providerSupport: "partial",
+        providerVerdict: "not_requested",
+        status: "stale",
+      },
       scoring_detail: {
         capability: "partial",
         itemCount: 1,
@@ -763,6 +795,43 @@ describe("syncCurrentLeague", () => {
     expect(secondRows.settings[0].updatedAt.toISOString()).toBe(
       firstSettingsUpdatedAt,
     );
+    expect(secondRows.coverage).toHaveLength(firstRows.coverage.length * 2);
+    const declaredMap = await listDeclaredCapabilityMap({
+      db: handle.db,
+      leagueId: first.value.league.id,
+      provider: "espn",
+      providerLeagueId,
+      season: 2026,
+    });
+    expect(declaredMap).toHaveLength(firstRows.coverage.length);
+    expect(
+      declaredMap.find((row) => row.dataClass === "rosters"),
+    ).toMatchObject({
+      availability: "none",
+      providerSupport: "partial",
+      providerVerdict: "returned_empty",
+      rowCount: 0,
+    });
+    const dataBook = await getLeagueDataBookData(handle.db, {
+      leagueId: first.value.league.id,
+      selectedSeason: 2026,
+    });
+    expect(dataBook.status).toBe("ready");
+    if (dataBook.status !== "ready") {
+      return;
+    }
+    expect(dataBook.data.coverage.playerDepthBasis).toBe(
+      "Player depth: none \u2014 measured, provider-limited",
+    );
+    expect(
+      dataBook.data.coverage.rows.find(
+        (row) => row.season === 2026 && row.dataClass === "rosters",
+      ),
+    ).toMatchObject({
+      availability: "none",
+      providerVerdict: "returned_empty",
+      rowCount: 0,
+    });
   });
 
   it("reconciles stale members and team seasons for the imported season only", async () => {
@@ -1698,9 +1767,11 @@ describe("syncCurrentLeague", () => {
       (coverage) => coverage.dataClass === "rosters",
     );
     expect(rosterCoverage).toMatchObject({
-      capability: "full",
+      capability: "none",
       errorCode: "PROVIDER_BLOCKED",
       itemCount: 0,
+      providerSupport: "full",
+      providerVerdict: "request_failed",
       status: "error",
     });
   });

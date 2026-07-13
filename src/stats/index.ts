@@ -141,6 +141,7 @@ export {
   type DataStewardReviewSummary,
   listDataStewardReview,
   markIntegrityCheckReviewed,
+  type ProviderPayloadDriftAlert,
   reassignTeamSeason,
   renamePerson,
   rerunDataIntegrityReview,

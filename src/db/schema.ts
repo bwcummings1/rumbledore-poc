@@ -24,6 +24,7 @@ import {
   type NormalizedFinalStandingRankSource,
   PROVIDER_DATA_CLASSES,
   PROVIDER_DATA_SUPPORT_LEVELS,
+  PROVIDER_PROBE_VERDICTS,
 } from "../providers/model";
 
 /**
@@ -97,6 +98,21 @@ export const dataCoverageStatus = pgEnum(
   DATA_COVERAGE_STATUSES,
 );
 
+export const providerProbeVerdict = pgEnum(
+  "provider_probe_verdict",
+  PROVIDER_PROBE_VERDICTS,
+);
+
+export const providerPayloadView = pgEnum("provider_payload_view", [
+  "settings",
+  "scoreboard",
+]);
+
+export const providerPayloadObservationOutcome = pgEnum(
+  "provider_payload_observation_outcome",
+  ["baseline", "stable", "alert"],
+);
+
 export const dataIntegrityCheckKey = pgEnum("data_integrity_check_key", [
   "reconciliation_totals",
   "standings_parity",
@@ -166,6 +182,12 @@ export const onboardingBrowserSessionStatus = pgEnum(
   "onboarding_browser_session_status",
   ["awaiting_login", "connected", "failed", "ended"],
 );
+
+export const onboardingImportState = pgEnum("onboarding_import_state", [
+  "shadow_running",
+  "quarantined",
+  "live",
+]);
 
 export const leagueInviteChannel = pgEnum("league_invite_channel", [
   "share",
@@ -1226,8 +1248,8 @@ export const historicalImportCheckpoints = pgTable(
   ],
 );
 
-export const dataCoverage = pgTable(
-  "data_coverage",
+export const dataCapabilityObservations = pgTable(
+  "data_capability_observation",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     leagueId: uuid("league_id")
@@ -1237,10 +1259,12 @@ export const dataCoverage = pgTable(
     providerLeagueId: text("provider_league_id").notNull(),
     season: integer("season").notNull(),
     dataClass: dataCoverageClass("data_class").notNull(),
-    capability: dataCoverageCapability("capability").notNull(),
+    availability: dataCoverageCapability("availability").notNull(),
+    providerSupport: dataCoverageCapability("provider_support").notNull(),
+    providerVerdict: providerProbeVerdict("provider_verdict").notNull(),
     status: dataCoverageStatus("status").notNull(),
-    itemCount: integer("item_count").notNull().default(0),
-    observedAt: timestamp("observed_at", { withTimezone: true })
+    rowCount: integer("row_count").notNull().default(0),
+    probedAt: timestamp("probed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
     errorCode: text("error_code"),
@@ -1249,18 +1273,107 @@ export const dataCoverage = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
-    ...timestamps,
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
-    uniqueIndex("data_coverage_identity_unique").on(
+    check(
+      "data_capability_observation_row_count_nonnegative",
+      sql`${table.rowCount} >= 0`,
+    ),
+    index("data_capability_observation_latest_idx").on(
       table.leagueId,
       table.provider,
       table.providerLeagueId,
       table.season,
       table.dataClass,
+      table.probedAt,
+      table.createdAt,
     ),
-    index("data_coverage_league_status_idx").on(table.leagueId, table.status),
-    pgPolicy("data_coverage_isolation", {
+    index("data_capability_observation_league_status_idx").on(
+      table.leagueId,
+      table.status,
+    ),
+    pgPolicy("data_capability_observation_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const providerPayloadObservations = pgTable(
+  "provider_payload_observation",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    provider: fantasyProvider("provider").notNull(),
+    providerLeagueId: text("provider_league_id").notNull(),
+    season: integer("season").notNull(),
+    view: providerPayloadView("view").notNull(),
+    scoringPeriod: integer("scoring_period"),
+    schemaShape: jsonb("schema_shape")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    schemaHash: text("schema_hash").notNull(),
+    contentHash: text("content_hash").notNull(),
+    outcome: providerPayloadObservationOutcome("outcome").notNull(),
+    driftKinds: jsonb("drift_kinds")
+      .$type<Array<"shape_additive" | "shape_changed" | "semantic">>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    addedPaths: jsonb("added_paths")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    removedPaths: jsonb("removed_paths")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    previousObservationId: uuid("previous_observation_id").references(
+      (): AnyPgColumn => providerPayloadObservations.id,
+      { onDelete: "set null" },
+    ),
+    detail: jsonb("detail")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    observedAt: timestamp("observed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "provider_payload_observation_scoring_period_positive",
+      sql`${table.scoringPeriod} IS NULL OR ${table.scoringPeriod} >= 1`,
+    ),
+    check(
+      "provider_payload_observation_view_period_consistent",
+      sql`(${table.view} = 'settings' AND ${table.scoringPeriod} IS NULL) OR (${table.view} = 'scoreboard' AND ${table.scoringPeriod} IS NOT NULL)`,
+    ),
+    index("provider_payload_observation_latest_idx").on(
+      table.leagueId,
+      table.provider,
+      table.providerLeagueId,
+      table.season,
+      table.view,
+      table.scoringPeriod,
+      table.observedAt,
+      table.createdAt,
+    ),
+    index("provider_payload_observation_alert_idx").on(
+      table.leagueId,
+      table.outcome,
+      table.observedAt,
+    ),
+    pgPolicy("provider_payload_observation_isolation", {
       for: "all",
       using: sql`${table.leagueId} = current_league_id()`,
       withCheck: sql`${table.leagueId} = current_league_id()`,
@@ -4424,6 +4537,30 @@ export const onboardingDiscoveredLeagues = pgTable(
     providerTeamId: text("provider_team_id"),
     teamName: text("team_name"),
     size: integer("size"),
+    importedLeagueId: uuid("imported_league_id").references(() => leagues.id, {
+      onDelete: "set null",
+    }),
+    importState: onboardingImportState("import_state"),
+    importAttempts: integer("import_attempts").notNull().default(0),
+    integrityFailureCount: integer("integrity_failure_count")
+      .notNull()
+      .default(0),
+    quarantineManifest: jsonb("quarantine_manifest")
+      .$type<{
+        captures: Array<{
+          contentHash: string;
+          path: string;
+          season: number;
+          view: string;
+        }>;
+        checkIds: string[];
+        checkKeys: string[];
+        capturedAt: string;
+      } | null>()
+      .default(sql`NULL`),
+    shadowStartedAt: timestamp("shadow_started_at", { withTimezone: true }),
+    quarantinedAt: timestamp("quarantined_at", { withTimezone: true }),
+    liveAt: timestamp("live_at", { withTimezone: true }),
     lastDiscoveredAt: timestamp("last_discovered_at", {
       withTimezone: true,
     }).notNull(),
@@ -4438,6 +4575,18 @@ export const onboardingDiscoveredLeagues = pgTable(
     ),
     index("onboarding_discovered_leagues_credential_idx").on(
       table.credentialId,
+    ),
+    index("onboarding_discovered_leagues_import_state_idx").on(
+      table.userId,
+      table.importState,
+    ),
+    check(
+      "onboarding_discovered_leagues_import_attempts_nonnegative",
+      sql`${table.importAttempts} >= 0`,
+    ),
+    check(
+      "onboarding_discovered_leagues_integrity_failure_count_nonnegative",
+      sql`${table.integrityFailureCount} >= 0`,
     ),
   ],
 );
@@ -4582,8 +4731,14 @@ export type HistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferSelect;
 export type NewHistoricalImportCheckpoint =
   typeof historicalImportCheckpoints.$inferInsert;
-export type DataCoverage = typeof dataCoverage.$inferSelect;
-export type NewDataCoverage = typeof dataCoverage.$inferInsert;
+export type DataCapabilityObservation =
+  typeof dataCapabilityObservations.$inferSelect;
+export type NewDataCapabilityObservation =
+  typeof dataCapabilityObservations.$inferInsert;
+export type ProviderPayloadObservation =
+  typeof providerPayloadObservations.$inferSelect;
+export type NewProviderPayloadObservation =
+  typeof providerPayloadObservations.$inferInsert;
 export type DataIntegrityCheck = typeof dataIntegrityChecks.$inferSelect;
 export type NewDataIntegrityCheck = typeof dataIntegrityChecks.$inferInsert;
 export type DataCorrectionAuditLog = typeof dataCorrectionAuditLog.$inferSelect;

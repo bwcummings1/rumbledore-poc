@@ -101,6 +101,42 @@ function curationState(
 }
 
 const data: DataBookPageData = {
+  coverage: {
+    playerDepthBasis:
+      "Player depth: 2011\u20132017 + current \u2014 measured, provider-limited",
+    rows: [
+      {
+        availability: "full",
+        dataClass: "league",
+        label: "League settings",
+        probedAt: "2026-07-13T10:00:00.000Z",
+        providerVerdict: "returned_data",
+        rowCount: 1,
+        season: 2026,
+        status: "complete",
+      },
+      {
+        availability: "partial",
+        dataClass: "rosters",
+        label: "Player depth",
+        probedAt: "2026-07-13T10:00:00.000Z",
+        providerVerdict: "returned_data",
+        rowCount: 2,
+        season: 2026,
+        status: "partial",
+      },
+      {
+        availability: "none",
+        dataClass: "rosters",
+        label: "Player depth",
+        probedAt: "2026-07-13T10:00:00.000Z",
+        providerVerdict: "returned_empty",
+        rowCount: 0,
+        season: 2025,
+        status: "unavailable",
+      },
+    ],
+  },
   curation: curationState(),
   eraProposals: [
     {
@@ -453,6 +489,28 @@ test("Data Book switches grains with the secondary selector", () => {
   fireEvent.click(screen.getByText("28.4 stat pts"));
   expect(screen.getByText("rushingTouchdowns")).toBeDefined();
   expect(screen.getAllByText(/rushingYards/).length).toBeGreaterThan(0);
+  expect(
+    screen.getByText(
+      "Player depth: 2011\u20132017 + current \u2014 measured, provider-limited",
+    ),
+  ).toBeDefined();
+});
+
+test("steward Settings shows the read-only measured coverage panel", () => {
+  render(<DataBookView canEditData={true} data={data} />);
+
+  fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
+
+  const panel = screen.getByRole("region", {
+    name: "2026 measured provider coverage",
+  });
+  expect(within(panel).getByText("Declared coverage")).toBeDefined();
+  expect(within(panel).getByText("League settings")).toBeDefined();
+  expect(within(panel).getByText("Player depth")).toBeDefined();
+  expect(within(panel).getAllByText("returned data")).toHaveLength(2);
+  expect(within(panel).getByText("2 rows")).toBeDefined();
+  expect(within(panel).getByText("partial")).toBeDefined();
+  expect(within(panel).queryByText("returned empty")).toBeNull();
 });
 
 test("Settings grain confirms adjusted era proposals", async () => {

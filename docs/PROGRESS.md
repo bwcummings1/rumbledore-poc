@@ -1,7 +1,7 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-13 — **`specs/47` wave 1 — tracks 47A + 47B merged, 47C in flight**:
+Keep it current. Last updated: 2026-07-13 — **`specs/47` wave 1 COMPLETE — tracks 47A + 47B + 47C merged**:
 **47A (`ws/47a-vocab-corpus`)**: ESPN's vendored vocabulary corpus now proves bidirectional closure for positions,
 lineup slots, pro teams, activity codes, player/scoring stat ids, and `mSettings` enums, including old-era labels.
 Missing provider dictionaries now fail `provider_code_decoding` explicitly for Sleeper/Yahoo while registered ESPN
@@ -15,6 +15,15 @@ volume, loud integrity failure, same-season co-owner identity separation, and ES
 The default property budget is bounded for CI (three ordinary DB runs and one season-scale volume run), with deeper
 dispatches available through `PROPERTY_RUNS`; removing row chunking makes the volume regression fail above
 PostgreSQL's 65,535 bind cap.
+**47C (`ws/47c-capability-shadow`)**: `specs/47` §D/§E complete. Imports now append a measured season × data-class
+capability map (migration 0073) and use it to qualify integrity, Data Book, and Record Book expectations; new connects
+remain invisible through a full-history integrity shadow run, quarantine failures with sanitized fixture corpus
+captures (0074), and promote atomically when clean; fixture-backed payload canaries record additive/semantic drift for
+steward review (0075). Mock job execution runs the same import gate in process without provider network calls, and
+preseason fallback standings are explicitly skipped until the provider season is complete. Read-only shared-dev
+verification for ESPN `95050` found 176 latest-map dimensions, the documented 2011–2017 + current player-depth basis,
+current-only stat breakdowns, 136/136 PASS integrity rows, and zero decoded unknowns. Affected Data Book, Records, and
+steward screenshots were refreshed. Migrations now run through `0075`.
 Prior state: **Task T19 on `ws/t19-records-substance`**:
 the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
 roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
@@ -395,6 +404,10 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track 47C completed `specs/47` §D/§E on `ws/47c-capability-shadow`: append-only declared capability
+  probes now drive integrity and basis labels; shadow imports gate visibility with sanitized quarantine evidence;
+  fixture-backed drift canaries surface steward alerts; mock onboarding executes the full gate in process; ESPN 95050
+  read-only verification matched its documented coverage with all latest checks PASS and zero decoded unknowns.
 - 2026-07-13: Track 47A completed `specs/47` §A/§B acceptance criteria 1–4 on `ws/47a-vocab-corpus`: bidirectional
   ESPN vocabulary closure, loud missing-provider-dictionary failures, a guarded/bounded identity-sanitizing harvester,
   and an eight-view isolated-DB corpus-replay oracle with malformed-view attribution; fixture tests and full gates pass,

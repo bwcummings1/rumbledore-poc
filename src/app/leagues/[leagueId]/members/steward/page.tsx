@@ -95,7 +95,11 @@ export default async function DataStewardReviewPage({
 
   const review =
     access.value.role === "member"
-      ? { integrityChecks: [], suggestedIdentityLinks: [] }
+      ? {
+          integrityChecks: [],
+          payloadDriftAlerts: [],
+          suggestedIdentityLinks: [],
+        }
       : await listDataStewardReview(db, { leagueId });
   if ("ok" in review && !review.ok) {
     return (

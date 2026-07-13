@@ -1,10 +1,10 @@
-import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { type LeagueScopedTx, withLeagueContext } from "@/db/rls";
 import {
   allTimeRecords,
   championshipRecords,
-  dataCoverage,
+  dataCapabilityObservations,
   dataIntegrityChecks,
   fantasyDraftPicks,
   fantasyMatchups,
@@ -35,6 +35,12 @@ import {
 import type { NormalizedMatchupKind } from "@/providers";
 import { providerCodeDecodingIssues } from "@/providers/decoding";
 import type { FantasyProviderId } from "@/providers/ids";
+import type {
+  DataCoverageStatus,
+  ProviderDataClass,
+  ProviderDataSupport,
+  ProviderProbeVerdict,
+} from "@/providers/model";
 import { identityNameSimilarity } from "./fuzzy";
 import { refreshRecordBookAggregates } from "./records-catalog";
 
@@ -2725,6 +2731,86 @@ function expectedByeTeamIdsForWindow({
   return new Set(candidates);
 }
 
+interface IntegrityCapabilityObservation {
+  capability: ProviderDataSupport;
+  dataClass: ProviderDataClass;
+  details: Record<string, unknown>;
+  itemCount: number;
+  providerSupport: ProviderDataSupport;
+  providerVerdict: ProviderProbeVerdict;
+  status: DataCoverageStatus;
+}
+
+type CapabilityExpectationState =
+  | "available"
+  | "declared_absent"
+  | "not_measured"
+  | "request_failed";
+
+function capabilityExpectation(
+  row: IntegrityCapabilityObservation | undefined,
+  options: { requirePlayerStatBreakdown?: boolean } = {},
+): Record<string, unknown> & { state: CapabilityExpectationState } {
+  if (!row) {
+    return { state: "not_measured" };
+  }
+  const detailPlayerRows = numberFromUnknown(
+    row.details.playerStatBreakdownRows,
+  );
+  let state: CapabilityExpectationState = "available";
+  if (row.providerVerdict === "request_failed" || row.status === "error") {
+    state = "request_failed";
+  } else if (row.providerVerdict === "not_requested") {
+    state = "not_measured";
+  } else if (
+    row.capability === "none" ||
+    row.providerVerdict === "unsupported" ||
+    row.providerVerdict === "returned_empty" ||
+    (options.requirePlayerStatBreakdown && detailPlayerRows === 0)
+  ) {
+    state = "declared_absent";
+  }
+
+  return {
+    availability: row.capability,
+    dataClass: row.dataClass,
+    itemCount: row.itemCount,
+    ...(detailPlayerRows === undefined
+      ? {}
+      : { playerStatBreakdownRows: detailPlayerRows }),
+    providerSupport: row.providerSupport,
+    providerVerdict: row.providerVerdict,
+    state,
+    status: row.status,
+  };
+}
+
+function unavailableCapabilityIssue(
+  expectation: Record<string, unknown> & {
+    state: CapabilityExpectationState;
+  },
+): Record<string, unknown>[] {
+  return expectation.state === "request_failed"
+    ? [{ reason: "capability_probe_failed" }]
+    : [];
+}
+
+function declaredCoverageSkip(
+  expectation: Record<string, unknown> & {
+    state: CapabilityExpectationState;
+  },
+  skippedRows: number,
+): Record<string, unknown>[] {
+  return expectation.state === "available"
+    ? []
+    : [
+        {
+          reason: expectation.state,
+          skippedRows,
+        },
+      ];
+}
+
 async function buildDataIntegrityCheckDrafts(
   tx: LeagueScopedTx,
   leagueId: string,
@@ -2733,6 +2819,8 @@ async function buildDataIntegrityCheckDrafts(
     .select({
       provider: leagues.provider,
       providerLeagueId: leagues.providerLeagueId,
+      season: leagues.season,
+      status: leagues.status,
     })
     .from(leagues)
     .where(eq(leagues.id, leagueId))
@@ -2884,16 +2972,36 @@ async function buildDataIntegrityCheckDrafts(
     })
     .from(fantasyTransactions)
     .where(eq(fantasyTransactions.leagueId, leagueId));
-  const coverageRows = await tx
+  const capabilityObservations = await tx
     .select({
-      capability: dataCoverage.capability,
-      dataClass: dataCoverage.dataClass,
-      itemCount: dataCoverage.itemCount,
-      season: dataCoverage.season,
-      status: dataCoverage.status,
+      capability: dataCapabilityObservations.availability,
+      createdAt: dataCapabilityObservations.createdAt,
+      dataClass: dataCapabilityObservations.dataClass,
+      details: dataCapabilityObservations.details,
+      itemCount: dataCapabilityObservations.rowCount,
+      probedAt: dataCapabilityObservations.probedAt,
+      providerSupport: dataCapabilityObservations.providerSupport,
+      providerVerdict: dataCapabilityObservations.providerVerdict,
+      season: dataCapabilityObservations.season,
+      status: dataCapabilityObservations.status,
     })
-    .from(dataCoverage)
-    .where(eq(dataCoverage.leagueId, leagueId));
+    .from(dataCapabilityObservations)
+    .where(eq(dataCapabilityObservations.leagueId, leagueId))
+    .orderBy(
+      desc(dataCapabilityObservations.probedAt),
+      desc(dataCapabilityObservations.createdAt),
+    );
+  const latestCapabilities = new Map<
+    string,
+    (typeof capabilityObservations)[number]
+  >();
+  for (const row of capabilityObservations) {
+    const key = `${row.season}:${row.dataClass}`;
+    if (!latestCapabilities.has(key)) {
+      latestCapabilities.set(key, row);
+    }
+  }
+  const coverageRows = [...latestCapabilities.values()];
   const settingsRows = await tx
     .select({
       id: leagueSeasonSettings.id,
@@ -3309,19 +3417,26 @@ async function buildDataIntegrityCheckDrafts(
       row,
     ]);
   }
-  const rosterSeasons = seasonKeys(
+  const capabilityByClassSeason = new Map(
+    coverageRows.map((row) => [`${row.dataClass}:${row.season}`, row]),
+  );
+  const playerCoverageSeasons = seasonKeys(
     coverageRows
-      .filter(
-        (row) =>
-          row.dataClass === "rosters" &&
-          row.itemCount > 0 &&
-          row.status !== "unavailable" &&
-          row.status !== "error",
-      )
+      .filter((row) => ["rosters", "scoring_detail"].includes(row.dataClass))
       .map((row) => row.season),
   );
-  for (const season of rosterSeasons) {
+  for (const season of playerCoverageSeasons) {
+    const rosterCapability = capabilityByClassSeason.get(`rosters:${season}`);
+    const scoringDetailCapability = capabilityByClassSeason.get(
+      `scoring_detail:${season}`,
+    );
+    const rosterExpectation = capabilityExpectation(rosterCapability);
+    const scoringDetailExpectation = capabilityExpectation(
+      scoringDetailCapability,
+      { requirePlayerStatBreakdown: true },
+    );
     const coverageIssues: Record<string, unknown>[] = [];
+    const coverageSkipped: Record<string, unknown>[] = [];
     const rollupIssues: Record<string, unknown>[] = [];
     const rollupSkipped: Record<string, unknown>[] = [];
     const statBreakdownIssues: Record<string, unknown>[] = [];
@@ -3330,6 +3445,58 @@ async function buildDataIntegrityCheckDrafts(
     const finalizedTeamWeeks = weeklyRows.filter(
       (row) => row.season === season && row.result !== "bye",
     );
+
+    if (rosterExpectation.state !== "available") {
+      const unavailableIssues = unavailableCapabilityIssue(rosterExpectation);
+      const skippedTeamWeeks = declaredCoverageSkip(
+        rosterExpectation,
+        finalizedTeamWeeks.length,
+      );
+      drafts.push({
+        checkKey: "roster_coverage",
+        detail: {
+          checkedTeamWeeks: 0,
+          expectation: rosterExpectation,
+          issues: unavailableIssues,
+          skippedTeamWeeks,
+        },
+        season,
+        status: checkStatus(unavailableIssues),
+      });
+      drafts.push({
+        checkKey: "player_points_rollup",
+        detail: {
+          checkedTeamWeeks: 0,
+          expectation: rosterExpectation,
+          issues: unavailableIssues,
+          skippedTeamWeeks,
+          tolerance: 0.1,
+        },
+        season,
+        status: checkStatus(unavailableIssues),
+      });
+      const statUnavailableIssues = [
+        ...unavailableIssues,
+        ...unavailableCapabilityIssue(scoringDetailExpectation),
+      ];
+      drafts.push({
+        checkKey: "stat_breakdown_coverage",
+        detail: {
+          checkedPlayerWeeks: 0,
+          dependencyExpectation: rosterExpectation,
+          expectation: scoringDetailExpectation,
+          issues: statUnavailableIssues,
+          skippedPlayerWeeks: declaredCoverageSkip(
+            rosterExpectation,
+            rosterRows.filter((row) => row.season === season).length,
+          ),
+          tolerance: 0.1,
+        },
+        season,
+        status: checkStatus(statUnavailableIssues),
+      });
+      continue;
+    }
 
     for (const weekly of finalizedTeamWeeks) {
       const mapping = mappingsByPersonSeason.get(
@@ -3346,12 +3513,17 @@ async function buildDataIntegrityCheckDrafts(
       const rosterKey = `${mapping.providerTeamId}:${weekly.season}:${weekly.scoringPeriod}`;
       const entries = rosterEntriesByTeamWeek.get(rosterKey) ?? [];
       if (entries.length === 0) {
-        coverageIssues.push({
+        const missingRoster = {
           personId: weekly.personId,
           providerTeamId: mapping.providerTeamId,
           reason: "missing_roster_entries",
           scoringPeriod: weekly.scoringPeriod,
-        });
+        };
+        if (rosterCapability?.capability === "full") {
+          coverageIssues.push(missingRoster);
+        } else {
+          coverageSkipped.push(missingRoster);
+        }
         continue;
       }
       if (weekly.scoringPeriodSpan > 1) {
@@ -3407,6 +3579,56 @@ async function buildDataIntegrityCheckDrafts(
       }
     }
 
+    drafts.push({
+      checkKey: "roster_coverage",
+      detail: {
+        checkedTeamWeeks: finalizedTeamWeeks.length - coverageSkipped.length,
+        expectation: rosterExpectation,
+        issues: coverageIssues,
+        skippedTeamWeeks: coverageSkipped,
+      },
+      season,
+      status: checkStatus(coverageIssues),
+    });
+    drafts.push({
+      checkKey: "player_points_rollup",
+      detail: {
+        checkedTeamWeeks:
+          finalizedTeamWeeks.length -
+          coverageIssues.length -
+          coverageSkipped.length -
+          rollupSkipped.length,
+        expectation: rosterExpectation,
+        issues: rollupIssues,
+        skippedTeamWeeks: [...coverageSkipped, ...rollupSkipped],
+        tolerance: 0.1,
+      },
+      season,
+      status: checkStatus(rollupIssues),
+    });
+
+    if (scoringDetailExpectation.state !== "available") {
+      const unavailableIssues = unavailableCapabilityIssue(
+        scoringDetailExpectation,
+      );
+      drafts.push({
+        checkKey: "stat_breakdown_coverage",
+        detail: {
+          checkedPlayerWeeks: 0,
+          expectation: scoringDetailExpectation,
+          issues: unavailableIssues,
+          skippedPlayerWeeks: declaredCoverageSkip(
+            scoringDetailExpectation,
+            rosterRows.filter((row) => row.season === season).length,
+          ),
+          tolerance: 0.1,
+        },
+        season,
+        status: checkStatus(unavailableIssues),
+      });
+      continue;
+    }
+
     for (const roster of rosterRows.filter((row) => row.season === season)) {
       const playerPoints = roster.actualPoints ?? roster.points;
       if (typeof playerPoints !== "number" || !Number.isFinite(playerPoints)) {
@@ -3426,13 +3648,18 @@ async function buildDataIntegrityCheckDrafts(
       ].join(":");
       const breakdowns = statBreakdownsByPlayerWeek.get(key) ?? [];
       if (breakdowns.length === 0) {
-        statBreakdownSkipped.push({
+        const missingBreakdown = {
           playerPoints,
           providerPlayerId: roster.providerPlayerId,
           providerTeamId: roster.providerTeamId,
           reason: "missing_stat_breakdown",
           scoringPeriod: roster.scoringPeriod,
-        });
+        };
+        if (scoringDetailCapability?.capability === "full") {
+          statBreakdownIssues.push(missingBreakdown);
+        } else {
+          statBreakdownSkipped.push(missingBreakdown);
+        }
         continue;
       }
       checkedStatBreakdownPlayerWeeks += 1;
@@ -3457,32 +3684,10 @@ async function buildDataIntegrityCheckDrafts(
     }
 
     drafts.push({
-      checkKey: "roster_coverage",
-      detail: {
-        checkedTeamWeeks: finalizedTeamWeeks.length,
-        issues: coverageIssues,
-      },
-      season,
-      status: checkStatus(coverageIssues),
-    });
-    drafts.push({
-      checkKey: "player_points_rollup",
-      detail: {
-        checkedTeamWeeks:
-          finalizedTeamWeeks.length -
-          coverageIssues.length -
-          rollupSkipped.length,
-        issues: rollupIssues,
-        skippedTeamWeeks: rollupSkipped,
-        tolerance: 0.1,
-      },
-      season,
-      status: checkStatus(rollupIssues),
-    });
-    drafts.push({
       checkKey: "stat_breakdown_coverage",
       detail: {
         checkedPlayerWeeks: checkedStatBreakdownPlayerWeeks,
+        expectation: scoringDetailExpectation,
         issues: statBreakdownIssues,
         skippedPlayerWeeks: statBreakdownSkipped,
         tolerance: 0.1,
@@ -3491,9 +3696,45 @@ async function buildDataIntegrityCheckDrafts(
       status: checkStatus(statBreakdownIssues),
     });
   }
-  const standingsSeasons = seasonKeys(
+  const observedStandingsSeasons = seasonKeys(
     finalStandingRows.map((row) => row.season),
   );
+  const standingsSeasons = observedStandingsSeasons.filter((season) =>
+    Boolean(
+      leagueRow &&
+        (season !== leagueRow.season || leagueRow.status === "complete"),
+    ),
+  );
+  for (const season of observedStandingsSeasons.filter(
+    (candidate) => !standingsSeasons.includes(candidate),
+  )) {
+    const skippedRows = finalStandingRows.filter(
+      (row) => row.season === season,
+    ).length;
+    const skippedDetail = {
+      checkedRows: 0,
+      issues: [],
+      reason: "season_not_complete",
+      skippedRows,
+    };
+    drafts.push({
+      checkKey: "postseason_derivation_confidence",
+      detail: skippedDetail,
+      season,
+      status: "pass",
+    });
+    drafts.push({
+      checkKey: "standings_parity",
+      detail: {
+        checkedRows: 0,
+        mismatches: [],
+        reason: "season_not_complete",
+        skippedRows,
+      },
+      season,
+      status: "pass",
+    });
+  }
   const championshipFactsByPersonSeason = new Set(
     weeklyRows
       .filter((row) => row.isChampionship)
@@ -3775,6 +4016,7 @@ async function buildDataIntegrityCheckDrafts(
   const emptyCompleteBySeason = new Map<number, Record<string, unknown>[]>();
   for (const row of coverageRows) {
     if (
+      row.providerSupport === "none" ||
       row.capability === "none" ||
       !["complete", "partial"].includes(row.status) ||
       row.itemCount > 0
@@ -3787,6 +4029,8 @@ async function buildDataIntegrityCheckDrafts(
         capability: row.capability,
         dataClass: row.dataClass,
         itemCount: row.itemCount,
+        providerSupport: row.providerSupport,
+        providerVerdict: row.providerVerdict,
         status: row.status,
       },
     ]);
