@@ -218,6 +218,10 @@ describe("Sleeper reference data", () => {
       "defense",
     );
     expect(decodeSleeperScoringSetting("bonus_fd_qb")?.category).toBe("bonus");
+    expect(decodeSleeperScoringSetting("fgm_60p")?.category).toBe("kicking");
+    expect(decodeSleeperScoringSetting("fum_rec_td")?.category).toBe(
+      "turnover",
+    );
   });
 
   it("assigns stable ids to unknown strings without adding them to dictionaries", () => {

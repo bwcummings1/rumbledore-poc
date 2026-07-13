@@ -19,7 +19,7 @@
       "team_name": "Bravo Ballers",
       "team_abbr": "BBB"
     },
-    "is_owner": false
+    "is_owner": null
   },
   {
     "user_id": "user-3",

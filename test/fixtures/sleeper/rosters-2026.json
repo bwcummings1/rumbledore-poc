@@ -20,6 +20,7 @@
   {
     "roster_id": 2,
     "owner_id": "user-2",
+    "co_owners": null,
     "league_id": "sleeper-2026",
     "players": ["QB2", "RB2", "WR2"],
     "starters": ["QB2", "RB2", "WR2"],

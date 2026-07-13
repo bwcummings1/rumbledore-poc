@@ -492,7 +492,10 @@ async function seedProviderIdentityIntegrityLeague({
   return { leagueId: league.id, providerLeagueId };
 }
 
-async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
+async function seedByeStatsLeague(
+  tag: string,
+  provider: "espn" | "sleeper" = "espn",
+): Promise<SeededStatsLeague> {
   const providerLeagueId = `${marker}-${tag}`;
   const season = 2026;
   const [league] = await handle.db
@@ -500,7 +503,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
     .values({
       currentScoringPeriod: 2,
       name: `${marker} ${tag}`,
-      provider: "espn",
+      provider,
       providerLeagueId,
       scoringType: "H2H_POINTS",
       season,
@@ -523,7 +526,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
       playoffMatchupPeriodLength: 1,
       playoffStartScoringPeriod: 2,
       playoffTeamCount: 6,
-      provider: "espn",
+      provider,
       regularSeasonEndScoringPeriod: 1,
       season,
     });
@@ -535,7 +538,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         displayName: `Bye Manager ${teamId}`,
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMemberId: ownerId,
         role: "member",
         season,
@@ -550,7 +553,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         ownerMemberIds: [ownerId],
         pointsAgainst: 0,
         pointsFor: 0,
-        provider: "espn",
+        provider,
         providerTeamId: teamId,
         season,
         ties: 0,
@@ -568,7 +571,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         playoffSeed: 1,
         pointsAgainst: 90,
         pointsFor: 305,
-        provider: "espn",
+        provider,
         providerTeamId: "1",
         season,
         ties: 0,
@@ -583,7 +586,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         playoffSeed: 2,
         pointsAgainst: 80,
         pointsFor: 240,
-        provider: "espn",
+        provider,
         providerTeamId: "2",
         season,
         ties: 0,
@@ -603,7 +606,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         playoffSeed: Number(playoffSeed),
         pointsAgainst: 0,
         pointsFor: 0,
-        provider: "espn" as const,
+        provider,
         providerTeamId: String(providerTeamId),
         season,
         ties: 0,
@@ -620,7 +623,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         homeTeamProviderId: "1",
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMatchupId: "week1-a",
         scoringPeriod: 1,
         season,
@@ -635,7 +638,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         homeTeamProviderId: "2",
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMatchupId: "week1-b",
         scoringPeriod: 1,
         season,
@@ -650,7 +653,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         homeTeamProviderId: "3",
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMatchupId: "week1-c",
         scoringPeriod: 1,
         season,
@@ -665,7 +668,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         homeTeamProviderId: "1",
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMatchupId: "week2-bye-1",
         scoringPeriod: 2,
         season,
@@ -680,7 +683,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         homeTeamProviderId: "2",
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMatchupId: "week2-bye-2",
         scoringPeriod: 2,
         season,
@@ -695,7 +698,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         homeTeamProviderId: "3",
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMatchupId: "week2-a",
         scoringPeriod: 2,
         season,
@@ -710,7 +713,7 @@ async function seedByeStatsLeague(tag: string): Promise<SeededStatsLeague> {
         homeTeamProviderId: "4",
         leagueId: league.id,
         leagueProviderId: providerLeagueId,
-        provider: "espn",
+        provider,
         providerMatchupId: "week2-b",
         scoringPeriod: 2,
         season,
@@ -1639,7 +1642,189 @@ describe("recomputeLeagueStatistics", () => {
         status: "pass",
       }),
     );
+    const scheduleCoverage = rows.integrityRows.find(
+      (row) => row.checkKey === "schedule_coverage" && row.season === 2026,
+    );
+    expect(JSON.stringify(scheduleCoverage?.detail)).toBe(
+      '{"gaps":[],"teamCount":6,"checkedWeeks":2}',
+    );
     expect(stats.integrityFailures).toBe(0);
+  });
+
+  it("records declared partial Sleeper postseason omissions as skipped team-weeks", async () => {
+    const { leagueId, providerLeagueId } = await seedByeStatsLeague(
+      "sleeper-postseason-omissions",
+      "sleeper",
+    );
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .update(leagueSeasonSettings)
+        .set({ championshipScoringPeriod: 3 })
+        .where(
+          and(
+            eq(leagueSeasonSettings.leagueId, leagueId),
+            eq(leagueSeasonSettings.season, 2026),
+          ),
+        );
+      await tx.insert(fantasyMatchups).values([
+        {
+          awayScore: 105,
+          awayTeamProviderId: "3",
+          contentHash: `${marker}-sleeper-postseason-omissions-week3-a`,
+          homeScore: 115,
+          homeTeamProviderId: "1",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "sleeper",
+          providerMatchupId: "week3-a",
+          scoringPeriod: 3,
+          season: 2026,
+          status: "final",
+          winner: "home",
+        },
+        {
+          awayScore: 100,
+          awayTeamProviderId: "6",
+          contentHash: `${marker}-sleeper-postseason-omissions-week3-b`,
+          homeScore: 110,
+          homeTeamProviderId: "2",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "sleeper",
+          providerMatchupId: "week3-b",
+          scoringPeriod: 3,
+          season: 2026,
+          status: "final",
+          winner: "home",
+        },
+      ]);
+      await tx.insert(dataCapabilityObservations).values({
+        availability: "partial",
+        dataClass: "matchups",
+        leagueId,
+        provider: "sleeper",
+        providerLeagueId,
+        providerSupport: "partial",
+        providerVerdict: "returned_data",
+        rowCount: 9,
+        season: 2026,
+        status: "partial",
+      });
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const rows = await selectStatsRows(leagueId);
+    const scheduleCoverage = rows.integrityRows.find(
+      (row) => row.checkKey === "schedule_coverage" && row.season === 2026,
+    );
+    expect(scheduleCoverage).toMatchObject({ status: "pass" });
+    expect(scheduleCoverage?.detail).toMatchObject({
+      checkedWeeks: 3,
+      expectation: {
+        availability: "partial",
+        dataClass: "matchups",
+        providerVerdict: "returned_data",
+        state: "available",
+      },
+      gaps: [],
+      skippedTeamWeeks: [
+        {
+          providerTeamId: "4",
+          reason: "declared_partial_postseason_matchups",
+          scoringPeriod: 3,
+          scoringPeriodSpan: 1,
+        },
+        {
+          providerTeamId: "5",
+          reason: "declared_partial_postseason_matchups",
+          scoringPeriod: 3,
+          scoringPeriodSpan: 1,
+        },
+      ],
+      teamCount: 6,
+    });
+  });
+
+  it("fails undeclared postseason omissions when matchup capability is full", async () => {
+    const { leagueId, providerLeagueId } = await seedByeStatsLeague(
+      "full-postseason-omissions",
+    );
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx
+        .update(leagueSeasonSettings)
+        .set({ championshipScoringPeriod: 3 })
+        .where(
+          and(
+            eq(leagueSeasonSettings.leagueId, leagueId),
+            eq(leagueSeasonSettings.season, 2026),
+          ),
+        );
+      await tx.insert(fantasyMatchups).values([
+        {
+          awayScore: 105,
+          awayTeamProviderId: "3",
+          contentHash: `${marker}-full-postseason-omissions-week3-a`,
+          homeScore: 115,
+          homeTeamProviderId: "1",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: "week3-a",
+          scoringPeriod: 3,
+          season: 2026,
+          status: "final",
+          winner: "home",
+        },
+        {
+          awayScore: 100,
+          awayTeamProviderId: "6",
+          contentHash: `${marker}-full-postseason-omissions-week3-b`,
+          homeScore: 110,
+          homeTeamProviderId: "2",
+          leagueId,
+          leagueProviderId: providerLeagueId,
+          provider: "espn",
+          providerMatchupId: "week3-b",
+          scoringPeriod: 3,
+          season: 2026,
+          status: "final",
+          winner: "home",
+        },
+      ]);
+      await tx.insert(dataCapabilityObservations).values({
+        availability: "full",
+        dataClass: "matchups",
+        leagueId,
+        provider: "espn",
+        providerLeagueId,
+        providerSupport: "full",
+        providerVerdict: "returned_data",
+        rowCount: 9,
+        season: 2026,
+        status: "complete",
+      });
+    });
+
+    await recomputeLeagueStatistics(handle.db, { leagueId });
+    const rows = await selectStatsRows(leagueId);
+    const scheduleCoverage = rows.integrityRows.find(
+      (row) => row.checkKey === "schedule_coverage" && row.season === 2026,
+    );
+    expect(scheduleCoverage).toMatchObject({ status: "fail" });
+    expect(scheduleCoverage?.detail).toEqual({
+      checkedWeeks: 3,
+      gaps: [
+        {
+          expectedByeTeamIds: [],
+          missingTeamIds: ["4", "5"],
+          scoringPeriod: 3,
+          scoringPeriodSpan: 1,
+        },
+      ],
+      teamCount: 6,
+    });
   });
 
   it("excludes two-week playoff totals from single-week records and divides averages by span", async () => {

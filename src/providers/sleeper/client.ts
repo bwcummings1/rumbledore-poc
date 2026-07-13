@@ -112,7 +112,9 @@ export const SLEEPER_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
     teams: "full",
     members: "full",
     rosters: "full",
-    matchups: "full",
+    // Completed regular-season weeks are complete, but postseason endpoints omit
+    // eliminated rosters rather than returning explicit bye/absence rows.
+    matchups: "partial",
     final_standings: "partial",
     transactions: "full",
     history: "partial",
@@ -190,7 +192,7 @@ const sleeperLeagueListSchema = z.array(sleeperLeagueSchema);
 
 const sleeperRosterSchema = z
   .object({
-    co_owners: z.array(idValue).optional(),
+    co_owners: z.array(idValue).nullable().optional(),
     league_id: idValue.optional(),
     owner_id: nullableIdValue.optional(),
     players: playerIdArray.nullable().optional(),
@@ -219,7 +221,7 @@ const sleeperLeagueUserSchema = z
   .object({
     avatar: nullableString,
     display_name: nullableString,
-    is_owner: z.boolean().optional(),
+    is_owner: z.boolean().nullable().optional(),
     metadata: z
       .object({
         team_name: nullableString,
@@ -253,12 +255,12 @@ const sleeperMatchupListSchema = z.array(sleeperMatchupSchema);
 const sleeperTransactionSchema = z
   .object({
     adds: z.record(z.string(), recordNumberSchema).nullable().optional(),
-    consenter_ids: z.array(idValue).optional(),
+    consenter_ids: z.array(idValue).nullable().optional(),
     created: numericValue.optional(),
     creator: nullableIdValue.optional(),
     drops: z.record(z.string(), recordNumberSchema).nullable().optional(),
     leg: numericValue.optional(),
-    roster_ids: z.array(idValue).optional(),
+    roster_ids: z.array(idValue).nullable().optional(),
     status: z.string().optional(),
     status_updated: numericValue.optional(),
     transaction_id: idValue,

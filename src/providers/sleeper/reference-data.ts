@@ -53,6 +53,8 @@ const SLEEPER_TRANSACTION_SOURCE =
   "Sleeper API docs: GET /v1/league/<league_id>/transactions/<round>";
 const SLEEPER_SCORING_SOURCE =
   "Sleeper API docs sample league scoring_settings response, verified 2026-07-13";
+const SLEEPER_LIVE_SCORING_SOURCE =
+  "Sleeper public league scoring_settings responses, read-only verified 2026-07-13";
 const SLEEPER_COMMUNITY_SOURCE =
   "sleeper-api-wrapper community client scoring/roster models, cross-checked 2026-07-13";
 
@@ -314,6 +316,11 @@ export const SLEEPER_SCORING_SETTING_VOCABULARY = [
     "yds_allow_500_549",
     "yds_allow_550p",
   ]),
+  ...sourcedCodes(SLEEPER_LIVE_SCORING_SOURCE, [
+    "fgm_50_59",
+    "fgm_60p",
+    "fum_rec_td",
+  ]),
 ] as const satisfies readonly SleeperVocabularyEntry[];
 
 function mapFromVocabulary(
@@ -391,7 +398,7 @@ function scoringCategory(key: string): SleeperScoringCategory {
   ) {
     return "defense";
   }
-  if (["ff", "fum", "fum_lost", "fum_rec", "fum_ret_yd"].includes(key)) {
+  if (key === "ff" || key === "fum" || key.startsWith("fum_")) {
     return "turnover";
   }
   return "misc";

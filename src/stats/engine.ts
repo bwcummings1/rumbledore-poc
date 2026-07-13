@@ -3892,8 +3892,10 @@ async function buildDataIntegrityCheckDrafts(
     matchupsBySeasonWindow.set(key, current);
   }
   const scheduleBySeason = new Map<number, Record<string, unknown>[]>();
+  const scheduleSkippedBySeason = new Map<number, Record<string, unknown>[]>();
   for (const window of matchupsBySeasonWindow.values()) {
     const { rows, season, windowSpan, windowStart } = window;
+    const setting = settingsByCoverageSeason.get(season);
     const expectedTeamIds = teamIdsBySeason.get(season) ?? new Set<string>();
     const seenTeamIds = new Set<string>();
     for (const row of rows) {
@@ -3907,7 +3909,7 @@ async function buildDataIntegrityCheckDrafts(
       .sort(compareStable);
     const expectedByeTeamIds = expectedByeTeamIdsForWindow({
       missingTeamIds,
-      setting: settingsByCoverageSeason.get(season),
+      setting,
       standings: standingsByCoverageSeason.get(season) ?? [],
       windowStart,
     });
@@ -3915,19 +3917,46 @@ async function buildDataIntegrityCheckDrafts(
       (providerTeamId) => !expectedByeTeamIds.has(providerTeamId),
     );
     if (unexpectedMissingTeamIds.length > 0) {
-      scheduleBySeason.set(season, [
-        ...(scheduleBySeason.get(season) ?? []),
-        {
-          expectedByeTeamIds: [...expectedByeTeamIds].sort(compareStable),
-          missingTeamIds: unexpectedMissingTeamIds,
-          scoringPeriod: windowStart,
-          scoringPeriodSpan: windowSpan,
-        },
-      ]);
+      const matchupCapability = capabilityByClassSeason.get(
+        `matchups:${season}`,
+      );
+      const isDeclaredPartialPostseason =
+        matchupCapability?.capability === "partial" &&
+        matchupCapability.providerVerdict === "returned_data" &&
+        isMatchupInSettingPlayoffSpan({
+          matchup: {
+            periodStart: windowStart,
+            scoringPeriod: windowStart,
+          },
+          setting,
+        });
+      if (isDeclaredPartialPostseason) {
+        scheduleSkippedBySeason.set(season, [
+          ...(scheduleSkippedBySeason.get(season) ?? []),
+          ...unexpectedMissingTeamIds.map((providerTeamId) => ({
+            providerTeamId,
+            reason: "declared_partial_postseason_matchups",
+            scoringPeriod: windowStart,
+            scoringPeriodSpan: windowSpan,
+          })),
+        ]);
+      } else {
+        scheduleBySeason.set(season, [
+          ...(scheduleBySeason.get(season) ?? []),
+          {
+            expectedByeTeamIds: [...expectedByeTeamIds].sort(compareStable),
+            missingTeamIds: unexpectedMissingTeamIds,
+            scoringPeriod: windowStart,
+            scoringPeriodSpan: windowSpan,
+          },
+        ]);
+      }
     }
   }
   for (const season of seasonKeys(teamRows.map((row) => row.season))) {
     const gaps = scheduleBySeason.get(season) ?? [];
+    const skippedTeamWeeks = scheduleSkippedBySeason.get(season) ?? [];
+    const matchupCapability = capabilityByClassSeason.get(`matchups:${season}`);
     drafts.push({
       checkKey: "schedule_coverage",
       detail: {
@@ -3936,6 +3965,12 @@ async function buildDataIntegrityCheckDrafts(
         ).length,
         gaps,
         teamCount: teamIdsBySeason.get(season)?.size ?? 0,
+        ...(skippedTeamWeeks.length > 0
+          ? {
+              expectation: capabilityExpectation(matchupCapability),
+              skippedTeamWeeks,
+            }
+          : {}),
       },
       season,
       status: checkStatus(gaps),

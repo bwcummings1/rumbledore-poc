@@ -243,7 +243,7 @@ describe("Sleeper provider", () => {
           teams: "full",
           members: "full",
           rosters: "full",
-          matchups: "full",
+          matchups: "partial",
           final_standings: "partial",
           transactions: "full",
           history: "partial",
@@ -390,6 +390,7 @@ describe("Sleeper provider", () => {
         pointsAgainst: 199.05,
       },
     });
+    expect(result.value[1]?.ownerMemberIds).toEqual(["user-2"]);
   });
 
   it("normalizes league users into durable members", async () => {
