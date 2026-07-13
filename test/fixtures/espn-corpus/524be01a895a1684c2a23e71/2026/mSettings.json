@@ -1,0 +1,51 @@
+{
+  "provenance": {
+    "leagueIdHash": "524be01a895a1684c2a23e71",
+    "season": 2026,
+    "view": "mSettings",
+    "fetchedAt": "2026-07-13T00:00:00.000Z",
+    "contentHash": "dbdd678e10da9ca28682cc528805b65c80a7ea4617a4ff5a57bf65214c2f0b0d",
+    "harvesterVersion": "1.0.0"
+  },
+  "payload": [
+    {
+      "id": 631818284,
+      "scoringPeriodId": 0,
+      "seasonId": 2026,
+      "settings": {
+        "name": "NHS Alumni Annual",
+        "size": 12,
+        "scheduleSettings": { "matchupPeriodCount": 14, "playoffTeamCount": 6 },
+        "scoringSettings": {
+          "scoringType": "H2H_POINTS",
+          "scoringItems": [{ "points": 0.1, "statId": 24 }]
+        },
+        "rosterSettings": {
+          "lineupSlotCounts": {
+            "0": 1,
+            "2": 2,
+            "4": 2,
+            "6": 1,
+            "16": 1,
+            "17": 1,
+            "20": 6,
+            "21": 1
+          }
+        }
+      },
+      "status": {
+        "currentMatchupPeriod": 1,
+        "finalScoringPeriod": 17,
+        "firstScoringPeriod": 1,
+        "isActive": true,
+        "isExpired": false,
+        "latestScoringPeriod": 0,
+        "previousSeasons": [
+          2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021,
+          2022, 2023, 2024, 2025
+        ],
+        "teamsJoined": 12
+      }
+    }
+  ]
+}

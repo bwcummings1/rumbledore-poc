@@ -1,0 +1,57 @@
+{
+  "provenance": {
+    "leagueIdHash": "524be01a895a1684c2a23e71",
+    "season": 2026,
+    "view": "mDraftDetail",
+    "fetchedAt": "2026-07-13T00:00:00.000Z",
+    "contentHash": "35820ba87f2163a6f980e8ba041f4b49a2b25215d48068576bf733434c4b77c2",
+    "harvesterVersion": "1.0.0"
+  },
+  "payload": [
+    {
+      "id": 631818284,
+      "scoringPeriodId": 0,
+      "seasonId": 2026,
+      "draftDetail": {
+        "picks": [
+          {
+            "bidAmount": 0,
+            "id": 1,
+            "keeper": false,
+            "overallPickNumber": 1,
+            "playerId": 4430807,
+            "roundId": 1,
+            "roundPickNumber": 1,
+            "teamId": 1
+          }
+        ]
+      },
+      "players": [
+        {
+          "id": 4430807,
+          "player": {
+            "active": true,
+            "defaultPositionId": 2,
+            "eligibleSlots": [2, 20, 21],
+            "firstName": "Bijan",
+            "fullName": "Bijan Robinson",
+            "id": 4430807,
+            "injured": false,
+            "injuryStatus": "ACTIVE",
+            "lastName": "Robinson",
+            "proTeamId": 1,
+            "stats": [
+              {
+                "appliedTotal": 18.4,
+                "appliedStats": { "24": 18.4 },
+                "scoringPeriodId": 1,
+                "stats": { "24": 184 },
+                "statSourceId": 0
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

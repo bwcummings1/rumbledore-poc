@@ -1,0 +1,98 @@
+{
+  "provenance": {
+    "leagueIdHash": "524be01a895a1684c2a23e71",
+    "season": 2026,
+    "view": "mBoxscore",
+    "fetchedAt": "2026-07-13T00:00:00.000Z",
+    "contentHash": "d36f31dc7ae998a07bb7db58aa871f5d96f2e416fa73d1a05d0d9d8e31b41a2e",
+    "harvesterVersion": "1.0.0"
+  },
+  "payload": [
+    {
+      "id": 631818284,
+      "scoringPeriodId": 0,
+      "seasonId": 2026,
+      "schedule": [
+        {
+          "id": 1,
+          "matchupPeriodId": 1,
+          "playoffTierType": "NONE",
+          "winner": "UNDECIDED",
+          "home": {
+            "teamId": 7,
+            "totalPoints": 0,
+            "rosterForCurrentScoringPeriod": {
+              "entries": [
+                {
+                  "injuryStatus": "ACTIVE",
+                  "lineupSlotId": 2,
+                  "playerId": 4430807,
+                  "playerPoolEntry": {
+                    "appliedStatTotal": 18.4,
+                    "player": {
+                      "active": true,
+                      "defaultPositionId": 2,
+                      "eligibleSlots": [2, 20, 21],
+                      "firstName": "Bijan",
+                      "fullName": "Bijan Robinson",
+                      "id": 4430807,
+                      "injured": false,
+                      "injuryStatus": "ACTIVE",
+                      "lastName": "Robinson",
+                      "proTeamId": 1,
+                      "stats": [
+                        {
+                          "appliedTotal": 18.4,
+                          "appliedStats": { "24": 18.4 },
+                          "scoringPeriodId": 1,
+                          "stats": { "24": 184 },
+                          "statSourceId": 0
+                        }
+                      ]
+                    }
+                  },
+                  "status": "NORMAL"
+                }
+              ]
+            },
+            "rosterForMatchupPeriod": {
+              "entries": [
+                {
+                  "injuryStatus": "ACTIVE",
+                  "lineupSlotId": 2,
+                  "playerId": 4430807,
+                  "playerPoolEntry": {
+                    "appliedStatTotal": 18.4,
+                    "player": {
+                      "active": true,
+                      "defaultPositionId": 2,
+                      "eligibleSlots": [2, 20, 21],
+                      "firstName": "Bijan",
+                      "fullName": "Bijan Robinson",
+                      "id": 4430807,
+                      "injured": false,
+                      "injuryStatus": "ACTIVE",
+                      "lastName": "Robinson",
+                      "proTeamId": 1,
+                      "stats": [
+                        {
+                          "appliedTotal": 18.4,
+                          "appliedStats": { "24": 18.4 },
+                          "scoringPeriodId": 1,
+                          "stats": { "24": 184 },
+                          "statSourceId": 0
+                        }
+                      ]
+                    }
+                  },
+                  "status": "NORMAL"
+                }
+              ]
+            }
+          },
+          "away": { "teamId": 5, "totalPoints": 0 }
+        }
+      ]
+    }
+  ]
+}
