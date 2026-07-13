@@ -1,0 +1,1415 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "code": 0,
+      "category": "passing",
+      "key": "passingAttempts",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 1,
+      "category": "passing",
+      "key": "passingCompletions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 2,
+      "category": "passing",
+      "key": "passingIncompletions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 3,
+      "category": "passing",
+      "key": "passingYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 4,
+      "category": "passing",
+      "key": "passingTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 5,
+      "category": "passing",
+      "key": "passingStat5",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 6,
+      "category": "passing",
+      "key": "passingStat6",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 7,
+      "category": "passing",
+      "key": "passingStat7",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 8,
+      "category": "passing",
+      "key": "passingStat8",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 9,
+      "category": "passing",
+      "key": "passingStat9",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 10,
+      "category": "passing",
+      "key": "passingStat10",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 11,
+      "category": "passing",
+      "key": "passingStat11",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 12,
+      "category": "passing",
+      "key": "passingStat12",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 13,
+      "category": "passing",
+      "key": "passingStat13",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 14,
+      "category": "passing",
+      "key": "passingStat14",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 15,
+      "category": "passing",
+      "key": "passing40PlusYardTD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 16,
+      "category": "passing",
+      "key": "passing50PlusYardTD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 17,
+      "category": "passing",
+      "key": "passing300To399YardGame",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 18,
+      "category": "passing",
+      "key": "passing400PlusYardGame",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 19,
+      "category": "passing",
+      "key": "passing2PtConversions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 20,
+      "category": "passing",
+      "key": "passingInterceptions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 21,
+      "category": "passing",
+      "key": "passingCompletionPercentage",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 22,
+      "category": "passing",
+      "key": "passingYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 23,
+      "category": "rushing",
+      "key": "rushingAttempts",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 24,
+      "category": "rushing",
+      "key": "rushingYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 25,
+      "category": "rushing",
+      "key": "rushingTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 26,
+      "category": "rushing",
+      "key": "rushing2PtConversions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 27,
+      "category": "rushing",
+      "key": "rushingStat27",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 28,
+      "category": "rushing",
+      "key": "rushingStat28",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 29,
+      "category": "rushing",
+      "key": "rushingStat29",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 30,
+      "category": "rushing",
+      "key": "rushingStat30",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 31,
+      "category": "rushing",
+      "key": "rushingStat31",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 32,
+      "category": "rushing",
+      "key": "rushingStat32",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 33,
+      "category": "rushing",
+      "key": "rushingStat33",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 34,
+      "category": "rushing",
+      "key": "rushingStat34",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 35,
+      "category": "rushing",
+      "key": "rushing40PlusYardTD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 36,
+      "category": "rushing",
+      "key": "rushing50PlusYardTD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 37,
+      "category": "rushing",
+      "key": "rushing100To199YardGame",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 38,
+      "category": "rushing",
+      "key": "rushing200PlusYardGame",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 39,
+      "category": "rushing",
+      "key": "rushingYardsPerAttempt",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 40,
+      "category": "rushing",
+      "key": "rushingYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 41,
+      "category": "receiving",
+      "key": "receivingReceptions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 42,
+      "category": "receiving",
+      "key": "receivingYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 43,
+      "category": "receiving",
+      "key": "receivingTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 44,
+      "category": "receiving",
+      "key": "receiving2PtConversions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 45,
+      "category": "receiving",
+      "key": "receiving40PlusYardTD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 46,
+      "category": "receiving",
+      "key": "receiving50PlusYardTD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 47,
+      "category": "receiving",
+      "key": "receivingStat47",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 48,
+      "category": "receiving",
+      "key": "receivingStat48",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 49,
+      "category": "receiving",
+      "key": "receivingStat49",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 50,
+      "category": "receiving",
+      "key": "receivingStat50",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 51,
+      "category": "receiving",
+      "key": "receivingStat51",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 52,
+      "category": "receiving",
+      "key": "receivingStat52",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 53,
+      "category": "receiving",
+      "key": "receivingReceptions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 54,
+      "category": "receiving",
+      "key": "receivingStat54",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 55,
+      "category": "receiving",
+      "key": "receivingStat55",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 56,
+      "category": "receiving",
+      "key": "receiving100To199YardGame",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 57,
+      "category": "receiving",
+      "key": "receiving200PlusYardGame",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 58,
+      "category": "receiving",
+      "key": "receivingTargets",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 59,
+      "category": "receiving",
+      "key": "receivingYardsAfterCatch",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 60,
+      "category": "receiving",
+      "key": "receivingYardsPerReception",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 61,
+      "category": "receiving",
+      "key": "receivingYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 62,
+      "category": "turnover",
+      "key": "2PtConversions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 63,
+      "category": "turnover",
+      "key": "fumbleRecoveredForTD",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 64,
+      "category": "turnover",
+      "key": "passingTimesSacked",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 65,
+      "category": "turnover",
+      "key": "turnoverStat65",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 66,
+      "category": "turnover",
+      "key": "turnoverStat66",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 67,
+      "category": "turnover",
+      "key": "turnoverStat67",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 68,
+      "category": "turnover",
+      "key": "fumbles",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 69,
+      "category": "turnover",
+      "key": "turnoverStat69",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 70,
+      "category": "turnover",
+      "key": "turnoverStat70",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 71,
+      "category": "turnover",
+      "key": "turnoverStat71",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 72,
+      "category": "turnover",
+      "key": "lostFumbles",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 73,
+      "category": "turnover",
+      "key": "turnovers",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 74,
+      "category": "kicking",
+      "key": "madeFieldGoalsFrom50Plus",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 75,
+      "category": "kicking",
+      "key": "attemptedFieldGoalsFrom50Plus",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 76,
+      "category": "kicking",
+      "key": "missedFieldGoalsFrom50Plus",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 77,
+      "category": "kicking",
+      "key": "madeFieldGoalsFrom40To49",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 78,
+      "category": "kicking",
+      "key": "attemptedFieldGoalsFrom40To49",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 79,
+      "category": "kicking",
+      "key": "missedFieldGoalsFrom40To49",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 80,
+      "category": "kicking",
+      "key": "madeFieldGoalsFromUnder40",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 81,
+      "category": "kicking",
+      "key": "attemptedFieldGoalsFromUnder40",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 82,
+      "category": "kicking",
+      "key": "missedFieldGoalsFromUnder40",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 83,
+      "category": "kicking",
+      "key": "madeFieldGoals",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 84,
+      "category": "kicking",
+      "key": "attemptedFieldGoals",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 85,
+      "category": "kicking",
+      "key": "missedFieldGoals",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 86,
+      "category": "kicking",
+      "key": "madeExtraPoints",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 87,
+      "category": "kicking",
+      "key": "attemptedExtraPoints",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 88,
+      "category": "kicking",
+      "key": "missedExtraPoints",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 89,
+      "category": "defense",
+      "key": "defensive0PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 90,
+      "category": "defense",
+      "key": "defensive1To6PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 91,
+      "category": "defense",
+      "key": "defensive7To13PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 92,
+      "category": "defense",
+      "key": "defensive14To17PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 93,
+      "category": "defense",
+      "key": "defensiveBlockedKickForTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 94,
+      "category": "defense",
+      "key": "defensiveTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 95,
+      "category": "defense",
+      "key": "defensiveInterceptions",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 96,
+      "category": "defense",
+      "key": "defensiveFumbles",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 97,
+      "category": "defense",
+      "key": "defensiveBlockedKicks",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 98,
+      "category": "defense",
+      "key": "defensiveSafeties",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 99,
+      "category": "defense",
+      "key": "defensiveSacks",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 100,
+      "category": "defense",
+      "key": "defenseStat100",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 101,
+      "category": "defense",
+      "key": "kickoffReturnTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 102,
+      "category": "defense",
+      "key": "puntReturnTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 103,
+      "category": "defense",
+      "key": "interceptionReturnTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 104,
+      "category": "defense",
+      "key": "fumbleReturnTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 105,
+      "category": "defense",
+      "key": "defensivePlusSpecialTeamsTouchdowns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 106,
+      "category": "defense",
+      "key": "defensiveForcedFumbles",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 107,
+      "category": "defense",
+      "key": "defensiveAssistedTackles",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 108,
+      "category": "defense",
+      "key": "defensiveSoloTackles",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 109,
+      "category": "defense",
+      "key": "defensiveTotalTackles",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 110,
+      "category": "defense",
+      "key": "defenseStat110",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 111,
+      "category": "defense",
+      "key": "defenseStat111",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 112,
+      "category": "defense",
+      "key": "defenseStat112",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 113,
+      "category": "defense",
+      "key": "defensivePassesDefensed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 114,
+      "category": "defense",
+      "key": "kickoffReturnYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 115,
+      "category": "defense",
+      "key": "puntReturnYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 116,
+      "category": "defense",
+      "key": "defenseStat116",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 117,
+      "category": "defense",
+      "key": "defenseStat117",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 118,
+      "category": "defense",
+      "key": "puntsReturned",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 119,
+      "category": "defense",
+      "key": "defenseStat119",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 120,
+      "category": "defense",
+      "key": "defensivePointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 121,
+      "category": "defense",
+      "key": "defensive18To21PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 122,
+      "category": "defense",
+      "key": "defensive22To27PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 123,
+      "category": "defense",
+      "key": "defensive28To34PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 124,
+      "category": "defense",
+      "key": "defensive35To45PointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 125,
+      "category": "defense",
+      "key": "defensive45PlusPointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 126,
+      "category": "defense",
+      "key": "defenseStat126",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 127,
+      "category": "defense",
+      "key": "defensiveYardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 128,
+      "category": "defense",
+      "key": "defensiveLessThan100YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 129,
+      "category": "defense",
+      "key": "defensive100To199YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 130,
+      "category": "defense",
+      "key": "defensive200To299YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 131,
+      "category": "defense",
+      "key": "defensive300To349YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 132,
+      "category": "defense",
+      "key": "defensive350To399YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 133,
+      "category": "defense",
+      "key": "defensive400To449YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 134,
+      "category": "defense",
+      "key": "defensive450To499YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 135,
+      "category": "defense",
+      "key": "defensive500To549YardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 136,
+      "category": "defense",
+      "key": "defensive550PlusYardsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 137,
+      "category": "defense",
+      "key": "defenseStat137",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 138,
+      "category": "punting",
+      "key": "netPunts",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 139,
+      "category": "punting",
+      "key": "puntYards",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 140,
+      "category": "punting",
+      "key": "puntsInsideThe10",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 141,
+      "category": "punting",
+      "key": "puntsInsideThe20",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 142,
+      "category": "punting",
+      "key": "blockedPunts",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 143,
+      "category": "punting",
+      "key": "puntingStat143",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 144,
+      "category": "punting",
+      "key": "puntingStat144",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 145,
+      "category": "punting",
+      "key": "puntTouchbacks",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 146,
+      "category": "punting",
+      "key": "puntFairCatches",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 147,
+      "category": "punting",
+      "key": "puntAverage",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 148,
+      "category": "punting",
+      "key": "puntAverage44.0+",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 149,
+      "category": "punting",
+      "key": "puntAverage42.0-43.9",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 150,
+      "category": "punting",
+      "key": "puntAverage40.0-41.9",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 151,
+      "category": "punting",
+      "key": "puntAverage38.0-39.9",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 152,
+      "category": "punting",
+      "key": "puntAverage36.0-37.9",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 153,
+      "category": "punting",
+      "key": "puntAverage34.0-35.9",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 154,
+      "category": "punting",
+      "key": "puntAverage33.9AndUnder",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 155,
+      "category": "head_coach",
+      "key": "teamWin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 156,
+      "category": "head_coach",
+      "key": "teamLoss",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 157,
+      "category": "head_coach",
+      "key": "teamTie",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 158,
+      "category": "head_coach",
+      "key": "pointsScored",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 159,
+      "category": "head_coach",
+      "key": "head_coachStat159",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 160,
+      "category": "head_coach",
+      "key": "pointsMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 161,
+      "category": "head_coach",
+      "key": "25+pointWinMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 162,
+      "category": "head_coach",
+      "key": "20-24pointWinMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 163,
+      "category": "head_coach",
+      "key": "15-19pointWinMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 164,
+      "category": "head_coach",
+      "key": "10-14pointWinMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 165,
+      "category": "head_coach",
+      "key": "5-9pointWinMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 166,
+      "category": "head_coach",
+      "key": "1-4pointWinMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 167,
+      "category": "head_coach",
+      "key": "1-4pointLossMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 168,
+      "category": "head_coach",
+      "key": "5-9pointLossMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 169,
+      "category": "head_coach",
+      "key": "10-14pointLossMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 170,
+      "category": "head_coach",
+      "key": "15-19pointLossMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 171,
+      "category": "head_coach",
+      "key": "20-24pointLossMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 172,
+      "category": "head_coach",
+      "key": "25+pointLossMargin",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 173,
+      "category": "head_coach",
+      "key": "head_coachStat173",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 174,
+      "category": "head_coach",
+      "key": "winPercentage",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 175,
+      "category": "passing",
+      "key": "passingStat175",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 176,
+      "category": "passing",
+      "key": "passingStat176",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 177,
+      "category": "passing",
+      "key": "passingStat177",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 178,
+      "category": "passing",
+      "key": "passingStat178",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 179,
+      "category": "rushing",
+      "key": "rushingStat179",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 180,
+      "category": "rushing",
+      "key": "rushingStat180",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 181,
+      "category": "rushing",
+      "key": "rushingStat181",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 182,
+      "category": "rushing",
+      "key": "rushingStat182",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 183,
+      "category": "receiving",
+      "key": "receivingStat183",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 184,
+      "category": "receiving",
+      "key": "receivingStat184",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 185,
+      "category": "receiving",
+      "key": "receivingStat185",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 186,
+      "category": "receiving",
+      "key": "receivingStat186",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 187,
+      "category": "defense",
+      "key": "defensivePointsAllowed",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 188,
+      "category": "defense",
+      "key": "defenseStat188",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 189,
+      "category": "defense",
+      "key": "defenseStat189",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 190,
+      "category": "defense",
+      "key": "defenseStat190",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 191,
+      "category": "defense",
+      "key": "defenseStat191",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 192,
+      "category": "defense",
+      "key": "defenseStat192",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 193,
+      "category": "defense",
+      "key": "defenseStat193",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 194,
+      "category": "defense",
+      "key": "defenseStat194",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 195,
+      "category": "defense",
+      "key": "defenseStat195",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 196,
+      "category": "defense",
+      "key": "defenseStat196",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 197,
+      "category": "defense",
+      "key": "defenseStat197",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 198,
+      "category": "kicking",
+      "key": "kickingStat198",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 199,
+      "category": "kicking",
+      "key": "kickingStat199",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 200,
+      "category": "kicking",
+      "key": "kickingStat200",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 201,
+      "category": "kicking",
+      "key": "madeFieldGoalsFrom60Plus",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 202,
+      "category": "kicking",
+      "key": "attemptedFieldGoalsFrom60Plus",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 203,
+      "category": "kicking",
+      "key": "missedFieldGoalsFrom60Plus",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 204,
+      "category": "misc",
+      "key": "miscStat204",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 205,
+      "category": "defense",
+      "key": "defensive2PtReturns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 206,
+      "category": "defense",
+      "key": "defensive2PtReturns",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 207,
+      "category": "misc",
+      "key": "miscStat207",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 208,
+      "category": "misc",
+      "key": "miscStat208",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 209,
+      "category": "misc",
+      "key": "miscStat209",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 210,
+      "category": "misc",
+      "key": "miscStat210",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 211,
+      "category": "passing",
+      "key": "passingStat211",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 212,
+      "category": "rushing",
+      "key": "rushingStat212",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 213,
+      "category": "receiving",
+      "key": "receivingStat213",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 214,
+      "category": "kicking",
+      "key": "kickingStat214",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 215,
+      "category": "kicking",
+      "key": "kickingStat215",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 216,
+      "category": "kicking",
+      "key": "kickingStat216",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 217,
+      "category": "kicking",
+      "key": "kickingStat217",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 218,
+      "category": "kicking",
+      "key": "kickingStat218",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 219,
+      "category": "kicking",
+      "key": "kickingStat219",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 220,
+      "category": "kicking",
+      "key": "kickingStat220",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 221,
+      "category": "kicking",
+      "key": "kickingStat221",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 222,
+      "category": "kicking",
+      "key": "kickingStat222",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 223,
+      "category": "kicking",
+      "key": "kickingStat223",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 224,
+      "category": "kicking",
+      "key": "kickingStat224",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 225,
+      "category": "kicking",
+      "key": "kickingStat225",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 226,
+      "category": "kicking",
+      "key": "kickingStat226",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 227,
+      "category": "kicking",
+      "key": "kickingStat227",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 228,
+      "category": "kicking",
+      "key": "kickingStat228",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 229,
+      "category": "kicking",
+      "key": "kickingStat229",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 230,
+      "category": "kicking",
+      "key": "kickingStat230",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 231,
+      "category": "kicking",
+      "key": "kickingStat231",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 232,
+      "category": "kicking",
+      "key": "kickingStat232",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 233,
+      "category": "kicking",
+      "key": "kickingStat233",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    },
+    {
+      "code": 234,
+      "category": "kicking",
+      "key": "kickingStat234",
+      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+    }
+  ]
+}

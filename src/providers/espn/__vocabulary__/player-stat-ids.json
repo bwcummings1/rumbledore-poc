@@ -1,0 +1,685 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "code": 0,
+      "key": "passingAttempts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 1,
+      "key": "passingCompletions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 2,
+      "key": "passingIncompletions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 3,
+      "key": "passingYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 4,
+      "key": "passingTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 15,
+      "key": "passing40PlusYardTD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 16,
+      "key": "passing50PlusYardTD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 17,
+      "key": "passing300To399YardGame",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 18,
+      "key": "passing400PlusYardGame",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 19,
+      "key": "passing2PtConversions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 20,
+      "key": "passingInterceptions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 21,
+      "key": "passingCompletionPercentage",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 22,
+      "key": "passingYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 23,
+      "key": "rushingAttempts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 24,
+      "key": "rushingYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 25,
+      "key": "rushingTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 26,
+      "key": "rushing2PtConversions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 35,
+      "key": "rushing40PlusYardTD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 36,
+      "key": "rushing50PlusYardTD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 37,
+      "key": "rushing100To199YardGame",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 38,
+      "key": "rushing200PlusYardGame",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 39,
+      "key": "rushingYardsPerAttempt",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 40,
+      "key": "rushingYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 41,
+      "key": "receivingReceptions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 42,
+      "key": "receivingYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 43,
+      "key": "receivingTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 44,
+      "key": "receiving2PtConversions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 45,
+      "key": "receiving40PlusYardTD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 46,
+      "key": "receiving50PlusYardTD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 53,
+      "key": "receivingReceptions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 56,
+      "key": "receiving100To199YardGame",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 57,
+      "key": "receiving200PlusYardGame",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 58,
+      "key": "receivingTargets",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 59,
+      "key": "receivingYardsAfterCatch",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 60,
+      "key": "receivingYardsPerReception",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 61,
+      "key": "receivingYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 62,
+      "key": "2PtConversions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 63,
+      "key": "fumbleRecoveredForTD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 64,
+      "key": "passingTimesSacked",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 68,
+      "key": "fumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 72,
+      "key": "lostFumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 73,
+      "key": "turnovers",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 74,
+      "key": "madeFieldGoalsFrom50Plus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 75,
+      "key": "attemptedFieldGoalsFrom50Plus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 76,
+      "key": "missedFieldGoalsFrom50Plus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 77,
+      "key": "madeFieldGoalsFrom40To49",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 78,
+      "key": "attemptedFieldGoalsFrom40To49",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 79,
+      "key": "missedFieldGoalsFrom40To49",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 80,
+      "key": "madeFieldGoalsFromUnder40",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 81,
+      "key": "attemptedFieldGoalsFromUnder40",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 82,
+      "key": "missedFieldGoalsFromUnder40",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 83,
+      "key": "madeFieldGoals",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 84,
+      "key": "attemptedFieldGoals",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 85,
+      "key": "missedFieldGoals",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 86,
+      "key": "madeExtraPoints",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 87,
+      "key": "attemptedExtraPoints",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 88,
+      "key": "missedExtraPoints",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 89,
+      "key": "defensive0PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 90,
+      "key": "defensive1To6PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 91,
+      "key": "defensive7To13PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 92,
+      "key": "defensive14To17PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 93,
+      "key": "defensiveBlockedKickForTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 94,
+      "key": "defensiveTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 95,
+      "key": "defensiveInterceptions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 96,
+      "key": "defensiveFumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 97,
+      "key": "defensiveBlockedKicks",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 98,
+      "key": "defensiveSafeties",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 99,
+      "key": "defensiveSacks",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 101,
+      "key": "kickoffReturnTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 102,
+      "key": "puntReturnTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 103,
+      "key": "interceptionReturnTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 104,
+      "key": "fumbleReturnTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 105,
+      "key": "defensivePlusSpecialTeamsTouchdowns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 106,
+      "key": "defensiveForcedFumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 107,
+      "key": "defensiveAssistedTackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 108,
+      "key": "defensiveSoloTackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 109,
+      "key": "defensiveTotalTackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 113,
+      "key": "defensivePassesDefensed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 114,
+      "key": "kickoffReturnYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 115,
+      "key": "puntReturnYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 118,
+      "key": "puntsReturned",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 120,
+      "key": "defensivePointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 121,
+      "key": "defensive18To21PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 122,
+      "key": "defensive22To27PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 123,
+      "key": "defensive28To34PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 124,
+      "key": "defensive35To45PointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 125,
+      "key": "defensive45PlusPointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 127,
+      "key": "defensiveYardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 128,
+      "key": "defensiveLessThan100YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 129,
+      "key": "defensive100To199YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 130,
+      "key": "defensive200To299YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 131,
+      "key": "defensive300To349YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 132,
+      "key": "defensive350To399YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 133,
+      "key": "defensive400To449YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 134,
+      "key": "defensive450To499YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 135,
+      "key": "defensive500To549YardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 136,
+      "key": "defensive550PlusYardsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 138,
+      "key": "netPunts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 139,
+      "key": "puntYards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 140,
+      "key": "puntsInsideThe10",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 141,
+      "key": "puntsInsideThe20",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 142,
+      "key": "blockedPunts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 145,
+      "key": "puntTouchbacks",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 146,
+      "key": "puntFairCatches",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 147,
+      "key": "puntAverage",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 148,
+      "key": "puntAverage44.0+",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 149,
+      "key": "puntAverage42.0-43.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 150,
+      "key": "puntAverage40.0-41.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 151,
+      "key": "puntAverage38.0-39.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 152,
+      "key": "puntAverage36.0-37.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 153,
+      "key": "puntAverage34.0-35.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 154,
+      "key": "puntAverage33.9AndUnder",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 155,
+      "key": "teamWin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 156,
+      "key": "teamLoss",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 157,
+      "key": "teamTie",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 158,
+      "key": "pointsScored",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 160,
+      "key": "pointsMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 161,
+      "key": "25+pointWinMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 162,
+      "key": "20-24pointWinMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 163,
+      "key": "15-19pointWinMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 164,
+      "key": "10-14pointWinMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 165,
+      "key": "5-9pointWinMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 166,
+      "key": "1-4pointWinMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 167,
+      "key": "1-4pointLossMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 168,
+      "key": "5-9pointLossMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 169,
+      "key": "10-14pointLossMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 170,
+      "key": "15-19pointLossMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 171,
+      "key": "20-24pointLossMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 172,
+      "key": "25+pointLossMargin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 174,
+      "key": "winPercentage",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 187,
+      "key": "defensivePointsAllowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 201,
+      "key": "madeFieldGoalsFrom60Plus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 202,
+      "key": "attemptedFieldGoalsFrom60Plus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 203,
+      "key": "missedFieldGoalsFrom60Plus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 205,
+      "key": "defensive2PtReturns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    },
+    {
+      "code": 206,
+      "key": "defensive2PtReturns",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+    }
+  ]
+}

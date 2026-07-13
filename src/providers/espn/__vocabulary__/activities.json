@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "code": 178,
+      "category": "add",
+      "label": "FA ADDED",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "code": 179,
+      "category": "drop",
+      "label": "DROPPED",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "code": 180,
+      "category": "waiver",
+      "label": "WAIVER ADDED",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "code": 181,
+      "category": "drop",
+      "label": "DROPPED",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "code": 239,
+      "category": "drop",
+      "label": "DROPPED",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    },
+    {
+      "code": 244,
+      "category": "trade",
+      "label": "TRADED",
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+    }
+  ]
+}
