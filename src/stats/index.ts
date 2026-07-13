@@ -137,6 +137,8 @@ export {
   type WeeklyCatalogEntry,
 } from "./records-catalog";
 export {
+  type AcknowledgedProviderPayloadDriftAlert,
+  acknowledgeProviderPayloadDriftAlert,
   type DataIntegrityReviewItem,
   type DataStewardReviewSummary,
   listDataStewardReview,

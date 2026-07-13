@@ -1,4 +1,4 @@
-import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
   type ContentCorrectionNeeded,
   detectContentCorrectionsNeeded,
@@ -3037,9 +3037,120 @@ export async function recordDataCoverage({
     return;
   }
 
-  await withLeagueContext(db, leagueId, (tx) =>
-    tx.insert(dataCapabilityObservations).values(rows),
-  );
+  await withLeagueContext(db, leagueId, async (tx) => {
+    const previousRows = await tx
+      .select({
+        availability: dataCapabilityObservations.availability,
+        createdAt: dataCapabilityObservations.createdAt,
+        dataClass: dataCapabilityObservations.dataClass,
+        id: dataCapabilityObservations.id,
+        probedAt: dataCapabilityObservations.probedAt,
+        providerSupport: dataCapabilityObservations.providerSupport,
+        providerVerdict: dataCapabilityObservations.providerVerdict,
+        rowCount: dataCapabilityObservations.rowCount,
+        status: dataCapabilityObservations.status,
+      })
+      .from(dataCapabilityObservations)
+      .where(
+        and(
+          eq(dataCapabilityObservations.leagueId, leagueId),
+          eq(dataCapabilityObservations.provider, provider),
+          eq(dataCapabilityObservations.providerLeagueId, providerLeagueId),
+          eq(dataCapabilityObservations.season, season),
+          inArray(
+            dataCapabilityObservations.dataClass,
+            rows.map((row) => row.dataClass),
+          ),
+        ),
+      )
+      .orderBy(
+        desc(dataCapabilityObservations.probedAt),
+        desc(dataCapabilityObservations.createdAt),
+        desc(dataCapabilityObservations.id),
+      );
+    const previousByDataClass = new Map<
+      ProviderDataClass,
+      (typeof previousRows)[number]
+    >();
+    for (const previous of previousRows) {
+      if (!previousByDataClass.has(previous.dataClass)) {
+        previousByDataClass.set(previous.dataClass, previous);
+      }
+    }
+
+    const insertedRows = await tx
+      .insert(dataCapabilityObservations)
+      .values(rows)
+      .returning({
+        availability: dataCapabilityObservations.availability,
+        dataClass: dataCapabilityObservations.dataClass,
+        id: dataCapabilityObservations.id,
+        probedAt: dataCapabilityObservations.probedAt,
+        providerSupport: dataCapabilityObservations.providerSupport,
+        providerVerdict: dataCapabilityObservations.providerVerdict,
+        rowCount: dataCapabilityObservations.rowCount,
+        status: dataCapabilityObservations.status,
+      });
+    const regressions = insertedRows.flatMap((after) => {
+      const before = previousByDataClass.get(after.dataClass);
+      if (
+        before?.providerVerdict !== "returned_data" ||
+        before.availability !== "full" ||
+        after.providerVerdict !== "returned_empty" ||
+        after.availability !== "none"
+      ) {
+        return [];
+      }
+
+      const regressionIdentity = {
+        afterObservationId: after.id,
+        beforeObservationId: before.id,
+        dataClass: after.dataClass,
+        provider,
+        providerLeagueId,
+        season,
+      };
+      return [
+        {
+          checkKey: "capability_regression" as const,
+          detail: {
+            after: {
+              availability: after.availability,
+              observationId: after.id,
+              probedAt: after.probedAt.toISOString(),
+              providerSupport: after.providerSupport,
+              providerVerdict: after.providerVerdict,
+              rowCount: after.rowCount,
+              status: after.status,
+            },
+            before: {
+              availability: before.availability,
+              observationId: before.id,
+              probedAt: before.probedAt.toISOString(),
+              providerSupport: before.providerSupport,
+              providerVerdict: before.providerVerdict,
+              rowCount: before.rowCount,
+              status: before.status,
+            },
+            dataClass: after.dataClass,
+            dedupeKey: stableContentHash({
+              capabilityRegression: regressionIdentity,
+            }),
+            provider,
+            providerLeagueId,
+            reason: "provider capability regressed from available to empty",
+            season,
+          },
+          leagueId,
+          season,
+          status: "fail" as const,
+        },
+      ];
+    });
+    if (regressions.length > 0) {
+      await tx.insert(dataIntegrityChecks).values(regressions);
+    }
+  });
 }
 
 function currentLeagueDataClassSet(

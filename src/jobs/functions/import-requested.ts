@@ -89,7 +89,7 @@ export interface ImportRequestedResponse extends HistoricalImportResult {
     becameLive: boolean;
     captures: QuarantineCaptureManifestEntry[];
     failures: number;
-    state: "quarantined" | "live";
+    state: "quarantined" | "live" | "superseded";
   };
 }
 
@@ -507,7 +507,7 @@ async function quarantineShadowImport({
   failures: Awaited<ReturnType<typeof loadUnresolvedIntegrityFailures>>;
   shadowImport: ShadowImportAuthorization;
 }): Promise<void> {
-  await deps.db
+  const [quarantined] = await deps.db
     .update(onboardingDiscoveredLeagues)
     .set({
       importState: "quarantined",
@@ -531,7 +531,76 @@ async function quarantineShadowImport({
           "quarantined",
         ]),
       ),
+    )
+    .returning({ id: onboardingDiscoveredLeagues.id });
+  if (!quarantined) {
+    throw toNonRetriable(
+      importJobError({
+        code: "SHADOW_IMPORT_STATE_CHANGED",
+        message: "Shadow import state changed before quarantine could persist",
+        status: 409,
+      }),
     );
+  }
+}
+
+function errorClassName(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "UnknownError";
+  }
+
+  return error.name.trim() || error.constructor.name || "Error";
+}
+
+export async function quarantineExhaustedShadowImport({
+  data: rawData,
+  deps,
+  error,
+}: {
+  data: unknown;
+  deps: Pick<ImportRequestedDependencies, "db" | "now">;
+  error: unknown;
+}): Promise<boolean> {
+  const parsed = importRequestedDataSchema.safeParse(rawData);
+  if (!parsed.success) {
+    return false;
+  }
+
+  const data = parsed.data;
+  const shadowAttempt = data.shadowAttempt;
+  if (shadowAttempt === undefined) {
+    return false;
+  }
+  const quarantinedAt = now(deps);
+  const [quarantined] = await deps.db
+    .update(onboardingDiscoveredLeagues)
+    .set({
+      importState: "quarantined",
+      integrityFailureCount: 0,
+      quarantinedAt,
+      quarantineManifest: {
+        capturedAt: quarantinedAt.toISOString(),
+        captures: [],
+        checkIds: [],
+        checkKeys: [],
+        jobFailure: { errorClass: errorClassName(error) },
+      },
+      updatedAt: quarantinedAt,
+    })
+    .where(
+      and(
+        eq(onboardingDiscoveredLeagues.credentialId, data.credentialId),
+        eq(onboardingDiscoveredLeagues.provider, data.provider),
+        eq(onboardingDiscoveredLeagues.providerLeagueId, data.providerLeagueId),
+        eq(onboardingDiscoveredLeagues.season, data.season),
+        eq(onboardingDiscoveredLeagues.importedLeagueId, data.leagueId),
+        eq(onboardingDiscoveredLeagues.importAttempts, shadowAttempt),
+        eq(onboardingDiscoveredLeagues.importState, "shadow_running"),
+      ),
+    )
+    .returning({ id: onboardingDiscoveredLeagues.id });
+
+  return Boolean(quarantined);
 }
 
 async function promoteShadowImport({
@@ -736,7 +805,7 @@ export async function runImportRequested({
         becameLive,
         captures: [],
         failures: 0,
-        state: "live",
+        state: becameLive ? "live" : "superseded",
       },
       stats,
       ...history.value,
@@ -765,6 +834,16 @@ export function createImportRequestedFunction(
       triggers: [{ event: JOB_EVENTS.importRequested }],
       idempotency:
         "event.data.leagueId + ':' + event.data.provider + ':' + event.data.providerLeagueId + ':' + (event.data.shadowAttempt || 'legacy')",
+      onFailure: async ({ error, event, step }) => {
+        const deps = await resolveDeps();
+        await step.run("quarantine-exhausted-shadow-import", () =>
+          quarantineExhaustedShadowImport({
+            data: event.data.event.data,
+            deps,
+            error,
+          }),
+        );
+      },
     },
     async ({ event, step }): Promise<ImportRequestedResponse> =>
       recordJobRun("import-requested", async () => {

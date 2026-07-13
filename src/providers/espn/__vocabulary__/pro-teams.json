@@ -1,9 +1,20 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "derivation": {
+    "method": "independent_training_knowledge_transcription",
+    "productionDictionaryConsulted": false,
+    "sources": [
+      "cwendt94/espn-api:espn_api/football/constant.py",
+      "Rumbledore:test/fixtures/espn-corpus/524be01a895a1684c2a23e71/2026/kona_player_info.json"
+    ],
+    "validationCaveat": "Training-knowledge-derived and fixture-cross-checked; pending approved multi-league real-payload harvest validation."
+  },
   "entries": [
     {
       "code": 0,
       "abbreviation": "FA",
+      "sourceAbbreviation": "None",
+      "normalizationReason": "The clients label provider team 0 as None; player context represents it as free agent (FA).",
       "source": "cwendt94/espn-api:espn_api/football/constant.py"
     },
     {

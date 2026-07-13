@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { AppError, err, ok, type Result, toAppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -48,6 +48,13 @@ export interface ProviderPayloadDriftAlert {
   scoringPeriod: number | null;
   season: number;
   view: "settings" | "scoreboard";
+}
+
+export interface AcknowledgedProviderPayloadDriftAlert {
+  acknowledgedAt: string;
+  acknowledgedByUserId: string;
+  acknowledgementReason: string;
+  id: string;
 }
 
 export interface DataStewardReviewSummary {
@@ -140,27 +147,19 @@ export async function listDataStewardReview(
           view: providerPayloadObservations.view,
         })
         .from(providerPayloadObservations)
-        .where(eq(providerPayloadObservations.leagueId, input.leagueId))
+        .where(
+          and(
+            eq(providerPayloadObservations.leagueId, input.leagueId),
+            eq(providerPayloadObservations.outcome, "alert"),
+            isNull(providerPayloadObservations.acknowledgedAt),
+          ),
+        )
         .orderBy(
           desc(providerPayloadObservations.observedAt),
           desc(providerPayloadObservations.createdAt),
           desc(providerPayloadObservations.id),
         )
-        .limit(Math.min(1000, limit * 20));
-
-      const latestPayloadRows = new Map<string, (typeof payloadRows)[number]>();
-      for (const row of payloadRows) {
-        const key = [
-          row.provider,
-          row.providerLeagueId,
-          row.season,
-          row.view,
-          row.scoringPeriod ?? "settings",
-        ].join(":");
-        if (!latestPayloadRows.has(key)) {
-          latestPayloadRows.set(key, row);
-        }
-      }
+        .limit(limit);
 
       return {
         integrityChecks: checkRows.map((row) => ({
@@ -168,13 +167,12 @@ export async function listDataStewardReview(
           createdAt: row.createdAt.toISOString(),
           reviewedAt: row.reviewedAt?.toISOString() ?? null,
         })),
-        payloadDriftAlerts: [...latestPayloadRows.values()]
-          .filter((row) => row.outcome === "alert")
-          .slice(0, limit)
-          .map(({ outcome: _outcome, ...row }) => ({
+        payloadDriftAlerts: payloadRows.map(
+          ({ outcome: _outcome, ...row }) => ({
             ...row,
             observedAt: row.observedAt.toISOString(),
-          })),
+          }),
+        ),
         suggestedIdentityLinks: suggestedRows,
       };
     });
@@ -184,6 +182,111 @@ export async function listDataStewardReview(
       toAppError(error, {
         code: "STEWARD_REVIEW_LOAD_FAILED",
         message: "Data steward review state could not be loaded",
+      }),
+    );
+  }
+}
+
+export async function acknowledgeProviderPayloadDriftAlert(
+  db: Db,
+  input: {
+    actorUserId: string;
+    alertId: string;
+    leagueId: string;
+    reason?: string;
+  },
+): Promise<Result<AcknowledgedProviderPayloadDriftAlert, AppError>> {
+  try {
+    const acknowledged = await withLeagueContext(
+      db,
+      input.leagueId,
+      async (tx) => {
+        const [before] = await tx
+          .select({
+            acknowledgedAt: providerPayloadObservations.acknowledgedAt,
+            id: providerPayloadObservations.id,
+          })
+          .from(providerPayloadObservations)
+          .where(
+            and(
+              eq(providerPayloadObservations.leagueId, input.leagueId),
+              eq(providerPayloadObservations.id, input.alertId),
+              eq(providerPayloadObservations.outcome, "alert"),
+            ),
+          )
+          .limit(1);
+        if (!before) {
+          throw stewardError({
+            code: "PAYLOAD_DRIFT_ALERT_NOT_FOUND",
+            message: "Payload drift alert was not found for this league",
+            status: 404,
+          });
+        }
+        if (before.acknowledgedAt) {
+          throw stewardError({
+            code: "PAYLOAD_DRIFT_ALERT_ALREADY_ACKNOWLEDGED",
+            message: "Payload drift alert was already acknowledged",
+            status: 409,
+          });
+        }
+
+        const acknowledgementReason =
+          input.reason?.trim() || "steward acknowledged payload drift";
+        const [after] = await tx
+          .update(providerPayloadObservations)
+          .set({
+            acknowledgedAt: new Date(),
+            acknowledgedByUserId: input.actorUserId,
+            acknowledgementReason,
+          })
+          .where(
+            and(
+              eq(providerPayloadObservations.leagueId, input.leagueId),
+              eq(providerPayloadObservations.id, before.id),
+              isNull(providerPayloadObservations.acknowledgedAt),
+            ),
+          )
+          .returning({
+            acknowledgedAt: providerPayloadObservations.acknowledgedAt,
+            acknowledgedByUserId:
+              providerPayloadObservations.acknowledgedByUserId,
+            acknowledgementReason:
+              providerPayloadObservations.acknowledgementReason,
+            id: providerPayloadObservations.id,
+          });
+        const acknowledgedAt = after?.acknowledgedAt;
+        const acknowledgedByUserId = after?.acknowledgedByUserId;
+        const persistedReason = after?.acknowledgementReason;
+        if (
+          !after ||
+          !acknowledgedAt ||
+          !acknowledgedByUserId ||
+          !persistedReason
+        ) {
+          throw stewardError({
+            code: "PAYLOAD_DRIFT_ALERT_ACKNOWLEDGEMENT_CONFLICT",
+            message: "Payload drift alert acknowledgement conflicted",
+            status: 409,
+          });
+        }
+        return {
+          acknowledgedAt,
+          acknowledgedByUserId,
+          acknowledgementReason: persistedReason,
+          id: after.id,
+        };
+      },
+    );
+
+    return ok({
+      ...acknowledged,
+      acknowledgedAt: acknowledged.acknowledgedAt.toISOString(),
+    });
+  } catch (error) {
+    return err(
+      toAppError(error, {
+        code: "PAYLOAD_DRIFT_ALERT_ACKNOWLEDGEMENT_FAILED",
+        message: "Payload drift alert could not be acknowledged",
       }),
     );
   }

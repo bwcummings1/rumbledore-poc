@@ -533,6 +533,20 @@
       "when": 1783936800000,
       "tag": "0075_provider_payload_drift_canary",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1783940400000,
+      "tag": "0076_capability_regression",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1783944000000,
+      "tag": "0077_payload_drift_acknowledgement",
+      "breakpoints": true
     }
   ]
 }

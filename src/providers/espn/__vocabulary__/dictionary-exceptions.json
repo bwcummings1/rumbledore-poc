@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "description": "Dictionary codes absent from a public vocabulary source must be listed here with a reason. All lists are intentionally empty because the vendored corpus currently closes over every registered ESPN dictionary.",
+  "schemaVersion": 2,
+  "description": "Production dictionary codes absent from the independent source corpus must be listed as {code, reason}; all lists are empty after this re-derivation.",
   "activities": [],
   "lineupSlots": [],
   "playerStats": [],

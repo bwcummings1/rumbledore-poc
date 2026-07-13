@@ -1,1415 +1,1424 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "derivation": {
+    "method": "independent_training_knowledge_transcription",
+    "productionDictionaryConsulted": false,
+    "sources": [
+      "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP",
+      "Rumbledore:test/fixtures/espn-corpus/524be01a895a1684c2a23e71/2026/mSettings.json"
+    ],
+    "validationCaveat": "Training-knowledge-derived and fixture-cross-checked; pending approved multi-league real-payload harvest validation."
+  },
   "entries": [
     {
       "code": 0,
-      "category": "passing",
-      "key": "passingAttempts",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA",
+      "label": "Each Pass Attempted",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 1,
-      "category": "passing",
-      "key": "passingCompletions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PC",
+      "label": "Each Pass Completed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 2,
-      "category": "passing",
-      "key": "passingIncompletions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "INC",
+      "label": "Each Incomplete Pass",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 3,
-      "category": "passing",
-      "key": "passingYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PY",
+      "label": "Passing Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 4,
-      "category": "passing",
-      "key": "passingTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTD",
+      "label": "TD Pass",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 5,
-      "category": "passing",
-      "key": "passingStat5",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PY5",
+      "label": "Every 5 passing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 6,
-      "category": "passing",
-      "key": "passingStat6",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PY10",
+      "label": "Every 10 passing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 7,
-      "category": "passing",
-      "key": "passingStat7",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PY20",
+      "label": "Every 20 passing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 8,
-      "category": "passing",
-      "key": "passingStat8",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PY25",
+      "label": "Every 25 passing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 9,
-      "category": "passing",
-      "key": "passingStat9",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PY50",
+      "label": "Every 50 passing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 10,
-      "category": "passing",
-      "key": "passingStat10",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PY100",
+      "label": "Every 100 passing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 11,
-      "category": "passing",
-      "key": "passingStat11",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PC5",
+      "label": "Every 5 pass completions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 12,
-      "category": "passing",
-      "key": "passingStat12",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PC10",
+      "label": "Every 10 pass completions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 13,
-      "category": "passing",
-      "key": "passingStat13",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "IP5",
+      "label": "Every 5 pass incompletions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 14,
-      "category": "passing",
-      "key": "passingStat14",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "IP10",
+      "label": "Every 10 pass incompletions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 15,
-      "category": "passing",
-      "key": "passing40PlusYardTD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTD40",
+      "label": "40+ yard TD pass bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 16,
-      "category": "passing",
-      "key": "passing50PlusYardTD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTD50",
+      "label": "50+ yard TD pass bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 17,
-      "category": "passing",
-      "key": "passing300To399YardGame",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "P300",
+      "label": "300-399 yard passing game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 18,
-      "category": "passing",
-      "key": "passing400PlusYardGame",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "P400",
+      "label": "400+ yard passing game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 19,
-      "category": "passing",
-      "key": "passing2PtConversions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "2PC",
+      "label": "2pt Passing Conversion",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 20,
-      "category": "passing",
-      "key": "passingInterceptions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "INTT",
+      "label": "Interceptions Thrown",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 21,
-      "category": "passing",
-      "key": "passingCompletionPercentage",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "CPCT",
+      "label": "Passing Completion Pct",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 22,
-      "category": "passing",
-      "key": "passingYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PYPG",
+      "label": "Passing Yards Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 23,
-      "category": "rushing",
-      "key": "rushingAttempts",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RA",
+      "label": "Rushing Attempts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 24,
-      "category": "rushing",
-      "key": "rushingYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY",
+      "label": "Rushing Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 25,
-      "category": "rushing",
-      "key": "rushingTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RTD",
+      "label": "TD Rush",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 26,
-      "category": "rushing",
-      "key": "rushing2PtConversions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "2PR",
+      "label": "2pt Rushing Conversion",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 27,
-      "category": "rushing",
-      "key": "rushingStat27",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY5",
+      "label": "Every 5 rushing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 28,
-      "category": "rushing",
-      "key": "rushingStat28",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY10",
+      "label": "Every 10 rushing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 29,
-      "category": "rushing",
-      "key": "rushingStat29",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY20",
+      "label": "Every 20 rushing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 30,
-      "category": "rushing",
-      "key": "rushingStat30",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY25",
+      "label": "Every 25 rushing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 31,
-      "category": "rushing",
-      "key": "rushingStat31",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY50",
+      "label": "Every 50 rushing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 32,
-      "category": "rushing",
-      "key": "rushingStat32",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "R100",
+      "label": "Every 100 rushing yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 33,
-      "category": "rushing",
-      "key": "rushingStat33",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RA5",
+      "label": "Every 5 rush attempts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 34,
-      "category": "rushing",
-      "key": "rushingStat34",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RA10",
+      "label": "Every 10 rush attempts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 35,
-      "category": "rushing",
-      "key": "rushing40PlusYardTD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RTD40",
+      "label": "40+ yard TD rush bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 36,
-      "category": "rushing",
-      "key": "rushing50PlusYardTD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RTD50",
+      "label": "50+ yard TD rush bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 37,
-      "category": "rushing",
-      "key": "rushing100To199YardGame",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY100",
+      "label": "100-199 yard rushing game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 38,
-      "category": "rushing",
-      "key": "rushing200PlusYardGame",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RY200",
+      "label": "200+ yard rushing game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 39,
-      "category": "rushing",
-      "key": "rushingYardsPerAttempt",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RYPA",
+      "label": "Rushing Yards Per Attempt",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 40,
-      "category": "rushing",
-      "key": "rushingYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RYPG",
+      "label": "Rushing Yards Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 41,
-      "category": "receiving",
-      "key": "receivingReceptions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RECS",
+      "label": "Receptions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 42,
-      "category": "receiving",
-      "key": "receivingYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY",
+      "label": "Receiving Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 43,
-      "category": "receiving",
-      "key": "receivingTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RETD",
+      "label": "TD Reception",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 44,
-      "category": "receiving",
-      "key": "receiving2PtConversions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "2PRE",
+      "label": "2pt Receiving Conversion",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 45,
-      "category": "receiving",
-      "key": "receiving40PlusYardTD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RETD40",
+      "label": "40+ yard TD rec bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 46,
-      "category": "receiving",
-      "key": "receiving50PlusYardTD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RETD50",
+      "label": "50+ yard TD rec bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 47,
-      "category": "receiving",
-      "key": "receivingStat47",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY5",
+      "label": "Every 5 receiving yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 48,
-      "category": "receiving",
-      "key": "receivingStat48",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY10",
+      "label": "Every 10 receiving yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 49,
-      "category": "receiving",
-      "key": "receivingStat49",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY20",
+      "label": "Every 20 receiving yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 50,
-      "category": "receiving",
-      "key": "receivingStat50",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY25",
+      "label": "Every 25 receiving yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 51,
-      "category": "receiving",
-      "key": "receivingStat51",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY50",
+      "label": "Every 50 receiving yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 52,
-      "category": "receiving",
-      "key": "receivingStat52",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RE100",
+      "label": "Every 100 receiving yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 53,
-      "category": "receiving",
-      "key": "receivingReceptions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REC",
+      "label": "Each reception",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 54,
-      "category": "receiving",
-      "key": "receivingStat54",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REC5",
+      "label": "Every 5 receptions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 55,
-      "category": "receiving",
-      "key": "receivingStat55",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REC10",
+      "label": "Every 10 receptions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 56,
-      "category": "receiving",
-      "key": "receiving100To199YardGame",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY100",
+      "label": "100-199 yard receiving game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 57,
-      "category": "receiving",
-      "key": "receiving200PlusYardGame",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REY200",
+      "label": "200+ yard receiving game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 58,
-      "category": "receiving",
-      "key": "receivingTargets",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RET",
+      "label": "Receiving Target",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 59,
-      "category": "receiving",
-      "key": "receivingYardsAfterCatch",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YAC",
+      "label": "Receiving Yards After Catch",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 60,
-      "category": "receiving",
-      "key": "receivingYardsPerReception",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YPC",
+      "label": "Receiving Yards Per Catch",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 61,
-      "category": "receiving",
-      "key": "receivingYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REYPG",
+      "label": "Receiving Yards Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 62,
-      "category": "turnover",
-      "key": "2PtConversions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTL",
+      "label": "Total 2pt Conversions",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 63,
-      "category": "turnover",
-      "key": "fumbleRecoveredForTD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FTD",
+      "label": "Fumble Recovered for TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 64,
-      "category": "turnover",
-      "key": "passingTimesSacked",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "SKD",
+      "label": "Sacked",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 65,
-      "category": "turnover",
-      "key": "turnoverStat65",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PFUM",
+      "label": "Passing Fumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 66,
-      "category": "turnover",
-      "key": "turnoverStat66",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RFUM",
+      "label": "Rushing Fumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 67,
-      "category": "turnover",
-      "key": "turnoverStat67",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REFUM",
+      "label": "Receiving Fumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 68,
-      "category": "turnover",
-      "key": "fumbles",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FUM",
+      "label": "Total Fumbles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 69,
-      "category": "turnover",
-      "key": "turnoverStat69",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PFUML",
+      "label": "Passing Fumbles Lost",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 70,
-      "category": "turnover",
-      "key": "turnoverStat70",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RFUML",
+      "label": "Rushing Fumbles Lost",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 71,
-      "category": "turnover",
-      "key": "turnoverStat71",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REFUML",
+      "label": "Receiving Fumbles Lost",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 72,
-      "category": "turnover",
-      "key": "lostFumbles",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FUML",
+      "label": "Total Fumbles Lost",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 73,
-      "category": "turnover",
-      "key": "turnovers",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TT",
+      "label": "Total Turnovers",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 74,
-      "category": "kicking",
-      "key": "madeFieldGoalsFrom50Plus",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FG50P",
+      "label": "FG Made (50+ yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 75,
-      "category": "kicking",
-      "key": "attemptedFieldGoalsFrom50Plus",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGA50P",
+      "label": "FG Attempted (50+ yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 76,
-      "category": "kicking",
-      "key": "missedFieldGoalsFrom50Plus",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGM50P",
+      "label": "FG Missed (50+ yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 77,
-      "category": "kicking",
-      "key": "madeFieldGoalsFrom40To49",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FG40",
+      "label": "FG Made (40-49 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 78,
-      "category": "kicking",
-      "key": "attemptedFieldGoalsFrom40To49",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGA40",
+      "label": "FG Attempted (40-49 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 79,
-      "category": "kicking",
-      "key": "missedFieldGoalsFrom40To49",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGM40",
+      "label": "FG Missed (40-49 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 80,
-      "category": "kicking",
-      "key": "madeFieldGoalsFromUnder40",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FG0",
+      "label": "FG Made (0-39 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 81,
-      "category": "kicking",
-      "key": "attemptedFieldGoalsFromUnder40",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGA0",
+      "label": "FG Attempted (0-39 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 82,
-      "category": "kicking",
-      "key": "missedFieldGoalsFromUnder40",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGM0",
+      "label": "FG Missed (0-39 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 83,
-      "category": "kicking",
-      "key": "madeFieldGoals",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FG",
+      "label": "Total FG Made",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 84,
-      "category": "kicking",
-      "key": "attemptedFieldGoals",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGA",
+      "label": "Total FG Attempted",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 85,
-      "category": "kicking",
-      "key": "missedFieldGoals",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGM",
+      "label": "Total FG Missed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 86,
-      "category": "kicking",
-      "key": "madeExtraPoints",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PAT",
+      "label": "Each PAT Made",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 87,
-      "category": "kicking",
-      "key": "attemptedExtraPoints",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PATA",
+      "label": "Each PAT Attempted",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 88,
-      "category": "kicking",
-      "key": "missedExtraPoints",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PATM",
+      "label": "Each PAT Missed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 89,
-      "category": "defense",
-      "key": "defensive0PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA0",
+      "label": "0 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 90,
-      "category": "defense",
-      "key": "defensive1To6PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA1",
+      "label": "1-6 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 91,
-      "category": "defense",
-      "key": "defensive7To13PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA7",
+      "label": "7-13 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 92,
-      "category": "defense",
-      "key": "defensive14To17PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA14",
+      "label": "14-17 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 93,
-      "category": "defense",
-      "key": "defensiveBlockedKickForTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "BLKKRTD",
+      "label": "Blocked Punt or FG return for TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 94,
-      "category": "defense",
-      "key": "defensiveTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DEFRETTD",
+      "label": "Fumble or INT Return for TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 95,
-      "category": "defense",
-      "key": "defensiveInterceptions",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "INT",
+      "label": "Each Interception",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 96,
-      "category": "defense",
-      "key": "defensiveFumbles",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FR",
+      "label": "Each Fumble Recovered",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 97,
-      "category": "defense",
-      "key": "defensiveBlockedKicks",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "BLKK",
+      "label": "Blocked Punt, PAT or FG",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 98,
-      "category": "defense",
-      "key": "defensiveSafeties",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "SF",
+      "label": "Each Safety",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 99,
-      "category": "defense",
-      "key": "defensiveSacks",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "SK",
+      "label": "Each Sack",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 100,
-      "category": "defense",
-      "key": "defenseStat100",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "HALFSK",
+      "label": "1/2 Sack",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 101,
-      "category": "defense",
-      "key": "kickoffReturnTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "KRTD",
+      "label": "Kickoff Return TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 102,
-      "category": "defense",
-      "key": "puntReturnTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PRTD",
+      "label": "Punt Return TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 103,
-      "category": "defense",
-      "key": "interceptionReturnTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "INTTD",
+      "label": "Interception Return TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 104,
-      "category": "defense",
-      "key": "fumbleReturnTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FRTD",
+      "label": "Fumble Return TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 105,
-      "category": "defense",
-      "key": "defensivePlusSpecialTeamsTouchdowns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TRTD",
+      "label": "Total Return TD",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 106,
-      "category": "defense",
-      "key": "defensiveForcedFumbles",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FF",
+      "label": "Each Fumble Forced",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 107,
-      "category": "defense",
-      "key": "defensiveAssistedTackles",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TKA",
+      "label": "Assisted Tackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 108,
-      "category": "defense",
-      "key": "defensiveSoloTackles",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TKS",
+      "label": "Solo Tackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 109,
-      "category": "defense",
-      "key": "defensiveTotalTackles",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TK",
+      "label": "Total Tackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 110,
-      "category": "defense",
-      "key": "defenseStat110",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TK3",
+      "label": "Every 3 Total Tackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 111,
-      "category": "defense",
-      "key": "defenseStat111",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TK5",
+      "label": "Every 5 Total Tackles",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 112,
-      "category": "defense",
-      "key": "defenseStat112",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "STF",
+      "label": "Stuffs",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 113,
-      "category": "defense",
-      "key": "defensivePassesDefensed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PD",
+      "label": "Passes Defensed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 114,
-      "category": "defense",
-      "key": "kickoffReturnYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "KR",
+      "label": "Kickoff Return Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 115,
-      "category": "defense",
-      "key": "puntReturnYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PR",
+      "label": "Punt Return Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 116,
-      "category": "defense",
-      "key": "defenseStat116",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "KR10",
+      "label": "Every 10 kickoff return yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 117,
-      "category": "defense",
-      "key": "defenseStat117",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "KR25",
+      "label": "Every 25 kickoff return yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 118,
-      "category": "defense",
-      "key": "puntsReturned",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PR10",
+      "label": "Every 10 punt return yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 119,
-      "category": "defense",
-      "key": "defenseStat119",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PR25",
+      "label": "Every 25 punt return yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 120,
-      "category": "defense",
-      "key": "defensivePointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTSA",
+      "label": "Points Allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 121,
-      "category": "defense",
-      "key": "defensive18To21PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA18",
+      "label": "18-21 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 122,
-      "category": "defense",
-      "key": "defensive22To27PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA22",
+      "label": "22-27 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 123,
-      "category": "defense",
-      "key": "defensive28To34PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA28",
+      "label": "28-34 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 124,
-      "category": "defense",
-      "key": "defensive35To45PointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA35",
+      "label": "35-45 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 125,
-      "category": "defense",
-      "key": "defensive45PlusPointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PA46",
+      "label": "46+ points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 126,
-      "category": "defense",
-      "key": "defenseStat126",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PAPG",
+      "label": "Points Allowed Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 127,
-      "category": "defense",
-      "key": "defensiveYardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA",
+      "label": "Yards Allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 128,
-      "category": "defense",
-      "key": "defensiveLessThan100YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA100",
+      "label": "Less than 100 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 129,
-      "category": "defense",
-      "key": "defensive100To199YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA199",
+      "label": "100-199 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 130,
-      "category": "defense",
-      "key": "defensive200To299YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA299",
+      "label": "200-299 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 131,
-      "category": "defense",
-      "key": "defensive300To349YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA349",
+      "label": "300-349 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 132,
-      "category": "defense",
-      "key": "defensive350To399YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA399",
+      "label": "350-399 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 133,
-      "category": "defense",
-      "key": "defensive400To449YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA449",
+      "label": "400-449 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 134,
-      "category": "defense",
-      "key": "defensive450To499YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA499",
+      "label": "450-499 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 135,
-      "category": "defense",
-      "key": "defensive500To549YardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA549",
+      "label": "500-549 total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 136,
-      "category": "defense",
-      "key": "defensive550PlusYardsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YA550",
+      "label": "550+ total yards allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 137,
-      "category": "defense",
-      "key": "defenseStat137",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "YAPG",
+      "label": "Yards Allowed Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 138,
-      "category": "punting",
-      "key": "netPunts",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PT",
+      "label": "Net Punts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 139,
-      "category": "punting",
-      "key": "puntYards",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTY",
+      "label": "Punt Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 140,
-      "category": "punting",
-      "key": "puntsInsideThe10",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PT10",
+      "label": "Punts Inside the 10",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 141,
-      "category": "punting",
-      "key": "puntsInsideThe20",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PT20",
+      "label": "Punts Inside the 20",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 142,
-      "category": "punting",
-      "key": "blockedPunts",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTB",
+      "label": "Blocked Punts",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 143,
-      "category": "punting",
-      "key": "puntingStat143",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTR",
+      "label": "Punts Returned",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 144,
-      "category": "punting",
-      "key": "puntingStat144",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTRY",
+      "label": "Punt Return Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 145,
-      "category": "punting",
-      "key": "puntTouchbacks",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTTB",
+      "label": "Touchbacks",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 146,
-      "category": "punting",
-      "key": "puntFairCatches",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTFC",
+      "label": "Fair Catches",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 147,
-      "category": "punting",
-      "key": "puntAverage",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTAVG",
+      "label": "Punt Average",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 148,
-      "category": "punting",
-      "key": "puntAverage44.0+",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTA44",
+      "label": "Punt Average 44.0+",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 149,
-      "category": "punting",
-      "key": "puntAverage42.0-43.9",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTA42",
+      "label": "Punt Average 42.0-43.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 150,
-      "category": "punting",
-      "key": "puntAverage40.0-41.9",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTA40",
+      "label": "Punt Average 40.0-41.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 151,
-      "category": "punting",
-      "key": "puntAverage38.0-39.9",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTA38",
+      "label": "Punt Average 38.0-39.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 152,
-      "category": "punting",
-      "key": "puntAverage36.0-37.9",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTA36",
+      "label": "Punt Average 36.0-37.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 153,
-      "category": "punting",
-      "key": "puntAverage34.0-35.9",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTA34",
+      "label": "Punt Average 34.0-35.9",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 154,
-      "category": "punting",
-      "key": "puntAverage33.9AndUnder",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTA33",
+      "label": "Punt Average 33.9 or less",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 155,
-      "category": "head_coach",
-      "key": "teamWin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TW",
+      "label": "Team Win",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 156,
-      "category": "head_coach",
-      "key": "teamLoss",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TL",
+      "label": "Team Loss",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 157,
-      "category": "head_coach",
-      "key": "teamTie",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "TIE",
+      "label": "Team Tie",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 158,
-      "category": "head_coach",
-      "key": "pointsScored",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTS",
+      "label": "Points Scored",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 159,
-      "category": "head_coach",
-      "key": "head_coachStat159",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PPG",
+      "label": "Points Scored Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 160,
-      "category": "head_coach",
-      "key": "pointsMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "MGN",
+      "label": "Margin of Victory",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 161,
-      "category": "head_coach",
-      "key": "25+pointWinMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "WM25",
+      "label": "25+ point Win Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 162,
-      "category": "head_coach",
-      "key": "20-24pointWinMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "WM20",
+      "label": "20-24 point Win Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 163,
-      "category": "head_coach",
-      "key": "15-19pointWinMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "WM15",
+      "label": "15-19 point Win Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 164,
-      "category": "head_coach",
-      "key": "10-14pointWinMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "WM10",
+      "label": "10-14 point Win Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 165,
-      "category": "head_coach",
-      "key": "5-9pointWinMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "WM5",
+      "label": "5-9 point Win Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 166,
-      "category": "head_coach",
-      "key": "1-4pointWinMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "WM1",
+      "label": "1-4 point Win Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 167,
-      "category": "head_coach",
-      "key": "1-4pointLossMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "LM1",
+      "label": "1-4 point Loss Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 168,
-      "category": "head_coach",
-      "key": "5-9pointLossMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "LM5",
+      "label": "5-9 point Loss Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 169,
-      "category": "head_coach",
-      "key": "10-14pointLossMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "LM10",
+      "label": "10-14 point Loss Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 170,
-      "category": "head_coach",
-      "key": "15-19pointLossMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "LM15",
+      "label": "15-19 point Loss Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 171,
-      "category": "head_coach",
-      "key": "20-24pointLossMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "LM20",
+      "label": "20-24 point Loss Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 172,
-      "category": "head_coach",
-      "key": "25+pointLossMargin",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "LM25",
+      "label": "25+ point Loss Margin",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 173,
-      "category": "head_coach",
-      "key": "head_coachStat173",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "MGNPG",
+      "label": "Margin of Victory Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 174,
-      "category": "head_coach",
-      "key": "winPercentage",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "WINPCT",
+      "label": "Winning Pct",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 175,
-      "category": "passing",
-      "key": "passingStat175",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTD0",
+      "label": "0-9 yd TD pass bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 176,
-      "category": "passing",
-      "key": "passingStat176",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTD10",
+      "label": "10-19 yd TD pass bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 177,
-      "category": "passing",
-      "key": "passingStat177",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTD20",
+      "label": "20-29 yd TD pass bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 178,
-      "category": "passing",
-      "key": "passingStat178",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PTD30",
+      "label": "30-39 yd TD pass bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 179,
-      "category": "rushing",
-      "key": "rushingStat179",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RTD0",
+      "label": "0-9 yd TD rush bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 180,
-      "category": "rushing",
-      "key": "rushingStat180",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RTD10",
+      "label": "10-19 yd TD rush bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 181,
-      "category": "rushing",
-      "key": "rushingStat181",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RTD20",
+      "label": "20-29 yd TD rush bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 182,
-      "category": "rushing",
-      "key": "rushingStat182",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RTD30",
+      "label": "30-39 yd TD rush bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 183,
-      "category": "receiving",
-      "key": "receivingStat183",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RETD0",
+      "label": "0-9 yd TD rec bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 184,
-      "category": "receiving",
-      "key": "receivingStat184",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RETD10",
+      "label": "10-19 yd TD rec bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 185,
-      "category": "receiving",
-      "key": "receivingStat185",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RETD20",
+      "label": "20-29 yd TD rec bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 186,
-      "category": "receiving",
-      "key": "receivingStat186",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RETD30",
+      "label": "30-39 yd TD rec bonus",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 187,
-      "category": "defense",
-      "key": "defensivePointsAllowed",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPTSA",
+      "label": "D/ST Points Allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 188,
-      "category": "defense",
-      "key": "defenseStat188",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA0",
+      "label": "D/ST 0 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 189,
-      "category": "defense",
-      "key": "defenseStat189",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA1",
+      "label": "D/ST 1-6 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 190,
-      "category": "defense",
-      "key": "defenseStat190",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA7",
+      "label": "D/ST 7-13 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 191,
-      "category": "defense",
-      "key": "defenseStat191",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA14",
+      "label": "D/ST 14-17 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 192,
-      "category": "defense",
-      "key": "defenseStat192",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA18",
+      "label": "D/ST 18-21 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 193,
-      "category": "defense",
-      "key": "defenseStat193",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA22",
+      "label": "D/ST 22-27 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 194,
-      "category": "defense",
-      "key": "defenseStat194",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA28",
+      "label": "D/ST 28-34 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 195,
-      "category": "defense",
-      "key": "defenseStat195",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA35",
+      "label": "D/ST 35-45 points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 196,
-      "category": "defense",
-      "key": "defenseStat196",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPA46",
+      "label": "D/ST 46+ points allowed",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 197,
-      "category": "defense",
-      "key": "defenseStat197",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "DPAPG",
+      "label": "D/ST Points Allowed Per Game",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 198,
-      "category": "kicking",
-      "key": "kickingStat198",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FG50",
+      "label": "FG Made (50-59 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 199,
-      "category": "kicking",
-      "key": "kickingStat199",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGA50",
+      "label": "FG Attempted (50-59 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 200,
-      "category": "kicking",
-      "key": "kickingStat200",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGM50",
+      "label": "FG Missed (50-59 yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 201,
-      "category": "kicking",
-      "key": "madeFieldGoalsFrom60Plus",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FG60",
+      "label": "FG Made (60+ yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 202,
-      "category": "kicking",
-      "key": "attemptedFieldGoalsFrom60Plus",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGA60",
+      "label": "FG Attempted (60+ yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 203,
-      "category": "kicking",
-      "key": "missedFieldGoalsFrom60Plus",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGM60",
+      "label": "FG Missed (60+ yards)",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 204,
-      "category": "misc",
-      "key": "miscStat204",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "O2PRET",
+      "label": "Offensive 2pt Return",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 205,
-      "category": "defense",
-      "key": "defensive2PtReturns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "D2PRET",
+      "label": "Defensive 2pt Return",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 206,
-      "category": "defense",
-      "key": "defensive2PtReturns",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "2PRET",
+      "label": "2pt Return",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 207,
-      "category": "misc",
-      "key": "miscStat207",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "O1PSF",
+      "label": "Offensive 1pt Safety",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 208,
-      "category": "misc",
-      "key": "miscStat208",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "D1PSF",
+      "label": "Defensive 1pt Safety",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 209,
-      "category": "misc",
-      "key": "miscStat209",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "1PSF",
+      "label": "1pt Safety",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 210,
-      "category": "misc",
-      "key": "miscStat210",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "GP",
+      "label": "Games Played",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 211,
-      "category": "passing",
-      "key": "passingStat211",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "PFD",
+      "label": "Passing First Down",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 212,
-      "category": "rushing",
-      "key": "rushingStat212",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "RFD",
+      "label": "Rushing First Down",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 213,
-      "category": "receiving",
-      "key": "receivingStat213",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "REFD",
+      "label": "Receiving First Down",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 214,
-      "category": "kicking",
-      "key": "kickingStat214",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGY",
+      "label": "FG Made Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 215,
-      "category": "kicking",
-      "key": "kickingStat215",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGMY",
+      "label": "FG Missed Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 216,
-      "category": "kicking",
-      "key": "kickingStat216",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGAY",
+      "label": "FG Attempt Yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 217,
-      "category": "kicking",
-      "key": "kickingStat217",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGY5",
+      "label": "Every 5 FG Made yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 218,
-      "category": "kicking",
-      "key": "kickingStat218",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGY10",
+      "label": "Every 10 FG Made yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 219,
-      "category": "kicking",
-      "key": "kickingStat219",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGY20",
+      "label": "Every 20 FG Made yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 220,
-      "category": "kicking",
-      "key": "kickingStat220",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGY25",
+      "label": "Every 25 FG Made yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 221,
-      "category": "kicking",
-      "key": "kickingStat221",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGY50",
+      "label": "Every 50 FG Made yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 222,
-      "category": "kicking",
-      "key": "kickingStat222",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGY100",
+      "label": "Every 100 FG Made yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 223,
-      "category": "kicking",
-      "key": "kickingStat223",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGMY5",
+      "label": "Every 5 FG Missed yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 224,
-      "category": "kicking",
-      "key": "kickingStat224",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGMY10",
+      "label": "Every 10 FG Missed yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 225,
-      "category": "kicking",
-      "key": "kickingStat225",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGMY20",
+      "label": "Every 20 FG Missed yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 226,
-      "category": "kicking",
-      "key": "kickingStat226",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGMY25",
+      "label": "Every 25 FG Missed yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 227,
-      "category": "kicking",
-      "key": "kickingStat227",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGMY50",
+      "label": "Every 50 FG Missed yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 228,
-      "category": "kicking",
-      "key": "kickingStat228",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGMY100",
+      "label": "Every 100 FG Missed yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 229,
-      "category": "kicking",
-      "key": "kickingStat229",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGAY5",
+      "label": "Every 5 FG Attempt yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 230,
-      "category": "kicking",
-      "key": "kickingStat230",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGAY10",
+      "label": "Every 10 FG Attempt yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 231,
-      "category": "kicking",
-      "key": "kickingStat231",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGAY20",
+      "label": "Every 20 FG Attempt yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 232,
-      "category": "kicking",
-      "key": "kickingStat232",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGAY25",
+      "label": "Every 25 FG Attempt yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 233,
-      "category": "kicking",
-      "key": "kickingStat233",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGAY50",
+      "label": "Every 50 FG Attempt yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     },
     {
       "code": 234,
-      "category": "kicking",
-      "key": "kickingStat234",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "abbreviation": "FGAY100",
+      "label": "Every 100 FG Attempt yards",
+      "source": "cwendt94/espn-api:espn_api/football/constant.py:SETTINGS_SCORING_FORMAT_MAP"
     }
   ]
 }

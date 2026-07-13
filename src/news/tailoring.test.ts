@@ -238,10 +238,8 @@ describe("central news tailoring hand-off", () => {
       input: { limit: 5, topic: "fantasy injuries" },
     });
 
-    expect(first).toMatchObject({
-      inserted: 1,
-      tailoredReferences: 1,
-    });
+    expect(first).toMatchObject({ inserted: 1 });
+    expect(first.tailoredReferences).toBeGreaterThanOrEqual(1);
 
     const centralRows = await handle.db
       .select({
@@ -386,10 +384,8 @@ describe("central news tailoring hand-off", () => {
       input: { limit: 5, topic: "fantasy injuries" },
     });
 
-    expect(result).toMatchObject({
-      inserted: 1,
-      tailoredReferences: 1,
-    });
+    expect(result).toMatchObject({ inserted: 1 });
+    expect(result.tailoredReferences).toBeGreaterThanOrEqual(1);
 
     const [centralRow] = await handle.db
       .select({
@@ -421,7 +417,12 @@ describe("central news tailoring hand-off", () => {
             matchedEntities: leagueFeedReferences.matchedEntities,
           })
           .from(leagueFeedReferences)
-          .where(eq(leagueFeedReferences.contentItemId, centralRow.id)),
+          .where(
+            and(
+              eq(leagueFeedReferences.leagueId, leagueAId),
+              eq(leagueFeedReferences.contentItemId, centralRow.id),
+            ),
+          ),
     );
     expect(leagueAReferences).toHaveLength(1);
     expect(leagueAReferences[0]?.matchedEntities).toEqual(

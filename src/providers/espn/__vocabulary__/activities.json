@@ -1,41 +1,51 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "derivation": {
+    "method": "independent_training_knowledge_transcription",
+    "productionDictionaryConsulted": false,
+    "sources": [
+      "cwendt94/espn-api:espn_api/football/constant.py",
+      "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)",
+      "Rumbledore:test/fixtures/espn-corpus/524be01a895a1684c2a23e71/2026/mTransactions2.json"
+    ],
+    "validationCaveat": "Training-knowledge-derived and fixture-cross-checked; pending approved multi-league real-payload harvest validation."
+  },
   "entries": [
     {
       "code": 178,
       "category": "add",
       "label": "FA ADDED",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:espn_api/football/constant.py; mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "code": 179,
       "category": "drop",
       "label": "DROPPED",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:espn_api/football/constant.py; mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "code": 180,
       "category": "waiver",
       "label": "WAIVER ADDED",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:espn_api/football/constant.py; mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "code": 181,
       "category": "drop",
       "label": "DROPPED",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:espn_api/football/constant.py; mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "code": 239,
       "category": "drop",
       "label": "DROPPED",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:espn_api/football/constant.py; mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "code": 244,
       "category": "trade",
       "label": "TRADED",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:espn_api/football/constant.py; mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     }
   ]
 }

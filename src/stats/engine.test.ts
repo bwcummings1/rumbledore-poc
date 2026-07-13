@@ -42,6 +42,8 @@ import {
   weeklyStatistics,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { recordDataCoverage } from "@/ingestion/current-league";
+import { ESPN_PROVIDER_CAPABILITIES } from "@/providers/espn/client";
 import { createCurationCheckpoint, pushCurationSeason } from "./curated-state";
 import {
   applyLeagueDataEdit,
@@ -4103,6 +4105,104 @@ describe("recomputeLeagueStatistics", () => {
     });
   });
 
+  it("fails loudly when full capability data becomes empty and review clears the regression", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague(
+      "capability-regression",
+    );
+    const actorUserId = await seedActor("capability-regression-steward");
+
+    await recordDataCoverage({
+      capabilities: ESPN_PROVIDER_CAPABILITIES,
+      dataClasses: ["teams"],
+      db: handle.db,
+      leagueId,
+      observedAt: new Date("2026-07-13T10:00:00.000Z"),
+      observations: { teams: { itemCount: 12 } },
+      provider: "espn",
+      providerLeagueId,
+      season: 2025,
+    });
+    await recordDataCoverage({
+      capabilities: ESPN_PROVIDER_CAPABILITIES,
+      dataClasses: ["teams"],
+      db: handle.db,
+      leagueId,
+      observedAt: new Date("2026-07-13T11:00:00.000Z"),
+      observations: { teams: { itemCount: 0 } },
+      provider: "espn",
+      providerLeagueId,
+      season: 2025,
+    });
+
+    await runDataIntegrityChecks(handle.db, { leagueId });
+    let rows = await selectStatsRows(leagueId);
+    const regression = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "capability_regression" && row.status === "fail",
+    );
+    expect(regression).toMatchObject({
+      season: 2025,
+      status: "fail",
+    });
+    expect(regression?.detail).toMatchObject({
+      after: {
+        availability: "none",
+        providerVerdict: "returned_empty",
+        rowCount: 0,
+      },
+      before: {
+        availability: "full",
+        providerVerdict: "returned_data",
+        rowCount: 12,
+      },
+      dataClass: "teams",
+      provider: "espn",
+      providerLeagueId,
+      reason: "provider capability regressed from available to empty",
+      season: 2025,
+    });
+    expect(regression?.detail.dedupeKey).toMatch(/^[a-f0-9]{64}$/);
+    if (!regression) {
+      throw new Error("capability regression failure was not recorded");
+    }
+
+    const reviewed = await markIntegrityCheckReviewed(handle.db, {
+      actorUserId,
+      checkId: regression.id,
+      leagueId,
+      reason: "known provider outage acknowledged",
+    });
+    expect(reviewed).toMatchObject({
+      ok: true,
+      value: {
+        checkKey: "capability_regression",
+        id: regression.id,
+        reviewedByUserId: actorUserId,
+        status: "reviewed",
+      },
+    });
+
+    await runDataIntegrityChecks(handle.db, { leagueId });
+    rows = await selectStatsRows(leagueId);
+    expect(
+      rows.integrityRows.filter(
+        (row) =>
+          row.checkKey === "capability_regression" && row.status === "fail",
+      ),
+    ).toHaveLength(0);
+    expect(
+      rows.integrityRows.filter(
+        (row) =>
+          row.checkKey === "capability_regression" && row.status === "reviewed",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: regression.id,
+        reviewedByUserId: actorUserId,
+      }),
+    ]);
+  });
+
   it("checks roster coverage and skips rollup comparison for partial player scores", async () => {
     const { leagueId, providerLeagueId } =
       await seedStatsLeague("player-rollup");
@@ -4374,34 +4474,22 @@ describe("recomputeLeagueStatistics", () => {
       "declared-absent-player-depth",
     );
 
-    await withLeagueContext(handle.db, leagueId, async (tx) => {
-      await tx.insert(dataCapabilityObservations).values([
-        {
-          availability: "none",
-          dataClass: "rosters",
-          leagueId,
-          provider: "espn",
-          providerLeagueId,
-          providerSupport: "partial",
-          providerVerdict: "returned_empty",
-          rowCount: 0,
-          season: 2024,
-          status: "unavailable",
-        },
-        {
-          availability: "none",
-          dataClass: "scoring_detail",
+    await recordDataCoverage({
+      capabilities: ESPN_PROVIDER_CAPABILITIES,
+      dataClasses: ["rosters", "scoring_detail"],
+      db: handle.db,
+      leagueId,
+      observations: {
+        rosters: { itemCount: 0, status: "unavailable" },
+        scoring_detail: {
           details: { playerStatBreakdownRows: 0 },
-          leagueId,
-          provider: "espn",
-          providerLeagueId,
-          providerSupport: "partial",
-          providerVerdict: "returned_empty",
-          rowCount: 0,
-          season: 2024,
+          itemCount: 0,
           status: "unavailable",
         },
-      ]);
+      },
+      provider: "espn",
+      providerLeagueId,
+      season: 2024,
     });
 
     const integrity = await runDataIntegrityChecks(handle.db, { leagueId });
@@ -4450,6 +4538,12 @@ describe("recomputeLeagueStatistics", () => {
         row.status === "pass",
     );
     expect(silentEmpty?.detail).toMatchObject({ issues: [] });
+    expect(
+      rows.integrityRows.some(
+        (row) =>
+          row.checkKey === "capability_regression" && row.status === "fail",
+      ),
+    ).toBe(false);
   });
 
   it("flags grouping coverage, span sanity, and data-edit ledger completeness failures", async () => {

@@ -88,6 +88,9 @@ export interface DiscoveredLeagueImportCandidate extends DiscoveredLeague {
       id: string;
       season: number | null;
     }>;
+    jobFailure?: {
+      errorClass: string;
+    };
     quarantinedAt: string;
   };
   reconnect?: ProviderReconnectAction;
@@ -199,9 +202,155 @@ const storedCredentialSchemas = {
 } satisfies Partial<Record<FantasyProviderId, z.ZodType<unknown>>>;
 type HistoricalImportProviderId = ImportRequestedData["provider"];
 const SHADOW_IMPORT_MAX_SEASONS = 25;
+export const SHADOW_IMPORT_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
+
+type DiscoveredImportSnapshot = Pick<
+  typeof onboardingDiscoveredLeagues.$inferSelect,
+  | "importAttempts"
+  | "importedLeagueId"
+  | "importState"
+  | "integrityFailureCount"
+  | "liveAt"
+  | "quarantineManifest"
+  | "quarantinedAt"
+  | "shadowStartedAt"
+>;
+
+interface DiscoveredImportClaim {
+  attempt: number;
+  previous: DiscoveredImportSnapshot;
+}
+
+type DiscoveredImportClaimResult =
+  | { claim: DiscoveredImportClaim; status: "claimed" }
+  | { status: "busy" | "live" | "missing" };
 
 function currentTime(deps: Pick<ProviderOnboardingDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
+}
+
+function shadowImportIsStale(
+  row: Pick<
+    typeof onboardingDiscoveredLeagues.$inferSelect,
+    "importState" | "shadowStartedAt"
+  >,
+  at: Date,
+): boolean {
+  return (
+    row.importState === "shadow_running" &&
+    row.shadowStartedAt !== null &&
+    row.shadowStartedAt.getTime() <= at.getTime() - SHADOW_IMPORT_STALE_AFTER_MS
+  );
+}
+
+async function claimDiscoveredLeagueImport(
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
+  discoveryId: string,
+): Promise<DiscoveredImportClaimResult> {
+  return deps.db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`onboarding-import:${discoveryId}`}, 0))`,
+    );
+
+    const [current] = await tx
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.id, discoveryId))
+      .limit(1);
+    if (!current) return { status: "missing" };
+    if (current.importState === "live") return { status: "live" };
+
+    const startedAt = currentTime(deps);
+    if (
+      current.importState === "shadow_running" &&
+      !shadowImportIsStale(current, startedAt)
+    ) {
+      return { status: "busy" };
+    }
+
+    const previous: DiscoveredImportSnapshot = {
+      importAttempts: current.importAttempts,
+      importedLeagueId: current.importedLeagueId,
+      importState: current.importState,
+      integrityFailureCount: current.integrityFailureCount,
+      liveAt: current.liveAt,
+      quarantineManifest: current.quarantineManifest,
+      quarantinedAt: current.quarantinedAt,
+      shadowStartedAt: current.shadowStartedAt,
+    };
+    const [claimed] = await tx
+      .update(onboardingDiscoveredLeagues)
+      .set({
+        importAttempts: current.importAttempts + 1,
+        importState: "shadow_running",
+        integrityFailureCount: 0,
+        liveAt: null,
+        quarantineManifest: null,
+        quarantinedAt: null,
+        shadowStartedAt: startedAt,
+        updatedAt: startedAt,
+      })
+      .where(
+        and(
+          eq(onboardingDiscoveredLeagues.id, discoveryId),
+          eq(
+            onboardingDiscoveredLeagues.importAttempts,
+            current.importAttempts,
+          ),
+          sql`${onboardingDiscoveredLeagues.importState} is not distinct from ${current.importState}`,
+          sql`${onboardingDiscoveredLeagues.shadowStartedAt} is not distinct from ${current.shadowStartedAt}`,
+        ),
+      )
+      .returning({ attempt: onboardingDiscoveredLeagues.importAttempts });
+    return claimed
+      ? { claim: { attempt: claimed.attempt, previous }, status: "claimed" }
+      : { status: "busy" };
+  });
+}
+
+async function rollbackDiscoveredLeagueImport(
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
+  input: {
+    claim: DiscoveredImportClaim;
+    discoveryId: string;
+  },
+): Promise<boolean> {
+  const [rolledBack] = await deps.db
+    .update(onboardingDiscoveredLeagues)
+    .set({
+      ...input.claim.previous,
+      updatedAt: currentTime(deps),
+    })
+    .where(
+      and(
+        eq(onboardingDiscoveredLeagues.id, input.discoveryId),
+        eq(onboardingDiscoveredLeagues.importAttempts, input.claim.attempt),
+        eq(onboardingDiscoveredLeagues.importState, "shadow_running"),
+      ),
+    )
+    .returning({ id: onboardingDiscoveredLeagues.id });
+  return Boolean(rolledBack);
+}
+
+async function deleteUnreferencedPreLiveLeague(
+  db: Db,
+  leagueId: string,
+): Promise<void> {
+  await db.delete(leagues).where(
+    and(
+      eq(leagues.id, leagueId),
+      sql`not exists (
+          select 1
+          from ${onboardingDiscoveredLeagues}
+          where ${onboardingDiscoveredLeagues.importedLeagueId} = ${leagueId}
+        )`,
+      sql`not exists (
+          select 1
+          from ${members}
+          where ${members.organizationId} = ${leagueId}
+        )`,
+    ),
+  );
 }
 
 function providerUnsupported(provider: FantasyProviderId): OnboardingError {
@@ -464,7 +613,7 @@ export async function connectProviderWithCredentials({
 }
 
 async function listDiscoveredLeagueCandidates(
-  deps: Pick<ProviderOnboardingDependencies, "db">,
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
   input: { provider?: FantasyProviderId; userId: string },
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   const rows = await deps.db
@@ -484,6 +633,7 @@ async function listDiscoveredLeagueCandidates(
       quarantineManifest: onboardingDiscoveredLeagues.quarantineManifest,
       quarantinedAt: onboardingDiscoveredLeagues.quarantinedAt,
       season: onboardingDiscoveredLeagues.season,
+      shadowStartedAt: onboardingDiscoveredLeagues.shadowStartedAt,
       size: onboardingDiscoveredLeagues.size,
       sport: onboardingDiscoveredLeagues.sport,
       teamName: onboardingDiscoveredLeagues.teamName,
@@ -536,11 +686,18 @@ async function listDiscoveredLeagueCandidates(
   }, null);
 
   const candidates: DiscoveredLeagueImportCandidate[] = [];
+  const shadowStaleBefore =
+    currentTime(deps).getTime() - SHADOW_IMPORT_STALE_AFTER_MS;
   for (const row of rows) {
     const hasMembership =
       row.memberUserId !== null && row.importedLeagueId !== null;
+    const shadowImportIsStale =
+      row.importState === "shadow_running" &&
+      row.shadowStartedAt !== null &&
+      row.shadowStartedAt.getTime() <= shadowStaleBefore;
     const onboardingState =
-      row.importState ?? (hasMembership ? ("live" as const) : undefined);
+      (shadowImportIsStale ? undefined : row.importState) ??
+      (hasMembership ? ("live" as const) : undefined);
     const imported = hasMembership && onboardingState === "live";
     let invalidConnection = false;
     switch (row.connectionState) {
@@ -581,6 +738,9 @@ async function listDiscoveredLeagueCandidates(
             id: check.id,
             season: check.season,
           })),
+        ...(row.quarantineManifest?.jobFailure
+          ? { jobFailure: row.quarantineManifest.jobFailure }
+          : {}),
         quarantinedAt: row.quarantinedAt.toISOString(),
       };
     }
@@ -625,14 +785,14 @@ async function listDiscoveredLeagueCandidates(
 }
 
 export async function listDiscoveredLeagues(
-  deps: Pick<ProviderOnboardingDependencies, "db">,
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
   input: { provider: FantasyProviderId; userId: string },
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   return listDiscoveredLeagueCandidates(deps, input);
 }
 
 export async function listDiscoveredLeagueInventory(
-  deps: Pick<ProviderOnboardingDependencies, "db">,
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
   input: { userId: string },
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   return listDiscoveredLeagueCandidates(deps, input);
@@ -816,138 +976,180 @@ export async function importDiscoveredLeague(
     ...(discovered.size === null ? {} : { size: discovered.size }),
   });
 
-  const sync = await syncCurrentLeague({
-    db: deps.db,
-    now: deps.now,
-    provider: provider.value,
-    realtime: deps.realtime,
-    ref,
-    session: session.value,
-  });
-  if (!sync.ok) {
-    return sync;
-  }
-
-  const importProvider = ref.provider;
-  if (
-    importProvider !== "espn" &&
-    importProvider !== "sleeper" &&
-    importProvider !== "yahoo"
-  ) {
-    return err(providerUnsupported(importProvider));
-  }
-
-  await recomputeLeagueStatistics(deps.db, { leagueId: sync.value.league.id });
-
-  const shadowStartedAt = currentTime(deps);
-  const [shadowImport] = await deps.db
-    .update(onboardingDiscoveredLeagues)
-    .set({
-      importAttempts: sql`${onboardingDiscoveredLeagues.importAttempts} + 1`,
-      importedLeagueId: sync.value.league.id,
-      importState: "shadow_running",
-      integrityFailureCount: 0,
-      liveAt: null,
-      quarantineManifest: null,
-      quarantinedAt: null,
-      shadowStartedAt,
-      updatedAt: shadowStartedAt,
-    })
-    .where(eq(onboardingDiscoveredLeagues.id, discovered.id))
-    .returning({ attempt: onboardingDiscoveredLeagues.importAttempts });
-  if (!shadowImport) {
+  const claimResult = await claimDiscoveredLeagueImport(deps, discovered.id);
+  if (claimResult.status !== "claimed") {
+    const alreadyLive = claimResult.status === "live";
     return err(
       new OnboardingError({
-        code: "ONBOARDING_SHADOW_STATE_FAILED",
-        message: "Pre-live verification state could not be started",
-        status: 500,
+        code: alreadyLive
+          ? "ONBOARDING_LEAGUE_ALREADY_LIVE"
+          : "ONBOARDING_IMPORT_ALREADY_RUNNING",
+        message: alreadyLive
+          ? "This league is already imported"
+          : "Pre-live verification is already running for this league",
+        status: 409,
       }),
     );
   }
 
-  const leaguemateInvites = await listLeaguemateInviteTargets(
-    { db: deps.db },
-    {
+  const claim = claimResult.claim;
+  const [leagueBeforeSync] = await deps.db
+    .select({ id: leagues.id })
+    .from(leagues)
+    .where(
+      and(
+        eq(leagues.provider, ref.provider),
+        eq(leagues.providerLeagueId, ref.providerId),
+      ),
+    )
+    .limit(1);
+  let preserveClaim = false;
+  try {
+    const sync = await syncCurrentLeague({
+      db: deps.db,
+      now: deps.now,
+      provider: provider.value,
+      realtime: deps.realtime,
+      ref,
+      session: session.value,
+    });
+    if (!sync.ok) {
+      return sync;
+    }
+
+    const importProvider = ref.provider;
+    if (
+      importProvider !== "espn" &&
+      importProvider !== "sleeper" &&
+      importProvider !== "yahoo"
+    ) {
+      return err(providerUnsupported(importProvider));
+    }
+
+    await recomputeLeagueStatistics(deps.db, {
+      leagueId: sync.value.league.id,
+    });
+
+    const [shadowImport] = await deps.db
+      .update(onboardingDiscoveredLeagues)
+      .set({
+        importedLeagueId: sync.value.league.id,
+        updatedAt: currentTime(deps),
+      })
+      .where(
+        and(
+          eq(onboardingDiscoveredLeagues.id, discovered.id),
+          eq(onboardingDiscoveredLeagues.importAttempts, claim.attempt),
+          eq(onboardingDiscoveredLeagues.importState, "shadow_running"),
+        ),
+      )
+      .returning({ attempt: onboardingDiscoveredLeagues.importAttempts });
+    if (!shadowImport) {
+      return err(
+        new OnboardingError({
+          code: "ONBOARDING_SHADOW_STATE_FAILED",
+          message: "Pre-live verification state could not be started",
+          status: 500,
+        }),
+      );
+    }
+
+    const leaguemateInvites = await listLeaguemateInviteTargets(
+      { db: deps.db },
+      {
+        leagueId: sync.value.league.id,
+        userId: input.userId,
+        userRole: "commissioner",
+      },
+    );
+    if (!leaguemateInvites.ok) {
+      return leaguemateInvites;
+    }
+    const stewardDoorway = await listDataStewardDoorway(deps.db, {
       leagueId: sync.value.league.id,
       userId: input.userId,
       userRole: "commissioner",
-    },
-  );
-  if (!leaguemateInvites.ok) {
-    return leaguemateInvites;
-  }
-  const stewardDoorway = await listDataStewardDoorway(deps.db, {
-    leagueId: sync.value.league.id,
-    userId: input.userId,
-    userRole: "commissioner",
-  });
-  if (!stewardDoorway.ok) {
-    return stewardDoorway;
-  }
+    });
+    if (!stewardDoorway.ok) {
+      return stewardDoorway;
+    }
 
-  try {
-    await deps.requestHistoricalImport?.({
+    try {
+      await deps.requestHistoricalImport?.({
+        credentialId: discovered.credentialId,
+        leagueId: sync.value.league.id,
+        maxSeasons: SHADOW_IMPORT_MAX_SEASONS,
+        name: ref.name,
+        provider: importProvider satisfies HistoricalImportProviderId,
+        providerLeagueId: ref.providerId,
+        season: ref.season,
+        shadowAttempt: shadowImport.attempt,
+        sport: ref.sport,
+        ...(ref.teamName ? { teamName: ref.teamName } : {}),
+        ...(ref.size === undefined ? {} : { size: ref.size }),
+      });
+    } catch (cause) {
+      return err(
+        new OnboardingError({
+          cause,
+          code: "ONBOARDING_IMPORT_JOB_ENQUEUE_FAILED",
+          message: "Historical import could not be enqueued",
+          status: 500,
+        }),
+      );
+    }
+    preserveClaim = true;
+
+    const [completedShadow] = await deps.db
+      .select({ importState: onboardingDiscoveredLeagues.importState })
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.id, discovered.id))
+      .limit(1);
+    const onboardingState =
+      completedShadow?.importState === "live" ? "live" : "shadow_running";
+
+    return ok({
       credentialId: discovered.credentialId,
       leagueId: sync.value.league.id,
-      maxSeasons: SHADOW_IMPORT_MAX_SEASONS,
-      name: ref.name,
-      provider: importProvider satisfies HistoricalImportProviderId,
-      providerLeagueId: ref.providerId,
-      season: ref.season,
-      shadowAttempt: shadowImport.attempt,
-      sport: ref.sport,
-      ...(ref.teamName ? { teamName: ref.teamName } : {}),
-      ...(ref.size === undefined ? {} : { size: ref.size }),
+      leaguemateInvites: {
+        importedMembers: leaguemateInvites.value.totals.importedMembers,
+        inviteTargets: leaguemateInvites.value.totals.inviteTargets,
+        ...(stewardDoorway.value.review?.needsReview
+          ? { stewardReview: stewardDoorway.value.review }
+          : {}),
+        targets: leaguemateInvites.value.targets.map((target) => ({
+          displayName: target.displayName,
+          providerMemberId: target.providerMemberId,
+          suggestedChannel: target.suggestedChannel,
+          teamNames: target.teamNames,
+        })),
+      },
+      onboardingState,
+      sync: sync.value,
     });
-  } catch (cause) {
-    await deps.db
-      .update(onboardingDiscoveredLeagues)
-      .set({
-        importState: discovered.importState,
-        integrityFailureCount: discovered.integrityFailureCount,
-        quarantineManifest: discovered.quarantineManifest,
-        quarantinedAt: discovered.quarantinedAt,
-        shadowStartedAt: discovered.shadowStartedAt,
-        updatedAt: new Date(),
-      })
-      .where(eq(onboardingDiscoveredLeagues.id, discovered.id));
-    return err(
-      new OnboardingError({
-        cause,
-        code: "ONBOARDING_IMPORT_JOB_ENQUEUE_FAILED",
-        message: "Historical import could not be enqueued",
-        status: 500,
-      }),
-    );
+  } finally {
+    if (!preserveClaim) {
+      const rolledBack = await rollbackDiscoveredLeagueImport(deps, {
+        claim,
+        discoveryId: discovered.id,
+      });
+      if (rolledBack && !leagueBeforeSync) {
+        const [createdLeague] = await deps.db
+          .select({ id: leagues.id })
+          .from(leagues)
+          .where(
+            and(
+              eq(leagues.provider, ref.provider),
+              eq(leagues.providerLeagueId, ref.providerId),
+            ),
+          )
+          .limit(1);
+        if (createdLeague) {
+          await deleteUnreferencedPreLiveLeague(deps.db, createdLeague.id);
+        }
+      }
+    }
   }
-
-  const [completedShadow] = await deps.db
-    .select({ importState: onboardingDiscoveredLeagues.importState })
-    .from(onboardingDiscoveredLeagues)
-    .where(eq(onboardingDiscoveredLeagues.id, discovered.id))
-    .limit(1);
-  const onboardingState =
-    completedShadow?.importState === "live" ? "live" : "shadow_running";
-
-  return ok({
-    credentialId: discovered.credentialId,
-    leagueId: sync.value.league.id,
-    leaguemateInvites: {
-      importedMembers: leaguemateInvites.value.totals.importedMembers,
-      inviteTargets: leaguemateInvites.value.totals.inviteTargets,
-      ...(stewardDoorway.value.review?.needsReview
-        ? { stewardReview: stewardDoorway.value.review }
-        : {}),
-      targets: leaguemateInvites.value.targets.map((target) => ({
-        displayName: target.displayName,
-        providerMemberId: target.providerMemberId,
-        suggestedChannel: target.suggestedChannel,
-        teamNames: target.teamNames,
-      })),
-    },
-    onboardingState,
-    sync: sync.value,
-  });
 }
 
 export async function reviewQuarantinedIntegrityCheck(

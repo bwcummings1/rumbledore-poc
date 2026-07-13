@@ -21,14 +21,42 @@ interface SourcedNumericEntry {
   source: string;
 }
 
+interface DocumentedException {
+  code: number;
+  reason: string;
+}
+
+interface IndependentDerivation {
+  method: string;
+  productionDictionaryConsulted: boolean;
+  sources: readonly string[];
+  validationCaveat: string;
+}
+
+function assertReasonedExceptions(
+  kind: string,
+  exceptions: readonly DocumentedException[],
+): void {
+  for (const exception of exceptions) {
+    if (exception.reason.trim().length === 0) {
+      throw new Error(
+        `${kind} dictionary exception ${exception.code} must include a non-empty reason`,
+      );
+    }
+  }
+}
+
 function assertNumericClosure(
   kind: string,
   dictionary: Readonly<Partial<Record<number, unknown>>>,
   entries: readonly SourcedNumericEntry[],
-  documentedExceptions: readonly number[],
+  documentedExceptions: readonly DocumentedException[],
 ): void {
   const corpusCodes = new Set(entries.map((entry) => entry.code));
-  const exceptionCodes = new Set(documentedExceptions);
+  assertReasonedExceptions(kind, documentedExceptions);
+  const exceptionCodes = new Set(
+    documentedExceptions.map((exception) => exception.code),
+  );
 
   for (const entry of entries) {
     if (dictionary[entry.code] === undefined) {
@@ -54,6 +82,21 @@ function assertSourced(entries: readonly { source: string }[]): void {
   }
 }
 
+function assertIndependentDerivation(derivation: IndependentDerivation): void {
+  expect(derivation.method).toBe(
+    "independent_training_knowledge_transcription",
+  );
+  expect(derivation.productionDictionaryConsulted).toBe(false);
+  expect(derivation.sources.length).toBeGreaterThan(0);
+  expect(derivation.validationCaveat).toContain(
+    "pending approved multi-league real-payload harvest validation",
+  );
+  for (const source of derivation.sources) {
+    expect(source.trim().length).toBeGreaterThan(0);
+    expect(source).not.toContain("reference-data");
+  }
+}
+
 describe("ESPN vendored vocabulary closure", () => {
   it("names the exact missing code in either direction", () => {
     expect(() =>
@@ -68,6 +111,79 @@ describe("ESPN vendored vocabulary closure", () => {
     expect(() => assertNumericClosure("position", { 17: "K" }, [], [])).toThrow(
       "position dictionary code 17 has no corpus source or documented exception",
     );
+
+    expect(() =>
+      assertReasonedExceptions("position", [{ code: 17, reason: " " }]),
+    ).toThrow(
+      "position dictionary exception 17 must include a non-empty reason",
+    );
+  });
+
+  it("records an independent derivation and its real-payload validation caveat", () => {
+    for (const vocabulary of [
+      activitiesVocabulary,
+      leagueFormatVocabulary,
+      lineupSlotsVocabulary,
+      playerStatsVocabulary,
+      positionsVocabulary,
+      proTeamsVocabulary,
+      scoringStatsVocabulary,
+    ]) {
+      assertIndependentDerivation(vocabulary.derivation);
+    }
+  });
+
+  it("documents every source-to-production value delta with a reason", () => {
+    expect(
+      positionsVocabulary.entries.find((entry) => entry.code === 22),
+    ).toMatchObject({
+      code: 22,
+      label: "N/A",
+      normalizationReason:
+        "The clients expose a blank sentinel; Rumbledore renders it as N/A.",
+      sourceLabel: "",
+    });
+    expect(
+      lineupSlotsVocabulary.entries.find((entry) => entry.code === 22),
+    ).toMatchObject({
+      code: 22,
+      label: "N/A",
+      normalizationReason:
+        "The clients expose a blank sentinel; Rumbledore renders it as N/A.",
+      sourceLabel: "",
+    });
+    expect(
+      lineupSlotsVocabulary.entries.find((entry) => entry.code === 23),
+    ).toMatchObject({
+      code: 23,
+      label: "FLEX",
+      normalizationReason:
+        "The client maps the same code forward as RB/WR/TE and inversely as FLEX; lineup-slot context uses FLEX.",
+      sourceLabel: "RB/WR/TE",
+    });
+    expect(
+      proTeamsVocabulary.entries.find((entry) => entry.code === 0),
+    ).toMatchObject({
+      abbreviation: "FA",
+      code: 0,
+      normalizationReason:
+        "The clients label provider team 0 as None; player context represents it as free agent (FA).",
+      sourceAbbreviation: "None",
+    });
+
+    const documentedDeltas = [
+      ...positionsVocabulary.entries,
+      ...lineupSlotsVocabulary.entries,
+      ...proTeamsVocabulary.entries,
+    ].filter((entry) => "normalizationReason" in entry);
+    expect(documentedDeltas).toHaveLength(4);
+    for (const entry of documentedDeltas) {
+      const reason = entry.normalizationReason;
+      expect(typeof reason).toBe("string");
+      if (typeof reason === "string") {
+        expect(reason.trim().length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("closes positions and lineup slots, including old-era labels", () => {
@@ -155,15 +271,23 @@ describe("ESPN vendored vocabulary closure", () => {
       expect(ESPN_PLAYER_STAT_KEY_BY_ID[entry.code]).toBe(entry.key);
     }
     for (const entry of scoringStatsVocabulary.entries) {
-      expect(ESPN_SCORING_STAT_BY_ID[entry.code]).toMatchObject({
-        category: entry.category,
-        id: entry.code,
-        key: entry.key,
-      });
+      expect(entry.abbreviation.trim().length).toBeGreaterThan(0);
+      expect(entry.label.trim().length).toBeGreaterThan(0);
     }
+
+    expect(scoringStatsVocabulary.entries[5]).toMatchObject({
+      abbreviation: "PY5",
+      code: 5,
+      label: "Every 5 passing yards",
+    });
+    expect(scoringStatsVocabulary.entries[234]).toMatchObject({
+      abbreviation: "FGAY100",
+      code: 234,
+      label: "Every 100 FG Attempt yards",
+    });
   });
 
-  it("vendors every mSettings format family and documents dynamic divisions", () => {
+  it("records independently sourced mSettings families and the one-shape caveat", () => {
     assertSourced(leagueFormatVocabulary.entries);
     assertSourced(leagueFormatVocabulary.dynamicFields);
 
@@ -189,5 +313,8 @@ describe("ESPN vendored vocabulary closure", () => {
       "settings.scheduleSettings.divisions[].id",
       "settings.scheduleSettings.divisions[].name",
     ]);
+    expect(leagueFormatVocabulary.coverageCaveat).toContain(
+      "Only H2H_POINTS is present in the one committed sanitized league shape",
+    );
   });
 });

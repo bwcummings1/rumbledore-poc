@@ -1,9 +1,19 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-13 — **`specs/47` wave 1 COMPLETE — tracks 47A + 47B + 47C merged**:
-**47A (`ws/47a-vocab-corpus`)**: ESPN's vendored vocabulary corpus now proves bidirectional closure for positions,
-lineup slots, pro teams, activity codes, player/scoring stat ids, and `mSettings` enums, including old-era labels.
+Keep it current. Last updated: 2026-07-13 — **`specs/47` wave-1 review fixes COMPLETE on
+`ws/f47-review-fixes`, pending orchestrator merge; tracks 47A + 47B + 47C are merged**:
+**F47 review remediation:** stale or exhausted shadow imports recover instead of remaining permanently in flight;
+capability downgrades fail loud; payload-drift alerts persist until steward acknowledgement; concurrent import claims,
+enqueue rollback, quarantine/promotion races, corpus privacy, and legacy-era property coverage are hardened. The ESPN
+vocabulary corpus was independently re-derived from training knowledge and committed payload evidence, with four
+intentional contextual-label deltas and no missing production codes or era gaps; approved multi-league harvest
+validation remains pending. Migrations now run through `0077`; no live harvest or paid-provider call was made.
+**47A (`ws/47a-vocab-corpus`)**: ESPN's independently re-derived, training-knowledge-based vocabulary corpus proves
+numeric closure for positions, lineup slots, pro teams, activity codes, and player/scoring stat ids, including
+old-era labels; `mSettings` values are an independently sourced inventory rather than a production-enum closure.
+The vocabulary remains pending approved multi-league real-payload harvest validation, and the committed payload corpus
+currently represents one sanitized league shape.
 Missing provider dictionaries now fail `provider_code_decoding` explicitly for Sleeper/Yahoo while registered ESPN
 stays green. A ToS-guarded, no-cookie, rate/budget-bounded public-league harvester sanitizes identities and writes
 provenance-stamped atomic fixtures; no live harvest was run. The seeded eight-view ESPN corpus replays through
@@ -23,7 +33,8 @@ steward review (0075). Mock job execution runs the same import gate in process w
 preseason fallback standings are explicitly skipped until the provider season is complete. Read-only shared-dev
 verification for ESPN `95050` found 176 latest-map dimensions, the documented 2011–2017 + current player-depth basis,
 current-only stat breakdowns, 136/136 PASS integrity rows, and zero decoded unknowns. Affected Data Book, Records, and
-steward screenshots were refreshed. Migrations now run through `0075`.
+steward screenshots were refreshed. Its original migrations run through `0075`; F47 review fixes extend the current
+migration head through `0077`.
 Prior state: **Task T19 on `ws/t19-records-substance`**:
 the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
 roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
@@ -401,9 +412,15 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
 - **Deferred/follow-on:** draft/transactions UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real
   substrate-B source wiring; production-real paid-provider keys/capture plus real webhook/email delivery domains; final
   AI voice/persona tuning with the owner; Stripe/beta/legal/observability launch hardening; minor owner-set-aside UI
-  tweaks.
+  tweaks; replace the `import.requested` non-shadow `legacy` idempotency bucket before multiple rollover/backfill
+  producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track F47 completed all verified wave-1 review fixes on `ws/f47-review-fixes`: recoverable shadow-import
+  leases and failure quarantine, loud capability regressions, acknowledged persistent drift alerts, independently
+  re-derived vocabulary closure, corpus sanitizer/privacy gates, atomic concurrent import claims and rollback, forced
+  legacy-era properties, scoped cross-league tailoring assertions, and quarantine race handling. Migrations advance
+  through `0077`; S6's non-shadow `legacy` idempotency-bucket collision risk is explicitly deferred.
 - 2026-07-13: Track P completed the owner polish batch: OG cards now carry one brand mark plus a meaningful section
   chip, `/you` notification copy matches the per-league delivery matrix, raw lore-event assertions no longer depend
   on undefined PostgreSQL row order, and `AGENTS.md` records the cross-league fan-out test-isolation rule.
@@ -411,10 +428,12 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   probes now drive integrity and basis labels; shadow imports gate visibility with sanitized quarantine evidence;
   fixture-backed drift canaries surface steward alerts; mock onboarding executes the full gate in process; ESPN 95050
   read-only verification matched its documented coverage with all latest checks PASS and zero decoded unknowns.
-- 2026-07-13: Track 47A completed `specs/47` §A/§B acceptance criteria 1–4 on `ws/47a-vocab-corpus`: bidirectional
-  ESPN vocabulary closure, loud missing-provider-dictionary failures, a guarded/bounded identity-sanitizing harvester,
-  and an eight-view isolated-DB corpus-replay oracle with malformed-view attribution; fixture tests and full gates pass,
-  and no live harvest, credential use, mock-flag change, migration, or owner-data mutation occurred.
+- 2026-07-13: Track 47A completed `specs/47` §A/§B acceptance criteria 1–4 on `ws/47a-vocab-corpus`: independently
+  sourced ESPN numeric vocabulary closure, loud missing-provider-dictionary failures, a guarded/bounded
+  identity-sanitizing harvester, and an eight-view isolated-DB corpus-replay oracle with malformed-view attribution.
+  The vocabulary is training-knowledge-derived pending approved real-payload harvest validation, and the committed
+  corpus still contains one sanitized league shape; fixture tests and full gates passed without a live harvest,
+  credential use, mock-flag change, migration, or owner-data mutation.
 - 2026-07-13: Track 47B landed Spec 47 §C's seeded normalized-schema generators and all six ingestion properties;
   default CI runs stay bounded, `PROPERTY_RUNS` enables deeper dispatches, and a temporary no-chunk mutation proved
   the season-scale regression fails above PostgreSQL's bind-parameter cap before production chunking was restored.
