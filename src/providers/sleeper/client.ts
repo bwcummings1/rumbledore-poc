@@ -28,6 +28,11 @@ import {
   RateLimitedError,
   type SeasonScopedProviderEntityRef,
 } from "../model";
+import {
+  encodeSleeperRosterSlot,
+  encodeSleeperScoringSetting,
+  encodeSleeperTransactionType,
+} from "./reference-data";
 
 export interface SleeperCredentials {
   usernameOrUserId: string;
@@ -491,12 +496,47 @@ function normalizeScoringSettings(
     ? league.scoring_settings
     : {};
   const rosterPositions = league.roster_positions ?? [];
+  const scoringItems = Object.entries(scoringSettings)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([key, value]) => {
+      const points =
+        typeof value === "number" || typeof value === "string"
+          ? toNumber(value)
+          : undefined;
+      const statId = encodeSleeperScoringSetting(key);
+      return points === undefined || statId === undefined
+        ? []
+        : [{ points, statId, statKey: key }];
+    });
   return {
     ...scoringSettings,
     idp: rosterPositions.some((position) =>
       IDP_ROSTER_POSITIONS.has(position.toUpperCase()),
     ),
     rosterPositions,
+    scoringItems,
+  };
+}
+
+function normalizeRosterSettings(
+  league: SleeperLeague,
+): { lineupSlotCounts: Record<string, number>; source: string } | undefined {
+  const slotCounts = new Map<number, number>();
+  for (const slot of league.roster_positions ?? []) {
+    const slotId = encodeSleeperRosterSlot(slot);
+    if (slotId !== undefined) {
+      slotCounts.set(slotId, (slotCounts.get(slotId) ?? 0) + 1);
+    }
+  }
+  if (slotCounts.size === 0) return undefined;
+
+  return {
+    lineupSlotCounts: Object.fromEntries(
+      [...slotCounts.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([slotId, count]) => [String(slotId), count]),
+    ),
+    source: "sleeper.league.roster_positions",
   };
 }
 
@@ -598,6 +638,7 @@ function normalizeLeague(
   const size = toInteger(league.total_rosters) ?? 0;
   const postseason = normalizePostseasonSettings(league);
   const keeperSettings = normalizeKeeperSettings(league);
+  const rosterSettings = normalizeRosterSettings(league);
 
   return {
     provider: SLEEPER_PROVIDER_ID,
@@ -607,6 +648,7 @@ function normalizeLeague(
     name: league.name?.trim() || `Sleeper League ${providerId}`,
     scoringType: normalizeScoringType(league),
     scoringSettings: normalizeScoringSettings(league),
+    ...(rosterSettings ? { rosterSettings } : {}),
     size,
     currentScoringPeriod: currentScoringPeriod(league, state),
     status: normalizeLeagueStatus(league.status),
@@ -925,6 +967,7 @@ function normalizeRosterEntries({
             : "bench"
         : "active";
     const points = toNumber(matchup?.players_points?.[playerId]);
+    const lineupSlotId = encodeSleeperRosterSlot(slot);
 
     return {
       playerRef: {
@@ -934,6 +977,9 @@ function normalizeRosterEntries({
       slot,
       status,
       ...(points === undefined ? {} : { points }),
+      ...(lineupSlotId === undefined
+        ? {}
+        : { metadata: { lineupSlotId, lineupSlotLabel: slot } }),
     };
   });
 }
@@ -1066,6 +1112,8 @@ function normalizeTransaction(
   ref: ProviderLeagueRef,
 ): NormalizedTransaction {
   const providerId = toId(transaction.transaction_id) ?? "unknown";
+  const rawType = transaction.type?.trim();
+  const rawTypeId = rawType ? encodeSleeperTransactionType(rawType) : undefined;
   return {
     provider: SLEEPER_PROVIDER_ID,
     providerId,
@@ -1077,6 +1125,8 @@ function normalizeTransaction(
     timestamp: transactionTimestamp(transaction),
     details: {
       creator: toId(transaction.creator) ?? null,
+      ...(rawType ? { rawTransactionType: rawType } : {}),
+      ...(rawTypeId === undefined ? {} : { rawType: rawTypeId }),
       status: transaction.status ?? "unknown",
       week: toInteger(transaction.leg) ?? null,
     },

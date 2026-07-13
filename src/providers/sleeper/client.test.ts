@@ -22,6 +22,11 @@ import {
   type SleeperFetch,
   type SleeperSession,
 } from "./client";
+import {
+  encodeSleeperRosterSlot,
+  encodeSleeperScoringSetting,
+  encodeSleeperTransactionType,
+} from "./reference-data";
 
 const league2026Fixture = leagues2026Fixture[0];
 
@@ -57,6 +62,22 @@ function fixtureSession(
     discoverySeasons: [2026, 2025],
     ...overrides,
   };
+}
+
+function requiredCode(value: number | undefined): number {
+  if (value === undefined) throw new Error("expected a Sleeper adapter code");
+  return value;
+}
+
+function lineupSlotCounts(slots: readonly string[]): Record<string, number> {
+  const counts = new Map<number, number>();
+  for (const slot of slots) {
+    const slotId = requiredCode(encodeSleeperRosterSlot(slot));
+    counts.set(slotId, (counts.get(slotId) ?? 0) + 1);
+  }
+  return Object.fromEntries(
+    [...counts.entries()].map(([slotId, count]) => [String(slotId), count]),
+  );
 }
 
 type FixtureRouteValue = Response | unknown;
@@ -250,6 +271,26 @@ describe("Sleeper provider", () => {
         idp: false,
         rec: 1,
         rosterPositions: ["QB", "RB", "WR", "TE", "FLEX", "BN", "BN", "IR"],
+        scoringItems: [
+          {
+            points: 1,
+            statId: requiredCode(encodeSleeperScoringSetting("rec")),
+            statKey: "rec",
+          },
+        ],
+      },
+      rosterSettings: {
+        lineupSlotCounts: lineupSlotCounts([
+          "QB",
+          "RB",
+          "WR",
+          "TE",
+          "FLEX",
+          "BN",
+          "BN",
+          "IR",
+        ]),
+        source: "sleeper.league.roster_positions",
       },
       size: 4,
       currentScoringPeriod: 2,
@@ -329,30 +370,50 @@ describe("Sleeper provider", () => {
         slot: "QB",
         status: "active",
         points: 22.4,
+        metadata: {
+          lineupSlotId: requiredCode(encodeSleeperRosterSlot("QB")),
+          lineupSlotLabel: "QB",
+        },
       },
       {
         playerRef: { provider: "sleeper", providerId: "RB1" },
         slot: "RB",
         status: "active",
         points: 18.1,
+        metadata: {
+          lineupSlotId: requiredCode(encodeSleeperRosterSlot("RB")),
+          lineupSlotLabel: "RB",
+        },
       },
       {
         playerRef: { provider: "sleeper", providerId: "WR1" },
         slot: "WR",
         status: "active",
         points: 14.2,
+        metadata: {
+          lineupSlotId: requiredCode(encodeSleeperRosterSlot("WR")),
+          lineupSlotLabel: "WR",
+        },
       },
       {
         playerRef: { provider: "sleeper", providerId: "BN1" },
         slot: "BN",
         status: "bench",
         points: 7,
+        metadata: {
+          lineupSlotId: requiredCode(encodeSleeperRosterSlot("BN")),
+          lineupSlotLabel: "BN",
+        },
       },
       {
         playerRef: { provider: "sleeper", providerId: "IR1" },
         slot: "IR",
         status: "reserve",
         points: 0,
+        metadata: {
+          lineupSlotId: requiredCode(encodeSleeperRosterSlot("IR")),
+          lineupSlotLabel: "IR",
+        },
       },
     ]);
   });
@@ -476,6 +537,8 @@ describe("Sleeper provider", () => {
         timestamp: new Date(1800000000000),
         details: {
           creator: "user-1",
+          rawTransactionType: "free_agent",
+          rawType: requiredCode(encodeSleeperTransactionType("free_agent")),
           status: "complete",
           week: 1,
         },
@@ -494,6 +557,8 @@ describe("Sleeper provider", () => {
         timestamp: new Date(1800000100000),
         details: {
           creator: "user-2",
+          rawTransactionType: "trade",
+          rawType: requiredCode(encodeSleeperTransactionType("trade")),
           status: "complete",
           week: 1,
         },

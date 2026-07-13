@@ -6,6 +6,7 @@ import {
   ESPN_SCORING_STAT_BY_ID,
 } from "./espn/reference-data";
 import type { FantasyProviderId } from "./ids";
+import { SLEEPER_PROVIDER_DECODING_DICTIONARY } from "./sleeper/reference-data";
 
 export type ProviderCodeKind =
   | "activity"
@@ -56,6 +57,7 @@ const PROVIDER_DECODING_DICTIONARIES: Partial<
     proTeams: ESPN_PRO_TEAM_BY_ID,
     scoringStats: ESPN_SCORING_STAT_BY_ID,
   },
+  sleeper: SLEEPER_PROVIDER_DECODING_DICTIONARY,
 };
 
 function uniqueIntegers(values: Iterable<number> | undefined): number[] {

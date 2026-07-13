@@ -2,7 +2,15 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -13,13 +21,34 @@ import {
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import type { FantasyProviderId } from "@/providers/ids";
+import {
+  encodeSleeperRosterSlot,
+  encodeSleeperScoringSetting,
+} from "@/providers/sleeper/reference-data";
 import { runDataIntegrityChecks } from "./engine";
+
+const forgedUnregisteredProviders = vi.hoisted(() => new Set<string>());
+
+vi.mock("@/providers/decoding", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/providers/decoding")>();
+  return {
+    ...actual,
+    providerCodeDecodingIssues: (
+      provider: FantasyProviderId,
+      observed: Parameters<typeof actual.providerCodeDecodingIssues>[1],
+    ) =>
+      forgedUnregisteredProviders.has(provider)
+        ? [{ provider, reason: "dictionary_missing" as const }]
+        : actual.providerCodeDecodingIssues(provider, observed),
+  };
+});
 
 const marker = `provider-decoding-${randomUUID()}`;
 const leagueIds: string[] = [];
 let adminUrl: string;
 let databaseName: string;
 let handle: DbHandle;
+let seedSequence = 0;
 
 function databaseUrlWithName(databaseUrl: string, name: string): string {
   const url = new URL(databaseUrl);
@@ -71,8 +100,19 @@ afterAll(async () => {
   }
 });
 
-async function seedLeagueWithNumericCodes(provider: FantasyProviderId) {
-  const providerLeagueId = `${marker}-${provider}`;
+beforeEach(() => {
+  forgedUnregisteredProviders.clear();
+});
+
+async function seedLeagueWithNumericCodes(
+  provider: FantasyProviderId,
+  {
+    lineupSlotIds = [0],
+    scoringStatIds = [3],
+  }: { lineupSlotIds?: number[]; scoringStatIds?: number[] } = {},
+) {
+  seedSequence += 1;
+  const providerLeagueId = `${marker}-${provider}-${seedSequence}`;
   const [league] = await handle.db
     .insert(leagues)
     .values({
@@ -98,10 +138,14 @@ async function seedLeagueWithNumericCodes(provider: FantasyProviderId) {
       leagueId: league.id,
       leagueProviderId: providerLeagueId,
       leagueSize: 2,
-      lineupSlotCounts: { "0": 1 },
+      lineupSlotCounts: Object.fromEntries(
+        lineupSlotIds.map((id) => [String(id), 1]),
+      ),
       matchupPeriodCount: 1,
       provider,
-      scoringSettings: { scoringItems: [{ points: 1, statId: 3 }] },
+      scoringSettings: {
+        scoringItems: scoringStatIds.map((statId) => ({ points: 1, statId })),
+      },
       scoringType: "H2H_POINTS",
       season: 2026,
     });
@@ -110,35 +154,89 @@ async function seedLeagueWithNumericCodes(provider: FantasyProviderId) {
   return league.id;
 }
 
-describe("provider_code_decoding integrity invariant", () => {
-  it.each(["sleeper", "yahoo"] as const)(
-    "fails an imported %s league when its dictionary is unregistered",
-    async (provider) => {
-      const leagueId = await seedLeagueWithNumericCodes(provider);
-
-      await runDataIntegrityChecks(handle.db, { leagueId });
-
-      const check = await withLeagueContext(handle.db, leagueId, (tx) =>
-        tx.query.dataIntegrityChecks.findFirst({
-          where: and(
-            eq(dataIntegrityChecks.leagueId, leagueId),
-            eq(dataIntegrityChecks.checkKey, "provider_code_decoding"),
-          ),
-        }),
-      );
-      expect(check).toMatchObject({
-        status: "fail",
-        detail: {
-          checkedProviders: [provider],
-          issues: [{ provider, reason: "dictionary_missing" }],
-          observedCodeCounts: {
-            [provider]: expect.objectContaining({
-              lineupSlots: 1,
-              scoringStats: 1,
-            }),
-          },
-        },
-      });
-    },
+async function providerCodeCheck(leagueId: string) {
+  return withLeagueContext(handle.db, leagueId, (tx) =>
+    tx.query.dataIntegrityChecks.findFirst({
+      where: and(
+        eq(dataIntegrityChecks.leagueId, leagueId),
+        eq(dataIntegrityChecks.checkKey, "provider_code_decoding"),
+      ),
+    }),
   );
+}
+
+function requiredCode(value: number | undefined): number {
+  if (value === undefined) throw new Error("expected a Sleeper adapter code");
+  return value;
+}
+
+describe("provider_code_decoding integrity invariant", () => {
+  it("keeps an imported Yahoo league loud while its dictionary is unregistered", async () => {
+    const leagueId = await seedLeagueWithNumericCodes("yahoo");
+
+    await runDataIntegrityChecks(handle.db, { leagueId });
+
+    expect(await providerCodeCheck(leagueId)).toMatchObject({
+      status: "fail",
+      detail: {
+        checkedProviders: ["yahoo"],
+        issues: [{ provider: "yahoo", reason: "dictionary_missing" }],
+        observedCodeCounts: {
+          yahoo: expect.objectContaining({
+            lineupSlots: 1,
+            scoringStats: 1,
+          }),
+        },
+      },
+    });
+  });
+
+  it("passes registered Sleeper lineup and scoring adapter codes", async () => {
+    const leagueId = await seedLeagueWithNumericCodes("sleeper", {
+      lineupSlotIds: [requiredCode(encodeSleeperRosterSlot("SUPER_FLEX"))],
+      scoringStatIds: [
+        requiredCode(encodeSleeperScoringSetting("idp_tkl_solo")),
+      ],
+    });
+
+    await runDataIntegrityChecks(handle.db, { leagueId });
+
+    expect(await providerCodeCheck(leagueId)).toMatchObject({
+      status: "pass",
+      detail: {
+        checkedProviders: ["sleeper"],
+        issues: [],
+        observedCodeCounts: {
+          sleeper: expect.objectContaining({
+            lineupSlots: 1,
+            scoringStats: 1,
+          }),
+        },
+      },
+    });
+  });
+
+  it("re-fails Sleeper with dictionary_missing when registration is forged away", async () => {
+    forgedUnregisteredProviders.add("sleeper");
+    const leagueId = await seedLeagueWithNumericCodes("sleeper", {
+      lineupSlotIds: [requiredCode(encodeSleeperRosterSlot("QB"))],
+      scoringStatIds: [requiredCode(encodeSleeperScoringSetting("pass_yd"))],
+    });
+
+    await runDataIntegrityChecks(handle.db, { leagueId });
+
+    expect(await providerCodeCheck(leagueId)).toMatchObject({
+      status: "fail",
+      detail: {
+        checkedProviders: ["sleeper"],
+        issues: [{ provider: "sleeper", reason: "dictionary_missing" }],
+        observedCodeCounts: {
+          sleeper: expect.objectContaining({
+            lineupSlots: 1,
+            scoringStats: 1,
+          }),
+        },
+      },
+    });
+  });
 });
