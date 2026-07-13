@@ -429,7 +429,12 @@ function playerId(
   playerIndex: number,
   position: string,
 ): string {
-  const id = shape.caseId * 10_000 + teamIndex * 100 + playerIndex + 1;
+  // Offset far beyond real ESPN player-id space (≤ ~8 digits): generated ids
+  // must never collide with realistic fixture ids (e.g. Mahomes 3139477) in
+  // other test files — cross-league queries like central-news tailoring fan
+  // out over providerPlayerId across every league in the shared test DB.
+  const id =
+    9_000_000_000 + shape.caseId * 10_000 + teamIndex * 100 + playerIndex + 1;
   return position === "D/ST" ? String(-(id + 1)) : String(id + 1);
 }
 
