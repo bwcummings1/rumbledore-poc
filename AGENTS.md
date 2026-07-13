@@ -75,6 +75,7 @@ The old build had disabled gates + fake auth — DO NOT reproduce those.
 - DB tests: call `migrateSerialized()` (`src/db/test-support.ts`), never `migrate()` directly — parallel vitest processes race on unapplied migrations.
 - DB tests: after an expected constraint/RLS error, do not keep using that same transaction (Postgres marks it aborted); assert expected failures in their own `withLeagueContext()`/transaction.
 - DB code/tests: do not `Promise.all` queries on the same Drizzle transaction/`withLeagueContext`; one transaction is one pg client, so run queries sequentially inside it.
+- Cross-league fan-out tests must not assert global counts in the parallel suite; scope assertions to the fixture league and use fixture provider ids outside realistic provider ranges to prevent cross-test collisions.
 - Vitest's 30s timeout budget is intentional: DB-backed integration tests run alongside the UI suite and can exceed defaults under local worker load. Split DB tests before lowering it.
 - DB-heavy tests should inherit the suite's 30s timeout budget; avoid stale per-test 10s caps on arena/bankroll/stat recomputes that legitimately exceed 10s under full-suite load.
 - Manual migration SQL files must also be listed in `src/db/migrations/meta/_journal.json`; otherwise `migrateSerialized()`/Drizzle migrator will not apply them.
