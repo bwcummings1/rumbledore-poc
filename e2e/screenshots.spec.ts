@@ -12,6 +12,7 @@ import { createDb } from "../src/db/client";
 import { leagues, users } from "../src/db/schema";
 import { appendProviderPayloadCanaryObservations } from "../src/ingestion/drift-canary";
 import { FIXTURE_ESPN_PROVIDER_LEAGUE_ID } from "../src/onboarding/fixture-espn";
+import { attachOgImageSignature } from "../src/share/og-signature";
 
 const runMarker = `shots-${randomUUID()}`;
 const OUT = "docs/screenshots";
@@ -86,6 +87,32 @@ async function shoot(page: Page, vp: string, name: string, route: string) {
   } catch (e) {
     console.log(`  FAIL ${vp}/${name}: ${(e as Error).message}`);
   }
+}
+
+async function captureOgCard(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+  params: Record<string, string>,
+) {
+  if (!shouldShoot(name)) {
+    return;
+  }
+  const baseUrl = String(testInfo.project.use.baseURL ?? "");
+  const url = new URL("/api/og", baseUrl);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  attachOgImageSignature(url, parseEnv(process.env).share.ogImageSigningSecret);
+
+  const response = await page.request.get(`${url.pathname}${url.search}`);
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toContain("image/png");
+
+  const dir = path.join(OUT, "og");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${name}.png`), await response.body());
+  console.log(`  ok og/${name}.png`);
 }
 
 async function shootDataBookScopePrompt(
@@ -525,6 +552,32 @@ async function shootEditLedgerExpanded(
     console.log(`  FAIL ${vp}/${name}: ${(e as Error).message}`);
   }
 }
+
+test("capture OG share-card screenshots", async ({ page }, testInfo) => {
+  test.skip(
+    !process.env.SCREENSHOTS,
+    "set SCREENSHOTS=1 to capture screenshots",
+  );
+
+  await captureOgCard(page, testInfo, "19-og-central-news", {
+    byline: "Central fantasy desk",
+    kind: "section",
+    section: "Central news",
+    title: "Injuries Desk",
+  });
+  await captureOgCard(page, testInfo, "19-og-league-article", {
+    byline: "Narrator",
+    kind: "league_article",
+    league: "NHS Alumni Annual",
+    section: "Recaps",
+    title: "Narrator files the rivalry column",
+  });
+  await captureOgCard(page, testInfo, "19-og-retracted", {
+    kind: "league_article",
+    status: "retracted",
+    title: "Old story",
+  });
+});
 
 test("capture UI screenshots at mobile/tablet/desktop", async ({
   page,

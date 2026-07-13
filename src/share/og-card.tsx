@@ -32,14 +32,16 @@ const TEXT_LIMITS = {
   summary: 134,
 } as const;
 
+const BRAND_MARK = "RUMBLEDORE";
+
 const KIND_LABELS = {
-  arena: "Central arena",
-  central_article: "Rumbledore News",
+  arena: "Arena desk",
+  central_article: "Central news",
   invite: "League invite",
   league_article: "The Press",
   league_home: "League home",
-  neutral: "Editorial lifecycle",
-  section: "Rumbledore",
+  neutral: "Status notice",
+  section: "Edition",
 } as const satisfies Record<OgCardKind, string>;
 
 export function ogCardFromSearchParams(params: URLSearchParams): OgCardData {
@@ -47,7 +49,7 @@ export function ogCardFromSearchParams(params: URLSearchParams): OgCardData {
   const status = parseStatus(params.get("status"));
   if (status !== "published" || kind === "neutral") {
     return {
-      byline: "Rumbledore",
+      byline: "Editorial desk",
       headline: "No longer available",
       kind: "neutral",
       leagueName: "",
@@ -78,13 +80,16 @@ export function ogCardFromSearchParams(params: URLSearchParams): OgCardData {
 
 export function ogCardSnapshot(data: OgCardData) {
   return {
+    brandMark: BRAND_MARK,
     byline: data.byline,
+    bylineContext: KIND_LABELS[data.kind],
     headline: data.headline,
     kind: data.kind,
     leagueName: data.leagueName,
     section: data.section,
     status: data.status,
     summary: data.summary,
+    sectionChip: data.section,
   };
 }
 
@@ -146,7 +151,6 @@ export function renderOgCard(data: OgCardData) {
           style={{
             alignItems: "center",
             display: "flex",
-            justifyContent: "space-between",
             position: "relative",
           }}
         >
@@ -160,30 +164,7 @@ export function renderOgCard(data: OgCardData) {
               textTransform: "uppercase",
             }}
           >
-            RUMBLED0RE
-          </div>
-          <div
-            style={{
-              alignItems: "center",
-              color: "#AEB2C8",
-              display: "flex",
-              fontSize: 22,
-              gap: 14,
-              letterSpacing: 3,
-              textTransform: "uppercase",
-            }}
-          >
-            <span
-              style={{
-                background: accent,
-                borderRadius: 999,
-                boxShadow: `0 0 28px ${accent}`,
-                display: "flex",
-                height: 18,
-                width: 18,
-              }}
-            />
-            {data.section}
+            {BRAND_MARK}
           </div>
         </div>
 
@@ -253,14 +234,27 @@ export function renderOgCard(data: OgCardData) {
           >
             <div
               style={{
-                background: `linear-gradient(135deg, ${accent}, ${secondaryAccent})`,
+                alignItems: "center",
+                background: `linear-gradient(135deg, ${accent}, ${secondaryAccent}, #5FC9C0)`,
                 borderRadius: 999,
                 boxShadow: `0 0 34px ${accent}`,
                 display: "flex",
                 height: 58,
+                justifyContent: "center",
                 width: 58,
               }}
-            />
+            >
+              <span
+                style={{
+                  background:
+                    "radial-gradient(circle at 42% 38%,#1B1D2B,#08090F 72%)",
+                  borderRadius: 999,
+                  display: "flex",
+                  height: 32,
+                  width: 32,
+                }}
+              />
+            </div>
             <div
               style={{
                 color: "#E7E9F3",
@@ -285,9 +279,10 @@ export function renderOgCard(data: OgCardData) {
           </div>
           <div
             style={{
-              border: "1px solid rgba(226,178,102,.38)",
+              background: "rgba(20,22,34,.62)",
+              border: "1px solid rgba(170,176,210,.30)",
               borderRadius: 999,
-              color: secondaryAccent,
+              color: accent,
               display: "flex",
               fontSize: 22,
               letterSpacing: 4,
@@ -295,7 +290,7 @@ export function renderOgCard(data: OgCardData) {
               textTransform: "uppercase",
             }}
           >
-            Share card
+            {data.section}
           </div>
         </div>
       </div>
@@ -353,7 +348,7 @@ function defaultByline(kind: OgCardKind): string {
       return "League home";
     case "neutral":
     case "section":
-      return "Rumbledore";
+      return "Editorial desk";
   }
 }
 
@@ -372,7 +367,7 @@ function defaultHeadline(kind: OgCardKind): string {
     case "neutral":
       return "No longer available";
     case "section":
-      return "Rumbledore";
+      return "Latest dispatch";
   }
 }
 

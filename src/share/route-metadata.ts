@@ -23,7 +23,7 @@ export function centralNewsFrontMetadata(): Metadata {
     description: CENTRAL_NEWS_DESCRIPTION,
     image: {
       byline: "Central fantasy desk",
-      headline: "Rumbledore News",
+      headline: "Central News",
       kind: "section",
       section: "News front",
     },
@@ -41,7 +41,7 @@ export function centralNewsSectionMetadata(
       byline: "Central fantasy desk",
       headline: `${section.label} Desk`,
       kind: "section",
-      section: "Rumbledore News",
+      section: "Central news",
     },
     path: `/news/${section.slug}`,
     title: `${section.label} | Rumbledore News`,
@@ -94,7 +94,7 @@ export function leaguePressFrontMetadata(
   return buildShareMetadata({
     description: `The Rumbledore Press desk for ${league.name}.`,
     image: {
-      byline: "The Rumbledore cast",
+      byline: "The cast",
       headline: "The Press",
       kind: "section",
       leagueName: league.name,
@@ -112,7 +112,7 @@ export function leaguePressSectionMetadata(
   return buildShareMetadata({
     description: `${section.label} from the Rumbledore Press desk for ${league.name}.`,
     image: {
-      byline: "The Rumbledore cast",
+      byline: "The cast",
       headline: section.label,
       kind: "section",
       leagueName: league.name,
@@ -173,7 +173,7 @@ export function arenaShareMetadata(
     description: ARENA_DESCRIPTION,
     image: {
       byline: "Central arena",
-      headline: section.href === "/arena" ? "Rumbledore Arena" : section.label,
+      headline: section.href === "/arena" ? "Arena" : section.label,
       kind: "arena",
       section: section.label,
     },
