@@ -648,8 +648,8 @@ function buildLeague(
 /** Deterministically materializes a relationally consistent normalized bundle. */
 export function buildNormalizedSeasonBundle(
   shape: NormalizedSeasonShape,
+  leagueProviderId = `generated-${shape.caseId}`,
 ): NormalizedSeasonBundle {
-  const leagueProviderId = `generated-${shape.caseId}`;
   const { matchups, records } = buildMatchupsAndRecords(
     shape,
     leagueProviderId,
