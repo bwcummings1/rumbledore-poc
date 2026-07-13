@@ -227,6 +227,7 @@ const data: ManagerRecordsPageData = {
     seasonSpan: "2024-2026",
   },
   managers: [],
+  playerDataBasis: "Player depth: not measured",
   placements: [{ roles: ["Champion", "Regular-season winner"], season: 2025 }],
   seasonLines: [
     {

@@ -161,6 +161,7 @@ const data: HeadToHeadRecordsPageData = {
     segment: "both",
   },
   managers: [],
+  playerDataBasis: "Player depth: not measured",
   meetings: [
     {
       championship: true,

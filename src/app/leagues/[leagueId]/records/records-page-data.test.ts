@@ -6,6 +6,7 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  dataCapabilityObservations,
   fantasyDraftPicks,
   fantasyMatchups,
   fantasyPlayers,
@@ -536,6 +537,62 @@ describe("records page pushed snapshot read model", () => {
     expect(result.data.currentRecords).toHaveLength(0);
     expect(result.data.catalog.allTimeStandings).toHaveLength(0);
     expect(result.data.managers).toHaveLength(0);
+  });
+
+  it("uses the capability map for player-basis labels without changing pushed record values", async () => {
+    const seeded = await seedRecordsLeague("player-basis");
+    await pushBaseline(seeded);
+
+    const before = await getLeagueRecordsPageData(handle.db, {
+      leagueId: seeded.leagueId,
+    });
+    expect(before.status).toBe("ready");
+    if (before.status !== "ready") {
+      return;
+    }
+    expect(before.data.playerDataBasis).toBe("Player depth: not measured");
+
+    await withLeagueContext(handle.db, seeded.leagueId, async (tx) => {
+      await tx.insert(dataCapabilityObservations).values([
+        {
+          availability: "partial",
+          dataClass: "rosters",
+          leagueId: seeded.leagueId,
+          provider: "espn",
+          providerLeagueId: seeded.providerLeagueId,
+          providerSupport: "partial",
+          providerVerdict: "returned_data",
+          rowCount: 40,
+          season: 2011,
+          status: "partial",
+        },
+        {
+          availability: "none",
+          dataClass: "rosters",
+          leagueId: seeded.leagueId,
+          provider: "espn",
+          providerLeagueId: seeded.providerLeagueId,
+          providerSupport: "partial",
+          providerVerdict: "returned_empty",
+          rowCount: 0,
+          season: 2012,
+          status: "unavailable",
+        },
+      ]);
+    });
+
+    const after = await getLeagueRecordsPageData(handle.db, {
+      leagueId: seeded.leagueId,
+    });
+    expect(after.status).toBe("ready");
+    if (after.status !== "ready") {
+      return;
+    }
+    expect(after.data.playerDataBasis).toBe(
+      "Player depth: 2011 \u2014 measured, provider-limited",
+    );
+    expect(after.data.catalog.players).toEqual(before.data.catalog.players);
+    expect(after.data.currentRecords).toEqual(before.data.currentRecords);
   });
 
   it("keeps saved-but-unpushed edits invisible, then reflects a pushed 2012 without dropping 2011", async () => {

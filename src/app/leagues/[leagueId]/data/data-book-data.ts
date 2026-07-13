@@ -18,8 +18,18 @@ import {
   teamSeasons,
   weeklyStatistics,
 } from "@/db/schema";
+import {
+  buildDeclaredCapabilityBasis,
+  listDeclaredCapabilityMap,
+} from "@/ingestion/capability-map";
 import type { FantasyProviderId } from "@/providers";
 import { espnLineupSlotLabel } from "@/providers/espn/reference-data";
+import type {
+  DataCoverageStatus,
+  ProviderDataClass,
+  ProviderDataSupport,
+  ProviderProbeVerdict,
+} from "@/providers/model";
 import {
   listLeagueSeasonGroupings,
   type PersistedSeasonGrouping,
@@ -271,7 +281,24 @@ export interface DataBookEraProposal {
   status: PersistedSeasonGrouping["status"];
 }
 
+export interface DataBookCapabilityRow {
+  availability: ProviderDataSupport;
+  dataClass: ProviderDataClass;
+  label: string;
+  probedAt: string;
+  providerVerdict: ProviderProbeVerdict;
+  rowCount: number;
+  season: number;
+  status: DataCoverageStatus;
+}
+
+export interface DataBookCoverage {
+  playerDepthBasis: string;
+  rows: DataBookCapabilityRow[];
+}
+
 export interface DataBookPageData {
+  coverage: DataBookCoverage;
   curation: DataBookCurationState;
   eraProposals: DataBookEraProposal[];
   league: DataBookLeagueSummary;
@@ -311,6 +338,35 @@ function formatBoolean(value: boolean): string {
 
 function iso(value: Date): string {
   return value.toISOString();
+}
+
+const DATA_CLASS_LABELS: Record<ProviderDataClass, string> = {
+  divisions: "Divisions",
+  final_standings: "Final standings",
+  history: "History",
+  keeper_dynasty: "Keeper / dynasty",
+  league: "League settings",
+  matchups: "Scoreboard",
+  members: "Members",
+  rosters: "Player depth",
+  scoring_detail: "Scoring detail",
+  teams: "Teams",
+  transactions: "Transactions",
+};
+
+function toCapabilityRow(
+  row: Awaited<ReturnType<typeof listDeclaredCapabilityMap>>[number],
+): DataBookCapabilityRow {
+  return {
+    availability: row.availability,
+    dataClass: row.dataClass,
+    label: DATA_CLASS_LABELS[row.dataClass],
+    probedAt: iso(row.probedAt),
+    providerVerdict: row.providerVerdict,
+    rowCount: row.rowCount,
+    season: row.season,
+    status: row.status,
+  };
 }
 
 function checkpointOption(
@@ -1007,6 +1063,19 @@ export async function getLeagueDataBookData(
     return { status: "not_found" };
   }
 
+  const capabilityMap = await listDeclaredCapabilityMap({
+    db,
+    leagueId: input.leagueId,
+    provider: league.provider,
+    providerLeagueId: league.providerLeagueId,
+  });
+  const playerDepthBasis = buildDeclaredCapabilityBasis({
+    currentSeason: league.season,
+    dataClass: "rosters",
+    label: "Player depth",
+    observations: capabilityMap,
+  });
+
   const scoped = await withLeagueContext(db, input.leagueId, async (tx) => {
     const personRows = await tx
       .select({
@@ -1319,6 +1388,10 @@ export async function getLeagueDataBookData(
 
   return {
     data: {
+      coverage: {
+        playerDepthBasis: playerDepthBasis.label,
+        rows: capabilityMap.map(toCapabilityRow),
+      },
       curation: buildCurationState({
         checkpointRows: scoped.checkpointRows,
         editRows: scoped.editRows,

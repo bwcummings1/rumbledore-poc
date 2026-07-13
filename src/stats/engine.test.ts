@@ -4022,18 +4022,33 @@ describe("recomputeLeagueStatistics", () => {
       await seedStatsLeague("player-rollup");
 
     await withLeagueContext(handle.db, leagueId, async (tx) => {
-      await tx.insert(dataCapabilityObservations).values({
-        availability: "partial",
-        dataClass: "rosters",
-        leagueId,
-        provider: "espn",
-        providerLeagueId,
-        providerSupport: "partial",
-        providerVerdict: "returned_data",
-        rowCount: 10,
-        season: 2025,
-        status: "partial",
-      });
+      await tx.insert(dataCapabilityObservations).values([
+        {
+          availability: "partial",
+          dataClass: "rosters",
+          leagueId,
+          provider: "espn",
+          providerLeagueId,
+          providerSupport: "partial",
+          providerVerdict: "returned_data",
+          rowCount: 10,
+          season: 2025,
+          status: "partial",
+        },
+        {
+          availability: "partial",
+          dataClass: "scoring_detail",
+          details: { playerStatBreakdownRows: 2 },
+          leagueId,
+          provider: "espn",
+          providerLeagueId,
+          providerSupport: "partial",
+          providerVerdict: "returned_data",
+          rowCount: 2,
+          season: 2025,
+          status: "partial",
+        },
+      ]);
       await tx.insert(fantasyRosterEntries).values([
         {
           actualPoints: 40,
@@ -4266,6 +4281,89 @@ describe("recomputeLeagueStatistics", () => {
         }),
       ]),
     });
+  });
+
+  it("records declared-absent player depth as skipped detail instead of failure", async () => {
+    const { leagueId, providerLeagueId } = await seedStatsLeague(
+      "declared-absent-player-depth",
+    );
+
+    await withLeagueContext(handle.db, leagueId, async (tx) => {
+      await tx.insert(dataCapabilityObservations).values([
+        {
+          availability: "none",
+          dataClass: "rosters",
+          leagueId,
+          provider: "espn",
+          providerLeagueId,
+          providerSupport: "partial",
+          providerVerdict: "returned_empty",
+          rowCount: 0,
+          season: 2024,
+          status: "unavailable",
+        },
+        {
+          availability: "none",
+          dataClass: "scoring_detail",
+          details: { playerStatBreakdownRows: 0 },
+          leagueId,
+          provider: "espn",
+          providerLeagueId,
+          providerSupport: "partial",
+          providerVerdict: "returned_empty",
+          rowCount: 0,
+          season: 2024,
+          status: "unavailable",
+        },
+      ]);
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, { leagueId });
+    expect(integrity.failures).toBe(0);
+    const rows = await selectStatsRows(leagueId);
+
+    for (const checkKey of [
+      "roster_coverage",
+      "player_points_rollup",
+      "stat_breakdown_coverage",
+    ] as const) {
+      const check = rows.integrityRows.find(
+        (row) =>
+          row.checkKey === checkKey &&
+          row.season === 2024 &&
+          row.status === "pass",
+      );
+      expect(check?.detail).toMatchObject({
+        issues: [],
+      });
+      expect(check?.detail).toEqual(
+        expect.objectContaining({
+          expectation: expect.objectContaining({
+            availability: "none",
+            providerVerdict: "returned_empty",
+            state: "declared_absent",
+          }),
+        }),
+      );
+      const skippedKey =
+        checkKey === "stat_breakdown_coverage"
+          ? "skippedPlayerWeeks"
+          : "skippedTeamWeeks";
+      expect(check?.detail).toEqual(
+        expect.objectContaining({
+          [skippedKey]: expect.arrayContaining([
+            expect.objectContaining({ reason: "declared_absent" }),
+          ]),
+        }),
+      );
+    }
+    const silentEmpty = rows.integrityRows.find(
+      (row) =>
+        row.checkKey === "no_silent_empty" &&
+        row.season === 2024 &&
+        row.status === "pass",
+    );
+    expect(silentEmpty?.detail).toMatchObject({ issues: [] });
   });
 
   it("flags grouping coverage, span sanity, and data-edit ledger completeness failures", async () => {

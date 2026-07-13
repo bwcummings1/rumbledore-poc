@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getLeagueDataBookData } from "@/app/leagues/[leagueId]/data/data-book-data";
 import { parseEnv } from "@/core/env/schema";
 import { err, ok } from "@/core/result";
 import { createDb, type DbHandle } from "@/db/client";
@@ -808,6 +809,26 @@ describe("syncCurrentLeague", () => {
     ).toMatchObject({
       availability: "none",
       providerSupport: "partial",
+      providerVerdict: "returned_empty",
+      rowCount: 0,
+    });
+    const dataBook = await getLeagueDataBookData(handle.db, {
+      leagueId: first.value.league.id,
+      selectedSeason: 2026,
+    });
+    expect(dataBook.status).toBe("ready");
+    if (dataBook.status !== "ready") {
+      return;
+    }
+    expect(dataBook.data.coverage.playerDepthBasis).toBe(
+      "Player depth: none \u2014 measured, provider-limited",
+    );
+    expect(
+      dataBook.data.coverage.rows.find(
+        (row) => row.season === 2026 && row.dataClass === "rosters",
+      ),
+    ).toMatchObject({
+      availability: "none",
       providerVerdict: "returned_empty",
       rowCount: 0,
     });
