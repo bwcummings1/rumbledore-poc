@@ -1,5 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "derivation": {
+    "method": "independent_training_knowledge_transcription",
+    "productionDictionaryConsulted": false,
+    "sources": [
+      "cwendt94/espn-api:espn_api/football/constant.py",
+      "Rumbledore:test/fixtures/espn-corpus/524be01a895a1684c2a23e71/2026/mSettings.json",
+      "Rumbledore:test/fixtures/espn-corpus/524be01a895a1684c2a23e71/2026/mRoster.json"
+    ],
+    "validationCaveat": "Training-knowledge-derived and fixture-cross-checked; pending approved multi-league real-payload harvest validation."
+  },
   "entries": [
     {
       "code": 0,
@@ -115,11 +125,15 @@
     {
       "code": 22,
       "label": "N/A",
+      "sourceLabel": "",
+      "normalizationReason": "The clients expose a blank sentinel; Rumbledore renders it as N/A.",
       "source": "cwendt94/espn-api:espn_api/football/constant.py"
     },
     {
       "code": 23,
       "label": "FLEX",
+      "sourceLabel": "RB/WR/TE",
+      "normalizationReason": "The client maps the same code forward as RB/WR/TE and inversely as FLEX; lineup-slot context uses FLEX.",
       "source": "cwendt94/espn-api:espn_api/football/constant.py"
     },
     {

@@ -1,113 +1,124 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "derivation": {
+    "method": "independent_training_knowledge_transcription",
+    "productionDictionaryConsulted": false,
+    "sources": [
+      "cwendt94/espn-api:espn_api/football/constant.py",
+      "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)",
+      "Rumbledore:test/fixtures/espn-corpus/524be01a895a1684c2a23e71/2026/mSettings.json"
+    ],
+    "validationCaveat": "Training-knowledge-derived and fixture-cross-checked; pending approved multi-league real-payload harvest validation."
+  },
+  "coverageCaveat": "These are independently observed or training-knowledge-derived values, not a production enum closure. Only H2H_POINTS is present in the one committed sanitized league shape.",
   "entries": [
     {
       "field": "settings.scoringSettings.scoringType",
       "kind": "scoring_type",
       "code": "H2H_POINTS",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "source": "Rumbledore:test/fixtures/espn-corpus/524be01a895a1684c2a23e71/2026/mSettings.json"
     },
     {
       "field": "settings.scoringSettings.scoringType",
       "kind": "scoring_type",
       "code": "TOTAL_POINTS",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "field": "settings.scheduleSettings.playoffSeedingRule",
       "kind": "playoff_seeding_rule",
       "code": "H2H_RECORD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "source": "cwendt94/espn-api:espn_api/football/league.py (training knowledge)"
     },
     {
       "field": "settings.scheduleSettings.playoffSeedingRule",
       "kind": "playoff_seeding_rule",
       "code": "TOTAL_POINTS_SCORED",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "source": "cwendt94/espn-api:tests/football/unit/data/league_2018_data.json"
     },
     {
       "field": "settings.scheduleSettings.playoffSeedingRule",
       "kind": "playoff_seeding_rule",
       "code": "INTRA_DIVISION_RECORD",
-      "source": "ESPN fantasy-football web client bundle:mSettings vocabulary"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "field": "settings.draftSettings.type",
       "kind": "draft_type",
       "code": "SNAKE",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:tests/football/unit/data/league_draft_2018.json"
     },
     {
       "field": "settings.draftSettings.type",
       "kind": "draft_type",
       "code": "AUCTION",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "field": "settings.draftSettings.type",
       "kind": "draft_type",
       "code": "OFFLINE",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:tests/football/unit/data/league_draft_2015.json"
     },
     {
       "field": "settings.draftSettings.leagueSubType",
       "kind": "league_sub_type",
       "code": "NONE",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:tests/football/unit/data/league_draft_2018.json"
     },
     {
       "field": "settings.draftSettings.leagueSubType",
       "kind": "league_sub_type",
       "code": "KEEPER",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "field": "settings.draftSettings.keeperOrderType",
       "kind": "keeper_order_type",
       "code": "TRADITIONAL",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "cwendt94/espn-api:tests/football/unit/data/league_draft_2018.json"
     },
     {
       "field": "settings.draftSettings.keeperOrderType",
       "kind": "keeper_order_type",
       "code": "DRAFT_ROUND",
-      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "field": "settings.acquisitionSettings.acquisitionType",
       "kind": "acquisition_type",
       "code": "WAIVERS_TRADITIONAL",
-      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+      "source": "cwendt94/espn-api:tests/football/unit/data/league_2018_data.json"
     },
     {
       "field": "settings.acquisitionSettings.acquisitionType",
       "kind": "acquisition_type",
       "code": "WAIVERS_CONTINUOUS",
-      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "field": "settings.acquisitionSettings.acquisitionType",
       "kind": "acquisition_type",
       "code": "FREE_AGENT_BUDGET",
-      "source": "Rumbledore:test/fixtures/espn/league-95050-2026.json"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     },
     {
       "field": "settings.acquisitionSettings.acquisitionType",
       "kind": "acquisition_type",
       "code": "FREE_AGENT",
-      "source": "cwendt94/espn-api:espn_api/football/constant.py"
+      "source": "mkreiser/ESPN-Fantasy-Football-API:src/football/constants (training knowledge)"
     }
   ],
   "dynamicFields": [
     {
       "field": "settings.scheduleSettings.divisions[].id",
       "representation": "league-authored numeric identifier (not a closed vendor enum)",
-      "source": "Rumbledore:test/fixtures/espn/league-95050-2026.json"
+      "source": "ESPN mSettings schema (training knowledge)"
     },
     {
       "field": "settings.scheduleSettings.divisions[].name",
       "representation": "league-authored display string (not a closed vendor enum)",
-      "source": "Rumbledore:test/fixtures/espn/league-95050-2026.json"
+      "source": "ESPN mSettings schema (training knowledge)"
     }
   ]
 }

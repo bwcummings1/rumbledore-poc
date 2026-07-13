@@ -2,8 +2,11 @@
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
 Keep it current. Last updated: 2026-07-13 — **`specs/47` wave 1 COMPLETE — tracks 47A + 47B + 47C merged**:
-**47A (`ws/47a-vocab-corpus`)**: ESPN's vendored vocabulary corpus now proves bidirectional closure for positions,
-lineup slots, pro teams, activity codes, player/scoring stat ids, and `mSettings` enums, including old-era labels.
+**47A (`ws/47a-vocab-corpus`)**: ESPN's independently re-derived, training-knowledge-based vocabulary corpus proves
+numeric closure for positions, lineup slots, pro teams, activity codes, and player/scoring stat ids, including
+old-era labels; `mSettings` values are an independently sourced inventory rather than a production-enum closure.
+The vocabulary remains pending approved multi-league real-payload harvest validation, and the committed payload corpus
+currently represents one sanitized league shape.
 Missing provider dictionaries now fail `provider_code_decoding` explicitly for Sleeper/Yahoo while registered ESPN
 stays green. A ToS-guarded, no-cookie, rate/budget-bounded public-league harvester sanitizes identities and writes
 provenance-stamped atomic fixtures; no live harvest was run. The seeded eight-view ESPN corpus replays through
@@ -408,10 +411,12 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   probes now drive integrity and basis labels; shadow imports gate visibility with sanitized quarantine evidence;
   fixture-backed drift canaries surface steward alerts; mock onboarding executes the full gate in process; ESPN 95050
   read-only verification matched its documented coverage with all latest checks PASS and zero decoded unknowns.
-- 2026-07-13: Track 47A completed `specs/47` §A/§B acceptance criteria 1–4 on `ws/47a-vocab-corpus`: bidirectional
-  ESPN vocabulary closure, loud missing-provider-dictionary failures, a guarded/bounded identity-sanitizing harvester,
-  and an eight-view isolated-DB corpus-replay oracle with malformed-view attribution; fixture tests and full gates pass,
-  and no live harvest, credential use, mock-flag change, migration, or owner-data mutation occurred.
+- 2026-07-13: Track 47A completed `specs/47` §A/§B acceptance criteria 1–4 on `ws/47a-vocab-corpus`: independently
+  sourced ESPN numeric vocabulary closure, loud missing-provider-dictionary failures, a guarded/bounded
+  identity-sanitizing harvester, and an eight-view isolated-DB corpus-replay oracle with malformed-view attribution.
+  The vocabulary is training-knowledge-derived pending approved real-payload harvest validation, and the committed
+  corpus still contains one sanitized league shape; fixture tests and full gates passed without a live harvest,
+  credential use, mock-flag change, migration, or owner-data mutation.
 - 2026-07-13: Track 47B landed Spec 47 §C's seeded normalized-schema generators and all six ingestion properties;
   default CI runs stay bounded, `PROPERTY_RUNS` enables deeper dispatches, and a temporary no-chunk mutation proved
   the season-scale regression fails above PostgreSQL's bind-parameter cap before production chunking was restored.
