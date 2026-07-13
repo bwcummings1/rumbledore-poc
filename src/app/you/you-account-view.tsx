@@ -343,23 +343,23 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
         <div className="panel grid gap-3 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="eyebrow text-primary">Notification prefs</p>
+              <p className="eyebrow text-primary">Notification preferences</p>
               <h2 className="mt-1 heading-auspex text-lg">
-                Digest first, push when installed
+                Per-league delivery
               </h2>
             </div>
             <Bell className="size-5 text-primary" aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground">
-            Weekly digests and commissioner webhooks are the baseline arrival
-            path. Web push is an installed-app enhancement; on iOS, Safari only
-            delivers it after Add to Home Screen.
+            Weekly digest and commissioner-configured group-chat webhooks are
+            the baseline arrival paths. Web Push is an installed-app
+            enhancement; on iOS Safari it only works after Add to Home Screen.
           </p>
           <KVList
             items={[
-              { label: "Content", value: "Digest" },
-              { label: "Bets, lore, arena", value: "Push" },
-              { label: "Mute option", value: "None per family" },
+              { label: "Content", value: "Weekly digest" },
+              { label: "Lore, bets, and Arena", value: "Web Push" },
+              { label: "Any family", value: "None" },
             ]}
           />
         </div>
