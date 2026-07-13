@@ -468,6 +468,7 @@ export function logProviderUsage({
 }
 
 export async function runGuardedProviderCall<T>({
+  continuation = false,
   fallbackOnError,
   guard,
   logger = defaultLogger,
@@ -476,6 +477,12 @@ export async function runGuardedProviderCall<T>({
   provider,
   realCall,
 }: {
+  /**
+   * Allows a zero-unit follow-up for provider work whose metered resource was
+   * already admitted and recorded by an earlier guarded call. This must never
+   * be used to create another billable resource after the cap is reached.
+   */
+  continuation?: boolean;
   fallbackOnError?: (error: unknown) => boolean;
   guard: SpendGuard;
   logger?: Logger;
@@ -484,7 +491,7 @@ export async function runGuardedProviderCall<T>({
   provider: SpendGuardProvider;
   realCall: () => Promise<{ usage: SpendGuardUsage; value: T }>;
 }): Promise<T> {
-  if ((await guard.check(provider)) === "deny") {
+  if ((await guard.check(provider)) === "deny" && !continuation) {
     const snapshot = await guard.snapshot(provider);
     logProviderUsage({
       cap: snapshot.cap,

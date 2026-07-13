@@ -326,6 +326,39 @@ describe("SpendGuard", () => {
     expect(mockCall).toHaveBeenCalledTimes(1);
   });
 
+  it("allows zero-unit continuations for an already admitted metered resource", async () => {
+    const guard = new SpendGuard({
+      config: guardConfig({ browserbase: 1 }),
+      logger: testLogger(),
+      store: new MemorySpendCounterStore(),
+    });
+    await guard.record("browserbase", { units: 1 });
+    const realCall = vi.fn(async () => ({
+      usage: { units: 0 },
+      value: "released",
+    }));
+    const mockCall = vi.fn(async () => "mock");
+
+    await expect(
+      runGuardedProviderCall({
+        continuation: true,
+        guard,
+        logger: testLogger(),
+        mockCall,
+        operation: "browserSession.release",
+        provider: "browserbase",
+        realCall,
+      }),
+    ).resolves.toBe("released");
+
+    expect(realCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).not.toHaveBeenCalled();
+    await expect(guard.snapshot("browserbase")).resolves.toMatchObject({
+      cap: 1,
+      cumulative: 1,
+    });
+  });
+
   it("observes a Redis-backed breach from another guard instance", async () => {
     const server = await startRedisCounterServer();
     redisServers.push(server);
