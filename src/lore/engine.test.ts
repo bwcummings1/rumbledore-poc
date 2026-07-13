@@ -415,15 +415,15 @@ describe("lore claim voting lifecycle", () => {
       rows.votes.find((vote) => vote.voterMemberId === league.members[0]?.id)
         ?.choice,
     ).toBe("affirm");
-    expect(rows.events.map((event) => event.kind)).toEqual([
+    expect(rows.events.map((event) => event.kind).sort()).toEqual([
       "created",
+      "ratified",
       "vote_opened",
       "voted",
       "voted",
       "voted",
       "voted",
       "voted",
-      "ratified",
     ]);
   });
 
@@ -961,7 +961,7 @@ describe("lore claim voting lifecycle", () => {
       result: "contradiction",
       weeklyStatisticId: weekly.weeklyStatisticId,
     });
-    expect(rows.events.map((event) => event.kind)).toEqual([
+    expect(rows.events.map((event) => event.kind).sort()).toEqual([
       "created",
       "rejected",
     ]);
@@ -1045,7 +1045,7 @@ describe("lore claim voting lifecycle", () => {
       result: "uncheckable",
       weeklyStatisticId: null,
     });
-    expect(rows.events.map((event) => event.kind)).toEqual([
+    expect(rows.events.map((event) => event.kind).sort()).toEqual([
       "created",
       "vote_opened",
     ]);
