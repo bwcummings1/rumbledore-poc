@@ -1,7 +1,14 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-10 — **Task T19 on `ws/t19-records-substance`**:
+Keep it current. Last updated: 2026-07-13 — **Track 47A on `ws/47a-vocab-corpus` (complete; awaiting
+orchestrator merge)**: ESPN's vendored vocabulary corpus now proves bidirectional closure for positions, lineup slots,
+pro teams, activity codes, player/scoring stat ids, and `mSettings` enums, including old-era labels. Missing provider
+dictionaries now fail `provider_code_decoding` explicitly for Sleeper/Yahoo while registered ESPN stays green. A
+ToS-guarded, no-cookie, rate/budget-bounded public-league harvester sanitizes identities and writes provenance-stamped
+atomic fixtures; no live harvest was run. The seeded eight-view ESPN corpus replays through production parsing,
+normalization, persistence/reconciliation, and integrity checks in an isolated DB, with malformed views failing under
+league-shape/view attribution. Prior state: **Task T19 on `ws/t19-records-substance`**:
 the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
 roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
 steals/busts, and bench tragedies. ESPN imports now persist per-player-week scoring-stat breakdowns with a
@@ -381,6 +388,10 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track 47A completed `specs/47` §A/§B acceptance criteria 1–4 on `ws/47a-vocab-corpus`: bidirectional
+  ESPN vocabulary closure, loud missing-provider-dictionary failures, a guarded/bounded identity-sanitizing harvester,
+  and an eight-view isolated-DB corpus-replay oracle with malformed-view attribution; fixture tests and full gates pass,
+  and no live harvest, credential use, mock-flag change, migration, or owner-data mutation occurred.
 - 2026-07-10: **Dev-DB canon reset incident + recovery.** `scripts/import-real-league.ts` (a reset-and-verify
   harness that DELETES the league row first) was run as a routine backfill; the cascade wiped the dev league's
   pushed snapshots, checkpoints, edit ledger, content, and lore (all were harness/test artifacts — no
