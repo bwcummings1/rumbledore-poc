@@ -50,7 +50,7 @@ async function requestHistoricalImport(
   }
 
   await inngest.send({
-    id: `import.requested:${data.leagueId}:${data.provider}:${data.providerLeagueId}`,
+    id: `import.requested:${data.leagueId}:${data.provider}:${data.providerLeagueId}:${data.shadowAttempt ?? "legacy"}`,
     name: JOB_EVENTS.importRequested,
     data,
   });

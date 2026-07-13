@@ -40,7 +40,9 @@ export interface HistoricalImportInput<Session extends FantasyProviderSession> {
   session: Session;
   seasons?: number[];
   maxSeasons?: number;
+  forceReimport?: boolean;
   now?: () => Date;
+  onBundleFetched?: (bundle: NormalizedSeasonBundle) => void;
   realtime?: RealtimePublisher;
 }
 
@@ -696,8 +698,10 @@ export async function importLeagueHistory<
   Session extends FantasyProviderSession,
 >({
   db,
+  forceReimport = false,
   maxSeasons,
   now,
+  onBundleFetched,
   provider,
   realtime,
   ref,
@@ -713,7 +717,8 @@ export async function importLeagueHistory<
   });
   const league = await ensureLeagueRoot(db, ref);
   const checkpoint = await selectCheckpoint({ db, leagueId: league.id, ref });
-  const canReuseCheckpoint = checkpoint?.startSeason === seasons[0];
+  const canReuseCheckpoint =
+    !forceReimport && checkpoint?.startSeason === seasons[0];
   const completedSeasons = completedSeasonsFor(
     canReuseCheckpoint ? checkpoint : undefined,
     seasons,
@@ -871,6 +876,7 @@ export async function importLeagueHistory<
     }
 
     for (const bundle of history.value) {
+      onBundleFetched?.(bundle);
       const persisted = await persistBundle({
         bundle,
         db,

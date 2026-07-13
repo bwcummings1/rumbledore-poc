@@ -91,6 +91,7 @@ test("Yahoo connect panel lists persisted discoveries and imports the selected d
       importBodies.push(parseRequestBody(init));
       return jsonResponse({
         leagueId: "league-yahoo",
+        onboardingState: "live",
         leaguemateInvites: {
           importedMembers: 4,
           inviteTargets: 3,

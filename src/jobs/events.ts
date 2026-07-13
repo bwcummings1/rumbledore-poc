@@ -48,6 +48,7 @@ export interface ImportRequestedData {
   size?: number;
   seasons?: number[];
   maxSeasons?: number;
+  shadowAttempt?: number;
 }
 
 export interface IngestionTickData {

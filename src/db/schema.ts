@@ -173,6 +173,12 @@ export const onboardingBrowserSessionStatus = pgEnum(
   ["awaiting_login", "connected", "failed", "ended"],
 );
 
+export const onboardingImportState = pgEnum("onboarding_import_state", [
+  "shadow_running",
+  "quarantined",
+  "live",
+]);
+
 export const leagueInviteChannel = pgEnum("league_invite_channel", [
   "share",
   "sms",
@@ -4443,6 +4449,30 @@ export const onboardingDiscoveredLeagues = pgTable(
     providerTeamId: text("provider_team_id"),
     teamName: text("team_name"),
     size: integer("size"),
+    importedLeagueId: uuid("imported_league_id").references(() => leagues.id, {
+      onDelete: "set null",
+    }),
+    importState: onboardingImportState("import_state"),
+    importAttempts: integer("import_attempts").notNull().default(0),
+    integrityFailureCount: integer("integrity_failure_count")
+      .notNull()
+      .default(0),
+    quarantineManifest: jsonb("quarantine_manifest")
+      .$type<{
+        captures: Array<{
+          contentHash: string;
+          path: string;
+          season: number;
+          view: string;
+        }>;
+        checkIds: string[];
+        checkKeys: string[];
+        capturedAt: string;
+      } | null>()
+      .default(sql`NULL`),
+    shadowStartedAt: timestamp("shadow_started_at", { withTimezone: true }),
+    quarantinedAt: timestamp("quarantined_at", { withTimezone: true }),
+    liveAt: timestamp("live_at", { withTimezone: true }),
     lastDiscoveredAt: timestamp("last_discovered_at", {
       withTimezone: true,
     }).notNull(),
@@ -4457,6 +4487,18 @@ export const onboardingDiscoveredLeagues = pgTable(
     ),
     index("onboarding_discovered_leagues_credential_idx").on(
       table.credentialId,
+    ),
+    index("onboarding_discovered_leagues_import_state_idx").on(
+      table.userId,
+      table.importState,
+    ),
+    check(
+      "onboarding_discovered_leagues_import_attempts_nonnegative",
+      sql`${table.importAttempts} >= 0`,
+    ),
+    check(
+      "onboarding_discovered_leagues_integrity_failure_count_nonnegative",
+      sql`${table.integrityFailureCount} >= 0`,
     ),
   ],
 );

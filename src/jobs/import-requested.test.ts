@@ -10,20 +10,25 @@ import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
   dataCapabilityObservations,
+  dataIntegrityChecks,
   fantasyMatchups,
   fantasyMembers,
   fantasyTeams,
   historicalImportCheckpoints,
   leagues,
   members,
+  onboardingDiscoveredLeagues,
   providerCredentials,
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import type { QuarantineCorpusWriter } from "@/ingestion";
+import { listLeagueSwitcherItemsForUser } from "@/navigation/league-switcher-data";
 import {
   type CredentialCipher,
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
+import { listDiscoveredLeagueInventory } from "@/onboarding/provider-service";
 import {
   AuthExpiredError,
   type FantasyProviderCapabilities,
@@ -626,9 +631,11 @@ async function seedImport(
       swid: fixtureSwid,
     },
     provider = "espn",
+    grantMembership = true,
     subjectProviderId = fixtureSwid,
   }: {
     credentialPayload?: unknown;
+    grantMembership?: boolean;
     provider?: "espn" | "sleeper" | "yahoo";
     subjectProviderId?: string;
   } = {},
@@ -659,11 +666,13 @@ async function seedImport(
     .returning();
   if (!league) throw new Error("league was not created");
 
-  await handle.db.insert(members).values({
-    organizationId: league.id,
-    role: "commissioner",
-    userId: user.id,
-  });
+  if (grantMembership) {
+    await handle.db.insert(members).values({
+      organizationId: league.id,
+      role: "commissioner",
+      userId: user.id,
+    });
+  }
 
   const [credential] = await handle.db
     .insert(providerCredentials)
@@ -687,6 +696,63 @@ async function seedImport(
     providerLeagueId,
     userId: user.id,
   };
+}
+
+async function seedShadowImport(tag: string): Promise<SeededImport> {
+  const seeded = await seedImport(tag, { grantMembership: false });
+  await handle.db.insert(onboardingDiscoveredLeagues).values({
+    credentialId: seeded.credentialId,
+    importAttempts: 1,
+    importedLeagueId: seeded.leagueId,
+    importState: "shadow_running",
+    lastDiscoveredAt: new Date("2026-06-15T12:00:00.000Z"),
+    name: `${marker} shadow ${tag}`,
+    provider: seeded.provider,
+    providerLeagueId: seeded.providerLeagueId,
+    season: 2026,
+    size: 2,
+    sport: "ffl",
+    userId: seeded.userId,
+  });
+  return seeded;
+}
+
+const emptyStats = {
+  headToHeadRecords: 0,
+  integrityChecks: 0,
+  integrityFailures: 0,
+  recordBookAggregates: 0,
+  records: 0,
+  seasonStatistics: 0,
+  weeklyStatistics: 0,
+};
+
+async function persistShadowIntegrity(
+  leagueId: string,
+  status: "fail" | "pass",
+) {
+  return withLeagueContext(handle.db, leagueId, async (tx) => {
+    await tx
+      .delete(dataIntegrityChecks)
+      .where(eq(dataIntegrityChecks.leagueId, leagueId));
+    const [check] = await tx
+      .insert(dataIntegrityChecks)
+      .values({
+        checkKey: "schedule_coverage",
+        detail: {
+          issues:
+            status === "fail"
+              ? [{ memberGuid: fixtureSwid, ownerName: "Private Manager" }]
+              : [],
+        },
+        leagueId,
+        season: 2025,
+        status,
+      })
+      .returning({ id: dataIntegrityChecks.id });
+    if (!check) throw new Error("shadow integrity fixture was not persisted");
+    return { checks: 1, failures: status === "fail" ? 1 : 0 };
+  });
 }
 
 async function selectHistoricalRows(leagueId: string) {
@@ -872,6 +938,250 @@ describe("import.requested Inngest function", () => {
       seasonsCompleted: 1,
       seasonsTotal: 1,
       status: "completed",
+    });
+  });
+
+  it("quarantines a failing shadow import, stays invisible, then promotes a fixed re-import", async () => {
+    const seeded = await seedShadowImport("shadow-fix");
+    const fixtureProvider = historyProvider();
+    const capturedInputs: Parameters<QuarantineCorpusWriter["capture"]>[0][] =
+      [];
+    const quarantineWriter: QuarantineCorpusWriter = {
+      async capture(input) {
+        capturedInputs.push(input);
+        return [
+          {
+            contentHash: "a".repeat(64),
+            path: "espn/fixture/attempt-1/2025/normalized_bundle.json",
+            season: 2025,
+            view: "normalized_bundle",
+          },
+        ];
+      },
+    };
+    const data = {
+      credentialId: seeded.credentialId,
+      leagueId: seeded.leagueId,
+      name: `${marker} shadow fix`,
+      provider: "espn" as const,
+      providerLeagueId: seeded.providerLeagueId,
+      season: 2026,
+      seasons: [2025],
+      shadowAttempt: 1,
+      size: 2,
+      sport: "ffl" as const,
+    };
+
+    const failed = await runImportRequested({
+      data,
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { espn: fixtureProvider.provider },
+        quarantineWriter,
+        recomputeStats: async () => emptyStats,
+        runIntegrity: async (_db, input) =>
+          persistShadowIntegrity(input.leagueId, "fail"),
+      },
+    });
+
+    expect(failed.shadowRun).toEqual({
+      becameLive: false,
+      captures: [
+        {
+          contentHash: "a".repeat(64),
+          path: "espn/fixture/attempt-1/2025/normalized_bundle.json",
+          season: 2025,
+          view: "normalized_bundle",
+        },
+      ],
+      failures: 1,
+      state: "quarantined",
+    });
+    expect(capturedInputs).toHaveLength(1);
+    expect(capturedInputs[0]?.bundles).toHaveLength(1);
+    expect(capturedInputs[0]?.failures[0]).toMatchObject({
+      checkKey: "schedule_coverage",
+      season: 2025,
+    });
+
+    const [quarantined] = await handle.db
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.importedLeagueId, seeded.leagueId));
+    expect(quarantined).toMatchObject({
+      importAttempts: 1,
+      importState: "quarantined",
+      integrityFailureCount: 1,
+      quarantineManifest: {
+        checkKeys: ["schedule_coverage"],
+      },
+    });
+    expect(
+      await handle.db
+        .select()
+        .from(members)
+        .where(eq(members.organizationId, seeded.leagueId)),
+    ).toHaveLength(0);
+    const hidden = await listLeagueSwitcherItemsForUser(handle.db, {
+      userId: seeded.userId,
+    });
+    expect(hidden).toEqual({ ok: true, value: [] });
+    const inventory = await listDiscoveredLeagueInventory(
+      { db: handle.db },
+      { userId: seeded.userId },
+    );
+    expect(inventory).toMatchObject({
+      ok: true,
+      value: [
+        {
+          imported: false,
+          onboardingState: "quarantined",
+          quarantine: {
+            captures: [{ view: "normalized_bundle" }],
+            failures: [{ checkKey: "schedule_coverage", season: 2025 }],
+          },
+        },
+      ],
+    });
+
+    await handle.db
+      .update(onboardingDiscoveredLeagues)
+      .set({ importAttempts: 2, importState: "shadow_running" })
+      .where(eq(onboardingDiscoveredLeagues.id, quarantined?.id ?? ""));
+    const fixed = await runImportRequested({
+      data: { ...data, shadowAttempt: 2 },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { espn: fixtureProvider.provider },
+        quarantineWriter,
+        recomputeStats: async () => emptyStats,
+        runIntegrity: async (_db, input) =>
+          persistShadowIntegrity(input.leagueId, "pass"),
+      },
+    });
+
+    expect(fixed.shadowRun).toEqual({
+      becameLive: true,
+      captures: [],
+      failures: 0,
+      state: "live",
+    });
+    expect(fixtureProvider.calls).toEqual([2025, 2025]);
+    const [promoted] = await handle.db
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.id, quarantined?.id ?? ""));
+    expect(promoted).toMatchObject({
+      importState: "live",
+      integrityFailureCount: 0,
+      quarantineManifest: null,
+    });
+    const [membership] = await handle.db
+      .select()
+      .from(members)
+      .where(eq(members.organizationId, seeded.leagueId));
+    expect(membership).toMatchObject({
+      organizationId: seeded.leagueId,
+      role: "commissioner",
+      userId: seeded.userId,
+    });
+    const visible = await listLeagueSwitcherItemsForUser(handle.db, {
+      userId: seeded.userId,
+    });
+    expect(visible.ok).toBe(true);
+    expect(
+      visible.ok ? visible.value.map((item) => item.leagueId) : [],
+    ).toEqual([seeded.leagueId]);
+  });
+
+  it("promotes a clean shadow import without writing quarantine payloads", async () => {
+    const seeded = await seedShadowImport("shadow-clean");
+    const fixtureProvider = historyProvider();
+    let captureCalls = 0;
+    const response = await runImportRequested({
+      data: {
+        credentialId: seeded.credentialId,
+        leagueId: seeded.leagueId,
+        name: `${marker} shadow clean`,
+        provider: "espn",
+        providerLeagueId: seeded.providerLeagueId,
+        season: 2026,
+        seasons: [2025],
+        shadowAttempt: 1,
+        size: 2,
+        sport: "ffl",
+      },
+      deps: {
+        cipher,
+        db: handle.db,
+        providers: { espn: fixtureProvider.provider },
+        quarantineWriter: {
+          async capture() {
+            captureCalls += 1;
+            return [];
+          },
+        },
+        recomputeStats: async () => emptyStats,
+        runIntegrity: async (_db, input) =>
+          persistShadowIntegrity(input.leagueId, "pass"),
+      },
+    });
+
+    expect(response.shadowRun).toMatchObject({
+      becameLive: true,
+      failures: 0,
+      state: "live",
+    });
+    expect(captureCalls).toBe(0);
+    expect(
+      await handle.db
+        .select()
+        .from(members)
+        .where(eq(members.organizationId, seeded.leagueId)),
+    ).toHaveLength(1);
+  });
+
+  it("plans the clean shadow promotion through the Inngest run step", async () => {
+    const seeded = await seedShadowImport("shadow-job-step");
+    const fixtureProvider = historyProvider();
+    const fn = createImportRequestedFunction(() => ({
+      cipher,
+      db: handle.db,
+      providers: { espn: fixtureProvider.provider },
+      recomputeStats: async () => emptyStats,
+      runIntegrity: async (_db, input) =>
+        persistShadowIntegrity(input.leagueId, "pass"),
+    }));
+    const testEngine = new InngestTestEngine({ function: fn });
+    const stepRun = await testEngine.executeStep("run-historical-import", {
+      events: [
+        {
+          data: {
+            credentialId: seeded.credentialId,
+            leagueId: seeded.leagueId,
+            name: `${marker} shadow job step`,
+            provider: "espn",
+            providerLeagueId: seeded.providerLeagueId,
+            season: 2026,
+            seasons: [2025],
+            shadowAttempt: 1,
+            size: 2,
+            sport: "ffl",
+          },
+          name: JOB_EVENTS.importRequested,
+        },
+      ],
+    });
+
+    expect(stepRun.result).toMatchObject({
+      league: { id: seeded.leagueId },
+      shadowRun: {
+        becameLive: true,
+        failures: 0,
+        state: "live",
+      },
     });
   });
 

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { getProviderBadgeLabel } from "@/navigation";
 import type { ProviderReconnectAction } from "@/onboarding/reconnect";
 import type { FantasyProviderId } from "@/providers";
+import { postJson } from "./client-http";
 import {
   type ImportLeaguemateSummary,
   LeaguemateDetectionCallout,
@@ -37,9 +38,26 @@ interface DiscoveredLeagueCandidate {
   readonly lastDiscoveredAt: string;
   readonly leagueId?: string;
   readonly name: string;
+  readonly onboardingState?: "shadow_running" | "quarantined" | "live";
   readonly provider: FantasyProviderId;
   readonly providerId: string;
   readonly reconnect?: ProviderReconnectAction;
+  readonly quarantine?: {
+    readonly captures: readonly {
+      readonly contentHash: string;
+      readonly path: string;
+      readonly season: number;
+      readonly view: string;
+    }[];
+    readonly failures: readonly {
+      readonly checkKey: string;
+      readonly createdAt: string;
+      readonly detail: Record<string, unknown>;
+      readonly id: string;
+      readonly season: number | null;
+    }[];
+    readonly quarantinedAt: string;
+  };
   readonly season: number;
   readonly size?: number;
   readonly sport: "ffl" | "unknown";
@@ -49,6 +67,7 @@ interface DiscoveredLeagueCandidate {
 interface ImportResult {
   readonly leagueId: string;
   readonly leaguemateInvites?: ImportLeaguemateSummary;
+  readonly onboardingState: "shadow_running" | "live";
   readonly sync: {
     readonly matchups: { readonly total: number };
     readonly members: { readonly total: number };
@@ -356,6 +375,7 @@ function OnboardingLeagueInventory({
           key={leagueKey(league)}
           league={league}
           onImportLeague={onImportLeague}
+          onRefresh={onRefresh}
           onToggleLeague={onToggleLeague}
           selected={selectedKeys.includes(leagueKey(league))}
         />
@@ -370,6 +390,7 @@ function LeagueInventoryRow({
   isOnline,
   league,
   onImportLeague,
+  onRefresh,
   onToggleLeague,
   selected,
 }: {
@@ -378,25 +399,54 @@ function LeagueInventoryRow({
   readonly isOnline: boolean;
   readonly league: DiscoveredLeagueCandidate;
   readonly onImportLeague: (league: DiscoveredLeagueCandidate) => void;
+  readonly onRefresh: () => void;
   readonly onToggleLeague: (
     league: DiscoveredLeagueCandidate,
     checked: boolean,
   ) => void;
   readonly selected: boolean;
 }) {
+  const [reviewingCheckId, setReviewingCheckId] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const blockedByConnection = Boolean(league.reconnect);
   const canImport = canImportLeague(league);
   const checked = selected && canImport;
   const providerLabel = getProviderBadgeLabel(league.provider);
-  const status = league.imported
-    ? "Imported"
-    : blockedByConnection && league.reconnect
-      ? league.reconnect.message
-      : importResult
-        ? `${importResult.sync.teams.total} teams · ${importResult.sync.members.total} members · ${importResult.sync.matchups.total} matchups`
-        : league.isRecommendedImport
-          ? "Selected by default"
-          : `${providerLabel} league ${league.providerId}`;
+  const status =
+    league.onboardingState === "shadow_running"
+      ? "Full history is importing and integrity checks are running before this league becomes visible."
+      : league.onboardingState === "quarantined"
+        ? `${league.quarantine?.failures.length ?? 0} integrity finding${
+            league.quarantine?.failures.length === 1 ? "" : "s"
+          } blocked launch. Re-import after a provider fix or review the findings below.`
+        : league.imported
+          ? "Imported"
+          : blockedByConnection && league.reconnect
+            ? league.reconnect.message
+            : importResult
+              ? `${importResult.sync.teams.total} teams · ${importResult.sync.members.total} members · ${importResult.sync.matchups.total} matchups`
+              : league.isRecommendedImport
+                ? "Selected by default"
+                : `${providerLabel} league ${league.providerId}`;
+
+  async function reviewFailure(checkId: string) {
+    if (!league.leagueId) {
+      return;
+    }
+    setReviewingCheckId(checkId);
+    setReviewError(null);
+    try {
+      await postJson("/api/onboarding/quarantine/review", {
+        checkId,
+        leagueId: league.leagueId,
+      });
+      onRefresh();
+    } catch {
+      setReviewError("The integrity finding could not be reviewed.");
+    } finally {
+      setReviewingCheckId(null);
+    }
+  }
 
   return (
     <article
@@ -423,6 +473,10 @@ function LeagueInventoryRow({
               <Tag>{providerLabel}</Tag>
               {league.imported ? (
                 <StatusPill tone="success">imported</StatusPill>
+              ) : league.onboardingState === "shadow_running" ? (
+                <StatusPill tone="live">verifying</StatusPill>
+              ) : league.onboardingState === "quarantined" ? (
+                <StatusPill tone="danger">quarantined</StatusPill>
               ) : league.reconnect ? (
                 <StatusPill tone="danger">reconnect</StatusPill>
               ) : league.isRecommendedImport ? (
@@ -466,24 +520,89 @@ function LeagueInventoryRow({
               onClick={() => onImportLeague(league)}
               disabled={isBusy || !isOnline || !canImport}
             >
-              Import
+              {league.onboardingState === "quarantined"
+                ? "Re-run shadow import"
+                : "Import"}
             </Button>
           ) : null}
         </div>
       </div>
 
+      {league.onboardingState === "quarantined" && league.quarantine ? (
+        <section
+          aria-label="Quarantined integrity findings"
+          className="cell grid gap-3 border-danger/40 px-3 py-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="eyebrow text-danger">Pre-live integrity gate</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Sanitized corpus capture: {league.quarantine.captures.length}{" "}
+                view{league.quarantine.captures.length === 1 ? "" : "s"}.
+              </p>
+            </div>
+            <ShieldAlert aria-hidden="true" className="size-4 text-danger" />
+          </div>
+          <div className="grid gap-2">
+            {league.quarantine.failures.map((failure) => (
+              <article
+                className="grid gap-2 rounded-control border border-[var(--hair)] bg-[var(--panel)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                key={failure.id}
+              >
+                <div className="min-w-0">
+                  <p className="metric text-xs text-danger">
+                    {failure.checkKey.replaceAll("_", " ")}
+                    {failure.season ? ` · ${failure.season}` : ""}
+                  </p>
+                  <p className="mt-1 break-words font-mono text-xs leading-5 text-muted-foreground">
+                    {JSON.stringify(failure.detail)}
+                  </p>
+                </div>
+                <Button
+                  disabled={Boolean(reviewingCheckId)}
+                  onClick={() => void reviewFailure(failure.id)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {reviewingCheckId === failure.id
+                    ? "Reviewing…"
+                    : "Mark reviewed"}
+                </Button>
+              </article>
+            ))}
+          </div>
+          {reviewError ? (
+            <p className="text-sm text-danger" role="alert">
+              {reviewError}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       <LeaguemateDetectionCallout
         leagueId={importResult?.leagueId ?? league.leagueId ?? ""}
-        summary={importResult?.leaguemateInvites}
+        summary={
+          importResult?.onboardingState === "live"
+            ? importResult.leaguemateInvites
+            : undefined
+        }
       />
     </article>
   );
 }
 
 function canImportLeague(
-  league: Pick<DiscoveredLeagueCandidate, "imported" | "reconnect">,
+  league: Pick<
+    DiscoveredLeagueCandidate,
+    "imported" | "onboardingState" | "reconnect"
+  >,
 ) {
-  return !league.imported && !league.reconnect;
+  return (
+    !league.imported &&
+    !league.reconnect &&
+    league.onboardingState !== "shadow_running"
+  );
 }
 
 function leagueKey(

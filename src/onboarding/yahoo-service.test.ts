@@ -341,29 +341,25 @@ describe("Yahoo onboarding service", () => {
       {
         credentialId: imported.value.credentialId,
         leagueId: imported.value.leagueId,
+        maxSeasons: 25,
         name: "Yahoo Fixture League",
         provider: "yahoo",
         providerLeagueId: currentLeagueKey,
         season: 2026,
+        shadowAttempt: 1,
         size: 4,
         sport: "ffl",
         teamName: "Yahoo Alpha",
       },
     ]);
-    expect(requestedLiveIngest).toEqual([
-      {
-        leagueId: imported.value.leagueId,
-      },
-    ]);
+    expect(requestedLiveIngest).toEqual([]);
+    expect(imported.value.onboardingState).toBe("shadow_running");
 
     const [membership] = await handle.db
       .select()
       .from(members)
       .where(eq(members.userId, user.id));
-    expect(membership).toMatchObject({
-      organizationId: imported.value.leagueId,
-      role: "commissioner",
-    });
+    expect(membership).toBeUndefined();
 
     const matchupRows = await handle.db
       .select()
@@ -383,9 +379,10 @@ describe("Yahoo onboarding service", () => {
     expect(listedAfterImport.ok).toBe(true);
     if (!listedAfterImport.ok) throw listedAfterImport.error;
     expect(listedAfterImport.value[0]).toMatchObject({
-      imported: true,
+      imported: false,
       isRecommendedImport: false,
       leagueId: imported.value.leagueId,
+      onboardingState: "shadow_running",
     });
   });
 });

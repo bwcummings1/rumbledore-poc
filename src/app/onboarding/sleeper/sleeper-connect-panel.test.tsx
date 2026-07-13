@@ -94,6 +94,7 @@ test("Sleeper connect panel lists persisted discoveries and imports the selected
       importBodies.push(parseRequestBody(init));
       return jsonResponse({
         leagueId: "league-sleeper",
+        onboardingState: "live",
         leaguemateInvites: {
           importedMembers: 4,
           inviteTargets: 3,

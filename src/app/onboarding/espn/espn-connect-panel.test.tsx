@@ -77,6 +77,7 @@ test("ESPN connect panel lists persisted discoveries and imports the selected de
       importBodies.push(JSON.parse(init?.body?.toString() ?? "{}"));
       return jsonResponse({
         leagueId: "league-95050",
+        onboardingState: "live",
         leaguemateInvites: {
           importedMembers: 12,
           inviteTargets: 11,
@@ -196,6 +197,89 @@ test("ESPN connect panel blocks invalid stored credentials with a reconnect CTA"
   expect(
     screen.getByRole("button", { name: /import selected/i }),
   ).toHaveProperty("disabled", true);
+});
+
+test("ESPN connect panel exposes quarantined integrity detail and owner review", async () => {
+  const reviewBodies: unknown[] = [];
+  let discoveryReads = 0;
+  const quarantined = {
+    ...discoveredLeague,
+    imported: false,
+    isRecommendedImport: false,
+    leagueId: "11111111-1111-4111-8111-111111111111",
+    onboardingState: "quarantined",
+    quarantine: {
+      captures: [
+        {
+          contentHash: "a".repeat(64),
+          path: "espn/hash/attempt-1/2025/normalized_bundle.json",
+          season: 2025,
+          view: "normalized_bundle",
+        },
+      ],
+      failures: [
+        {
+          checkKey: "schedule_coverage",
+          createdAt: "2026-07-13T12:00:00.000Z",
+          detail: { issues: [{ reason: "missing_week" }] },
+          id: "22222222-2222-4222-8222-222222222222",
+          season: 2025,
+        },
+      ],
+      quarantinedAt: "2026-07-13T12:00:00.000Z",
+    },
+  } as const;
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input.toString();
+    if (url === "/api/onboarding/discovered") {
+      discoveryReads += 1;
+      return jsonResponse(
+        discoveryReads === 1
+          ? [quarantined]
+          : [
+              {
+                ...discoveredLeague,
+                imported: true,
+                isRecommendedImport: false,
+                leagueId: quarantined.leagueId,
+                onboardingState: "live",
+              },
+            ],
+      );
+    }
+    if (url === "/api/onboarding/quarantine/review") {
+      reviewBodies.push(JSON.parse(init?.body?.toString() ?? "{}"));
+      return jsonResponse({
+        becameLive: true,
+        checkId: quarantined.quarantine.failures[0].id,
+        leagueId: quarantined.leagueId,
+        remainingFailures: 0,
+        state: "live",
+      });
+    }
+    return jsonResponse(
+      { error: { message: `Unexpected request: ${url}` } },
+      { status: 500 },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<EspnConnectPanel />);
+
+  expect(await screen.findByText("quarantined")).toBeDefined();
+  expect(screen.getByText(/schedule coverage/i)).toBeDefined();
+  expect(screen.getByText(/sanitized corpus capture: 1 view/i)).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: /mark reviewed/i }));
+
+  await waitFor(() => {
+    expect(reviewBodies).toEqual([
+      {
+        checkId: "22222222-2222-4222-8222-222222222222",
+        leagueId: "11111111-1111-4111-8111-111111111111",
+      },
+    ]);
+  });
+  expect(await screen.findByText("Imported")).toBeDefined();
 });
 
 test("ESPN connect panel renders reconnect CTA from import auth errors", async () => {

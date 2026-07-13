@@ -62,6 +62,15 @@ interface BrowserStartResult {
 
 const DISCOVERED_LEAGUES_URL = "/api/onboarding/discovered";
 
+function isLiveImport(imported: ImportResult): boolean {
+  switch (imported.onboardingState) {
+    case "live":
+      return true;
+    default:
+      return false;
+  }
+}
+
 function recommendedKeys(leagues: readonly DiscoveredLeagueCandidate[]) {
   return leagues
     .filter((league) => league.isRecommendedImport && canImportLeague(league))
@@ -295,14 +304,16 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
   }
 
   function markLeagueImported(key: string, imported: ImportResult) {
+    const isLive = isLiveImport(imported);
     setDiscoveredLeagues((current) =>
       current.map((league) =>
         leagueKey(league) === key
           ? {
               ...league,
-              imported: true,
+              imported: isLive,
               isRecommendedImport: false,
               leagueId: imported.leagueId,
+              onboardingState: imported.onboardingState,
             }
           : league,
       ),
@@ -328,7 +339,9 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
-      continueToReturnTo(returnToAfterImport(returnTo, [imported.leagueId]));
+      if (isLiveImport(imported)) {
+        continueToReturnTo(returnToAfterImport(returnTo, [imported.leagueId]));
+      }
     }
   }
 
@@ -359,12 +372,12 @@ export function EspnConnectPanel({ returnTo }: { returnTo?: string | null }) {
         preserveSelection: true,
         silent: true,
       });
-      continueToReturnTo(
-        returnToAfterImport(
-          returnTo,
-          Object.values(imported).map((result) => result.leagueId),
-        ),
-      );
+      const liveLeagueIds = Object.values(imported)
+        .filter(isLiveImport)
+        .map((result) => result.leagueId);
+      if (liveLeagueIds.length > 0) {
+        continueToReturnTo(returnToAfterImport(returnTo, liveLeagueIds));
+      }
     }
   }
 
