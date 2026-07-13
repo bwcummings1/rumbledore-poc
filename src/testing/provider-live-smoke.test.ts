@@ -58,6 +58,7 @@ function memoryGuard(env: Env): SpendGuard {
       ...env.spendGuard,
       providers: {
         anthropic: { ...DEFAULT_SPEND_GUARD_CAPS.anthropic },
+        browserbase: { ...DEFAULT_SPEND_GUARD_CAPS.browserbase },
         odds: { ...DEFAULT_SPEND_GUARD_CAPS.odds },
         sportsdataio: { ...DEFAULT_SPEND_GUARD_CAPS.sportsdataio },
         tavily: { ...DEFAULT_SPEND_GUARD_CAPS.tavily },

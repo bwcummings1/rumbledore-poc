@@ -10,6 +10,7 @@ export function getEnv(): Env {
 }
 
 export type {
+  BrowserbaseConfig,
   EntitlementCapsConfig,
   EntitlementsConfig,
   Env,
@@ -21,6 +22,7 @@ export type {
   NewsRssConfig,
   PushConfig,
   ServiceConfig,
+  ServicesConfig,
   SpendGuardConfig,
   SpendGuardProvider,
   SpendGuardProviderConfig,

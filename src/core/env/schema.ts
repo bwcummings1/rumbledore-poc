@@ -32,6 +32,10 @@ export const INNGEST_CLOUD_EVENT_BASE_URL = "https://inn.gs";
  */
 export type ServiceConfig = { mock: true } | { mock: false; apiKey: string };
 
+export type BrowserbaseConfig =
+  | { mock: true }
+  | { mock: false; apiKey: string; projectId: string };
+
 export type NewsRssConfig =
   | { mock: true }
   | { mock: false; feedUrls: string[] };
@@ -125,6 +129,7 @@ export interface AiConfig {
 
 export const SPEND_GUARD_PROVIDERS = [
   "anthropic",
+  "browserbase",
   "odds",
   "sportsdataio",
   "tavily",
@@ -134,7 +139,7 @@ export type SpendGuardProvider = (typeof SPEND_GUARD_PROVIDERS)[number];
 
 export const SPEND_GUARD_WINDOWS = ["total-run", "rolling-24h"] as const;
 export type SpendGuardWindow = (typeof SPEND_GUARD_WINDOWS)[number];
-export type SpendGuardUnit = "requests" | "tokens";
+export type SpendGuardUnit = "requests" | "sessions" | "tokens";
 
 export interface SpendGuardProviderConfig {
   cap: number;
@@ -154,6 +159,7 @@ export const DEFAULT_ENTITLEMENT_CAPS = {
 
 export const DEFAULT_SPEND_GUARD_CAPS = {
   anthropic: { cap: 2_000_000, unit: "tokens" },
+  browserbase: { cap: 25, unit: "sessions" },
   odds: { cap: 250, unit: "requests" },
   sportsdataio: { cap: 250, unit: "requests" },
   tavily: { cap: 250, unit: "requests" },
@@ -178,6 +184,13 @@ export const PAID_SERVICES = [
   "browserbase",
 ] as const;
 export type PaidService = (typeof PAID_SERVICES)[number];
+
+export type ServicesConfig = Omit<
+  Record<PaidService, ServiceConfig>,
+  "browserbase"
+> & {
+  browserbase: BrowserbaseConfig;
+};
 
 const SERVICE_VARS: Record<PaidService, { keyVar: string; mockVar: string }> = {
   anthropic: { keyVar: "ANTHROPIC_API_KEY", mockVar: "MOCK_ANTHROPIC" },
@@ -276,6 +289,11 @@ const baseSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_SPEND_GUARD_CAPS.anthropic.cap),
+  SPEND_GUARD_BROWSERBASE_SESSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_SPEND_GUARD_CAPS.browserbase.cap),
   SPEND_GUARD_ODDS_REQUESTS: z.coerce
     .number()
     .int()
@@ -305,6 +323,7 @@ const baseSchema = z.object({
   VOYAGE_API_KEY: secret.optional(),
   VOYAGE_EMBEDDING_MODEL: secret.default(VOYAGE_EMBEDDING_MODEL),
   BROWSERBASE_API_KEY: secret.optional(),
+  BROWSERBASE_PROJECT_ID: secret.optional(),
   AI_LLM_PROVIDER_KEY: z.enum(["anthropic", "custom"]).default("anthropic"),
   AI_CUSTOM_MODEL_KIND: z
     .enum(["anthropic_compatible", "openai_compatible"])
@@ -376,7 +395,7 @@ export interface Env {
   news: NewsConfig;
   push: PushConfig;
   spendGuard: SpendGuardConfig;
-  services: Record<PaidService, ServiceConfig>;
+  services: ServicesConfig;
 }
 
 /**
@@ -405,6 +424,32 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         `✖ ${mockVar}=false requires ${keyVar} to be set\n  → at ${keyVar}`,
       );
     }
+  }
+
+  const browserbaseFlag =
+    "MOCK_BROWSERBASE" in present
+      ? stringbool.safeParse(present.MOCK_BROWSERBASE)
+      : undefined;
+  const browserbaseForcedMock =
+    browserbaseFlag?.success === true && browserbaseFlag.data === true;
+  const browserbaseRealRequested =
+    !browserbaseForcedMock &&
+    (browserbaseFlag?.data === false ||
+      "BROWSERBASE_API_KEY" in present ||
+      "BROWSERBASE_PROJECT_ID" in present);
+  if (browserbaseRealRequested && !("BROWSERBASE_PROJECT_ID" in present)) {
+    problems.push(
+      "✖ Browserbase real mode requires BROWSERBASE_PROJECT_ID to be set\n  → at BROWSERBASE_PROJECT_ID",
+    );
+  }
+  if (
+    browserbaseRealRequested &&
+    !("BROWSERBASE_API_KEY" in present) &&
+    browserbaseFlag?.data !== false
+  ) {
+    problems.push(
+      "✖ Browserbase real mode requires BROWSERBASE_API_KEY to be set\n  → at BROWSERBASE_API_KEY",
+    );
   }
 
   switch (present.NODE_ENV) {
@@ -738,8 +783,19 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         }
       : { mode: "mock" };
 
-  const services: Record<PaidService, ServiceConfig> = {
+  const browserbase: BrowserbaseConfig =
+    parsed.MOCK_BROWSERBASE !== true &&
+    parsed.BROWSERBASE_API_KEY !== undefined &&
+    parsed.BROWSERBASE_PROJECT_ID !== undefined
+      ? {
+          apiKey: parsed.BROWSERBASE_API_KEY,
+          mock: false,
+          projectId: parsed.BROWSERBASE_PROJECT_ID,
+        }
+      : { mock: true };
+  const services: ServicesConfig = {
     anthropic: service(parsed.ANTHROPIC_API_KEY, parsed.MOCK_ANTHROPIC),
+    browserbase,
     odds: service(parsed.THE_ODDS_API_KEY, parsed.MOCK_ODDS),
     sportsdataio: service(
       parsed.SPORTSDATAIO_API_KEY,
@@ -747,7 +803,6 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
     ),
     tavily: service(parsed.TAVILY_API_KEY, parsed.MOCK_TAVILY),
     voyage: service(parsed.VOYAGE_API_KEY, parsed.MOCK_VOYAGE),
-    browserbase: service(parsed.BROWSERBASE_API_KEY, parsed.MOCK_BROWSERBASE),
   };
   const customModelCredentialEnvName = parsed.AI_CUSTOM_MODEL_API_KEY_VAR;
   const customModelCredential = customModelCredentialEnvName
@@ -892,6 +947,10 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         anthropic: {
           cap: parsed.SPEND_GUARD_ANTHROPIC_TOKENS,
           unit: "tokens",
+        },
+        browserbase: {
+          cap: parsed.SPEND_GUARD_BROWSERBASE_SESSIONS,
+          unit: "sessions",
         },
         odds: {
           cap: parsed.SPEND_GUARD_ODDS_REQUESTS,

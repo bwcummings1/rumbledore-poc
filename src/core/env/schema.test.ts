@@ -14,6 +14,7 @@ import {
   LOCAL_INNGEST_DEV_SERVER_URL,
   LOCAL_REDIS_URL,
   parseEnv,
+  SPEND_GUARD_PROVIDERS,
 } from "./schema";
 
 function fixtureValue(...parts: string[]): string {
@@ -85,6 +86,58 @@ describe("parseEnv", () => {
       apiKey: "test-anthropic-key", // ubs:ignore — fake fixture value
     });
     expect(env.services.tavily).toEqual({ mock: true });
+  });
+
+  it("resolves Browserbase real only with its API key and project id", () => {
+    const apiKey = fixtureValue("browserbase", "api", "fixture");
+    const projectId = fixtureValue("browserbase", "project", "fixture");
+    const env = parseEnv({
+      BROWSERBASE_API_KEY: apiKey,
+      BROWSERBASE_PROJECT_ID: projectId,
+      MOCK_BROWSERBASE: "false",
+    });
+
+    expect(env.services.browserbase).toEqual({
+      apiKey,
+      mock: false,
+      projectId,
+    });
+  });
+
+  it("keeps Browserbase mocked when explicitly forced with real config present", () => {
+    const env = parseEnv({
+      BROWSERBASE_API_KEY: fixtureValue("browserbase", "api", "fixture"),
+      BROWSERBASE_PROJECT_ID: fixtureValue("browserbase", "project", "fixture"),
+      MOCK_BROWSERBASE: "true",
+    });
+
+    expect(env.services.browserbase).toEqual({ mock: true });
+  });
+
+  it("rejects Browserbase real mode without a project id", () => {
+    const apiKey = fixtureValue("browserbase", "api", "private-fixture");
+    let message = "";
+    try {
+      parseEnv({ BROWSERBASE_API_KEY: apiKey, MOCK_BROWSERBASE: "false" });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("BROWSERBASE_PROJECT_ID");
+    expect(message).not.toContain(apiKey);
+  });
+
+  it("rejects Browserbase real mode without an API key", () => {
+    expect(() =>
+      parseEnv({
+        BROWSERBASE_PROJECT_ID: fixtureValue(
+          "browserbase",
+          "project",
+          "fixture",
+        ),
+        MOCK_BROWSERBASE: "false",
+      }),
+    ).toThrow(/BROWSERBASE_API_KEY/);
   });
 
   it.each(paidServiceCases)(
@@ -372,22 +425,29 @@ describe("parseEnv", () => {
   });
 
   it("defaults and overrides spend guard caps", () => {
+    expect(SPEND_GUARD_PROVIDERS).toContain("browserbase");
+    expect(parseEnv({}).spendGuard.providers.browserbase).toEqual(
+      DEFAULT_SPEND_GUARD_CAPS.browserbase,
+    );
+
     const env = parseEnv({
       SPEND_GUARD_ANTHROPIC_TOKENS: "1",
-      SPEND_GUARD_ODDS_REQUESTS: "2",
-      SPEND_GUARD_SPORTSDATAIO_REQUESTS: "3",
-      SPEND_GUARD_TAVILY_REQUESTS: "4",
-      SPEND_GUARD_VOYAGE_REQUESTS: "5",
+      SPEND_GUARD_BROWSERBASE_SESSIONS: "2",
+      SPEND_GUARD_ODDS_REQUESTS: "3",
+      SPEND_GUARD_SPORTSDATAIO_REQUESTS: "4",
+      SPEND_GUARD_TAVILY_REQUESTS: "5",
+      SPEND_GUARD_VOYAGE_REQUESTS: "6",
       SPEND_GUARD_WINDOW: "rolling-24h",
     });
 
     expect(env.spendGuard).toEqual({
       providers: {
         anthropic: { cap: 1, unit: "tokens" },
-        odds: { cap: 2, unit: "requests" },
-        sportsdataio: { cap: 3, unit: "requests" },
-        tavily: { cap: 4, unit: "requests" },
-        voyage: { cap: 5, unit: "requests" },
+        browserbase: { cap: 2, unit: "sessions" },
+        odds: { cap: 3, unit: "requests" },
+        sportsdataio: { cap: 4, unit: "requests" },
+        tavily: { cap: 5, unit: "requests" },
+        voyage: { cap: 6, unit: "requests" },
       },
       window: "rolling-24h",
     });
@@ -396,6 +456,9 @@ describe("parseEnv", () => {
   it("rejects non-positive spend guard caps by variable name", () => {
     expect(() => parseEnv({ SPEND_GUARD_TAVILY_REQUESTS: "0" })).toThrow(
       /SPEND_GUARD_TAVILY_REQUESTS/,
+    );
+    expect(() => parseEnv({ SPEND_GUARD_BROWSERBASE_SESSIONS: "0" })).toThrow(
+      /SPEND_GUARD_BROWSERBASE_SESSIONS/,
     );
   });
 
