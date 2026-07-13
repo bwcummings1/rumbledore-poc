@@ -50,6 +50,7 @@ import { JOB_EVENTS } from "./events";
 import {
   createImportRequestedFunction,
   importRequested,
+  quarantineExhaustedShadowImport,
   runImportRequested,
 } from "./functions/import-requested";
 import { functions } from "./index";
@@ -1141,6 +1142,97 @@ describe("import.requested Inngest function", () => {
         .from(members)
         .where(eq(members.organizationId, seeded.leagueId)),
     ).toHaveLength(1);
+    const [promoted] = await handle.db
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.importedLeagueId, seeded.leagueId));
+    expect(promoted).toMatchObject({
+      importState: "live",
+      quarantineManifest: null,
+      quarantinedAt: null,
+    });
+  });
+
+  it("quarantines a shadow run when an uncaught job-body error exhausts retries", async () => {
+    const seeded = await seedShadowImport("shadow-uncaught");
+    const fixtureProvider = historyProvider();
+    const failedAt = new Date("2026-07-13T18:30:00.000Z");
+    const data = {
+      credentialId: seeded.credentialId,
+      leagueId: seeded.leagueId,
+      name: `${marker} shadow uncaught`,
+      provider: "espn" as const,
+      providerLeagueId: seeded.providerLeagueId,
+      season: 2026,
+      seasons: [2025],
+      shadowAttempt: 1,
+      size: 2,
+      sport: "ffl" as const,
+    };
+
+    let jobFailure: unknown;
+    try {
+      await runImportRequested({
+        data,
+        deps: {
+          cipher,
+          db: handle.db,
+          providers: { espn: fixtureProvider.provider },
+          recomputeStats: async () => {
+            throw new TypeError("fixture uncaught job-body failure");
+          },
+        },
+      });
+    } catch (error) {
+      jobFailure = error;
+    }
+    expect(jobFailure).toBeInstanceOf(TypeError);
+
+    const contained = await quarantineExhaustedShadowImport({
+      data,
+      deps: { db: handle.db, now: () => failedAt },
+      error: jobFailure,
+    });
+    expect(contained).toBe(true);
+
+    const [quarantined] = await handle.db
+      .select()
+      .from(onboardingDiscoveredLeagues)
+      .where(eq(onboardingDiscoveredLeagues.importedLeagueId, seeded.leagueId));
+    expect(quarantined).toMatchObject({
+      importAttempts: 1,
+      importState: "quarantined",
+      integrityFailureCount: 0,
+      quarantineManifest: {
+        captures: [],
+        checkIds: [],
+        checkKeys: [],
+        jobFailure: { errorClass: "TypeError" },
+      },
+      quarantinedAt: failedAt,
+    });
+    expect(
+      await handle.db
+        .select()
+        .from(members)
+        .where(eq(members.organizationId, seeded.leagueId)),
+    ).toHaveLength(0);
+    const inventory = await listDiscoveredLeagueInventory(
+      { db: handle.db },
+      { userId: seeded.userId },
+    );
+    expect(inventory).toMatchObject({
+      ok: true,
+      value: [
+        {
+          onboardingState: "quarantined",
+          quarantine: {
+            failures: [],
+            jobFailure: { errorClass: "TypeError" },
+          },
+        },
+      ],
+    });
   });
 
   it("plans the clean shadow promotion through the Inngest run step", async () => {

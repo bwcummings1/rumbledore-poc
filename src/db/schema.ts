@@ -4556,6 +4556,9 @@ export const onboardingDiscoveredLeagues = pgTable(
         checkIds: string[];
         checkKeys: string[];
         capturedAt: string;
+        jobFailure?: {
+          errorClass: string;
+        };
       } | null>()
       .default(sql`NULL`),
     shadowStartedAt: timestamp("shadow_started_at", { withTimezone: true }),

@@ -88,6 +88,9 @@ export interface DiscoveredLeagueImportCandidate extends DiscoveredLeague {
       id: string;
       season: number | null;
     }>;
+    jobFailure?: {
+      errorClass: string;
+    };
     quarantinedAt: string;
   };
   reconnect?: ProviderReconnectAction;
@@ -199,6 +202,7 @@ const storedCredentialSchemas = {
 } satisfies Partial<Record<FantasyProviderId, z.ZodType<unknown>>>;
 type HistoricalImportProviderId = ImportRequestedData["provider"];
 const SHADOW_IMPORT_MAX_SEASONS = 25;
+export const SHADOW_IMPORT_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
 
 function currentTime(deps: Pick<ProviderOnboardingDependencies, "now">): Date {
   return deps.now?.() ?? new Date();
@@ -464,7 +468,7 @@ export async function connectProviderWithCredentials({
 }
 
 async function listDiscoveredLeagueCandidates(
-  deps: Pick<ProviderOnboardingDependencies, "db">,
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
   input: { provider?: FantasyProviderId; userId: string },
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   const rows = await deps.db
@@ -484,6 +488,7 @@ async function listDiscoveredLeagueCandidates(
       quarantineManifest: onboardingDiscoveredLeagues.quarantineManifest,
       quarantinedAt: onboardingDiscoveredLeagues.quarantinedAt,
       season: onboardingDiscoveredLeagues.season,
+      shadowStartedAt: onboardingDiscoveredLeagues.shadowStartedAt,
       size: onboardingDiscoveredLeagues.size,
       sport: onboardingDiscoveredLeagues.sport,
       teamName: onboardingDiscoveredLeagues.teamName,
@@ -536,11 +541,18 @@ async function listDiscoveredLeagueCandidates(
   }, null);
 
   const candidates: DiscoveredLeagueImportCandidate[] = [];
+  const shadowStaleBefore =
+    currentTime(deps).getTime() - SHADOW_IMPORT_STALE_AFTER_MS;
   for (const row of rows) {
     const hasMembership =
       row.memberUserId !== null && row.importedLeagueId !== null;
+    const shadowImportIsStale =
+      row.importState === "shadow_running" &&
+      row.shadowStartedAt !== null &&
+      row.shadowStartedAt.getTime() <= shadowStaleBefore;
     const onboardingState =
-      row.importState ?? (hasMembership ? ("live" as const) : undefined);
+      (shadowImportIsStale ? undefined : row.importState) ??
+      (hasMembership ? ("live" as const) : undefined);
     const imported = hasMembership && onboardingState === "live";
     let invalidConnection = false;
     switch (row.connectionState) {
@@ -581,6 +593,9 @@ async function listDiscoveredLeagueCandidates(
             id: check.id,
             season: check.season,
           })),
+        ...(row.quarantineManifest?.jobFailure
+          ? { jobFailure: row.quarantineManifest.jobFailure }
+          : {}),
         quarantinedAt: row.quarantinedAt.toISOString(),
       };
     }
@@ -625,14 +640,14 @@ async function listDiscoveredLeagueCandidates(
 }
 
 export async function listDiscoveredLeagues(
-  deps: Pick<ProviderOnboardingDependencies, "db">,
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
   input: { provider: FantasyProviderId; userId: string },
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   return listDiscoveredLeagueCandidates(deps, input);
 }
 
 export async function listDiscoveredLeagueInventory(
-  deps: Pick<ProviderOnboardingDependencies, "db">,
+  deps: Pick<ProviderOnboardingDependencies, "db" | "now">,
   input: { userId: string },
 ): Promise<Result<DiscoveredLeagueImportCandidate[], OnboardingError>> {
   return listDiscoveredLeagueCandidates(deps, input);

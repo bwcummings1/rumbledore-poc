@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canImportLeague } from "@/app/onboarding/onboarding-flow";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import {
@@ -13,6 +14,7 @@ import { migrateSerialized } from "@/db/test-support";
 import {
   listDiscoveredLeagueInventory,
   listDiscoveredLeagues,
+  SHADOW_IMPORT_STALE_AFTER_MS,
 } from "./provider-service";
 
 const marker = `providerinventorytest-${randomUUID()}`;
@@ -179,5 +181,83 @@ describe("provider discovery inventory", () => {
     if (!espnOnly.ok) throw espnOnly.error;
     expect(espnOnly.value).toHaveLength(1);
     expect(espnOnly.value[0]).toMatchObject({ provider: "espn" });
+  });
+
+  it("makes an expired shadow run importable while a fresh run stays blocked", async () => {
+    const user = await seedUser("stale-shadow");
+    const observedAt = new Date("2026-07-13T18:00:00.000Z");
+    const [credential] = await handle.db
+      .insert(providerCredentials)
+      .values({
+        connectionFlow: "manual",
+        encryptedPayload: "encrypted-stale-shadow-payload",
+        lastValidatedAt: observedAt,
+        provider: "espn",
+        subjectProviderId: `${marker}-stale-shadow-subject`,
+        userId: user.id,
+      })
+      .returning();
+    if (!credential) throw new Error("provider credential was not persisted");
+
+    const [discovered] = await handle.db
+      .insert(onboardingDiscoveredLeagues)
+      .values({
+        credentialId: credential.id,
+        importAttempts: 1,
+        importState: "shadow_running",
+        lastDiscoveredAt: observedAt,
+        name: "Stuck shadow league",
+        provider: "espn",
+        providerLeagueId: `${marker}-stale-shadow-league`,
+        season: 2026,
+        shadowStartedAt: new Date(
+          observedAt.getTime() - SHADOW_IMPORT_STALE_AFTER_MS - 1,
+        ),
+        size: 12,
+        sport: "ffl",
+        userId: user.id,
+      })
+      .returning();
+    if (!discovered) throw new Error("discovered league was not persisted");
+
+    const staleInventory = await listDiscoveredLeagueInventory(
+      { db: handle.db, now: () => observedAt },
+      { userId: user.id },
+    );
+    expect(staleInventory.ok).toBe(true);
+    if (!staleInventory.ok) throw staleInventory.error;
+    expect(staleInventory.value).toHaveLength(1);
+    expect(staleInventory.value[0]).toMatchObject({
+      imported: false,
+      isRecommendedImport: true,
+    });
+    expect(staleInventory.value[0]?.onboardingState).toBeUndefined();
+    expect(canImportLeague(staleInventory.value[0] ?? { imported: true })).toBe(
+      true,
+    );
+
+    await handle.db
+      .update(onboardingDiscoveredLeagues)
+      .set({
+        shadowStartedAt: new Date(
+          observedAt.getTime() - SHADOW_IMPORT_STALE_AFTER_MS + 1,
+        ),
+      })
+      .where(eq(onboardingDiscoveredLeagues.id, discovered.id));
+
+    const freshInventory = await listDiscoveredLeagueInventory(
+      { db: handle.db, now: () => observedAt },
+      { userId: user.id },
+    );
+    expect(freshInventory.ok).toBe(true);
+    if (!freshInventory.ok) throw freshInventory.error;
+    expect(freshInventory.value[0]).toMatchObject({
+      imported: false,
+      isRecommendedImport: false,
+      onboardingState: "shadow_running",
+    });
+    expect(canImportLeague(freshInventory.value[0] ?? { imported: true })).toBe(
+      false,
+    );
   });
 });
