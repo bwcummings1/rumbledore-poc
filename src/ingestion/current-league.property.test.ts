@@ -865,7 +865,9 @@ describe("normalized ingestion properties", () => {
               detail: expect.objectContaining({
                 checkedProviders: ["espn"],
                 issues: expect.arrayContaining([
-                  { id: code, kind, provider: "espn" },
+                  // 47A's decoding contract: unknown codes carry an explicit
+                  // reason alongside id/kind/provider.
+                  { id: code, kind, provider: "espn", reason: "unknown_code" },
                 ]),
               }),
             });

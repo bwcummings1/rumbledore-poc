@@ -470,8 +470,13 @@ describe("central news tailoring hand-off", () => {
 
     expect(result).toMatchObject({
       inserted: 1,
-      tailoredReferences: 1,
     });
+    // The fan-out count is global across the shared parallel test DB, and
+    // other test files (e.g. ai/pipeline.test.ts) legitimately roster the
+    // same real substrate-B player id (3139477) transiently — assert
+    // at-least-ours here; the scoped league-A reference assertions below
+    // carry the exactness.
+    expect(result.tailoredReferences).toBeGreaterThanOrEqual(1);
 
     const [centralRow] = await handle.db
       .select({
