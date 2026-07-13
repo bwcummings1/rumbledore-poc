@@ -1,0 +1,18 @@
+[
+  {
+    "draft_id": "draft-sleeper-2026",
+    "league_id": "sleeper-2026",
+    "season": "2026",
+    "sport": "nfl",
+    "status": "complete",
+    "type": "snake",
+    "settings": {
+      "rounds": 2,
+      "teams": 4
+    },
+    "metadata": {
+      "name": "Sleeper Fixture Draft",
+      "scoring_type": "ppr"
+    }
+  }
+]

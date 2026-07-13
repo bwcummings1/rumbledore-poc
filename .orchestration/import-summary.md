@@ -124,3 +124,28 @@
 - UI evidence refreshed: `10-records.png`, `15-data-steward.png`, `17-data-book.png`, and
   `17-data-book-settings.png` at mobile/tablet/desktop viewports; the steward fixture includes an active additive +
   semantic drift alert.
+
+## 48S sleeper verification
+
+- Verification date: 2026-07-13.
+- Safety posture: sequential, read-only requests to `api.sleeper.app` only, with an identifying User-Agent and a
+  configured 550ms request-start interval (549ms minimum observed, below 2 RPS). The final evidence run used 84
+  requests; three isolated verification/diagnostic runs this round totaled 252, below the 300-request ceiling. The
+  round-1 `/players/nfl` cache was reused and not fetched again. Every import ran in a newly created local throwaway
+  database that was dropped afterward; the shared dev database was neither read nor mutated.
+- History-chain shape: public league `289646328504385536` followed `previous_league_id` to import 2017 through the
+  product history path. It persisted 300/300 named, decoded players; 2,911/2,911 player-linked roster entries with
+  weekly actual points; 180/180 player-linked draft picks; and 12/12 high-confidence
+  `provider_calculated_final` standings. Capability map: 11 dimensions, including `matchups=partial`,
+  `divisions=none`, and scoring detail partial with zero per-stat breakdown rows.
+- Current-only shape: public league `1269125082375008256` (`previous_league_id=null`) imported 2025 through the same
+  product path. It persisted 252/252 named, decoded players; 2,610/2,610 player-linked roster entries with weekly
+  actual points; 150/150 player-linked draft picks; and 10/10 high-confidence `provider_calculated_final` standings.
+  Capability map: 11 dimensions with the same honest provider-limited declarations.
+- Live payload drift fixed in Track 48S: nullable `co_owners`, `is_owner`, `consenter_ids`, and `roster_ids`; plus the
+  observed scoring keys `fgm_50_59`, `fgm_60p`, and `fum_rec_td`. Final verification has zero unknown Sleeper position,
+  slot, team, activity, or scoring codes; `provider_code_decoding` passes for both imports.
+- PASS acceptance result: each league produced 14/14 PASS integrity checks with zero failures. `schedule_coverage`
+  now records eliminated-team playoff omissions as explicit skipped team-weeks only when that season's measured
+  matchup capability is partial; regular-season expectations and full/undeclared playoff expectations remain loud.
+  No matchup rows were synthesized.

@@ -2,15 +2,16 @@
   {
     "roster_id": 1,
     "matchup_id": 1,
-    "points": 125.75,
-    "players": ["QB1", "RB1", "WR1", "BN1", "IR1"],
+    "points": 54.7,
+    "players": ["QB1", "RB1", "WR1", "BN1", "IR1", "ARI"],
     "starters": ["QB1", "RB1", "WR1"],
     "players_points": {
       "QB1": 22.4,
       "RB1": 18.1,
       "WR1": 14.2,
       "BN1": 7,
-      "IR1": 0
+      "IR1": 0,
+      "ARI": 8
     }
   },
   {

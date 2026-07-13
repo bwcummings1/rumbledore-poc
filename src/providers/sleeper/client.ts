@@ -5,6 +5,7 @@ import {
   type FantasyProvider,
   type FantasyProviderCapabilities,
   type FantasyProviderSession,
+  type NormalizedDraftPick,
   type NormalizedFinalStanding,
   type NormalizedKeeperSettings,
   type NormalizedLeague,
@@ -12,6 +13,7 @@ import {
   type NormalizedMatchupStatus,
   type NormalizedMatchupWinner,
   type NormalizedMember,
+  type NormalizedPlayer,
   type NormalizedPostseasonSettings,
   type NormalizedRoster,
   type NormalizedRosterEntry,
@@ -28,6 +30,25 @@ import {
   RateLimitedError,
   type SeasonScopedProviderEntityRef,
 } from "../model";
+import {
+  isFixtureSleeperCredential,
+  isFixtureSleeperSession,
+} from "./fixture-values";
+import {
+  createSleeperPlayerCatalog,
+  type SleeperCatalogPlayer,
+  type SleeperPlayerCatalog,
+} from "./player-catalog";
+import {
+  decodeSleeperPosition,
+  decodeSleeperProTeam,
+  decodeSleeperRosterSlot,
+  encodeSleeperPosition,
+  encodeSleeperProTeam,
+  encodeSleeperRosterSlot,
+  encodeSleeperScoringSetting,
+  encodeSleeperTransactionType,
+} from "./reference-data";
 
 export interface SleeperCredentials {
   usernameOrUserId: string;
@@ -52,6 +73,8 @@ export type SleeperFetch = (
 export interface SleeperClientOptions {
   fetch?: SleeperFetch;
   maxAttempts?: number;
+  playerCatalog?: SleeperPlayerCatalog;
+  playerCatalogCacheFilePath?: string;
   retryDelayMs?: number;
   timeoutMs?: number;
 }
@@ -89,7 +112,9 @@ export const SLEEPER_PROVIDER_CAPABILITIES: FantasyProviderCapabilities = {
     teams: "full",
     members: "full",
     rosters: "full",
-    matchups: "full",
+    // Completed regular-season weeks are complete, but postseason endpoints omit
+    // eliminated rosters rather than returning explicit bye/absence rows.
+    matchups: "partial",
     final_standings: "partial",
     transactions: "full",
     history: "partial",
@@ -108,6 +133,9 @@ const numericValue = z.union([z.number(), z.string()]);
 const nullableIdValue = z.union([z.string(), z.number()]).nullable();
 const nullableString = z.string().nullable().optional();
 const nullableNumericValue = z.union([z.number(), z.string()]).nullable();
+const nullableBooleanValue = z
+  .union([z.boolean(), z.number(), z.string()])
+  .nullable();
 const playerIdArray = z.array(idValue);
 const recordNumberSchema = z.union([z.number(), z.string(), z.null()]);
 
@@ -148,6 +176,7 @@ const sleeperLeagueSchema = z
     settings: z
       .object({
         last_scored_leg: numericValue.optional(),
+        playoff_teams: numericValue.optional(),
         playoff_week_start: numericValue.optional(),
         start_week: numericValue.optional(),
       })
@@ -163,7 +192,7 @@ const sleeperLeagueListSchema = z.array(sleeperLeagueSchema);
 
 const sleeperRosterSchema = z
   .object({
-    co_owners: z.array(idValue).optional(),
+    co_owners: z.array(idValue).nullable().optional(),
     league_id: idValue.optional(),
     owner_id: nullableIdValue.optional(),
     players: playerIdArray.nullable().optional(),
@@ -192,7 +221,7 @@ const sleeperLeagueUserSchema = z
   .object({
     avatar: nullableString,
     display_name: nullableString,
-    is_owner: z.boolean().optional(),
+    is_owner: z.boolean().nullable().optional(),
     metadata: z
       .object({
         team_name: nullableString,
@@ -226,12 +255,12 @@ const sleeperMatchupListSchema = z.array(sleeperMatchupSchema);
 const sleeperTransactionSchema = z
   .object({
     adds: z.record(z.string(), recordNumberSchema).nullable().optional(),
-    consenter_ids: z.array(idValue).optional(),
+    consenter_ids: z.array(idValue).nullable().optional(),
     created: numericValue.optional(),
     creator: nullableIdValue.optional(),
     drops: z.record(z.string(), recordNumberSchema).nullable().optional(),
     leg: numericValue.optional(),
-    roster_ids: z.array(idValue).optional(),
+    roster_ids: z.array(idValue).nullable().optional(),
     status: z.string().optional(),
     status_updated: numericValue.optional(),
     transaction_id: idValue,
@@ -241,6 +270,69 @@ const sleeperTransactionSchema = z
 
 const sleeperTransactionListSchema = z.array(sleeperTransactionSchema);
 
+const sleeperDraftSchema = z
+  .object({
+    draft_id: idValue,
+    league_id: idValue.optional(),
+    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+    season: numericValue.optional(),
+    settings: z
+      .object({
+        rounds: numericValue.optional(),
+        teams: numericValue.optional(),
+      })
+      .catchall(z.unknown())
+      .optional(),
+    sport: z.string().optional(),
+    status: z.string().optional(),
+    type: z.string().optional(),
+  })
+  .passthrough();
+
+const sleeperDraftListSchema = z.array(sleeperDraftSchema);
+
+const sleeperDraftPickSchema = z
+  .object({
+    draft_id: idValue,
+    draft_slot: numericValue.optional(),
+    is_keeper: nullableBooleanValue.optional(),
+    metadata: z
+      .object({
+        first_name: nullableString,
+        last_name: nullableString,
+        player_id: nullableIdValue.optional(),
+        position: nullableString,
+        status: nullableString,
+        team: nullableString,
+      })
+      .catchall(z.unknown())
+      .nullable()
+      .optional(),
+    pick_no: numericValue,
+    picked_by: nullableIdValue.optional(),
+    player_id: nullableIdValue.optional(),
+    roster_id: nullableNumericValue,
+    round: numericValue,
+  })
+  .passthrough();
+
+const sleeperDraftPickListSchema = z.array(sleeperDraftPickSchema);
+
+const sleeperBracketMatchSchema = z
+  .object({
+    l: nullableNumericValue.optional(),
+    m: numericValue.optional(),
+    p: nullableNumericValue.optional(),
+    r: numericValue.optional(),
+    w: nullableNumericValue.optional(),
+  })
+  .passthrough();
+
+const sleeperBracketSchema = z.array(sleeperBracketMatchSchema);
+
+type SleeperBracketMatch = z.infer<typeof sleeperBracketMatchSchema>;
+type SleeperDraft = z.infer<typeof sleeperDraftSchema>;
+type SleeperDraftPick = z.infer<typeof sleeperDraftPickSchema>;
 type SleeperLeague = z.infer<typeof sleeperLeagueSchema>;
 type SleeperLeagueUser = z.infer<typeof sleeperLeagueUserSchema>;
 type SleeperMatchup = z.infer<typeof sleeperMatchupSchema>;
@@ -351,6 +443,22 @@ function leagueRostersUrl(leagueId: string): string {
 
 function leagueUsersUrl(leagueId: string): string {
   return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/users`);
+}
+
+function leagueDraftsUrl(leagueId: string): string {
+  return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/drafts`);
+}
+
+function draftPicksUrl(draftId: string): string {
+  return apiUrl(`/v1/draft/${encodeURIComponent(draftId)}/picks`);
+}
+
+function leagueWinnersBracketUrl(leagueId: string): string {
+  return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/winners_bracket`);
+}
+
+function leagueLosersBracketUrl(leagueId: string): string {
+  return apiUrl(`/v1/league/${encodeURIComponent(leagueId)}/losers_bracket`);
 }
 
 function leagueMatchupsUrl(leagueId: string, week: number): string {
@@ -484,6 +592,30 @@ function booleanSetting(
   return undefined;
 }
 
+function booleanValue(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value === 1 ? true : value === 0 ? false : undefined;
+  }
+  if (typeof value === "string") {
+    switch (value.trim().toLowerCase()) {
+      case "1":
+      case "true":
+      case "yes":
+        return true;
+      case "0":
+      case "false":
+      case "no":
+        return false;
+      default:
+        return undefined;
+    }
+  }
+  return undefined;
+}
+
 function normalizeScoringSettings(
   league: SleeperLeague,
 ): Record<string, unknown> {
@@ -491,12 +623,47 @@ function normalizeScoringSettings(
     ? league.scoring_settings
     : {};
   const rosterPositions = league.roster_positions ?? [];
+  const scoringItems = Object.entries(scoringSettings)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([key, value]) => {
+      const points =
+        typeof value === "number" || typeof value === "string"
+          ? toNumber(value)
+          : undefined;
+      const statId = encodeSleeperScoringSetting(key);
+      return points === undefined || statId === undefined
+        ? []
+        : [{ points, statId, statKey: key }];
+    });
   return {
     ...scoringSettings,
     idp: rosterPositions.some((position) =>
       IDP_ROSTER_POSITIONS.has(position.toUpperCase()),
     ),
     rosterPositions,
+    scoringItems,
+  };
+}
+
+function normalizeRosterSettings(
+  league: SleeperLeague,
+): { lineupSlotCounts: Record<string, number>; source: string } | undefined {
+  const slotCounts = new Map<number, number>();
+  for (const slot of league.roster_positions ?? []) {
+    const slotId = encodeSleeperRosterSlot(slot);
+    if (slotId !== undefined) {
+      slotCounts.set(slotId, (slotCounts.get(slotId) ?? 0) + 1);
+    }
+  }
+  if (slotCounts.size === 0) return undefined;
+
+  return {
+    lineupSlotCounts: Object.fromEntries(
+      [...slotCounts.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([slotId, count]) => [String(slotId), count]),
+    ),
+    source: "sleeper.league.roster_positions",
   };
 }
 
@@ -565,7 +732,11 @@ function positiveInteger(
 function normalizePostseasonSettings(
   league: SleeperLeague,
 ): NormalizedPostseasonSettings | undefined {
+  const rawSettings = isPlainObject(league.settings) ? league.settings : {};
   const playoffStart = positiveInteger(league.settings?.playoff_week_start);
+  const playoffTeamCount = positiveInteger(
+    numberSetting(rawSettings, "playoff_teams"),
+  );
   const lastScoredLeg = positiveInteger(league.settings?.last_scored_leg);
   const isComplete = normalizeLeagueStatus(league.status) === "complete";
   const championshipScoringPeriod =
@@ -575,6 +746,7 @@ function normalizePostseasonSettings(
       ? lastScoredLeg
       : undefined;
   const settings: NormalizedPostseasonSettings = {
+    ...(playoffTeamCount ? { playoffTeamCount } : {}),
     ...(playoffStart
       ? {
           playoffStartScoringPeriod: playoffStart,
@@ -598,6 +770,7 @@ function normalizeLeague(
   const size = toInteger(league.total_rosters) ?? 0;
   const postseason = normalizePostseasonSettings(league);
   const keeperSettings = normalizeKeeperSettings(league);
+  const rosterSettings = normalizeRosterSettings(league);
 
   return {
     provider: SLEEPER_PROVIDER_ID,
@@ -607,6 +780,7 @@ function normalizeLeague(
     name: league.name?.trim() || `Sleeper League ${providerId}`,
     scoringType: normalizeScoringType(league),
     scoringSettings: normalizeScoringSettings(league),
+    ...(rosterSettings ? { rosterSettings } : {}),
     size,
     currentScoringPeriod: currentScoringPeriod(league, state),
     status: normalizeLeagueStatus(league.status),
@@ -743,7 +917,91 @@ function normalizeTeam(
 }
 
 function playerIds(values: readonly (string | number)[] | null | undefined) {
-  return compactUnique((values ?? []).map(toId));
+  return compactUnique((values ?? []).map(toId)).filter(
+    (playerId) => playerId !== "0",
+  );
+}
+
+function normalizedSleeperPlayer({
+  catalogPlayer,
+  playerId,
+  ref,
+}: {
+  catalogPlayer?: SleeperCatalogPlayer;
+  playerId: string;
+  ref: ProviderLeagueRef;
+}): NormalizedPlayer {
+  // Sleeper represents NFL team defenses with the team abbreviation itself as
+  // the durable player id (for example "ARI"). Preserve that real id verbatim,
+  // just as ESPN preserves its negative D/ST ids, and synthesize catalog depth
+  // only when the large player dump omits the team row.
+  const defenseTeam =
+    catalogPlayer === undefined && playerId !== "FA"
+      ? decodeSleeperProTeam(playerId)
+      : undefined;
+  const resolvedPlayer =
+    catalogPlayer ??
+    (defenseTeam
+      ? {
+          active: true,
+          fantasyPositions: ["DEF"],
+          fullName: `${defenseTeam} D/ST`,
+          playerId,
+          position: "DEF",
+          proTeam: defenseTeam,
+          status: "Active",
+        }
+      : undefined);
+  const rawPosition =
+    resolvedPlayer?.position ??
+    resolvedPlayer?.fantasyPositions[0] ??
+    "CATALOG_MISSING";
+  const rawProTeam = resolvedPlayer?.proTeam;
+  const positionId = encodeSleeperPosition(rawPosition);
+  const proTeamId = rawProTeam ? encodeSleeperProTeam(rawProTeam) : undefined;
+  const eligibleSlotCodes = resolvedPlayer?.fantasyPositions ?? [];
+  const eligibleSlots = eligibleSlotCodes
+    .map(encodeSleeperRosterSlot)
+    .filter((slotId): slotId is number => slotId !== undefined);
+  const position = decodeSleeperPosition(rawPosition) ?? "unknown";
+  const proTeam = rawProTeam
+    ? (decodeSleeperProTeam(rawProTeam) ?? "unknown")
+    : undefined;
+  const isTeamDefense = position === "DEF";
+  const catalogSource = catalogPlayer
+    ? "sleeper.players.nfl"
+    : defenseTeam
+      ? "sleeper.team-defense-id"
+      : "sleeper.players.nfl.missing";
+
+  return {
+    provider: SLEEPER_PROVIDER_ID,
+    providerId: playerId,
+    leagueProviderId: ref.providerId,
+    fullName: resolvedPlayer?.fullName ?? `Sleeper Player ${playerId}`,
+    position,
+    ...(proTeam ? { proTeam } : {}),
+    ...(resolvedPlayer?.status
+      ? { status: resolvedPlayer.status }
+      : resolvedPlayer?.active === undefined
+        ? {}
+        : { status: resolvedPlayer.active ? "Active" : "Inactive" }),
+    metadata: {
+      catalogMissing: resolvedPlayer === undefined,
+      catalogSource,
+      ...(positionId === undefined ? {} : { defaultPositionId: positionId }),
+      eligibleSlotLabels: eligibleSlotCodes.map(
+        (slot) => decodeSleeperRosterSlot(slot) ?? "unknown",
+      ),
+      eligibleSlots,
+      ...(isTeamDefense
+        ? { defenseProviderIdConvention: "nfl_team_code", isTeamDefense: true }
+        : {}),
+      ...(proTeamId === undefined ? {} : { proTeamId }),
+      rawPosition,
+      ...(rawProTeam ? { rawProTeam } : {}),
+    },
+  };
 }
 
 function matchupPoints(matchup: SleeperMatchup): number {
@@ -891,18 +1149,28 @@ function normalizeMatchupsForWeek({
 function normalizeRosterEntries({
   league,
   matchup,
+  playerCatalog,
+  ref,
   roster,
 }: {
   league: SleeperLeague;
   matchup?: SleeperMatchup;
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
+  ref: ProviderLeagueRef;
   roster: SleeperRoster;
 }): NormalizedRosterEntry[] {
-  const players = playerIds(roster.players);
-  const starters = playerIds(roster.starters);
+  const players = compactUnique([
+    ...playerIds(matchup?.players ?? roster.players),
+    ...Object.keys(matchup?.players_points ?? {}),
+  ]).filter((playerId) => playerId !== "0");
+  const starterValues = matchup?.starters ?? roster.starters ?? [];
   const reserve = new Set(playerIds(roster.reserve));
   const taxi = new Set(playerIds(roster.taxi));
-  const starterIndexByPlayer = new Map(
-    starters.map((playerId, index) => [playerId, index]),
+  const starterIndexByPlayer = new Map<string, number>(
+    starterValues.flatMap((value, index) => {
+      const playerId = toId(value);
+      return playerId && playerId !== "0" ? ([[playerId, index]] as const) : [];
+    }),
   );
   const rosterPositions = league.roster_positions ?? [];
 
@@ -915,7 +1183,8 @@ function normalizeRosterEntries({
           : taxi.has(playerId)
             ? "TAXI"
             : "BN"
-        : (rosterPositions[starterIndex] ?? "starter");
+        : (rosterPositions[starterIndex] ?? "UNKNOWN_STARTER");
+    const normalizedSlot = decodeSleeperRosterSlot(slot) ?? "unknown";
     const status =
       starterIndex === undefined
         ? reserve.has(playerId)
@@ -925,15 +1194,32 @@ function normalizeRosterEntries({
             : "bench"
         : "active";
     const points = toNumber(matchup?.players_points?.[playerId]);
+    const lineupSlotId = encodeSleeperRosterSlot(slot);
 
     return {
+      ...(points === undefined ? {} : { actualPoints: points }),
+      player: normalizedSleeperPlayer({
+        catalogPlayer: playerCatalog.get(playerId),
+        playerId,
+        ref,
+      }),
       playerRef: {
         provider: SLEEPER_PROVIDER_ID,
         providerId: playerId,
       },
-      slot,
+      slot: normalizedSlot,
+      started: starterIndex !== undefined,
       status,
       ...(points === undefined ? {} : { points }),
+      ...(lineupSlotId === undefined
+        ? {}
+        : {
+            metadata: {
+              lineupSlotId,
+              lineupSlotLabel: normalizedSlot,
+              rawLineupSlot: slot,
+            },
+          }),
     };
   });
 }
@@ -941,12 +1227,14 @@ function normalizeRosterEntries({
 function normalizeRoster({
   league,
   matchup,
+  playerCatalog,
   ref,
   roster,
   scoringPeriod,
 }: {
   league: SleeperLeague;
   matchup?: SleeperMatchup;
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
   ref: ProviderLeagueRef;
   roster: SleeperRoster;
   scoringPeriod: number;
@@ -960,39 +1248,266 @@ function normalizeRoster({
     },
     season: ref.season,
     scoringPeriod,
-    entries: normalizeRosterEntries({ league, matchup, roster }),
+    entries: normalizeRosterEntries({
+      league,
+      matchup,
+      playerCatalog,
+      ref,
+      roster,
+    }),
   };
+}
+
+function normalizedPlayersFromRosters(
+  rosters: readonly NormalizedRoster[],
+): NormalizedPlayer[] {
+  const players = new Map<string, NormalizedPlayer>();
+  for (const roster of rosters) {
+    for (const entry of roster.entries) {
+      if (entry.player) {
+        players.set(entry.player.providerId, entry.player);
+      }
+    }
+  }
+  return [...players.values()].sort((left, right) =>
+    left.providerId.localeCompare(right.providerId, undefined, {
+      numeric: true,
+    }),
+  );
+}
+
+function catalogPlayerFromDraftPick(
+  pick: SleeperDraftPick,
+  playerId: string,
+): SleeperCatalogPlayer | undefined {
+  const rawPosition = pick.metadata?.position?.trim();
+  const fullName = compactUnique([
+    pick.metadata?.first_name,
+    pick.metadata?.last_name,
+  ]).join(" ");
+  if (!rawPosition || !fullName) {
+    return undefined;
+  }
+
+  const status = pick.metadata?.status?.trim();
+  const proTeam = pick.metadata?.team?.trim();
+  return {
+    fantasyPositions: [rawPosition],
+    fullName,
+    playerId,
+    position: rawPosition,
+    ...(proTeam ? { proTeam } : {}),
+    ...(status ? { active: status.toLowerCase() === "active", status } : {}),
+  };
+}
+
+function normalizeDraftPick({
+  draft,
+  pick,
+  playerCatalog,
+  ref,
+}: {
+  draft: SleeperDraft;
+  pick: SleeperDraftPick;
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
+  ref: ProviderLeagueRef;
+}): NormalizedDraftPick | undefined {
+  const draftId = toId(draft.draft_id);
+  const pickOverall = positiveInteger(pick.pick_no);
+  const rosterId = toId(pick.roster_id);
+  const round = positiveInteger(pick.round);
+  if (!draftId || !pickOverall || !rosterId || !round) {
+    return undefined;
+  }
+
+  const teamCount = positiveInteger(draft.settings?.teams);
+  const draftSlot = positiveInteger(pick.draft_slot);
+  const pickInRound = teamCount
+    ? ((pickOverall - 1) % teamCount) + 1
+    : draftSlot;
+  const playerId =
+    toId(pick.player_id) ?? toId(pick.metadata?.player_id ?? undefined);
+  const catalogPlayer = playerId
+    ? (playerCatalog.get(playerId) ??
+      catalogPlayerFromDraftPick(pick, playerId))
+    : undefined;
+  const isKeeper = booleanValue(pick.is_keeper);
+  const player =
+    playerId && catalogPlayer
+      ? normalizedSleeperPlayer({ catalogPlayer, playerId, ref })
+      : undefined;
+
+  return {
+    provider: SLEEPER_PROVIDER_ID,
+    providerId: `${draftId}:${pickOverall}`,
+    leagueProviderId: ref.providerId,
+    season: ref.season,
+    round,
+    pickOverall,
+    ...(pickInRound ? { pickInRound } : {}),
+    teamRef: {
+      provider: SLEEPER_PROVIDER_ID,
+      providerId: rosterId,
+      season: ref.season,
+    },
+    ...(playerId
+      ? {
+          playerRef: {
+            provider: SLEEPER_PROVIDER_ID,
+            providerId: playerId,
+          },
+        }
+      : {}),
+    ...(player ? { player } : {}),
+    ...(isKeeper === undefined ? {} : { isKeeper }),
+    metadata: {
+      draftId,
+      ...(draftSlot ? { draftSlot } : {}),
+      ...(draft.status ? { draftStatus: draft.status } : {}),
+      ...(draft.type ? { draftType: draft.type } : {}),
+      ...(toId(pick.picked_by) ? { pickedBy: toId(pick.picked_by) } : {}),
+    },
+  };
+}
+
+function normalizeDraftPicks({
+  draftsWithPicks,
+  playerCatalog,
+  ref,
+}: {
+  draftsWithPicks: readonly {
+    draft: SleeperDraft;
+    picks: readonly SleeperDraftPick[];
+  }[];
+  playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
+  ref: ProviderLeagueRef;
+}): NormalizedDraftPick[] {
+  return draftsWithPicks
+    .flatMap(({ draft, picks }) =>
+      picks.flatMap((pick) => {
+        const normalized = normalizeDraftPick({
+          draft,
+          pick,
+          playerCatalog,
+          ref,
+        });
+        return normalized ? [normalized] : [];
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.providerId.localeCompare(right.providerId, undefined, {
+          numeric: true,
+        }) || (left.pickOverall ?? 0) - (right.pickOverall ?? 0),
+    );
+}
+
+function sortedTeamsByRegularSeason(
+  teams: readonly NormalizedTeam[],
+): NormalizedTeam[] {
+  return [...teams].sort((left, right) => {
+    return (
+      right.record.wins - left.record.wins ||
+      right.record.ties - left.record.ties ||
+      right.record.pointsFor - left.record.pointsFor ||
+      left.name.localeCompare(right.name) ||
+      left.providerId.localeCompare(right.providerId)
+    );
+  });
+}
+
+function bracketPlacements(
+  bracket: readonly SleeperBracketMatch[],
+  rankOffset: number,
+): { rank: number; teamProviderId: string }[] {
+  return bracket.flatMap((matchup) => {
+    const placement = positiveInteger(matchup.p);
+    const winner = toId(matchup.w);
+    const loser = toId(matchup.l);
+    if (!placement || !winner || !loser) {
+      return [];
+    }
+    return [
+      { rank: rankOffset + placement, teamProviderId: winner },
+      { rank: rankOffset + placement + 1, teamProviderId: loser },
+    ];
+  });
 }
 
 function finalStandingsFromTeams(
   teams: readonly NormalizedTeam[],
+  options: {
+    losersBracket?: readonly SleeperBracketMatch[];
+    playoffTeamCount?: number;
+    winnersBracket?: readonly SleeperBracketMatch[];
+  } = {},
 ): NormalizedFinalStanding[] {
-  return [...teams]
-    .sort((left, right) => {
-      return (
-        right.record.wins - left.record.wins ||
-        right.record.ties - left.record.ties ||
-        right.record.pointsFor - left.record.pointsFor ||
-        left.name.localeCompare(right.name) ||
-        left.providerId.localeCompare(right.providerId)
-      );
-    })
-    .map((team, index) => ({
-      leagueProviderId: team.leagueProviderId,
-      teamRef: {
-        provider: team.provider,
-        providerId: team.providerId,
-        season: team.season,
-      },
-      rank: index + 1,
-      rankConfidence: "low",
-      rankSource: "regular_season_fallback",
-      wins: team.record.wins,
-      losses: team.record.losses,
-      ties: team.record.ties,
-      pointsFor: team.record.pointsFor,
-      pointsAgainst: team.record.pointsAgainst,
-    }));
+  const regularSeasonOrder = sortedTeamsByRegularSeason(teams);
+  const winnersPlacements = bracketPlacements(options.winnersBracket ?? [], 0);
+  const inferredPlayoffTeamCount = winnersPlacements.reduce(
+    (maximum, placement) => Math.max(maximum, placement.rank),
+    0,
+  );
+  const playoffTeamCount = options.playoffTeamCount ?? inferredPlayoffTeamCount;
+  const reportedPlacements = [
+    ...winnersPlacements,
+    ...bracketPlacements(options.losersBracket ?? [], playoffTeamCount),
+  ].filter(
+    ({ rank, teamProviderId }) =>
+      rank <= teams.length &&
+      teams.some((team) => team.providerId === teamProviderId),
+  );
+  const reportedRankByTeam = new Map<string, number>();
+  const usedRanks = new Set<number>();
+  for (const { rank, teamProviderId } of reportedPlacements) {
+    if (reportedRankByTeam.has(teamProviderId) || usedRanks.has(rank)) {
+      continue;
+    }
+    reportedRankByTeam.set(teamProviderId, rank);
+    usedRanks.add(rank);
+  }
+  const fallbackRanks = Array.from(
+    { length: teams.length },
+    (_, index) => index + 1,
+  ).filter((rank) => !usedRanks.has(rank));
+  const rankByTeam = new Map(reportedRankByTeam);
+  for (const team of regularSeasonOrder) {
+    if (!rankByTeam.has(team.providerId)) {
+      const rank = fallbackRanks.shift();
+      if (rank !== undefined) {
+        rankByTeam.set(team.providerId, rank);
+      }
+    }
+  }
+
+  return regularSeasonOrder
+    .map(
+      (team): NormalizedFinalStanding => ({
+        leagueProviderId: team.leagueProviderId,
+        teamRef: {
+          provider: team.provider,
+          providerId: team.providerId,
+          season: team.season,
+        },
+        rank: rankByTeam.get(team.providerId) ?? teams.length,
+        rankConfidence: reportedRankByTeam.has(team.providerId)
+          ? "high"
+          : "low",
+        rankSource: reportedRankByTeam.has(team.providerId)
+          ? "provider_calculated_final"
+          : "regular_season_fallback",
+        wins: team.record.wins,
+        losses: team.record.losses,
+        ties: team.record.ties,
+        pointsFor: team.record.pointsFor,
+        pointsAgainst: team.record.pointsAgainst,
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        left.teamRef.providerId.localeCompare(right.teamRef.providerId),
+    );
 }
 
 function normalizeTransactionType(
@@ -1066,6 +1581,8 @@ function normalizeTransaction(
   ref: ProviderLeagueRef,
 ): NormalizedTransaction {
   const providerId = toId(transaction.transaction_id) ?? "unknown";
+  const rawType = transaction.type?.trim();
+  const rawTypeId = rawType ? encodeSleeperTransactionType(rawType) : undefined;
   return {
     provider: SLEEPER_PROVIDER_ID,
     providerId,
@@ -1077,6 +1594,8 @@ function normalizeTransaction(
     timestamp: transactionTimestamp(transaction),
     details: {
       creator: toId(transaction.creator) ?? null,
+      ...(rawType ? { rawTransactionType: rawType } : {}),
+      ...(rawTypeId === undefined ? {} : { rawType: rawTypeId }),
       status: transaction.status ?? "unknown",
       week: toInteger(transaction.leg) ?? null,
     },
@@ -1096,6 +1615,7 @@ function normalizeTransactions(
 export class SleeperClient {
   private readonly fetchImpl: SleeperFetch;
   private readonly maxAttempts: number;
+  private readonly playerCatalog: SleeperPlayerCatalog;
   private readonly retryDelayMs: number;
   private readonly timeoutMs: number;
 
@@ -1107,6 +1627,15 @@ export class SleeperClient {
       options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS,
     );
     this.timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    this.playerCatalog =
+      options.playerCatalog ??
+      createSleeperPlayerCatalog({
+        ...(options.playerCatalogCacheFilePath
+          ? { cacheFilePath: options.playerCatalogCacheFilePath }
+          : {}),
+        fetch: this.fetchImpl,
+        timeoutMs: this.timeoutMs,
+      });
   }
 
   async authenticate(
@@ -1270,6 +1799,10 @@ export class SleeperClient {
     if (!rosters.ok) {
       return rosters;
     }
+    const playerCatalog = await this.playerCatalog.load();
+    if (!playerCatalog.ok) {
+      return playerCatalog;
+    }
 
     let state: SleeperState | undefined;
     if (scoringPeriod === undefined) {
@@ -1303,12 +1836,24 @@ export class SleeperClient {
         return normalizeRoster({
           league: league.value,
           matchup: matchupsByRosterId.get(providerId),
+          playerCatalog: playerCatalog.value,
           ref,
           roster,
           scoringPeriod: period,
         });
       }),
     );
+  }
+
+  async getDraftPicks(
+    _session: SleeperSession,
+    ref: ProviderLeagueRef,
+  ): Promise<ProviderResult<NormalizedDraftPick[]>> {
+    const playerCatalog = await this.playerCatalog.load();
+    if (!playerCatalog.ok) {
+      return playerCatalog;
+    }
+    return this.loadDraftPicks(ref, playerCatalog.value);
   }
 
   async getMatchups(
@@ -1458,9 +2003,10 @@ export class SleeperClient {
     league: SleeperLeague,
   ): Promise<ProviderResult<NormalizedSeasonBundle>> {
     const ref = sleeperLeagueRef(league);
-    const [users, rosters] = await Promise.all([
+    const [users, rosters, playerCatalog] = await Promise.all([
       this.fetchLeagueUsers(ref.providerId),
       this.fetchRosters(ref.providerId),
+      this.playerCatalog.load(),
     ]);
     if (!users.ok) {
       return users;
@@ -1468,17 +2014,22 @@ export class SleeperClient {
     if (!rosters.ok) {
       return rosters;
     }
+    if (!playerCatalog.ok) {
+      return playerCatalog;
+    }
 
     const teams = rosters.value.map((roster) =>
       normalizeTeam(roster, ref, userById(users.value)),
     );
     const members = users.value.map((user) => normalizeMember(user, ref));
-    const matchups = await this.fetchAllNormalizedMatchups({
+    const weeklyDepth = await this.fetchAllNormalizedMatchupsAndRosters({
       league,
+      playerCatalog: playerCatalog.value,
       ref,
+      rosterRows: rosters.value,
     });
-    if (!matchups.ok) {
-      return matchups;
+    if (!weeklyDepth.ok) {
+      return weeklyDepth;
     }
     const transactions = await this.fetchAllNormalizedTransactions({
       league,
@@ -1487,31 +2038,116 @@ export class SleeperClient {
     if (!transactions.ok) {
       return transactions;
     }
+    const draftPicks = await this.loadDraftPicks(ref, playerCatalog.value);
+    if (!draftPicks.ok) {
+      return draftPicks;
+    }
+    const finalStandings = await this.fetchFinalStandings(league, teams);
+    if (!finalStandings.ok) {
+      return finalStandings;
+    }
 
     return ok({
       league: normalizeLeague(league),
       teams,
       members,
-      matchups: matchups.value,
-      finalStandings: finalStandingsFromTeams(teams),
+      matchups: weeklyDepth.value.matchups,
+      finalStandings: finalStandings.value,
+      players: normalizedPlayersFromRosters(weeklyDepth.value.rosters),
+      rosters: weeklyDepth.value.rosters,
+      draftPicks: draftPicks.value,
       transactions: transactions.value,
     });
   }
 
-  private async fetchAllNormalizedMatchups({
+  private async loadDraftPicks(
+    ref: ProviderLeagueRef,
+    playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>,
+  ): Promise<ProviderResult<NormalizedDraftPick[]>> {
+    const drafts = await this.fetchDrafts(ref.providerId);
+    if (!drafts.ok) {
+      return drafts;
+    }
+
+    const draftsWithPicks: {
+      draft: SleeperDraft;
+      picks: SleeperDraftPick[];
+    }[] = [];
+    for (const draft of drafts.value) {
+      const draftId = toId(draft.draft_id);
+      if (!draftId) {
+        continue;
+      }
+      const picks = await this.fetchDraftPicks(draftId);
+      if (!picks.ok) {
+        return picks;
+      }
+      draftsWithPicks.push({ draft, picks: picks.value });
+    }
+
+    return ok(normalizeDraftPicks({ draftsWithPicks, playerCatalog, ref }));
+  }
+
+  private async fetchFinalStandings(
+    league: SleeperLeague,
+    teams: readonly NormalizedTeam[],
+  ): Promise<ProviderResult<NormalizedFinalStanding[]>> {
+    const leagueId = toId(league.league_id);
+    if (!leagueId) {
+      return ok(finalStandingsFromTeams(teams));
+    }
+
+    const winnersBracket = await this.fetchBracket(
+      leagueWinnersBracketUrl(leagueId),
+      "league-winners-bracket",
+    );
+    if (!winnersBracket.ok) {
+      return winnersBracket;
+    }
+    const losersBracket = await this.fetchBracket(
+      leagueLosersBracketUrl(leagueId),
+      "league-losers-bracket",
+    );
+    if (!losersBracket.ok) {
+      return losersBracket;
+    }
+    const settings = isPlainObject(league.settings) ? league.settings : {};
+
+    return ok(
+      finalStandingsFromTeams(teams, {
+        losersBracket: losersBracket.value,
+        playoffTeamCount: positiveInteger(
+          numberSetting(settings, "playoff_teams"),
+        ),
+        winnersBracket: winnersBracket.value,
+      }),
+    );
+  }
+
+  private async fetchAllNormalizedMatchupsAndRosters({
     league,
+    playerCatalog,
     ref,
+    rosterRows,
   }: {
     league: SleeperLeague;
+    playerCatalog: ReadonlyMap<string, SleeperCatalogPlayer>;
     ref: ProviderLeagueRef;
-  }): Promise<ProviderResult<NormalizedMatchup[]>> {
-    const normalized: NormalizedMatchup[] = [];
+    rosterRows: readonly SleeperRoster[];
+  }): Promise<
+    ProviderResult<{
+      matchups: NormalizedMatchup[];
+      rosters: NormalizedRoster[];
+    }>
+  > {
+    const normalizedMatchups: NormalizedMatchup[] = [];
+    const normalizedRosters: NormalizedRoster[] = [];
     for (let week = 1; week <= maxWeekForLeague(league); week += 1) {
       const matchups = await this.fetchMatchups(ref.providerId, week);
       if (!matchups.ok) {
         return matchups;
       }
-      normalized.push(
+      normalizedMatchups.push(
         ...normalizeMatchupsForWeek({
           league,
           matchups: matchups.value,
@@ -1519,9 +2155,28 @@ export class SleeperClient {
           scoringPeriod: week,
         }),
       );
+      const matchupByRosterId = new Map(
+        matchups.value.map((matchup) => [
+          String(toInteger(matchup.roster_id) ?? matchup.roster_id),
+          matchup,
+        ]),
+      );
+      normalizedRosters.push(
+        ...rosterRows.map((roster) => {
+          const providerId = rosterProviderId(roster);
+          return normalizeRoster({
+            league,
+            matchup: matchupByRosterId.get(providerId),
+            playerCatalog,
+            ref,
+            roster,
+            scoringPeriod: week,
+          });
+        }),
+      );
     }
 
-    return ok(normalized);
+    return ok({ matchups: normalizedMatchups, rosters: normalizedRosters });
   }
 
   private async fetchAllNormalizedTransactions({
@@ -1595,6 +2250,37 @@ export class SleeperClient {
       sleeperLeagueUserListSchema,
       "league-users",
     );
+  }
+
+  private async fetchDrafts(
+    leagueId: string,
+  ): Promise<ProviderResult<SleeperDraft[]>> {
+    return this.fetchJson(
+      leagueDraftsUrl(leagueId),
+      sleeperDraftListSchema,
+      "league-drafts",
+    );
+  }
+
+  private async fetchDraftPicks(
+    draftId: string,
+  ): Promise<ProviderResult<SleeperDraftPick[]>> {
+    return this.fetchJson(
+      draftPicksUrl(draftId),
+      sleeperDraftPickListSchema,
+      "draft-picks",
+    );
+  }
+
+  private async fetchBracket(
+    url: string,
+    resource: string,
+  ): Promise<ProviderResult<SleeperBracketMatch[]>> {
+    const bracket = await this.fetchJson(url, sleeperBracketSchema, resource);
+    if (!bracket.ok && bracket.error instanceof ProviderNotFoundError) {
+      return ok([]);
+    }
+    return bracket;
   }
 
   private async fetchMatchups(
@@ -1698,10 +2384,7 @@ export function createSleeperClient(
   return new SleeperClient(options);
 }
 
-export function createSleeperProvider(
-  options?: SleeperClientOptions,
-): SleeperProvider {
-  const client = createSleeperClient(options);
+function providerForClient(client: SleeperClient): SleeperProvider {
   return {
     id: SLEEPER_PROVIDER_ID,
     name: "Sleeper Fantasy Football",
@@ -1710,6 +2393,7 @@ export function createSleeperProvider(
     discoverLeagues: (session) => client.discoverLeagues(session),
     getHistory: (session, ref, options) =>
       client.getHistory(session, ref, options),
+    getDraftPicks: (session, ref) => client.getDraftPicks(session, ref),
     getLeague: (session, ref) => client.getLeague(session, ref),
     getMatchups: (session, ref, scoringPeriod) =>
       client.getMatchups(session, ref, scoringPeriod),
@@ -1719,5 +2403,81 @@ export function createSleeperProvider(
     getTeams: (session, ref) => client.getTeams(session, ref),
     getTransactions: (session, ref, scoringPeriod) =>
       client.getTransactions(session, ref, scoringPeriod),
+  };
+}
+
+export function createSleeperProvider(
+  options?: SleeperClientOptions,
+): SleeperProvider {
+  const networkProvider = providerForClient(createSleeperClient(options));
+  if (options !== undefined) {
+    return networkProvider;
+  }
+
+  let fixtureProviderPromise: Promise<SleeperProvider> | undefined;
+  let fixtureAllowedPromise: Promise<boolean> | undefined;
+  const fixtureAllowed = (): Promise<boolean> => {
+    fixtureAllowedPromise ??= import("@/core/env").then(
+      ({ getEnv }) => getEnv().nodeEnv !== "production",
+    );
+    return fixtureAllowedPromise;
+  };
+  const fixtureProvider = (): Promise<SleeperProvider> => {
+    fixtureProviderPromise ??= import("./fixture-sleeper").then(
+      ({ createFixtureSleeperProvider }) => createFixtureSleeperProvider(),
+    );
+    return fixtureProviderPromise;
+  };
+  const providerForSession = async (
+    session: SleeperSession,
+  ): Promise<SleeperProvider> =>
+    isFixtureSleeperSession(session) && (await fixtureAllowed())
+      ? fixtureProvider()
+      : networkProvider;
+
+  return {
+    id: networkProvider.id,
+    name: networkProvider.name,
+    capabilities: networkProvider.capabilities,
+    authenticate: async (credentials) =>
+      isFixtureSleeperCredential(credentials.usernameOrUserId) &&
+      (await fixtureAllowed())
+        ? (await fixtureProvider()).authenticate(credentials)
+        : networkProvider.authenticate(credentials),
+    discoverLeagues: async (session) =>
+      (await providerForSession(session)).discoverLeagues(session),
+    getHistory: async (session, ref, historyOptions) =>
+      (await providerForSession(session)).getHistory(
+        session,
+        ref,
+        historyOptions,
+      ),
+    getDraftPicks: async (session, ref) =>
+      (await providerForSession(session)).getDraftPicks?.(session, ref) ??
+      ok([]),
+    getLeague: async (session, ref) =>
+      (await providerForSession(session)).getLeague(session, ref),
+    getMatchups: async (session, ref, scoringPeriod) =>
+      (await providerForSession(session)).getMatchups(
+        session,
+        ref,
+        scoringPeriod,
+      ),
+    getMembers: async (session, ref) =>
+      (await providerForSession(session)).getMembers(session, ref),
+    getRosters: async (session, ref, scoringPeriod) =>
+      (await providerForSession(session)).getRosters(
+        session,
+        ref,
+        scoringPeriod,
+      ),
+    getTeams: async (session, ref) =>
+      (await providerForSession(session)).getTeams(session, ref),
+    getTransactions: async (session, ref, scoringPeriod) =>
+      (await providerForSession(session)).getTransactions(
+        session,
+        ref,
+        scoringPeriod,
+      ),
   };
 }

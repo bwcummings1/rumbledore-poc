@@ -1,8 +1,16 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-13 — **`specs/47` wave 1 + review fixes MERGED (47A/47B/47C/F47/P);
-Browserbase adapter wired, owner live smoke pending.**
+Keep it current. Last updated: 2026-07-13 — **Full 2026-07-13 backlog MERGED: `specs/47` wave 1 (47A/47B/47C) +
+F47 review fixes + P polish + Browserbase adapter (BB) + Sleeper parity (48S). Owner live smoke pending.**
+**48S Sleeper parity (merged):** Sleeper now has provenance-backed decoding dictionaries, cached named-player
+resolution, weekly roster/player points, draft picks, bracket-derived final standings, history-chain depth, a reusable
+fixture provider, six onboarding-service cases, fixture onboarding e2e, and Data/Record Book parity without
+ESPN-specific assumptions. Two public league shapes imported through the product history path in isolated throwaway
+databases with 14/14 PASS integrity checks each, named and decoded players, fully linked roster/draft rows,
+high-confidence final standings, and zero unknown provider codes. Measured `matchups=partial` capability now qualifies
+eliminated-team postseason omissions as skipped schedule detail without weakening regular-season or full-capability
+expectations. Evidence: `.orchestration/import-summary.md` → `48S sleeper verification`.
 **F47 review remediation (merged):** stale or exhausted shadow imports recover instead of remaining permanently in
 flight; capability downgrades fail loud; payload-drift alerts persist until steward acknowledgement; concurrent import
 claims, enqueue rollback, quarantine/promotion races, corpus privacy, and legacy-era property coverage are hardened.
@@ -230,8 +238,8 @@ the live, up-to-date branch.**
 - Quality gates are **ON** from day one (typecheck, lint, test, build, `ubs`, secret scan). Never disable them.
 
 ## 1. What Rumbledore is (product vision)
-A **sandboxed, per-league fantasy-football companion**. Connect your existing ESPN league (Sleeper/Yahoo adapters exist
-fixture-backed; production-real provider breadth is deferred), ingest current + ~10 yrs history, and per league get:
+A **sandboxed, per-league fantasy-football companion**. Connect your existing ESPN or public Sleeper league (Yahoo
+remains fixture-backed pending its parity pass), ingest current + ~10 yrs history, and per league get:
 - **Per-league home base** — an ESPN-fantasy-homepage-style front page; some content shared across leagues, some league-specific; as real-time as feasible.
 - **Two-tier news + AI blogger** — (a) a **central** NFL/fantasy news hub open to all leagues; (b) a **league-tailored** feed; (c) a per-league **AI blogger** with personas (Commissioner, Analyst, Narrator, Trash-Talker, Betting-Advisor) blending league storylines (rivalries, managers, inside jokes from history) with real NFL news. Web-grounded.
 - **Paper betting** — DraftKings/FanDuel-style markets, real odds, fake money. **Rolling-minimum weekly bankroll**: floor e.g. $10k; lose all → reset to floor next week; finish above floor → carry balance forward.
@@ -291,10 +299,10 @@ Alternatives on file: Railway/Render PaaS monolith (if serverless workers bite);
 - **AI:** treat all web/RSS as untrusted (prompt-injection); enforce league isolation in SQL (`WHERE league_id`) + RLS, never trust the model; near-dup check generated posts (cosine > ~0.92).
 
 ## 7. Current state & next steps
-All planned rebuild product scope (P0-P5), AUSPEX overhaul, Increment 1, data foundation T1-T16, real ESPN 95050
-dev-DB population, and T18 editorial/distribution work are on `main`; T19 adds the final agent-buildable backlog on
-`ws/t19-records-substance` for orchestrator review/merge. Gates remain mandatory backpressure for code work. See §8 for
-the build log and `docs/HISTORY.md` for the trajectory + independent review.
+All planned rebuild product scope (P0-P5), AUSPEX overhaul, Increment 1, data foundation T1-T19, the `specs/47`
+ingestion-bulletproofing wave, and real ESPN 95050 verification are on `main`. Track 48S completes Sleeper substrate
+parity on `ws/48-sleeper-parity` for orchestrator review/merge. Gates remain mandatory backpressure for code work. See
+§8 for the build log and `docs/HISTORY.md` for the trajectory + independent review.
 - **Data Foundation T1 delivered (2026-06-22):** `league_season_settings` now captures `league_size`,
   matchup/regular/playoff/championship schedule fields, `playoff_matchup_period_length`, playoff teams, scoring type
   + full scoring JSON, lineup slot counts, acquisition type/budget + full acquisition JSON, and keeper fields. ESPN
@@ -407,22 +415,31 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   commissioner rollup; quick wins landed for Data Book season reads, rate limits, security headers, CI e2e, dev-DB
   backups, arena timeouts, and Inngest env validation; `specs/42` H1-12..H1-17 plus T18 editorial/webhook/digest/OG
   adversarial-review findings are fixed.
+- **Track 48S delivered (2026-07-13):** Sleeper now has registered decoding closure, named/decoded player and weekly
+  roster depth, draft picks, bracket-derived final standings, changing-format history, fixture-provider onboarding and
+  pushed-canon Record Book coverage. Two public league shapes imported through isolated throwaway databases with
+  14/14 PASS integrity checks each; measured partial postseason matchup omissions are skipped detail without weakening
+  regular-season or full-capability schedule checks. Evidence is in `.orchestration/import-summary.md`.
 - **Real & verified:** per-league RLS isolation (binding non-superuser canary), Better Auth, ESPN ingestion against provider
-  id `95050` / **"NHS Alumni Annual"**, stats/records/identity, AI content pipeline behind mocks, betting engine +
-  rolling-min bankroll + central arena, realtime + push. Sleeper/Yahoo adapters exist with fixture-backed coverage;
-  production-real provider breadth is deferred.
+  id `95050` / **"NHS Alumni Annual"**, public Sleeper ingestion across history-chain and current-only league shapes,
+  stats/records/identity, AI content pipeline behind mocks, betting engine + rolling-min bankroll + central arena,
+  realtime + push. Yahoo remains fixture-backed pending its parity pass.
 - **Mocked by default (drop-in activation later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase.
   The guarded Browserbase cookie-capture adapter is wired and fixture-proven while ESPN onboarding remains
   fixture-backed by default; its one-session live smoke is pending the owner.
 - **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
-- **Deferred/follow-on:** draft/transactions UI; Sleeper/Yahoo provider dictionaries and unknown-code invariants; real
+- **Deferred/follow-on:** draft/transactions UI; Yahoo provider dictionary and unknown-code parity; real
   substrate-B source wiring; production-real paid-provider activation/smokes plus real webhook/email delivery domains; final
   AI voice/persona tuning with the owner; Stripe/beta/legal/observability launch hardening; minor owner-set-aside UI
   tweaks; replace the `import.requested` non-shadow `legacy` idempotency bucket before multiple rollover/backfill
   producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track 48S completed `specs/48` on `ws/48-sleeper-parity`: registered Sleeper decoding closure,
+  cached player identity and weekly scoring depth, draft picks, bracket-derived final standings, history/fixture/e2e
+  parity, and capability-honest schedule coverage. Two isolated public-league imports each passed all 14 integrity
+  checks with zero unknown provider codes; no shared dev data, secret, paid API, or mock flag was touched.
 - 2026-07-13: Track BB wired the guarded Browserbase REST/CDP adapter behind the existing ESPN hosted-browser contract,
   including real-config validation, a session-count spend cap, bounded capture/release, typed failures, fixture-only
   encrypted-persistence proof, and secret/cookie/session-id redaction coverage. Mock mode remains the default unchanged

@@ -4,7 +4,8 @@
     "transaction_id": "tx-add-1",
     "status_updated": 1800000000000,
     "status": "complete",
-    "roster_ids": [1],
+    "roster_ids": null,
+    "consenter_ids": null,
     "leg": 1,
     "drops": {
       "BN0": 1
@@ -21,6 +22,7 @@
     "status_updated": 1800000100000,
     "status": "complete",
     "roster_ids": [1, 2],
+    "consenter_ids": null,
     "leg": 1,
     "drops": null,
     "adds": null,

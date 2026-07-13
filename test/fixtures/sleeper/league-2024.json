@@ -1,0 +1,28 @@
+{
+  "total_rosters": 4,
+  "status": "complete",
+  "sport": "nfl",
+  "settings": {
+    "last_scored_leg": 2,
+    "playoff_teams": 2,
+    "playoff_week_start": 15,
+    "start_week": 1
+  },
+  "season": "2024",
+  "scoring_settings": {
+    "rec": 0
+  },
+  "roster_positions": [
+    "SUPER_FLEX",
+    "WRRB_FLEX",
+    "REC_FLEX",
+    "BN",
+    "BN",
+    "TAXI",
+    "IR"
+  ],
+  "previous_league_id": null,
+  "name": "Sleeper Fixture League 2024",
+  "league_id": "sleeper-2024",
+  "avatar": "avatar-league-older"
+}

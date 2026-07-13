@@ -4,12 +4,16 @@
   "sport": "nfl",
   "settings": {
     "last_scored_leg": 2,
-    "playoff_week_start": 15,
+    "playoff_teams": 2,
+    "playoff_week_start": 2,
     "start_week": 1
   },
   "season": "2025",
   "scoring_settings": {
-    "rec": 0.5
+    "rec": 0.5,
+    "fgm_50_59": 5,
+    "fgm_60p": 6,
+    "fum_rec_td": 6
   },
   "roster_positions": ["QB", "RB", "WR", "TE", "FLEX", "BN", "BN", "IR"],
   "previous_league_id": null,

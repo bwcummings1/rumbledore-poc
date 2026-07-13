@@ -1,0 +1,137 @@
+{
+  "ARI": {
+    "player_id": "ARI",
+    "full_name": "Arizona Cardinals",
+    "position": "DEF",
+    "fantasy_positions": ["DEF"],
+    "team": "ARI",
+    "status": "Active",
+    "active": true
+  },
+  "BN1": {
+    "player_id": "BN1",
+    "full_name": "Bennett North",
+    "position": "TE",
+    "fantasy_positions": ["TE"],
+    "team": "SEA",
+    "status": "Active",
+    "active": true
+  },
+  "IR1": {
+    "player_id": "IR1",
+    "full_name": "Isaiah Rivers",
+    "position": "RB",
+    "fantasy_positions": ["RB"],
+    "team": "LAR",
+    "status": "Injured Reserve",
+    "active": true
+  },
+  "QB1": {
+    "player_id": "QB1",
+    "full_name": "Quentin Banks",
+    "position": "QB",
+    "fantasy_positions": ["QB"],
+    "team": "BUF",
+    "status": "Active",
+    "active": true
+  },
+  "QB2": {
+    "player_id": "QB2",
+    "full_name": "Caleb Stone",
+    "position": "QB",
+    "fantasy_positions": ["QB"],
+    "team": "KC",
+    "status": "Active",
+    "active": true
+  },
+  "QB3": {
+    "player_id": "QB3",
+    "full_name": "Marcus Reed",
+    "position": "QB",
+    "fantasy_positions": ["QB"],
+    "team": "PHI",
+    "status": "Active",
+    "active": true
+  },
+  "QB4": {
+    "player_id": "QB4",
+    "full_name": "Dorian Cole",
+    "position": "QB",
+    "fantasy_positions": ["QB"],
+    "team": "BAL",
+    "status": "Active",
+    "active": true
+  },
+  "RB1": {
+    "player_id": "RB1",
+    "full_name": "Rashad Brooks",
+    "position": "RB",
+    "fantasy_positions": ["RB"],
+    "team": "DET",
+    "status": "Active",
+    "active": true
+  },
+  "RB2": {
+    "player_id": "RB2",
+    "full_name": "Evan Fields",
+    "position": "RB",
+    "fantasy_positions": ["RB"],
+    "team": "GB",
+    "status": "Active",
+    "active": true
+  },
+  "RB3": {
+    "player_id": "RB3",
+    "full_name": "Miles Turner",
+    "position": "RB",
+    "fantasy_positions": ["RB"],
+    "team": "HOU",
+    "status": "Active",
+    "active": true
+  },
+  "RB4": {
+    "player_id": "RB4",
+    "full_name": "Jonah Hayes",
+    "position": "RB",
+    "fantasy_positions": ["RB"],
+    "team": "MIA",
+    "status": "Active",
+    "active": true
+  },
+  "WR1": {
+    "player_id": "WR1",
+    "full_name": "Wesley Grant",
+    "position": "WR",
+    "fantasy_positions": ["WR"],
+    "team": "CIN",
+    "status": "Active",
+    "active": true
+  },
+  "WR2": {
+    "player_id": "WR2",
+    "full_name": "Andre Lewis",
+    "position": "WR",
+    "fantasy_positions": ["WR"],
+    "team": "DAL",
+    "status": "Active",
+    "active": true
+  },
+  "WR3": {
+    "player_id": "WR3",
+    "full_name": "Nolan Price",
+    "position": "WR",
+    "fantasy_positions": ["WR"],
+    "team": "MIN",
+    "status": "Active",
+    "active": true
+  },
+  "WR4": {
+    "player_id": "WR4",
+    "full_name": "Theo Young",
+    "position": "WR",
+    "fantasy_positions": ["WR"],
+    "team": "SF",
+    "status": "Active",
+    "active": true
+  }
+}
