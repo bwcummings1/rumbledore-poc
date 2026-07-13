@@ -46,6 +46,10 @@ async function requestHistoricalImport(
   data: ImportRequestedData,
 ): Promise<void> {
   if (getEnv().jobs.inngest.mode === "mock") {
+    const { runImportRequestedWithDefaultDependencies } = await import(
+      "@/jobs/functions/import-requested"
+    );
+    await runImportRequestedWithDefaultDependencies(data);
     return;
   }
 

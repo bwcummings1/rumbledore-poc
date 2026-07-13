@@ -102,3 +102,25 @@
 - Stats weekly rows: 2856
 - Stats season rows: 176
 - Stats integrity failures: 0
+
+## 47C capability map
+
+- Verification date: 2026-07-13
+- Scope: `specs/47` §D/§E, acceptance criteria 6–9.
+- Safety posture: the committed ESPN fixture exercised the product connect → current sync → full-history shadow import
+  → integrity → live path. The shared ESPN `95050` database evidence below was queried inside `BEGIN READ ONLY`; the
+  destructive reset harness was not used and the track's no-live-provider-call rule was preserved.
+- Fixture product-path result: clean shadow import promoted atomically to live; flagship ESPN onboarding E2E passed in
+  28.1s. Preseason fallback standings were recorded as explicit `season_not_complete` PASS detail rather than false
+  postseason/standings failures.
+- Capability observations: 176 latest dimensions = 16 seasons × 11 provider data classes.
+- Player depth (`rosters`): `partial` + `returned_data` for 2011–2017 and 2026; `none` + `returned_empty` for
+  2018–2025. Measured row counts were 3,611 / 3,589 / 3,641 / 3,581 / 3,266 / 3,213 / 3,347 for 2011–2017 and 185 for
+  2026.
+- Per-stat breakdowns: `playerStatBreakdownRows=6,230` for 2026 and `0` for every 2011–2025 season. Historical
+  `scoring_detail` retains the single settings payload row while the player-stat expectation is explicitly absent.
+- Latest integrity rows: 136 PASS, 0 FAIL, 0 REVIEWED/non-pass.
+- Decoding audit: 0 unknown player positions, 0 unknown player pro teams, 0 unknown roster slots.
+- UI evidence refreshed: `10-records.png`, `15-data-steward.png`, `17-data-book.png`, and
+  `17-data-book-settings.png` at mobile/tablet/desktop viewports; the steward fixture includes an active additive +
+  semantic drift alert.

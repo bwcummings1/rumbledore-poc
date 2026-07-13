@@ -1,7 +1,16 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-10 — **Task T19 on `ws/t19-records-substance`**:
+Keep it current. Last updated: 2026-07-13 — **Track 47C on `ws/47c-capability-shadow`**:
+`specs/47` §D/§E are complete on the workstream branch. Imports now append a measured season × data-class capability
+map and use it to qualify integrity, Data Book, and Record Book expectations; new connects remain invisible through a
+full-history integrity shadow run, quarantine failures with sanitized fixture corpus captures, and promote atomically
+when clean; fixture-backed payload canaries record additive/semantic drift for steward review. Mock job execution now
+runs the same import gate in process without provider network calls, and preseason fallback standings are explicitly
+skipped until the provider season is complete. Read-only shared-dev verification for ESPN `95050` found 176 latest-map
+dimensions, the documented 2011–2017 + current player-depth basis, current-only stat breakdowns, 136/136 PASS integrity
+rows, and zero decoded unknowns. Affected Data Book, Records, and steward screenshots were refreshed. Prior state:
+**Task T19 on `ws/t19-records-substance`**:
 the remaining agent-buildable backlog is complete. Records still read pushed canon only, now with player-week/draft/
 roster facts in canonical snapshots and player categories for best single-player weeks, positional highs, draft
 steals/busts, and bench tragedies. ESPN imports now persist per-player-week scoring-stat breakdowns with a
@@ -381,6 +390,10 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track 47C completed `specs/47` §D/§E on `ws/47c-capability-shadow`: append-only declared capability
+  probes now drive integrity and basis labels; shadow imports gate visibility with sanitized quarantine evidence;
+  fixture-backed drift canaries surface steward alerts; mock onboarding executes the full gate in process; ESPN 95050
+  read-only verification matched its documented coverage with all latest checks PASS and zero decoded unknowns.
 - 2026-07-10: **Dev-DB canon reset incident + recovery.** `scripts/import-real-league.ts` (a reset-and-verify
   harness that DELETES the league row first) was run as a routine backfill; the cascade wiped the dev league's
   pushed snapshots, checkpoints, edit ledger, content, and lore (all were harness/test artifacts — no

@@ -2819,6 +2819,8 @@ async function buildDataIntegrityCheckDrafts(
     .select({
       provider: leagues.provider,
       providerLeagueId: leagues.providerLeagueId,
+      season: leagues.season,
+      status: leagues.status,
     })
     .from(leagues)
     .where(eq(leagues.id, leagueId))
@@ -3694,9 +3696,45 @@ async function buildDataIntegrityCheckDrafts(
       status: checkStatus(statBreakdownIssues),
     });
   }
-  const standingsSeasons = seasonKeys(
+  const observedStandingsSeasons = seasonKeys(
     finalStandingRows.map((row) => row.season),
   );
+  const standingsSeasons = observedStandingsSeasons.filter((season) =>
+    Boolean(
+      leagueRow &&
+        (season !== leagueRow.season || leagueRow.status === "complete"),
+    ),
+  );
+  for (const season of observedStandingsSeasons.filter(
+    (candidate) => !standingsSeasons.includes(candidate),
+  )) {
+    const skippedRows = finalStandingRows.filter(
+      (row) => row.season === season,
+    ).length;
+    const skippedDetail = {
+      checkedRows: 0,
+      issues: [],
+      reason: "season_not_complete",
+      skippedRows,
+    };
+    drafts.push({
+      checkKey: "postseason_derivation_confidence",
+      detail: skippedDetail,
+      season,
+      status: "pass",
+    });
+    drafts.push({
+      checkKey: "standings_parity",
+      detail: {
+        checkedRows: 0,
+        mismatches: [],
+        reason: "season_not_complete",
+        skippedRows,
+      },
+      season,
+      status: "pass",
+    });
+  }
   const championshipFactsByPersonSeason = new Set(
     weeklyRows
       .filter((row) => row.isChampionship)

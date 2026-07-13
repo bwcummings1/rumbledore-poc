@@ -22,6 +22,8 @@ import {
   type CredentialCipher,
   createCredentialCipher,
 } from "@/onboarding/credential-crypto";
+import { createFixtureEspnProvider } from "@/onboarding/fixture-espn";
+import { createFixtureYahooProvider } from "@/onboarding/fixture-yahoo";
 import { storedSleeperCredentialsSchema } from "@/onboarding/provider-service";
 import {
   refreshStoredYahooCredentials,
@@ -439,19 +441,33 @@ async function getDefaultImportRequestedDependencies(): Promise<ImportRequestedD
     import("@/db"),
   ]);
   const env = getEnv();
+  const browserbase = env.services.browserbase;
 
   return {
     cipher: createCredentialCipher(env.credentials.encryptionKey),
     db: getDb(),
     quarantineWriter: new FileSystemQuarantineCorpusWriter(),
     providers: {
-      espn: createEspnDiscoveryProvider(),
+      espn: browserbase.mock
+        ? createFixtureEspnProvider()
+        : createEspnDiscoveryProvider(),
       sleeper: createSleeperProvider(),
-      yahoo: createYahooProvider(),
+      yahoo: env.auth.yahoo.mock
+        ? createFixtureYahooProvider()
+        : createYahooProvider(),
     },
     realtime: createRealtimePublisher(env),
     yahooOAuthClient: createYahooOAuthClientForEnv(env),
   };
+}
+
+export async function runImportRequestedWithDefaultDependencies(
+  data: unknown,
+): Promise<ImportRequestedResponse> {
+  return runImportRequested({
+    data,
+    deps: await getDefaultImportRequestedDependencies(),
+  });
 }
 
 async function loadUnresolvedIntegrityFailures(

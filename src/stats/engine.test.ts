@@ -3515,6 +3515,92 @@ describe("recomputeLeagueStatistics", () => {
     expect(catalog.championships.seasons).toEqual([]);
   });
 
+  it("skips fallback standings until the provider season is complete", async () => {
+    const league = await seedProviderIdentityIntegrityLeague({
+      contaminated: false,
+      tag: "preseason-fallback-standings",
+    });
+
+    await handle.db
+      .update(leagues)
+      .set({ status: "preseason" })
+      .where(eq(leagues.id, league.leagueId));
+
+    await withLeagueContext(handle.db, league.leagueId, async (tx) => {
+      await tx.insert(providerFinalStandings).values([
+        {
+          contentHash: `${marker}-preseason-fallback-1`,
+          finalRank: 1,
+          leagueId: league.leagueId,
+          leagueProviderId: league.providerLeagueId,
+          losses: 0,
+          playoffSeed: null,
+          pointsAgainst: 0,
+          pointsFor: 0,
+          provider: "espn",
+          providerTeamId: "1",
+          rankConfidence: "low",
+          rankSource: "regular_season_fallback",
+          season: 2026,
+          ties: 0,
+          wins: 0,
+        },
+        {
+          contentHash: `${marker}-preseason-fallback-2`,
+          finalRank: 2,
+          leagueId: league.leagueId,
+          leagueProviderId: league.providerLeagueId,
+          losses: 0,
+          playoffSeed: null,
+          pointsAgainst: 0,
+          pointsFor: 0,
+          provider: "espn",
+          providerTeamId: "2",
+          rankConfidence: "low",
+          rankSource: "regular_season_fallback",
+          season: 2026,
+          ties: 0,
+          wins: 0,
+        },
+      ]);
+    });
+
+    const integrity = await runDataIntegrityChecks(handle.db, {
+      leagueId: league.leagueId,
+    });
+    expect(integrity.failures).toBe(0);
+
+    const rows = await selectStatsRows(league.leagueId);
+    expect(
+      rows.integrityRows.find(
+        (row) =>
+          row.checkKey === "postseason_derivation_confidence" &&
+          row.season === 2026,
+      ),
+    ).toMatchObject({
+      detail: {
+        checkedRows: 0,
+        issues: [],
+        reason: "season_not_complete",
+        skippedRows: 2,
+      },
+      status: "pass",
+    });
+    expect(
+      rows.integrityRows.find(
+        (row) => row.checkKey === "standings_parity" && row.season === 2026,
+      ),
+    ).toMatchObject({
+      detail: {
+        checkedRows: 0,
+        mismatches: [],
+        reason: "season_not_complete",
+        skippedRows: 2,
+      },
+      status: "pass",
+    });
+  });
+
   it("flags provider identity contamination in real ESPN namespaces", async () => {
     const contaminated = await seedProviderIdentityIntegrityLeague({
       contaminated: true,

@@ -109,7 +109,7 @@ export interface ProviderImportResult {
   credentialId: string;
   leagueId: string;
   leaguemateInvites: ProviderImportLeaguemateSummary;
-  onboardingState: "shadow_running";
+  onboardingState: "live" | "shadow_running";
   sync: CurrentLeagueSyncResult;
 }
 
@@ -921,6 +921,14 @@ export async function importDiscoveredLeague(
     );
   }
 
+  const [completedShadow] = await deps.db
+    .select({ importState: onboardingDiscoveredLeagues.importState })
+    .from(onboardingDiscoveredLeagues)
+    .where(eq(onboardingDiscoveredLeagues.id, discovered.id))
+    .limit(1);
+  const onboardingState =
+    completedShadow?.importState === "live" ? "live" : "shadow_running";
+
   return ok({
     credentialId: discovered.credentialId,
     leagueId: sync.value.league.id,
@@ -937,7 +945,7 @@ export async function importDiscoveredLeague(
         teamNames: target.teamNames,
       })),
     },
-    onboardingState: "shadow_running",
+    onboardingState,
     sync: sync.value,
   });
 }
