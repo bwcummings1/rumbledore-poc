@@ -92,8 +92,11 @@ behavior; back up before any destructive dev-DB operation; volume-scale properti
 
 1. **Real-key smoke test** (Phase-4 lite): one controlled real generation run — persona voice sample, latency,
    cost-per-piece (attribution is ready). Highest information-per-dollar move available.
-2. **Substrate-B real source** choice; **hosted ESPN capture vendor** (Browserbase key staged); **email
-   provider + domain** for the digest; **backup cron** installation (script exists, never scheduled).
+2. **Substrate-B real source** choice; **hosted ESPN capture vendor** (NO Browserbase key exists in
+   `.env.local` — verified 2026-07-13; an earlier claim that one was "staged" was wrong. Owner must create the
+   account/key before any live capture; the real adapter is also still the `BrowserbaseSessionNotConfigured`
+   stub in `src/onboarding/deps.ts`); **email provider + domain** for the digest; **backup cron** installation
+   (script exists, never scheduled).
 3. **Phase-5 voice session** — the persona tone editor (`/leagues/[id]/cast/tone`) with mock preview is the
    built vehicle; the LLM judge is the ruler. Needs real keys to be meaningful.
 4. **`TQB`→QB curation question** (§2); the OG-card cosmetic pass; production deployment planning (spec 46 §G).
