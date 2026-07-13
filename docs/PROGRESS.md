@@ -404,6 +404,9 @@ the build log and `docs/HISTORY.md` for the trajectory + independent review.
   tweaks.
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-13: Track P completed the owner polish batch: OG cards now carry one brand mark plus a meaningful section
+  chip, `/you` notification copy matches the per-league delivery matrix, raw lore-event assertions no longer depend
+  on undefined PostgreSQL row order, and `AGENTS.md` records the cross-league fan-out test-isolation rule.
 - 2026-07-13: Track 47C completed `specs/47` §D/§E on `ws/47c-capability-shadow`: append-only declared capability
   probes now drive integrity and basis labels; shadow imports gate visibility with sanitized quarantine evidence;
   fixture-backed drift canaries surface steward alerts; mock onboarding executes the full gate in process; ESPN 95050
