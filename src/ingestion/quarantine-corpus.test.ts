@@ -11,6 +11,7 @@ import {
 } from "./quarantine-corpus";
 
 const memberGuid = "{11111111-1111-4111-8111-111111111111}";
+const embeddedNonRfcGuid = "01234567-89ab-0def-0123-456789abcdef";
 
 function privateBundle(): NormalizedSeasonBundle {
   return {
@@ -62,6 +63,7 @@ function privateBundle(): NormalizedSeasonBundle {
         details: {
           avatar: "https://private.example/avatar.png",
           email: "alex.private@example.com",
+          embeddedContact: `contact alex.private@example.com ref=${embeddedNonRfcGuid}`,
           memberGuid,
           ownerName: "Alex Private",
         },
@@ -90,11 +92,15 @@ describe("shadow quarantine corpus", () => {
     expect(serialized).not.toContain("Alex's Private Team");
     expect(serialized).not.toContain("Private Alumni League");
     expect(serialized).not.toContain("alex.private@example.com");
+    expect(serialized).not.toContain(embeddedNonRfcGuid);
     expect(serialized).not.toContain("avatar.png");
     expect(first.members[0]?.providerId).toMatch(/^member_[a-f0-9]{12}$/);
     expect(first.teams[0]?.ownerMemberIds).toEqual([
       first.members[0]?.providerId,
     ]);
+    expect(first.transactions[0]?.details.embeddedContact).toMatch(
+      /^contact \[redacted-email\] ref=member_[a-f0-9]{12}$/,
+    );
   });
 
   it("writes a corpus-compatible provenance envelope with sanitized payload only", async () => {

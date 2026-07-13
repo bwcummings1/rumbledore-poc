@@ -1,6 +1,18 @@
-import { createHash } from "node:crypto";
+/**
+ * Public-only ESPN corpus harvester. Live use remains owner-gated by the ToS
+ * acknowledgement. Salt hygiene: the default is a fresh cryptographic salt for
+ * every invocation, which prevents identities from being linked across harvests.
+ * Use --salt only as an explicit reproducibility override, never as a shared or
+ * long-lived corpus secret; salts are intentionally neither logged nor persisted.
+ */
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import {
+  isGuidValue,
+  replaceEmbeddedEmails,
+  replaceEmbeddedGuids,
+} from "../src/ingestion/sensitive-patterns";
 
 export const ESPN_CORPUS_VIEWS = [
   "mSettings",
@@ -28,10 +40,6 @@ const MAX_JITTER_MS = 2_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RESPONSE_BYTES = 25 * 1024 * 1024;
 const MINIMUM_SALT_LENGTH = 16;
-const GUID_PATTERN = /\{?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}?/gi;
-const GUID_VALUE_PATTERN =
-  /^\{?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}?$/i;
-const EMAIL_PATTERN = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const PRIVATE_FIELD_KEYS = new Set([
   "avatar",
   "avatarurl",
@@ -86,6 +94,17 @@ const ALIAS_NOUNS = [
 
 type JsonObject = Record<string, unknown>;
 
+interface SanitizerContext {
+  leagueId: string;
+  leagueSettingsRecord: boolean;
+  leagueSurrogateId: number;
+  memberIds: ReadonlySet<string>;
+  memberRecord: boolean;
+  rootLeagueRecord: boolean;
+  salt: string;
+  teamRecord: boolean;
+}
+
 export interface CorpusProvenance {
   leagueIdHash: string;
   season: number;
@@ -101,9 +120,10 @@ export interface EspnCorpusEntry {
 }
 
 export interface HarvesterOptions {
+  acknowledgedTos: true;
   leagueId: string;
   seasons: number[];
-  salt: string;
+  salt?: string;
   outputDirectory: string;
   requestBudget: number;
   requestsPerSecond: number;
@@ -111,6 +131,7 @@ export interface HarvesterOptions {
 }
 
 export interface HarvesterDependencies {
+  createSalt: () => string;
   fetch: typeof globalThis.fetch;
   now: () => number;
   random: () => number;
@@ -179,6 +200,36 @@ function aliasForMember(
   };
 }
 
+function aliasForLeague(leagueId: string, salt: string): string {
+  return `Corpus League ${digestHex(salt, "league-alias", leagueId).slice(0, 8)}`;
+}
+
+function teamIdentityForObject(value: JsonObject): string {
+  if (typeof value.id === "string" || typeof value.id === "number") {
+    return String(value.id);
+  }
+  const nameParts = ["name", "location", "nickname", "abbrev"]
+    .map((key) => value[key])
+    .filter((part): part is string => typeof part === "string");
+  return nameParts.length > 0 ? nameParts.join("\0") : "unknown-team";
+}
+
+function aliasForTeam(
+  team: JsonObject,
+  salt: string,
+): Record<"abbrev" | "location" | "name" | "nickname", string> {
+  const digest = digestHex(salt, "team-alias", teamIdentityForObject(team));
+  const suffix = (Number.parseInt(digest.slice(0, 8), 16) % 1_000)
+    .toString()
+    .padStart(3, "0");
+  return {
+    abbrev: `T${suffix}`,
+    location: "Corpus",
+    name: `Corpus Team ${suffix}`,
+    nickname: `Team ${suffix}`,
+  };
+}
+
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -219,9 +270,9 @@ function replaceSensitiveString(
     return pseudonymizeMemberId(value, salt);
   }
 
-  return value
-    .replace(GUID_PATTERN, (guid) => pseudonymizeMemberId(guid, salt))
-    .replace(EMAIL_PATTERN, "[redacted-email]");
+  return replaceEmbeddedEmails(
+    replaceEmbeddedGuids(value, (guid) => pseudonymizeMemberId(guid, salt)),
+  );
 }
 
 function memberIdentityForObject(
@@ -236,7 +287,7 @@ function memberIdentityForObject(
   ) {
     return id;
   }
-  if (typeof id === "string" && GUID_VALUE_PATTERN.test(id)) {
+  if (typeof id === "string" && isGuidValue(id)) {
     return id;
   }
   if (memberRecord) {
@@ -270,17 +321,7 @@ function leagueIdWithOriginalType(
   );
 }
 
-function sanitizeValue(
-  value: unknown,
-  context: {
-    leagueId: string;
-    leagueSurrogateId: number;
-    memberIds: ReadonlySet<string>;
-    memberRecord: boolean;
-    rootLeagueRecord: boolean;
-    salt: string;
-  },
-): unknown {
+function sanitizeValue(value: unknown, context: SanitizerContext): unknown {
   if (typeof value === "string") {
     return replaceSensitiveString(value, context.salt, context.memberIds);
   }
@@ -305,6 +346,9 @@ function sanitizeValue(
   const alias = memberIdentity
     ? aliasForMember(memberIdentity, context.salt)
     : undefined;
+  const teamAlias = context.teamRecord
+    ? aliasForTeam(value, context.salt)
+    : undefined;
   const sanitized: JsonObject = Object.create(null) as JsonObject;
 
   for (const [key, child] of Object.entries(value)) {
@@ -322,6 +366,20 @@ function sanitizeValue(
     }
     if (alias && normalizedKey === "lastname") {
       sanitized[key] = alias.lastName;
+      continue;
+    }
+    if (context.leagueSettingsRecord && normalizedKey === "name") {
+      sanitized[key] = aliasForLeague(context.leagueId, context.salt);
+      continue;
+    }
+    if (
+      teamAlias &&
+      (normalizedKey === "name" ||
+        normalizedKey === "location" ||
+        normalizedKey === "nickname" ||
+        normalizedKey === "abbrev")
+    ) {
+      sanitized[key] = teamAlias[normalizedKey];
       continue;
     }
     if (
@@ -348,16 +406,46 @@ function sanitizeValue(
       sanitized[key] = child.map((member) =>
         sanitizeValue(member, {
           ...context,
+          leagueSettingsRecord: false,
           memberRecord: true,
           rootLeagueRecord: false,
+          teamRecord: false,
+        }),
+      );
+      continue;
+    }
+    if (
+      context.rootLeagueRecord &&
+      normalizedKey === "settings" &&
+      isJsonObject(child)
+    ) {
+      sanitized[key] = sanitizeValue(child, {
+        ...context,
+        leagueSettingsRecord: true,
+        memberRecord: false,
+        rootLeagueRecord: false,
+        teamRecord: false,
+      });
+      continue;
+    }
+    if (normalizedKey === "teams" && Array.isArray(child)) {
+      sanitized[key] = child.map((team) =>
+        sanitizeValue(team, {
+          ...context,
+          leagueSettingsRecord: false,
+          memberRecord: false,
+          rootLeagueRecord: false,
+          teamRecord: true,
         }),
       );
       continue;
     }
     sanitized[key] = sanitizeValue(child, {
       ...context,
+      leagueSettingsRecord: false,
       memberRecord: false,
       rootLeagueRecord: false,
+      teamRecord: false,
     });
   }
 
@@ -385,11 +473,13 @@ export function sanitizeEspnPayload(
     (Number.parseInt(leagueDigest.slice(0, 8), 16) % 2_000_000_000) + 1;
   const baseContext = {
     leagueId: options.leagueId,
+    leagueSettingsRecord: false,
     leagueSurrogateId,
     memberIds,
     memberRecord: false,
     rootLeagueRecord: true,
     salt: options.salt,
+    teamRecord: false,
   };
 
   if (Array.isArray(payload)) {
@@ -509,6 +599,7 @@ function defaultWriteEntry(path: string, entry: EspnCorpusEntry): void {
 }
 
 const defaultDependencies: HarvesterDependencies = {
+  createSalt: () => randomBytes(32).toString("hex"),
   fetch: globalThis.fetch.bind(globalThis),
   now: Date.now,
   random: Math.random,
@@ -558,10 +649,16 @@ export async function harvestPublicLeagues(
   requestsUsed: number;
 }> {
   const deps = { ...defaultDependencies, ...dependencies };
+  if (options.acknowledgedTos !== true) {
+    throw new Error(
+      "Public ESPN harvesting requires acknowledgedTos: true before any request",
+    );
+  }
   if (!/^\d+$/.test(options.leagueId) || Number(options.leagueId) <= 0) {
     throw new Error("League id must be a positive ESPN numeric league id");
   }
-  if (options.salt.length < MINIMUM_SALT_LENGTH) {
+  const salt = options.salt ?? deps.createSalt();
+  if (salt.length < MINIMUM_SALT_LENGTH) {
     throw new Error(
       `Sanitizer salt must contain at least ${MINIMUM_SALT_LENGTH} characters`,
     );
@@ -590,7 +687,7 @@ export async function harvestPublicLeagues(
     random: deps.random,
     sleep: deps.sleep,
   });
-  const leagueIdHash = hashLeagueId(options.leagueId, options.salt);
+  const leagueIdHash = hashLeagueId(options.leagueId, salt);
   let entriesWritten = 0;
 
   for (const season of options.seasons) {
@@ -617,7 +714,7 @@ export async function harvestPublicLeagues(
       });
       const payload = sanitizeEspnPayload(rawPayload, {
         leagueId: options.leagueId,
-        salt: options.salt,
+        salt,
       });
       const entry: EspnCorpusEntry = {
         provenance: {
@@ -665,6 +762,7 @@ function positiveNumber(value: string, option: string): number {
 }
 
 export function parseHarvesterArgs(args: string[]): HarvesterOptions {
+  let acknowledgedTos = false;
   let leagueId: string | undefined;
   let seasons: number[] | undefined;
   let salt: string | undefined;
@@ -677,6 +775,7 @@ export function parseHarvesterArgs(args: string[]): HarvesterOptions {
     const argument = args[index];
     switch (argument) {
       case "--i-reviewed-tos":
+        acknowledgedTos = true;
         break;
       case "--league-id":
         leagueId = optionValue(args, index, argument);
@@ -719,6 +818,9 @@ export function parseHarvesterArgs(args: string[]): HarvesterOptions {
     }
   }
 
+  if (!acknowledgedTos) {
+    throw new Error("--i-reviewed-tos is required before harvesting");
+  }
   if (!leagueId || !/^\d+$/.test(leagueId) || Number(leagueId) <= 0) {
     throw new Error("--league-id must be a positive ESPN numeric league id");
   }
@@ -738,7 +840,7 @@ export function parseHarvesterArgs(args: string[]): HarvesterOptions {
       "--seasons must contain at most 32 years from 1900 through 2100",
     );
   }
-  if (!salt || salt.length < MINIMUM_SALT_LENGTH) {
+  if (salt && salt.length < MINIMUM_SALT_LENGTH) {
     throw new Error(
       `--salt must contain at least ${MINIMUM_SALT_LENGTH} characters`,
     );
@@ -758,9 +860,10 @@ export function parseHarvesterArgs(args: string[]): HarvesterOptions {
   }
 
   return {
+    acknowledgedTos: true,
     leagueId,
     seasons: uniqueSeasons,
-    salt,
+    ...(salt ? { salt } : {}),
     outputDirectory: resolve(outputDirectory),
     requestBudget,
     requestsPerSecond,
@@ -784,7 +887,7 @@ export async function runHarvesterCli(
         "REFUSING TO RUN: public ESPN harvesting is owner-gated.",
         "No network request was made. Complete the deliberate ESPN ToS review",
         "and obtain target-count approval before collecting any public league.",
-        "Then re-run with --i-reviewed-tos plus --league-id, --seasons, and --salt.",
+        "Then re-run with --i-reviewed-tos plus --league-id and --seasons.",
       ].join("\n"),
     );
     return 2;

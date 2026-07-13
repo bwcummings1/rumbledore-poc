@@ -88,6 +88,31 @@ describe("public ESPN corpus harvester", () => {
     expect(errors.join("\n")).toContain("No network request was made");
   });
 
+  it("also refuses direct library calls without an explicit ToS acknowledgment", async () => {
+    let fetchCalls = 0;
+
+    await expect(
+      harvestPublicLeagues(
+        {
+          acknowledgedTos: false as true,
+          leagueId: "12345",
+          seasons: [2024],
+          outputDirectory: createTemporaryDirectory(),
+          requestBudget: ESPN_CORPUS_VIEWS.length,
+          requestsPerSecond: 2,
+          jitterMs: 0,
+        },
+        {
+          fetch: async () => {
+            fetchCalls += 1;
+            return new Response("{}");
+          },
+        },
+      ),
+    ).rejects.toThrow("requires acknowledgedTos: true before any request");
+    expect(fetchCalls).toBe(0);
+  });
+
   it("enforces rate spacing with jitter and a runtime hard budget on a fake clock", async () => {
     const clock = fakeClock();
     const governor = createRequestGovernor({
@@ -117,6 +142,7 @@ describe("public ESPN corpus harvester", () => {
     await expect(
       harvestPublicLeagues(
         {
+          acknowledgedTos: true,
           leagueId: "12345",
           seasons: [2024],
           salt: fixtureSalt,
@@ -164,6 +190,7 @@ describe("public ESPN corpus harvester", () => {
 
     const result = await harvestPublicLeagues(
       {
+        acknowledgedTos: true,
         leagueId: "12345",
         seasons: [2024],
         salt: fixtureSalt,
@@ -229,7 +256,46 @@ describe("public ESPN corpus harvester", () => {
     }
   });
 
-  it("property-tests deterministic removal of GUIDs, member names, emails, and avatars", () => {
+  it("uses a fresh random salt for each invocation unless one is supplied", async () => {
+    const generatedSalts = [
+      "fresh-invocation-salt-0001",
+      "fresh-invocation-salt-0002",
+    ];
+    let saltIndex = 0;
+    const harvest = () =>
+      harvestPublicLeagues(
+        {
+          acknowledgedTos: true,
+          leagueId: "12345",
+          seasons: [2024],
+          outputDirectory: createTemporaryDirectory(),
+          requestBudget: ESPN_CORPUS_VIEWS.length,
+          requestsPerSecond: 2,
+          jitterMs: 0,
+        },
+        {
+          createSalt: () => {
+            const salt = generatedSalts[saltIndex];
+            saltIndex += 1;
+            if (!salt) throw new Error("test salt sequence exhausted");
+            return salt;
+          },
+          fetch: async () => new Response("[]"),
+          now: () => 0,
+          random: () => 0,
+          sleep: async () => undefined,
+          writeEntry: () => undefined,
+        },
+      );
+
+    const first = await harvest();
+    const second = await harvest();
+
+    expect(first.leagueIdHash).not.toBe(second.leagueIdHash);
+    expect(saltIndex).toBe(2);
+  });
+
+  it("property-tests deterministic removal of GUIDs, names, emails, and avatars", () => {
     for (let seed = 1; seed <= 200; seed += 1) {
       const guid = generatedGuid(seed);
       const displayName = `Private Manager ${seed} Ω-${seededHex(seed, 12)}`;
@@ -238,6 +304,11 @@ describe("public ESPN corpus harvester", () => {
       const email = `private.${seed}.${seededHex(seed, 6)}@example.test`;
       const avatar = `https://images.example.test/${seededHex(seed, 20)}.png`;
       const noIdDisplayName = `No Id Manager ${seed}-${seededHex(seed, 8)}`;
+      const leagueName = `Private League ${seed}-${seededHex(seed + 3, 10)}`;
+      const teamName = `Private Team ${seed}-${seededHex(seed + 4, 10)}`;
+      const teamLocation = `Private Location ${seed}`;
+      const teamNickname = `Private Nickname ${seed}`;
+      const teamAbbrev = `P${seed}`;
       const input = {
         id: 12345,
         members: [
@@ -264,7 +335,17 @@ describe("public ESPN corpus harvester", () => {
             lastName: "Player",
           },
         ],
-        teams: [{ owners: [guid.toUpperCase()] }],
+        settings: { name: leagueName },
+        teams: [
+          {
+            abbrev: teamAbbrev,
+            id: seed,
+            location: teamLocation,
+            name: teamName,
+            nickname: teamNickname,
+            owners: [guid.toUpperCase()],
+          },
+        ],
       };
 
       const first = sanitizeEspnPayload(input, {
@@ -282,7 +363,14 @@ describe("public ESPN corpus harvester", () => {
       const serialized = JSON.stringify(first);
       const sanitizedObject = first as {
         members: Array<{ id: string }>;
-        teams: Array<{ owners: string[] }>;
+        settings: { name: string };
+        teams: Array<{
+          abbrev: string;
+          location: string;
+          name: string;
+          nickname: string;
+          owners: string[];
+        }>;
       };
 
       expect(first).toEqual(repeated);
@@ -294,8 +382,22 @@ describe("public ESPN corpus harvester", () => {
       expect(serialized).not.toContain(email);
       expect(serialized).not.toContain(avatar);
       expect(serialized).not.toContain(noIdDisplayName);
+      expect(serialized).not.toContain(leagueName);
+      expect(serialized).not.toContain(teamName);
+      expect(serialized).not.toContain(teamLocation);
+      expect(serialized).not.toContain(teamNickname);
+      expect(serialized).not.toContain(`"${teamAbbrev}"`);
       expect(serialized).not.toMatch(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
       expect(serialized).toContain("Real Football Player");
+      expect(sanitizedObject.settings.name).toMatch(
+        /^Corpus League [a-f0-9]{8}$/,
+      );
+      expect(sanitizedObject.teams[0]).toMatchObject({
+        abbrev: expect.stringMatching(/^T\d{3}$/),
+        location: "Corpus",
+        name: expect.stringMatching(/^Corpus Team \d{3}$/),
+        nickname: expect.stringMatching(/^Team \d{3}$/),
+      });
       expect(sanitizedObject.members[0]?.id).toBe(
         sanitizedObject.teams[0]?.owners[0],
       );
@@ -320,8 +422,23 @@ describe("public ESPN corpus harvester", () => {
     ]);
 
     expect(options.seasons).toEqual([2024, 2025]);
+    expect(options.acknowledgedTos).toBe(true);
+    expect(options.salt).toBe(fixtureSalt);
     expect(options.requestBudget).toBe(24);
     expect(options.requestsPerSecond).toBe(2);
     expect(options.jitterMs).toBe(0);
+  });
+
+  it("leaves salt generation to the harvest invocation when --salt is omitted", () => {
+    const options = parseHarvesterArgs([
+      "--i-reviewed-tos",
+      "--league-id",
+      "12345",
+      "--seasons",
+      "2024",
+    ]);
+
+    expect(options.acknowledgedTos).toBe(true);
+    expect(options.salt).toBeUndefined();
   });
 });

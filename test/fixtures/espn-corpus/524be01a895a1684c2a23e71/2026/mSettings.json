@@ -4,7 +4,7 @@
     "season": 2026,
     "view": "mSettings",
     "fetchedAt": "2026-07-13T00:00:00.000Z",
-    "contentHash": "dbdd678e10da9ca28682cc528805b65c80a7ea4617a4ff5a57bf65214c2f0b0d",
+    "contentHash": "499311220fab3df3e24f2c2463d64d8316933dce485ffeb5ab8a29b493d003d5",
     "harvesterVersion": "1.0.0"
   },
   "payload": [
@@ -13,7 +13,7 @@
       "scoringPeriodId": 0,
       "seasonId": 2026,
       "settings": {
-        "name": "NHS Alumni Annual",
+        "name": "Fixture League 01",
         "size": 12,
         "scheduleSettings": { "matchupPeriodCount": 14, "playoffTeamCount": 6 },
         "scoringSettings": {

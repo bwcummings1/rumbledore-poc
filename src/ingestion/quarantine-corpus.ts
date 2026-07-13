@@ -3,8 +3,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { NormalizedSeasonBundle } from "@/providers";
 import { stableContentHash, stableJson } from "./hash";
+import {
+  replaceEmbeddedEmails,
+  replaceEmbeddedGuids,
+} from "./sensitive-patterns";
 
-export const QUARANTINE_SANITIZER_VERSION = "47c-v1";
+export const QUARANTINE_SANITIZER_VERSION = "47c-v2";
 
 export interface QuarantineFailure {
   checkKey: string;
@@ -49,9 +53,6 @@ interface CorpusEnvelope {
   };
 }
 
-const GUID_PATTERN =
-  /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\}?$/i;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REMOVED_KEYS = new Set([
   "avatar",
   "avatarUrl",
@@ -96,16 +97,12 @@ function sanitizeUnknown(value: unknown, salt: string, key?: string): unknown {
     return value.toISOString();
   }
   if (typeof value === "string") {
-    if (EMAIL_PATTERN.test(value)) {
-      return "[redacted-email]";
-    }
-    if (GUID_PATTERN.test(value)) {
-      return pseudonym(value, salt, "member");
-    }
     if (key && NAME_KEYS.has(key)) {
       return pseudonym(value, salt, "manager");
     }
-    return value;
+    return replaceEmbeddedEmails(
+      replaceEmbeddedGuids(value, (guid) => pseudonym(guid, salt, "member")),
+    );
   }
   if (Array.isArray(value)) {
     return value.map((entry) => sanitizeUnknown(entry, salt));
