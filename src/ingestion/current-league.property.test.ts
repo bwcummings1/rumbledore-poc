@@ -7,6 +7,7 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import {
+  dataIntegrityChecks,
   fantasyDraftPicks,
   fantasyMatchups,
   fantasyMembers,
@@ -15,14 +16,26 @@ import {
   fantasyRosterEntries,
   fantasyTeams,
   fantasyTransactions,
+  identityMappings,
   leagueSeasonSettings,
   leagues,
+  persons,
   providerFinalStandings,
+  teamSeasons,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import type { NormalizedSeasonBundle } from "@/providers/model";
+import type { ProviderCodeKind } from "@/providers/decoding";
+import type {
+  NormalizedPlayer,
+  NormalizedSeasonBundle,
+} from "@/providers/model";
+import {
+  resolveLeagueIdentities,
+  runDataIntegrityChecks,
+} from "@/stats/engine";
 import {
   buildNormalizedSeasonBundle,
+  type GeneratedOwnerOverlap,
   normalizedSeasonShapeArbitrary,
   normalizedVolumeSeasonShapeArbitrary,
 } from "@/testing/arbitraries";
@@ -34,7 +47,38 @@ const DEFAULT_PROPERTY_RUNS = 3;
 const POSTGRES_MAX_BIND_PARAMETERS = 65_535;
 const ROSTER_INSERT_BOUND_COLUMNS = 17;
 const STAT_BREAKDOWN_INSERT_BOUND_COLUMNS = 16;
+const PROVIDER_CODE_KINDS: readonly ProviderCodeKind[] = [
+  "activity",
+  "lineup_slot",
+  "position",
+  "pro_team",
+  "scoring_stat",
+];
 let handle: DbHandle;
+
+const completePairingShapeArbitrary = normalizedSeasonShapeArbitrary.filter(
+  (shape) => shape.leagueSize % 2 === 0,
+);
+
+const OVERLAPPING_OWNER_MODES: readonly GeneratedOwnerOverlap[] = [
+  "co_owned",
+  "shared_member",
+];
+
+const providerCodeCaseArbitrary = fc
+  .tuple(
+    normalizedSeasonShapeArbitrary,
+    fc.integer({ max: 99_999, min: 10_000 }),
+  )
+  .map(([shape, code]) => ({
+    code,
+    shape: {
+      ...shape,
+      playerDepth: true,
+      statBreakdowns: true,
+      transactions: true,
+    },
+  }));
 
 function configuredPropertyRuns(defaultRuns = DEFAULT_PROPERTY_RUNS): number {
   const configured = process.env.PROPERTY_RUNS;
@@ -248,6 +292,157 @@ async function selectPersistedRows(leagueId: string, season?: number) {
       transactionRows,
     };
   });
+}
+
+async function selectIntegrityCheck(
+  leagueId: string,
+  checkKey: (typeof dataIntegrityChecks.$inferSelect)["checkKey"],
+  season: number | null,
+) {
+  return withLeagueContext(handle.db, leagueId, async (tx) => {
+    const rows = await tx
+      .select()
+      .from(dataIntegrityChecks)
+      .where(
+        and(
+          eq(dataIntegrityChecks.leagueId, leagueId),
+          eq(dataIntegrityChecks.checkKey, checkKey),
+          season === null
+            ? sql`${dataIntegrityChecks.season} is null`
+            : eq(dataIntegrityChecks.season, season),
+        ),
+      );
+    return rows.find((row) => row.status === "fail") ?? rows[0];
+  });
+}
+
+function makeInconsistentBundle(bundle: NormalizedSeasonBundle): {
+  bundle: NormalizedSeasonBundle;
+  missingTeamIds: string[];
+  orphanStandingTeamId: string;
+} {
+  const missingMatchup = bundle.matchups[0];
+  const firstStanding = bundle.finalStandings?.[0];
+  if (!missingMatchup?.awayTeamRef || !firstStanding) {
+    throw new Error("generated bundle cannot be made inconsistent");
+  }
+  const orphanStandingTeamId = `orphan-${bundle.league.season}`;
+  return {
+    bundle: {
+      ...bundle,
+      finalStandings: bundle.finalStandings?.map((standing, index) =>
+        index === 0
+          ? {
+              ...standing,
+              teamRef: {
+                ...standing.teamRef,
+                providerId: orphanStandingTeamId,
+              },
+            }
+          : standing,
+      ),
+      matchups: bundle.matchups.slice(1),
+    },
+    missingTeamIds: [
+      missingMatchup.awayTeamRef.providerId,
+      missingMatchup.homeTeamRef.providerId,
+    ].sort((left, right) =>
+      left.localeCompare(right, undefined, { numeric: true }),
+    ),
+    orphanStandingTeamId,
+  };
+}
+
+function updatePlayerCode(
+  bundle: NormalizedSeasonBundle,
+  kind: Extract<ProviderCodeKind, "position" | "pro_team">,
+  code: number,
+): NormalizedSeasonBundle {
+  const targetPlayerId = bundle.players?.[0]?.providerId;
+  if (!targetPlayerId) {
+    throw new Error("generated provider-code bundle has no player");
+  }
+  const update = (player: NormalizedPlayer | undefined) =>
+    player?.providerId === targetPlayerId
+      ? {
+          ...player,
+          metadata: {
+            ...(player.metadata ?? {}),
+            [kind === "position" ? "defaultPositionId" : "proTeamId"]: code,
+          },
+        }
+      : player;
+
+  return {
+    ...bundle,
+    draftPicks: bundle.draftPicks?.map((pick) => ({
+      ...pick,
+      player: update(pick.player),
+    })),
+    players: bundle.players?.map((player) => update(player) ?? player),
+    rosters: bundle.rosters?.map((roster) => ({
+      ...roster,
+      entries: roster.entries.map((entry) => ({
+        ...entry,
+        player: update(entry.player),
+      })),
+    })),
+  };
+}
+
+function withSyntheticUnknownCode(
+  bundle: NormalizedSeasonBundle,
+  kind: ProviderCodeKind,
+  code: number,
+): NormalizedSeasonBundle {
+  switch (kind) {
+    case "activity":
+      if (!bundle.transactions[0]) {
+        throw new Error("generated provider-code bundle has no transaction");
+      }
+      return {
+        ...bundle,
+        transactions: bundle.transactions.map((transaction, index) =>
+          index === 0
+            ? {
+                ...transaction,
+                details: {
+                  ...transaction.details,
+                  rawActivityTypeId: code,
+                },
+              }
+            : transaction,
+        ),
+      };
+    case "lineup_slot":
+      return {
+        ...bundle,
+        league: {
+          ...bundle.league,
+          rosterSettings: {
+            ...(bundle.league.rosterSettings ?? {}),
+            lineupSlotCounts: {
+              ...(bundle.league.rosterSettings?.lineupSlotCounts ?? {}),
+              [String(code)]: 1,
+            },
+          },
+        },
+      };
+    case "position":
+    case "pro_team":
+      return updatePlayerCode(bundle, kind, code);
+    case "scoring_stat":
+      return {
+        ...bundle,
+        league: {
+          ...bundle.league,
+          scoringSettings: {
+            ...(bundle.league.scoringSettings ?? {}),
+            scoringItems: [{ points: 1, statId: code }],
+          },
+        },
+      };
+  }
 }
 
 function dropLastTeam(bundle: NormalizedSeasonBundle): NormalizedSeasonBundle {
@@ -492,6 +687,194 @@ describe("normalized ingestion properties", () => {
         }
       }),
       { numRuns: configuredPropertyRuns(1), seed: PROPERTY_SEED + 2 },
+    );
+  });
+
+  it("fails loudly for incomplete schedules and orphan standings", async () => {
+    await fc.assert(
+      fc.asyncProperty(completePairingShapeArbitrary, async (shape) => {
+        const providerLeagueId = `${marker}-loud-${shape.caseId}`;
+        const generated = buildNormalizedSeasonBundle(shape, providerLeagueId);
+        const malformed = makeInconsistentBundle(generated);
+        const leagueId = await insertLeague(malformed.bundle);
+
+        try {
+          const persisted = await persistBundle(leagueId, malformed.bundle);
+          expect(persisted.matchupStats.total).toBe(
+            malformed.bundle.matchups.length,
+          );
+          expect(persisted.finalStandingStats.total).toBe(
+            malformed.bundle.finalStandings?.length,
+          );
+
+          await resolveLeagueIdentities(handle.db, { leagueId });
+          const integrity = await runDataIntegrityChecks(handle.db, {
+            leagueId,
+          });
+          expect(integrity.failures).toBeGreaterThanOrEqual(2);
+
+          const scheduleCheck = await selectIntegrityCheck(
+            leagueId,
+            "schedule_coverage",
+            shape.season,
+          );
+          expect(scheduleCheck).toMatchObject({
+            status: "fail",
+            detail: expect.objectContaining({
+              gaps: expect.arrayContaining([
+                expect.objectContaining({
+                  missingTeamIds: malformed.missingTeamIds,
+                  scoringPeriod: 1,
+                }),
+              ]),
+            }),
+          });
+
+          const standingsCheck = await selectIntegrityCheck(
+            leagueId,
+            "standings_parity",
+            shape.season,
+          );
+          expect(standingsCheck).toMatchObject({
+            status: "fail",
+            detail: expect.objectContaining({
+              mismatches: expect.arrayContaining([
+                expect.objectContaining({
+                  providerTeamId: malformed.orphanStandingTeamId,
+                  reason: "missing_identity_mapping",
+                }),
+              ]),
+            }),
+          });
+        } finally {
+          await deletePropertyLeagues([leagueId]);
+        }
+      }),
+      { numRuns: configuredPropertyRuns(), seed: PROPERTY_SEED + 3 },
+    );
+  });
+
+  it("keeps generated same-season owner overlaps in distinct people", async () => {
+    await fc.assert(
+      fc.asyncProperty(normalizedSeasonShapeArbitrary, async (generated) => {
+        for (const ownerOverlap of OVERLAPPING_OWNER_MODES) {
+          const shape = { ...generated, ownerOverlap };
+          const providerLeagueId = `${marker}-identity-${shape.caseId}-${ownerOverlap}`;
+          const bundle = buildNormalizedSeasonBundle(shape, providerLeagueId);
+          const leagueId = await insertLeague(bundle);
+
+          try {
+            await persistBundle(leagueId, bundle);
+            await resolveLeagueIdentities(handle.db, { leagueId });
+            await runDataIntegrityChecks(handle.db, { leagueId });
+
+            const identityRows = await withLeagueContext(
+              handle.db,
+              leagueId,
+              async (tx) => {
+                const mappingRows = await tx
+                  .select()
+                  .from(identityMappings)
+                  .where(
+                    and(
+                      eq(identityMappings.leagueId, leagueId),
+                      eq(identityMappings.season, shape.season),
+                    ),
+                  );
+                const teamSeasonRows = await tx
+                  .select()
+                  .from(teamSeasons)
+                  .where(
+                    and(
+                      eq(teamSeasons.leagueId, leagueId),
+                      eq(teamSeasons.season, shape.season),
+                    ),
+                  );
+                const personRows = await tx
+                  .select()
+                  .from(persons)
+                  .where(eq(persons.leagueId, leagueId));
+                return { mappingRows, personRows, teamSeasonRows };
+              },
+            );
+
+            expect(identityRows.teamSeasonRows).toHaveLength(shape.leagueSize);
+            expect(identityRows.mappingRows).toHaveLength(shape.leagueSize);
+            expect(
+              new Set(identityRows.mappingRows.map((row) => row.teamSeasonId))
+                .size,
+            ).toBe(shape.leagueSize);
+            expect(
+              new Set(identityRows.mappingRows.map((row) => row.personId)).size,
+            ).toBe(shape.leagueSize);
+            expect(identityRows.personRows).toHaveLength(shape.leagueSize);
+
+            const identityCheck = await selectIntegrityCheck(
+              leagueId,
+              "identity_sanity",
+              shape.season,
+            );
+            expect(identityCheck).toMatchObject({
+              status: "pass",
+              detail: expect.objectContaining({ issues: [] }),
+            });
+          } finally {
+            await deletePropertyLeagues([leagueId]);
+          }
+        }
+      }),
+      { numRuns: configuredPropertyRuns(), seed: PROPERTY_SEED + 4 },
+    );
+  });
+
+  it("fails ESPN decoding for every generated out-of-dictionary code kind", async () => {
+    await fc.assert(
+      fc.asyncProperty(providerCodeCaseArbitrary, async ({ code, shape }) => {
+        for (const kind of PROVIDER_CODE_KINDS) {
+          const providerLeagueId = `${marker}-decode-${shape.caseId}-${kind}`;
+          const bundle = buildNormalizedSeasonBundle(shape, providerLeagueId);
+          const leagueId = await insertLeague(bundle);
+
+          try {
+            await persistBundle(leagueId, bundle);
+            await runDataIntegrityChecks(handle.db, { leagueId });
+            const decodedCheck = await selectIntegrityCheck(
+              leagueId,
+              "provider_code_decoding",
+              null,
+            );
+            expect(decodedCheck).toMatchObject({
+              status: "pass",
+              detail: expect.objectContaining({ issues: [] }),
+            });
+
+            const unknownBundle = withSyntheticUnknownCode(bundle, kind, code);
+            await persistBundle(leagueId, unknownBundle);
+            const integrity = await runDataIntegrityChecks(handle.db, {
+              leagueId,
+            });
+            expect(integrity.failures).toBeGreaterThanOrEqual(1);
+
+            const unknownCheck = await selectIntegrityCheck(
+              leagueId,
+              "provider_code_decoding",
+              null,
+            );
+            expect(unknownCheck).toMatchObject({
+              status: "fail",
+              detail: expect.objectContaining({
+                checkedProviders: ["espn"],
+                issues: expect.arrayContaining([
+                  { id: code, kind, provider: "espn" },
+                ]),
+              }),
+            });
+          } finally {
+            await deletePropertyLeagues([leagueId]);
+          }
+        }
+      }),
+      { numRuns: configuredPropertyRuns(), seed: PROPERTY_SEED + 5 },
     );
   });
 });
