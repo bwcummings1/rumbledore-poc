@@ -1665,6 +1665,9 @@ export class MockLlmClient implements LlmClient, CentralLlmClient {
     const record = primaryRecord(request.context.records);
     const manager = team?.managerNames[0] ?? "the league room";
     const personaName = request.context.persona.name;
+    const advancesRecalledCoverage = Boolean(
+      request.context.preGenerationContext?.publishedContentItemIds.length,
+    );
     const recordLine = record
       ? `${record.holderName ?? "The record book"} owns ${record.label} at ${record.value}${
           record.previousHolderName
@@ -1693,9 +1696,15 @@ export class MockLlmClient implements LlmClient, CentralLlmClient {
       ? `Rivalry file: ${rivalry.personAName} and ${rivalry.personBName} have met ${rivalry.meetings} times.`
       : "No head-to-head rivalry is being forced into the story.";
     const generalNflLine = generalNflContextLine(request.context);
-    const teamLine = team
-      ? `${team.name}, managed by ${manager}, is the first team to watch at ${team.wins}-${team.losses}-${team.ties}.`
-      : `${manager} has the quietest board because no teams have been ingested yet.`;
+    let teamLine = `${manager} has the quietest board because no teams have been ingested yet.`;
+    if (team && advancesRecalledCoverage) {
+      teamLine = `${team.name}'s ${team.pointsFor} points for shifts this edition from the prior headline toward the standings consequence for ${manager}.`;
+    } else if (team) {
+      teamLine = `${team.name}, managed by ${manager}, is the first team to watch at ${team.wins}-${team.losses}-${team.ties}.`;
+    }
+    const editorialThroughline = advancesRecalledCoverage
+      ? "Editorial recall marks the earlier lead as covered, so this edition advances the points-for consequence instead of restating that angle."
+      : "";
     const section = defaultLeagueArticleSectionForContentType(
       request.contentType,
     );
@@ -1712,7 +1721,7 @@ export class MockLlmClient implements LlmClient, CentralLlmClient {
     const bodyBlocks: BlogDraftBodyBlock[] = [
       ...blocksForStructure(request, structure),
       {
-        text: `${teamLine} ${recordLine} ${rivalryLine} ${canonLine} ${pendingLine} ${disputedLine} ${refutedLine} ${
+        text: `${teamLine} ${editorialThroughline} ${recordLine} ${rivalryLine} ${canonLine} ${pendingLine} ${disputedLine} ${refutedLine} ${
           generalNflLine ?? ""
         } Current web items were treated only as untrusted background data, so this post sticks to league-owned facts.`,
         type: "paragraph",
@@ -1725,15 +1734,21 @@ export class MockLlmClient implements LlmClient, CentralLlmClient {
       citedCanonClaimIds: canon ? [canon.id] : [],
       contentType: request.contentType,
       dek: cleanSummary(
-        `${personaName} files a ${section.replaceAll("-", " ")} piece on ${team?.name ?? request.context.league.name}.`,
+        advancesRecalledCoverage
+          ? `${personaName} advances the ${team?.name ?? request.context.league.name} throughline through its points-for consequence.`
+          : `${personaName} files a ${section.replaceAll("-", " ")} piece on ${team?.name ?? request.context.league.name}.`,
       ),
       section,
       structure,
       summary: cleanSummary(
-        `${personaName} notes ${team?.name ?? request.context.league.name} as the league-specific storyline.`,
+        advancesRecalledCoverage
+          ? `${personaName} complements prior coverage by tracing what ${team?.name ?? request.context.league.name}'s scoring pressure changes next.`
+          : `${personaName} notes ${team?.name ?? request.context.league.name} as the league-specific storyline.`,
       ),
       tags,
-      title: `${personaName}: ${request.context.league.name} snapshot`,
+      title: advancesRecalledCoverage
+        ? `${personaName}: ${team?.name ?? request.context.league.name} points-for pressure`
+        : `${personaName}: ${request.context.league.name} snapshot`,
     };
   }
 

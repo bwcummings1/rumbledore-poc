@@ -1047,7 +1047,7 @@ describe("generateLeagueBlogPost", () => {
         leagueId: league.id,
         persona: "commissioner",
         publishedAt: "2026-06-11T12:00:00.000Z",
-        title: `Commissioner: ${marker} alpha snapshot`,
+        title: "Commissioner: alpha Team points-for pressure",
         triggerKey: "weekly:2026:2",
         type: "blog.published",
         v: 1,
@@ -1073,7 +1073,7 @@ describe("generateLeagueBlogPost", () => {
       },
       {
         at: new Date("2026-06-11T12:00:00.000Z"),
-        body: `Commissioner: ${marker} alpha snapshot`,
+        body: "Commissioner: alpha Team points-for pressure",
         leagueId: league.id,
         tag: `league:${league.id}:blog:${
           third.status === "published"
@@ -2096,6 +2096,7 @@ describe("generateLeagueBlogPost", () => {
     const llm = new DuplicateLlmClient();
     const embeddings = new ConstantEmbeddingProvider();
     const realtime = new RecordingRealtimePublisher();
+    let priorContentItemId = "";
 
     await withLeagueContext(handle.db, league.id, async (tx) => {
       const [prior] = await tx
@@ -2113,6 +2114,7 @@ describe("generateLeagueBlogPost", () => {
         })
         .returning({ id: contentItems.id });
       if (!prior) throw new Error("prior content was not inserted");
+      priorContentItemId = prior.id;
       await tx.insert(aiMemory).values({
         contentItemId: prior.id,
         embedding: await embeddings.embed("duplicate"),
@@ -2153,6 +2155,23 @@ describe("generateLeagueBlogPost", () => {
       /^near_duplicate:/,
     );
     expect(llm.requests.map((request) => request.attempt)).toEqual([1, 2]);
+    expect(llm.requests[0]?.context.preGenerationContext).toMatchObject({
+      leagueId: league.id,
+      publicationPool: "league",
+      publishedContentItemIds: [priorContentItemId],
+    });
+    expect(llm.requests[0]?.context.preGenerationContext?.digest).toContain(
+      "Duplicate league note",
+    );
+    expect(llm.requests[0]?.prompt.volatileContext).toContain(
+      "Duplicate league note",
+    );
+    expect(llm.requests[0]?.prompt.systemPrefix).not.toContain(
+      "Duplicate league note",
+    );
+    expect(llm.requests[1]?.duplicateNudge).toContain(
+      "too similar to a prior league post",
+    );
     expect(realtime.blogPublished).toHaveLength(0);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => {
