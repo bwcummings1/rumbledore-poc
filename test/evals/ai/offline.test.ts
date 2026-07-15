@@ -3,11 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   AI_CONTENT_TYPES,
   assertLlmJudgeScorePasses,
+  CENTRAL_COLUMN_KEYS,
+  CENTRAL_COLUMN_LINEUP,
+  type CentralGenerationContext,
+  type CentralLlmGenerateRequest,
   CONTENT_TYPE_TEMPLATES,
+  centralJournalistForId,
   DEFAULT_LLM_JUDGE_RUBRIC,
   type LeagueBlogContext,
   MockLlmClient,
   MockLlmJudge,
+  validateCentralArticleDraft,
   validateContentStructure,
 } from "@/ai";
 import {
@@ -37,6 +43,145 @@ const personalAgentEvalEnv = {
 } satisfies PersonalAgentBriefingInput["env"];
 
 const offlineDb = {} as Db;
+
+function centralEvalContext(
+  key: (typeof CENTRAL_COLUMN_KEYS)[number],
+): CentralGenerationContext {
+  const column = CENTRAL_COLUMN_LINEUP[key];
+  const journalist = centralJournalistForId(column.journalistId);
+  if (!journalist) throw new Error("central eval journalist is missing");
+  return {
+    column: {
+      branch: column.branch,
+      contentType: column.contentType,
+      dataSources: column.dataSources,
+      formatContract: column.formatContract,
+      id: column.id,
+      name: column.name,
+      section: column.section,
+    },
+    evidence: {
+      fetchedAt: "2026-09-15T12:00:00.000Z",
+      games: [
+        {
+          awayScore: 31,
+          awayTeam: "KC",
+          fetchedAt: "2026-09-15T12:00:00.000Z",
+          gameTime: "2026-09-15T00:15:00.000Z",
+          homeScore: 27,
+          homeTeam: "MIN",
+          sourceGameId: "eval-mnf-final",
+          status: "final",
+        },
+        {
+          awayScore: null,
+          awayTeam: "SF",
+          fetchedAt: "2026-09-15T12:00:00.000Z",
+          gameTime: "2026-09-22T00:15:00.000Z",
+          homeScore: null,
+          homeTeam: "DAL",
+          sourceGameId: "eval-mnf-next",
+          status: "scheduled",
+        },
+      ],
+      news: [
+        {
+          body: "Patrick Mahomes was limited in the supplied practice report.",
+          id: "eval-central-injury",
+          playerRefs: [
+            {
+              label: "Patrick Mahomes",
+              provider: "espn",
+              providerId: "3139477",
+            },
+          ],
+          publishedAt: "2026-09-15T11:00:00.000Z",
+          source: "Eval Wire",
+          sourceUrl: "https://example.invalid/eval-central-injury",
+          summary: "A supplied practice-status update.",
+          title: "Patrick Mahomes practice update",
+        },
+      ],
+      odds: [
+        {
+          awayPrice: 115,
+          awayTeam: "SF",
+          capturedAt: "2026-09-15T12:00:00.000Z",
+          homePrice: -135,
+          homeTeam: "DAL",
+          line: -2.5,
+          marketId: "eval-central-spread",
+          marketType: "spread",
+          outcomePrice: null,
+          overPrice: null,
+          propType: null,
+          subject: "game",
+          underPrice: null,
+        },
+      ],
+      players: [
+        {
+          fantasyPoints: 25.8,
+          fetchedAt: "2026-09-15T12:00:00.000Z",
+          fullName: "Patrick Mahomes",
+          opponentTeam: "MIN",
+          position: "QB",
+          receptions: 0,
+          receivingYards: 0,
+          rushingYards: 22,
+          sourcePlayerId: "eval-mahomes",
+          targets: 0,
+          team: "KC",
+        },
+      ],
+      source: "mock-nfl-general-stats",
+      teamStats: [
+        {
+          fetchedAt: "2026-09-15T12:00:00.000Z",
+          opponentTeam: "MIN",
+          passingYards: 315,
+          pointsAgainst: 27,
+          pointsFor: 31,
+          receivingYards: 315,
+          rushingYards: 104,
+          sourceGameId: "eval-mnf-final",
+          team: "KC",
+          turnovers: 1,
+        },
+      ],
+    },
+    journalist: {
+      beat: journalist.beat,
+      id: journalist.id,
+      name: journalist.name,
+      persona: journalist.persona,
+      registerContract: journalist.registerContract,
+    },
+    preGenerationContext: null,
+    reportRequest:
+      column.id === "the-rundown"
+        ? { brief: "Report on supplied evidence.", category: "eval report" }
+        : null,
+    requestedAt: "2026-09-15T12:00:00.000Z",
+    season: 2026,
+    triggerKey: `eval:${column.id}`,
+    week: 1,
+  };
+}
+
+function centralEvalRequest(
+  context: CentralGenerationContext,
+): CentralLlmGenerateRequest {
+  return {
+    contentType: context.column.contentType,
+    context,
+    prompt: {
+      prompt: "central eval",
+      systemPrefix: "{}",
+      volatileContext: JSON.stringify(context.evidence),
+    },
+  };
+}
 
 function emptyRecordsCatalog(
   overrides: Partial<RecordsCatalog> = {},
@@ -156,6 +301,27 @@ function canonScoreCatalog(fixture = league95050): RecordsCatalog {
 }
 
 describe("offline AI judge eval gate", () => {
+  it("passes every central column format on mock shared-substrate evidence", async () => {
+    const llm = new MockLlmClient();
+    for (const key of CENTRAL_COLUMN_KEYS) {
+      const context = centralEvalContext(key);
+      const draft = validateCentralArticleDraft(
+        await llm.generateCentral(centralEvalRequest(context)),
+        { context },
+      );
+      expect(draft.structure.type, context.column.id).toBe(
+        context.column.contentType,
+      );
+      const serialized = JSON.stringify(draft);
+      for (const fixture of EVAL_LEAGUE_FIXTURES) {
+        expect(serialized, context.column.id).not.toContain(fixture.leagueName);
+        expect(serialized, context.column.id).not.toContain(
+          fixture.primaryManager,
+        );
+      }
+    }
+  });
+
   it("passes every content type for deterministic league fixtures without cross-league leakage", async () => {
     const llm = new MockLlmClient();
     const judge = new MockLlmJudge();

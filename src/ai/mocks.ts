@@ -3,6 +3,23 @@ import {
   bodyBlocksToMarkdown,
   defaultLeagueArticleSectionForContentType,
 } from "./article-draft";
+import {
+  centralArticleText,
+  centralBodyBlocksToMarkdown,
+} from "./central-article-draft";
+import type {
+  CentralContentStructure,
+  CentralInjuriesStructure,
+  CentralMatchupsStructure,
+  CentralMnfRecapStructure,
+  CentralPostWaiverStructure,
+  CentralPreWaiverStructure,
+  CentralRankingsProjectionsStructure,
+  CentralRundownReportStructure,
+  CentralStartSitStructure,
+  CentralWeekendRecapMnfProjectionStructure,
+  CentralWireBlurbStructure,
+} from "./central-content-types";
 import type {
   ArenaRecapStructure,
   AwardsSuperlativesStructure,
@@ -22,6 +39,12 @@ import type {
 import type {
   BlogDraft,
   BlogDraftBodyBlock,
+  CentralArticleBodyBlock,
+  CentralArticleDraft,
+  CentralGenerationContext,
+  CentralLlmClient,
+  CentralLlmGenerateRequest,
+  CentralLlmGenerateResult,
   EmbeddingProvider,
   LeagueContextRecord,
   LeagueContextTeam,
@@ -1064,8 +1087,543 @@ function blocksForStructure(
   }
 }
 
-export class MockLlmClient implements LlmClient {
+function centralDataStatus(
+  context: CentralGenerationContext,
+): "available" | "partial" | "unavailable" {
+  const groups = [
+    context.evidence.news.length,
+    context.evidence.games.length,
+    context.evidence.players.length,
+    context.evidence.odds.length,
+  ];
+  const populated = groups.filter((count) => count > 0).length;
+  if (populated === 0) return "unavailable";
+  if (populated === groups.length) return "available";
+  return "partial";
+}
+
+function newsRef(id: string): string {
+  return `news:${id}`;
+}
+
+function gameRef(sourceGameId: string): string {
+  return `game:${sourceGameId}`;
+}
+
+function playerRef(sourcePlayerId: string): string {
+  return `player:${sourcePlayerId}`;
+}
+
+function oddsRef(marketId: string): string {
+  return `odds:${marketId}`;
+}
+
+function weekdayInNewYork(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+  }).format(new Date(value));
+}
+
+function centralPlayerOutcome(
+  player: CentralGenerationContext["evidence"]["players"][number],
+): CentralWeekendRecapMnfProjectionStructure["completedGames"][number]["fantasyStandouts"][number] {
+  return {
+    evidenceRefs: [playerRef(player.sourcePlayerId)],
+    fantasyPoints: player.fantasyPoints,
+    player: player.fullName,
+    summary: `${player.fullName} recorded ${formatStatNumber(player.fantasyPoints)} supplied fantasy points against ${player.opponentTeam}.`,
+    team: player.team,
+  };
+}
+
+function centralWireStructure(
+  context: CentralGenerationContext,
+): CentralWireBlurbStructure {
+  const item = context.evidence.news[0];
+  const haystack = `${item?.title ?? ""} ${item?.summary ?? ""}`;
+  const category = /injur|questionable|doubtful|inactive|practice/i.test(
+    haystack,
+  )
+    ? ("injury" as const)
+    : /trade/i.test(haystack)
+      ? ("trade" as const)
+      : /sign/i.test(haystack)
+        ? ("signing" as const)
+        : /contract|holdout/i.test(haystack)
+          ? ("contract" as const)
+          : /roster|release|waive/i.test(haystack)
+            ? ("roster_move" as const)
+            : ("other" as const);
+  return {
+    dataStatus: item ? "available" : "unavailable",
+    event: item
+      ? {
+          category,
+          headline: item.title,
+          occurredAt: item.publishedAt,
+          sourceItemId: item.id,
+        }
+      : null,
+    fantasyImplicationIncluded: false,
+    type: "central_wire_blurb",
+    whatHappened: item ? item.summary || item.body || item.title : null,
+    whyItMatters: item
+      ? `The supplied ${item.source} filing adds league-agnostic NFL context; no fantasy recommendation is included in The Wire.`
+      : null,
+  };
+}
+
+function centralRundownStructure(
+  context: CentralGenerationContext,
+): CentralRundownReportStructure {
+  const findings: CentralRundownReportStructure["findings"] = [];
+  const news = context.evidence.news[0];
+  if (news) {
+    findings.push({
+      evidenceRefs: [newsRef(news.id)],
+      finding: news.summary || news.body || news.title,
+      heading: news.title,
+      metric: null,
+      unit: null,
+    });
+  }
+  const player = [...context.evidence.players].sort(
+    (left, right) => right.fantasyPoints - left.fantasyPoints,
+  )[0];
+  if (player) {
+    findings.push({
+      evidenceRefs: [playerRef(player.sourcePlayerId)],
+      finding: `${player.fullName} recorded ${formatStatNumber(player.fantasyPoints)} fantasy points in the supplied week.`,
+      heading: "Recorded fantasy production",
+      metric: player.fantasyPoints,
+      unit: "fantasy points",
+    });
+  }
+  const category = context.reportRequest?.category ?? "general NFL report";
+  return {
+    dataStatus:
+      findings.length === 0
+        ? "unavailable"
+        : findings.length === 1
+          ? "partial"
+          : "available",
+    findings,
+    reportCategory: category,
+    thesis:
+      findings.length > 0
+        ? `${category} is bounded to ${findings.length} supplied evidence finding${findings.length === 1 ? "" : "s"}.`
+        : null,
+    type: "central_rundown_report",
+    uncertainties:
+      findings.length > 0
+        ? [
+            "The mock substrate is illustrative and contains no private sourcing.",
+          ]
+        : ["No source evidence was supplied for this report request."],
+  };
+}
+
+function centralWeekendStructure(
+  context: CentralGenerationContext,
+): CentralWeekendRecapMnfProjectionStructure {
+  const finalGames = context.evidence.games.filter(
+    (game) => game.status === "final",
+  );
+  const completedGames = finalGames.map((game) => ({
+    awayScore: game.awayScore,
+    awayTeam: game.awayTeam,
+    evidenceRefs: [gameRef(game.sourceGameId)],
+    fantasyStandouts: context.evidence.players
+      .filter(
+        (player) =>
+          player.team === game.awayTeam || player.team === game.homeTeam,
+      )
+      .sort((left, right) => right.fantasyPoints - left.fantasyPoints)
+      .slice(0, 3)
+      .map(centralPlayerOutcome),
+    homeScore: game.homeScore,
+    homeTeam: game.homeTeam,
+    sourceGameId: game.sourceGameId,
+    takeaway:
+      game.awayScore !== null && game.homeScore !== null
+        ? `${game.awayTeam} at ${game.homeTeam} finished ${game.awayScore}-${game.homeScore}.`
+        : null,
+  }));
+  const mondayGame = context.evidence.games.find(
+    (game) =>
+      game.status !== "final" && weekdayInNewYork(game.gameTime) === "Monday",
+  );
+  return {
+    completedGames,
+    dataStatus: centralDataStatus(context),
+    mnfProjection: mondayGame
+      ? {
+          awayProjectedScore: null,
+          awayTeam: mondayGame.awayTeam,
+          evidenceRefs: [gameRef(mondayGame.sourceGameId)],
+          homeProjectedScore: null,
+          homeTeam: mondayGame.homeTeam,
+          label: "computed",
+          methodology:
+            "No projection model inputs were supplied, so both computed score fields remain null.",
+          sourceGameId: mondayGame.sourceGameId,
+        }
+      : null,
+    projectionStatus: mondayGame ? "computed" : "unavailable",
+    type: "central_weekend_recap_mnf_projection",
+  };
+}
+
+function centralMnfStructure(
+  context: CentralGenerationContext,
+): CentralMnfRecapStructure {
+  const game = context.evidence.games.find(
+    (candidate) =>
+      candidate.status === "final" &&
+      weekdayInNewYork(candidate.gameTime) === "Monday",
+  );
+  const outcomes = game
+    ? context.evidence.players
+        .filter(
+          (player) =>
+            player.team === game.awayTeam || player.team === game.homeTeam,
+        )
+        .sort((left, right) => right.fantasyPoints - left.fantasyPoints)
+        .map(centralPlayerOutcome)
+    : [];
+  return {
+    dataStatus: game ? "available" : "unavailable",
+    fantasyOutcomes: outcomes,
+    game: game
+      ? {
+          awayScore: game.awayScore,
+          awayTeam: game.awayTeam,
+          evidenceRefs: [gameRef(game.sourceGameId)],
+          homeScore: game.homeScore,
+          homeTeam: game.homeTeam,
+          sourceGameId: game.sourceGameId,
+        }
+      : null,
+    type: "central_mnf_recap",
+  };
+}
+
+function centralWaiverTarget(
+  player: CentralGenerationContext["evidence"]["players"][number],
+): CentralPreWaiverStructure["recommendations"][number] {
+  return {
+    evidenceRefs: [playerRef(player.sourcePlayerId)],
+    player: player.fullName,
+    position: player.position,
+    priority: 1,
+    recommendation: `${player.fullName}'s supplied weekly production is a review signal, not proof of universal availability.`,
+    recommendedBidPercent: null,
+    rosterAvailabilityPercent: null,
+    team: player.team,
+  };
+}
+
+function centralPreWaiverStructureFor(
+  context: CentralGenerationContext,
+): CentralPreWaiverStructure {
+  const recommendations = [...context.evidence.players]
+    .sort((left, right) => right.fantasyPoints - left.fantasyPoints)
+    .slice(0, 6)
+    .map((player, index) => ({
+      ...centralWaiverTarget(player),
+      priority: index + 1,
+    }));
+  return {
+    availabilityScope:
+      "Roster availability is league-specific and was not supplied by the central substrate.",
+    dataStatus: recommendations.length > 0 ? "partial" : "unavailable",
+    recommendations,
+    type: "central_pre_waiver",
+  };
+}
+
+function centralPostWaiverStructureFor(
+  context: CentralGenerationContext,
+): CentralPostWaiverStructure {
+  const fallbackTargets = [...context.evidence.players]
+    .sort((left, right) => right.fantasyPoints - left.fantasyPoints)
+    .slice(0, 4)
+    .map((player) => {
+      const { priority: _priority, ...target } = centralWaiverTarget(player);
+      return target;
+    });
+  return {
+    dataStatus: fallbackTargets.length > 0 ? "partial" : "unavailable",
+    fallbackTargets,
+    outcomesAvailable: false,
+    processedOutcomes: [],
+    type: "central_post_waiver",
+  };
+}
+
+function centralMatchupsStructureFor(
+  context: CentralGenerationContext,
+): CentralMatchupsStructure {
+  return {
+    dataStatus: context.evidence.games.length > 0 ? "partial" : "unavailable",
+    matchups: context.evidence.games.map((game) => {
+      const odds = context.evidence.odds.find(
+        (market) =>
+          market.awayTeam === game.awayTeam &&
+          market.homeTeam === game.homeTeam,
+      );
+      return {
+        awayTeam: game.awayTeam,
+        computedProjection: null,
+        evidenceRefs: [
+          gameRef(game.sourceGameId),
+          ...(odds ? [oddsRef(odds.marketId)] : []),
+        ],
+        gameTime: game.gameTime,
+        homeTeam: game.homeTeam,
+        marketLine: odds?.line ?? null,
+        playerAngles: context.evidence.players
+          .filter(
+            (player) =>
+              player.team === game.awayTeam || player.team === game.homeTeam,
+          )
+          .slice(0, 4)
+          .map(centralPlayerOutcome),
+        sourceGameId: game.sourceGameId,
+        status: game.status,
+      };
+    }),
+    type: "central_matchups",
+  };
+}
+
+function centralRankingsStructure(
+  context: CentralGenerationContext,
+): CentralRankingsProjectionsStructure {
+  const rankings = [...context.evidence.players]
+    .sort(
+      (left, right) =>
+        right.fantasyPoints - left.fantasyPoints ||
+        left.fullName.localeCompare(right.fullName),
+    )
+    .map((player, index) => ({
+      evidenceRefs: [playerRef(player.sourcePlayerId)],
+      player: player.fullName,
+      position: player.position,
+      projectedPoints: null,
+      rank: index + 1,
+      recentFantasyPoints: player.fantasyPoints,
+      team: player.team,
+    }));
+  return {
+    dataStatus: rankings.length > 0 ? "partial" : "unavailable",
+    methodology:
+      "Computed order uses supplied weekly fantasy points descending; projected points remain null because no projection input was supplied.",
+    outputLabel: "computed",
+    rankings,
+    type: "central_rankings_projections",
+  };
+}
+
+function centralStartSitStructureFor(
+  context: CentralGenerationContext,
+): CentralStartSitStructure {
+  return {
+    dataStatus: context.evidence.players.length > 0 ? "partial" : "unavailable",
+    recommendations: [...context.evidence.players]
+      .sort((left, right) => right.fantasyPoints - left.fantasyPoints)
+      .slice(0, 8)
+      .map((player) => ({
+        conditions: [
+          "Recheck official status and lineup context before kickoff.",
+        ],
+        evidenceRefs: [playerRef(player.sourcePlayerId)],
+        player: player.fullName,
+        position: player.position,
+        projectedPoints: null,
+        rationale: `${player.fullName} recorded ${formatStatNumber(player.fantasyPoints)} supplied fantasy points; no forward projection was supplied.`,
+        team: player.team,
+        verdict: "conditional" as const,
+      })),
+    type: "central_start_sit",
+  };
+}
+
+function centralInjuriesStructureFor(
+  context: CentralGenerationContext,
+): CentralInjuriesStructure {
+  const injuryNews = context.evidence.news.filter((item) =>
+    /injur|questionable|doubtful|inactive|practice/i.test(
+      `${item.title} ${item.summary} ${item.body}`,
+    ),
+  );
+  const playerFactsByName = new Map(
+    context.evidence.players.map((fact) => [fact.fullName, fact] as const),
+  );
+  return {
+    dataStatus: injuryNews.length > 0 ? "partial" : "unavailable",
+    type: "central_injuries",
+    updates: injuryNews.map((item) => {
+      const labeledRef = item.playerRefs.find((ref) => ref.label);
+      const player = labeledRef?.label ?? null;
+      const playerFact = player
+        ? (playerFactsByName.get(player) ?? null)
+        : null;
+      return {
+        evidenceRefs: [newsRef(item.id)],
+        eventSummary: item.summary || item.body || item.title,
+        fantasyImplication: playerFact
+          ? `${playerFact.fullName}'s supplied Week ${context.week} production was ${formatStatNumber(playerFact.fantasyPoints)} fantasy points; future availability remains unknown.`
+          : null,
+        player,
+        replacementOptions: [],
+        sourceItemId: item.id,
+        status: null,
+        team: playerFact?.team ?? null,
+      };
+    }),
+  };
+}
+
+function centralStructureForRequest(
+  request: CentralLlmGenerateRequest,
+): CentralContentStructure {
+  switch (request.contentType) {
+    case "central_wire_blurb":
+      return centralWireStructure(request.context);
+    case "central_rundown_report":
+      return centralRundownStructure(request.context);
+    case "central_weekend_recap_mnf_projection":
+      return centralWeekendStructure(request.context);
+    case "central_mnf_recap":
+      return centralMnfStructure(request.context);
+    case "central_pre_waiver":
+      return centralPreWaiverStructureFor(request.context);
+    case "central_post_waiver":
+      return centralPostWaiverStructureFor(request.context);
+    case "central_matchups":
+      return centralMatchupsStructureFor(request.context);
+    case "central_rankings_projections":
+      return centralRankingsStructure(request.context);
+    case "central_start_sit":
+      return centralStartSitStructureFor(request.context);
+    case "central_injuries":
+      return centralInjuriesStructureFor(request.context);
+  }
+}
+
+function centralStructureLines(structure: CentralContentStructure): string[] {
+  switch (structure.type) {
+    case "central_wire_blurb":
+      return [structure.whatHappened, structure.whyItMatters].filter(
+        (line): line is string => Boolean(line),
+      );
+    case "central_rundown_report":
+      return structure.findings.map(
+        (finding) => `${finding.heading}: ${finding.finding}`,
+      );
+    case "central_weekend_recap_mnf_projection":
+      return [
+        ...structure.completedGames.flatMap((game) =>
+          game.takeaway ? [game.takeaway] : [],
+        ),
+        structure.mnfProjection
+          ? `Computed MNF projection: ${structure.mnfProjection.methodology}`
+          : "No supplied Monday-night game was available for projection.",
+      ];
+    case "central_mnf_recap":
+      return structure.game
+        ? [
+            `${structure.game.awayTeam} at ${structure.game.homeTeam}: ${structure.game.awayScore ?? "score unavailable"}-${structure.game.homeScore ?? "score unavailable"}.`,
+          ]
+        : ["No supplied Monday-night final was available."];
+    case "central_pre_waiver":
+      return structure.recommendations.map(
+        (player) => `${player.priority}. ${player.recommendation}`,
+      );
+    case "central_post_waiver":
+      return [
+        structure.outcomesAvailable
+          ? `${structure.processedOutcomes.length} supplied waiver outcomes were available.`
+          : "No universal processed-waiver outcomes were supplied.",
+        ...structure.fallbackTargets.map((player) => player.recommendation),
+      ];
+    case "central_matchups":
+      return structure.matchups.map(
+        (game) => `${game.awayTeam} at ${game.homeTeam} (${game.status}).`,
+      );
+    case "central_rankings_projections":
+      return [
+        structure.methodology,
+        ...structure.rankings.map(
+          (player) =>
+            `${player.rank}. ${player.player}, ${player.position}, ${player.team}: projection ${player.projectedPoints ?? "unavailable"}.`,
+        ),
+      ];
+    case "central_start_sit":
+      return structure.recommendations.map(
+        (player) => `${player.player}: ${player.verdict}. ${player.rationale}`,
+      );
+    case "central_injuries":
+      return structure.updates.length > 0
+        ? structure.updates.map((update) => update.eventSummary)
+        : ["No supplied injury event was available for a fantasy implication."];
+  }
+}
+
+function centralDraftForRequest(
+  request: CentralLlmGenerateRequest,
+): CentralArticleDraft {
+  const structure = centralStructureForRequest(request);
+  const lines = centralStructureLines(structure);
+  const evidenceCount =
+    request.context.evidence.news.length +
+    request.context.evidence.games.length +
+    request.context.evidence.players.length +
+    request.context.evidence.odds.length;
+  const bodyBlocks: CentralArticleBodyBlock[] = [
+    {
+      text: `${request.context.column.name} — ${request.context.season} Week ${request.context.week}`,
+      type: "heading",
+    },
+    {
+      text: `${request.context.journalist.name} files from ${evidenceCount} supplied central evidence record${evidenceCount === 1 ? "" : "s"}. ${request.context.journalist.registerContract}`,
+      type: "paragraph",
+    },
+    ...(lines.length > 0
+      ? [{ items: lines, type: "list" as const }]
+      : [
+          {
+            text: "The supplied mock substrate did not contain enough evidence for a factual assertion.",
+            type: "paragraph" as const,
+          },
+        ]),
+  ];
+  const firstNews = request.context.evidence.news[0];
+  return {
+    body: centralBodyBlocksToMarkdown(bodyBlocks),
+    bodyBlocks,
+    contentType: request.contentType,
+    dek: `${request.context.column.name} uses only supplied mock news, NFL stats, and odds evidence.`,
+    section: request.context.column.section,
+    structure,
+    summary: `${request.context.journalist.name} files ${request.context.column.name} from ${evidenceCount} supplied evidence record${evidenceCount === 1 ? "" : "s"}.`,
+    tags: [
+      request.context.column.section,
+      request.context.column.name,
+      ...(firstNews ? [firstNews.source] : []),
+    ],
+    title:
+      request.contentType === "central_wire_blurb" && firstNews
+        ? firstNews.title
+        : `${request.context.column.name}: Week ${request.context.week}`,
+  };
+}
+
+export class MockLlmClient implements LlmClient, CentralLlmClient {
   readonly requests: LlmGenerateRequest[] = [];
+  readonly centralRequests: CentralLlmGenerateRequest[] = [];
 
   resolveModelProviderKey(): string {
     return "mock";
@@ -1176,6 +1734,31 @@ export class MockLlmClient implements LlmClient {
       ),
       tags,
       title: `${personaName}: ${request.context.league.name} snapshot`,
+    };
+  }
+
+  async generateCentral(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralArticleDraft> {
+    this.centralRequests.push(request);
+    return centralDraftForRequest(request);
+  }
+
+  async generateCentralWithUsage(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralLlmGenerateResult> {
+    const draft = await this.generateCentral(request);
+    return {
+      draft,
+      estimated: true,
+      usage: {
+        cacheCreationInputTokens: estimateTokenCount(
+          request.prompt.systemPrefix,
+        ),
+        cacheReadInputTokens: 0,
+        inputTokens: estimateTokenCount(request.prompt.volatileContext),
+        outputTokens: estimateTokenCount(centralArticleText(draft)),
+      },
     };
   }
 }

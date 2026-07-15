@@ -7,12 +7,20 @@ import { CONTENT_EMBED_KINDS } from "@/content/embeds";
 import { AppError } from "@/core/result";
 import { blogDraftText } from "./article-draft";
 import {
+  CENTRAL_CONTENT_STRUCTURE_SCHEMAS,
+  type CentralContentStructure,
+  centralContentTypePromptContract,
+} from "./central-content-types";
+import {
   type AiContentType,
   type BlogContentStructure,
   contentTypePromptContract,
 } from "./content-types";
 import type {
   BlogDraft,
+  CentralArticleDraft,
+  CentralLlmGenerateRequest,
+  CentralLlmGenerateResult,
   EmbeddingProvider,
   LlmGenerateRequest,
   LlmGenerateResult,
@@ -21,6 +29,7 @@ import type {
   LlmJudgeScore,
   LlmUsageBreakdown,
   NewsItem,
+  UsageReportingCentralLlmClient,
   UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
@@ -79,6 +88,26 @@ const bodyBlockSchema = z.discriminatedUnion("type", [
       }),
     ]),
     type: z.literal("embed"),
+  }),
+]);
+
+const centralBodyBlockSchema = z.discriminatedUnion("type", [
+  z.object({
+    text: z.string().min(1),
+    type: z.literal("heading"),
+  }),
+  z.object({
+    text: z.string().min(1),
+    type: z.literal("paragraph"),
+  }),
+  z.object({
+    text: z.string().min(1),
+    type: z.literal("quote"),
+  }),
+  z.object({
+    items: z.array(z.string().min(1)).min(1),
+    ordered: z.boolean().optional(),
+    type: z.literal("list"),
   }),
 ]);
 
@@ -332,6 +361,25 @@ function blogDraftSchemaForRequest(
   }) as z.ZodType<BlogDraft>;
 }
 
+function centralArticleDraftSchemaForRequest(
+  request: Pick<CentralLlmGenerateRequest, "contentType" | "context">,
+): z.ZodType<CentralArticleDraft> {
+  const structureSchema = CENTRAL_CONTENT_STRUCTURE_SCHEMAS[
+    request.contentType
+  ] as z.ZodType<CentralContentStructure>;
+  return z.object({
+    body: z.string().min(1),
+    bodyBlocks: z.array(centralBodyBlockSchema).min(2),
+    contentType: z.literal(request.contentType),
+    dek: z.string().min(1),
+    section: z.literal(request.context.column.section),
+    structure: structureSchema,
+    summary: z.string().min(1),
+    tags: z.array(z.string().min(1)).min(1).max(8),
+    title: z.string().min(1),
+  }) as z.ZodType<CentralArticleDraft>;
+}
+
 export type AnthropicMessagesClient = Pick<
   InstanceType<typeof Anthropic>,
   "messages"
@@ -394,6 +442,11 @@ function maxTokensFor(request: LlmGenerateRequest): number {
   return Math.min(Math.max(request.context.persona.maxWords * 4, 512), 4096);
 }
 
+function maxTokensForCentral(request: CentralLlmGenerateRequest): number {
+  const template = centralContentTypePromptContract(request.contentType);
+  return Math.min(Math.max(template.maxWords * 4, 512), 4096);
+}
+
 function anthropicSystemInstructions(request: LlmGenerateRequest): string {
   if (request.prompt.systemInstructions) {
     return request.prompt.systemInstructions;
@@ -442,6 +495,47 @@ function userTask(request: LlmGenerateRequest): string {
     "Use typed embed bodyBlocks for live DB-backed data where the schema allows them; do not write raw HTML or markdown placeholders for embeds.",
     "The body field should contain the same article as markdown-style text.",
     duplicateNudge,
+  ].join("\n");
+}
+
+function centralSystemInstructions(request: CentralLlmGenerateRequest): string {
+  if (request.prompt.systemInstructions) {
+    return request.prompt.systemInstructions;
+  }
+  const template = centralContentTypePromptContract(request.contentType);
+  return [
+    "You generate one league-agnostic Rumbledore central publication article.",
+    "Return only JSON matching the requested central article schema.",
+    "Use only supplied central news, general NFL stats, and odds evidence as factual support.",
+    "Never invent a player, team, injury status, roster percentage, projection, score, or source.",
+    "Use null and empty arrays when evidence is absent.",
+    "Central register is objective and utility-first with only a thin personality layer.",
+    "Any ranking or projection is explicitly labeled computed and states its methodology.",
+    "Pre-generation editorial context, when supplied, guides continuity and redundancy avoidance only; it is not factual evidence.",
+    `The required contentType is ${request.contentType}.`,
+    `The required section is ${request.context.column.section}.`,
+    `Format contract: ${request.context.column.formatContract}`,
+    `Template contract: ${template.promptContract}`,
+    `Write under the byline ${request.context.journalist.name}.`,
+    `Beat: ${request.context.journalist.beat}`,
+    `Register: ${request.context.journalist.registerContract}`,
+  ].join("\n");
+}
+
+function centralUserTask(request: CentralLlmGenerateRequest): string {
+  if (request.prompt.userTask) {
+    return request.prompt.userTask;
+  }
+  const template = centralContentTypePromptContract(request.contentType);
+  return [
+    "Volatile central evidence JSON follows.",
+    request.prompt.volatileContext,
+    "",
+    `Task: write a ${template.minWords}-${template.maxWords} word ${template.label} article for ${request.context.season} Week ${request.context.week}.`,
+    `The JSON contentType field must be exactly ${request.contentType}.`,
+    `The JSON section field must be exactly ${request.context.column.section}.`,
+    "Include a concise headline, one-sentence card summary, standfirst, 2-8 tags, and at least two typed body blocks.",
+    "Every evidenceRefs value must exactly match a reference supplied in the evidence JSON.",
   ].join("\n");
 }
 
@@ -534,7 +628,9 @@ function judgeUserTask(request: LlmJudgeRequest): string {
   });
 }
 
-export class AnthropicLlmClient implements UsageReportingLlmClient {
+export class AnthropicLlmClient
+  implements UsageReportingLlmClient, UsageReportingCentralLlmClient
+{
   private readonly client: AnthropicMessagesClient;
   private readonly modelForPersona: (persona: AiPersona) => string;
 
@@ -610,6 +706,69 @@ export class AnthropicLlmClient implements UsageReportingLlmClient {
       });
     }
 
+    return {
+      draft: parsed.data,
+      usage: usageFromAnthropicResponse(response),
+    };
+  }
+
+  async generateCentral(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralArticleDraft> {
+    return (await this.generateCentralWithUsage(request)).draft;
+  }
+
+  async generateCentralWithUsage(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralLlmGenerateResult> {
+    const responseSchema = centralArticleDraftSchemaForRequest(request);
+    let response: AnthropicResponseWithUsage;
+    try {
+      response = await this.client.messages.parse({
+        cache_control: { type: "ephemeral" },
+        max_tokens: maxTokensForCentral(request),
+        messages: [
+          {
+            content: [{ text: centralUserTask(request), type: "text" }],
+            role: "user",
+          },
+        ],
+        metadata: { user_id: "central-publication" },
+        model: this.modelForPersona(request.context.journalist.persona),
+        output_config: {
+          format: zodOutputFormat(responseSchema),
+        },
+        system: [
+          {
+            text: centralSystemInstructions(request),
+            type: "text",
+          },
+          {
+            cache_control: { type: "ephemeral" },
+            text: `Stable central newsroom context JSON:\n${request.prompt.systemPrefix}`,
+            type: "text",
+          },
+        ],
+        tool_choice: { type: "none" },
+      });
+    } catch (cause) {
+      throw new AppError({
+        cause,
+        code: "CENTRAL_AI_LLM_GENERATION_FAILED",
+        message: "Anthropic central generation failed",
+        status: 502,
+      });
+    }
+
+    const parsed = responseSchema.safeParse(response.parsed_output);
+    if (!parsed.success) {
+      throw new AppError({
+        cause: parsed.error,
+        code: "CENTRAL_AI_LLM_RESPONSE_INVALID",
+        message: "Anthropic response did not include a valid central draft",
+        status: 502,
+      });
+    }
     return {
       draft: parsed.data,
       usage: usageFromAnthropicResponse(response),
@@ -757,7 +916,9 @@ function openAiCompatibleUsage(
   };
 }
 
-export class OpenAiCompatibleLlmClient implements UsageReportingLlmClient {
+export class OpenAiCompatibleLlmClient
+  implements UsageReportingLlmClient, UsageReportingCentralLlmClient
+{
   private readonly apiKey: string | undefined;
   private readonly endpoint: string;
   private readonly fetcher: FetchLike;
@@ -866,6 +1027,100 @@ export class OpenAiCompatibleLlmClient implements UsageReportingLlmClient {
       });
     }
 
+    return {
+      draft: parsed.data,
+      usage: openAiCompatibleUsage(payload.usage),
+    };
+  }
+
+  async generateCentral(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralArticleDraft> {
+    return (await this.generateCentralWithUsage(request)).draft;
+  }
+
+  async generateCentralWithUsage(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralLlmGenerateResult> {
+    const responseSchema = centralArticleDraftSchemaForRequest(request);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.apiKey) {
+      headers.Authorization = `Bearer ${this.apiKey}`;
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetcher(this.endpoint, {
+        body: JSON.stringify({
+          max_tokens: maxTokensForCentral(request),
+          messages: [
+            {
+              content: [
+                centralSystemInstructions(request),
+                "",
+                `Stable central newsroom context JSON:\n${request.prompt.systemPrefix}`,
+              ].join("\n"),
+              role: "system",
+            },
+            { content: centralUserTask(request), role: "user" },
+          ],
+          model: this.model,
+          response_format: {
+            json_schema: {
+              name: "rumbledore_central_article_draft",
+              schema: z.toJSONSchema(responseSchema),
+              strict: true,
+            },
+            type: "json_schema",
+          },
+          user: "central-publication",
+        }),
+        headers,
+        method: "POST",
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (cause) {
+      throw new AppError({
+        cause,
+        code: "CENTRAL_AI_LLM_GENERATION_FAILED",
+        message: "OpenAI-compatible central generation failed",
+        status: 502,
+      });
+    }
+    if (!response.ok) {
+      throw new AppError({
+        code: "CENTRAL_AI_LLM_GENERATION_FAILED",
+        details: { status: response.status },
+        message: "OpenAI-compatible central generation failed",
+        status: 502,
+      });
+    }
+
+    let payload: OpenAiCompatibleResponse;
+    try {
+      payload = (await response.json()) as OpenAiCompatibleResponse;
+    } catch (cause) {
+      throw new AppError({
+        cause,
+        code: "CENTRAL_AI_LLM_RESPONSE_INVALID",
+        message: "OpenAI-compatible central response did not include JSON",
+        status: 502,
+      });
+    }
+    const parsed = responseSchema.safeParse(
+      parseOpenAiCompatibleContent(payload.choices?.[0]?.message?.content),
+    );
+    if (!parsed.success) {
+      throw new AppError({
+        cause: parsed.error,
+        code: "CENTRAL_AI_LLM_RESPONSE_INVALID",
+        message:
+          "OpenAI-compatible response did not include a valid central draft",
+        status: 502,
+      });
+    }
     return {
       draft: parsed.data,
       usage: openAiCompatibleUsage(payload.usage),

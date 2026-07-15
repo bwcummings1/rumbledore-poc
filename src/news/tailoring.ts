@@ -195,10 +195,24 @@ function matchedEntitiesFor(
   );
 }
 
-async function latestRosterScoringPeriod(
-  db: Db,
-  league: LeagueRow,
-): Promise<number | null> {
+async function rosterMatchesForLeague({
+  db,
+  league,
+  refs,
+}: {
+  db: Db;
+  league: LeagueRow;
+  refs: readonly CentralNewsPlayerRef[];
+}): Promise<RosterMatch[]> {
+  if (refs.length === 0) {
+    return [];
+  }
+
+  const refByPlayerId = new Map(
+    refs.map((ref) => [ref.providerId, ref] as const),
+  );
+  const providerPlayerIds = sortedUnique([...refByPlayerId.keys()]);
+
   return withLeagueContext(db, league.id, async (tx) => {
     const [row] = await tx
       .select({
@@ -217,34 +231,9 @@ async function latestRosterScoringPeriod(
       );
 
     const scoringPeriod = Number(row?.scoringPeriod ?? Number.NaN);
-    return Number.isFinite(scoringPeriod) ? scoringPeriod : null;
-  });
-}
-
-async function rosterMatchesForLeague({
-  db,
-  league,
-  refs,
-}: {
-  db: Db;
-  league: LeagueRow;
-  refs: readonly CentralNewsPlayerRef[];
-}): Promise<RosterMatch[]> {
-  if (refs.length === 0) {
-    return [];
-  }
-
-  const latestScoringPeriod = await latestRosterScoringPeriod(db, league);
-  if (latestScoringPeriod === null) {
-    return [];
-  }
-
-  const refByPlayerId = new Map(
-    refs.map((ref) => [ref.providerId, ref] as const),
-  );
-  const providerPlayerIds = sortedUnique([...refByPlayerId.keys()]);
-
-  return withLeagueContext(db, league.id, async (tx) => {
+    if (!Number.isFinite(scoringPeriod)) {
+      return [];
+    }
     const rows = await tx
       .select({
         provider: fantasyRosterEntries.provider,
@@ -272,7 +261,7 @@ async function rosterMatchesForLeague({
           eq(fantasyRosterEntries.provider, league.provider),
           eq(fantasyRosterEntries.leagueProviderId, league.providerLeagueId),
           eq(fantasyRosterEntries.season, league.season),
-          eq(fantasyRosterEntries.scoringPeriod, latestScoringPeriod),
+          eq(fantasyRosterEntries.scoringPeriod, scoringPeriod),
           inArray(fantasyRosterEntries.providerPlayerId, providerPlayerIds),
         ),
       )
@@ -289,7 +278,7 @@ async function rosterMatchesForLeague({
         provider: row.provider,
         providerPlayerId: row.providerPlayerId,
         providerTeamId: row.providerTeamId,
-        scoringPeriod: latestScoringPeriod,
+        scoringPeriod,
         teamLabel: row.teamName ?? `Team ${row.providerTeamId}`,
       };
     });

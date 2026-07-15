@@ -142,6 +142,16 @@ import {
 } from "./prompt-templates";
 import { recordAiUsageEvent } from "./usage-attribution";
 
+export {
+  buildCentralPromptParts,
+  type CentralAiGenerationDependencies,
+  centralPromptPrefixHash,
+  createMockCentralAiDependencies,
+  type GenerateCentralColumnInput,
+  type GenerateCentralColumnResult,
+  generateCentralColumn,
+} from "./central-pipeline";
+
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.92;
 
 export interface GenerateLeagueBlogPostInput {
@@ -1425,6 +1435,7 @@ async function loadCentralOddsSignals(
   }
 
   const signals: LeagueContextBlendedColumnData["oddsSignals"] = [];
+  const seenSignals = new Set<string>();
   for (const marketRows of rowsByMarket.values()) {
     const first = marketRows[0];
     const last = marketRows.at(-1);
@@ -1446,7 +1457,7 @@ async function loadCentralOddsSignals(
     if (before === null || after === null) {
       continue;
     }
-    signals.push({
+    const signal = {
       after,
       before,
       changed: Math.abs(after - before) > 0.0001,
@@ -1456,7 +1467,18 @@ async function loadCentralOddsSignals(
           ? `player_prop:${first.propType ?? first.subject}`
           : first.marketType,
       unit,
-    });
+    };
+    const signalKey = JSON.stringify([
+      signal.event,
+      signal.market,
+      signal.unit,
+      signal.before,
+      signal.after,
+    ]);
+    if (!seenSignals.has(signalKey)) {
+      seenSignals.add(signalKey);
+      signals.push(signal);
+    }
   }
   return signals.slice(0, 12);
 }

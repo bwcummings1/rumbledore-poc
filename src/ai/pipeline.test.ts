@@ -580,6 +580,38 @@ async function seedBlendedColumnFacts(
       sourcePayloadHash: `${marker}-${tag}-current-odds`,
     },
   ]);
+  const [equivalentMarket] = await handle.db
+    .insert(bettingMarkets)
+    .values({
+      contentHash: `${marker}-${tag}-equivalent-central-market-hash`,
+      eventId: event.id,
+      period: "full_game",
+      provider: `${marker}-equivalent`,
+      providerMarketId: `${marker}-${tag}-equivalent-kc-min-moneyline`,
+      status: "open",
+      subject: "game",
+      type: "moneyline",
+    })
+    .returning({ id: bettingMarkets.id });
+  if (!equivalentMarket) {
+    throw new Error("equivalent blended-column market was not inserted");
+  }
+  await handle.db.insert(oddsSnapshots).values([
+    {
+      capturedAt: new Date("2026-09-09T12:00:00.000Z"),
+      homePrice: -140,
+      marketId: equivalentMarket.id,
+      provider: `${marker}-equivalent`,
+      sourcePayloadHash: `${marker}-${tag}-equivalent-opening-odds`,
+    },
+    {
+      capturedAt: new Date("2026-09-10T12:00:00.000Z"),
+      homePrice: -160,
+      marketId: equivalentMarket.id,
+      provider: `${marker}-equivalent`,
+      sourcePayloadHash: `${marker}-${tag}-equivalent-current-odds`,
+    },
+  ]);
 }
 
 beforeAll(async () => {
