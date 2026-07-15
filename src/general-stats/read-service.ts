@@ -12,6 +12,7 @@ import type {
   GeneralStatsPlayerWeekStats,
   GeneralStatsScheduleGame,
   GeneralStatsTeamBoxScore,
+  GeneralStatsWeekSnapshot,
   LeagueRosterFactForEnrichment,
   LeagueRosterGeneralStatsFact,
   LeagueRosterGeneralStatsSeasonTotals,
@@ -265,6 +266,80 @@ export async function getGeneralStatsSchedule(
     )
     .orderBy(asc(nflSchedule.week), asc(nflSchedule.gameTime));
   return rows.map(toScheduleGame);
+}
+
+/** Returns the league-agnostic substrate-B facts available for one NFL week. */
+export async function getGeneralStatsWeekSnapshot(
+  db: Db,
+  input: { season: number; source?: string; week: number },
+): Promise<GeneralStatsWeekSnapshot> {
+  const source = normalizeSource(input.source);
+  const scheduleRows = await db
+    .select()
+    .from(nflSchedule)
+    .where(
+      compactClauses([
+        source ? eq(nflSchedule.source, source) : undefined,
+        eq(nflSchedule.season, input.season),
+        eq(nflSchedule.week, input.week),
+      ]),
+    )
+    .orderBy(asc(nflSchedule.gameTime), asc(nflSchedule.sourceGameId));
+  const playerRows = await db
+    .select({ player: nflPlayers, stat: nflPlayerWeekStats })
+    .from(nflPlayerWeekStats)
+    .innerJoin(nflPlayers, eq(nflPlayerWeekStats.playerId, nflPlayers.id))
+    .where(
+      compactClauses([
+        source ? eq(nflPlayerWeekStats.source, source) : undefined,
+        eq(nflPlayerWeekStats.season, input.season),
+        eq(nflPlayerWeekStats.week, input.week),
+      ]),
+    )
+    .orderBy(
+      asc(nflPlayerWeekStats.team),
+      asc(nflPlayers.fullName),
+      asc(nflPlayers.sourcePlayerId),
+    );
+  const teamRows = await db
+    .select()
+    .from(nflTeamStats)
+    .where(
+      compactClauses([
+        source ? eq(nflTeamStats.source, source) : undefined,
+        eq(nflTeamStats.season, input.season),
+        eq(nflTeamStats.week, input.week),
+      ]),
+    )
+    .orderBy(asc(nflTeamStats.team), asc(nflTeamStats.sourceGameId));
+
+  const schedule = scheduleRows.map(toScheduleGame);
+  const playerWeekStats = playerRows.map(toPlayerWeekStats);
+  const teamBoxScores = teamRows.map(toTeamBoxScore);
+  const fetchedAtValues = [
+    ...schedule.map((row) => row.fetchedAt),
+    ...playerWeekStats.map((row) => row.fetchedAt),
+    ...teamBoxScores.map((row) => row.fetchedAt),
+  ];
+  const fetchedAt = fetchedAtValues.reduce<Date | null>(
+    (latest, value) => (!latest || value > latest ? value : latest),
+    null,
+  );
+
+  return {
+    fetchedAt,
+    playerWeekStats,
+    schedule,
+    season: input.season,
+    source:
+      schedule[0]?.source ??
+      playerWeekStats[0]?.source ??
+      teamBoxScores[0]?.source ??
+      source ??
+      null,
+    teamBoxScores,
+    week: input.week,
+  };
 }
 
 export async function enrichLeagueRosterFactWithGeneralStats(

@@ -377,22 +377,27 @@ function editorialImportanceFor({
     case "injuries":
       score += 24;
       break;
-    case "waivers":
+    case "post-waiver":
+    case "pre-waiver":
       score += 22;
       break;
     case "start-sit":
       score += 18;
       break;
-    case "rankings":
+    case "rankings-projections":
       score += 16;
       break;
-    case "players":
+    case "matchups":
       score += 12;
       break;
-    case "analysis":
+    case "mnf-recap":
+    case "weekend-recap-mnf-projection":
       score += 10;
       break;
-    case "headlines":
+    case "rundown":
+      score += 8;
+      break;
+    case "wire":
       score += 6;
       break;
   }
@@ -419,59 +424,17 @@ function editorialImportanceFor({
   return Math.min(Math.max(score, 0), 100);
 }
 
-function specificSectionFromText({
-  summary,
-  title,
-}: Pick<
-  NormalizedCentralNewsBase,
-  "summary" | "title"
->): CentralPublicationSectionId | null {
-  const haystack = `${title} ${summary}`.toLowerCase();
-  if (
-    /injur|questionable|doubtful|inactive|practice report|missed practice/.test(
-      haystack,
-    )
-  ) {
-    return "injuries";
-  }
-  if (/start[-\s]?sit|\bstart\b|\bsit\b|lineup|flex/.test(haystack)) {
-    return "start-sit";
-  }
-  if (/rank/.test(haystack)) {
-    return "rankings";
-  }
-  if (/waiver|add[-\s]?drop/.test(haystack)) {
-    return "waivers";
-  }
-  if (
-    /depth chart|rookie|quarterback|running back|receiver|tight end|player/.test(
-      haystack,
-    )
-  ) {
-    return "players";
-  }
-  if (/fantasy|matchup|trade|usage|target|snap|trend/.test(haystack)) {
-    return "analysis";
-  }
-  if (
-    /nfl|football|team|coach|quarterback|running back|receiver/.test(haystack)
-  ) {
-    return "headlines";
-  }
-
-  return null;
-}
-
 function completeNormalizedItem(
   base: NormalizedCentralNewsBase,
 ): NormalizedCentralNewsItem {
-  const textSection = specificSectionFromText(base);
-  const topicSection = resolveCentralPublicationSection({
-    metadata: { topics: base.topics },
+  const centralSection = resolveCentralPublicationSection({
+    metadata: {
+      centralSection: "wire",
+      topics: base.topics,
+    },
     summary: base.summary,
     title: base.title,
   }).id;
-  const centralSection = textSection ?? topicSection;
   const completed = {
     ...base,
     centralSection,

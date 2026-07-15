@@ -1,6 +1,18 @@
 import type { ContentEmbedBodyBlock } from "@/content/embeds";
 import type { RoastLevel } from "@/members/roast-consent-types";
-import type { LeaguePublicationSectionId } from "@/news/sections";
+import type {
+  CentralPublicationBranchId,
+  CentralPublicationSectionId,
+  LeaguePublicationSectionId,
+} from "@/news/sections";
+import type {
+  CentralColumnContentType,
+  CentralColumnDataSource,
+  CentralColumnId,
+  CentralJournalistId,
+} from "./central-columns";
+import type { CentralContentStructure } from "./central-content-types";
+import type { CentralSourceFreshness } from "./central-freshness";
 import type { AiContentType, BlogContentStructure } from "./content-types";
 import type { LeagueColumnId } from "./league-columns";
 import type { AiPersona, ToneProfile } from "./personas";
@@ -460,6 +472,163 @@ export interface PromptParts {
   userTask?: string;
   volatileContext: string;
   prompt: string;
+}
+
+export interface CentralPreGenerationContext {
+  /** Always central: recall must never borrow from a league publication pool. */
+  publicationPool: "central";
+  digest: string;
+  publishedContentItemIds: string[];
+  queuedGenerationKeys: string[];
+}
+
+export interface CentralGenerationNewsEvidence {
+  body: string;
+  id: string;
+  playerRefs: {
+    label: string | null;
+    provider: string;
+    providerId: string;
+  }[];
+  publishedAt: string;
+  source: string;
+  sourceUrl: string;
+  summary: string;
+  title: string;
+}
+
+export interface CentralGenerationGameEvidence {
+  awayScore: number | null;
+  awayTeam: string;
+  fetchedAt: string;
+  gameTime: string;
+  homeScore: number | null;
+  homeTeam: string;
+  sourceGameId: string;
+  status: "scheduled" | "in_progress" | "final";
+}
+
+export interface CentralGenerationPlayerEvidence {
+  fantasyPoints: number;
+  fetchedAt: string;
+  fullName: string;
+  opponentTeam: string;
+  position: string;
+  receptions: number;
+  receivingYards: number;
+  rushingYards: number;
+  sourcePlayerId: string;
+  targets: number;
+  team: string;
+}
+
+export interface CentralGenerationTeamStatEvidence {
+  fetchedAt: string;
+  opponentTeam: string;
+  passingYards: number;
+  pointsAgainst: number;
+  pointsFor: number;
+  receivingYards: number;
+  rushingYards: number;
+  sourceGameId: string;
+  team: string;
+  turnovers: number;
+}
+
+export interface CentralGenerationOddsEvidence {
+  awayPrice: number | null;
+  awayTeam: string;
+  capturedAt: string;
+  homePrice: number | null;
+  homeTeam: string;
+  line: number | null;
+  marketId: string;
+  marketType: "moneyline" | "spread" | "total" | "player_prop";
+  outcomePrice: number | null;
+  overPrice: number | null;
+  propType: string | null;
+  subject: string;
+  underPrice: number | null;
+}
+
+export interface CentralGenerationContext {
+  column: {
+    branch: CentralPublicationBranchId;
+    contentType: CentralColumnContentType;
+    dataSources: readonly CentralColumnDataSource[];
+    formatContract: string;
+    id: CentralColumnId;
+    name: string;
+    section: CentralPublicationSectionId;
+  };
+  evidence: {
+    fetchedAt: string | null;
+    games: CentralGenerationGameEvidence[];
+    news: CentralGenerationNewsEvidence[];
+    odds: CentralGenerationOddsEvidence[];
+    players: CentralGenerationPlayerEvidence[];
+    source: string | null;
+    sourceFreshness: CentralSourceFreshness[];
+    teamStats: CentralGenerationTeamStatEvidence[];
+  };
+  journalist: {
+    beat: string;
+    id: CentralJournalistId;
+    name: string;
+    persona: AiPersona;
+    registerContract: string;
+  };
+  preGenerationContext: CentralPreGenerationContext | null;
+  reportRequest: {
+    brief: string;
+    category: string;
+  } | null;
+  requestedAt: string;
+  season: number;
+  triggerKey: string;
+  week: number;
+}
+
+export type CentralArticleBodyBlock =
+  | { type: "heading"; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "quote"; text: string }
+  | { type: "list"; ordered?: boolean; items: string[] };
+
+export interface CentralArticleDraft {
+  body: string;
+  bodyBlocks: CentralArticleBodyBlock[];
+  contentType: CentralColumnContentType;
+  dek: string;
+  section: CentralPublicationSectionId;
+  structure: CentralContentStructure;
+  summary: string;
+  tags: string[];
+  title: string;
+}
+
+export interface CentralLlmGenerateRequest {
+  contentType: CentralColumnContentType;
+  context: CentralGenerationContext;
+  prompt: PromptParts;
+}
+
+export interface CentralLlmGenerateResult {
+  draft: CentralArticleDraft;
+  estimated?: boolean;
+  usage: LlmUsageBreakdown;
+}
+
+export interface CentralLlmClient {
+  generateCentral(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralArticleDraft>;
+}
+
+export interface UsageReportingCentralLlmClient extends CentralLlmClient {
+  generateCentralWithUsage(
+    request: CentralLlmGenerateRequest,
+  ): Promise<CentralLlmGenerateResult>;
 }
 
 export type BlogDraftBodyBlock =

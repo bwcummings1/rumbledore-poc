@@ -11,6 +11,7 @@ export {
   getGeneralStatsPlayerStats,
   getGeneralStatsSchedule,
   getGeneralStatsTeamBoxScore,
+  getGeneralStatsWeekSnapshot,
   getLeagueRosterGeneralNflFacts,
 } from "./read-service";
 export {
@@ -31,6 +32,7 @@ export type {
   GeneralStatsScheduleInput,
   GeneralStatsTeamBoxScore,
   GeneralStatsTeamStatInput,
+  GeneralStatsWeekSnapshot,
   LeagueRosterFactForEnrichment,
   LeagueRosterGeneralStatsFact,
   LeagueRosterGeneralStatsSeasonTotals,

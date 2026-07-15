@@ -1,7 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { AppError } from "@/core/result";
-import type { LlmGenerateRequest, LlmJudgeRequest } from "./interfaces";
+import {
+  CENTRAL_COLUMN_KEYS,
+  CENTRAL_COLUMN_LINEUP,
+  centralJournalistForId,
+} from "./central-columns";
+import type {
+  CentralGenerationContext,
+  CentralLlmGenerateRequest,
+  LlmGenerateRequest,
+  LlmJudgeRequest,
+} from "./interfaces";
+import { MockLlmClient } from "./mocks";
 import { createLlmClient } from "./model-providers";
 import {
   AI_PERSONAS,
@@ -104,6 +115,60 @@ function requestFor(
       systemPrefix: '{"league":"fixture"}',
       volatileContext:
         '{"untrustedNews":"<untrusted_news>[]</untrusted_news>"}',
+    },
+  };
+}
+
+function centralRequestFor(
+  key: (typeof CENTRAL_COLUMN_KEYS)[number],
+): CentralLlmGenerateRequest {
+  const column = CENTRAL_COLUMN_LINEUP[key];
+  const journalist = centralJournalistForId(column.journalistId);
+  if (!journalist) throw new Error("central journalist fixture is missing");
+  const context: CentralGenerationContext = {
+    column: {
+      branch: column.branch,
+      contentType: column.contentType,
+      dataSources: column.dataSources,
+      formatContract: column.formatContract,
+      id: column.id,
+      name: column.name,
+      section: column.section,
+    },
+    evidence: {
+      fetchedAt: null,
+      games: [],
+      news: [],
+      odds: [],
+      players: [],
+      source: null,
+      sourceFreshness: [],
+      teamStats: [],
+    },
+    journalist: {
+      beat: journalist.beat,
+      id: journalist.id,
+      name: journalist.name,
+      persona: journalist.persona,
+      registerContract: journalist.registerContract,
+    },
+    preGenerationContext: null,
+    reportRequest:
+      column.id === "the-rundown"
+        ? { brief: "Fixture report.", category: "fixture" }
+        : null,
+    requestedAt: "2026-09-15T12:00:00.000Z",
+    season: 2026,
+    triggerKey: `fixture:${column.id}`,
+    week: 1,
+  };
+  return {
+    contentType: column.contentType,
+    context,
+    prompt: {
+      prompt: "stable\nvolatile",
+      systemPrefix: JSON.stringify({ column: context.column }),
+      volatileContext: JSON.stringify({ evidence: context.evidence }),
     },
   };
 }
@@ -252,6 +317,42 @@ describe("AnthropicLlmClient", () => {
     await expect(llm.generate(requestFor("narrator"))).rejects.toMatchObject({
       code: "AI_LLM_RESPONSE_INVALID",
     } satisfies Partial<AppError>);
+  });
+
+  it("accepts every central format through the real structured-output schemas", async () => {
+    const calls: unknown[] = [];
+    const mock = new MockLlmClient();
+    let nextDraft = await mock.generateCentral(
+      centralRequestFor(CENTRAL_COLUMN_KEYS[0]),
+    );
+    const client = {
+      messages: {
+        parse: async (params: unknown) => {
+          calls.push(params);
+          return { parsed_output: nextDraft };
+        },
+      },
+    } as unknown as AnthropicMessagesClient;
+    const llm = new AnthropicLlmClient({ apiKey: fakeKey(), client });
+
+    for (const key of CENTRAL_COLUMN_KEYS) {
+      const request = centralRequestFor(key);
+      nextDraft = await mock.generateCentral(request);
+      await expect(llm.generateCentral(request)).resolves.toMatchObject({
+        contentType: request.contentType,
+        section: request.context.column.section,
+        structure: { type: request.contentType },
+      });
+    }
+
+    expect(calls).toHaveLength(10);
+    expect(calls[0]).toMatchObject({
+      metadata: { user_id: "central-publication" },
+      tool_choice: { type: "none" },
+    });
+    expect(JSON.stringify(calls[0])).toContain(
+      "league-agnostic Rumbledore central publication",
+    );
   });
 
   it("requires scheduled column extensions in the real output schema", async () => {
@@ -611,6 +712,44 @@ describe("model provider LLM factories", () => {
 });
 
 describe("OpenAiCompatibleLlmClient", () => {
+  it("uses the central structured-output schema for central articles", async () => {
+    const requests: RequestInit[] = [];
+    const request = centralRequestFor("rankingsProjections");
+    const draft = await new MockLlmClient().generateCentral(request);
+    const llm = new OpenAiCompatibleLlmClient({
+      apiKey: fakeKey(),
+      baseUrl: "https://models.example.invalid",
+      fetcher: async (_input, init) => {
+        requests.push(init ?? {});
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(draft) } }],
+            usage: { completion_tokens: 40, prompt_tokens: 100 },
+          }),
+          { status: 200 },
+        );
+      },
+      model: "rumbledore-central-fixture",
+    });
+
+    await expect(llm.generateCentral(request)).resolves.toMatchObject({
+      contentType: "central_rankings_projections",
+      section: "rankings-projections",
+      structure: { outputLabel: "computed" },
+    });
+    const payload = await new Response(requests[0]?.body).json();
+    expect(payload).toMatchObject({
+      response_format: {
+        json_schema: {
+          name: "rumbledore_central_article_draft",
+          strict: true,
+        },
+        type: "json_schema",
+      },
+      user: "central-publication",
+    });
+  });
+
   it("posts a JSON-schema chat completion request and returns a valid draft", async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> =
       [];

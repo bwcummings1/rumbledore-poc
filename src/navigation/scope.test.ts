@@ -30,27 +30,46 @@ describe("navigation scope taxonomy", () => {
   it("defines news as its own browsable environment", () => {
     expect(NEWS_NAVIGATION_SECTIONS.map((section) => section.label)).toEqual([
       "Front",
-      "Headlines",
-      "Players",
-      "Rankings",
+      "The Wire",
+      "The Rundown",
+      "Weekend Recap + MNF Projection",
+      "MNF Recap",
+      "Pre-waiver",
+      "Post-waiver",
+      "Matchups",
+      "Rankings & Projections",
       "Start/Sit",
       "Injuries",
-      "Waivers",
-      "Analysis",
     ]);
     expect(NEWS_NAVIGATION_SECTIONS.map((section) => section.href)).toEqual([
       "/news",
-      "/news/headlines",
-      "/news/players",
-      "/news/rankings",
+      "/news/wire",
+      "/news/rundown",
+      "/news/weekend-recap-mnf-projection",
+      "/news/mnf-recap",
+      "/news/pre-waiver",
+      "/news/post-waiver",
+      "/news/matchups",
+      "/news/rankings-projections",
       "/news/start-sit",
       "/news/injuries",
-      "/news/waivers",
-      "/news/analysis",
+    ]);
+    expect(NEWS_NAVIGATION_SECTIONS.map((section) => section.branch)).toEqual([
+      "news",
+      "news",
+      "news",
+      "fantasy",
+      "fantasy",
+      "fantasy",
+      "fantasy",
+      "fantasy",
+      "fantasy",
+      "fantasy",
+      "fantasy",
     ]);
     expect(getNewsSectionHref("front")).toBe("/news");
     expect(getNewsSectionHref("injuries")).toBe("/news/injuries");
-    expect(getNewsSectionHref("waivers")).toBe("/news/waivers");
+    expect(getNewsSectionHref("post-waiver")).toBe("/news/post-waiver");
     expectNoProviderSections(NEWS_NAVIGATION_SECTIONS);
   });
 
@@ -138,9 +157,9 @@ describe("deriveActiveNavigationState", () => {
       scope: "news",
       sectionId: "start-sit",
     });
-    expect(deriveActiveNavigationState("/news/waivers")).toMatchObject({
+    expect(deriveActiveNavigationState("/news/post-waiver")).toMatchObject({
       scope: "news",
-      sectionId: "waivers",
+      sectionId: "post-waiver",
     });
     expect(deriveActiveNavigationState("/news/articles/story-1")).toMatchObject(
       {

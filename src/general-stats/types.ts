@@ -167,6 +167,21 @@ export interface GeneralStatsPlayerWeekStats {
   week: number;
 }
 
+/**
+ * League-agnostic read model for one NFL week. Central editorial consumers use
+ * this directly; it deliberately contains substrate facts only and carries no
+ * fantasy-league roster or canon context.
+ */
+export interface GeneralStatsWeekSnapshot {
+  fetchedAt: Date | null;
+  playerWeekStats: GeneralStatsPlayerWeekStats[];
+  schedule: GeneralStatsScheduleGame[];
+  season: number;
+  source: string | null;
+  teamBoxScores: GeneralStatsTeamBoxScore[];
+  week: number;
+}
+
 export interface LeagueRosterFactForEnrichment {
   leagueTeamName?: string | null;
   playerName?: string | null;

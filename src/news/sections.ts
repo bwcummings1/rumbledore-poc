@@ -13,14 +13,110 @@ export interface PublicationSection<Id extends string = string> {
   slug: string;
 }
 
+export type CentralPublicationBranchId = "news" | "fantasy";
+
 export type CentralPublicationSectionId =
-  | "headlines"
-  | "players"
-  | "injuries"
-  | "rankings"
+  | "wire"
+  | "rundown"
+  | "weekend-recap-mnf-projection"
+  | "mnf-recap"
+  | "pre-waiver"
+  | "post-waiver"
+  | "matchups"
+  | "rankings-projections"
   | "start-sit"
-  | "waivers"
-  | "analysis";
+  | "injuries";
+
+export interface CentralPublicationSection
+  extends PublicationSection<CentralPublicationSectionId> {
+  branch: CentralPublicationBranchId;
+}
+
+export interface CentralPublicationBranch {
+  id: CentralPublicationBranchId;
+  label: string;
+  sections: readonly CentralPublicationSection[];
+}
+
+export const CENTRAL_PUBLICATION_BRANCHES = [
+  {
+    id: "news",
+    label: "News",
+    sections: [
+      {
+        branch: "news",
+        id: "wire",
+        label: "The Wire",
+        slug: "wire",
+      },
+      {
+        branch: "news",
+        id: "rundown",
+        label: "The Rundown",
+        slug: "rundown",
+      },
+    ],
+  },
+  {
+    id: "fantasy",
+    label: "Fantasy",
+    sections: [
+      {
+        branch: "fantasy",
+        id: "weekend-recap-mnf-projection",
+        label: "Weekend Recap + MNF Projection",
+        slug: "weekend-recap-mnf-projection",
+      },
+      {
+        branch: "fantasy",
+        id: "mnf-recap",
+        label: "MNF Recap",
+        slug: "mnf-recap",
+      },
+      {
+        branch: "fantasy",
+        id: "pre-waiver",
+        label: "Pre-waiver",
+        slug: "pre-waiver",
+      },
+      {
+        branch: "fantasy",
+        id: "post-waiver",
+        label: "Post-waiver",
+        slug: "post-waiver",
+      },
+      {
+        branch: "fantasy",
+        id: "matchups",
+        label: "Matchups",
+        slug: "matchups",
+      },
+      {
+        branch: "fantasy",
+        id: "rankings-projections",
+        label: "Rankings & Projections",
+        slug: "rankings-projections",
+      },
+      {
+        branch: "fantasy",
+        id: "start-sit",
+        label: "Start/Sit",
+        slug: "start-sit",
+      },
+      {
+        branch: "fantasy",
+        id: "injuries",
+        label: "Injuries",
+        slug: "injuries",
+      },
+    ],
+  },
+] as const satisfies readonly CentralPublicationBranch[];
+
+export const CENTRAL_PUBLICATION_SECTIONS: readonly CentralPublicationSection[] =
+  CENTRAL_PUBLICATION_BRANCHES.flatMap(
+    (branch): readonly CentralPublicationSection[] => branch.sections,
+  );
 
 export type LeaguePublicationSectionId =
   | "recaps"
@@ -28,16 +124,6 @@ export type LeaguePublicationSectionId =
   | "trash-talk"
   | "records"
   | "previews";
-
-export const CENTRAL_PUBLICATION_SECTIONS = [
-  { id: "headlines", label: "Headlines", slug: "headlines" },
-  { id: "players", label: "Players", slug: "players" },
-  { id: "rankings", label: "Rankings", slug: "rankings" },
-  { id: "start-sit", label: "Start/Sit", slug: "start-sit" },
-  { id: "injuries", label: "Injuries", slug: "injuries" },
-  { id: "waivers", label: "Waivers", slug: "waivers" },
-  { id: "analysis", label: "Analysis", slug: "analysis" },
-] as const satisfies readonly PublicationSection<CentralPublicationSectionId>[];
 
 export const LEAGUE_PUBLICATION_SECTIONS = [
   { id: "recaps", label: "Recaps", slug: "recaps" },
@@ -51,21 +137,19 @@ export const LEAGUE_PUBLICATION_SECTIONS = [
   { id: "previews", label: "Previews", slug: "previews" },
 ] as const satisfies readonly PublicationSection<LeaguePublicationSectionId>[];
 
-const CENTRAL_DEFAULT_SECTION_ID: CentralPublicationSectionId = "headlines";
+const CENTRAL_DEFAULT_SECTION_ID: CentralPublicationSectionId = "wire";
 const LEAGUE_DEFAULT_SECTION_ID: LeaguePublicationSectionId = "recaps";
 
 const CENTRAL_SECTION_BY_ID: ReadonlyMap<
   CentralPublicationSectionId,
-  PublicationSection<CentralPublicationSectionId>
+  CentralPublicationSection
 > = new Map(
   CENTRAL_PUBLICATION_SECTIONS.map((section) => [section.id, section]),
 );
-const CENTRAL_SECTION_BY_SLUG: ReadonlyMap<
-  string,
-  PublicationSection<CentralPublicationSectionId>
-> = new Map(
-  CENTRAL_PUBLICATION_SECTIONS.map((section) => [section.slug, section]),
-);
+const CENTRAL_SECTION_BY_SLUG: ReadonlyMap<string, CentralPublicationSection> =
+  new Map(
+    CENTRAL_PUBLICATION_SECTIONS.map((section) => [section.slug, section]),
+  );
 const LEAGUE_SECTION_BY_ID: ReadonlyMap<
   LeaguePublicationSectionId,
   PublicationSection<LeaguePublicationSectionId>
@@ -80,6 +164,41 @@ const LEAGUE_SECTION_BY_SLUG: ReadonlyMap<
 );
 
 const CENTRAL_SECTION_ALIASES = new Map<string, CentralPublicationSectionId>([
+  ["wire", "wire"],
+  ["the-wire", "wire"],
+  ["rundown", "rundown"],
+  ["the-rundown", "rundown"],
+  ["report", "rundown"],
+  ["reports", "rundown"],
+  ["analysis", "rundown"],
+  ["weekend-recap-mnf-projection", "weekend-recap-mnf-projection"],
+  ["weekend-recap", "weekend-recap-mnf-projection"],
+  ["sunday-recap", "weekend-recap-mnf-projection"],
+  ["mnf-projection", "weekend-recap-mnf-projection"],
+  ["mnf-recap", "mnf-recap"],
+  ["monday-night-football-recap", "mnf-recap"],
+  ["pre-waiver", "pre-waiver"],
+  ["pre-waivers", "pre-waiver"],
+  ["waiver", "pre-waiver"],
+  ["waivers", "pre-waiver"],
+  ["waiver-wire", "pre-waiver"],
+  ["waiver_wire", "pre-waiver"],
+  ["add-drop", "pre-waiver"],
+  ["add_drop", "pre-waiver"],
+  ["post-waiver", "post-waiver"],
+  ["post-waivers", "post-waiver"],
+  ["waiver-results", "post-waiver"],
+  ["matchup", "matchups"],
+  ["matchups", "matchups"],
+  ["matchup-preview", "matchups"],
+  ["rankings-projections", "rankings-projections"],
+  ["rankings-and-projections", "rankings-projections"],
+  ["projection", "rankings-projections"],
+  ["projections", "rankings-projections"],
+  ["rank", "rankings-projections"],
+  ["ranks", "rankings-projections"],
+  ["ranking", "rankings-projections"],
+  ["rankings", "rankings-projections"],
   ["injury", "injuries"],
   ["injuries", "injuries"],
   ["injured", "injuries"],
@@ -87,12 +206,6 @@ const CENTRAL_SECTION_ALIASES = new Map<string, CentralPublicationSectionId>([
   ["practice_report", "injuries"],
   ["questionable", "injuries"],
   ["inactive", "injuries"],
-  ["waiver", "waivers"],
-  ["waivers", "waivers"],
-  ["waiver-wire", "waivers"],
-  ["waiver_wire", "waivers"],
-  ["add-drop", "waivers"],
-  ["add_drop", "waivers"],
   ["start-sit", "start-sit"],
   ["start_sit", "start-sit"],
   ["startsit", "start-sit"],
@@ -100,41 +213,30 @@ const CENTRAL_SECTION_ALIASES = new Map<string, CentralPublicationSectionId>([
   ["sit", "start-sit"],
   ["lineup", "start-sit"],
   ["flex", "start-sit"],
-  ["rank", "rankings"],
-  ["ranks", "rankings"],
-  ["ranking", "rankings"],
-  ["rankings", "rankings"],
-  ["players", "players"],
-  ["player", "players"],
-  ["depth-chart", "players"],
-  ["depth_chart", "players"],
-  ["rookie", "players"],
-  ["quarterback", "players"],
-  ["running-back", "players"],
-  ["running_back", "players"],
-  ["receiver", "players"],
-  ["wide-receiver", "players"],
-  ["wide_receiver", "players"],
-  ["tight-end", "players"],
-  ["tight_end", "players"],
-  ["analysis", "analysis"],
-  ["fantasy", "analysis"],
-  ["fantasy-football", "analysis"],
-  ["fantasy_football", "analysis"],
-  ["matchup", "analysis"],
-  ["trade", "analysis"],
-  ["usage", "analysis"],
-  ["targets", "analysis"],
-  ["snap", "analysis"],
-  ["trend", "analysis"],
-  ["headlines", "headlines"],
-  ["headline", "headlines"],
-  ["breaking", "headlines"],
-  ["nfl", "headlines"],
-  ["league", "headlines"],
-  ["football", "headlines"],
-  ["coach", "headlines"],
-  ["team", "headlines"],
+  ["headlines", "wire"],
+  ["headline", "wire"],
+  ["breaking", "wire"],
+  ["players", "wire"],
+  ["player", "wire"],
+  ["depth-chart", "wire"],
+  ["depth_chart", "wire"],
+  ["rookie", "wire"],
+  ["quarterback", "wire"],
+  ["running-back", "wire"],
+  ["running_back", "wire"],
+  ["receiver", "wire"],
+  ["wide-receiver", "wire"],
+  ["wide_receiver", "wire"],
+  ["tight-end", "wire"],
+  ["tight_end", "wire"],
+  ["trade", "wire"],
+  ["signing", "wire"],
+  ["contract", "wire"],
+  ["nfl", "wire"],
+  ["league", "wire"],
+  ["football", "wire"],
+  ["coach", "wire"],
+  ["team", "wire"],
 ]);
 
 const LEAGUE_SECTION_ALIASES = new Map<string, LeaguePublicationSectionId>([
@@ -207,10 +309,17 @@ function firstSectionId<Id extends string>(
 
   for (const candidate of candidates) {
     const normalized = normalizedKey(candidate);
+    let bestMatch: { aliasLength: number; sectionId: Id } | null = null;
     for (const [alias, sectionId] of aliases) {
-      if (normalized.includes(alias)) {
-        return sectionId;
+      if (
+        normalized.includes(alias) &&
+        alias.length > (bestMatch?.aliasLength ?? 0)
+      ) {
+        bestMatch = { aliasLength: alias.length, sectionId };
       }
+    }
+    if (bestMatch) {
+      return bestMatch.sectionId;
     }
   }
 
@@ -281,7 +390,7 @@ function leagueSectionForPersona(
 
 export function getCentralPublicationSectionBySlug(
   slug: string,
-): PublicationSection<CentralPublicationSectionId> | null {
+): CentralPublicationSection | null {
   return CENTRAL_SECTION_BY_SLUG.get(normalizedKey(slug)) ?? null;
 }
 
@@ -293,7 +402,7 @@ export function getLeaguePublicationSectionBySlug(
 
 export function centralPublicationSectionById(
   id: CentralPublicationSectionId,
-): PublicationSection<CentralPublicationSectionId> {
+): CentralPublicationSection {
   const fallback = CENTRAL_SECTION_BY_ID.get(CENTRAL_DEFAULT_SECTION_ID);
   if (!fallback) {
     throw new Error("Central publication default section is not configured");
@@ -321,7 +430,7 @@ export function resolveCentralPublicationSection({
   metadata: unknown;
   summary?: string;
   title?: string;
-}): PublicationSection<CentralPublicationSectionId> {
+}): CentralPublicationSection {
   const record = asRecord(metadata);
   const sectionId = centralSectionForText([
     ...metadataSectionCandidates(record, "central"),

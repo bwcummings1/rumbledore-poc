@@ -17,9 +17,11 @@ import {
 } from "./article-metadata";
 import { editorialImportance, publicationRankScore } from "./front";
 import {
+  CENTRAL_PUBLICATION_BRANCHES,
   CENTRAL_PUBLICATION_SECTIONS,
+  type CentralPublicationBranch,
+  type CentralPublicationSection,
   type CentralPublicationSectionId,
-  type PublicationSection,
   resolveCentralPublicationSection,
 } from "./sections";
 
@@ -35,10 +37,11 @@ export interface CentralNewsHubItem {
   title: string;
   summary: string;
   dek?: string;
+  origin: "cast" | "source";
   source: string;
   sourceUrl: string;
   publishedAt: string;
-  section: PublicationSection<CentralPublicationSectionId>;
+  section: CentralPublicationSection;
   tags?: string[];
   thumbnailUrl?: string;
   editorialImportance?: number;
@@ -50,10 +53,11 @@ export interface CentralNewsForYourLeagueItem {
   title: string;
   summary: string;
   dek?: string;
+  origin: "cast" | "source";
   source: string;
   sourceUrl: string;
   publishedAt: string;
-  section: PublicationSection<CentralPublicationSectionId>;
+  section: CentralPublicationSection;
   tags?: string[];
   thumbnailUrl?: string;
   editorialImportance?: number;
@@ -71,11 +75,12 @@ export interface CentralNewsForYourLeagueRail {
 }
 
 export interface CentralNewsHubData {
-  activeSection: PublicationSection<CentralPublicationSectionId> | null;
+  activeSection: CentralPublicationSection | null;
   activeTag?: string | null;
+  branches: readonly CentralPublicationBranch[];
   forYourLeague: CentralNewsForYourLeagueRail | null;
   items: CentralNewsHubItem[];
-  sections: readonly PublicationSection<CentralPublicationSectionId>[];
+  sections: readonly CentralPublicationSection[];
 }
 
 type CentralNewsRow = {
@@ -95,6 +100,14 @@ function boundedLimit(limit: number | undefined): number {
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
 }
 
+function centralStoryOrigin(
+  metadata: Record<string, unknown>,
+): "cast" | "source" {
+  return metadata.generatedBy === "central-journalist-engine"
+    ? "cast"
+    : "source";
+}
+
 function hubItemFromRow(row: CentralNewsRow): CentralNewsHubItem {
   const section = resolveCentralPublicationSection({
     metadata: row.metadata,
@@ -107,6 +120,7 @@ function hubItemFromRow(row: CentralNewsRow): CentralNewsHubItem {
     section,
     editorialImportance: editorialImportance(row.metadata),
     id: row.id,
+    origin: centralStoryOrigin(row.metadata),
     publishedAt: row.publishedAt.toISOString(),
     source: row.source ?? "Unknown source",
     sourceUrl: row.sourceUrl ?? "",
@@ -180,6 +194,7 @@ export async function getCentralNewsHubData(
 
   return {
     activeSection,
+    branches: CENTRAL_PUBLICATION_BRANCHES,
     forYourLeague: await getForYourLeagueRail(db, {
       leagueId: input.forLeagueId,
       limit: DEFAULT_RAIL_LIMIT,
@@ -285,6 +300,7 @@ async function getForYourLeagueRail(
         editorialImportance: editorialImportance(row.metadata),
         id: row.id,
         matchedEntities: row.matchedEntities,
+        origin: centralStoryOrigin(row.metadata),
         publishedAt: row.publishedAt.toISOString(),
         relevanceReason: row.reason,
         relevanceScore: row.relevanceScore,

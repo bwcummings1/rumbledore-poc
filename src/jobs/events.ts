@@ -1,4 +1,4 @@
-import type { AiContentType, AiPersona } from "@/ai";
+import type { AiContentType, AiPersona, CentralColumnId } from "@/ai";
 import type { FantasyProviderId, ProviderDataClass } from "@/providers";
 
 export const JOB_EVENTS = {
@@ -16,6 +16,7 @@ export const JOB_EVENTS = {
   newsRefresh: "news.refresh",
   weeklyDigest: "digest.weekly",
   contentGenerate: "content.generate",
+  centralContentGenerate: "content.central.generate",
   contentCorrectionNeeded: "content.correction.needed",
   instigationSeed: "instigation.seed",
   instigationSeeded: "instigation.seeded",
@@ -108,6 +109,13 @@ export interface ContentGenerateData {
   persona: AiPersona;
   contentType: AiContentType;
   triggerKey: string;
+}
+
+export interface CentralContentGenerateData {
+  columnId: CentralColumnId;
+  season: number;
+  triggerKey: string;
+  week: number;
 }
 
 export interface ContentCorrectionNeededData {
