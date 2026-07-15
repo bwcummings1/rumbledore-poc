@@ -31,6 +31,7 @@ const data: CentralNewsHubData = {
   items: [
     {
       id: "news-1",
+      origin: "source",
       publishedAt: "2026-06-11T14:00:00.000Z",
       section: section("injuries"),
       source: "NFL Wire",
@@ -40,15 +41,17 @@ const data: CentralNewsHubData = {
     },
     {
       id: "news-2",
+      origin: "cast",
       publishedAt: "2026-06-11T13:00:00.000Z",
       section: section("rankings-projections"),
-      source: "Fantasy Desk",
-      sourceUrl: "https://news.example.com/rankings",
+      source: "Fantasy Data Analyst",
+      sourceUrl: "",
       summary: "A rankings move with league-wide implications.",
       title: "Running back rankings tighten before kickoff",
     },
     {
       id: "news-3",
+      origin: "source",
       publishedAt: "2026-06-11T12:00:00.000Z",
       section: section("injuries"),
       source: "Injury Wire",
@@ -58,6 +61,7 @@ const data: CentralNewsHubData = {
     },
     {
       id: "news-4",
+      origin: "source",
       publishedAt: "2026-06-11T11:00:00.000Z",
       section: section("pre-waiver"),
       source: "Waiver Desk",
@@ -67,6 +71,7 @@ const data: CentralNewsHubData = {
     },
     {
       id: "news-5",
+      origin: "source",
       publishedAt: "2026-06-11T10:00:00.000Z",
       section: section("wire"),
       source: "NFL Wire",
@@ -76,6 +81,7 @@ const data: CentralNewsHubData = {
     },
     {
       id: "news-6",
+      origin: "source",
       publishedAt: "2026-06-11T09:00:00.000Z",
       section: section("rundown"),
       source: "Depth Chart",
@@ -140,6 +146,21 @@ test("news hub view renders the central publication front", () => {
   ).toBe("https://news.example.com/injury-update");
   expect(lead.getByText("Injuries")).toBeDefined();
 
+  const castStory = screen
+    .getByRole("heading", {
+      name: "Running back rankings tighten before kickoff",
+    })
+    .closest("article");
+  expect(castStory?.getAttribute("data-story-card-origin")).toBe("cast");
+  if (!castStory) {
+    throw new Error("generated central column story card was not rendered");
+  }
+  expect(within(castStory).getByText("Fantasy Data Analyst")).toBeDefined();
+  expect(within(castStory).getByText("AI cast")).toBeDefined();
+  expect(
+    within(castStory).queryByRole("link", { name: /read source/i }),
+  ).toBeNull();
+
   expect(
     within(screen.getByLabelText("Secondary stories")).getAllByRole("article"),
   ).toHaveLength(3);
@@ -176,6 +197,7 @@ test("news hub view renders a for your league rail when tailored stories exist",
                   type: "team",
                 },
               ],
+              origin: "source",
               publishedAt: "2026-06-11T13:00:00.000Z",
               relevanceReason: "Fixture Team 01 rosters the affected starter.",
               relevanceScore: 8,

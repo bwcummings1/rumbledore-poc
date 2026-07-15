@@ -37,6 +37,7 @@ export interface CentralNewsHubItem {
   title: string;
   summary: string;
   dek?: string;
+  origin: "cast" | "source";
   source: string;
   sourceUrl: string;
   publishedAt: string;
@@ -52,6 +53,7 @@ export interface CentralNewsForYourLeagueItem {
   title: string;
   summary: string;
   dek?: string;
+  origin: "cast" | "source";
   source: string;
   sourceUrl: string;
   publishedAt: string;
@@ -98,6 +100,14 @@ function boundedLimit(limit: number | undefined): number {
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
 }
 
+function centralStoryOrigin(
+  metadata: Record<string, unknown>,
+): "cast" | "source" {
+  return metadata.generatedBy === "central-journalist-engine"
+    ? "cast"
+    : "source";
+}
+
 function hubItemFromRow(row: CentralNewsRow): CentralNewsHubItem {
   const section = resolveCentralPublicationSection({
     metadata: row.metadata,
@@ -110,6 +120,7 @@ function hubItemFromRow(row: CentralNewsRow): CentralNewsHubItem {
     section,
     editorialImportance: editorialImportance(row.metadata),
     id: row.id,
+    origin: centralStoryOrigin(row.metadata),
     publishedAt: row.publishedAt.toISOString(),
     source: row.source ?? "Unknown source",
     sourceUrl: row.sourceUrl ?? "",
@@ -289,6 +300,7 @@ async function getForYourLeagueRail(
         editorialImportance: editorialImportance(row.metadata),
         id: row.id,
         matchedEntities: row.matchedEntities,
+        origin: centralStoryOrigin(row.metadata),
         publishedAt: row.publishedAt.toISOString(),
         relevanceReason: row.reason,
         relevanceScore: row.relevanceScore,

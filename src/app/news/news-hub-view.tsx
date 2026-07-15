@@ -17,7 +17,7 @@ function toStory(item: CentralNewsHubData["items"][number]): PublicationStory {
     href: `/news/articles/${item.id}`,
     hrefLabel: "Read story",
     id: item.id,
-    origin: "source",
+    origin: item.origin,
     publishedAt: item.publishedAt,
     sectionTag: item.section.label,
     sourceUrl: item.sourceUrl,
@@ -36,7 +36,7 @@ function toRailStory(
     href: `/news/articles/${item.contentItemId}`,
     hrefLabel: "Read story",
     id: item.id,
-    origin: "source",
+    origin: item.origin,
     publishedAt: item.publishedAt,
     relevanceReason: item.relevanceReason,
     sectionTag: item.section.label,
@@ -111,7 +111,7 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
     : emptyTitle;
   const emptyBody = data.activeSection
     ? "This section has no published stories yet. The rest of Rumbledore News is still available."
-    : "The news refresh job has not published any shared headlines.";
+    : "The central News and Fantasy desks have not published any shared stories yet.";
   const activeBranch = data.activeSection
     ? (data.branches.find(
         (branch) => branch.id === data.activeSection?.branch,
@@ -134,7 +134,7 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
             label: "Home",
           },
         ]}
-        deck="Shared central news from the sport's feed. League-specific context appears only as a narrow rail when a league is active."
+        deck="Shared reporting from Rumbledore's News and Fantasy desks. League-specific context appears only as a narrow rail when a league is active."
         eyebrow={
           data.activeSection ? "SECTION · RUMBLEDORE NEWS" : "CENTRAL WIRE"
         }

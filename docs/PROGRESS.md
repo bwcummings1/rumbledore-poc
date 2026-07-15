@@ -1,11 +1,13 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 2 complete:** the six
-placeholder-named league columns now run on their locked Mon/Tue/Wed/Thu/Fri/Sun roster, with structured Wrap,
-Waiver Summary, Fantasy Friday, and Predictions formats plus fixture-backed central projection/stat/odds
-localization. The league offseason remains a light history/retrospective beat; Phase 3 central lineup work is held
-for owner review and Phase 4 real-source activation remains owner-gated.
+Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 3 P3-ENGINE complete on
+`ws/p3-central-engine`, pending orchestrator merge:** the central hub now has one configurable 10-column journalist
+lineup across News and Fantasy, 10 evidence-validated structured formats, a league-agnostic generation pipeline,
+the corrected 12-slot weekly Fantasy cadence, write-time mock news/stat/odds freshness guards, central partial-index
+idempotency, and AI-cast filing on the News hub. A simulated fixture week proves every scheduled, queued, and
+reactive column publishes once and remains publicly readable in its configured branch/section. P3-RECALL is next
+through the documented pre-generation context seam; Phase 4 real-source activation remains owner-gated.
 **Prior merged baseline:** full 2026-07-13 backlog (`specs/47` wave 1, F47 review fixes, P polish, Browserbase
 adapter, and Sleeper parity). Owner live smoke remains pending.
 **48S Sleeper parity (merged):** Sleeper now has provenance-backed decoding dictionaries, cached named-player
@@ -441,6 +443,15 @@ parity on `ws/48-sleeper-parity` for orchestrator review/merge. Gates remain man
   producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-15: Phase 3 central journalist engine (P3-ENGINE) — the central publication now derives its two News /
+  Fantasy branches, 10 placeholder-named columns, journalists, formats, queues, and corrected day slots from one
+  config. Ten JSON-Schema-compatible structures run through both mock and real-adapter contracts, publish as shared
+  `content_item.league_id NULL` articles, validate every supplied fact, label computed output, degrade cleanly on
+  absent evidence, and expose a central-only pre-generation context hook for P3-RECALL without implementing recall.
+  The league-agnostic planner and freshness layer use only mock news, substrate-B, and built odds, with stable retry
+  keys and the existing partial central dedup index. A 12-slot fixture week plus queued Wire/Rundown/Injuries runs all
+  10 columns, retries all 15 publications without duplicates, and proves generated journalist bylines render as AI
+  cast on the correct central hub branch/section while ingested news remains source-attributed.
 - 2026-07-15: P2 league column lineup (P2-LEAGUE) — one config owns the six placeholder column identities,
   content mappings, and day slots; cadence now runs The Wrap Mon, Power Rankings + Summary Tue, Waiver Summary Wed,
   Tale of the Tape Thu, Fantasy Friday Fri, and Predictions Sun while retaining reactive stories, caps,
