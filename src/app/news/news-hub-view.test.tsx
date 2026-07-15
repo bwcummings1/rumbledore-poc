@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { CentralNewsHubData } from "@/news/hub";
 import {
+  CENTRAL_PUBLICATION_BRANCHES,
   CENTRAL_PUBLICATION_SECTIONS,
   type CentralPublicationSectionId,
 } from "@/news/sections";
@@ -25,6 +26,7 @@ function section(id: CentralPublicationSectionId) {
 
 const data: CentralNewsHubData = {
   activeSection: null,
+  branches: CENTRAL_PUBLICATION_BRANCHES,
   forYourLeague: null,
   items: [
     {
@@ -39,7 +41,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-2",
       publishedAt: "2026-06-11T13:00:00.000Z",
-      section: section("rankings"),
+      section: section("rankings-projections"),
       source: "Fantasy Desk",
       sourceUrl: "https://news.example.com/rankings",
       summary: "A rankings move with league-wide implications.",
@@ -57,7 +59,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-4",
       publishedAt: "2026-06-11T11:00:00.000Z",
-      section: section("waivers"),
+      section: section("pre-waiver"),
       source: "Waiver Desk",
       sourceUrl: "https://news.example.com/waivers",
       summary: "Waiver names worth watching after Sunday.",
@@ -66,7 +68,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-5",
       publishedAt: "2026-06-11T10:00:00.000Z",
-      section: section("headlines"),
+      section: section("wire"),
       source: "NFL Wire",
       sourceUrl: "https://news.example.com/weather",
       summary: "Weather may change passing volume.",
@@ -75,7 +77,7 @@ const data: CentralNewsHubData = {
     {
       id: "news-6",
       publishedAt: "2026-06-11T09:00:00.000Z",
-      section: section("players"),
+      section: section("rundown"),
       source: "Depth Chart",
       sourceUrl: "https://news.example.com/depth",
       summary: "Depth chart notes for fantasy managers.",
@@ -99,16 +101,31 @@ test("news hub view renders the central publication front", () => {
     }),
   ).toBeDefined();
   expect(screen.getByText("CENTRAL WIRE")).toBeDefined();
-  const sections = within(screen.getByLabelText("News sections"));
-  expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-    "Front",
-    "Headlines",
-    "Players",
-    "Rankings",
+  const branches = screen.getByLabelText("Central publication branches");
+  const newsBranch = within(branches).getByRole("region", {
+    name: "News branch",
+  });
+  const fantasyBranch = within(branches).getByRole("region", {
+    name: "Fantasy branch",
+  });
+  expect(
+    within(newsBranch)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent),
+  ).toEqual(["Front", "The Wire", "The Rundown"]);
+  expect(
+    within(fantasyBranch)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent),
+  ).toEqual([
+    "Weekend Recap + MNF Projection",
+    "MNF Recap",
+    "Pre-waiver",
+    "Post-waiver",
+    "Matchups",
+    "Rankings & Projections",
     "Start/Sit",
     "Injuries",
-    "Waivers",
-    "Analysis",
   ]);
   const lead = within(screen.getByLabelText("Lead story"));
   expect(
@@ -162,7 +179,7 @@ test("news hub view renders a for your league rail when tailored stories exist",
               publishedAt: "2026-06-11T13:00:00.000Z",
               relevanceReason: "Fixture Team 01 rosters the affected starter.",
               relevanceScore: 8,
-              section: section("rankings"),
+              section: section("rankings-projections"),
               source: "Fantasy Desk",
               sourceUrl: "https://news.example.com/rankings",
               summary: "Fixture Team 01 has a lineup decision now.",
@@ -213,7 +230,7 @@ test("news hub view renders a section front empty state", () => {
     <NewsHubView
       data={{
         ...data,
-        activeSection: section("headlines"),
+        activeSection: section("wire"),
         items: [],
       }}
     />,
@@ -222,8 +239,8 @@ test("news hub view renders a section front empty state", () => {
   expect(
     screen.getByRole("heading", { level: 1, name: "Rumbledore News" }),
   ).toBeDefined();
-  expect(screen.getByText("Headlines section")).toBeDefined();
-  expect(screen.getByText("No Headlines stories yet")).toBeDefined();
+  expect(screen.getByText("News · The Wire")).toBeDefined();
+  expect(screen.getByText("No The Wire stories yet")).toBeDefined();
   expect(
     screen
       .getByRole("link", { name: /open rumbledore news/i })

@@ -547,6 +547,28 @@ function DesktopSidebar({
   readonly realtimeStatus: ShellRealtimeStatus;
 }) {
   const sidebarWidth = collapsed ? "w-[4.5rem]" : "w-72";
+  const navigationGroups =
+    activeState.scope === "news"
+      ? ([
+          {
+            items: currentNavItems.filter(
+              (item) => item.scope === "news" && item.branch === "news",
+            ),
+            label: "News",
+          },
+          {
+            items: currentNavItems.filter(
+              (item) => item.scope === "news" && item.branch === "fantasy",
+            ),
+            label: "Fantasy",
+          },
+        ] as const)
+      : ([
+          {
+            items: currentNavItems,
+            label: navigationGroupLabel(activeState.scope),
+          },
+        ] as const);
 
   return (
     <aside
@@ -589,12 +611,17 @@ function DesktopSidebar({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
-        <NavigationSection
-          activeState={activeState}
-          collapsed={collapsed}
-          items={currentNavItems}
-          label={navigationGroupLabel(activeState.scope)}
-        />
+        <div className="grid gap-4">
+          {navigationGroups.map((group) => (
+            <NavigationSection
+              activeState={activeState}
+              collapsed={collapsed}
+              items={group.items}
+              key={group.label}
+              label={group.label}
+            />
+          ))}
+        </div>
 
         <div className="relative border-y border-[var(--hair)] py-3">
           <Button
@@ -988,7 +1015,9 @@ function NavigationItem({
         )}
       />
       <Icon className="size-4 shrink-0" aria-hidden="true" />
-      <span className={cn("truncate", compact && "md:sr-only")}>
+      <span
+        className={cn("min-w-0 max-w-full truncate", compact && "md:sr-only")}
+      >
         {item.label}
       </span>
     </Link>
@@ -3064,7 +3093,7 @@ function buildCommandItems(
   }));
 
   const newsItems = NEWS_NAVIGATION_SECTIONS.map((section) => ({
-    group: "News",
+    group: section.branch === "fantasy" ? "Fantasy" : "News",
     href: section.href,
     icon: iconFor(section.icon),
     id: `news-${section.id}`,

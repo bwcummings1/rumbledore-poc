@@ -17,9 +17,11 @@ import {
 } from "./article-metadata";
 import { editorialImportance, publicationRankScore } from "./front";
 import {
+  CENTRAL_PUBLICATION_BRANCHES,
   CENTRAL_PUBLICATION_SECTIONS,
+  type CentralPublicationBranch,
+  type CentralPublicationSection,
   type CentralPublicationSectionId,
-  type PublicationSection,
   resolveCentralPublicationSection,
 } from "./sections";
 
@@ -38,7 +40,7 @@ export interface CentralNewsHubItem {
   source: string;
   sourceUrl: string;
   publishedAt: string;
-  section: PublicationSection<CentralPublicationSectionId>;
+  section: CentralPublicationSection;
   tags?: string[];
   thumbnailUrl?: string;
   editorialImportance?: number;
@@ -53,7 +55,7 @@ export interface CentralNewsForYourLeagueItem {
   source: string;
   sourceUrl: string;
   publishedAt: string;
-  section: PublicationSection<CentralPublicationSectionId>;
+  section: CentralPublicationSection;
   tags?: string[];
   thumbnailUrl?: string;
   editorialImportance?: number;
@@ -71,11 +73,12 @@ export interface CentralNewsForYourLeagueRail {
 }
 
 export interface CentralNewsHubData {
-  activeSection: PublicationSection<CentralPublicationSectionId> | null;
+  activeSection: CentralPublicationSection | null;
   activeTag?: string | null;
+  branches: readonly CentralPublicationBranch[];
   forYourLeague: CentralNewsForYourLeagueRail | null;
   items: CentralNewsHubItem[];
-  sections: readonly PublicationSection<CentralPublicationSectionId>[];
+  sections: readonly CentralPublicationSection[];
 }
 
 type CentralNewsRow = {
@@ -180,6 +183,7 @@ export async function getCentralNewsHubData(
 
   return {
     activeSection,
+    branches: CENTRAL_PUBLICATION_BRANCHES,
     forYourLeague: await getForYourLeagueRail(db, {
       leagueId: input.forLeagueId,
       limit: DEFAULT_RAIL_LIMIT,

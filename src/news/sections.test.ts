@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AI_CONTENT_TYPES, CONTENT_TYPE_TEMPLATES } from "@/ai/content-types";
 import type { AiPersona } from "@/ai/personas";
 import {
+  CENTRAL_PUBLICATION_BRANCHES,
   CENTRAL_PUBLICATION_SECTIONS,
   getCentralPublicationSectionBySlug,
   getLeaguePublicationSectionBySlug,
@@ -23,27 +24,38 @@ const CONTRADICTORY_PERSONA_BY_SECTION: Record<
 };
 
 describe("publication section taxonomies", () => {
-  it("declares the central and league beats from the publication spec", () => {
-    expect(CENTRAL_PUBLICATION_SECTIONS.map((section) => section.id)).toEqual([
-      "headlines",
-      "players",
-      "rankings",
-      "start-sit",
-      "injuries",
-      "waivers",
-      "analysis",
-    ]);
+  it("declares the central News and Fantasy branches from the locked lineup", () => {
     expect(
-      CENTRAL_PUBLICATION_SECTIONS.map((section) => section.label),
+      CENTRAL_PUBLICATION_BRANCHES.map((branch) => ({
+        id: branch.id,
+        label: branch.label,
+        sections: branch.sections.map((section) => section.label),
+      })),
     ).toEqual([
-      "Headlines",
-      "Players",
-      "Rankings",
-      "Start/Sit",
-      "Injuries",
-      "Waivers",
-      "Analysis",
+      {
+        id: "news",
+        label: "News",
+        sections: ["The Wire", "The Rundown"],
+      },
+      {
+        id: "fantasy",
+        label: "Fantasy",
+        sections: [
+          "Weekend Recap + MNF Projection",
+          "MNF Recap",
+          "Pre-waiver",
+          "Post-waiver",
+          "Matchups",
+          "Rankings & Projections",
+          "Start/Sit",
+          "Injuries",
+        ],
+      },
     ]);
+    expect(CENTRAL_PUBLICATION_SECTIONS).toHaveLength(10);
+  });
+
+  it("declares the league beats from the publication spec", () => {
     expect(LEAGUE_PUBLICATION_SECTIONS.map((section) => section.id)).toEqual([
       "recaps",
       "power-rankings",
@@ -63,6 +75,13 @@ describe("publication section taxonomies", () => {
     expect(getCentralPublicationSectionBySlug("start-sit")?.label).toBe(
       "Start/Sit",
     );
+    expect(getCentralPublicationSectionBySlug("wire")).toMatchObject({
+      branch: "news",
+      label: "The Wire",
+    });
+    expect(
+      getCentralPublicationSectionBySlug("rankings-projections"),
+    ).toMatchObject({ branch: "fantasy", label: "Rankings & Projections" });
     expect(getLeaguePublicationSectionBySlug("power-rankings")?.label).toBe(
       "Power Rankings",
     );
@@ -77,7 +96,7 @@ describe("publication section taxonomies", () => {
         summary: "The injury report is messy.",
         title: "Practice report changes the wire",
       }).label,
-    ).toBe("Rankings");
+    ).toBe("Rankings & Projections");
     expect(
       resolveCentralPublicationSection({
         metadata: { topics: ["practice report"] },
@@ -89,25 +108,31 @@ describe("publication section taxonomies", () => {
         metadata: {},
         title: "Waiver wire priority opens after Sunday",
       }).label,
-    ).toBe("Waivers");
+    ).toBe("Pre-waiver");
     expect(
       resolveCentralPublicationSection({
         metadata: {},
         title: "Default fantasy market story",
       }).label,
-    ).toBe("Analysis");
+    ).toBe("The Wire");
     expect(
       resolveCentralPublicationSection({
         metadata: { section: "nfl" },
         title: "Old metadata still maps to the main desk",
       }).label,
-    ).toBe("Headlines");
+    ).toBe("The Wire");
     expect(
       resolveCentralPublicationSection({
         metadata: {},
         title: "Generic league office headline",
       }).label,
-    ).toBe("Headlines");
+    ).toBe("The Wire");
+    expect(
+      resolveCentralPublicationSection({
+        metadata: { centralSection: "wire", topics: ["injuries"] },
+        title: "Starter misses practice",
+      }),
+    ).toMatchObject({ branch: "news", id: "wire", label: "The Wire" });
   });
 
   it.each(AI_CONTENT_TYPES)(

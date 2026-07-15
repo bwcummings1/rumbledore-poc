@@ -4,6 +4,7 @@ import {
   PublicationMasthead,
   type PublicationStory,
 } from "@/components/publication/front-view";
+import { TabLinks } from "@/components/ui/tabs";
 import { buildPublicationFront } from "@/news/front";
 import type { CentralNewsHubData } from "@/news/hub";
 import { CentralNewsRealtimeRefresh } from "@/realtime/client";
@@ -53,6 +54,52 @@ function newsHref(path: string, leagueId: string | null | undefined): string {
   return `${path}?leagueId=${encodeURIComponent(leagueId)}`;
 }
 
+function CentralPublicationNavigation({
+  activeSection,
+  branches,
+  leagueId,
+}: Pick<CentralNewsHubData, "activeSection" | "branches"> & {
+  leagueId?: string | null;
+}) {
+  return (
+    <section
+      aria-label="Central publication branches"
+      className="grid gap-3 lg:grid-cols-2"
+      data-slot="central-publication-branches"
+    >
+      {branches.map((branch) => {
+        const items = [
+          ...(branch.id === "news"
+            ? [
+                {
+                  active: !activeSection,
+                  href: newsHref("/news", leagueId),
+                  label: "Front",
+                },
+              ]
+            : []),
+          ...branch.sections.map((section) => ({
+            active: activeSection?.id === section.id,
+            href: newsHref(`/news/${section.slug}`, leagueId),
+            label: section.label,
+          })),
+        ];
+
+        return (
+          <section
+            aria-label={`${branch.label} branch`}
+            className="grid min-w-0 gap-1"
+            key={branch.id}
+          >
+            <p className="eyebrow text-muted-foreground">{branch.label}</p>
+            <TabLinks ariaLabel={`${branch.label} sections`} items={items} />
+          </section>
+        );
+      })}
+    </section>
+  );
+}
+
 export function NewsHubView({ data }: { data: CentralNewsHubData }) {
   const front = buildPublicationFront(data.items);
   const rail = data.forYourLeague;
@@ -65,23 +112,16 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
   const emptyBody = data.activeSection
     ? "This section has no published stories yet. The rest of Rumbledore News is still available."
     : "The news refresh job has not published any shared headlines.";
+  const activeBranch = data.activeSection
+    ? (data.branches.find(
+        (branch) => branch.id === data.activeSection?.branch,
+      ) ?? null)
+    : null;
   const sectionLabel = data.activeTag
     ? `Tagged ${data.activeTag}`
     : data.activeSection
-      ? `${data.activeSection.label} section`
+      ? `${activeBranch?.label ?? "Central"} · ${data.activeSection.label}`
       : undefined;
-  const navItems = [
-    {
-      active: !data.activeSection,
-      href: newsHref("/news", rail?.league.id),
-      label: "Front",
-    },
-    ...data.sections.map((section) => ({
-      active: data.activeSection?.id === section.id,
-      href: newsHref(`/news/${section.slug}`, rail?.league.id),
-      label: section.label,
-    })),
-  ];
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -98,8 +138,13 @@ export function NewsHubView({ data }: { data: CentralNewsHubData }) {
         eyebrow={
           data.activeSection ? "SECTION · RUMBLEDORE NEWS" : "CENTRAL WIRE"
         }
-        navAriaLabel="News sections"
-        navItems={navItems}
+        navigation={
+          <CentralPublicationNavigation
+            activeSection={data.activeSection}
+            branches={data.branches}
+            leagueId={rail?.league.id}
+          />
+        }
         sectionLabel={sectionLabel}
         title="Rumbledore News"
       />

@@ -69,7 +69,11 @@ export {
 } from "./player-refs";
 export { RssCentralNewsSource, TavilyCentralNewsSource } from "./real";
 export {
+  CENTRAL_PUBLICATION_BRANCHES,
   CENTRAL_PUBLICATION_SECTIONS,
+  type CentralPublicationBranch,
+  type CentralPublicationBranchId,
+  type CentralPublicationSection,
   type CentralPublicationSectionId,
   getCentralPublicationSectionBySlug,
   getLeaguePublicationSectionBySlug,

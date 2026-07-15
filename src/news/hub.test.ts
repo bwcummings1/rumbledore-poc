@@ -231,7 +231,7 @@ describe("central news hub", () => {
         dedupKey: `${marker}-section-rankings`,
         kind: "news",
         leagueId: null,
-        metadata: { section: "rankings" },
+        metadata: { section: "rankings-projections" },
         publishedAt: new Date("2026-06-11T19:00:00.000Z"),
         source: "Rankings Desk",
         sourceUrl: `https://news.example.com/${marker}/section-rankings`,
@@ -249,14 +249,26 @@ describe("central news hub", () => {
     );
 
     expect(data.activeSection?.label).toBe("Injuries");
-    expect(data.sections.map((section) => section.label)).toEqual([
-      "Headlines",
-      "Players",
-      "Rankings",
-      "Start/Sit",
-      "Injuries",
-      "Waivers",
-      "Analysis",
+    expect(
+      data.branches.map((branch) => ({
+        label: branch.label,
+        sections: branch.sections.map((section) => section.label),
+      })),
+    ).toEqual([
+      { label: "News", sections: ["The Wire", "The Rundown"] },
+      {
+        label: "Fantasy",
+        sections: [
+          "Weekend Recap + MNF Projection",
+          "MNF Recap",
+          "Pre-waiver",
+          "Post-waiver",
+          "Matchups",
+          "Rankings & Projections",
+          "Start/Sit",
+          "Injuries",
+        ],
+      },
     ]);
     expect(markedItems.map((item) => item.title)).toEqual([
       "Starter injury anchors the section front",
@@ -285,7 +297,7 @@ describe("central news hub", () => {
         dedupKey: `${marker}-deep-section-rankings-${index}`,
         kind: "news" as const,
         leagueId: null,
-        metadata: { section: "rankings" },
+        metadata: { section: "rankings-projections" },
         publishedAt: new Date(Date.UTC(2026, 5, 12, 12, index)),
         source: "Deep Rankings Desk",
         sourceUrl: `https://news.example.com/${marker}/deep-section-rankings-${index}`,

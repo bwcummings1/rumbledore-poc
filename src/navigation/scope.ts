@@ -1,5 +1,6 @@
 import {
   CENTRAL_PUBLICATION_SECTIONS,
+  type CentralPublicationBranchId,
   type CentralPublicationSectionId,
 } from "@/news/sections";
 import type { FantasyProviderId } from "@/providers/ids";
@@ -61,6 +62,7 @@ export interface LeagueNavigationLink extends LeagueNavigationSection {
 }
 
 export interface NewsNavigationSection {
+  readonly branch: CentralPublicationBranchId;
   readonly href: string;
   readonly icon: NavigationIconName;
   readonly id: NewsSectionId;
@@ -173,6 +175,7 @@ export const LEAGUE_NAVIGATION_SECTIONS = [
 
 export const NEWS_NAVIGATION_SECTIONS = [
   {
+    branch: "news",
     href: "/news",
     icon: "newspaper",
     id: "front",
@@ -180,6 +183,7 @@ export const NEWS_NAVIGATION_SECTIONS = [
     scope: "news",
   },
   ...CENTRAL_PUBLICATION_SECTIONS.map((section) => ({
+    branch: section.branch,
     href: `/news/${section.slug}`,
     icon: newsSectionIcon(section.id),
     id: section.id,
@@ -397,19 +401,21 @@ function newsSectionIcon(
   sectionId: CentralPublicationSectionId,
 ): NavigationIconName {
   switch (sectionId) {
-    case "analysis":
+    case "rundown":
       return "scroll-text";
-    case "headlines":
+    case "mnf-recap":
+    case "weekend-recap-mnf-projection":
+    case "wire":
       return "newspaper";
     case "injuries":
       return "landmark";
-    case "players":
-      return "users";
-    case "rankings":
+    case "rankings-projections":
       return "book-open";
+    case "matchups":
     case "start-sit":
       return "ticket";
-    case "waivers":
+    case "post-waiver":
+    case "pre-waiver":
       return "trophy";
   }
 }

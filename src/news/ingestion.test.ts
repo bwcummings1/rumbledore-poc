@@ -179,12 +179,12 @@ describe("central news ingestion", () => {
       (injury?.metadata as { sources?: unknown[] } | undefined)?.sources,
     ).toHaveLength(2);
     expect(injury?.metadata).toMatchObject({
-      centralSection: "injuries",
+      centralSection: "wire",
       dek: "A quarterback injury update with central fantasy relevance.",
       editorialImportance: expect.any(Number),
-      section: "injuries",
+      section: "wire",
       sourceTypes: ["rss", "web"],
-      tags: expect.arrayContaining(["fantasy", "injuries"]),
+      tags: expect.arrayContaining(["fantasy", "wire"]),
       topics: ["fantasy", "injury"],
     });
   });

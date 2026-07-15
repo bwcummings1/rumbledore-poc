@@ -151,13 +151,35 @@ describe("NavigationShellView", () => {
         .map((link) => link.textContent),
     ).toEqual([
       "Front",
-      "Headlines",
-      "Players",
-      "Rankings",
+      "The Wire",
+      "The Rundown",
+      "Weekend Recap + MNF Projection",
+      "MNF Recap",
+      "Pre-waiver",
+      "Post-waiver",
+      "Matchups",
+      "Rankings & Projections",
       "Start/Sit",
       "Injuries",
-      "Waivers",
-      "Analysis",
+    ]);
+    expect(
+      within(screen.getByRole("navigation", { name: "News sections" }))
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Front", "The Wire", "The Rundown"]);
+    expect(
+      within(screen.getByRole("navigation", { name: "Fantasy sections" }))
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual([
+      "Weekend Recap + MNF Projection",
+      "MNF Recap",
+      "Pre-waiver",
+      "Post-waiver",
+      "Matchups",
+      "Rankings & Projections",
+      "Start/Sit",
+      "Injuries",
     ]);
     expect(
       within(tabs).getByRole("link", { name: "Front" }).getAttribute("href"),

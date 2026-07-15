@@ -37,16 +37,25 @@ export interface PublicationFrontEmptyState {
   title: string;
 }
 
-interface PublicationMastheadProps {
+type PublicationMastheadProps = {
   actions?: PublicationActionLink[];
   controls?: ReactNode;
   deck: string;
   eyebrow: string;
-  navAriaLabel: string;
-  navItems: PublicationNavItem[];
   sectionLabel?: string;
   title: string;
-}
+} & (
+  | {
+      navAriaLabel: string;
+      navigation?: never;
+      navItems: PublicationNavItem[];
+    }
+  | {
+      navAriaLabel?: never;
+      navigation: ReactNode;
+      navItems?: never;
+    }
+);
 
 interface PublicationFrontLayoutProps {
   compactOverflowLabel?: string;
@@ -63,6 +72,7 @@ export function PublicationMasthead({
   deck,
   eyebrow,
   navAriaLabel,
+  navigation,
   navItems,
   sectionLabel,
   title,
@@ -107,7 +117,10 @@ export function PublicationMasthead({
       {controls ? (
         <div className="border-t border-[var(--hair)] pt-3">{controls}</div>
       ) : null}
-      <TabLinks ariaLabel={navAriaLabel} items={navItems} />
+      {navigation ??
+        (navAriaLabel && navItems ? (
+          <TabLinks ariaLabel={navAriaLabel} items={navItems} />
+        ) : null)}
     </header>
   );
 }
