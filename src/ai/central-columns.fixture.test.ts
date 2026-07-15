@@ -220,6 +220,9 @@ describe("central column fixture week", () => {
           input,
         });
         expect(first).toMatchObject({ reused: false, status: "published" });
+        if (first.status !== "published" || retry.status !== "published") {
+          throw new Error("scheduled central fixture was not published");
+        }
         expect(retry).toMatchObject({
           contentItemId: first.contentItemId,
           reused: true,
@@ -276,6 +279,9 @@ describe("central column fixture week", () => {
       const first = await generateCentralColumn({ deps, input });
       const retry = await generateCentralColumn({ deps, input });
       expect(first.reused).toBe(false);
+      if (first.status !== "published" || retry.status !== "published") {
+        throw new Error("queued central fixture was not published");
+      }
       expect(retry).toMatchObject({
         contentItemId: first.contentItemId,
         reused: true,

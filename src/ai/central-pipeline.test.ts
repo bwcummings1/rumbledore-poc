@@ -142,6 +142,9 @@ describe("central journalist generation pipeline", () => {
     const first = await generateCentralColumn({ deps, input });
     const second = await generateCentralColumn({ deps, input });
     expect(first).toMatchObject({ reused: false, status: "published" });
+    if (first.status !== "published" || second.status !== "published") {
+      throw new Error("central generation fixture was not published");
+    }
     expect(second).toMatchObject({
       contentItemId: first.contentItemId,
       reused: true,
@@ -326,6 +329,9 @@ describe("central journalist generation pipeline", () => {
         week: 1,
       },
     });
+    if (result.status !== "published") {
+      throw new Error("automatic-recall central fixture was not published");
+    }
 
     const request = llm.centralRequests[0];
     expect(request?.context.preGenerationContext).toMatchObject({
@@ -377,6 +383,9 @@ describe("central journalist generation pipeline", () => {
         week: 1,
       },
     });
+    if (result.status !== "published") {
+      throw new Error("Wire central fixture was not published");
+    }
     const [row] = await handle.db
       .select({ metadata: contentItems.metadata })
       .from(contentItems)
@@ -406,6 +415,9 @@ describe("central journalist generation pipeline", () => {
         week: 1,
       },
     });
+    if (result.status !== "published") {
+      throw new Error("unavailable central fixture was not published");
+    }
     const [row] = await handle.db
       .select({ metadata: contentItems.metadata })
       .from(contentItems)
@@ -459,6 +471,9 @@ describe("central journalist generation pipeline", () => {
         week: 1,
       },
     });
+    if (result.status !== "published") {
+      throw new Error("fabricated-body central fixture was not published");
+    }
 
     const article = await getCentralNewsArticleData(handle.db, {
       articleId: result.contentItemId,

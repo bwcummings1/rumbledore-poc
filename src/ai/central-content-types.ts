@@ -321,7 +321,7 @@ export const CENTRAL_CONTENT_TYPE_TEMPLATES = {
     maxWords: 650,
     minWords: 250,
     promptContract:
-      "Distinguish supplied processed outcomes from fallback targets and never imply universal roster availability; availability and bid fields are nullable.",
+      "No processed transaction or FAB-outcome source is supplied yet: outcomesAvailable must be false and processedOutcomes empty. Keep fallback availability and bid fields nullable.",
   },
   central_pre_waiver: {
     contentType: "central_pre_waiver",
@@ -345,7 +345,7 @@ export const CENTRAL_CONTENT_TYPE_TEMPLATES = {
     maxWords: 1_000,
     minWords: 400,
     promptContract:
-      "Answer the configured report request with evidence-backed findings and explicit uncertainty; every finding cites supplied evidence references.",
+      "Answer the configured report request with evidence-backed findings and explicit uncertainty; every finding cites supplied evidence references. Metric and unit must both be null or exactly preserve one numeric field from a cited structured evidence record, using its applicable exact unit label: points, fantasy points, receptions, receiving yards, rushing yards, targets, passing yards, points against, points for, turnovers, line, or American odds.",
   },
   central_start_sit: {
     contentType: "central_start_sit",
@@ -456,6 +456,86 @@ function suppliedGame(sourceGameId: string, context: CentralGenerationContext) {
   );
 }
 
+interface CitedMetric {
+  metric: number | null;
+  unit: string;
+}
+
+function citedRundownMetrics(
+  refs: readonly string[],
+  context: CentralGenerationContext,
+): CitedMetric[] {
+  const cited = new Set(refs);
+  return [
+    ...context.evidence.games.flatMap((game) =>
+      cited.has(`game:${game.sourceGameId}`)
+        ? [
+            { metric: game.awayScore, unit: "points" },
+            { metric: game.homeScore, unit: "points" },
+          ]
+        : [],
+    ),
+    ...context.evidence.players.flatMap((player) =>
+      cited.has(`player:${player.sourcePlayerId}`)
+        ? [
+            { metric: player.fantasyPoints, unit: "fantasy points" },
+            { metric: player.receptions, unit: "receptions" },
+            { metric: player.receivingYards, unit: "receiving yards" },
+            { metric: player.rushingYards, unit: "rushing yards" },
+            { metric: player.targets, unit: "targets" },
+          ]
+        : [],
+    ),
+    ...context.evidence.teamStats.flatMap((team) =>
+      cited.has(`team:${team.sourceGameId}:${team.team}`)
+        ? [
+            { metric: team.passingYards, unit: "passing yards" },
+            { metric: team.pointsAgainst, unit: "points against" },
+            { metric: team.pointsFor, unit: "points for" },
+            { metric: team.receivingYards, unit: "receiving yards" },
+            { metric: team.rushingYards, unit: "rushing yards" },
+            { metric: team.turnovers, unit: "turnovers" },
+          ]
+        : [],
+    ),
+    ...context.evidence.odds.flatMap((market) =>
+      cited.has(`odds:${market.marketId}`)
+        ? [
+            { metric: market.line, unit: "line" },
+            { metric: market.awayPrice, unit: "American odds" },
+            { metric: market.homePrice, unit: "American odds" },
+            { metric: market.outcomePrice, unit: "American odds" },
+            { metric: market.overPrice, unit: "American odds" },
+            { metric: market.underPrice, unit: "American odds" },
+          ]
+        : [],
+    ),
+  ];
+}
+
+function ensureRundownMetric(
+  finding: CentralRundownReportStructure["findings"][number],
+  context: CentralGenerationContext,
+): void {
+  if (finding.metric === null && finding.unit === null) {
+    return;
+  }
+  if (
+    finding.metric === null ||
+    finding.unit === null ||
+    !citedRundownMetrics(finding.evidenceRefs, context).some(
+      (candidate) =>
+        candidate.metric !== null &&
+        candidate.metric === finding.metric &&
+        candidate.unit === finding.unit,
+    )
+  ) {
+    structureError(
+      "Rundown metric and unit must match cited supplied evidence",
+    );
+  }
+}
+
 function ensureRecordedPlayerOutcome(
   player: {
     fantasyPoints: number | null;
@@ -515,6 +595,7 @@ function validateSemanticGrounding(
     case "central_rundown_report":
       for (const finding of structure.findings) {
         ensureEvidenceRefs(finding.evidenceRefs, context, "findings");
+        ensureRundownMetric(finding, context);
       }
       return;
     case "central_weekend_recap_mnf_projection":
@@ -608,15 +689,12 @@ function validateSemanticGrounding(
       }
       return;
     case "central_post_waiver":
-      if (!structure.outcomesAvailable && structure.processedOutcomes.length) {
+      if (structure.outcomesAvailable || structure.processedOutcomes.length) {
         structureError(
-          "processed waiver outcomes require supplied outcome availability",
+          "processed waiver outcomes must remain unavailable until transaction evidence is supplied",
         );
       }
-      for (const player of [
-        ...structure.processedOutcomes,
-        ...structure.fallbackTargets,
-      ]) {
+      for (const player of structure.fallbackTargets) {
         ensurePlayer(player.player, context, "waiver player");
         ensureTeam(player.team, context, "waiver team");
         ensureEvidenceRefs(player.evidenceRefs, context, "waiver evidence");
