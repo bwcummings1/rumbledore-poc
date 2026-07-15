@@ -1,15 +1,38 @@
 import { describe, expect, it } from "vitest";
+import { AI_CONTENT_TYPES, CONTENT_TYPE_TEMPLATES } from "@/ai/content-types";
+import type { AiPersona } from "@/ai/personas";
 import {
   CENTRAL_PUBLICATION_SECTIONS,
   getCentralPublicationSectionBySlug,
   getLeaguePublicationSectionBySlug,
   LEAGUE_PUBLICATION_SECTIONS,
+  type LeaguePublicationSectionId,
   resolveCentralPublicationSection,
   resolveLeaguePublicationSection,
 } from "./sections";
 
+const CONTRADICTORY_PERSONA_BY_SECTION: Record<
+  LeaguePublicationSectionId,
+  AiPersona
+> = {
+  "power-rankings": "narrator",
+  previews: "trash_talker",
+  recaps: "analyst",
+  records: "narrator",
+  "trash-talk": "beat_reporter",
+};
+
 describe("publication section taxonomies", () => {
   it("declares the central and league beats from the publication spec", () => {
+    expect(CENTRAL_PUBLICATION_SECTIONS.map((section) => section.id)).toEqual([
+      "headlines",
+      "players",
+      "rankings",
+      "start-sit",
+      "injuries",
+      "waivers",
+      "analysis",
+    ]);
     expect(
       CENTRAL_PUBLICATION_SECTIONS.map((section) => section.label),
     ).toEqual([
@@ -20,6 +43,13 @@ describe("publication section taxonomies", () => {
       "Injuries",
       "Waivers",
       "Analysis",
+    ]);
+    expect(LEAGUE_PUBLICATION_SECTIONS.map((section) => section.id)).toEqual([
+      "recaps",
+      "power-rankings",
+      "trash-talk",
+      "records",
+      "previews",
     ]);
     expect(LEAGUE_PUBLICATION_SECTIONS.map((section) => section.label)).toEqual(
       ["Recaps", "Power Rankings", "Trash Talk", "Records", "Previews"],
@@ -78,6 +108,45 @@ describe("publication section taxonomies", () => {
         title: "Generic league office headline",
       }).label,
     ).toBe("Headlines");
+  });
+
+  it.each(AI_CONTENT_TYPES)(
+    "files %s into its template-declared section",
+    (contentType) => {
+      const expectedSection = CONTENT_TYPE_TEMPLATES[contentType].section;
+      const conflictingSection = LEAGUE_PUBLICATION_SECTIONS.find(
+        (section) => section.id !== expectedSection,
+      );
+      expect(conflictingSection).toBeDefined();
+
+      const resolved = resolveLeaguePublicationSection({
+        authorPersona: CONTRADICTORY_PERSONA_BY_SECTION[expectedSection],
+        kind: "blog",
+        metadata: {
+          contentType,
+          leagueSection: conflictingSection?.id,
+          section: conflictingSection?.id,
+          tags: [conflictingSection?.label],
+        },
+        summary: `${conflictingSection?.label} filing fallback`,
+        title: `${conflictingSection?.label} desk report`,
+      });
+
+      expect(resolved.id).toBe(expectedSection);
+    },
+  );
+
+  it("uses the template for the formerly contradictory awards assignment", () => {
+    expect(
+      resolveLeaguePublicationSection({
+        authorPersona: "beat_reporter",
+        kind: "blog",
+        metadata: {
+          article: { contentType: "awards_superlatives" },
+          leagueSection: "previews",
+        },
+      }).id,
+    ).toBe("trash-talk");
   });
 
   it("resolves league sections from metadata, persona, and kind fallbacks", () => {

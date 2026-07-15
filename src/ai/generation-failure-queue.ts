@@ -3,6 +3,10 @@ import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
 import { aiGenerationRuns, contentItems, leagues } from "@/db/schema";
+import {
+  LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+  normalizeEditorialImportance,
+} from "@/news/front";
 import type { FantasyProviderId } from "@/providers";
 import {
   type AiContentType,
@@ -789,6 +793,10 @@ export async function retryGenerationFailureRun(
       deps,
       input: {
         contentType: parsed.contentType,
+        editorialImportance: normalizeEditorialImportance(
+          run.metadata.editorialImportance,
+          LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+        ),
         leagueId: input.leagueId,
         persona: run.persona,
         triggerKey: parsed.triggerKey,

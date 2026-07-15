@@ -23,6 +23,7 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { LEAGUE_EDITORIAL_IMPORTANCE_LEAD } from "@/news/front";
 
 const marker = `failurequeue-${randomUUID()}`;
 let handle: DbHandle;
@@ -242,6 +243,9 @@ describe("generation failure queue", () => {
         .values({
           createdAt: now,
           leagueId: league.id,
+          metadata: {
+            editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+          },
           persona: "narrator",
           skipReason: "llm_judge:persona:0.20",
           status: "skipped",
@@ -286,6 +290,9 @@ describe("generation failure queue", () => {
         ),
     }));
     expect(rows.posts).toHaveLength(1);
+    expect(rows.posts[0]?.metadata.editorialImportance).toBe(
+      LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+    );
     expect(rows.runs).toHaveLength(1);
     expect(rows.runs[0]).toMatchObject({
       contentItemId:

@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+  LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+} from "@/news/front";
 import { blogDraftMetadata, validateBlogDraft } from "./article-draft";
 import type { BlogDraft, LeagueBlogContext } from "./interfaces";
 import { DEFAULT_TONE_PROFILES, DEFAULT_TONE_VERSION } from "./personas";
@@ -211,10 +215,31 @@ describe("blog draft canon citations", () => {
           title: "Snow Bowl Collapse",
         },
       ],
+      editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
     });
     expect(metadata.article).toMatchObject({
       citedCanonClaimIds: [canonClaimId],
       canonCitations: [{ claimId: canonClaimId }],
+    });
+  });
+
+  it("persists an explicit league lead signal in article metadata", () => {
+    const leagueContext = context();
+    const draft = validateBlogDraft(weeklyDraft(), {
+      contentType: "weekly_recap",
+      context: leagueContext,
+    });
+
+    expect(
+      blogDraftMetadata({
+        context: leagueContext,
+        draft,
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+        persona: "narrator",
+        triggerKey: "weekly:lead",
+      }),
+    ).toMatchObject({
+      editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
     });
   });
 

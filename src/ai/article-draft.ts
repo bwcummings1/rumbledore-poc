@@ -4,6 +4,10 @@ import {
 } from "@/content/embeds";
 import { AppError } from "@/core/result";
 import {
+  LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+  normalizeEditorialImportance,
+} from "@/news/front";
+import {
   getLeaguePublicationSectionBySlug,
   type LeaguePublicationSectionId,
 } from "@/news/sections";
@@ -447,11 +451,13 @@ function referencedMatchupWeeks({
 export function blogDraftMetadata({
   context,
   draft,
+  editorialImportance,
   persona,
   triggerKey,
 }: {
   context?: LeagueBlogContext;
   draft: BlogDraft;
+  editorialImportance?: number;
   persona: AiPersona;
   triggerKey: string;
 }): Record<string, unknown> {
@@ -483,6 +489,10 @@ export function blogDraftMetadata({
     content_type: draft.contentType,
     contentType: draft.contentType,
     dek: draft.dek,
+    editorialImportance: normalizeEditorialImportance(
+      editorialImportance,
+      LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+    ),
     ...(correction
       ? {
           editorial: {

@@ -1,3 +1,8 @@
+import type { AiContentType } from "@/ai/content-types";
+import {
+  defaultLeagueArticleSectionForContentType,
+  isAiContentType,
+} from "@/ai/content-types";
 import type { AiPersona } from "@/ai/personas";
 
 export type PublicationScope = "central" | "league";
@@ -229,6 +234,24 @@ function metadataSectionCandidates(
   return values.flatMap((value) => (value ? [value] : []));
 }
 
+function leagueContentType(
+  metadata: Record<string, unknown>,
+): AiContentType | null {
+  const article = asRecord(metadata.article);
+  const candidates = [
+    metadata.contentType,
+    metadata.content_type,
+    article.contentType,
+  ];
+
+  return (
+    candidates.find(
+      (candidate): candidate is AiContentType =>
+        typeof candidate === "string" && isAiContentType(candidate),
+    ) ?? null
+  );
+}
+
 function centralSectionForText(values: readonly string[]) {
   return (
     firstSectionId(values, CENTRAL_SECTION_ALIASES) ??
@@ -323,6 +346,13 @@ export function resolveLeaguePublicationSection({
   title?: string;
 }): PublicationSection<LeaguePublicationSectionId> {
   const record = asRecord(metadata);
+  const contentType = kind === "blog" ? leagueContentType(record) : null;
+  if (contentType) {
+    return leaguePublicationSectionById(
+      defaultLeagueArticleSectionForContentType(contentType),
+    );
+  }
+
   const metadataSectionId = firstSectionId(
     [
       ...metadataSectionCandidates(record, "league"),

@@ -1,28 +1,41 @@
 const HOUR_MS = 60 * 60 * 1000;
 const IMPORTANCE_BOOST_HOURS = 48;
 
+// League importance is deliberately narrow: a lead holds over routine columns
+// for the rest of an editorial week without permanently defeating freshness.
+export const LEAGUE_EDITORIAL_IMPORTANCE_BASELINE = 1;
+export const LEAGUE_EDITORIAL_IMPORTANCE_LEAD = 4;
+
 export interface PublicationFront<T> {
   lead: T | null;
   secondaries: T[];
   river: T[];
 }
 
-export function editorialImportance(
-  metadata: Record<string, unknown> | null | undefined,
+export function normalizeEditorialImportance(
+  value: unknown,
+  fallback = 0,
 ): number {
-  const value = metadata?.editorialImportance ?? metadata?.importance;
   const numeric =
     typeof value === "number"
       ? value
       : typeof value === "string"
         ? Number.parseFloat(value)
-        : 0;
+        : fallback;
 
   if (!Number.isFinite(numeric)) {
-    return 0;
+    return fallback;
   }
 
   return Math.min(Math.max(numeric, 0), 100);
+}
+
+export function editorialImportance(
+  metadata: Record<string, unknown> | null | undefined,
+): number {
+  return normalizeEditorialImportance(
+    metadata?.editorialImportance ?? metadata?.importance,
+  );
 }
 
 export function publicationRankScore({

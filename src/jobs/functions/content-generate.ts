@@ -12,6 +12,7 @@ import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
 import { resolveEntitlement } from "@/entitlements";
 import { seedInstigationForContentCandidate } from "@/instigator";
+import { LEAGUE_EDITORIAL_IMPORTANCE_BASELINE } from "@/news/front";
 import { inngest } from "../client";
 import { type ContentGenerateData, JOB_EVENTS } from "../events";
 
@@ -23,6 +24,12 @@ export type ContentGenerateResponse = GenerateLeagueBlogPostResult & {
 };
 
 const contentGenerateDataSchema = z.object({
+  editorialImportance: z
+    .number()
+    .finite()
+    .min(0)
+    .max(100)
+    .default(LEAGUE_EDITORIAL_IMPORTANCE_BASELINE),
   leagueId: z.uuid(),
   persona: z.enum(AI_PERSONAS),
   contentType: z.enum(AI_CONTENT_TYPES),

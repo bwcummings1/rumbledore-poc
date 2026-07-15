@@ -1,8 +1,10 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-13 — **Full 2026-07-13 backlog MERGED: `specs/47` wave 1 (47A/47B/47C) +
-F47 review fixes + P polish + Browserbase adapter (BB) + Sleeper parity (48S). Owner live smoke pending.**
+Keep it current. Last updated: 2026-07-15 — **P1 editorial foundations complete on
+`ws/p1-editorial-foundations`: league lead signal + unified section assignment.**
+**Prior merged baseline:** full 2026-07-13 backlog (`specs/47` wave 1, F47 review fixes, P polish, Browserbase
+adapter, and Sleeper parity). Owner live smoke remains pending.
 **48S Sleeper parity (merged):** Sleeper now has provenance-backed decoding dictionaries, cached named-player
 resolution, weekly roster/player points, draft picks, bracket-derived final standings, history-chain depth, a reusable
 fixture provider, six onboarding-service cases, fixture onboarding e2e, and Data/Record Book parity without
@@ -436,6 +438,10 @@ parity on `ws/48-sleeper-parity` for orchestrator review/merge. Gates remain man
   producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-15: P1 editorial foundations — league lead signal + unified section assignment. League AI content now
+  carries deterministic editorial importance so upsets/blowouts, record milestones, and strong rivalry signals can
+  lead the Press over newer routine columns; league blog sections now resolve authoritatively from each content-type
+  template, with persona inference retained only as a legacy fallback and both existing section sets unchanged.
 - 2026-07-13: Track 48S completed `specs/48` on `ws/48-sleeper-parity`: registered Sleeper decoding closure,
   cached player identity and weekly scoring depth, draft picks, bracket-derived final standings, history/fixture/e2e
   parity, and capability-honest schedule coverage. Two isolated public-league imports each passed all 14 integrity
