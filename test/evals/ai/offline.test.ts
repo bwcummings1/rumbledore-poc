@@ -175,6 +175,7 @@ function centralEvalRequest(
   context: CentralGenerationContext,
 ): CentralLlmGenerateRequest {
   return {
+    attempt: 1,
     contentType: context.column.contentType,
     context,
     prompt: {

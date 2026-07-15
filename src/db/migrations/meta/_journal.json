@@ -547,6 +547,13 @@
       "when": 1783944000000,
       "tag": "0077_payload_drift_acknowledgement",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1784073600000,
+      "tag": "0078_central_article_embeddings",
+      "breakpoints": true
     }
   ]
 }

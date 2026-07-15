@@ -38,7 +38,6 @@ afterAll(async () => {
 describe("RLS catalog state (migration 0002)", () => {
   const leagueScopedTables = [
     "ai_generation_run",
-    "ai_memory",
     "ai_persona_card",
     "ai_persona_tone_history",
     "ai_usage_event",
@@ -78,7 +77,7 @@ describe("RLS catalog state (migration 0002)", () => {
     "team_season",
     "weekly_statistics",
   ] as const;
-  const mixedScopeTables = ["content_item"] as const;
+  const mixedScopeTables = ["ai_memory", "content_item"] as const;
 
   it("has row security enabled AND forced on league-scoped tables", async () => {
     const { rows } = await handle.pool.query(
@@ -115,7 +114,7 @@ describe("RLS catalog state (migration 0002)", () => {
     }
   });
 
-  it("has row security enabled AND forced on mixed central/league content tables", async () => {
+  it("has row security enabled AND forced on mixed central/league tables", async () => {
     const { rows } = await handle.pool.query(
       `select relname, relrowsecurity, relforcerowsecurity
        from pg_class
@@ -126,13 +125,18 @@ describe("RLS catalog state (migration 0002)", () => {
     expect(rows).toEqual([
       {
         relforcerowsecurity: true,
+        relname: "ai_memory",
+        relrowsecurity: true,
+      },
+      {
+        relforcerowsecurity: true,
         relname: "content_item",
         relrowsecurity: true,
       },
     ]);
   });
 
-  it("allows central content rows while scoping league content rows", async () => {
+  it("allows central rows while scoping league rows", async () => {
     const { rows } = await handle.pool.query(
       `select tablename, policyname, cmd, qual, with_check
        from pg_policies
@@ -140,13 +144,21 @@ describe("RLS catalog state (migration 0002)", () => {
        order by tablename`,
       [mixedScopeTables],
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].policyname).toBe("content_item_scope_policy");
-    expect(rows[0].cmd).toBe("ALL");
-    expect(rows[0].qual.toLowerCase()).toContain("is null");
-    expect(rows[0].qual).toContain("current_league_id()");
-    expect(rows[0].with_check.toLowerCase()).toContain("is null");
-    expect(rows[0].with_check).toContain("current_league_id()");
+    expect(rows).toHaveLength(mixedScopeTables.length);
+    const expectedPolicyNames = {
+      ai_memory: "ai_memory_scope_policy",
+      content_item: "content_item_scope_policy",
+    } as const;
+    for (const row of rows) {
+      expect(row.policyname).toBe(
+        expectedPolicyNames[row.tablename as keyof typeof expectedPolicyNames],
+      );
+      expect(row.cmd).toBe("ALL");
+      expect(row.qual.toLowerCase()).toContain("is null");
+      expect(row.qual).toContain("current_league_id()");
+      expect(row.with_check.toLowerCase()).toContain("is null");
+      expect(row.with_check).toContain("current_league_id()");
+    }
   });
 });
 

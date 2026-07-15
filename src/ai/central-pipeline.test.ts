@@ -1,19 +1,19 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
-import { contentItems } from "@/db/schema";
+import { aiMemory, contentItems } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { ingestMockGeneralStats } from "@/general-stats";
-import { MockCentralNewsSource } from "@/news";
+import { getCentralNewsArticleData, MockCentralNewsSource } from "@/news";
 import { centralGenerationKey } from "./central-generation-key";
 import {
   createMockCentralAiDependencies,
   generateCentralColumn,
 } from "./central-pipeline";
-import { MockLlmClient } from "./mocks";
+import { DeterministicEmbeddingProvider, MockLlmClient } from "./mocks";
 
 const marker = `central-engine-${randomUUID()}`;
 let handle: DbHandle;
@@ -23,6 +23,7 @@ function testCentralAiDependencies() {
   const deps = createMockCentralAiDependencies(handle.db);
   return {
     ...deps,
+    duplicateThreshold: 1.1,
     freshness: {
       async ensureFresh(
         input: Parameters<typeof deps.freshness.ensureFresh>[0],
@@ -117,6 +118,45 @@ describe("central journalist generation pipeline", () => {
     });
   });
 
+  it("does not reuse a non-engine central row with a colliding dedup key", async () => {
+    const input = {
+      columnId: "mnf-recap" as const,
+      season: 2098,
+      triggerKey: `${marker}:foreign-dedup-collision`,
+      week: 25,
+    };
+    const dedupKey = centralGenerationKey(input);
+    const [foreignRow] = await handle.db
+      .insert(contentItems)
+      .values({
+        body: "A separately ingested central news item.",
+        contentHash: `${marker}:foreign-dedup-collision:hash`,
+        dedupKey,
+        kind: "news",
+        leagueId: null,
+        metadata: { generatedBy: "central-news-ingestion" },
+        publishedAt: new Date("2026-09-15T13:00:00.000Z"),
+        source: "Fixture News",
+        summary: "This row must not impersonate a generated column.",
+        title: "Foreign central item",
+      })
+      .returning({ id: contentItems.id });
+    if (!foreignRow) throw new Error("foreign collision row was not inserted");
+    const llm = new MockLlmClient();
+
+    await expect(
+      generateCentralColumn({
+        deps: {
+          ...testCentralAiDependencies(),
+          llm,
+          now: () => new Date("2026-09-15T14:00:00.000Z"),
+        },
+        input,
+      }),
+    ).rejects.toMatchObject({ code: "CENTRAL_AI_CONTENT_PUBLISH_FAILED" });
+    expect(llm.centralRequests).toHaveLength(1);
+  });
+
   it("publishes one shared structured article and exposes the recall injection seam", async () => {
     const llm = new MockLlmClient();
     const deps = {
@@ -141,6 +181,9 @@ describe("central journalist generation pipeline", () => {
     const first = await generateCentralColumn({ deps, input });
     const second = await generateCentralColumn({ deps, input });
     expect(first).toMatchObject({ reused: false, status: "published" });
+    if (first.status !== "published" || second.status !== "published") {
+      throw new Error("central generation fixture was not published");
+    }
     expect(second).toMatchObject({
       contentItemId: first.contentItemId,
       reused: true,
@@ -210,6 +253,76 @@ describe("central journalist generation pipeline", () => {
     });
   });
 
+  it("skips a different-trigger central draft that stays near-identical after the retry nudge", async () => {
+    const llm = new MockLlmClient();
+    const deps = {
+      ...testCentralAiDependencies(),
+      duplicateThreshold: 0.92,
+      embeddings: new DeterministicEmbeddingProvider(17),
+      llm,
+      now: () => new Date("2026-09-15T15:00:00.000Z"),
+    };
+    const firstInput = {
+      columnId: "mnf-recap" as const,
+      newsContentItemIds: [],
+      season: 2199,
+      triggerKey: `${marker}:near-duplicate:first`,
+      week: 25,
+    };
+    const secondInput = {
+      ...firstInput,
+      triggerKey: `${marker}:near-duplicate:second`,
+    };
+
+    const first = await generateCentralColumn({ deps, input: firstInput });
+    expect(first).toMatchObject({ reused: false, status: "published" });
+    if (first.status !== "published") {
+      throw new Error("near-duplicate regression seed was not published");
+    }
+
+    const second = await generateCentralColumn({ deps, input: secondInput });
+    expect(second).toEqual({
+      reused: false,
+      skipReason: "near_duplicate:1.0000",
+      status: "skipped",
+    });
+    expect(llm.centralRequests.map((request) => request.attempt)).toEqual([
+      1, 1, 2,
+    ]);
+    expect(llm.centralRequests[2]?.duplicateNudge).toContain(
+      "recent central article",
+    );
+
+    const memories = await handle.db
+      .select({
+        contentItemId: aiMemory.contentItemId,
+        embeddingDimensions: aiMemory.embeddingDimensions,
+        leagueId: aiMemory.leagueId,
+        source: aiMemory.source,
+      })
+      .from(aiMemory)
+      .where(eq(aiMemory.contentItemId, first.contentItemId));
+    expect(memories).toEqual([
+      {
+        contentItemId: first.contentItemId,
+        embeddingDimensions: 17,
+        leagueId: null,
+        source: "central_article",
+      },
+    ]);
+
+    const skippedRows = await handle.db
+      .select({ id: contentItems.id })
+      .from(contentItems)
+      .where(
+        and(
+          isNull(contentItems.leagueId),
+          eq(contentItems.dedupKey, centralGenerationKey(secondInput)),
+        ),
+      );
+    expect(skippedRows).toEqual([]);
+  });
+
   it("automatically gives the writer recent central angles and queued sibling assignments", async () => {
     const priorSummary = `${marker} already used pressure mismatches as the matchup lead.`;
     const [prior] = await handle.db
@@ -255,6 +368,9 @@ describe("central journalist generation pipeline", () => {
         week: 1,
       },
     });
+    if (result.status !== "published") {
+      throw new Error("automatic-recall central fixture was not published");
+    }
 
     const request = llm.centralRequests[0];
     expect(request?.context.preGenerationContext).toMatchObject({
@@ -306,6 +422,9 @@ describe("central journalist generation pipeline", () => {
         week: 1,
       },
     });
+    if (result.status !== "published") {
+      throw new Error("Wire central fixture was not published");
+    }
     const [row] = await handle.db
       .select({ metadata: contentItems.metadata })
       .from(contentItems)
@@ -335,6 +454,9 @@ describe("central journalist generation pipeline", () => {
         week: 1,
       },
     });
+    if (result.status !== "published") {
+      throw new Error("unavailable central fixture was not published");
+    }
     const [row] = await handle.db
       .select({ metadata: contentItems.metadata })
       .from(contentItems)
@@ -344,5 +466,70 @@ describe("central journalist generation pipeline", () => {
       type: "central_injuries",
       updates: [],
     });
+  });
+
+  it("publishes reader body blocks from validated structure, not fabricated model prose", async () => {
+    const model = new MockLlmClient();
+    const fabricatedClaims = [
+      "KC beat BUF 99-0.",
+      "Patrick Mahomes tore his ACL.",
+      "A $95 FAB bid was processed.",
+      "The recalled digest confirms every claim.",
+    ];
+    const result = await generateCentralColumn({
+      deps: {
+        ...testCentralAiDependencies(),
+        llm: {
+          async generateCentral(request) {
+            const draft = await model.generateCentral(request);
+            return {
+              ...draft,
+              body: fabricatedClaims.join(" "),
+              bodyBlocks: [
+                { text: fabricatedClaims[0] ?? "", type: "heading" },
+                {
+                  text: fabricatedClaims.slice(1).join(" "),
+                  type: "paragraph",
+                },
+              ],
+            };
+          },
+        },
+        now: () => new Date("2026-09-15T14:10:00.000Z"),
+      },
+      input: {
+        columnId: "mnf-recap",
+        preGenerationContext: {
+          digest: "The recalled digest confirms every claim.",
+          publicationPool: "central",
+          publishedContentItemIds: ["recall-only-fixture"],
+          queuedGenerationKeys: [],
+        },
+        season: 2099,
+        triggerKey: `${marker}:fabricated-reader-body`,
+        week: 1,
+      },
+    });
+    if (result.status !== "published") {
+      throw new Error("fabricated-body central fixture was not published");
+    }
+
+    const article = await getCentralNewsArticleData(handle.db, {
+      articleId: result.contentItemId,
+    });
+    expect(article.status).toBe("ready");
+    if (article.status !== "ready") {
+      throw new Error("fabricated-body regression article was not ready");
+    }
+    const readerBody = [
+      article.data.article.body,
+      JSON.stringify(article.data.article.bodyBlocks),
+    ].join("\n");
+    expect(readerBody).toContain(
+      "No supplied Monday-night final was available.",
+    );
+    for (const claim of fabricatedClaims) {
+      expect(readerBody).not.toContain(claim);
+    }
   });
 });

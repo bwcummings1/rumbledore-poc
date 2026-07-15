@@ -164,6 +164,7 @@ function centralRequestFor(
     week: 1,
   };
   return {
+    attempt: 1,
     contentType: column.contentType,
     context,
     prompt: {
@@ -715,7 +716,11 @@ describe("model provider LLM factories", () => {
 describe("OpenAiCompatibleLlmClient", () => {
   it("uses the central structured-output schema for central articles", async () => {
     const requests: RequestInit[] = [];
-    const request = centralRequestFor("rankingsProjections");
+    const request: CentralLlmGenerateRequest = {
+      ...centralRequestFor("rankingsProjections"),
+      attempt: 2,
+      duplicateNudge: "Use a distinct evidence-grounded angle.",
+    };
     const draft = await new MockLlmClient().generateCentral(request);
     const llm = new OpenAiCompatibleLlmClient({
       apiKey: fakeKey(),
@@ -749,6 +754,9 @@ describe("OpenAiCompatibleLlmClient", () => {
       },
       user: "central-publication",
     });
+    expect(JSON.stringify(payload)).toContain(
+      "Use a distinct evidence-grounded angle.",
+    );
   });
 
   it("posts a JSON-schema chat completion request and returns a valid draft", async () => {

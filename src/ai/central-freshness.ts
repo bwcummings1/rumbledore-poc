@@ -105,6 +105,25 @@ function isStale({
   return observedAt === null || now.getTime() - observedAt.getTime() > maxAgeMs;
 }
 
+function timestampAdvanced(before: Date | null, after: Date | null): boolean {
+  if (after === null || !validDate(after)) {
+    return false;
+  }
+  return (
+    before === null || !validDate(before) || after.getTime() > before.getTime()
+  );
+}
+
+function sourceAdvanced(
+  before: CentralSourceObservation,
+  after: CentralSourceObservation,
+): boolean {
+  return (
+    timestampAdvanced(before.observedAt, after.observedAt) ||
+    timestampAdvanced(before.evidenceAt, after.evidenceAt)
+  );
+}
+
 export function createCentralDataFreshnessService({
   adapters,
   maxAgeMs = CENTRAL_DATA_SOURCE_MAX_AGE_MS,
@@ -150,13 +169,34 @@ export function createCentralDataFreshnessService({
 
         await adapter.refresh(input);
         const after = await adapter.inspect(input);
+        const refreshedObservedAt = after.observedAt;
+        if (
+          !sourceAdvanced(before, after) ||
+          refreshedObservedAt === null ||
+          isStale({
+            maxAgeMs: sourceMaxAgeMs,
+            now: input.now,
+            observedAt: refreshedObservedAt,
+          })
+        ) {
+          throw new AppError({
+            code: "CENTRAL_AI_FRESHNESS_NOT_ADVANCED",
+            details: {
+              dataSource,
+              evidenceAtAfter: after.evidenceAt?.toISOString() ?? null,
+              evidenceAtBefore: before.evidenceAt?.toISOString() ?? null,
+              observedAtAfter: after.observedAt?.toISOString() ?? null,
+              observedAtBefore: before.observedAt?.toISOString() ?? null,
+            },
+            message: `Central data refresh did not advance ${dataSource}`,
+            status: 503,
+          });
+        }
         results.push({
           dataSource,
           evidenceAt: after.evidenceAt?.toISOString() ?? null,
           maxAgeMs: sourceMaxAgeMs,
-          // A completed refresh is a current observation even when a mock
-          // fixture has no facts or returns the same provider payload.
-          observedAt: input.now.toISOString(),
+          observedAt: refreshedObservedAt.toISOString(),
           refreshedAt: input.now.toISOString(),
           status: "refreshed",
         });

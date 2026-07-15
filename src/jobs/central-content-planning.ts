@@ -1,6 +1,6 @@
 import {
   type CentralColumn,
-  centralColumnsScheduledAt,
+  centralColumnScheduleMatchesAt,
 } from "@/ai/central-columns";
 import { centralGenerationKey } from "@/ai/central-generation-key";
 import {
@@ -20,7 +20,7 @@ export interface CentralContentPlanResult {
   columns: Pick<CentralColumn, "id" | "name" | "section">[];
   nflWeekState: NflWeekState;
   planned: PlannedCentralContentGenerateEvent[];
-  skippedReason: "nfl_week_unavailable" | null;
+  skippedReason: "nfl_week_unavailable" | "schedule_slot_missed" | null;
 }
 
 function nflSeasonFor(date: Date): number {
@@ -32,16 +32,16 @@ function nflSeasonFor(date: Date): number {
 
 function centralCronTriggerKey({
   column,
-  now,
+  scheduledAt,
   season,
   week,
 }: {
   column: CentralColumn;
-  now: Date;
+  scheduledAt: Date;
   season: number;
   week: number;
 }): string {
-  const slot = now.toISOString().slice(0, 16);
+  const slot = scheduledAt.toISOString().slice(0, 16);
   return `central-cron:${season}:week-${week}:${slot}:${column.id}`;
 }
 
@@ -72,7 +72,8 @@ export async function planCentralScheduledContent({
   const resolvedNflWeekState =
     nflWeekState ??
     (await (nflCalendar ?? new HeuristicNflCalendar()).weekState(resolvedNow));
-  const columns = centralColumnsScheduledAt(resolvedNow);
+  const scheduleMatches = centralColumnScheduleMatchesAt(resolvedNow);
+  const columns = scheduleMatches.map(({ column }) => column);
   const week = resolvedNflWeekState.seasonWeek;
 
   if (week === null) {
@@ -85,12 +86,12 @@ export async function planCentralScheduledContent({
   }
 
   const season = nflSeasonFor(resolvedNow);
-  const plannedData = columns.map((column) => ({
+  const plannedData = scheduleMatches.map(({ column, scheduledAt }) => ({
     columnId: column.id,
     season,
     triggerKey: centralCronTriggerKey({
       column,
-      now: resolvedNow,
+      scheduledAt,
       season,
       week,
     }),
@@ -107,6 +108,6 @@ export async function planCentralScheduledContent({
           .map(centralGenerationKey),
       }),
     ),
-    skippedReason: null,
+    skippedReason: plannedData.length === 0 ? "schedule_slot_missed" : null,
   };
 }

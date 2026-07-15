@@ -180,6 +180,7 @@ function requestFor(
   context: CentralGenerationContext,
 ): CentralLlmGenerateRequest {
   return {
+    attempt: 1,
     contentType: context.column.contentType,
     context,
     prompt: {
@@ -242,5 +243,77 @@ describe("central content format contracts", () => {
         structure: tampered,
       }),
     ).toThrow("must reference a supplied player");
+  });
+
+  it("rejects invented Rundown metrics and units despite a real evidence citation", async () => {
+    const context = contextForColumn("theRundown");
+    const draft = await new MockLlmClient().generateCentral(
+      requestFor(context),
+    );
+    if (draft.structure.type !== "central_rundown_report") {
+      throw new Error("expected Rundown fixture");
+    }
+    const findingIndex = draft.structure.findings.findIndex(
+      (finding) => finding.metric !== null,
+    );
+    const finding = draft.structure.findings[findingIndex];
+    if (!finding || finding.metric === null || finding.unit === null) {
+      throw new Error("expected grounded Rundown metric fixture");
+    }
+
+    for (const replacement of [
+      { metric: 99, unit: finding.unit },
+      { metric: finding.metric, unit: "touchdowns" },
+    ]) {
+      const tampered = {
+        ...draft.structure,
+        findings: draft.structure.findings.map((entry, index) =>
+          index === findingIndex ? { ...entry, ...replacement } : entry,
+        ),
+      };
+
+      expect(() =>
+        validateCentralContentStructure({
+          contentType: "central_rundown_report",
+          context,
+          structure: tampered,
+        }),
+      ).toThrow("metric and unit must match cited supplied evidence");
+    }
+  });
+
+  it("rejects fabricated processed waiver outcomes without transaction evidence", async () => {
+    const context = contextForColumn("postWaiver");
+    const draft = await new MockLlmClient().generateCentral(
+      requestFor(context),
+    );
+    if (draft.structure.type !== "central_post_waiver") {
+      throw new Error("expected post-waiver fixture");
+    }
+    const player = context.evidence.players[0];
+    if (!player) throw new Error("expected player evidence fixture");
+    const tampered = {
+      ...draft.structure,
+      outcomesAvailable: true,
+      processedOutcomes: [
+        {
+          evidenceRefs: [`player:${player.sourcePlayerId}`],
+          outcome: `${player.fullName} cleared waivers for a $95 FAB bid.`,
+          player: player.fullName,
+          rosterAvailabilityPercent: null,
+          team: player.team,
+        },
+      ],
+    };
+
+    expect(() =>
+      validateCentralContentStructure({
+        contentType: "central_post_waiver",
+        context,
+        structure: tampered,
+      }),
+    ).toThrow(
+      "processed waiver outcomes must remain unavailable until transaction evidence is supplied",
+    );
   });
 });

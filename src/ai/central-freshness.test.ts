@@ -6,6 +6,7 @@ import {
 } from "./central-freshness";
 
 const now = new Date("2026-09-15T14:00:00.000Z");
+const refreshedObservation = new Date("2026-09-15T13:59:00.000Z");
 
 function adapter(
   observedAt: Date | null,
@@ -14,7 +15,13 @@ function adapter(
   refresh: ReturnType<typeof vi.fn>;
 } {
   return {
-    inspect: vi.fn().mockResolvedValue({ evidenceAt, observedAt }),
+    inspect: vi
+      .fn()
+      .mockResolvedValueOnce({ evidenceAt, observedAt })
+      .mockResolvedValue({
+        evidenceAt: refreshedObservation,
+        observedAt: refreshedObservation,
+      }),
     refresh: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -45,7 +52,7 @@ describe("central data freshness", () => {
     expect(result).toEqual([
       expect.objectContaining({
         dataSource: "general-stats",
-        observedAt: now.toISOString(),
+        observedAt: refreshedObservation.toISOString(),
         refreshedAt: now.toISOString(),
         status: "refreshed",
       }),
@@ -74,4 +81,37 @@ describe("central data freshness", () => {
       }),
     ).rejects.toThrow("fixture refresh failed");
   });
+
+  it.each([
+    {
+      evidenceAt: new Date("2026-09-15T10:00:00.000Z"),
+      label: "unchanged",
+      observedAt: new Date("2026-09-15T10:00:00.000Z"),
+    },
+    { evidenceAt: null, label: "empty", observedAt: null },
+  ])(
+    "rejects a successful refresh when the inspected source remains $label",
+    async ({ evidenceAt, observedAt }) => {
+      const sources = adapters();
+      vi.mocked(sources["general-stats"].inspect).mockReset();
+      vi.mocked(sources["general-stats"].inspect).mockResolvedValue({
+        evidenceAt,
+        observedAt,
+      });
+
+      await expect(
+        createCentralDataFreshnessService({ adapters: sources }).ensureFresh({
+          dataSources: ["general-stats"],
+          now,
+          season: 2026,
+          week: 1,
+        }),
+      ).rejects.toMatchObject({
+        code: "CENTRAL_AI_FRESHNESS_NOT_ADVANCED",
+        details: { dataSource: "general-stats" },
+      });
+      expect(sources["general-stats"].refresh).toHaveBeenCalledOnce();
+      expect(sources["general-stats"].inspect).toHaveBeenCalledTimes(2);
+    },
+  );
 });

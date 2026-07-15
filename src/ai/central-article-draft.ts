@@ -1,6 +1,9 @@
 import { AppError } from "@/core/result";
 import { centralPublicationSectionById } from "@/news/sections";
-import { validateCentralContentStructure } from "./central-content-types";
+import {
+  type CentralContentStructure,
+  validateCentralContentStructure,
+} from "./central-content-types";
 import type {
   CentralArticleBodyBlock,
   CentralArticleDraft,
@@ -77,6 +80,101 @@ export function centralBodyBlocksToMarkdown(
     .join("\n\n");
 }
 
+export function centralStructureLines(
+  structure: CentralContentStructure,
+): string[] {
+  switch (structure.type) {
+    case "central_wire_blurb":
+      return [structure.whatHappened, structure.whyItMatters].filter(
+        (line): line is string => Boolean(line),
+      );
+    case "central_rundown_report":
+      return structure.findings.map(
+        (finding) => `${finding.heading}: ${finding.finding}`,
+      );
+    case "central_weekend_recap_mnf_projection":
+      return [
+        ...structure.completedGames.flatMap((game) =>
+          game.takeaway ? [game.takeaway] : [],
+        ),
+        structure.mnfProjection
+          ? `Computed MNF projection: ${structure.mnfProjection.methodology}`
+          : "No supplied Monday-night game was available for projection.",
+      ];
+    case "central_mnf_recap":
+      return structure.game
+        ? [
+            `${structure.game.awayTeam} at ${structure.game.homeTeam}: ${structure.game.awayScore ?? "score unavailable"}-${structure.game.homeScore ?? "score unavailable"}.`,
+          ]
+        : ["No supplied Monday-night final was available."];
+    case "central_pre_waiver":
+      return structure.recommendations.map(
+        (player) => `${player.priority}. ${player.recommendation}`,
+      );
+    case "central_post_waiver":
+      return [
+        structure.outcomesAvailable
+          ? `${structure.processedOutcomes.length} supplied waiver outcomes were available.`
+          : "No universal processed-waiver outcomes were supplied.",
+        ...structure.fallbackTargets.map((player) => player.recommendation),
+      ];
+    case "central_matchups":
+      return structure.matchups.map(
+        (game) => `${game.awayTeam} at ${game.homeTeam} (${game.status}).`,
+      );
+    case "central_rankings_projections":
+      return [
+        structure.methodology,
+        ...structure.rankings.map(
+          (player) =>
+            `${player.rank}. ${player.player}, ${player.position}, ${player.team}: projection ${player.projectedPoints ?? "unavailable"}.`,
+        ),
+      ];
+    case "central_start_sit":
+      return structure.recommendations.map(
+        (player) => `${player.player}: ${player.verdict}. ${player.rationale}`,
+      );
+    case "central_injuries":
+      return structure.updates.length > 0
+        ? structure.updates.map((update) => update.eventSummary)
+        : ["No supplied injury event was available for a fantasy implication."];
+  }
+}
+
+export function centralStructureBodyBlocks({
+  context,
+  structure,
+}: {
+  context: CentralGenerationContext;
+  structure: CentralContentStructure;
+}): CentralArticleBodyBlock[] {
+  const evidenceCount =
+    context.evidence.news.length +
+    context.evidence.games.length +
+    context.evidence.players.length +
+    context.evidence.odds.length;
+  const lines = centralStructureLines(structure);
+
+  return [
+    {
+      text: `${context.column.name} — ${context.season} Week ${context.week}`,
+      type: "heading",
+    },
+    {
+      text: `${context.journalist.name} files from ${evidenceCount} supplied central evidence record${evidenceCount === 1 ? "" : "s"}. ${context.journalist.registerContract}`,
+      type: "paragraph",
+    },
+    ...(lines.length > 0
+      ? [{ items: lines, type: "list" as const }]
+      : [
+          {
+            text: "The supplied substrate did not contain enough evidence for a factual assertion.",
+            type: "paragraph" as const,
+          },
+        ]),
+  ];
+}
+
 export function validateCentralArticleDraft(
   draft: CentralArticleDraft,
   options: { context: CentralGenerationContext },
@@ -85,7 +183,9 @@ export function validateCentralArticleDraft(
   const summary = cleanText(draft.summary);
   const dek = cleanText(draft.dek);
   const tags = normalizeTags(Array.isArray(draft.tags) ? draft.tags : []);
-  const bodyBlocks = (Array.isArray(draft.bodyBlocks) ? draft.bodyBlocks : [])
+  const proposedBodyBlocks = (
+    Array.isArray(draft.bodyBlocks) ? draft.bodyBlocks : []
+  )
     .map(normalizeBodyBlock)
     .filter((block): block is CentralArticleBodyBlock => block !== null);
 
@@ -94,7 +194,7 @@ export function validateCentralArticleDraft(
     !summary ||
     !dek ||
     tags.length === 0 ||
-    bodyBlocks.length < 2
+    proposedBodyBlocks.length < 2
   ) {
     throw new AppError({
       code: "CENTRAL_AI_DRAFT_ARTICLE_INVALID",
@@ -118,6 +218,15 @@ export function validateCentralArticleDraft(
     });
   }
   const section = centralPublicationSectionById(draft.section);
+  const structure = validateCentralContentStructure({
+    contentType: draft.contentType,
+    context: options.context,
+    structure: draft.structure,
+  });
+  const bodyBlocks = centralStructureBodyBlocks({
+    context: options.context,
+    structure,
+  });
 
   return {
     body: centralBodyBlocksToMarkdown(bodyBlocks),
@@ -125,11 +234,7 @@ export function validateCentralArticleDraft(
     contentType: draft.contentType,
     dek,
     section: section.id,
-    structure: validateCentralContentStructure({
-      contentType: draft.contentType,
-      context: options.context,
-      structure: draft.structure,
-    }),
+    structure,
     summary,
     tags,
     title,

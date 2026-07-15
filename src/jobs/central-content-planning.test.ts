@@ -62,6 +62,31 @@ describe("central content cadence", () => {
     );
   });
 
+  it("recovers a one-minute-late cron run under the configured slot key", async () => {
+    const onTime = await planCentralScheduledContent({
+      nflWeekState: regularWeek,
+      now: () => new Date("2026-09-15T14:00:00.000Z"),
+    });
+    const late = await planCentralScheduledContent({
+      nflWeekState: regularWeek,
+      now: () => new Date("2026-09-15T14:01:00.000Z"),
+    });
+
+    expect(late).toEqual(onTime);
+    expect(late.planned[0]?.data.triggerKey).toContain("2026-09-15T14:00");
+  });
+
+  it("signals when a delayed cron run misses the bounded slot window", async () => {
+    const result = await planCentralScheduledContent({
+      nflWeekState: regularWeek,
+      now: () => new Date("2026-09-15T14:06:00.000Z"),
+    });
+
+    expect(result.columns).toEqual([]);
+    expect(result.planned).toEqual([]);
+    expect(result.skippedReason).toBe("schedule_slot_missed");
+  });
+
   it("carries same-planning-run siblings into each writer's queued recall", async () => {
     const plan = await planCentralScheduledContent({
       nflWeekState: regularWeek,

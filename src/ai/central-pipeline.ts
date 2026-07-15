@@ -10,9 +10,11 @@ import {
   lte,
   sql,
 } from "drizzle-orm";
+import { contentItemIsPublished } from "@/content/lifecycle";
 import { AppError } from "@/core/result";
 import type { Db } from "@/db/client";
 import {
+  aiMemory,
   bettingEvents,
   bettingMarkets,
   contentItems,
@@ -29,6 +31,7 @@ import {
   validateCentralArticleDraft,
 } from "./central-article-draft";
 import {
+  type CentralColumnContentType,
   type CentralColumnDataSource,
   type CentralColumnId,
   centralColumnForId,
@@ -41,6 +44,7 @@ import {
 } from "./central-freshness";
 import { centralGenerationKey } from "./central-generation-key";
 import { buildCentralEditorialRecall } from "./editorial-recall";
+import { cosineSimilarity } from "./embedding-similarity";
 import type {
   CentralGenerationContext,
   CentralGenerationNewsEvidence,
@@ -55,6 +59,9 @@ import { DeterministicEmbeddingProvider, MockLlmClient } from "./mocks";
 
 const CENTRAL_NEWS_LIMIT = 12;
 const CENTRAL_ODDS_LIMIT = 240;
+const CENTRAL_DUPLICATE_LOOKBACK_MS = 30 * 24 * 60 * 60_000;
+const CENTRAL_DUPLICATE_MEMORY_LIMIT = 20;
+export const DEFAULT_CENTRAL_DUPLICATE_THRESHOLD = 0.92;
 
 export interface GenerateCentralColumnInput {
   columnId: CentralColumnId;
@@ -72,19 +79,31 @@ export interface GenerateCentralColumnInput {
 
 export interface CentralAiGenerationDependencies {
   db: Db;
+  duplicateThreshold?: number;
   embeddings: EmbeddingProvider;
   freshness: CentralDataFreshnessService;
   llm: CentralLlmClient;
   now?: () => Date;
 }
 
-export interface GenerateCentralColumnResult {
-  contentItemId: string;
-  publishedAt: string;
-  reused: boolean;
-  status: "published";
-  title: string;
-}
+export type GenerateCentralColumnResult =
+  | {
+      contentItemId: string;
+      publishedAt: string;
+      reused: boolean;
+      status: "published";
+      title: string;
+    }
+  | {
+      reused: false;
+      skipReason: string;
+      status: "skipped";
+    };
+
+type PublishedCentralColumnResult = Extract<
+  GenerateCentralColumnResult,
+  { status: "published" }
+>;
 
 function timestamp(deps: CentralAiGenerationDependencies): Date {
   return deps.now?.() ?? new Date();
@@ -484,10 +503,64 @@ function centralRecallQuery(context: CentralGenerationContext): string {
     .join("\n");
 }
 
+function maxCentralPriorSimilarity(
+  embedding: readonly number[],
+  memories: readonly { embedding: number[] }[],
+): number {
+  return memories.reduce(
+    (maximum, memory) =>
+      Math.max(maximum, cosineSimilarity(embedding, memory.embedding)),
+    0,
+  );
+}
+
+async function loadNearestCentralArticleMemories({
+  contentType,
+  deps,
+  embedding,
+  publishedAt,
+}: {
+  contentType: CentralColumnContentType;
+  deps: Pick<CentralAiGenerationDependencies, "db" | "embeddings">;
+  embedding: readonly number[];
+  publishedAt: Date;
+}): Promise<{ embedding: number[] }[]> {
+  if (embedding.length === 0) {
+    return [];
+  }
+
+  const queryVector = JSON.stringify(embedding);
+  const distance = sql`${aiMemory.embedding} <=> ${queryVector}::vector`;
+  return deps.db
+    .select({ embedding: aiMemory.embedding })
+    .from(aiMemory)
+    .innerJoin(contentItems, eq(aiMemory.contentItemId, contentItems.id))
+    .where(
+      and(
+        isNull(aiMemory.leagueId),
+        eq(aiMemory.source, "central_article"),
+        eq(aiMemory.embeddingDimensions, embedding.length),
+        eq(aiMemory.embeddingModel, deps.embeddings.model),
+        sql`${aiMemory.metadata}->>'contentType' = ${contentType}`,
+        isNull(contentItems.leagueId),
+        eq(contentItems.kind, "news"),
+        contentItemIsPublished(),
+        sql`${contentItems.metadata}->>'generatedBy' = 'central-journalist-engine'`,
+        gte(
+          contentItems.publishedAt,
+          new Date(publishedAt.getTime() - CENTRAL_DUPLICATE_LOOKBACK_MS),
+        ),
+        lte(contentItems.publishedAt, publishedAt),
+      ),
+    )
+    .orderBy(distance)
+    .limit(CENTRAL_DUPLICATE_MEMORY_LIMIT);
+}
+
 async function findExistingCentralGeneration(
   db: Db,
   dedupKey: string,
-): Promise<GenerateCentralColumnResult | null> {
+): Promise<PublishedCentralColumnResult | null> {
   const [item] = await db
     .select({
       contentItemId: contentItems.id,
@@ -500,6 +573,7 @@ async function findExistingCentralGeneration(
         isNull(contentItems.leagueId),
         eq(contentItems.kind, "news"),
         eq(contentItems.dedupKey, dedupKey),
+        sql`${contentItems.metadata}->>'generatedBy' = 'central-journalist-engine'`,
       ),
     )
     .limit(1);
@@ -533,6 +607,8 @@ export async function generateCentralColumn({
   input: GenerateCentralColumnInput;
 }): Promise<GenerateCentralColumnResult> {
   validateInput(input);
+  const duplicateThreshold =
+    deps.duplicateThreshold ?? DEFAULT_CENTRAL_DUPLICATE_THRESHOLD;
   const dedupKey = centralDedupKey(input);
   const existing = await findExistingCentralGeneration(deps.db, dedupKey);
   if (existing) {
@@ -575,45 +651,110 @@ export async function generateCentralColumn({
     preGenerationContext,
   };
   const request: CentralLlmGenerateRequest = {
+    attempt: 1,
     contentType: context.column.contentType,
     context,
     prompt: buildCentralPromptParts(context),
   };
-  const draft = validateCentralArticleDraft(
+  let draft = validateCentralArticleDraft(
     await deps.llm.generateCentral(request),
     { context },
   );
+  let articleText = centralArticleText(draft);
+  let embedding = await deps.embeddings.embed(articleText);
+  let nearestMemories = await loadNearestCentralArticleMemories({
+    contentType: context.column.contentType,
+    deps,
+    embedding,
+    publishedAt: requestedAt,
+  });
+  let maxSimilarity = maxCentralPriorSimilarity(embedding, nearestMemories);
+
+  if (maxSimilarity > duplicateThreshold) {
+    const duplicateNudge =
+      "The first draft was too similar to a recent central article in this publication pool. Use a genuinely different angle and avoid repeating its framing or phrasing while staying within the supplied evidence.";
+    const retryRequest: CentralLlmGenerateRequest = {
+      attempt: 2,
+      contentType: context.column.contentType,
+      context,
+      duplicateNudge,
+      prompt: buildCentralPromptParts(context),
+    };
+    draft = validateCentralArticleDraft(
+      await deps.llm.generateCentral(retryRequest),
+      { context },
+    );
+    articleText = centralArticleText(draft);
+    embedding = await deps.embeddings.embed(articleText);
+    nearestMemories = await loadNearestCentralArticleMemories({
+      contentType: context.column.contentType,
+      deps,
+      embedding,
+      publishedAt: requestedAt,
+    });
+    maxSimilarity = maxCentralPriorSimilarity(embedding, nearestMemories);
+  }
+
+  if (maxSimilarity > duplicateThreshold) {
+    return {
+      reused: false,
+      skipReason: `near_duplicate:${maxSimilarity.toFixed(4)}`,
+      status: "skipped",
+    };
+  }
+
   const metadata = centralArticleMetadata({ context, draft });
   const contentHash = stableContentHash({
-    article: centralArticleText(draft),
+    article: articleText,
     metadata,
   });
   const publishedAt = requestedAt;
-  const [inserted] = await deps.db
-    .insert(contentItems)
-    .values({
-      authorPersona: context.journalist.persona,
-      body: draft.body,
-      contentHash,
-      dedupKey,
-      kind: "news",
-      leagueId: null,
-      metadata,
-      publishedAt,
-      source: context.journalist.name,
-      sourceUrl: null,
-      summary: draft.summary,
-      title: draft.title,
-    })
-    .onConflictDoNothing({
-      target: [contentItems.kind, contentItems.dedupKey],
-      where: sql`${contentItems.leagueId} is null`,
-    })
-    .returning({
-      contentItemId: contentItems.id,
-      publishedAt: contentItems.publishedAt,
-      title: contentItems.title,
-    });
+  const inserted = await deps.db.transaction(async (tx) => {
+    const [item] = await tx
+      .insert(contentItems)
+      .values({
+        authorPersona: context.journalist.persona,
+        body: draft.body,
+        contentHash,
+        dedupKey,
+        kind: "news",
+        leagueId: null,
+        metadata,
+        publishedAt,
+        source: context.journalist.name,
+        sourceUrl: null,
+        summary: draft.summary,
+        title: draft.title,
+      })
+      .onConflictDoNothing({
+        target: [contentItems.kind, contentItems.dedupKey],
+        where: sql`${contentItems.leagueId} is null`,
+      })
+      .returning({
+        contentItemId: contentItems.id,
+        publishedAt: contentItems.publishedAt,
+        title: contentItems.title,
+      });
+
+    if (item) {
+      await tx.insert(aiMemory).values({
+        contentItemId: item.contentItemId,
+        embedding,
+        embeddingDimensions: embedding.length,
+        embeddingModel: deps.embeddings.model,
+        leagueId: null,
+        metadata: {
+          contentHash,
+          contentType: context.column.contentType,
+          generatedBy: "central-journalist-engine",
+        },
+        source: "central_article",
+        textContent: articleText,
+      });
+    }
+
+    return item;
+  });
 
   if (inserted) {
     return {
