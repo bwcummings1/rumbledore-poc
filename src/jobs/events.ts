@@ -103,6 +103,7 @@ export interface PayloadDriftCanaryLeagueData {
 }
 
 export interface ContentGenerateData {
+  editorialImportance?: number;
   leagueId: string;
   persona: AiPersona;
   contentType: AiContentType;

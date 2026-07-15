@@ -25,6 +25,10 @@ import {
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
+import {
+  LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+  LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+} from "@/news/front";
 import { MockNflCalendar, type NflWeekState } from "@/sports/nfl-calendar";
 import {
   planCronContent,
@@ -516,12 +520,25 @@ describe("content planning", () => {
     expect(
       rivalryForActive.map((event) => ({
         contentType: event.data.contentType,
+        editorialImportance: event.data.editorialImportance,
         persona: event.data.persona,
       })),
     ).toEqual([
-      { contentType: "matchup_preview", persona: "commissioner" },
-      { contentType: "matchup_preview", persona: "analyst" },
-      { contentType: "rivalry_piece", persona: "trash_talker" },
+      {
+        contentType: "matchup_preview",
+        editorialImportance: undefined,
+        persona: "commissioner",
+      },
+      {
+        contentType: "matchup_preview",
+        editorialImportance: undefined,
+        persona: "analyst",
+      },
+      {
+        contentType: "rivalry_piece",
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+        persona: "trash_talker",
+      },
     ]);
 
     const postOdds = await planCronContent({
@@ -898,6 +915,7 @@ describe("content planning", () => {
     expect(rows.posts).toHaveLength(1);
     expect(rows.posts[0]?.metadata).toMatchObject({
       contentType: "instigation_column",
+      editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
       triggerKey: `instigation:${rows.instigations[0]?.id}`,
     });
   });
@@ -933,6 +951,15 @@ describe("content planning", () => {
     expect(first.planned.map((event) => event.data.contentType).sort()).toEqual(
       ["awards_superlatives", "power_rankings", "weekly_recap"],
     );
+    expect(
+      first.planned.find((event) => event.data.contentType === "weekly_recap")
+        ?.data.editorialImportance,
+    ).toBe(LEAGUE_EDITORIAL_IMPORTANCE_LEAD);
+    expect(
+      first.planned
+        .filter((event) => event.data.contentType !== "weekly_recap")
+        .every((event) => event.data.editorialImportance === undefined),
+    ).toBe(true);
     expect(first.planned.map((event) => event.id)).toEqual(
       second.planned.map((event) => event.id),
     );
@@ -956,16 +983,19 @@ describe("content planning", () => {
       milestone.planned
         .filter((event) => event.data.contentType === "milestone_record")
         .map((event) => ({
+          editorialImportance: event.data.editorialImportance,
           persona: event.data.persona,
           triggerKey: event.data.triggerKey,
         }))
         .sort((left, right) => left.persona.localeCompare(right.persona)),
     ).toEqual([
       {
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
         persona: "analyst",
         triggerKey: "record-broken:highest_single_week_score",
       },
       {
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
         persona: "narrator",
         triggerKey: "record-broken:highest_single_week_score",
       },
@@ -1003,6 +1033,19 @@ describe("content planning", () => {
       "narrator",
       "trash_talker",
     ]);
+    expect(
+      posts.find((post) => post.metadata.contentType === "weekly_recap")
+        ?.metadata.editorialImportance,
+    ).toBe(LEAGUE_EDITORIAL_IMPORTANCE_LEAD);
+    expect(
+      posts
+        .filter((post) => post.metadata.contentType !== "weekly_recap")
+        .every(
+          (post) =>
+            post.metadata.editorialImportance ===
+            LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+        ),
+    ).toBe(true);
   });
 
   it("plans game.final content through the Inngest step API", async () => {
@@ -1336,12 +1379,14 @@ describe("content planning", () => {
     ).toEqual([
       {
         contentType: "milestone_record",
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
         leagueId,
         persona: "analyst",
         triggerKey: "record-broken:all_time_score",
       },
       {
         contentType: "milestone_record",
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
         leagueId,
         persona: "narrator",
         triggerKey: "record-broken:all_time_score",

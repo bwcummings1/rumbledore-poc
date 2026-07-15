@@ -48,6 +48,7 @@ import {
 import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
 import { ingestMockGeneralStats } from "@/general-stats";
+import { LEAGUE_EDITORIAL_IMPORTANCE_LEAD } from "@/news/front";
 import { NoopPushNotifier, RecordingPushNotifier } from "@/push";
 import { RecordingRealtimePublisher } from "@/realtime";
 import type { WebhookDeliverer } from "@/webhooks";
@@ -1714,7 +1715,10 @@ describe("generateLeagueBlogPost", () => {
             dedupKey: `${marker}-self-duplicate-prior`,
             kind: "blog",
             leagueId: league.id,
-            metadata: { contentType: "weekly_recap" },
+            metadata: {
+              contentType: "weekly_recap",
+              editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+            },
             publishedAt: new Date("2026-06-10T12:00:00.000Z"),
             summary: "This source summary is intentionally similar.",
             title: "Source editorial note",
@@ -1762,6 +1766,23 @@ describe("generateLeagueBlogPost", () => {
     });
 
     expect(result).toMatchObject({ reused: false, status: "published" });
+    if (result.status !== "published") {
+      throw new Error("expected the superseding post to publish");
+    }
+    const [replacement] = await withLeagueContext(handle.db, league.id, (tx) =>
+      tx
+        .select({ metadata: contentItems.metadata })
+        .from(contentItems)
+        .where(
+          and(
+            eq(contentItems.id, result.contentItemId),
+            eq(contentItems.leagueId, league.id),
+          ),
+        ),
+    );
+    expect(replacement?.metadata.editorialImportance).toBe(
+      LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+    );
   });
 
   it("orders near-duplicate memory by vector distance before applying the limit", async () => {

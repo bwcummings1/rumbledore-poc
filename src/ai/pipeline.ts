@@ -47,6 +47,10 @@ import {
   mostRestrictiveRoastLevel,
   type RoastLevel,
 } from "@/members/roast-consent-types";
+import {
+  LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+  normalizeEditorialImportance,
+} from "@/news/front";
 import { NoopPushNotifier, PUSH_EVENTS, type PushNotifier } from "@/push";
 import {
   NoopRealtimePublisher,
@@ -124,6 +128,7 @@ import { recordAiUsageEvent } from "./usage-attribution";
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.92;
 
 export interface GenerateLeagueBlogPostInput {
+  editorialImportance?: number;
   leagueId: string;
   persona: AiPersona;
   contentType: AiContentType;
@@ -303,7 +308,13 @@ function contentDedupKey(input: GenerateLeagueBlogPostInput): string {
 function generationRunMetadata(
   input: GenerateLeagueBlogPostInput,
 ): Record<string, unknown> {
-  return input.editorialContext ? { editorial: input.editorialContext } : {};
+  return {
+    editorialImportance: normalizeEditorialImportance(
+      input.editorialImportance,
+      LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+    ),
+    ...(input.editorialContext ? { editorial: input.editorialContext } : {}),
+  };
 }
 
 function estimateTokenCount(text: string): number {
@@ -2582,6 +2593,42 @@ async function markBlockedByEntitlement({
   };
 }
 
+async function resolvePublicationEditorialImportance({
+  input,
+  tx,
+}: {
+  input: GenerateLeagueBlogPostInput;
+  tx: LeagueScopedTx;
+}): Promise<number> {
+  if (input.editorialImportance !== undefined) {
+    return normalizeEditorialImportance(
+      input.editorialImportance,
+      LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+    );
+  }
+
+  if (input.supersedes) {
+    const [source] = await tx
+      .select({ metadata: contentItems.metadata })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.id, input.supersedes.contentItemId),
+          eq(contentItems.leagueId, input.leagueId),
+        ),
+      )
+      .limit(1);
+    if (source) {
+      return normalizeEditorialImportance(
+        source.metadata.editorialImportance ?? source.metadata.importance,
+        LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+      );
+    }
+  }
+
+  return LEAGUE_EDITORIAL_IMPORTANCE_BASELINE;
+}
+
 async function publishDraft({
   context,
   deps,
@@ -2608,6 +2655,10 @@ async function publishDraft({
     deps.db,
     input.leagueId,
     async (tx) => {
+      const editorialImportance = await resolvePublicationEditorialImportance({
+        input,
+        tx,
+      });
       const [inserted] = await tx
         .insert(contentItems)
         .values({
@@ -2620,6 +2671,7 @@ async function publishDraft({
           metadata: blogDraftMetadata({
             context,
             draft,
+            editorialImportance,
             persona: input.persona,
             triggerKey: input.triggerKey,
           }),

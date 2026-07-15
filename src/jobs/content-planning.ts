@@ -16,6 +16,7 @@ import {
   type EntitlementTier,
   resolveEntitlement,
 } from "@/entitlements";
+import { LEAGUE_EDITORIAL_IMPORTANCE_LEAD } from "@/news/front";
 import {
   defaultNflCalendar,
   type NflCalendar,
@@ -375,6 +376,15 @@ function toPlannedEvent(
   };
 }
 
+function leadStoryCandidate(
+  data: ContentGenerateData,
+): PlannedContentGenerateEvent {
+  return toPlannedEvent({
+    ...data,
+    editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+  });
+}
+
 function cronTriggerKey(
   cadence: ContentPlanCronCadence,
   now: Date,
@@ -664,13 +674,16 @@ export async function planCronContent({
       hasRivalryWeek,
       weekState: resolvedNflWeekState,
     })) {
+      const data = {
+        contentType: candidate.contentType,
+        leagueId: league.id,
+        persona: candidate.persona,
+        triggerKey,
+      };
       planned.push(
-        toPlannedEvent({
-          contentType: candidate.contentType,
-          leagueId: league.id,
-          persona: candidate.persona,
-          triggerKey,
-        }),
+        candidate.contentType === "rivalry_piece"
+          ? leadStoryCandidate(data)
+          : toPlannedEvent(data),
       );
     }
   }
@@ -773,7 +786,7 @@ function milestoneContentEvents({
 }): PlannedContentGenerateEvent[] {
   return milestoneKeys.flatMap((recordKey) =>
     TRIGGER_CANDIDATES[JOB_EVENTS.recordBroken].map((candidate) =>
-      toPlannedEvent({
+      leadStoryCandidate({
         contentType: candidate.contentType,
         leagueId,
         persona: candidate.persona,
@@ -921,14 +934,22 @@ export async function planGameFinalContent({
       weekState: resolvedNflWeekState,
     });
     const planned = [
-      ...gameFinalCandidates(triggerReasons).map((candidate) =>
-        toPlannedEvent({
+      ...gameFinalCandidates(triggerReasons).map((candidate) => {
+        const eventData = {
           contentType: candidate.contentType,
           leagueId: data.leagueId,
           persona: candidate.persona,
           triggerKey,
-        }),
-      ),
+        };
+        const isLeadRecap =
+          candidate.contentType === "weekly_recap" &&
+          triggerReasons.some(
+            (reason) => reason === "blowout" || reason === "upset",
+          );
+        return isLeadRecap
+          ? leadStoryCandidate(eventData)
+          : toPlannedEvent(eventData);
+      }),
       ...milestoneContentEvents({
         leagueId: data.leagueId,
         milestoneKeys: data.milestoneKeys ?? [],
@@ -975,14 +996,17 @@ function planTriggeredContentEvents({
     (data as LoreCanonizedData).sourcePollId
       ? ([{ contentType: "verdict_column", persona: "commissioner" }] as const)
       : TRIGGER_CANDIDATES[eventName];
-  return candidates.map((candidate) =>
-    toPlannedEvent({
+  return candidates.map((candidate) => {
+    const eventData = {
       contentType: candidate.contentType,
       leagueId: data.leagueId,
       persona: candidate.persona,
       triggerKey,
-    }),
-  );
+    };
+    return eventName === JOB_EVENTS.recordBroken
+      ? leadStoryCandidate(eventData)
+      : toPlannedEvent(eventData);
+  });
 }
 
 export async function planTriggeredContent({

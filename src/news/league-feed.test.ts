@@ -15,6 +15,11 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import {
+  buildPublicationFront,
+  LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+  LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+} from "./front";
 import { getLeagueFeedData, upsertLeagueFeedReference } from "./league-feed";
 
 const marker = `feedtest-${randomUUID()}`;
@@ -50,6 +55,56 @@ function personaCardValue(input: {
     toneVersion: defaults.toneVersion + 1,
     triggerConfig: defaults.triggerConfig,
   };
+}
+
+async function seedPressRankingLeague(
+  tag: string,
+  stories: readonly {
+    editorialImportance: number;
+    publishedAt: Date;
+    title: string;
+  }[],
+): Promise<string> {
+  const [league] = await handle.db
+    .insert(leagues)
+    .values({
+      name: `Press Ranking ${tag}`,
+      provider: "espn",
+      providerLeagueId: `${marker}-ranking-${tag}`,
+      season: 2026,
+      sport: "ffl",
+    })
+    .returning({ id: leagues.id });
+  if (!league) {
+    throw new Error("ranking test league was not inserted");
+  }
+
+  await handle.db.insert(members).values({
+    organizationId: league.id,
+    role: "member",
+    userId,
+  });
+  await withLeagueContext(handle.db, league.id, (tx) =>
+    tx.insert(contentItems).values(
+      stories.map((story, index) => ({
+        authorPersona: "narrator" as const,
+        body: `${story.title} body.`,
+        contentHash: `${marker}-ranking-${tag}-${index}-hash`,
+        dedupKey: `${marker}-ranking-${tag}-${index}`,
+        kind: "blog" as const,
+        leagueId: league.id,
+        metadata: {
+          editorialImportance: story.editorialImportance,
+          section: "recaps",
+        },
+        publishedAt: story.publishedAt,
+        summary: `${story.title} summary.`,
+        title: story.title,
+      })),
+    ),
+  );
+
+  return league.id;
 }
 
 beforeAll(async () => {
@@ -249,6 +304,62 @@ afterAll(async () => {
 });
 
 describe("league-tailored feed", () => {
+  it("holds a lead-worthy league story over a newer routine column", async () => {
+    const leagueId = await seedPressRankingLeague("lead", [
+      {
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_LEAD,
+        publishedAt: new Date("2026-09-01T12:00:00.000Z"),
+        title: "The upset that changed the week",
+      },
+      {
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+        publishedAt: new Date("2026-09-05T12:00:00.000Z"),
+        title: "The newer routine column",
+      },
+    ]);
+
+    const result = await getLeagueFeedData(handle.db, {
+      leagueId,
+      limit: 20,
+      userId,
+    });
+    if (result.status !== "ready") {
+      throw new Error(`unexpected feed result: ${result.status}`);
+    }
+
+    expect(buildPublicationFront(result.data.items).lead?.title).toBe(
+      "The upset that changed the week",
+    );
+  });
+
+  it("uses freshness to lead a routine league week", async () => {
+    const leagueId = await seedPressRankingLeague("routine", [
+      {
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+        publishedAt: new Date("2026-09-01T12:00:00.000Z"),
+        title: "Monday's routine column",
+      },
+      {
+        editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
+        publishedAt: new Date("2026-09-03T12:00:00.000Z"),
+        title: "Wednesday's reasonable lead",
+      },
+    ]);
+
+    const result = await getLeagueFeedData(handle.db, {
+      leagueId,
+      limit: 20,
+      userId,
+    });
+    if (result.status !== "ready") {
+      throw new Error(`unexpected feed result: ${result.status}`);
+    }
+
+    expect(buildPublicationFront(result.data.items).lead?.title).toBe(
+      "Wednesday's reasonable lead",
+    );
+  });
+
   it("returns this league's posts plus only referenced central news", async () => {
     const [hiddenCentral] = await handle.db
       .insert(contentItems)
