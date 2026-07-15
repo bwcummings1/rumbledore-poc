@@ -1,4 +1,8 @@
 import { cron } from "inngest";
+import {
+  leagueColumnCronSchedule,
+  leagueColumnPlannerName,
+} from "@/ai/league-columns";
 import { recordJobRun } from "@/core/metrics";
 import type { Db } from "@/db/client";
 import type { EntitlementResolverEnv } from "@/entitlements";
@@ -101,29 +105,29 @@ export function createContentPlanCronFunction(
 export const contentPlanWeeklyPreview = createContentPlanCronFunction({
   cadence: "weekly-preview",
   functionId: "content-plan-weekly-preview",
-  name: "AI content weekly preview planner",
-  schedule: "0 14 * * 3",
+  name: leagueColumnPlannerName("weekly-preview"),
+  schedule: leagueColumnCronSchedule("weekly-preview"),
 });
 
 export const contentPlanWeeklyWrap = createContentPlanCronFunction({
   cadence: "weekly-wrap",
   functionId: "content-plan-weekly-wrap",
-  name: "AI content weekly wrap planner",
-  schedule: "0 14 * * 2",
+  name: leagueColumnPlannerName("weekly-wrap"),
+  schedule: leagueColumnCronSchedule("weekly-wrap"),
 });
 
 export const contentPlanMidWeek = createContentPlanCronFunction({
   cadence: "mid-week",
   functionId: "content-plan-mid-week",
-  name: "AI content mid-week planner",
-  schedule: "0 18 * * 4",
+  name: leagueColumnPlannerName("mid-week"),
+  schedule: leagueColumnCronSchedule("mid-week"),
 });
 
 export const contentPlanPostOddsRefresh = createContentPlanCronFunction({
   cadence: "post-odds-refresh",
   functionId: "content-plan-post-odds-refresh",
-  name: "AI content post-odds-refresh planner",
-  schedule: "0 16 * * 4",
+  name: leagueColumnPlannerName("post-odds-refresh"),
+  schedule: leagueColumnCronSchedule("post-odds-refresh"),
 });
 
 export const contentPlanOffseasonBeat = createContentPlanCronFunction({

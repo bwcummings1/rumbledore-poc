@@ -16,12 +16,9 @@ import {
   fantasyMembers,
   fantasyTeams,
   headToHeadRecords,
-  instigations,
   leagueEntitlements,
   leagues,
-  loreClaims,
   persons,
-  polls,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import type { EntitlementResolverEnv } from "@/entitlements";
@@ -401,90 +398,184 @@ afterAll(async () => {
 });
 
 describe("content planning", () => {
-  it("plans weekly cron personas for active leagues with stable natural keys", async () => {
+  it("plans every configured league column on its roster day", async () => {
     const active = await seedLeague("cron-active");
     const complete = await seedLeague("cron-complete", "complete");
 
-    const first = await planCronContent({
-      cadence: "weekly-preview",
-      db: handle.db,
-      env: openEntitlementEnv,
-      nflCalendar: mockNflCalendar(regularPreKickoffState),
-    });
-    const second = await runContentPlanCron({
-      cadence: "weekly-preview",
-      deps: plannerDeps(regularPreKickoffState),
-    });
-    const firstForActive = first.planned.filter(
-      (event) => event.data.leagueId === active.id,
-    );
-    const secondForActive = second.planned.filter(
-      (event) => event.data.leagueId === active.id,
-    );
-
-    expect(
-      firstForActive.map((event) => ({
-        contentType: event.data.contentType,
-        persona: event.data.persona,
-      })),
-    ).toEqual([
-      { contentType: "matchup_preview", persona: "commissioner" },
-      { contentType: "matchup_preview", persona: "analyst" },
-    ]);
-    expect(firstForActive.map((event) => event.data.triggerKey)).toStrictEqual([
-      "cron:weekly-preview:regular:7",
-      "cron:weekly-preview:regular:7",
-    ]);
-    expect(firstForActive.map((event) => event.id)).toEqual(
-      secondForActive.map((event) => event.id),
-    );
-    expect(
-      firstForActive.every((event) => event.name === "content.generate"),
-    ).toBe(true);
-    expect(
-      first.planned.some((event) => event.data.leagueId === complete.id),
-    ).toBe(false);
-    expect(second.sentCount).toBe(0);
-
-    const wrap = await planCronContent({
+    const wrapFirst = await planCronContent({
       cadence: "weekly-wrap",
       db: handle.db,
       env: openEntitlementEnv,
-      nflCalendar: mockNflCalendar(regularPostGamesState),
+      nflCalendar: mockNflCalendar(regularPreKickoffState),
+      now: () => new Date("2026-10-12T14:00:00.000Z"),
     });
-    const wrapForActive = wrap.planned.filter(
+    const wrapSecond = await runContentPlanCron({
+      cadence: "weekly-wrap",
+      deps: {
+        ...plannerDeps(regularPreKickoffState),
+        now: () => new Date("2026-10-12T14:00:00.000Z"),
+      },
+    });
+    const wrapForActive = wrapFirst.planned.filter(
       (event) => event.data.leagueId === active.id,
     );
+    const wrapReplayForActive = wrapSecond.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+
+    expect(wrapFirst.column).toMatchObject({
+      day: "monday",
+      id: "the-wrap",
+    });
     expect(
       wrapForActive.map((event) => ({
         contentType: event.data.contentType,
         persona: event.data.persona,
       })),
+    ).toEqual([{ contentType: "weekly_recap", persona: "narrator" }]);
+    expect(wrapForActive.map((event) => event.data.triggerKey)).toStrictEqual([
+      "cron:weekly-wrap:regular:7:the-wrap",
+    ]);
+    expect(wrapForActive.map((event) => event.id)).toEqual(
+      wrapReplayForActive.map((event) => event.id),
+    );
+    expect(
+      wrapForActive.every((event) => event.name === "content.generate"),
+    ).toBe(true);
+    expect(
+      wrapFirst.planned.some((event) => event.data.leagueId === complete.id),
+    ).toBe(false);
+    expect(wrapSecond.sentCount).toBe(0);
+
+    const rankings = await planCronContent({
+      cadence: "mid-week",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflCalendar: mockNflCalendar(regularPostGamesState),
+      now: () => new Date("2026-10-13T14:00:00.000Z"),
+    });
+    const rankingsForActive = rankings.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(rankings.column).toMatchObject({
+      day: "tuesday",
+      id: "power-rankings-summary",
+    });
+    expect(
+      rankingsForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+        triggerKey: event.data.triggerKey,
+      })),
     ).toEqual([
-      { contentType: "weekly_recap", persona: "narrator" },
-      { contentType: "power_rankings", persona: "analyst" },
-      { contentType: "awards_superlatives", persona: "trash_talker" },
+      {
+        contentType: "power_rankings",
+        persona: "analyst",
+        triggerKey: "cron:mid-week:regular:7:power-rankings-summary",
+      },
+      {
+        contentType: "weekly_recap",
+        persona: "narrator",
+        triggerKey: "cron:mid-week:regular:7:power-rankings-summary",
+      },
     ]);
 
-    const midWeek = await planCronContent({
+    const waiver = await planCronContent({
       cadence: "mid-week",
       db: handle.db,
       env: openEntitlementEnv,
       nflCalendar: mockNflCalendar(regularQuietState),
+      now: () => new Date("2026-10-14T14:00:00.000Z"),
     });
-    const midWeekForActive = midWeek.planned.filter(
+    const waiverForActive = waiver.planned.filter(
       (event) => event.data.leagueId === active.id,
     );
+    expect(waiver.column).toMatchObject({
+      day: "wednesday",
+      id: "waiver-summary",
+    });
     expect(
-      midWeekForActive.map((event) => ({
+      waiverForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+        triggerKey: event.data.triggerKey,
+      })),
+    ).toEqual([
+      {
+        contentType: "transaction_reaction",
+        persona: "beat_reporter",
+        triggerKey: "cron:mid-week:regular:7:waiver-summary",
+      },
+    ]);
+
+    const tale = await planCronContent({
+      cadence: "weekly-preview",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflCalendar: mockNflCalendar(regularPreKickoffState),
+      now: () => new Date("2026-10-15T14:00:00.000Z"),
+    });
+    const taleForActive = tale.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(tale.column).toMatchObject({
+      day: "thursday",
+      id: "tale-of-the-tape",
+    });
+    expect(
+      taleForActive.map((event) => ({
         contentType: event.data.contentType,
         persona: event.data.persona,
       })),
+    ).toEqual([{ contentType: "matchup_preview", persona: "analyst" }]);
+
+    const friday = await planCronContent({
+      cadence: "post-odds-refresh",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflCalendar: mockNflCalendar(regularPreKickoffState),
+      now: () => new Date("2026-10-16T14:00:00.000Z"),
+    });
+    const fridayForActive = friday.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(friday.column).toMatchObject({
+      day: "friday",
+      id: "fantasy-friday",
+    });
+    expect(
+      fridayForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+      })),
+    ).toEqual([{ contentType: "matchup_preview", persona: "betting_advisor" }]);
+
+    const predictions = await planCronContent({
+      cadence: "weekly-preview",
+      db: handle.db,
+      env: openEntitlementEnv,
+      nflCalendar: mockNflCalendar(regularPreKickoffState),
+      now: () => new Date("2026-10-18T14:00:00.000Z"),
+    });
+    const predictionsForActive = predictions.planned.filter(
+      (event) => event.data.leagueId === active.id,
+    );
+    expect(predictions.column).toMatchObject({
+      day: "sunday",
+      id: "predictions",
+    });
+    expect(
+      predictionsForActive.map((event) => ({
+        contentType: event.data.contentType,
+        persona: event.data.persona,
+        triggerKey: event.data.triggerKey,
+      })),
     ).toEqual([
-      { contentType: "power_rankings", persona: "analyst" },
-      { contentType: "awards_superlatives", persona: "beat_reporter" },
-      { contentType: "instigation_column", persona: "trash_talker" },
-      { contentType: "season_arc", persona: "narrator" },
+      {
+        contentType: "matchup_preview",
+        persona: "analyst",
+        triggerKey: "cron:weekly-preview:regular:7:predictions",
+      },
     ]);
 
     await withLeagueContext(handle.db, active.id, async (tx) => {
@@ -513,6 +604,7 @@ describe("content planning", () => {
       db: handle.db,
       env: openEntitlementEnv,
       nflCalendar: mockNflCalendar(regularPreKickoffState),
+      now: () => new Date("2026-10-15T14:00:00.000Z"),
     });
     const rivalryForActive = rivalryPreview.planned.filter(
       (event) => event.data.leagueId === active.id,
@@ -524,11 +616,6 @@ describe("content planning", () => {
         persona: event.data.persona,
       })),
     ).toEqual([
-      {
-        contentType: "matchup_preview",
-        editorialImportance: undefined,
-        persona: "commissioner",
-      },
       {
         contentType: "matchup_preview",
         editorialImportance: undefined,
@@ -546,6 +633,7 @@ describe("content planning", () => {
       db: handle.db,
       env: openEntitlementEnv,
       nflCalendar: mockNflCalendar(regularPreKickoffState),
+      now: () => new Date("2026-10-16T14:00:00.000Z"),
     });
     const postOddsForActive = postOdds.planned.filter(
       (event) => event.data.leagueId === active.id,
@@ -555,17 +643,14 @@ describe("content planning", () => {
         contentType: event.data.contentType,
         persona: event.data.persona,
       })),
-    ).toEqual([
-      { contentType: "matchup_preview", persona: "betting_advisor" },
-      { contentType: "arena_recap", persona: "betting_advisor" },
-    ]);
+    ).toEqual([{ contentType: "matchup_preview", persona: "betting_advisor" }]);
 
     const offseasonPostOdds = await planCronContent({
       cadence: "post-odds-refresh",
       db: handle.db,
       env: openEntitlementEnv,
       nflCalendar: mockNflCalendar(offseasonState),
-      now: () => new Date("2026-06-15T12:00:00.000Z"),
+      now: () => new Date("2026-06-19T14:00:00.000Z"),
     });
     expect(offseasonPostOdds.nflWeekState).toEqual(offseasonState);
     expect(
@@ -586,21 +671,21 @@ describe("content planning", () => {
       db: handle.db,
       env: openEntitlementEnv,
       nflWeekState: regularPostGamesState,
-      now: () => new Date("2026-10-13T12:00:00.000Z"),
+      now: () => new Date("2026-10-12T12:00:00.000Z"),
     });
     const missedWeekFirst = await planCronContent({
       cadence: "weekly-wrap",
       db: handle.db,
       env: openEntitlementEnv,
       nflWeekState: missedWeekState,
-      now: () => new Date("2026-10-06T12:00:00.000Z"),
+      now: () => new Date("2026-10-05T12:00:00.000Z"),
     });
     const missedWeekSecond = await runContentPlanCron({
       cadence: "weekly-wrap",
       deps: {
         ...plannerDeps(),
         nflWeekState: missedWeekState,
-        now: () => new Date("2026-10-07T12:00:00.000Z"),
+        now: () => new Date("2026-10-05T14:00:00.000Z"),
       },
     });
 
@@ -619,25 +704,13 @@ describe("content planning", () => {
         contentType: event.data.contentType,
         persona: event.data.persona,
       })),
-    ).toEqual([
-      { contentType: "weekly_recap", persona: "narrator" },
-      { contentType: "power_rankings", persona: "analyst" },
-      { contentType: "awards_superlatives", persona: "trash_talker" },
-    ]);
+    ).toEqual([{ contentType: "weekly_recap", persona: "narrator" }]);
     expect(
       missedFirstForLeague.map((event) => event.data.triggerKey),
-    ).toStrictEqual([
-      "cron:weekly-wrap:regular:6",
-      "cron:weekly-wrap:regular:6",
-      "cron:weekly-wrap:regular:6",
-    ]);
+    ).toStrictEqual(["cron:weekly-wrap:regular:6:the-wrap"]);
     expect(
       currentForLeague.map((event) => event.data.triggerKey),
-    ).toStrictEqual([
-      "cron:weekly-wrap:regular:7",
-      "cron:weekly-wrap:regular:7",
-      "cron:weekly-wrap:regular:7",
-    ]);
+    ).toStrictEqual(["cron:weekly-wrap:regular:7:the-wrap"]);
     expect(missedFirstForLeague.map((event) => event.id)).toEqual(
       missedSecondForLeague.map((event) => event.id),
     );
@@ -682,18 +755,10 @@ describe("content planning", () => {
         contentType: event.data.contentType,
         persona: event.data.persona,
       })),
-    ).toEqual([
-      { contentType: "season_arc", persona: "narrator" },
-      { contentType: "awards_superlatives", persona: "beat_reporter" },
-      { contentType: "instigation_column", persona: "trash_talker" },
-    ]);
+    ).toEqual([{ contentType: "season_arc", persona: "narrator" }]);
     expect(
       offseasonForComplete.map((event) => event.data.triggerKey),
-    ).toStrictEqual([
-      "cron:offseason-beat:offseason:2026-w25",
-      "cron:offseason-beat:offseason:2026-w25",
-      "cron:offseason-beat:offseason:2026-w25",
-    ]);
+    ).toStrictEqual(["cron:offseason-beat:offseason:2026-w25"]);
     expect(
       offseasonForComplete.some((event) =>
         ["weekly_recap", "matchup_preview", "arena_recap"].includes(
@@ -771,16 +836,6 @@ describe("content planning", () => {
         persona: "narrator",
         triggerKey: "cron:offseason-beat:regular:12",
       },
-      {
-        contentType: "awards_superlatives",
-        persona: "beat_reporter",
-        triggerKey: "cron:offseason-beat:regular:12",
-      },
-      {
-        contentType: "instigation_column",
-        persona: "trash_talker",
-        triggerKey: "cron:offseason-beat:regular:12",
-      },
     ]);
     expect(
       regularQuietBeat.planned.some(
@@ -796,11 +851,12 @@ describe("content planning", () => {
         cadence: "weekly-wrap",
         functionId: `${marker}-weekly-wrap-cron`,
         name: "Weekly wrap cron smoke",
-        schedule: "0 12 * * 2",
+        schedule: "0 12 * * 1",
       },
       () => ({
         ...plannerDeps(),
         nflWeekState: regularPostGamesState,
+        now: () => new Date("2026-10-12T12:00:00.000Z"),
       }),
     );
     const testEngine = new InngestTestEngine({ function: fn });
@@ -822,101 +878,11 @@ describe("content planning", () => {
             contentType: "weekly_recap",
             leagueId: league.id,
             persona: "narrator",
-            triggerKey: "cron:weekly-wrap:regular:7",
+            triggerKey: "cron:weekly-wrap:regular:7:the-wrap",
           }),
           name: JOB_EVENTS.contentGenerate,
         }),
       ]),
-    });
-  });
-
-  it("runs mid-week instigation candidates as poll-backed lore claims", async () => {
-    const league = await seedLeague("midweek-instigation");
-    const midWeek = await planCronContent({
-      cadence: "mid-week",
-      db: handle.db,
-      env: openEntitlementEnv,
-      nflCalendar: mockNflCalendar(regularQuietState),
-    });
-    const event = midWeek.planned.find(
-      (candidate) =>
-        candidate.data.leagueId === league.id &&
-        candidate.data.contentType === "instigation_column",
-    );
-    if (!event) {
-      throw new Error("mid-week instigation candidate was not planned");
-    }
-
-    const first = await runContentGenerate({
-      data: event.data,
-      deps: {
-        ...createMockAiDependencies(handle.db),
-        duplicateThreshold: 1.1,
-        now: () => new Date("2026-06-14T12:00:00.000Z"),
-      },
-    });
-    const second = await runContentGenerate({
-      data: event.data,
-      deps: {
-        ...createMockAiDependencies(handle.db),
-        duplicateThreshold: 1.1,
-        now: () => new Date("2026-06-14T12:00:00.000Z"),
-      },
-    });
-
-    expect(first).toMatchObject({ reused: false, status: "published" });
-    expect(second).toMatchObject({
-      contentItemId:
-        first.status === "published" ? first.contentItemId : undefined,
-      reused: true,
-      status: "published",
-    });
-
-    const rows = await withLeagueContext(handle.db, league.id, async (tx) => ({
-      claims: await tx
-        .select()
-        .from(loreClaims)
-        .where(eq(loreClaims.leagueId, league.id)),
-      instigations: await tx
-        .select()
-        .from(instigations)
-        .where(eq(instigations.leagueId, league.id)),
-      polls: await tx.select().from(polls).where(eq(polls.leagueId, league.id)),
-      posts: await tx
-        .select({ metadata: contentItems.metadata })
-        .from(contentItems)
-        .where(
-          and(
-            eq(contentItems.leagueId, league.id),
-            eq(contentItems.kind, "blog"),
-          ),
-        ),
-    }));
-
-    expect(rows.instigations).toHaveLength(1);
-    expect(rows.instigations[0]).toMatchObject({
-      kind: "settle_it_poll",
-      persona: "trash_talker",
-      status: "polling",
-    });
-    expect(rows.polls).toHaveLength(1);
-    expect(rows.polls[0]).toMatchObject({
-      instigationId: rows.instigations[0]?.id,
-      status: "open",
-    });
-    expect(rows.claims).toHaveLength(1);
-    expect(rows.claims[0]).toMatchObject({
-      authorPersona: "trash_talker",
-      origin: "ai",
-      sourceInstigationId: rows.instigations[0]?.id,
-      sourcePollId: rows.polls[0]?.id,
-      status: "vote",
-    });
-    expect(rows.posts).toHaveLength(1);
-    expect(rows.posts[0]?.metadata).toMatchObject({
-      contentType: "instigation_column",
-      editorialImportance: LEAGUE_EDITORIAL_IMPORTANCE_BASELINE,
-      triggerKey: `instigation:${rows.instigations[0]?.id}`,
     });
   });
 
@@ -1536,6 +1502,7 @@ describe("content planning", () => {
       db: handle.db,
       env: gatedEntitlementEnv,
       nflCalendar: mockNflCalendar(regularPreKickoffState),
+      now: () => new Date("2026-10-15T14:00:00.000Z"),
     });
 
     expect(cron.planned.some((event) => event.data.leagueId === free.id)).toBe(
@@ -1550,7 +1517,7 @@ describe("content planning", () => {
     );
     expect(
       cron.planned.filter((event) => event.data.leagueId === premium.id),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
 
     const offseasonCron = await planCronContent({
       cadence: "offseason-beat",
@@ -1573,7 +1540,7 @@ describe("content planning", () => {
       offseasonCron.planned.filter(
         (event) => event.data.leagueId === premium.id,
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(1);
 
     const gameId = await seedFinalMatchup({
       league: free,
@@ -1614,7 +1581,7 @@ describe("content planning", () => {
   });
 
   it("skips premium cadence planning when the weekly AI post cap is reached", async () => {
-    const now = new Date("2026-06-17T12:00:00.000Z");
+    const now = new Date("2026-06-18T12:00:00.000Z");
     const capped = await seedLeague("cadence-cap");
     await grantPremiumLeague(capped.id);
     await seedAiGenerationRuns({
@@ -1697,7 +1664,7 @@ describe("content planning", () => {
 
     expect(
       cron.planned.filter((event) => event.data.leagueId === overridden.id),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(
       cron.skipped.some(
         (skipped) =>
