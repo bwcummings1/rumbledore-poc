@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createAiDependencies } from "@/ai/dependencies";
-import { requireLeagueRole } from "@/auth/guards";
+import { isValidLeagueId, requirePlatformAdmin } from "@/auth/guards";
 import { regenerateEditorialContentItem } from "@/content/editorial";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
@@ -27,14 +27,21 @@ async function editorialRegeneratePost(
 ) {
   const { leagueId, postId } = await context.params;
   const db = getDb();
-  const access = await requireLeagueRole({
+  const access = await requirePlatformAdmin({
     db,
     headers: request.headers,
-    leagueId,
-    minRole: "data_steward",
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+  if (!isValidLeagueId(leagueId)) {
+    return errorJson(
+      new AppError({
+        code: "INVALID_LEAGUE_ID",
+        message: "League id must be a UUID",
+        status: 400,
+      }),
+    );
   }
 
   const body = await readJsonBody(request, MAX_EDITORIAL_BODY_BYTES);

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAiDependencies } from "@/ai/dependencies";
-import { requireLeagueRole } from "@/auth/guards";
+import { requirePlatformAdmin } from "@/auth/guards";
 import { regenerateEditorialContentItem } from "@/content/editorial";
 import { AppError } from "@/core/result";
 import { POST } from "./route";
@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   db: {},
   env: {},
   regenerateEditorialContentItem: vi.fn(),
-  requireLeagueRole: vi.fn(),
+  requirePlatformAdmin: vi.fn(),
 }));
 
 vi.mock("@/db", () => ({
@@ -22,9 +22,13 @@ vi.mock("@/core/env", () => ({
   getEnv: () => mocks.env,
 }));
 
-vi.mock("@/auth/guards", () => ({
-  requireLeagueRole: mocks.requireLeagueRole,
-}));
+vi.mock("@/auth/guards", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/auth/guards")>();
+  return {
+    ...actual,
+    requirePlatformAdmin: mocks.requirePlatformAdmin,
+  };
+});
 
 vi.mock("@/ai/dependencies", () => ({
   createAiDependencies: mocks.createAiDependencies,
@@ -53,12 +57,10 @@ function request(body: unknown): Request {
   );
 }
 
-function mockAccess() {
-  mocks.requireLeagueRole.mockResolvedValue({
+function mockAdminAccess() {
+  mocks.requirePlatformAdmin.mockResolvedValue({
     ok: true,
     value: {
-      leagueId,
-      role: "data_steward",
       session: { user: { id: userId } },
       userId,
     },
@@ -71,8 +73,8 @@ afterEach(() => {
 });
 
 describe("POST /api/leagues/[leagueId]/press/[postId]/regenerate", () => {
-  it("requires steward access and runs regeneration through AI dependencies", async () => {
-    mockAccess();
+  it("allows a platform admin to run regeneration through AI dependencies", async () => {
+    mockAdminAccess();
     mocks.regenerateEditorialContentItem.mockResolvedValue({
       actionId: "action-1",
       generation: { status: "published", contentItemId: "replacement-1" },
@@ -91,8 +93,8 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/regenerate", () => {
       replacementContentItemId: "replacement-1",
       status: "published",
     });
-    expect(requireLeagueRole).toHaveBeenCalledWith(
-      expect.objectContaining({ minRole: "data_steward" }),
+    expect(requirePlatformAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({ db: mocks.db }),
     );
     expect(createAiDependencies).toHaveBeenCalledWith(mocks.db, mocks.env);
     expect(regenerateEditorialContentItem).toHaveBeenCalledWith(mocks.aiDeps, {
@@ -104,7 +106,7 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/regenerate", () => {
   });
 
   it("rejects oversized reasons before regeneration", async () => {
-    mockAccess();
+    mockAdminAccess();
 
     const response = await POST(
       request({ reason: "x".repeat(501) }),
@@ -115,11 +117,11 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/regenerate", () => {
     expect(regenerateEditorialContentItem).not.toHaveBeenCalled();
   });
 
-  it("rejects non-stewards before creating AI dependencies", async () => {
-    mocks.requireLeagueRole.mockResolvedValue({
+  it("rejects a league commissioner before any generation work", async () => {
+    mocks.requirePlatformAdmin.mockResolvedValue({
       error: new AppError({
-        code: "LEAGUE_FORBIDDEN",
-        message: "League access requires stewardship",
+        code: "PLATFORM_ADMIN_FORBIDDEN",
+        message: "Platform administrator access is required",
         status: 403,
       }),
       ok: false,
@@ -128,6 +130,9 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/regenerate", () => {
     const response = await POST(request({}), routeContext());
 
     expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "PLATFORM_ADMIN_FORBIDDEN" },
+    });
     expect(createAiDependencies).not.toHaveBeenCalled();
     expect(regenerateEditorialContentItem).not.toHaveBeenCalled();
   });
