@@ -21,6 +21,10 @@ export type CentralContentGenerateResponse = GenerateCentralColumnResult & {
 
 const centralContentGenerateDataSchema = z.object({
   columnId: z.string().trim().min(1).max(120),
+  queuedGenerationKeys: z
+    .array(z.string().trim().min(1).max(500))
+    .max(24)
+    .optional(),
   season: z.number().int().min(1900).max(2200),
   triggerKey: z.string().trim().min(1).max(200),
   week: z.number().int().min(1).max(25),

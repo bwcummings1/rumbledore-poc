@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AI_CONTENT_TYPES,
   assertLlmJudgeScorePasses,
+  type BlogDraft,
   CENTRAL_COLUMN_KEYS,
   CENTRAL_COLUMN_LINEUP,
   type CentralGenerationContext,
@@ -184,6 +185,22 @@ function centralEvalRequest(
   };
 }
 
+function editorialSurfaceOverlap(left: BlogDraft, right: BlogDraft): number {
+  const tokens = (draft: BlogDraft) =>
+    new Set(
+      `${draft.title} ${draft.dek} ${draft.summary}`
+        .toLocaleLowerCase()
+        .match(/[a-z0-9]+/g)
+        ?.filter((token) => token.length > 2) ?? [],
+    );
+  const leftTokens = tokens(left);
+  const rightTokens = tokens(right);
+  const union = new Set([...leftTokens, ...rightTokens]);
+  if (union.size === 0) return 0;
+  const shared = [...leftTokens].filter((token) => rightTokens.has(token));
+  return shared.length / union.size;
+}
+
 function emptyRecordsCatalog(
   overrides: Partial<RecordsCatalog> = {},
 ): RecordsCatalog {
@@ -321,6 +338,77 @@ describe("offline AI judge eval gate", () => {
         );
       }
     }
+  });
+
+  it("reduces same-topic restatement and advances the throughline when editorial recall is on", async () => {
+    const llm = new MockLlmClient();
+    const baseContext = contextFor({
+      fixture: league95050,
+      persona: "narrator",
+    });
+    const first = await generateEvalDraft({
+      contentType: "weekly_recap",
+      context: baseContext,
+      llm,
+    });
+    const recallOffRepeat = await generateEvalDraft({
+      contentType: "weekly_recap",
+      context: baseContext,
+      llm,
+    });
+    const recalledContext: LeagueBlogContext = {
+      ...baseContext,
+      preGenerationContext: {
+        digest: [
+          `Recent headline: ${first.title}`,
+          `Recent angle: ${first.summary}`,
+          "Complement this coverage; do not repeat its snapshot framing.",
+        ].join("\n"),
+        leagueId: baseContext.league.id,
+        publicationPool: "league",
+        publishedContentItemIds: ["offline-eval-prior-piece"],
+        queuedGenerationKeys: [],
+      },
+    };
+    const recallOnFollowup = await generateEvalDraft({
+      contentType: "weekly_recap",
+      context: recalledContext,
+      llm,
+    });
+
+    const withoutRecall = editorialSurfaceOverlap(first, recallOffRepeat);
+    const withRecall = editorialSurfaceOverlap(first, recallOnFollowup);
+    expect(withoutRecall).toBe(1);
+    expect(withRecall).toBeLessThan(0.5);
+    expect(withRecall).toBeLessThan(withoutRecall);
+    expect(recallOnFollowup.title).not.toBe(first.title);
+    expect(recallOnFollowup.summary).not.toBe(first.summary);
+    expect(recallOnFollowup.body).toContain(
+      "advances the points-for consequence instead of restating that angle",
+    );
+
+    const recalledRequest = llm.requests[2];
+    expect(recalledRequest?.prompt.volatileContext).toContain(first.title);
+    expect(recalledRequest?.prompt.volatileContext).toContain(first.summary);
+    expect(recalledRequest?.prompt.systemPrefix).not.toContain(first.title);
+    expect(recalledRequest?.prompt.systemPrefix).not.toContain(first.summary);
+    expect(
+      validateContentStructure({
+        contentType: "weekly_recap",
+        context: recalledContext,
+        structure: recallOnFollowup.structure,
+      }).type,
+    ).toBe("weekly_recap");
+
+    const score = await new MockLlmJudge().score({
+      leagueFacts: {
+        context: recalledContext,
+        otherLeagueEntityTokens: fixtureTokens(isolationLeague),
+      },
+      piece: recallOnFollowup,
+      rubric: DEFAULT_LLM_JUDGE_RUBRIC,
+    });
+    assertLlmJudgeScorePasses({ label: "editorial recall follow-up", score });
   });
 
   it("passes every content type for deterministic league fixtures without cross-league leakage", async () => {

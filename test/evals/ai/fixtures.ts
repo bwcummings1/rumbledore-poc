@@ -402,6 +402,7 @@ export function contextFor({
     memory: [],
     persona: personaCard ?? evalPersonaCard({ persona }),
     priorPosts: [],
+    preGenerationContext: null,
     records,
     teams,
     trigger: {

@@ -1,14 +1,17 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 3 P3-ENGINE complete on
-`ws/p3-central-engine`, pending orchestrator merge:** the central hub now has one configurable 10-column journalist
-lineup across News and Fantasy, 10 evidence-validated structured formats, a league-agnostic generation pipeline,
-the corrected 12-slot weekly Fantasy cadence, write-time mock news/stat/odds freshness guards, central partial-index
-idempotency, and AI-cast filing on the News hub. A simulated fixture week proves every scheduled, queued, and
-reactive column publishes once and remains publicly readable in its configured branch/section. P3-RECALL is next
-through the documented pre-generation context seam; Phase 4 real-source activation remains owner-gated.
-**Prior merged baseline:** full 2026-07-13 backlog (`specs/47` wave 1, F47 review fixes, P polish, Browserbase
+Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 3 P3-RECALL complete on
+`ws/p3-central-recall`, pending orchestrator merge:** central and league writers now receive compact, relevance- and
+recency-ranked digests of recently published headlines, summaries, topics, angles, and cleanly queryable running /
+same-plan assignments from their exact publication pool. Central reads only `league_id NULL`; league reads use RLS plus
+an explicit `league_id` predicate, with cross-league and cross-pool leakage tests. Recall stays in volatile prompt
+context and never becomes factual evidence. The offline AI gate proves a same-topic follow-up moves from identical
+restatement to a complementary throughline when recall is on, while the post-generation pgvector near-duplicate gate
+still retries and skips an unchanged duplicate that gets through. Phase 4 real-source activation remains owner-gated.
+**Prior merged baseline:** P3-ENGINE's configurable 10-column central journalist engine, evidence-validated formats,
+corrected cadence, mock write-time freshness, idempotency, public filing, and complete fixture week.
+**Earlier merged baseline:** full 2026-07-13 backlog (`specs/47` wave 1, F47 review fixes, P polish, Browserbase
 adapter, and Sleeper parity). Owner live smoke remains pending.
 **48S Sleeper parity (merged):** Sleeper now has provenance-backed decoding dictionaries, cached named-player
 resolution, weekly roster/player points, draft picks, bracket-derived final standings, history-chain depth, a reusable
@@ -443,6 +446,15 @@ parity on `ws/48-sleeper-parity` for orchestrator review/merge. Gates remain man
   producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-15: Phase 3 editorial recall (P3-RECALL) — central and league generation now build a bounded 14-day
+  publication-pool digest before writing, rank recent published headlines/summaries/topics/bylines by embedding
+  relevance plus recency, and include durable queued/about-to-publish assignments where the existing planner/run
+  model exposes them. Central recall excludes every league row; league recall runs inside `withLeagueContext()` with
+  explicit league predicates and excludes central plus other-league rows. The digest is coverage guidance only in
+  volatile prompt context, never evidence or the stable prefix. The offline AI eval measures an identical no-recall
+  repeat against a recall-informed complementary angle, and the vector near-duplicate regression confirms the
+  post-generation safety net still retries then skips an unchanged draft. Reactive central work and planner events
+  that have not started a durable generation run remain unqueryable without a future assignment store.
 - 2026-07-15: Phase 3 central journalist engine (P3-ENGINE) — the central publication now derives its two News /
   Fantasy branches, 10 placeholder-named columns, journalists, formats, queues, and corrected day slots from one
   config. Ten JSON-Schema-compatible structures run through both mock and real-adapter contracts, publish as shared

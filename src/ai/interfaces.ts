@@ -453,6 +453,7 @@ export interface LeagueBlogContext {
   teams: LeagueContextTeam[];
   records: LeagueContextRecord[];
   authenticity: LeagueAuthenticityContext;
+  preGenerationContext: LeaguePreGenerationContext | null;
   priorPosts: LeagueContextPriorPost[];
   memory: LeagueContextMemory[];
   trigger: LeagueContextTrigger;
@@ -477,6 +478,15 @@ export interface PromptParts {
 export interface CentralPreGenerationContext {
   /** Always central: recall must never borrow from a league publication pool. */
   publicationPool: "central";
+  digest: string;
+  publishedContentItemIds: string[];
+  queuedGenerationKeys: string[];
+}
+
+export interface LeaguePreGenerationContext {
+  /** The league pool is both explicitly identified and enforced through RLS. */
+  publicationPool: "league";
+  leagueId: string;
   digest: string;
   publishedContentItemIds: string[];
   queuedGenerationKeys: string[];

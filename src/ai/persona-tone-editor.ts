@@ -833,6 +833,7 @@ function buildPreviewContext(input: {
     memory: [],
     persona: input.card,
     priorPosts: [],
+    preGenerationContext: null,
     records: [],
     teams: input.teams,
     trigger: emptyTrigger(),

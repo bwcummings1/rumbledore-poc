@@ -642,6 +642,97 @@ afterAll(async () => {
 });
 
 describe("generateLeagueBlogPost", () => {
+  it("gives the league writer a pool-scoped recall digest before generation", async () => {
+    const league = await seedLeague("editorial-recall");
+    const embeddings = new DeterministicEmbeddingProvider();
+    const llm = new MockLlmClient();
+    const priorSummary =
+      "The prior issue already made the commissioner rivalry the lead angle.";
+    const priorBody = "FULL PRIOR LEAGUE BODY MUST NOT ENTER THE RECALL PROMPT";
+    const queuedGenerationKey =
+      "transaction_reaction:cron:mid-week:regular:1:waiver-summary";
+    const [prior] = await withLeagueContext(
+      handle.db,
+      league.id,
+      async (tx) => {
+        const [item] = await tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: priorBody,
+            contentHash: `${marker}-league-recall-prior-hash`,
+            dedupKey: `${marker}-league-recall-prior`,
+            kind: "blog",
+            leagueId: league.id,
+            metadata: {
+              contentType: "weekly_recap",
+              leagueSection: "recaps",
+              tags: ["commissioner", "rivalry"],
+            },
+            publishedAt: new Date("2026-06-11T11:00:00.000Z"),
+            summary: priorSummary,
+            title: "The commissioner rivalry owned the opening issue",
+          })
+          .returning({ id: contentItems.id });
+        if (!item) throw new Error("prior recall post was not inserted");
+        await tx.insert(aiMemory).values({
+          contentItemId: item.id,
+          embedding: await embeddings.embed(`${item.id} ${priorSummary}`),
+          embeddingDimensions: 8,
+          embeddingModel: embeddings.model,
+          leagueId: league.id,
+          metadata: { contentType: "weekly_recap" },
+          source: "blog_post",
+          textContent: priorBody,
+        });
+        await tx.insert(aiGenerationRuns).values({
+          leagueId: league.id,
+          persona: "beat_reporter",
+          triggerKey: queuedGenerationKey,
+        });
+        return [item];
+      },
+    );
+
+    const result = await generateLeagueBlogPost({
+      deps: {
+        ...createMockAiDependencies(handle.db),
+        duplicateThreshold: 1.1,
+        embeddings,
+        llm,
+        now: () => new Date("2026-06-11T12:00:00.000Z"),
+      },
+      input: {
+        contentType: "weekly_recap",
+        leagueId: league.id,
+        persona: "narrator",
+        triggerKey: "weekly:recall-context",
+      },
+    });
+
+    expect(result).toMatchObject({ status: "published" });
+    const request = llm.requests[0];
+    expect(request?.context.preGenerationContext).toMatchObject({
+      leagueId: league.id,
+      publicationPool: "league",
+      publishedContentItemIds: [prior.id],
+      queuedGenerationKeys: [queuedGenerationKey],
+    });
+    expect(request?.context.preGenerationContext?.digest).toContain(
+      priorSummary,
+    );
+    expect(request?.context.preGenerationContext?.digest).toContain(
+      "Waiver Summary",
+    );
+    expect(request?.context.preGenerationContext?.digest).not.toContain(
+      priorBody,
+    );
+    expect(request?.prompt.volatileContext).toContain(priorSummary);
+    expect(request?.prompt.volatileContext).not.toContain(priorBody);
+    expect(request?.prompt.systemPrefix).not.toContain(priorSummary);
+    expect(request?.prompt.systemPrefix).not.toContain(priorBody);
+  });
+
   it("threads scheduled column formats into grounded Wrap and Waiver structures", async () => {
     const league = await seedLeague("column-formats");
     await seedLeagueColumnFacts(league);
@@ -956,7 +1047,7 @@ describe("generateLeagueBlogPost", () => {
         leagueId: league.id,
         persona: "commissioner",
         publishedAt: "2026-06-11T12:00:00.000Z",
-        title: `Commissioner: ${marker} alpha snapshot`,
+        title: "Commissioner: alpha Team points-for pressure",
         triggerKey: "weekly:2026:2",
         type: "blog.published",
         v: 1,
@@ -982,7 +1073,7 @@ describe("generateLeagueBlogPost", () => {
       },
       {
         at: new Date("2026-06-11T12:00:00.000Z"),
-        body: `Commissioner: ${marker} alpha snapshot`,
+        body: "Commissioner: alpha Team points-for pressure",
         leagueId: league.id,
         tag: `league:${league.id}:blog:${
           third.status === "published"
@@ -2005,6 +2096,7 @@ describe("generateLeagueBlogPost", () => {
     const llm = new DuplicateLlmClient();
     const embeddings = new ConstantEmbeddingProvider();
     const realtime = new RecordingRealtimePublisher();
+    let priorContentItemId = "";
 
     await withLeagueContext(handle.db, league.id, async (tx) => {
       const [prior] = await tx
@@ -2022,6 +2114,7 @@ describe("generateLeagueBlogPost", () => {
         })
         .returning({ id: contentItems.id });
       if (!prior) throw new Error("prior content was not inserted");
+      priorContentItemId = prior.id;
       await tx.insert(aiMemory).values({
         contentItemId: prior.id,
         embedding: await embeddings.embed("duplicate"),
@@ -2062,6 +2155,23 @@ describe("generateLeagueBlogPost", () => {
       /^near_duplicate:/,
     );
     expect(llm.requests.map((request) => request.attempt)).toEqual([1, 2]);
+    expect(llm.requests[0]?.context.preGenerationContext).toMatchObject({
+      leagueId: league.id,
+      publicationPool: "league",
+      publishedContentItemIds: [priorContentItemId],
+    });
+    expect(llm.requests[0]?.context.preGenerationContext?.digest).toContain(
+      "Duplicate league note",
+    );
+    expect(llm.requests[0]?.prompt.volatileContext).toContain(
+      "Duplicate league note",
+    );
+    expect(llm.requests[0]?.prompt.systemPrefix).not.toContain(
+      "Duplicate league note",
+    );
+    expect(llm.requests[1]?.duplicateNudge).toContain(
+      "too similar to a prior league post",
+    );
     expect(realtime.blogPublished).toHaveLength(0);
 
     const rows = await withLeagueContext(handle.db, league.id, async (tx) => {

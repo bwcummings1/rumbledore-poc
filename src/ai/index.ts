@@ -64,6 +64,10 @@ export {
   createMockCentralDataFreshness,
   type EnsureCentralDataFreshnessInput,
 } from "./central-freshness";
+export {
+  centralColumnIdFromGenerationKey,
+  centralGenerationKey,
+} from "./central-generation-key";
 export type {
   AiContentType,
   BlogContentStructure,
@@ -78,6 +82,18 @@ export {
   parseAiContentType,
   validateContentStructure,
 } from "./content-types";
+export {
+  type BuildCentralEditorialRecallInput,
+  type BuildLeagueEditorialRecallInput,
+  buildCentralEditorialRecall,
+  buildLeagueEditorialRecall,
+  CENTRAL_RECALL_CANDIDATE_LIMIT,
+  CENTRAL_RECALL_DIGEST_LIMIT,
+  CENTRAL_RECALL_LOOKBACK_MS,
+  LEAGUE_RECALL_CANDIDATE_LIMIT,
+  LEAGUE_RECALL_DIGEST_LIMIT,
+  LEAGUE_RECALL_LOOKBACK_MS,
+} from "./editorial-recall";
 export {
   DEFAULT_GENERATION_STALE_AFTER_MS,
   type GenerationFailureQueueData,
@@ -121,6 +137,7 @@ export type {
   LeagueContextRivalry,
   LeagueContextTrigger,
   LeaguePersonaCard,
+  LeaguePreGenerationContext,
   LlmClient,
   LlmGenerateRequest,
   LlmGenerateResult,

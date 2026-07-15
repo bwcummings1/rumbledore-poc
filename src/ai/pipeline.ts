@@ -77,6 +77,8 @@ import {
   parseAiContentType,
   validateContentStructure,
 } from "./content-types";
+import { buildLeagueEditorialRecall } from "./editorial-recall";
+import { cosineSimilarity } from "./embedding-similarity";
 import type {
   BlogDraft,
   EmbeddingProvider,
@@ -662,24 +664,6 @@ function recordLabel(recordType: string): string {
     RECORD_TYPE_LABELS[recordType as RecordType] ??
     recordType.replaceAll("_", " ")
   );
-}
-
-function cosineSimilarity(left: readonly number[], right: readonly number[]) {
-  if (left.length === 0 || left.length !== right.length) {
-    return 0;
-  }
-  let dot = 0;
-  let leftMagnitude = 0;
-  let rightMagnitude = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    const leftValue = left[index] ?? 0;
-    const rightValue = right[index] ?? 0;
-    dot += leftValue * rightValue;
-    leftMagnitude += leftValue * leftValue;
-    rightMagnitude += rightValue * rightValue;
-  }
-  const denominator = Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude);
-  return denominator === 0 ? 0 : dot / denominator;
 }
 
 function maxPriorSimilarity(
@@ -1974,13 +1958,16 @@ export function buildPromptParts({
     blendedColumnData: context.blended ?? emptyBlendedColumnData(),
     currentScoringPeriod: context.league.currentScoringPeriod,
     duplicateNudge: duplicateNudge ?? null,
+    editorialRecall: context.preGenerationContext,
     generalNflContext: context.generalNfl,
     matchups: context.matchups ?? [],
-    priorPosts: context.priorPosts.map((post) => ({
-      publishedAt: post.publishedAt.toISOString(),
-      summary: post.summary,
-      title: post.title,
-    })),
+    priorPosts: context.preGenerationContext
+      ? []
+      : context.priorPosts.map((post) => ({
+          publishedAt: post.publishedAt.toISOString(),
+          summary: post.summary,
+          title: post.title,
+        })),
     trigger: context.trigger,
     triggerKey,
     untrustedNews: untrustedNewsBlock(newsItems),
@@ -3029,6 +3016,7 @@ async function prepareGeneration({
       matchups: columnContext.matchups,
       memory,
       persona,
+      preGenerationContext: null,
       priorPosts,
       records,
       teams,
@@ -3477,7 +3465,7 @@ export async function generateLeagueBlogPost({
     db: deps.db,
     league: prepared.context.league,
   });
-  const context: LeagueBlogContext = {
+  const contextWithoutRecall: LeagueBlogContext = {
     ...prepared.context,
     arena: await loadArenaContext({
       db: deps.db,
@@ -3491,6 +3479,28 @@ export async function generateLeagueBlogPost({
       week: prepared.context.league.currentScoringPeriod,
     }),
     generalNfl,
+  };
+  const column = columnFormat ? leagueColumnForId(columnFormat) : null;
+  const preGenerationContext = await buildLeagueEditorialRecall({
+    currentGenerationRunId: prepared.runId,
+    currentPersona: input.persona,
+    db: deps.db,
+    embeddings: deps.embeddings,
+    leagueId: input.leagueId,
+    now: now(deps),
+    query: [
+      column?.name,
+      column?.formatContract,
+      input.contentType.replaceAll("_", " "),
+      input.triggerKey,
+      ...contextWithoutRecall.teams.map((team) => team.name),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n"),
+  });
+  const context: LeagueBlogContext = {
+    ...contextWithoutRecall,
+    preGenerationContext,
   };
 
   let newsItems: NewsItem[] = [];

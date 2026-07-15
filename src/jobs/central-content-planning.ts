@@ -2,6 +2,7 @@ import {
   type CentralColumn,
   centralColumnsScheduledAt,
 } from "@/ai/central-columns";
+import { centralGenerationKey } from "@/ai/central-generation-key";
 import {
   HeuristicNflCalendar,
   type NflCalendar,
@@ -84,20 +85,26 @@ export async function planCentralScheduledContent({
   }
 
   const season = nflSeasonFor(resolvedNow);
+  const plannedData = columns.map((column) => ({
+    columnId: column.id,
+    season,
+    triggerKey: centralCronTriggerKey({
+      column,
+      now: resolvedNow,
+      season,
+      week,
+    }),
+    week,
+  }));
   return {
     columns: columns.map(({ id, name, section }) => ({ id, name, section })),
     nflWeekState: resolvedNflWeekState,
-    planned: columns.map((column) =>
+    planned: plannedData.map((data) =>
       plannedEvent({
-        columnId: column.id,
-        season,
-        triggerKey: centralCronTriggerKey({
-          column,
-          now: resolvedNow,
-          season,
-          week,
-        }),
-        week,
+        ...data,
+        queuedGenerationKeys: plannedData
+          .filter((sibling) => sibling.columnId !== data.columnId)
+          .map(centralGenerationKey),
       }),
     ),
     skippedReason: null,

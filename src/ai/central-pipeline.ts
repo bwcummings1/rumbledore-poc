@@ -39,6 +39,8 @@ import {
   type CentralSourceFreshness,
   createMockCentralDataFreshness,
 } from "./central-freshness";
+import { centralGenerationKey } from "./central-generation-key";
+import { buildCentralEditorialRecall } from "./editorial-recall";
 import type {
   CentralGenerationContext,
   CentralGenerationNewsEvidence,
@@ -46,9 +48,10 @@ import type {
   CentralLlmClient,
   CentralLlmGenerateRequest,
   CentralPreGenerationContext,
+  EmbeddingProvider,
   PromptParts,
 } from "./interfaces";
-import { MockLlmClient } from "./mocks";
+import { DeterministicEmbeddingProvider, MockLlmClient } from "./mocks";
 
 const CENTRAL_NEWS_LIMIT = 12;
 const CENTRAL_ODDS_LIMIT = 240;
@@ -57,6 +60,7 @@ export interface GenerateCentralColumnInput {
   columnId: CentralColumnId;
   newsContentItemIds?: readonly string[];
   preGenerationContext?: CentralPreGenerationContext | null;
+  queuedGenerationKeys?: readonly string[];
   reportRequest?: {
     brief: string;
     category: string;
@@ -68,6 +72,7 @@ export interface GenerateCentralColumnInput {
 
 export interface CentralAiGenerationDependencies {
   db: Db;
+  embeddings: EmbeddingProvider;
   freshness: CentralDataFreshnessService;
   llm: CentralLlmClient;
   now?: () => Date;
@@ -86,7 +91,7 @@ function timestamp(deps: CentralAiGenerationDependencies): Date {
 }
 
 function centralDedupKey(input: GenerateCentralColumnInput): string {
-  return `central-ai:${input.columnId}:${input.triggerKey.trim()}`;
+  return centralGenerationKey(input);
 }
 
 function validateInput(input: GenerateCentralColumnInput): void {
@@ -457,6 +462,28 @@ export function buildCentralPromptParts(
   };
 }
 
+function centralRecallQuery(context: CentralGenerationContext): string {
+  return [
+    context.column.name,
+    context.column.branch,
+    context.column.section,
+    context.column.contentType,
+    context.column.formatContract,
+    context.journalist.beat,
+    context.reportRequest?.category ?? "",
+    context.reportRequest?.brief ?? "",
+    ...context.evidence.news.flatMap((item) => [item.title, item.summary]),
+    ...context.evidence.games.map(
+      (game) => `${game.awayTeam} at ${game.homeTeam}`,
+    ),
+    ...context.evidence.players.map(
+      (player) => `${player.fullName} ${player.team} ${player.position}`,
+    ),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function findExistingCentralGeneration(
   db: Db,
   dedupKey: string,
@@ -492,6 +519,7 @@ export function createMockCentralAiDependencies(
 ): CentralAiGenerationDependencies {
   return {
     db,
+    embeddings: new DeterministicEmbeddingProvider(),
     freshness: createMockCentralDataFreshness(db),
     llm: new MockLlmClient(),
   };
@@ -526,12 +554,26 @@ export async function generateCentralColumn({
     season: input.season,
     week: input.week,
   });
-  const context = await buildCentralGenerationContext({
+  const baseContext = await buildCentralGenerationContext({
     deps,
     input,
     requestedAt,
     sourceFreshness,
   });
+  const preGenerationContext =
+    input.preGenerationContext ??
+    (await buildCentralEditorialRecall({
+      currentJournalistId: baseContext.journalist.id,
+      db: deps.db,
+      embeddings: deps.embeddings,
+      now: requestedAt,
+      query: centralRecallQuery(baseContext),
+      queuedGenerationKeys: input.queuedGenerationKeys,
+    }));
+  const context: CentralGenerationContext = {
+    ...baseContext,
+    preGenerationContext,
+  };
   const request: CentralLlmGenerateRequest = {
     contentType: context.column.contentType,
     context,

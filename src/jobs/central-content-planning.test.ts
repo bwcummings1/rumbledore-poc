@@ -1,5 +1,6 @@
 import { InngestTestEngine } from "@inngest/test";
 import { describe, expect, it } from "vitest";
+import { centralGenerationKey } from "@/ai/central-generation-key";
 import type { NflWeekState } from "@/sports/nfl-calendar";
 import { planCentralScheduledContent } from "./central-content-planning";
 import { JOB_EVENTS } from "./events";
@@ -59,6 +60,23 @@ describe("central content cadence", () => {
     expect(new Set(first.planned.map((event) => event.id)).size).toBe(
       first.planned.length,
     );
+  });
+
+  it("carries same-planning-run siblings into each writer's queued recall", async () => {
+    const plan = await planCentralScheduledContent({
+      nflWeekState: regularWeek,
+      now: () => new Date("2026-09-15T14:00:00.000Z"),
+    });
+
+    for (const event of plan.planned) {
+      const expectedSiblingKeys = plan.planned
+        .filter((sibling) => sibling.data.columnId !== event.data.columnId)
+        .map((sibling) => centralGenerationKey(sibling.data));
+      expect(event.data.queuedGenerationKeys).toEqual(expectedSiblingKeys);
+      expect(event.data.queuedGenerationKeys).not.toContain(
+        centralGenerationKey(event.data),
+      );
+    }
   });
 
   it("waits for a resolved NFL week instead of publishing fixture week guesses", async () => {

@@ -132,6 +132,7 @@ function requestFor(
         toneVersion: DEFAULT_TONE_VERSION,
       },
       priorPosts: [],
+      preGenerationContext: null,
       records: [],
       teams: [
         {
