@@ -618,8 +618,10 @@ export interface CentralArticleDraft {
 }
 
 export interface CentralLlmGenerateRequest {
+  attempt: 1 | 2;
   contentType: CentralColumnContentType;
   context: CentralGenerationContext;
+  duplicateNudge?: string;
   prompt: PromptParts;
 }
 

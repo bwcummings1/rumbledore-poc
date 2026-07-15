@@ -187,6 +187,7 @@ describe("central column fixture week", () => {
     let generationNow = simulatedWeek[0];
     const deps = {
       ...createMockCentralAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
       freshness: fixtureFreshness(),
       llm,
       now: () => generationNow,

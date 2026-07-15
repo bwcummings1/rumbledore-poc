@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
-import { contentItems } from "@/db/schema";
+import { aiMemory, contentItems } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { ingestMockGeneralStats } from "@/general-stats";
 import { getCentralNewsArticleData, MockCentralNewsSource } from "@/news";
@@ -13,7 +13,7 @@ import {
   createMockCentralAiDependencies,
   generateCentralColumn,
 } from "./central-pipeline";
-import { MockLlmClient } from "./mocks";
+import { DeterministicEmbeddingProvider, MockLlmClient } from "./mocks";
 
 const marker = `central-engine-${randomUUID()}`;
 let handle: DbHandle;
@@ -23,6 +23,7 @@ function testCentralAiDependencies() {
   const deps = createMockCentralAiDependencies(handle.db);
   return {
     ...deps,
+    duplicateThreshold: 1.1,
     freshness: {
       async ensureFresh(
         input: Parameters<typeof deps.freshness.ensureFresh>[0],
@@ -208,6 +209,76 @@ describe("central journalist generation pipeline", () => {
         },
       },
     });
+  });
+
+  it("skips a different-trigger central draft that stays near-identical after the retry nudge", async () => {
+    const llm = new MockLlmClient();
+    const deps = {
+      ...testCentralAiDependencies(),
+      duplicateThreshold: 0.92,
+      embeddings: new DeterministicEmbeddingProvider(17),
+      llm,
+      now: () => new Date("2026-09-15T15:00:00.000Z"),
+    };
+    const firstInput = {
+      columnId: "mnf-recap" as const,
+      newsContentItemIds: [],
+      season: 2199,
+      triggerKey: `${marker}:near-duplicate:first`,
+      week: 25,
+    };
+    const secondInput = {
+      ...firstInput,
+      triggerKey: `${marker}:near-duplicate:second`,
+    };
+
+    const first = await generateCentralColumn({ deps, input: firstInput });
+    expect(first).toMatchObject({ reused: false, status: "published" });
+    if (first.status !== "published") {
+      throw new Error("near-duplicate regression seed was not published");
+    }
+
+    const second = await generateCentralColumn({ deps, input: secondInput });
+    expect(second).toEqual({
+      reused: false,
+      skipReason: "near_duplicate:1.0000",
+      status: "skipped",
+    });
+    expect(llm.centralRequests.map((request) => request.attempt)).toEqual([
+      1, 1, 2,
+    ]);
+    expect(llm.centralRequests[2]?.duplicateNudge).toContain(
+      "recent central article",
+    );
+
+    const memories = await handle.db
+      .select({
+        contentItemId: aiMemory.contentItemId,
+        embeddingDimensions: aiMemory.embeddingDimensions,
+        leagueId: aiMemory.leagueId,
+        source: aiMemory.source,
+      })
+      .from(aiMemory)
+      .where(eq(aiMemory.contentItemId, first.contentItemId));
+    expect(memories).toEqual([
+      {
+        contentItemId: first.contentItemId,
+        embeddingDimensions: 17,
+        leagueId: null,
+        source: "central_article",
+      },
+    ]);
+
+    const skippedRows = await handle.db
+      .select({ id: contentItems.id })
+      .from(contentItems)
+      .where(
+        and(
+          isNull(contentItems.leagueId),
+          eq(contentItems.dedupKey, centralGenerationKey(secondInput)),
+        ),
+      );
+    expect(skippedRows).toEqual([]);
   });
 
   it("automatically gives the writer recent central angles and queued sibling assignments", async () => {

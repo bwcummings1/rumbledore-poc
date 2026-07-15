@@ -285,6 +285,7 @@ export const aiGenerationStatus = pgEnum("ai_generation_status", [
 
 export const aiMemorySource = pgEnum("ai_memory_source", [
   "blog_post",
+  "central_article",
   "league_fact",
   "storyline",
 ]);
@@ -3821,9 +3822,11 @@ export const aiMemory = pgTable(
   "ai_memory",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    leagueId: uuid("league_id")
-      .notNull()
-      .references(() => leagues.id, { onDelete: "cascade" }),
+    // NULL is reserved for central-article embeddings. Non-null rows retain
+    // the same league-scoped RLS contract as the original memory table.
+    leagueId: uuid("league_id").references(() => leagues.id, {
+      onDelete: "cascade",
+    }),
     contentItemId: uuid("content_item_id").references(() => contentItems.id, {
       onDelete: "cascade",
     }),
@@ -3843,10 +3846,25 @@ export const aiMemory = pgTable(
   (table) => [
     index("ai_memory_league_source_idx").on(table.leagueId, table.source),
     index("ai_memory_content_item_idx").on(table.contentItemId),
-    pgPolicy("ai_memory_isolation", {
+    uniqueIndex("ai_memory_central_content_item_unique")
+      .on(table.contentItemId)
+      .where(sql`${table.leagueId} is null`),
+    index("ai_memory_central_source_model_idx")
+      .on(
+        table.source,
+        table.embeddingModel,
+        table.embeddingDimensions,
+        table.createdAt,
+      )
+      .where(sql`${table.leagueId} is null`),
+    check(
+      "ai_memory_scope_source_check",
+      sql`(${table.leagueId} is null AND ${table.source}::text = 'central_article' AND ${table.contentItemId} is not null) OR (${table.leagueId} is not null AND ${table.source}::text <> 'central_article')`,
+    ),
+    pgPolicy("ai_memory_scope_policy", {
       for: "all",
-      using: sql`${table.leagueId} = current_league_id()`,
-      withCheck: sql`${table.leagueId} = current_league_id()`,
+      using: sql`(${table.leagueId} is null AND ${table.source}::text = 'central_article') OR ${table.leagueId} = current_league_id()`,
+      withCheck: sql`(${table.leagueId} is null AND ${table.source}::text = 'central_article') OR ${table.leagueId} = current_league_id()`,
     }),
   ],
 );

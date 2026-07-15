@@ -527,6 +527,9 @@ function centralUserTask(request: CentralLlmGenerateRequest): string {
     return request.prompt.userTask;
   }
   const template = centralContentTypePromptContract(request.contentType);
+  const duplicateNudge = request.duplicateNudge
+    ? `Duplicate-avoidance note: ${request.duplicateNudge}`
+    : "";
   return [
     "Volatile central evidence JSON follows.",
     request.prompt.volatileContext,
@@ -536,6 +539,7 @@ function centralUserTask(request: CentralLlmGenerateRequest): string {
     `The JSON section field must be exactly ${request.context.column.section}.`,
     "Include a concise headline, one-sentence card summary, standfirst, 2-8 tags, and at least two typed body blocks.",
     "Every evidenceRefs value must exactly match a reference supplied in the evidence JSON.",
+    duplicateNudge,
   ].join("\n");
 }
 

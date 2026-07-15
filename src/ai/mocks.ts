@@ -1697,7 +1697,9 @@ export class MockLlmClient implements LlmClient, CentralLlmClient {
           request.prompt.systemPrefix,
         ),
         cacheReadInputTokens: 0,
-        inputTokens: estimateTokenCount(request.prompt.volatileContext),
+        inputTokens: estimateTokenCount(
+          [request.prompt.volatileContext, request.duplicateNudge].join("\n"),
+        ),
         outputTokens: estimateTokenCount(centralArticleText(draft)),
       },
     };
