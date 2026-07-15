@@ -382,6 +382,13 @@ export type CentralColumnKey = keyof typeof CENTRAL_COLUMN_LINEUP;
 export type CentralColumn = (typeof CENTRAL_COLUMN_LINEUP)[CentralColumnKey];
 export type CentralColumnId = CentralColumn["id"];
 
+export const CENTRAL_COLUMN_LATE_TOLERANCE_MINUTES = 5;
+
+export interface CentralColumnScheduleMatch {
+  column: CentralColumn;
+  scheduledAt: Date;
+}
+
 export const CENTRAL_COLUMN_KEYS = Object.freeze(
   Object.keys(CENTRAL_COLUMN_LINEUP) as CentralColumnKey[],
 );
@@ -412,22 +419,47 @@ export function centralColumnsForQueue(
   return centralColumns().filter((column) => column.queue === queue);
 }
 
-/** Returns only the scheduled columns whose configured UTC slot is due now. */
-export function centralColumnsScheduledAt(date: Date): CentralColumn[] {
-  const dayOfWeek = date.getUTCDay();
-  const utcHour = date.getUTCHours();
-  const utcMinute = date.getUTCMinutes();
+function mostRecentSlotAt(date: Date, slot: CentralColumnDaySlot): Date {
+  const currentMinute = new Date(date);
+  currentMinute.setUTCSeconds(0, 0);
+  const daysSinceSlot = (currentMinute.getUTCDay() - slot.dayOfWeek + 7) % 7;
+  const scheduledAt = new Date(currentMinute);
+  scheduledAt.setUTCDate(scheduledAt.getUTCDate() - daysSinceSlot);
+  scheduledAt.setUTCHours(slot.utcHour, slot.utcMinute, 0, 0);
+  if (scheduledAt > currentMinute) {
+    scheduledAt.setUTCDate(scheduledAt.getUTCDate() - 7);
+  }
+  return scheduledAt;
+}
 
-  return centralColumns().filter(
-    (column) =>
-      column.cadence === "scheduled" &&
-      column.daySlots.some(
-        (slot) =>
-          slot.dayOfWeek === dayOfWeek &&
-          slot.utcHour === utcHour &&
-          slot.utcMinute === utcMinute,
-      ),
-  );
+/**
+ * Returns scheduled columns whose configured UTC slot is due now or within
+ * the bounded late-start window, together with the canonical configured slot.
+ */
+export function centralColumnScheduleMatchesAt(
+  date: Date,
+): CentralColumnScheduleMatch[] {
+  const currentMinute = new Date(date);
+  currentMinute.setUTCSeconds(0, 0);
+  const toleranceMs = CENTRAL_COLUMN_LATE_TOLERANCE_MINUTES * 60_000;
+
+  return centralColumns().flatMap((column) => {
+    if (column.cadence !== "scheduled") {
+      return [];
+    }
+    const scheduledAt = column.daySlots
+      .map((slot) => mostRecentSlotAt(currentMinute, slot))
+      .find(
+        (candidate) =>
+          currentMinute.getTime() - candidate.getTime() <= toleranceMs,
+      );
+    return scheduledAt ? [{ column, scheduledAt }] : [];
+  });
+}
+
+/** Returns only the scheduled columns due within the late-start window. */
+export function centralColumnsScheduledAt(date: Date): CentralColumn[] {
+  return centralColumnScheduleMatchesAt(date).map(({ column }) => column);
 }
 
 /**

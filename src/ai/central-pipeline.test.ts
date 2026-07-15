@@ -118,6 +118,45 @@ describe("central journalist generation pipeline", () => {
     });
   });
 
+  it("does not reuse a non-engine central row with a colliding dedup key", async () => {
+    const input = {
+      columnId: "mnf-recap" as const,
+      season: 2098,
+      triggerKey: `${marker}:foreign-dedup-collision`,
+      week: 25,
+    };
+    const dedupKey = centralGenerationKey(input);
+    const [foreignRow] = await handle.db
+      .insert(contentItems)
+      .values({
+        body: "A separately ingested central news item.",
+        contentHash: `${marker}:foreign-dedup-collision:hash`,
+        dedupKey,
+        kind: "news",
+        leagueId: null,
+        metadata: { generatedBy: "central-news-ingestion" },
+        publishedAt: new Date("2026-09-15T13:00:00.000Z"),
+        source: "Fixture News",
+        summary: "This row must not impersonate a generated column.",
+        title: "Foreign central item",
+      })
+      .returning({ id: contentItems.id });
+    if (!foreignRow) throw new Error("foreign collision row was not inserted");
+    const llm = new MockLlmClient();
+
+    await expect(
+      generateCentralColumn({
+        deps: {
+          ...testCentralAiDependencies(),
+          llm,
+          now: () => new Date("2026-09-15T14:00:00.000Z"),
+        },
+        input,
+      }),
+    ).rejects.toMatchObject({ code: "CENTRAL_AI_CONTENT_PUBLISH_FAILED" });
+    expect(llm.centralRequests).toHaveLength(1);
+  });
+
   it("publishes one shared structured article and exposes the recall injection seam", async () => {
     const llm = new MockLlmClient();
     const deps = {

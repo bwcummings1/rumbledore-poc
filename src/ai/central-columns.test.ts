@@ -138,6 +138,12 @@ describe("central journalist engine config", () => {
     expect(scheduledIdsAt("2026-10-16T14:00:00.000Z")).toEqual(["start-sit"]);
     expect(scheduledIdsAt("2026-10-17T14:00:00.000Z")).toEqual(["start-sit"]);
     expect(scheduledIdsAt("2026-10-18T14:00:00.000Z")).toEqual(["start-sit"]);
+    expect(scheduledIdsAt("2026-10-13T14:01:00.000Z")).toEqual([
+      "mnf-recap",
+      "pre-waiver",
+      "rankings-projections",
+    ]);
+    expect(scheduledIdsAt("2026-10-13T14:06:00.000Z")).toEqual([]);
     expect(scheduledIdsAt("2026-10-14T12:00:00.000Z")).toEqual([]);
     expect(centralColumnCronSchedules()).toEqual([
       "0 11 * * 3",

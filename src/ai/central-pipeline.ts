@@ -573,6 +573,7 @@ async function findExistingCentralGeneration(
         isNull(contentItems.leagueId),
         eq(contentItems.kind, "news"),
         eq(contentItems.dedupKey, dedupKey),
+        sql`${contentItems.metadata}->>'generatedBy' = 'central-journalist-engine'`,
       ),
     )
     .limit(1);
