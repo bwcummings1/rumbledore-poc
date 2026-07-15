@@ -17,6 +17,8 @@ import {
 import type { CentralNewsPlayerRef } from "./interfaces";
 import { upsertLeagueFeedReference } from "./league-feed";
 
+const LEAGUE_TAILORING_CONCURRENCY = 4;
+
 export interface CentralNewsTailoringInput {
   contentItemIds: readonly string[];
 }
@@ -353,6 +355,28 @@ async function leagueRows(db: Db): Promise<LeagueRow[]> {
     .from(leagues);
 }
 
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const item = items[index];
+      if (item !== undefined) {
+        results[index] = await mapper(item);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function tailorCentralNewsToLeagues(
   db: Db,
   input: CentralNewsTailoringInput,
@@ -370,32 +394,45 @@ export async function tailorCentralNewsToLeagues(
       continue;
     }
 
-    for (const league of allLeagues) {
-      const matches = await rosterMatchesForLeague({
-        db,
-        league,
-        refs: refsForProvider(refs, league.provider),
-      });
-      if (matches.length === 0) {
-        continue;
-      }
+    const providers = new Set(refs.map((ref) => ref.provider));
+    const candidateLeagues = allLeagues.filter((league) =>
+      providers.has(league.provider),
+    );
+    const tailoredLeagueIds = await mapWithConcurrency(
+      candidateLeagues,
+      LEAGUE_TAILORING_CONCURRENCY,
+      async (league) => {
+        const matches = await rosterMatchesForLeague({
+          db,
+          league,
+          refs: refsForProvider(refs, league.provider),
+        });
+        if (matches.length === 0) {
+          return null;
+        }
 
-      const generalFacts = await generalNflFactsForMatches({
-        db,
-        league,
-        matches,
-      });
-      const reason = reasonFor(matches, generalFacts);
-      await upsertLeagueFeedReference(db, {
-        contentItemId: row.id,
-        framingSummary: reason,
-        leagueId: league.id,
-        matchedEntities: matchedEntitiesFor(matches),
-        reason,
-        relevanceScore: scoreFor(matches),
-      });
-      matchedLeagueIds.add(league.id);
-      referencesUpserted += 1;
+        const generalFacts = await generalNflFactsForMatches({
+          db,
+          league,
+          matches,
+        });
+        const reason = reasonFor(matches, generalFacts);
+        await upsertLeagueFeedReference(db, {
+          contentItemId: row.id,
+          framingSummary: reason,
+          leagueId: league.id,
+          matchedEntities: matchedEntitiesFor(matches),
+          reason,
+          relevanceScore: scoreFor(matches),
+        });
+        return league.id;
+      },
+    );
+    for (const leagueId of tailoredLeagueIds) {
+      if (leagueId !== null) {
+        matchedLeagueIds.add(leagueId);
+        referencesUpserted += 1;
+      }
     }
   }
 

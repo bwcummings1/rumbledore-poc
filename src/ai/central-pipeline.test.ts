@@ -18,6 +18,27 @@ const marker = `central-engine-${randomUUID()}`;
 let handle: DbHandle;
 let injuryContentItemId: string;
 
+function testCentralAiDependencies() {
+  const deps = createMockCentralAiDependencies(handle.db);
+  return {
+    ...deps,
+    freshness: {
+      async ensureFresh(
+        input: Parameters<typeof deps.freshness.ensureFresh>[0],
+      ) {
+        return input.dataSources.map((dataSource) => ({
+          dataSource,
+          evidenceAt: input.now.toISOString(),
+          maxAgeMs: 60_000,
+          observedAt: input.now.toISOString(),
+          refreshedAt: null,
+          status: "fresh" as const,
+        }));
+      },
+    },
+  };
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -76,7 +97,7 @@ describe("central journalist generation pipeline", () => {
   it("rejects pre-generation context from outside the central pool", async () => {
     await expect(
       generateCentralColumn({
-        deps: createMockCentralAiDependencies(handle.db),
+        deps: testCentralAiDependencies(),
         input: {
           columnId: "start-sit",
           preGenerationContext: {
@@ -98,7 +119,7 @@ describe("central journalist generation pipeline", () => {
   it("publishes one shared structured article and exposes the recall injection seam", async () => {
     const llm = new MockLlmClient();
     const deps = {
-      ...createMockCentralAiDependencies(handle.db),
+      ...testCentralAiDependencies(),
       llm,
       now: () => new Date("2026-09-15T14:00:00.000Z"),
     };
@@ -139,6 +160,9 @@ describe("central journalist generation pipeline", () => {
           expect.objectContaining({ fullName: "Patrick Mahomes" }),
         ]),
         source: "mock-nfl-general-stats",
+        sourceFreshness: [
+          expect.objectContaining({ dataSource: "general-stats" }),
+        ],
       },
       preGenerationContext: input.preGenerationContext,
     });
@@ -167,6 +191,11 @@ describe("central journalist generation pipeline", () => {
         centralSection: "rankings-projections",
         contentType: "central_rankings_projections",
         generatedBy: "central-journalist-engine",
+        generation: {
+          sourceFreshness: [
+            expect.objectContaining({ dataSource: "general-stats" }),
+          ],
+        },
         preGenerationContext: {
           injected: true,
           publicationPool: "central",
@@ -183,7 +212,7 @@ describe("central journalist generation pipeline", () => {
   it("files a mock injury event to The Wire without a fantasy implication", async () => {
     const result = await generateCentralColumn({
       deps: {
-        ...createMockCentralAiDependencies(handle.db),
+        ...testCentralAiDependencies(),
         now: () => new Date("2026-09-15T14:05:00.000Z"),
       },
       input: {
@@ -214,7 +243,7 @@ describe("central journalist generation pipeline", () => {
 
   it("publishes a valid unavailable structure when mock evidence is absent", async () => {
     const result = await generateCentralColumn({
-      deps: createMockCentralAiDependencies(handle.db),
+      deps: testCentralAiDependencies(),
       input: {
         columnId: "injuries",
         newsContentItemIds: [],

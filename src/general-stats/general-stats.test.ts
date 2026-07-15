@@ -214,6 +214,28 @@ describe("general NFL stats substrate", () => {
       schedule: 4,
       teamStats: 8,
     });
+
+    const refreshedAt = new Date("2026-06-23T12:00:00.000Z");
+    const refreshed = await ingestMockGeneralStats(handle.db, {
+      fetchedAt: refreshedAt,
+      fixture,
+      touchFetchedAt: true,
+    });
+    expect(refreshed.players.changed).toBe(4);
+    expect(refreshed.schedule.changed).toBe(4);
+    expect(refreshed.teamStats.changed).toBe(8);
+    expect(refreshed.playerWeekStats.changed).toBe(8);
+    const [refreshedPlayer] = await handle.db
+      .select({ fetchedAt: nflPlayers.fetchedAt })
+      .from(nflPlayers)
+      .where(
+        and(
+          eq(nflPlayers.source, source),
+          eq(nflPlayers.sourcePlayerId, "mock-patrick-mahomes"),
+        ),
+      )
+      .limit(1);
+    expect(refreshedPlayer?.fetchedAt).toEqual(refreshedAt);
   });
 
   it("serves typed player, team, schedule, and enrichment reads", async () => {

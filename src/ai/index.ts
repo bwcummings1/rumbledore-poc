@@ -54,6 +54,16 @@ export {
   centralContentTypePromptContract,
   validateCentralContentStructure,
 } from "./central-content-types";
+export {
+  CENTRAL_DATA_SOURCE_MAX_AGE_MS,
+  type CentralDataFreshnessService,
+  type CentralFreshnessSourceAdapter,
+  type CentralFreshnessSourceAdapters,
+  type CentralSourceFreshness,
+  createCentralDataFreshnessService,
+  createMockCentralDataFreshness,
+  type EnsureCentralDataFreshnessInput,
+} from "./central-freshness";
 export type {
   AiContentType,
   BlogContentStructure,

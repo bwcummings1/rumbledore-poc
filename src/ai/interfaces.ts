@@ -12,6 +12,7 @@ import type {
   CentralJournalistId,
 } from "./central-columns";
 import type { CentralContentStructure } from "./central-content-types";
+import type { CentralSourceFreshness } from "./central-freshness";
 import type { AiContentType, BlogContentStructure } from "./content-types";
 import type { LeagueColumnId } from "./league-columns";
 import type { AiPersona, ToneProfile } from "./personas";
@@ -567,6 +568,7 @@ export interface CentralGenerationContext {
     odds: CentralGenerationOddsEvidence[];
     players: CentralGenerationPlayerEvidence[];
     source: string | null;
+    sourceFreshness: CentralSourceFreshness[];
     teamStats: CentralGenerationTeamStatEvidence[];
   };
   journalist: {

@@ -142,6 +142,7 @@ function centralRequestFor(
       odds: [],
       players: [],
       source: null,
+      sourceFreshness: [],
       teamStats: [],
     },
     journalist: {

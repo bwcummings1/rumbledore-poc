@@ -30,6 +30,12 @@ export class GeneralStatsIntegrityError extends Error {
 export interface IngestGeneralStatsOptions {
   fetchedAt?: Date;
   fixture?: GeneralStatsFixture;
+  /**
+   * Records a successful source re-observation even when the fixture facts are
+   * unchanged. Central generation uses this to prove its substrate was checked
+   * at write time; ordinary reconciliation remains content-idempotent.
+   */
+  touchFetchedAt?: boolean;
 }
 
 function changed(total: number, changedRows: number) {
@@ -115,7 +121,9 @@ export async function ingestMockGeneralStats(
         team: sql`excluded.team`,
         updatedAt: sql`now()`,
       },
-      where: sql`${nflPlayers.contentHash} is distinct from excluded.content_hash`,
+      where: options.touchFetchedAt
+        ? sql`${nflPlayers.contentHash} is distinct from excluded.content_hash OR ${nflPlayers.fetchedAt} is distinct from excluded.fetched_at`
+        : sql`${nflPlayers.contentHash} is distinct from excluded.content_hash`,
     })
     .returning({ id: nflPlayers.id });
 
@@ -168,7 +176,9 @@ export async function ingestMockGeneralStats(
         updatedAt: sql`now()`,
         week: sql`excluded.week`,
       },
-      where: sql`${nflSchedule.contentHash} is distinct from excluded.content_hash`,
+      where: options.touchFetchedAt
+        ? sql`${nflSchedule.contentHash} is distinct from excluded.content_hash OR ${nflSchedule.fetchedAt} is distinct from excluded.fetched_at`
+        : sql`${nflSchedule.contentHash} is distinct from excluded.content_hash`,
     })
     .returning({ id: nflSchedule.id });
 
@@ -221,7 +231,9 @@ export async function ingestMockGeneralStats(
         turnovers: sql`excluded.turnovers`,
         updatedAt: sql`now()`,
       },
-      where: sql`${nflTeamStats.contentHash} is distinct from excluded.content_hash`,
+      where: options.touchFetchedAt
+        ? sql`${nflTeamStats.contentHash} is distinct from excluded.content_hash OR ${nflTeamStats.fetchedAt} is distinct from excluded.fetched_at`
+        : sql`${nflTeamStats.contentHash} is distinct from excluded.content_hash`,
     })
     .returning({ id: nflTeamStats.id });
 
@@ -286,7 +298,9 @@ export async function ingestMockGeneralStats(
         team: sql`excluded.team`,
         updatedAt: sql`now()`,
       },
-      where: sql`${nflPlayerWeekStats.contentHash} is distinct from excluded.content_hash`,
+      where: options.touchFetchedAt
+        ? sql`${nflPlayerWeekStats.contentHash} is distinct from excluded.content_hash OR ${nflPlayerWeekStats.fetchedAt} is distinct from excluded.fetched_at`
+        : sql`${nflPlayerWeekStats.contentHash} is distinct from excluded.content_hash`,
     })
     .returning({ id: nflPlayerWeekStats.id });
 

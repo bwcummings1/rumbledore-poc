@@ -139,6 +139,7 @@ function contextForColumn(
             },
           ],
       source: empty ? null : "mock-nfl-general-stats",
+      sourceFreshness: [],
       teamStats: empty
         ? []
         : [

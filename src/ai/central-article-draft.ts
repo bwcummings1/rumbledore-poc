@@ -181,6 +181,7 @@ export function centralArticleMetadata({
       evidenceFetchedAt: context.evidence.fetchedAt,
       reportCategory: context.reportRequest?.category ?? null,
       season: context.season,
+      sourceFreshness: context.evidence.sourceFreshness,
       triggerKey: context.triggerKey,
       week: context.week,
     },

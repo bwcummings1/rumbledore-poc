@@ -34,6 +34,11 @@ import {
   centralColumnForId,
   centralJournalistForId,
 } from "./central-columns";
+import {
+  type CentralDataFreshnessService,
+  type CentralSourceFreshness,
+  createMockCentralDataFreshness,
+} from "./central-freshness";
 import type {
   CentralGenerationContext,
   CentralGenerationNewsEvidence,
@@ -63,6 +68,7 @@ export interface GenerateCentralColumnInput {
 
 export interface CentralAiGenerationDependencies {
   db: Db;
+  freshness: CentralDataFreshnessService;
   llm: CentralLlmClient;
   now?: () => Date;
 }
@@ -299,9 +305,13 @@ function latestTimestamp(values: readonly (string | null)[]): string | null {
 async function buildCentralGenerationContext({
   deps,
   input,
+  requestedAt,
+  sourceFreshness,
 }: {
   deps: CentralAiGenerationDependencies;
   input: GenerateCentralColumnInput;
+  requestedAt: Date;
+  sourceFreshness: CentralSourceFreshness[];
 }): Promise<CentralGenerationContext> {
   const column = centralColumnForId(input.columnId);
   if (!column) {
@@ -398,6 +408,7 @@ async function buildCentralGenerationContext({
       odds,
       players,
       source: stats?.source ?? (news.length > 0 ? "central-news" : null),
+      sourceFreshness,
       teamStats,
     },
     journalist: {
@@ -414,7 +425,7 @@ async function buildCentralGenerationContext({
           category: input.reportRequest.category.trim(),
         }
       : null,
-    requestedAt: timestamp(deps).toISOString(),
+    requestedAt: requestedAt.toISOString(),
     season: input.season,
     triggerKey: input.triggerKey.trim(),
     week: input.week,
@@ -479,7 +490,11 @@ async function findExistingCentralGeneration(
 export function createMockCentralAiDependencies(
   db: Db,
 ): CentralAiGenerationDependencies {
-  return { db, llm: new MockLlmClient() };
+  return {
+    db,
+    freshness: createMockCentralDataFreshness(db),
+    llm: new MockLlmClient(),
+  };
 }
 
 export async function generateCentralColumn({
@@ -496,7 +511,27 @@ export async function generateCentralColumn({
     return existing;
   }
 
-  const context = await buildCentralGenerationContext({ deps, input });
+  const column = centralColumnForId(input.columnId);
+  if (!column) {
+    throw new AppError({
+      code: "CENTRAL_AI_COLUMN_INVALID",
+      message: "Central generation column is invalid",
+      status: 400,
+    });
+  }
+  const requestedAt = timestamp(deps);
+  const sourceFreshness = await deps.freshness.ensureFresh({
+    dataSources: column.dataSources,
+    now: requestedAt,
+    season: input.season,
+    week: input.week,
+  });
+  const context = await buildCentralGenerationContext({
+    deps,
+    input,
+    requestedAt,
+    sourceFreshness,
+  });
   const request: CentralLlmGenerateRequest = {
     contentType: context.column.contentType,
     context,
@@ -511,7 +546,7 @@ export async function generateCentralColumn({
     article: centralArticleText(draft),
     metadata,
   });
-  const publishedAt = timestamp(deps);
+  const publishedAt = requestedAt;
   const [inserted] = await deps.db
     .insert(contentItems)
     .values({
