@@ -72,26 +72,41 @@ View (offseason retrospectives / league evergreen = its own history). Cadence ~6
 under the built 25/week cap. The built cron day-mapping differs (built: Wrap Tue) → reschedule + reassign in
 Phase 2.
 
-## 5. CENTRAL tier — lineup **[DRAFT — OWNER REVIEW PENDING; do not build in Phase 1/2]**
+## 5. CENTRAL tier — **LOCKED (owner review 2026-07-15)**
 
-Proposed named columns per branch (placeholders; formats stat-driven, model-output-labeled, thin personality):
+Central hub = a **configurable journalist engine** (generalizes `src/ai/league-columns.ts`): a central column =
+**{ template + assigned AI journalist (persona) + cadence/queue + fresh data at write-time + recall }**,
+owner-configurable. Names below are placeholders (one-line-swappable). Stat-driven, model-output-labeled, thin
+personality.
 
-**News branch (general NFL):**
-- *Breaking / The Wire* — reactive "news + so-what" blurbs (injury events, transactions, signings); rolling.
-- *The Rundown* — a regular NFL news digest (daily/weekday in-season; monotone offseason news-mode).
+**News branch (general NFL — league- & fantasy-agnostic):**
+- **The Wire** — reactive "news + so-what" blurbs (signings, trades, injuries-as-news). Real sourcing (X.com
+  insiders — Schefter/Rapoport-style extraction, etc.) is **PHASE 4**; builds on a MOCK news source now.
+- **The Rundown** — NOT a single column: the **configurable report system** itself — define report templates,
+  assign AI journalists, schedule cadence/queues, guarantee fresh data at write-time. Specific report
+  categories are configuration added over time.
 
-**Fantasy branch (NFL via fantasy lens):**
-- *Matchups* — weekly stat-driven matchup outlooks (Wed–Thu).
-- *Rankings & Projections* — model output, LABELED computed (weekly refresh, Tue–Wed).
-- *Waiver Wire* — data-thresholded adds (rostered-% <50, snap/target trends) (Tue, post-waiver).
-- *Start/Sit* — matchup-based leans (Thu–Sun).
-- *Injuries (fantasy implication)* — the Fantasy-branch side of the dual-filed injury.
+**Fantasy branch (NFL via fantasy lens, stat-driven, model-output-labeled) — corrected cadence:**
+- **Weekend Recap + MNF Projection** — Mon
+- **MNF Recap** — Tue
+- **Pre-waiver** — Tue; **Post-waiver** — Wed AM (waivers process ~2–3 AM Wed)
+- **Matchups** — Wed–Thu
+- **Rankings & Projections** — Tue–Wed (model output, LABELED computed)
+- **Start/Sit** — Thu–Sun
+- **Injuries** — reactive (fantasy implication; dual-filed — see below)
 
-**Offseason (news-relevance mode):** NFL offseason news (contracts/holdouts/camp) + dynasty/draft-prep
-rankings + way-too-early; monthly/drip, ramps into camp previews late July. Slower, not dark.
+**RECALL (editorial memory) — FIRST-CLASS pillar.** Pre-generation context: assemble a digest of the RECENT
+published **+ queued/about-to-publish** pieces (the agent's OWN **and contemporaries'**), scoped to the same
+publication pool (central pool / per-league pool — NEVER cross-league), and inject it into the writing context
+so each piece **avoids redundancy and maintains a throughline** rather than restating. Complements — does not
+replace — the existing POST-generation pgvector near-dup gate (`f380946`). General capability: wired for
+central (multi-journalist newsroom), available to league columns too.
 
-> OPEN for owner: the central column names + exact formats, the depth of the offseason menu, the News-vs-
-> Fantasy split of injuries, and whether any column is cut/added. This section is the morning's discussion.
+**Injuries: dual-filed** — the injury EVENT → The Wire (News); the fantasy IMPLICATION → Injuries (Fantasy).
+**Offseason: news-relevance mode** — NFL offseason news (contracts/holdouts/camp) + dynasty/draft-prep +
+way-too-early; slower, not dark.
+**Phase-4 (owner-gated) dependencies:** real stats/projections source; real news source (X/insiders); model
+selection. Central builds against MOCKS now (structurally complete); truthful on activation.
 
 ## 6. Two foundational gaps (Phase 1 — locked, buildable now)
 - **Gap A — no lead-story signal on league content.** Front prominence uses `editorialImportance`, set only on
@@ -109,10 +124,14 @@ rankings + way-too-early; monthly/drip, ramps into camp previews late July. Slow
 - **Phase 2 (fleet · mock · $0):** the league column lineup (§4) — reschedule cadence to the roster, build the
   new/extended formats, wire columns as named identities (config-labeled). Blended columns run on mock stat
   inputs. After Phase 1 merges.
-- **Phase 3 (HELD — owner review of §5 first):** central typed templates + first central generation path +
-  two-branch structure + central lineup + offseason news-mode. Greenfield; biggest chunk; adversarial review.
-- **Phase 4 (OWNER-GATED):** wire real stats/projections source; model selection; Browserbase live smoke; one
-  measured week → COGS → pricing.
+- **Phase 3 (fleet · mock · $0 — §5 LOCKED 2026-07-15):** three pillars, sequential tracks —
+  **P3-ENGINE** (central section taxonomy → News/Fantasy branches [Gap B deferral]; central journalist-engine
+  config generalizing `league-columns.ts`; central typed templates + the first central generation path +
+  corrected cadence; data-freshness at write-time) → **P3-RECALL** (the pre-generation editorial-memory/recall
+  layer, wired central + available league). Greenfield; adversarial review after merge.
+- **Phase 4 (OWNER-GATED — staged turnkey, NOT executed by the orchestrator):** wire real stats/projections
+  source; real news source (X/insiders); model selection; Browserbase live smoke; one measured week → COGS →
+  pricing. The orchestrator prepares/stages only; the owner flips keys, chooses sources/models, runs smokes.
 
 ## 8. Acceptance (per phase)
 - **P1:** a league piece can be marked/derived as the week's lead and wins the Press front over a newer routine
