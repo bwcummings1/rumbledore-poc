@@ -1,9 +1,11 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 1 complete:** league
-lead-story signal + unified section assignment (P1-FOUND) and owner-central curation gating — tone-editor +
-regenerate now platform-admin only (P1-CUR). Phase 2 (league column lineup) next.
+Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 2 complete:** the six
+placeholder-named league columns now run on their locked Mon/Tue/Wed/Thu/Fri/Sun roster, with structured Wrap,
+Waiver Summary, Fantasy Friday, and Predictions formats plus fixture-backed central projection/stat/odds
+localization. The league offseason remains a light history/retrospective beat; Phase 3 central lineup work is held
+for owner review and Phase 4 real-source activation remains owner-gated.
 **Prior merged baseline:** full 2026-07-13 backlog (`specs/47` wave 1, F47 review fixes, P polish, Browserbase
 adapter, and Sleeper parity). Owner live smoke remains pending.
 **48S Sleeper parity (merged):** Sleeper now has provenance-backed decoding dictionaries, cached named-player
@@ -439,6 +441,14 @@ parity on `ws/48-sleeper-parity` for orchestrator review/merge. Gates remain man
   producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-15: P2 league column lineup (P2-LEAGUE) — one config owns the six placeholder column identities,
+  content mappings, and day slots; cadence now runs The Wrap Mon, Power Rankings + Summary Tue, Waiver Summary Wed,
+  Tale of the Tape Thu, Fantasy Friday Fri, and Predictions Sun while retaining reactive stories, caps,
+  idempotency, entitlements, and the light offseason beat. Scheduled-only typed contracts add MNF relevance,
+  FAB/budget, TNF/odds/flashback, and matchup/end-score/player-performance structures; blended columns localize the
+  existing mock general-stat, projection, and betting reads with graceful missing-data behavior. A simulated week
+  over the committed ESPN 95050 fixture copy publishes every column shape and proves a lead-worthy rivalry story
+  holds the League Press over newer routine pieces without a provider call or real paid source.
 - 2026-07-15: P1 editorial foundations (P1-FOUND) — league lead signal + unified section assignment. League AI
   content now carries deterministic editorial importance so upsets/blowouts, record milestones, and strong rivalry
   signals can lead the Press over newer routine columns; league blog sections now resolve authoritatively from each
