@@ -37,10 +37,14 @@ import {
   arenaStandings,
   contentItems,
   dataIntegrityChecks,
+  fantasyMatchups,
   fantasyMembers,
+  fantasyPlayers,
   fantasyRosterEntries,
   fantasyTeams,
+  fantasyTransactions,
   headToHeadRecords,
+  leagueSeasonSettings,
   leagues,
   loreClaims,
   persons,
@@ -381,6 +385,89 @@ async function seedMockNflRosteredPlayer(
   });
 }
 
+async function seedLeagueColumnFacts(
+  league: Awaited<ReturnType<typeof seedLeague>>,
+) {
+  const tag = league.providerLeagueId.replace(`${marker}-`, "");
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    await tx.insert(fantasyMembers).values({
+      contentHash: `${marker}-${tag}-opponent-member-hash`,
+      displayName: `${tag} Opponent Manager`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      provider: "espn",
+      providerMemberId: `${tag}-opponent-manager`,
+      role: "member",
+      season: league.season,
+    });
+    await tx.insert(fantasyTeams).values({
+      abbrev: "OPP",
+      contentHash: `${marker}-${tag}-opponent-team-hash`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      losses: 1,
+      name: `${tag} Opponent Team`,
+      ownerMemberIds: [`${tag}-opponent-manager`],
+      pointsAgainst: 110,
+      pointsFor: 105,
+      provider: "espn",
+      providerTeamId: `${tag}-opponent-team`,
+      season: league.season,
+      ties: 0,
+      wins: 1,
+    });
+    await tx.insert(fantasyMatchups).values({
+      awayScore: 104,
+      awayTeamProviderId: `${tag}-opponent-team`,
+      contentHash: `${marker}-${tag}-matchup-hash`,
+      homeScore: 108,
+      homeTeamProviderId: `${tag}-team`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      provider: "espn",
+      providerMatchupId: `${tag}-matchup`,
+      scoringPeriod: league.currentScoringPeriod,
+      season: league.season,
+      status: "in_progress",
+      winner: "unknown",
+    });
+    await tx.insert(leagueSeasonSettings).values({
+      acquisitionBudget: 100,
+      acquisitionType: "FREE_AGENT_BUDGET",
+      contentHash: `${marker}-${tag}-settings-hash`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      leagueSize: 2,
+      provider: "espn",
+      season: league.season,
+    });
+    await tx.insert(fantasyPlayers).values({
+      contentHash: `${marker}-${tag}-waiver-player-hash`,
+      fullName: `${tag} Waiver Player`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      position: "RB",
+      proTeam: "KC",
+      provider: "espn",
+      providerPlayerId: `${tag}-waiver-player`,
+    });
+    await tx.insert(fantasyTransactions).values({
+      contentHash: `${marker}-${tag}-waiver-hash`,
+      details: { bidAmount: 15, status: "EXECUTED" },
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      occurredAt: new Date("2026-10-14T08:00:00.000Z"),
+      playerProviderIds: [`${tag}-waiver-player`],
+      provider: "espn",
+      providerTransactionId: `${tag}-waiver`,
+      scoringPeriod: league.currentScoringPeriod,
+      season: league.season,
+      teamProviderIds: [`${tag}-team`],
+      type: "waiver",
+    });
+  });
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -406,6 +493,94 @@ afterAll(async () => {
 });
 
 describe("generateLeagueBlogPost", () => {
+  it("threads scheduled column formats into grounded Wrap and Waiver structures", async () => {
+    const league = await seedLeague("column-formats");
+    await seedLeagueColumnFacts(league);
+    const llm = new MockLlmClient();
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      llm,
+    };
+
+    await expect(
+      generateLeagueBlogPost({
+        deps,
+        input: {
+          contentType: "weekly_recap",
+          leagueId: league.id,
+          persona: "narrator",
+          triggerKey: "cron:weekly-wrap:regular:1:the-wrap",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "published" });
+    const wrapRequest = llm.requests[0];
+    expect(wrapRequest).toMatchObject({
+      columnFormat: "the-wrap",
+      context: {
+        matchups: [
+          {
+            awayScore: 104,
+            homeScore: 108,
+            status: "in_progress",
+          },
+        ],
+      },
+    });
+    expect(wrapRequest?.prompt.userTask).toContain(
+      "Scheduled league column format: The Wrap (the-wrap)",
+    );
+    if (!wrapRequest) throw new Error("Wrap request was not recorded");
+    const wrapDraft = await new MockLlmClient().generate(wrapRequest);
+    expect(wrapDraft.structure).toMatchObject({
+      mondayNightOutlook: {
+        matchups: [{ matters: true }],
+      },
+      type: "weekly_recap",
+    });
+
+    await expect(
+      generateLeagueBlogPost({
+        deps,
+        input: {
+          contentType: "transaction_reaction",
+          leagueId: league.id,
+          persona: "beat_reporter",
+          triggerKey: "cron:mid-week:regular:1:waiver-summary",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "published" });
+    const waiverRequest = llm.requests[1];
+    expect(waiverRequest).toMatchObject({
+      columnFormat: "waiver-summary",
+      context: {
+        waivers: {
+          fabBudget: 100,
+          moves: [
+            {
+              fabRemaining: 85,
+              fabSpent: 15,
+              rosterChanges: ["column-formats Waiver Player"],
+              team: "column-formats Team",
+            },
+          ],
+        },
+      },
+    });
+    expect(waiverRequest?.prompt.userTask).toContain(
+      "Scheduled league column format: Waiver Summary (waiver-summary)",
+    );
+    if (!waiverRequest) throw new Error("Waiver request was not recorded");
+    const waiverDraft = await new MockLlmClient().generate(waiverRequest);
+    expect(waiverDraft.structure).toMatchObject({
+      type: "transaction_reaction",
+      waiverSummary: {
+        fabBudget: 100,
+        moves: [{ fabRemaining: 85, fabSpent: 15 }],
+      },
+    });
+  });
+
   it("publishes deterministic league-owned content and reuses the idempotent run", async () => {
     const league = await seedLeague("alpha");
     await seedLeague("beta");
@@ -2162,11 +2337,16 @@ describe("generateLeagueBlogPost", () => {
       title: `Beat Reporter: ${marker} beat-reporter snapshot`,
     });
     expect(llm.requests).toHaveLength(1);
-    expect(llm.requests[0]?.context.persona).toMatchObject({
-      beat: expect.stringContaining("Transactions"),
-      name: "Beat Reporter",
-      performsWhen: expect.arrayContaining(["transaction events"]),
-      pointOfView: expect.stringContaining("Scoopy"),
+    expect(llm.requests[0]).toMatchObject({
+      columnFormat: null,
+      context: {
+        persona: {
+          beat: expect.stringContaining("Transactions"),
+          name: "Beat Reporter",
+          performsWhen: expect.arrayContaining(["transaction events"]),
+          pointOfView: expect.stringContaining("Scoopy"),
+        },
+      },
     });
 
     const stablePrefix = JSON.parse(

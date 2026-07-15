@@ -32,6 +32,7 @@ export interface LeagueColumnDefinition {
   candidates: readonly LeagueColumnCandidate[];
   day: LeagueColumnDay;
   dayOfWeek: number;
+  formatContract: string;
   gamePhases: readonly ("post_games" | "pre_kickoff" | "quiet")[];
   id: string;
   name: string;
@@ -51,6 +52,8 @@ export const LEAGUE_COLUMN_LINEUP = {
     ],
     day: "friday",
     dayOfWeek: 5,
+    formatContract:
+      "Summarize Thursday-night football matchups, odds or percentage changes, and one historically interesting league flashback.",
     gamePhases: ["pre_kickoff"],
     id: "fantasy-friday",
     name: "Fantasy Friday",
@@ -65,6 +68,8 @@ export const LEAGUE_COLUMN_LINEUP = {
     ],
     day: "tuesday",
     dayOfWeek: 2,
+    formatContract:
+      "After Sunday and Monday-night games, rank the league's managers and summarize the completed fantasy week.",
     gamePhases: ["post_games"],
     id: "power-rankings-summary",
     name: "Power Rankings + Week (#) Summary",
@@ -76,6 +81,8 @@ export const LEAGUE_COLUMN_LINEUP = {
     candidates: [{ contentType: "matchup_preview", persona: "analyst" }],
     day: "sunday",
     dayOfWeek: 0,
+    formatContract:
+      "Write league matchup predictions with end-score and player-performance predictions.",
     gamePhases: ["pre_kickoff"],
     id: "predictions",
     name: "Predictions",
@@ -87,6 +94,8 @@ export const LEAGUE_COLUMN_LINEUP = {
     candidates: [{ contentType: "matchup_preview", persona: "analyst" }],
     day: "thursday",
     dayOfWeek: 4,
+    formatContract:
+      "Preview this week's league matchups with projections, odds or percentages, grudge history, and power-ranking, playoff, historical, and head-to-head implications.",
     gamePhases: ["pre_kickoff"],
     id: "tale-of-the-tape",
     name: "Tale of the Tape",
@@ -98,6 +107,8 @@ export const LEAGUE_COLUMN_LINEUP = {
     candidates: [{ contentType: "weekly_recap", persona: "narrator" }],
     day: "monday",
     dayOfWeek: 1,
+    formatContract:
+      "Recap the Sunday games and identify which league matchups do or do not still matter going into Monday Night Football.",
     gamePhases: ["pre_kickoff", "post_games"],
     id: "the-wrap",
     name: "The Wrap",
@@ -111,6 +122,8 @@ export const LEAGUE_COLUMN_LINEUP = {
     ],
     day: "wednesday",
     dayOfWeek: 3,
+    formatContract:
+      "Summarize leaguemate roster changes and the available FAB spending and remaining-budget facts.",
     gamePhases: ["quiet", "post_games"],
     id: "waiver-summary",
     name: "Waiver Summary",
@@ -122,10 +135,19 @@ export const LEAGUE_COLUMN_LINEUP = {
 
 export type LeagueColumnKey = keyof typeof LEAGUE_COLUMN_LINEUP;
 export type LeagueColumn = (typeof LEAGUE_COLUMN_LINEUP)[LeagueColumnKey];
+export type LeagueColumnId = LeagueColumn["id"];
 
 export const LEAGUE_COLUMN_KEYS = Object.freeze(
   Object.keys(LEAGUE_COLUMN_LINEUP) as LeagueColumnKey[],
 );
+
+export function leagueColumnForId(id: string): LeagueColumn | null {
+  return (
+    LEAGUE_COLUMN_KEYS.map((key) => LEAGUE_COLUMN_LINEUP[key]).find(
+      (column) => column.id === id,
+    ) ?? null
+  );
+}
 
 export function leagueColumnForCadenceAndDate(
   cadence: LeagueColumnPlannerCadence,

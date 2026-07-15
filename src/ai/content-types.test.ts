@@ -93,6 +93,114 @@ describe("content type templates", () => {
     ).toThrow(/3 to 5/);
   });
 
+  it("requires and validates The Wrap's Monday-night matchup framing", () => {
+    const structure = {
+      kicker: "Alpha Team owns the Monday-night watch.",
+      lead: "Alpha Team leads the Sunday recap.",
+      mondayNightOutlook: {
+        matchups: [
+          {
+            matters: true,
+            opponent: "Beta Team",
+            reason:
+              "Alpha Team and Beta Team remain open entering Monday night.",
+            team: "Alpha Team",
+          },
+          {
+            matters: false,
+            opponent: "Alpha Team",
+            reason: "Beta Team and Alpha Team are already settled.",
+            team: "Beta Team",
+          },
+        ],
+        summary: "One supplied league matchup still matters into MNF.",
+      },
+      standingsShift: "Alpha Team can still move the table.",
+      topResult: "Beta Team supplied Sunday's completed result.",
+      type: "weekly_recap" as const,
+      upsetOrBlowout: "Alpha Team supplied the week's margin.",
+    };
+
+    const validated = validateContentStructure({
+      columnFormat: "the-wrap",
+      contentType: "weekly_recap",
+      context,
+      structure,
+    });
+    expect(
+      validated.type === "weekly_recap"
+        ? validated.mondayNightOutlook?.matchups[0]
+        : null,
+    ).toMatchObject({ matters: true, team: "Alpha Team" });
+    expect(() =>
+      validateContentStructure({
+        columnFormat: "the-wrap",
+        contentType: "weekly_recap",
+        context,
+        structure: { ...structure, mondayNightOutlook: undefined },
+      }),
+    ).toThrow(/mondayNightOutlook/);
+    expect(
+      validateContentStructure({
+        contentType: "weekly_recap",
+        context,
+        structure: { ...structure, mondayNightOutlook: undefined },
+      }),
+    ).not.toHaveProperty("mondayNightOutlook");
+  });
+
+  it("requires and validates Waiver Summary FAB and roster-change fields", () => {
+    const structure = {
+      grade: "B+",
+      loser: "Beta Team",
+      move: "Alpha Team reshaped the roster board.",
+      sourcesSay: "Alpha Team remains the name to watch.",
+      type: "transaction_reaction" as const,
+      waiverSummary: {
+        fabBudget: 100,
+        moves: [
+          {
+            fabRemaining: 85,
+            fabSpent: 15,
+            rosterChanges: ["Fixture Player"],
+            team: "Alpha Team",
+          },
+        ],
+        summary: "Alpha Team spent 15 FAB on the supplied roster change.",
+      },
+      winner: "Alpha Team",
+    };
+
+    expect(
+      validateContentStructure({
+        columnFormat: "waiver-summary",
+        contentType: "transaction_reaction",
+        context,
+        structure,
+      }),
+    ).toMatchObject({
+      waiverSummary: {
+        fabBudget: 100,
+        moves: [{ fabRemaining: 85, fabSpent: 15 }],
+      },
+    });
+    expect(() =>
+      validateContentStructure({
+        columnFormat: "waiver-summary",
+        contentType: "transaction_reaction",
+        context,
+        structure: { ...structure, waiverSummary: undefined },
+      }),
+    ).toThrow(/waiverSummary/);
+    expect(
+      validateContentStructure({
+        contentType: "transaction_reaction",
+        context,
+        structure: { ...structure, waiverSummary: undefined },
+      }),
+    ).not.toHaveProperty("waiverSummary");
+  });
+
   it("accepts spectacle-era structures tied to league entities", () => {
     expect(
       validateContentStructure({

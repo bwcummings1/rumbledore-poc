@@ -224,6 +224,34 @@ function weeklyRecapStructure({
   };
 }
 
+function theWrapStructure(
+  request: LlmGenerateRequest,
+  structure: WeeklyRecapStructure,
+): WeeklyRecapStructure {
+  const matchups = (request.context.matchups ?? []).map((matchup) => {
+    const matters = matchup.status !== "final";
+    return {
+      matters,
+      opponent: matchup.awayTeam,
+      reason: matters
+        ? `${matchup.homeTeam} and ${matchup.awayTeam} remain open at ${matchup.homeScore}-${matchup.awayScore} entering Monday night.`
+        : `${matchup.homeTeam} and ${matchup.awayTeam} are final at ${matchup.homeScore}-${matchup.awayScore}.`,
+      team: matchup.homeTeam,
+    };
+  });
+  const openCount = matchups.filter((matchup) => matchup.matters).length;
+  return {
+    ...structure,
+    mondayNightOutlook: {
+      matchups,
+      summary:
+        matchups.length === 0
+          ? "No current league matchup rows were supplied, so Monday-night implications remain unavailable."
+          : `${openCount} of ${matchups.length} supplied league matchups still matter entering Monday night.`,
+    },
+  };
+}
+
 function powerRankingsStructure({
   attempt,
   teams,
@@ -328,6 +356,24 @@ function transactionReactionStructure({
     sourcesSay: `${team?.name ?? manager} is the name league sources keep circling.`,
     type: "transaction_reaction",
     winner: team?.name ?? manager,
+  };
+}
+
+function waiverSummaryStructure(
+  request: LlmGenerateRequest,
+  structure: TransactionReactionStructure,
+): TransactionReactionStructure {
+  const waivers = request.context.waivers ?? { fabBudget: null, moves: [] };
+  return {
+    ...structure,
+    waiverSummary: {
+      fabBudget: waivers.fabBudget,
+      moves: waivers.moves,
+      summary:
+        waivers.moves.length === 0
+          ? "No current waiver moves or FAB spend were supplied for this scoring period."
+          : `${waivers.moves.length} supplied waiver move${waivers.moves.length === 1 ? "" : "s"} reshaped the league roster board.`,
+    },
   };
 }
 
@@ -529,21 +575,29 @@ function structureForRequest(
   const record = primaryRecord(request.context.records);
 
   switch (request.contentType) {
-    case "weekly_recap":
-      return weeklyRecapStructure({
+    case "weekly_recap": {
+      const weeklyRecap = weeklyRecapStructure({
         attempt: request.attempt,
         context: request.context,
         record,
         team,
       });
+      return request.columnFormat === "the-wrap"
+        ? theWrapStructure(request, weeklyRecap)
+        : weeklyRecap;
+    }
     case "power_rankings":
       return powerRankingsStructure({ attempt: request.attempt, teams });
     case "matchup_preview":
       return matchupPreviewStructure({ teams });
     case "awards_superlatives":
       return awardsSuperlativesStructure({ record, team, teams });
-    case "transaction_reaction":
-      return transactionReactionStructure({ team, teams });
+    case "transaction_reaction": {
+      const transactionReaction = transactionReactionStructure({ team, teams });
+      return request.columnFormat === "waiver-summary"
+        ? waiverSummaryStructure(request, transactionReaction)
+        : transactionReaction;
+    }
     case "season_arc":
       return seasonArcStructure({ context: request.context, team });
     case "rivalry_piece":
@@ -577,7 +631,21 @@ function blocksForStructure(
   const performsLine = `Performs when: ${request.context.persona.performsWhen.join("; ")}.`;
 
   switch (structure.type) {
-    case "weekly_recap":
+    case "weekly_recap": {
+      const mondayNightBlocks = structure.mondayNightOutlook
+        ? [
+            {
+              items: [
+                structure.mondayNightOutlook.summary,
+                ...structure.mondayNightOutlook.matchups.map(
+                  (matchup) =>
+                    `${matchup.team} vs ${matchup.opponent}: ${matchup.matters ? "still matters" : "settled"}. ${matchup.reason}`,
+                ),
+              ],
+              type: "list" as const,
+            },
+          ]
+        : [];
       return [
         { text: `${personaName}'s weekly recap`, type: "heading" },
         {
@@ -599,8 +667,10 @@ function blocksForStructure(
           ],
           type: "list",
         },
+        ...mondayNightBlocks,
         { text: structure.kicker, type: "quote" },
       ];
+    }
     case "power_rankings":
       return [
         { text: `${personaName}'s power rankings`, type: "heading" },
@@ -654,15 +724,32 @@ function blocksForStructure(
           type: "list",
         },
       ];
-    case "transaction_reaction":
+    case "transaction_reaction": {
+      const waiverBlocks = structure.waiverSummary
+        ? [
+            {
+              items: [
+                structure.waiverSummary.summary,
+                `League FAB budget: ${structure.waiverSummary.fabBudget ?? "unavailable"}`,
+                ...structure.waiverSummary.moves.map(
+                  (move) =>
+                    `${move.team}: ${move.rosterChanges.join(", ") || "roster details unavailable"}; FAB spent ${move.fabSpent ?? "unavailable"}; remaining ${move.fabRemaining ?? "unavailable"}.`,
+                ),
+              ],
+              type: "list" as const,
+            },
+          ]
+        : [];
       return [
         { text: `${personaName}'s transaction reaction`, type: "heading" },
         {
           text: `${structure.move} Grade: ${structure.grade}. Winner: ${structure.winner}. Loser: ${structure.loser}. ${toneLine}`,
           type: "paragraph",
         },
+        ...waiverBlocks,
         { text: structure.sourcesSay, type: "quote" },
       ];
+    }
     case "season_arc":
       return [
         { text: `${personaName}'s season arc`, type: "heading" },

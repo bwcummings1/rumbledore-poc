@@ -1,5 +1,6 @@
 import { AppError } from "@/core/result";
 import type { LeaguePublicationSectionId } from "@/news/sections";
+import type { LeagueColumnId } from "./league-columns";
 import type { AiPersona } from "./personas";
 
 export const AI_CONTENT_TYPES = [
@@ -25,6 +26,15 @@ export interface WeeklyRecapStructure {
   upsetOrBlowout: string;
   standingsShift: string;
   kicker: string;
+  mondayNightOutlook?: {
+    matchups: {
+      matters: boolean;
+      opponent: string;
+      reason: string;
+      team: string;
+    }[];
+    summary: string;
+  };
 }
 
 export interface PowerRankingEntry {
@@ -72,6 +82,16 @@ export interface TransactionReactionStructure {
   winner: string;
   loser: string;
   sourcesSay: string;
+  waiverSummary?: {
+    fabBudget: number | null;
+    moves: {
+      fabRemaining: number | null;
+      fabSpent: number | null;
+      rosterChanges: string[];
+      team: string;
+    }[];
+    summary: string;
+  };
 }
 
 export interface SeasonArcStructure {
@@ -271,6 +291,17 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function nullableNumberValue(value: unknown, field: string): number | null {
+  if (value === null) {
+    return null;
+  }
+  const number = numberValue(value);
+  if (number === null) {
+    throwStructureError(`${field} must be a finite number or null`);
+  }
+  return number;
+}
+
 function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
@@ -316,8 +347,62 @@ function ensureKnownEntity(
   }
 }
 
-function normalizeWeeklyRecap(structure: unknown): WeeklyRecapStructure {
+function normalizeMondayNightOutlook(
+  value: unknown,
+  context: ContentStructureValidationContext,
+): NonNullable<WeeklyRecapStructure["mondayNightOutlook"]> {
+  const record = asRecord(value);
+  const summary = cleanText(record.summary);
+  const matchups = arrayValue(record.matchups).map((value) => {
+    const matchup = asRecord(value);
+    const normalized = {
+      matters: matchup.matters,
+      opponent: cleanText(matchup.opponent),
+      reason: cleanText(matchup.reason),
+      team: cleanText(matchup.team),
+    };
+    if (
+      typeof normalized.matters !== "boolean" ||
+      !normalized.team ||
+      !normalized.opponent ||
+      !normalized.reason
+    ) {
+      throwStructureError(
+        "weekly_recap mondayNightOutlook matchups must be fully populated",
+      );
+    }
+    ensureKnownEntity(
+      normalized.team,
+      context,
+      "weekly_recap.mondayNightOutlook.team",
+    );
+    ensureKnownEntity(
+      normalized.opponent,
+      context,
+      "weekly_recap.mondayNightOutlook.opponent",
+    );
+    return {
+      matters: normalized.matters,
+      opponent: normalized.opponent,
+      reason: normalized.reason,
+      team: normalized.team,
+    };
+  });
+  if (!summary) {
+    throwStructureError("weekly_recap mondayNightOutlook requires a summary");
+  }
+  return { matchups, summary };
+}
+
+function normalizeWeeklyRecap(
+  structure: unknown,
+  context: ContentStructureValidationContext,
+  columnFormat: LeagueColumnId | null,
+): WeeklyRecapStructure {
   const record = asRecord(structure);
+  const mondayNightOutlook = record.mondayNightOutlook
+    ? normalizeMondayNightOutlook(record.mondayNightOutlook, context)
+    : null;
   const normalized = {
     kicker: cleanText(record.kicker),
     lead: cleanText(record.lead),
@@ -335,7 +420,14 @@ function normalizeWeeklyRecap(structure: unknown): WeeklyRecapStructure {
   ) {
     throwStructureError("weekly_recap structure is missing a required section");
   }
-  return normalized;
+  if (columnFormat === "the-wrap" && !mondayNightOutlook) {
+    throwStructureError(
+      "The Wrap weekly_recap requires a mondayNightOutlook section",
+    );
+  }
+  return mondayNightOutlook
+    ? { ...normalized, mondayNightOutlook }
+    : normalized;
 }
 
 function normalizePowerRankings(
@@ -458,8 +550,49 @@ function normalizeAwardsSuperlatives(
 function normalizeTransactionReaction(
   structure: unknown,
   context: ContentStructureValidationContext,
+  columnFormat: LeagueColumnId | null,
 ): TransactionReactionStructure {
   const record = asRecord(structure);
+  const waiverSummaryRecord = record.waiverSummary
+    ? asRecord(record.waiverSummary)
+    : null;
+  const waiverSummary = waiverSummaryRecord
+    ? {
+        fabBudget: nullableNumberValue(
+          waiverSummaryRecord.fabBudget,
+          "transaction_reaction.waiverSummary.fabBudget",
+        ),
+        moves: arrayValue(waiverSummaryRecord.moves).map((value) => {
+          const move = asRecord(value);
+          const normalizedMove = {
+            fabRemaining: nullableNumberValue(
+              move.fabRemaining,
+              "transaction_reaction.waiverSummary.moves.fabRemaining",
+            ),
+            fabSpent: nullableNumberValue(
+              move.fabSpent,
+              "transaction_reaction.waiverSummary.moves.fabSpent",
+            ),
+            rosterChanges: arrayValue(move.rosterChanges)
+              .map(cleanText)
+              .filter(Boolean),
+            team: cleanText(move.team),
+          };
+          if (!normalizedMove.team) {
+            throwStructureError(
+              "transaction_reaction waiverSummary moves require a team",
+            );
+          }
+          ensureKnownEntity(
+            normalizedMove.team,
+            context,
+            "transaction_reaction.waiverSummary.moves.team",
+          );
+          return normalizedMove;
+        }),
+        summary: cleanText(waiverSummaryRecord.summary),
+      }
+    : null;
   const normalized = {
     grade: cleanText(record.grade),
     loser: cleanText(record.loser),
@@ -481,7 +614,17 @@ function normalizeTransactionReaction(
   }
   ensureKnownEntity(normalized.winner, context, "transaction_reaction.winner");
   ensureKnownEntity(normalized.loser, context, "transaction_reaction.loser");
-  return normalized;
+  if (waiverSummary && !waiverSummary.summary) {
+    throwStructureError(
+      "transaction_reaction waiverSummary requires a summary",
+    );
+  }
+  if (columnFormat === "waiver-summary" && !waiverSummary) {
+    throwStructureError(
+      "Waiver Summary transaction_reaction requires a waiverSummary section",
+    );
+  }
+  return waiverSummary ? { ...normalized, waiverSummary } : normalized;
 }
 
 function normalizeSeasonArc(
@@ -694,10 +837,12 @@ export function contentTypePromptContract(
 }
 
 export function validateContentStructure({
+  columnFormat = null,
   contentType,
   context,
   structure,
 }: {
+  columnFormat?: LeagueColumnId | null;
   contentType: AiContentType;
   context: ContentStructureValidationContext;
   structure: unknown;
@@ -709,7 +854,7 @@ export function validateContentStructure({
 
   switch (contentType) {
     case "weekly_recap":
-      return normalizeWeeklyRecap(record);
+      return normalizeWeeklyRecap(record, context, columnFormat);
     case "power_rankings":
       return normalizePowerRankings(record, context);
     case "matchup_preview":
@@ -717,7 +862,7 @@ export function validateContentStructure({
     case "awards_superlatives":
       return normalizeAwardsSuperlatives(record, context);
     case "transaction_reaction":
-      return normalizeTransactionReaction(record, context);
+      return normalizeTransactionReaction(record, context, columnFormat);
     case "season_arc":
       return normalizeSeasonArc(record, context);
     case "rivalry_piece":

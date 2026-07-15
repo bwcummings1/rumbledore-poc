@@ -94,6 +94,51 @@ const llmJudgeScoreSchema = z.object({
   targetingConsent: z.boolean(),
 }) satisfies z.ZodType<LlmJudgeScore>;
 
+const mondayNightOutlookSchema = z.object({
+  matchups: z.array(
+    z.object({
+      matters: z.boolean(),
+      opponent: z.string().trim().min(1),
+      reason: z.string().trim().min(1),
+      team: z.string().trim().min(1),
+    }),
+  ),
+  summary: z.string().trim().min(1),
+});
+
+const waiverSummarySchema = z.object({
+  fabBudget: z.number().finite().nullable(),
+  moves: z.array(
+    z.object({
+      fabRemaining: z.number().finite().nullable(),
+      fabSpent: z.number().finite().nullable(),
+      rosterChanges: z.array(z.string().trim().min(1)),
+      team: z.string().trim().min(1),
+    }),
+  ),
+  summary: z.string().trim().min(1),
+});
+
+const transactionReactionStructureSchema = z.object({
+  grade: z.string().trim().min(1),
+  loser: z.string().trim().min(1),
+  move: z.string().trim().min(1),
+  sourcesSay: z.string().trim().min(1),
+  type: z.literal("transaction_reaction"),
+  waiverSummary: waiverSummarySchema.optional(),
+  winner: z.string().trim().min(1),
+});
+
+const weeklyRecapStructureSchema = z.object({
+  kicker: z.string().trim().min(1),
+  lead: z.string().trim().min(1),
+  mondayNightOutlook: mondayNightOutlookSchema.optional(),
+  standingsShift: z.string().trim().min(1),
+  topResult: z.string().trim().min(1),
+  type: z.literal("weekly_recap"),
+  upsetOrBlowout: z.string().trim().min(1),
+});
+
 const structureSchemas = {
   arena_recap: z.object({
     biggestMovers: z.array(z.string().trim().min(1)).min(1),
@@ -174,14 +219,7 @@ const structureSchemas = {
     turningPoint: z.string().trim().min(1),
     type: z.literal("season_arc"),
   }),
-  transaction_reaction: z.object({
-    grade: z.string().trim().min(1),
-    loser: z.string().trim().min(1),
-    move: z.string().trim().min(1),
-    sourcesSay: z.string().trim().min(1),
-    type: z.literal("transaction_reaction"),
-    winner: z.string().trim().min(1),
-  }),
+  transaction_reaction: transactionReactionStructureSchema,
   verdict_column: z.object({
     newCanon: z.string().trim().min(1),
     question: z.string().trim().min(1),
@@ -189,14 +227,7 @@ const structureSchemas = {
     type: z.literal("verdict_column"),
     vote: z.string().trim().min(1),
   }),
-  weekly_recap: z.object({
-    kicker: z.string().trim().min(1),
-    lead: z.string().trim().min(1),
-    standingsShift: z.string().trim().min(1),
-    topResult: z.string().trim().min(1),
-    type: z.literal("weekly_recap"),
-    upsetOrBlowout: z.string().trim().min(1),
-  }),
+  weekly_recap: weeklyRecapStructureSchema,
 } satisfies Record<AiContentType, z.ZodType<BlogContentStructure>>;
 
 const baseBlogDraftSchemaFields = {
@@ -216,13 +247,25 @@ const baseBlogDraftSchemaFields = {
   title: z.string().trim().min(1),
 } as const;
 
-function blogDraftSchemaForContentType(
-  contentType: AiContentType,
+function blogDraftSchemaForRequest(
+  request: Pick<LlmGenerateRequest, "columnFormat" | "contentType">,
 ): z.ZodType<BlogDraft> {
+  const structureSchema =
+    request.columnFormat === "the-wrap" &&
+    request.contentType === "weekly_recap"
+      ? weeklyRecapStructureSchema.extend({
+          mondayNightOutlook: mondayNightOutlookSchema,
+        })
+      : request.columnFormat === "waiver-summary" &&
+          request.contentType === "transaction_reaction"
+        ? transactionReactionStructureSchema.extend({
+            waiverSummary: waiverSummarySchema,
+          })
+        : structureSchemas[request.contentType];
   return z.object({
     ...baseBlogDraftSchemaFields,
-    contentType: z.literal(contentType),
-    structure: structureSchemas[contentType],
+    contentType: z.literal(request.contentType),
+    structure: structureSchema,
   }) as z.ZodType<BlogDraft>;
 }
 
@@ -455,7 +498,7 @@ export class AnthropicLlmClient implements UsageReportingLlmClient {
   async generateWithUsage(
     request: LlmGenerateRequest,
   ): Promise<LlmGenerateResult> {
-    const responseSchema = blogDraftSchemaForContentType(request.contentType);
+    const responseSchema = blogDraftSchemaForRequest(request);
     let response: AnthropicResponseWithUsage;
     try {
       response = await this.client.messages.parse({
@@ -675,7 +718,7 @@ export class OpenAiCompatibleLlmClient implements UsageReportingLlmClient {
   async generateWithUsage(
     request: LlmGenerateRequest,
   ): Promise<LlmGenerateResult> {
-    const responseSchema = blogDraftSchemaForContentType(request.contentType);
+    const responseSchema = blogDraftSchemaForRequest(request);
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };

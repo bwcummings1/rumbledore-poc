@@ -19,12 +19,16 @@ import {
   members as authMembers,
   contentItems,
   dataIntegrityChecks,
+  fantasyMatchups,
   fantasyMembers,
+  fantasyPlayers,
   fantasyRosterEntries,
   fantasyTeams,
+  fantasyTransactions,
   headToHeadRecords,
   instigations,
   leagueMemberIdentityClaims,
+  leagueSeasonSettings,
   leagues,
   loreClaims,
   loreVerifications,
@@ -65,7 +69,11 @@ import {
   bodyBlocksToMarkdown,
   validateBlogDraft,
 } from "./article-draft";
-import { type AiContentType, parseAiContentType } from "./content-types";
+import {
+  type AiContentType,
+  parseAiContentType,
+  validateContentStructure,
+} from "./content-types";
 import type {
   BlogDraft,
   EmbeddingProvider,
@@ -83,6 +91,7 @@ import type {
   LeagueContextInstigation,
   LeagueContextLore,
   LeagueContextLoreClaim,
+  LeagueContextMatchup,
   LeagueContextMemory,
   LeagueContextPendingLore,
   LeagueContextPerson,
@@ -91,6 +100,7 @@ import type {
   LeagueContextRivalry,
   LeagueContextTeam,
   LeagueContextTrigger,
+  LeagueContextWaivers,
   LeaguePersonaCard,
   LlmClient,
   LlmGenerateRequest,
@@ -105,6 +115,7 @@ import type {
   WebGrounding,
 } from "./interfaces";
 import { assertLlmJudgeScorePasses, DEFAULT_LLM_JUDGE_RUBRIC } from "./judge";
+import { type LeagueColumnId, leagueColumnForId } from "./league-columns";
 import {
   DeterministicEmbeddingProvider,
   MockLlmClient,
@@ -536,6 +547,7 @@ function parseFramedReactiveKey({
 
   return {
     cadence: null,
+    columnFormat: null,
     event,
     gamePhase: null,
     phase,
@@ -553,6 +565,7 @@ function parseTriggerCadenceFrame(
     const [, version = "v1"] = triggerKey.split(":");
     return {
       cadence: "launch-edition",
+      columnFormat: null,
       event: "league.connected",
       gamePhase: "quiet",
       phase: "launch",
@@ -564,13 +577,17 @@ function parseTriggerCadenceFrame(
   }
 
   if (triggerKey.startsWith("cron:")) {
-    const [, cadence, phase, weekToken] = triggerKey.split(":");
+    const [, cadence, phase, weekToken, rawColumnId] = triggerKey.split(":");
     if (!cadence || !isNflPhase(phase) || !weekToken) {
       return null;
     }
 
+    const columnFormat = rawColumnId
+      ? (leagueColumnForId(rawColumnId)?.id ?? null)
+      : null;
     return {
       cadence,
+      columnFormat,
       event: cadence === "weekly-wrap" ? "game.final" : null,
       gamePhase: gamePhaseForCadence(cadence),
       phase,
@@ -817,6 +834,187 @@ function emptyGeneralNflContext(): LeagueContextGeneralNfl {
     facts: [],
     source: null,
   };
+}
+
+function emptyWaiverContext(): LeagueContextWaivers {
+  return { fabBudget: null, moves: [] };
+}
+
+function fabAmountFromDetails(details: Record<string, unknown>): number | null {
+  const value = details.bidAmount;
+  const amount =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+async function loadScheduledColumnContext({
+  columnFormat,
+  league,
+  teams,
+  tx,
+}: {
+  columnFormat: LeagueColumnId | null;
+  league: LeagueBlogContext["league"];
+  teams: readonly { name: string; providerTeamId: string }[];
+  tx: LeagueScopedTx;
+}): Promise<{
+  matchups: LeagueContextMatchup[];
+  waivers: LeagueContextWaivers;
+}> {
+  const teamsByProviderId = new Map(
+    teams.map((team) => [team.providerTeamId, team.name]),
+  );
+  let matchups: LeagueContextMatchup[] = [];
+  let waivers = emptyWaiverContext();
+
+  if (columnFormat === "the-wrap") {
+    const rows = await tx
+      .select({
+        awayScore: fantasyMatchups.awayScore,
+        awayTeamProviderId: fantasyMatchups.awayTeamProviderId,
+        homeScore: fantasyMatchups.homeScore,
+        homeTeamProviderId: fantasyMatchups.homeTeamProviderId,
+        status: fantasyMatchups.status,
+      })
+      .from(fantasyMatchups)
+      .where(
+        and(
+          eq(fantasyMatchups.leagueId, league.id),
+          eq(fantasyMatchups.leagueProviderId, league.providerLeagueId),
+          eq(fantasyMatchups.season, league.season),
+          eq(fantasyMatchups.scoringPeriod, league.currentScoringPeriod),
+          eq(fantasyMatchups.kind, "head_to_head"),
+        ),
+      )
+      .orderBy(asc(fantasyMatchups.providerMatchupId));
+    matchups = rows.flatMap((row) => {
+      const homeTeam = teamsByProviderId.get(row.homeTeamProviderId);
+      const awayTeam = row.awayTeamProviderId
+        ? teamsByProviderId.get(row.awayTeamProviderId)
+        : null;
+      return homeTeam && awayTeam
+        ? [
+            {
+              awayScore: row.awayScore,
+              awayTeam,
+              homeScore: row.homeScore,
+              homeTeam,
+              status: row.status,
+            },
+          ]
+        : [];
+    });
+  }
+
+  if (columnFormat === "waiver-summary") {
+    const [settings] = await tx
+      .select({ acquisitionBudget: leagueSeasonSettings.acquisitionBudget })
+      .from(leagueSeasonSettings)
+      .where(
+        and(
+          eq(leagueSeasonSettings.leagueId, league.id),
+          eq(leagueSeasonSettings.leagueProviderId, league.providerLeagueId),
+          eq(leagueSeasonSettings.season, league.season),
+        ),
+      )
+      .limit(1);
+    const rows = await tx
+      .select({
+        details: fantasyTransactions.details,
+        playerProviderIds: fantasyTransactions.playerProviderIds,
+        providerTransactionId: fantasyTransactions.providerTransactionId,
+        scoringPeriod: fantasyTransactions.scoringPeriod,
+        teamProviderIds: fantasyTransactions.teamProviderIds,
+      })
+      .from(fantasyTransactions)
+      .where(
+        and(
+          eq(fantasyTransactions.leagueId, league.id),
+          eq(fantasyTransactions.leagueProviderId, league.providerLeagueId),
+          eq(fantasyTransactions.season, league.season),
+          eq(fantasyTransactions.type, "waiver"),
+        ),
+      )
+      .orderBy(
+        desc(fantasyTransactions.occurredAt),
+        asc(fantasyTransactions.providerTransactionId),
+      )
+      .limit(200);
+    const currentRows = rows
+      .filter((row) => row.scoringPeriod === league.currentScoringPeriod)
+      .slice(0, 12);
+    const playerProviderIds = [
+      ...new Set(currentRows.flatMap((row) => row.playerProviderIds)),
+    ];
+    const playerRows =
+      playerProviderIds.length > 0
+        ? await tx
+            .select({
+              fullName: fantasyPlayers.fullName,
+              providerPlayerId: fantasyPlayers.providerPlayerId,
+            })
+            .from(fantasyPlayers)
+            .where(
+              and(
+                eq(fantasyPlayers.leagueId, league.id),
+                eq(fantasyPlayers.leagueProviderId, league.providerLeagueId),
+                inArray(fantasyPlayers.providerPlayerId, playerProviderIds),
+              ),
+            )
+        : [];
+    const playerNamesByProviderId = new Map(
+      playerRows.map((player) => [player.providerPlayerId, player.fullName]),
+    );
+    const spentByTeam = new Map<string, number>();
+    for (const row of rows) {
+      const fabSpent = fabAmountFromDetails(row.details);
+      if (fabSpent === null) {
+        continue;
+      }
+      for (const providerTeamId of row.teamProviderIds) {
+        spentByTeam.set(
+          providerTeamId,
+          (spentByTeam.get(providerTeamId) ?? 0) + fabSpent,
+        );
+      }
+    }
+    const fabBudget = settings?.acquisitionBudget ?? null;
+    waivers = {
+      fabBudget,
+      moves: currentRows.flatMap((row) => {
+        const fabSpent = fabAmountFromDetails(row.details);
+        const rosterChanges = row.playerProviderIds
+          .map((providerPlayerId) =>
+            playerNamesByProviderId.get(providerPlayerId),
+          )
+          .filter((name): name is string => Boolean(name));
+        return row.teamProviderIds.flatMap((providerTeamId) => {
+          const team = teamsByProviderId.get(providerTeamId);
+          if (!team) {
+            return [];
+          }
+          const spent = spentByTeam.get(providerTeamId);
+          return [
+            {
+              fabRemaining:
+                fabBudget === null || spent === undefined
+                  ? null
+                  : fabBudget - spent,
+              fabSpent,
+              rosterChanges,
+              team,
+            },
+          ];
+        });
+      }),
+    };
+  }
+
+  return { matchups, waivers };
 }
 
 function compactGeneralNflWeek(
@@ -1248,16 +1446,27 @@ function referencedLeagueEntity({
 }
 
 function validateDraftOrGeneric({
+  columnFormat,
   contentType,
   context,
   draft,
 }: {
+  columnFormat: LeagueColumnId | null;
   contentType: AiContentType;
   context: LeagueBlogContext;
   draft: BlogDraft;
 }): BlogDraft | null {
   try {
-    return validateBlogDraft(draft, { contentType, context });
+    const validated = validateBlogDraft(draft, { contentType, context });
+    return {
+      ...validated,
+      structure: validateContentStructure({
+        columnFormat,
+        contentType,
+        context,
+        structure: validated.structure,
+      }),
+    };
   } catch (error) {
     if (error instanceof AppError && error.code === "AI_DRAFT_GENERIC") {
       return null;
@@ -1391,6 +1600,8 @@ export function buildPromptParts({
   template?: PromptTemplate;
   triggerKey: string;
 }): PromptParts {
+  const columnFormat = context.trigger.cadence?.columnFormat ?? null;
+  const column = columnFormat ? leagueColumnForId(columnFormat) : null;
   const stablePrefix: Record<string, unknown> = {
     authenticity: stableAuthenticityFacts(context),
     league: {
@@ -1414,12 +1625,22 @@ export function buildPromptParts({
     },
     records: stableRecordFacts(context),
     teams: stableTeamFacts(context.teams),
+    ...(column
+      ? {
+          columnFormat: {
+            formatContract: column.formatContract,
+            id: column.id,
+            name: column.name,
+          },
+        }
+      : {}),
   };
   const volatileContext: Record<string, unknown> = {
     arena: context.arena,
     currentScoringPeriod: context.league.currentScoringPeriod,
     duplicateNudge: duplicateNudge ?? null,
     generalNflContext: context.generalNfl,
+    matchups: context.matchups ?? [],
     priorPosts: context.priorPosts.map((post) => ({
       publishedAt: post.publishedAt.toISOString(),
       summary: post.summary,
@@ -1428,9 +1649,10 @@ export function buildPromptParts({
     trigger: context.trigger,
     triggerKey,
     untrustedNews: untrustedNewsBlock(newsItems),
+    waivers: context.waivers ?? emptyWaiverContext(),
   };
 
-  return renderPromptTemplate({
+  const rendered = renderPromptTemplate({
     contentType,
     context,
     duplicateNudge,
@@ -1439,6 +1661,18 @@ export function buildPromptParts({
     triggerKey,
     volatileContext,
   });
+  if (!column) {
+    return rendered;
+  }
+
+  const directive = `Scheduled league column format: ${column.name} (${column.id}). ${column.formatContract}`;
+  return {
+    ...rendered,
+    prompt: `${rendered.prompt}\n\n${directive}`,
+    systemInstructions:
+      `${rendered.systemInstructions ?? ""}\n${directive}`.trim(),
+    userTask: `${rendered.userTask ?? ""}\n${directive}`.trim(),
+  };
 }
 
 async function ensurePersonaCard({
@@ -2015,6 +2249,7 @@ async function prepareGeneration({
       ownerMemberIds: fantasyTeams.ownerMemberIds,
       pointsAgainst: fantasyTeams.pointsAgainst,
       pointsFor: fantasyTeams.pointsFor,
+      providerTeamId: fantasyTeams.providerTeamId,
       ties: fantasyTeams.ties,
       wins: fantasyTeams.wins,
     })
@@ -2034,6 +2269,17 @@ async function prepareGeneration({
     ties: team.ties,
     wins: team.wins,
   }));
+  const columnFormat =
+    parseTriggerCadenceFrame(input.triggerKey)?.columnFormat ?? null;
+  const columnContext = await loadScheduledColumnContext({
+    columnFormat,
+    league,
+    teams: teamRows.map((team) => ({
+      name: team.name,
+      providerTeamId: team.providerTeamId,
+    })),
+    tx,
+  });
 
   const unresolvedIntegrityFailures = await tx
     .select({ id: dataIntegrityChecks.id })
@@ -2444,12 +2690,14 @@ async function prepareGeneration({
       arena: emptyArenaContext(),
       authenticity,
       generalNfl: emptyGeneralNflContext(),
+      matchups: columnContext.matchups,
       memory,
       persona,
       priorPosts,
       records,
       teams,
       trigger,
+      waivers: columnContext.waivers,
     },
     runId: run.id,
   };
@@ -2899,6 +3147,7 @@ export async function generateLeagueBlogPost({
       league: prepared.context.league,
     }),
   };
+  const columnFormat = context.trigger.cadence?.columnFormat ?? null;
 
   let newsItems: NewsItem[] = [];
   try {
@@ -2935,6 +3184,7 @@ export async function generateLeagueBlogPost({
     prompt,
   });
   const initialDraft = validateDraftOrGeneric({
+    columnFormat,
     contentType: input.contentType,
     context,
     draft: await generateAttributedDraft({
@@ -2946,6 +3196,7 @@ export async function generateLeagueBlogPost({
       promptPrefixHash,
       request: {
         attempt: 1,
+        columnFormat,
         context,
         contentType: input.contentType,
         newsItems,
@@ -2968,6 +3219,7 @@ export async function generateLeagueBlogPost({
       triggerKey: input.triggerKey,
     });
     draft = validateDraftOrGeneric({
+      columnFormat,
       contentType: input.contentType,
       context,
       draft: await generateAttributedDraft({
@@ -2979,6 +3231,7 @@ export async function generateLeagueBlogPost({
         promptPrefixHash,
         request: {
           attempt: 2,
+          columnFormat,
           context,
           contentType: input.contentType,
           duplicateNudge: authenticityNudge,
@@ -3022,6 +3275,7 @@ export async function generateLeagueBlogPost({
       triggerKey: input.triggerKey,
     });
     const duplicateDraft = validateDraftOrGeneric({
+      columnFormat,
       contentType: input.contentType,
       context,
       draft: await generateAttributedDraft({
@@ -3033,6 +3287,7 @@ export async function generateLeagueBlogPost({
         promptPrefixHash,
         request: {
           attempt: 2,
+          columnFormat,
           context,
           contentType: input.contentType,
           duplicateNudge,
@@ -3099,6 +3354,7 @@ export async function generateLeagueBlogPost({
       triggerKey: input.triggerKey,
     });
     const judgedDraft = validateDraftOrGeneric({
+      columnFormat,
       contentType: input.contentType,
       context,
       draft: await generateAttributedDraft({
@@ -3110,6 +3366,7 @@ export async function generateLeagueBlogPost({
         promptPrefixHash,
         request: {
           attempt: 2,
+          columnFormat,
           context,
           contentType: input.contentType,
           duplicateNudge: judgeNudge,

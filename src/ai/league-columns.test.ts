@@ -4,6 +4,7 @@ import {
   LEAGUE_COLUMN_LINEUP,
   leagueColumnCronSchedule,
   leagueColumnForCadenceAndDate,
+  leagueColumnForId,
 } from "./league-columns";
 
 describe("league column lineup", () => {
@@ -57,6 +58,13 @@ describe("league column lineup", () => {
     );
     expect(names.every(Boolean)).toBe(true);
     expect(new Set(names).size).toBe(6);
+    expect(
+      LEAGUE_COLUMN_KEYS.every(
+        (key) => LEAGUE_COLUMN_LINEUP[key].formatContract.length > 0,
+      ),
+    ).toBe(true);
+    expect(leagueColumnForId("the-wrap")?.name).toBe("The Wrap");
+    expect(leagueColumnForId("not-a-column")).toBeNull();
   });
 
   it("derives the five cron schedules from the configured column slots", () => {

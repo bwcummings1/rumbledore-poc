@@ -2,6 +2,7 @@ import type { ContentEmbedBodyBlock } from "@/content/embeds";
 import type { RoastLevel } from "@/members/roast-consent-types";
 import type { LeaguePublicationSectionId } from "@/news/sections";
 import type { AiContentType, BlogContentStructure } from "./content-types";
+import type { LeagueColumnId } from "./league-columns";
 import type { AiPersona, ToneProfile } from "./personas";
 
 export interface NewsItem {
@@ -209,6 +210,7 @@ export interface LeagueContextCorrection {
 
 export interface LeagueContextCadenceFrame {
   cadence: string | null;
+  columnFormat: LeagueColumnId | null;
   event: string | null;
   gamePhase: string | null;
   phase: string;
@@ -346,6 +348,26 @@ export interface LeagueContextGeneralNfl {
   source: string | null;
 }
 
+export interface LeagueContextMatchup {
+  awayScore: number;
+  awayTeam: string;
+  homeScore: number;
+  homeTeam: string;
+  status: "scheduled" | "in_progress" | "final" | "unknown";
+}
+
+export interface LeagueContextWaiverMove {
+  fabRemaining: number | null;
+  fabSpent: number | null;
+  rosterChanges: string[];
+  team: string;
+}
+
+export interface LeagueContextWaivers {
+  fabBudget: number | null;
+  moves: LeagueContextWaiverMove[];
+}
+
 export interface LeaguePersonaCard {
   id: string;
   persona: AiPersona;
@@ -384,6 +406,8 @@ export interface LeagueBlogContext {
   trigger: LeagueContextTrigger;
   arena: LeagueContextArena;
   generalNfl: LeagueContextGeneralNfl;
+  matchups?: LeagueContextMatchup[];
+  waivers?: LeagueContextWaivers;
 }
 
 export interface PromptParts {
@@ -418,6 +442,7 @@ export interface BlogDraft {
 }
 
 export interface LlmGenerateRequest {
+  columnFormat?: LeagueColumnId | null;
   contentType: AiContentType;
   persona: AiPersona;
   context: LeagueBlogContext;
