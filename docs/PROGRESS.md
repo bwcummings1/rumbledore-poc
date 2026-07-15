@@ -1,16 +1,19 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 3 P3-RECALL complete on
-`ws/p3-central-recall`, pending orchestrator merge:** central and league writers now receive compact, relevance- and
-recency-ranked digests of recently published headlines, summaries, topics, angles, and cleanly queryable running /
-same-plan assignments from their exact publication pool. Central reads only `league_id NULL`; league reads use RLS plus
-an explicit `league_id` predicate, with cross-league and cross-pool leakage tests. Recall stays in volatile prompt
-context and never becomes factual evidence. The offline AI gate proves a same-topic follow-up moves from identical
-restatement to a complementary throughline when recall is on, while the post-generation pgvector near-duplicate gate
-still retries and skips an unchanged duplicate that gets through. Phase 4 real-source activation remains owner-gated.
-**Prior merged baseline:** P3-ENGINE's configurable 10-column central journalist engine, evidence-validated formats,
-corrected cadence, mock write-time freshness, idempotency, public filing, and complete fixture week.
+Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 3 P3-FIX complete on
+`ws/p3-central-fix`, pending orchestrator merge:** central reader bodies are rebuilt server-side from validated
+structures, so model prose and recall cannot publish ungrounded facts. Central generation now embeds that validated
+reader-facing article, compares recent same-type/model central memories in the `league_id IS NULL` pool, retries once,
+and skips a still-near-duplicate draft. Review regressions also require refresh timestamps to advance, ground Rundown
+metric/unit pairs, suppress post-waiver outcomes until transaction/FAB evidence exists, tolerate five-minute-late
+scheduled runs with a missed-slot signal, and scope exact-generation reuse to the central journalist engine. Migration
+head is `0078`. Phase 4 real-source activation remains owner-gated. The Wire/Rundown/Injuries generation contracts are
+built, but their reactive/queued Inngest producers remain explicitly deferred.
+**Prior merged baseline:** P3-RECALL gives central and league writers compact, publication-pool-isolated digests of
+recent and same-plan assignments while keeping recall outside factual evidence; P3-ENGINE supplies the configurable
+10-column central journalist engine, evidence-validated formats, corrected cadence, mock write-time freshness,
+idempotency, public filing, and complete fixture week.
 **Earlier merged baseline:** full 2026-07-13 backlog (`specs/47` wave 1, F47 review fixes, P polish, Browserbase
 adapter, and Sleeper parity). Owner live smoke remains pending.
 **48S Sleeper parity (merged):** Sleeper now has provenance-backed decoding dictionaries, cached named-player
@@ -26,7 +29,8 @@ flight; capability downgrades fail loud; payload-drift alerts persist until stew
 claims, enqueue rollback, quarantine/promotion races, corpus privacy, and legacy-era property coverage are hardened.
 The ESPN vocabulary corpus was independently re-derived from training knowledge and committed payload evidence, with
 four intentional contextual-label deltas and no missing production codes or era gaps; approved multi-league harvest
-validation remains pending. Migrations now run through `0077`; no live harvest or paid-provider call was made.
+validation remains pending. The F47 migrations ended at `0077`; current head is `0078` after the central-article
+embedding path. No live harvest or paid-provider call was made.
 **47A (`ws/47a-vocab-corpus`)**: ESPN's independently re-derived, training-knowledge-based vocabulary corpus proves
 numeric closure for positions, lineup slots, pro teams, activity codes, and player/scoring stat ids, including
 old-era labels; `mSettings` values are an independently sourced inventory rather than a production-enum closure.
@@ -437,22 +441,38 @@ parity on `ws/48-sleeper-parity` for orchestrator review/merge. Gates remain man
 - **Mocked by default (drop-in activation later):** Anthropic, The Odds API, SportsDataIO, Tavily, Voyage, Browserbase.
   The guarded Browserbase cookie-capture adapter is wired and fixture-proven while ESPN onboarding remains
   fixture-backed by default; its one-session live smoke is pending the owner.
-- **Resolved review bugs:** AI near-dup now uses a league/content-type/model-filtered pgvector nearest-neighbor query (`f380946`); postseason and championship stats derive from season settings/finals with low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the bankroll-week lock before balance checks (`22a4333`).
+- **Resolved review bugs:** AI near-dup uses a league/content-type/model-filtered pgvector nearest-neighbor query for
+  league content (`f380946`) and a separate `league_id IS NULL`, content-type/model-filtered `central_article` path
+  for central journalist output; postseason and championship stats derive from season settings/finals with
+  low-confidence integrity failures (`dfa85a9`, `cd6cbe2`); Sleeper co-owner overlap no longer merges distinct
+  same-season team slots (`485e467`); invite tokens persist only hashes (`7a92dfa`); bet placement takes the
+  bankroll-week lock before balance checks (`22a4333`).
 - **Hardening pass delivered:** live ingestion calendar cadence, schedule-backed NFL calendar fallback, Anthropic LLM judge gate, lore steward tiebreak constraints, DB role privilege health, PWA league-page cache isolation, transaction/waiver content emitters, records-catalog fixture coverage, and spend-guard fallback coverage are all landed and tested (`0a2f543`, `43a030b`, `4cc4a5b`, `aa80043`, `8cd3b76`, `e208349`, `060aab8`, `e0cf000`).
 - **Deferred/follow-on:** draft/transactions UI; Yahoo provider dictionary and unknown-code parity; real
   substrate-B source wiring; production-real paid-provider activation/smokes plus real webhook/email delivery domains; final
   AI voice/persona tuning with the owner; Stripe/beta/legal/observability launch hardening; minor owner-set-aside UI
   tweaks; replace the `import.requested` non-shadow `legacy` idempotency bucket before multiple rollover/backfill
-  producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
+  producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged);
+  wire Inngest producers for reactive/queued central Wire, Rundown, and Injuries generation (their typed contracts and
+  direct generation path are built, but scheduled cron does not emit them).
 
 ## 8. Recent (loop log; newest first)
+- 2026-07-15: Phase 3 central adversarial-review remediation (P3-FIX) — central articles now publish only a
+  server-rendered representation of their evidence-validated structures; model body prose and recall digests cannot
+  become reader-facing facts. A new `league_id IS NULL` `central_article` embedding path (migration `0078`) gives
+  central generation its own post-generation near-duplication retry/skip gate, separate from the league path. Source
+  refresh must demonstrably advance observation/evidence time; Rundown metrics are pinned to cited evidence;
+  post-waiver outcomes stay empty until transaction/FAB evidence exists; late cron runs have a bounded recovery window
+  and an explicit missed-slot signal; existing-generation reuse requires central-engine provenance. Reactive/queued
+  generation contracts remain built but their Wire/Rundown/Injuries Inngest producers are future work. No paid or
+  provider call was made.
 - 2026-07-15: Phase 3 editorial recall (P3-RECALL) — central and league generation now build a bounded 14-day
   publication-pool digest before writing, rank recent published headlines/summaries/topics/bylines by embedding
   relevance plus recency, and include durable queued/about-to-publish assignments where the existing planner/run
   model exposes them. Central recall excludes every league row; league recall runs inside `withLeagueContext()` with
   explicit league predicates and excludes central plus other-league rows. The digest is coverage guidance only in
   volatile prompt context, never evidence or the stable prefix. The offline AI eval measures an identical no-recall
-  repeat against a recall-informed complementary angle, and the vector near-duplicate regression confirms the
+  repeat against a recall-informed complementary angle, and the league vector near-duplicate regression confirms its
   post-generation safety net still retries then skips an unchanged draft. Reactive central work and planner events
   that have not started a durable generation run remain unqueryable without a future assignment store.
 - 2026-07-15: Phase 3 central journalist engine (P3-ENGINE) — the central publication now derives its two News /

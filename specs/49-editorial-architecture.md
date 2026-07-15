@@ -4,8 +4,8 @@
 > into a phased build. Grounding docs (read for the WHY): `docs/EDITORIAL-ARCHITECTURE-PROPOSAL.md`
 > (decisions + rationale), `docs/EDITORIAL-CADENCE-REFERENCE-2026-07-15.md` (how the pros publish a week),
 > `.orchestration/analysis/EDITORIAL-INVENTORY-2026-07-14.md` (what's already built). Memory:
-> `editorial-architecture-decisions`. **The central lineup (§5) is a DRAFT pending owner review — DO NOT
-> build it until the owner signs off (Phase 3 is held).** §1–§4 and the Phase 0/1/2 plan are locked.
+> `editorial-architecture-decisions`. **The central lineup (§5) was owner-locked on 2026-07-15 and Phase 3 is
+> built against mocks; Phase 4 real-source/model activation remains owner-gated.**
 
 ## 1. Locked architecture — one shared substrate, three consumers
 
@@ -99,14 +99,24 @@ personality.
 published **+ queued/about-to-publish** pieces (the agent's OWN **and contemporaries'**), scoped to the same
 publication pool (central pool / per-league pool — NEVER cross-league), and inject it into the writing context
 so each piece **avoids redundancy and maintains a throughline** rather than restating. Complements — does not
-replace — the existing POST-generation pgvector near-dup gate (`f380946`). General capability: wired for
-central (multi-journalist newsroom), available to league columns too.
+replace — POST-generation pgvector near-duplication gates in both publication pools. The league path
+(`f380946`) compares league/content-type/model-scoped memories. The central path embeds the validated,
+reader-facing article, compares only recent published `central_article` memories with `league_id IS NULL` and
+matching content type/model/dimensions, retries once with a different-angle nudge, then skips an unchanged draft
+with `near_duplicate:<score>`. Central article and embedding persistence is atomic. General capability: wired
+for central (multi-journalist newsroom), available to league columns too.
+
+**AUTOMATION BOUNDARY (deferred):** the scheduled Fantasy columns have a cron producer. The Wire and Injuries
+reactive contracts and The Rundown queued contract are built and fixture-tested through the central generator,
+but no Inngest producer currently turns news, injury, or report-request events into those generation jobs.
+Producer wiring remains future work; real provider-triggered activation remains owner-gated in Phase 4.
 
 **Injuries: dual-filed** — the injury EVENT → The Wire (News); the fantasy IMPLICATION → Injuries (Fantasy).
 **Offseason: news-relevance mode** — NFL offseason news (contracts/holdouts/camp) + dynasty/draft-prep +
 way-too-early; slower, not dark.
 **Phase-4 (owner-gated) dependencies:** real stats/projections source; real news source (X/insiders); model
-selection. Central builds against MOCKS now (structurally complete); truthful on activation.
+selection. The scheduled engine and reactive/queued generation contracts run against MOCKS now; the deferred
+producer boundary above must also land before those reactive/queued columns are automatic.
 
 ## 6. Two foundational gaps (Phase 1 — locked, buildable now)
 - **Gap A — no lead-story signal on league content.** Front prominence uses `editorialImportance`, set only on
@@ -124,11 +134,13 @@ selection. Central builds against MOCKS now (structurally complete); truthful on
 - **Phase 2 (fleet · mock · $0):** the league column lineup (§4) — reschedule cadence to the roster, build the
   new/extended formats, wire columns as named identities (config-labeled). Blended columns run on mock stat
   inputs. After Phase 1 merges.
-- **Phase 3 (fleet · mock · $0 — §5 LOCKED 2026-07-15):** three pillars, sequential tracks —
+- **Phase 3 (fleet · mock · $0 — §5 LOCKED 2026-07-15):** completed sequential tracks —
   **P3-ENGINE** (central section taxonomy → News/Fantasy branches [Gap B deferral]; central journalist-engine
   config generalizing `league-columns.ts`; central typed templates + the first central generation path +
   corrected cadence; data-freshness at write-time) → **P3-RECALL** (the pre-generation editorial-memory/recall
-  layer, wired central + available league). Greenfield; adversarial review after merge.
+  layer, wired central + available league) → **P3-FIX** (adversarial-review grounding, central near-duplication,
+  freshness, schedule tolerance, and idempotency hardening). The reactive/queued producer boundary remains
+  explicitly deferred as described in §5.
 - **Phase 4 (OWNER-GATED — staged turnkey, NOT executed by the orchestrator):** wire real stats/projections
   source; real news source (X/insiders); model selection; Browserbase live smoke; one measured week → COGS →
   pricing. The orchestrator prepares/stages only; the owner flips keys, chooses sources/models, runs smokes.
@@ -140,7 +152,9 @@ selection. Central builds against MOCKS now (structurally complete); truthful on
 - **P2:** the 6 columns generate on their scheduled days against fixtures with the correct structured shapes;
   renaming a column is a one-line config change; blended columns consume the (mock) central stat/odds data;
   offseason produces the league evergreen menu; no `MOCK_*`/`db:generate` touched. Full gates + e2e green.
-- **P3/P4:** deferred (held).
+- **P3:** the mock central engine, recall, reader-facing grounding, and both publication-pool near-duplication
+  gates are built and regression-tested; reactive/queued producers remain deferred per §5.
+- **P4:** held for owner-gated real sources, model selection, live smoke, and measured economics.
 
 ## Non-goals
 Tool-platform features (DFS optimizers, ADP tools, trade analyzers, mock-draft lobbies); expert-panel/
