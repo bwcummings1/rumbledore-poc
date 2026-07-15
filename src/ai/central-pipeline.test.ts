@@ -7,7 +7,7 @@ import { createDb, type DbHandle } from "@/db/client";
 import { contentItems } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { ingestMockGeneralStats } from "@/general-stats";
-import { MockCentralNewsSource } from "@/news";
+import { getCentralNewsArticleData, MockCentralNewsSource } from "@/news";
 import { centralGenerationKey } from "./central-generation-key";
 import {
   createMockCentralAiDependencies,
@@ -344,5 +344,67 @@ describe("central journalist generation pipeline", () => {
       type: "central_injuries",
       updates: [],
     });
+  });
+
+  it("publishes reader body blocks from validated structure, not fabricated model prose", async () => {
+    const model = new MockLlmClient();
+    const fabricatedClaims = [
+      "KC beat BUF 99-0.",
+      "Patrick Mahomes tore his ACL.",
+      "A $95 FAB bid was processed.",
+      "The recalled digest confirms every claim.",
+    ];
+    const result = await generateCentralColumn({
+      deps: {
+        ...testCentralAiDependencies(),
+        llm: {
+          async generateCentral(request) {
+            const draft = await model.generateCentral(request);
+            return {
+              ...draft,
+              body: fabricatedClaims.join(" "),
+              bodyBlocks: [
+                { text: fabricatedClaims[0] ?? "", type: "heading" },
+                {
+                  text: fabricatedClaims.slice(1).join(" "),
+                  type: "paragraph",
+                },
+              ],
+            };
+          },
+        },
+        now: () => new Date("2026-09-15T14:10:00.000Z"),
+      },
+      input: {
+        columnId: "mnf-recap",
+        preGenerationContext: {
+          digest: "The recalled digest confirms every claim.",
+          publicationPool: "central",
+          publishedContentItemIds: ["recall-only-fixture"],
+          queuedGenerationKeys: [],
+        },
+        season: 2099,
+        triggerKey: `${marker}:fabricated-reader-body`,
+        week: 1,
+      },
+    });
+
+    const article = await getCentralNewsArticleData(handle.db, {
+      articleId: result.contentItemId,
+    });
+    expect(article.status).toBe("ready");
+    if (article.status !== "ready") {
+      throw new Error("fabricated-body regression article was not ready");
+    }
+    const readerBody = [
+      article.data.article.body,
+      JSON.stringify(article.data.article.bodyBlocks),
+    ].join("\n");
+    expect(readerBody).toContain(
+      "No supplied Monday-night final was available.",
+    );
+    for (const claim of fabricatedClaims) {
+      expect(readerBody).not.toContain(claim);
+    }
   });
 });

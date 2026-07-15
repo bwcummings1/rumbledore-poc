@@ -6,6 +6,7 @@ import {
 import {
   centralArticleText,
   centralBodyBlocksToMarkdown,
+  centralStructureBodyBlocks,
 } from "./central-article-draft";
 import type {
   CentralContentStructure,
@@ -39,7 +40,6 @@ import type {
 import type {
   BlogDraft,
   BlogDraftBodyBlock,
-  CentralArticleBodyBlock,
   CentralArticleDraft,
   CentralGenerationContext,
   CentralLlmClient,
@@ -1513,93 +1513,19 @@ function centralStructureForRequest(
   }
 }
 
-function centralStructureLines(structure: CentralContentStructure): string[] {
-  switch (structure.type) {
-    case "central_wire_blurb":
-      return [structure.whatHappened, structure.whyItMatters].filter(
-        (line): line is string => Boolean(line),
-      );
-    case "central_rundown_report":
-      return structure.findings.map(
-        (finding) => `${finding.heading}: ${finding.finding}`,
-      );
-    case "central_weekend_recap_mnf_projection":
-      return [
-        ...structure.completedGames.flatMap((game) =>
-          game.takeaway ? [game.takeaway] : [],
-        ),
-        structure.mnfProjection
-          ? `Computed MNF projection: ${structure.mnfProjection.methodology}`
-          : "No supplied Monday-night game was available for projection.",
-      ];
-    case "central_mnf_recap":
-      return structure.game
-        ? [
-            `${structure.game.awayTeam} at ${structure.game.homeTeam}: ${structure.game.awayScore ?? "score unavailable"}-${structure.game.homeScore ?? "score unavailable"}.`,
-          ]
-        : ["No supplied Monday-night final was available."];
-    case "central_pre_waiver":
-      return structure.recommendations.map(
-        (player) => `${player.priority}. ${player.recommendation}`,
-      );
-    case "central_post_waiver":
-      return [
-        structure.outcomesAvailable
-          ? `${structure.processedOutcomes.length} supplied waiver outcomes were available.`
-          : "No universal processed-waiver outcomes were supplied.",
-        ...structure.fallbackTargets.map((player) => player.recommendation),
-      ];
-    case "central_matchups":
-      return structure.matchups.map(
-        (game) => `${game.awayTeam} at ${game.homeTeam} (${game.status}).`,
-      );
-    case "central_rankings_projections":
-      return [
-        structure.methodology,
-        ...structure.rankings.map(
-          (player) =>
-            `${player.rank}. ${player.player}, ${player.position}, ${player.team}: projection ${player.projectedPoints ?? "unavailable"}.`,
-        ),
-      ];
-    case "central_start_sit":
-      return structure.recommendations.map(
-        (player) => `${player.player}: ${player.verdict}. ${player.rationale}`,
-      );
-    case "central_injuries":
-      return structure.updates.length > 0
-        ? structure.updates.map((update) => update.eventSummary)
-        : ["No supplied injury event was available for a fantasy implication."];
-  }
-}
-
 function centralDraftForRequest(
   request: CentralLlmGenerateRequest,
 ): CentralArticleDraft {
   const structure = centralStructureForRequest(request);
-  const lines = centralStructureLines(structure);
   const evidenceCount =
     request.context.evidence.news.length +
     request.context.evidence.games.length +
     request.context.evidence.players.length +
     request.context.evidence.odds.length;
-  const bodyBlocks: CentralArticleBodyBlock[] = [
-    {
-      text: `${request.context.column.name} — ${request.context.season} Week ${request.context.week}`,
-      type: "heading",
-    },
-    {
-      text: `${request.context.journalist.name} files from ${evidenceCount} supplied central evidence record${evidenceCount === 1 ? "" : "s"}. ${request.context.journalist.registerContract}`,
-      type: "paragraph",
-    },
-    ...(lines.length > 0
-      ? [{ items: lines, type: "list" as const }]
-      : [
-          {
-            text: "The supplied mock substrate did not contain enough evidence for a factual assertion.",
-            type: "paragraph" as const,
-          },
-        ]),
-  ];
+  const bodyBlocks = centralStructureBodyBlocks({
+    context: request.context,
+    structure,
+  });
   const firstNews = request.context.evidence.news[0];
   return {
     body: centralBodyBlocksToMarkdown(bodyBlocks),
