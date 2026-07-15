@@ -1,7 +1,8 @@
-import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, ne, sql } from "drizzle-orm";
 import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
-import { contentItems } from "@/db/schema";
+import { withLeagueContext } from "@/db/rls";
+import { aiGenerationRuns, aiMemory, contentItems } from "@/db/schema";
 import {
   type CentralJournalistId,
   centralColumnForId,
@@ -11,11 +12,21 @@ import { cosineSimilarity } from "./embedding-similarity";
 import type {
   CentralPreGenerationContext,
   EmbeddingProvider,
+  LeaguePreGenerationContext,
 } from "./interfaces";
+import {
+  LEAGUE_COLUMN_KEYS,
+  LEAGUE_COLUMN_LINEUP,
+  leagueColumnForId,
+} from "./league-columns";
+import type { AiPersona } from "./personas";
 
 export const CENTRAL_RECALL_LOOKBACK_MS = 14 * 24 * 60 * 60_000;
 export const CENTRAL_RECALL_CANDIDATE_LIMIT = 32;
 export const CENTRAL_RECALL_DIGEST_LIMIT = 10;
+export const LEAGUE_RECALL_LOOKBACK_MS = CENTRAL_RECALL_LOOKBACK_MS;
+export const LEAGUE_RECALL_CANDIDATE_LIMIT = CENTRAL_RECALL_CANDIDATE_LIMIT;
+export const LEAGUE_RECALL_DIGEST_LIMIT = CENTRAL_RECALL_DIGEST_LIMIT;
 
 interface CentralRecallCandidate {
   dedupKey: string;
@@ -43,6 +54,40 @@ export interface BuildCentralEditorialRecallInput {
   now: Date;
   query: string;
   queuedGenerationKeys?: readonly string[];
+}
+
+interface LeagueRecallCandidate {
+  authorPersona: AiPersona | null;
+  embedding: number[] | null;
+  id: string;
+  metadata: Record<string, unknown>;
+  publishedAt: Date;
+  summary: string;
+  title: string;
+}
+
+interface RankedLeagueRecallCandidate extends LeagueRecallCandidate {
+  recency: number;
+  relevance: number;
+  score: number;
+}
+
+interface QueuedLeagueAssignment {
+  persona: AiPersona;
+  triggerKey: string;
+}
+
+export interface BuildLeagueEditorialRecallInput {
+  candidateLimit?: number;
+  currentGenerationRunId?: string;
+  currentPersona: AiPersona;
+  db: Db;
+  digestLimit?: number;
+  embeddings: EmbeddingProvider;
+  leagueId: string;
+  lookbackMs?: number;
+  now: Date;
+  query: string;
 }
 
 function normalizedLimit(value: number | undefined, fallback: number): number {
@@ -243,6 +288,146 @@ function buildDigest({
   ].join("\n");
 }
 
+function leagueCandidateTopics(candidate: LeagueRecallCandidate): string[] {
+  const cadence = recordValue(candidate.metadata.cadenceFrame);
+  const topics = [
+    nonBlankString(candidate.metadata.leagueSection),
+    nonBlankString(candidate.metadata.contentType),
+    nonBlankString(cadence?.columnFormat),
+    ...stringArray(candidate.metadata.tags),
+  ].filter((value): value is string => Boolean(value));
+  return [...new Set(topics)].slice(0, 5);
+}
+
+function leagueCandidatePersona(candidate: LeagueRecallCandidate): string {
+  return (
+    candidate.authorPersona ??
+    nonBlankString(candidate.metadata.byline) ??
+    "league newsroom"
+  );
+}
+
+function rankLeagueCandidates({
+  candidates,
+  lookbackMs,
+  now,
+  queryEmbedding,
+}: {
+  candidates: readonly LeagueRecallCandidate[];
+  lookbackMs: number;
+  now: Date;
+  queryEmbedding: readonly number[] | null;
+}): RankedLeagueRecallCandidate[] {
+  return candidates
+    .map((candidate) => {
+      const ageMs = Math.max(
+        0,
+        now.getTime() - candidate.publishedAt.getTime(),
+      );
+      const recency = Math.max(0, 1 - ageMs / lookbackMs);
+      const relevance =
+        queryEmbedding &&
+        candidate.embedding &&
+        candidate.embedding.length === queryEmbedding.length
+          ? Math.max(
+              0,
+              Math.min(
+                1,
+                (cosineSimilarity(queryEmbedding, candidate.embedding) + 1) / 2,
+              ),
+            )
+          : 0.5;
+      return {
+        ...candidate,
+        recency,
+        relevance,
+        score: relevance * 0.72 + recency * 0.28,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        right.publishedAt.getTime() - left.publishedAt.getTime() ||
+        left.id.localeCompare(right.id),
+    );
+}
+
+function leaguePublishedDigestLine(
+  candidate: RankedLeagueRecallCandidate,
+  currentPersona: AiPersona,
+): string {
+  const persona = leagueCandidatePersona(candidate);
+  const relationship =
+    persona === currentPersona ? "same journalist" : "contemporary coverage";
+  const topics = leagueCandidateTopics(candidate);
+  const topicSuffix = topics.length > 0 ? `; topics: ${topics.join(", ")}` : "";
+  return `- ${candidate.publishedAt.toISOString().slice(0, 10)} — “${truncate(candidate.title, 150)}” — ${truncate(candidate.summary, 240)} (${truncate(persona, 80)}; ${relationship}${topicSuffix})`;
+}
+
+function leagueColumnFromGenerationKey(generationKey: string) {
+  const parts = generationKey.split(":");
+  const columnId = LEAGUE_COLUMN_KEYS.map(
+    (key) => LEAGUE_COLUMN_LINEUP[key],
+  ).find((column) => parts.includes(column.id))?.id;
+  return columnId ? leagueColumnForId(columnId) : null;
+}
+
+function readableGenerationType(generationKey: string): string {
+  const [contentType = "league assignment"] = generationKey.split(":");
+  return contentType.replaceAll("_", " ");
+}
+
+function leagueQueuedDigestLine(
+  assignment: QueuedLeagueAssignment,
+  currentPersona: AiPersona,
+): string {
+  const relationship =
+    assignment.persona === currentPersona
+      ? "same journalist"
+      : "contemporary assignment";
+  const column = leagueColumnFromGenerationKey(assignment.triggerKey);
+  if (column) {
+    return `- ${column.name} — ${truncate(column.formatContract, 240)} (${assignment.persona}; ${relationship})`;
+  }
+  return `- ${readableGenerationType(assignment.triggerKey)} — ${truncate(assignment.triggerKey, 160)} (${assignment.persona}; ${relationship})`;
+}
+
+function buildLeagueDigest({
+  currentPersona,
+  leagueId,
+  published,
+  queued,
+}: {
+  currentPersona: AiPersona;
+  leagueId: string;
+  published: readonly RankedLeagueRecallCandidate[];
+  queued: readonly QueuedLeagueAssignment[];
+}): string {
+  const publishedLines =
+    published.length > 0
+      ? published.map((candidate) =>
+          leaguePublishedDigestLine(candidate, currentPersona),
+        )
+      : ["- No published league coverage was found in the recent window."];
+  const queuedLines =
+    queued.length > 0
+      ? queued.map((assignment) =>
+          leagueQueuedDigestLine(assignment, currentPersona),
+        )
+      : ["- No other running league assignments are currently visible."];
+
+  return [
+    `EDITORIAL RECALL — LEAGUE PUBLICATION POOL (${leagueId})`,
+    "Coverage map only; this is not factual evidence. Use it to complement recent work, preserve a throughline, and avoid repeating prior headlines, theses, or angles.",
+    "",
+    "Recent published coverage (ranked by topic relevance and recency):",
+    ...publishedLines,
+    "",
+    "Queued/about-to-publish assignments visible in this league:",
+    ...queuedLines,
+  ].join("\n");
+}
+
 export async function buildCentralEditorialRecall(
   input: BuildCentralEditorialRecallInput,
 ): Promise<CentralPreGenerationContext> {
@@ -306,5 +491,121 @@ export async function buildCentralEditorialRecall(
     publicationPool: "central",
     publishedContentItemIds: published.map((candidate) => candidate.id),
     queuedGenerationKeys,
+  };
+}
+
+export async function buildLeagueEditorialRecall(
+  input: BuildLeagueEditorialRecallInput,
+): Promise<LeaguePreGenerationContext> {
+  const lookbackMs = Math.max(
+    60_000,
+    input.lookbackMs ?? LEAGUE_RECALL_LOOKBACK_MS,
+  );
+  const candidateLimit = normalizedLimit(
+    input.candidateLimit,
+    LEAGUE_RECALL_CANDIDATE_LIMIT,
+  );
+  const digestLimit = normalizedLimit(
+    input.digestLimit,
+    LEAGUE_RECALL_DIGEST_LIMIT,
+  );
+  const windowStart = new Date(input.now.getTime() - lookbackMs);
+  const queryEmbedding = await embedOrNull(
+    input.embeddings,
+    input.query.trim() || "league newsroom assignment",
+  );
+
+  const scoped = await withLeagueContext(
+    input.db,
+    input.leagueId,
+    async (tx) => {
+      const candidateRows = await tx
+        .select({
+          authorPersona: contentItems.authorPersona,
+          embedding: aiMemory.embedding,
+          id: contentItems.id,
+          metadata: contentItems.metadata,
+          publishedAt: contentItems.publishedAt,
+          summary: contentItems.summary,
+          title: contentItems.title,
+        })
+        .from(contentItems)
+        .leftJoin(
+          aiMemory,
+          and(
+            eq(aiMemory.contentItemId, contentItems.id),
+            eq(aiMemory.leagueId, input.leagueId),
+            eq(aiMemory.source, "blog_post"),
+            eq(aiMemory.embeddingModel, input.embeddings.model),
+            queryEmbedding
+              ? eq(aiMemory.embeddingDimensions, queryEmbedding.length)
+              : sql`false`,
+          ),
+        )
+        .where(
+          and(
+            eq(contentItems.leagueId, input.leagueId),
+            eq(contentItems.kind, "blog"),
+            contentItemIsPublished(),
+            gte(contentItems.publishedAt, windowStart),
+            lte(contentItems.publishedAt, input.now),
+          ),
+        )
+        .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
+        .limit(candidateLimit);
+      const queuedRows = await tx
+        .select({
+          persona: aiGenerationRuns.persona,
+          triggerKey: aiGenerationRuns.triggerKey,
+        })
+        .from(aiGenerationRuns)
+        .where(
+          and(
+            eq(aiGenerationRuns.leagueId, input.leagueId),
+            eq(aiGenerationRuns.status, "running"),
+            isNull(aiGenerationRuns.contentItemId),
+            input.currentGenerationRunId
+              ? ne(aiGenerationRuns.id, input.currentGenerationRunId)
+              : undefined,
+          ),
+        )
+        .orderBy(
+          desc(aiGenerationRuns.updatedAt),
+          desc(aiGenerationRuns.createdAt),
+        )
+        .limit(24);
+      return { candidateRows, queuedRows };
+    },
+  );
+
+  const candidates = [
+    ...new Map(
+      scoped.candidateRows.map((candidate) => [candidate.id, candidate]),
+    ).values(),
+  ];
+  const published = rankLeagueCandidates({
+    candidates,
+    lookbackMs,
+    now: input.now,
+    queryEmbedding,
+  }).slice(0, digestLimit);
+  const seenQueueKeys = new Set<string>();
+  const queued = scoped.queuedRows.filter((assignment) => {
+    if (seenQueueKeys.has(assignment.triggerKey)) return false;
+    seenQueueKeys.add(assignment.triggerKey);
+    return true;
+  });
+
+  return {
+    digest: buildLeagueDigest({
+      currentPersona: input.currentPersona,
+      leagueId: input.leagueId,
+      published,
+      queued,
+    }),
+    leagueId: input.leagueId,
+    publicationPool: "league",
+    publishedContentItemIds: published.map((candidate) => candidate.id),
+    queuedGenerationKeys: queued.map((assignment) => assignment.triggerKey),
   };
 }

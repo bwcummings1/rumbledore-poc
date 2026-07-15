@@ -62,6 +62,7 @@ function contextFixture(): LeagueBlogContext {
       toneVersion: persona.toneVersion,
     },
     priorPosts: [],
+    preGenerationContext: null,
     records: [],
     teams: [
       {

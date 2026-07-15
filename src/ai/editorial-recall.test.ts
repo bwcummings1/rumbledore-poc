@@ -5,10 +5,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { contentItems, leagues } from "@/db/schema";
+import { aiGenerationRuns, aiMemory, contentItems, leagues } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { centralGenerationKey } from "./central-generation-key";
-import { buildCentralEditorialRecall } from "./editorial-recall";
+import {
+  buildCentralEditorialRecall,
+  buildLeagueEditorialRecall,
+} from "./editorial-recall";
 import type { EmbeddingProvider } from "./interfaces";
 
 const marker = `central-recall-${randomUUID()}`;
@@ -175,5 +178,149 @@ describe("central editorial recall", () => {
     expect(recall.digest).toContain("Pre-waiver");
     expect(recall.digest).not.toContain("League-only pressure angle");
     expect(recall.digest).not.toContain("FULL BODY MUST NOT ENTER");
+  });
+
+  it("keeps league recall inside one RLS publication pool", async () => {
+    const createLeague = async (tag: string) => {
+      const [league] = await handle.db
+        .insert(leagues)
+        .values({
+          currentScoringPeriod: 1,
+          name: `${marker} ${tag}`,
+          provider: "espn",
+          providerLeagueId: `${marker}-${tag}`,
+          scoringType: "H2H_POINTS",
+          season: 2026,
+          size: 2,
+          sport: "ffl",
+          status: "in_season",
+        })
+        .returning({ id: leagues.id });
+      if (!league) throw new Error("league recall fixture was not inserted");
+      return league;
+    };
+    const leagueA = await createLeague("pool-a");
+    const leagueB = await createLeague("pool-b");
+    const embeddings = new TopicEmbeddingProvider();
+
+    const insertLeagueCoverage = async ({
+      leagueId,
+      summary,
+      tag,
+      title,
+      vector,
+    }: {
+      leagueId: string;
+      summary: string;
+      tag: string;
+      title: string;
+      vector: number[];
+    }) =>
+      withLeagueContext(handle.db, leagueId, async (tx) => {
+        const [item] = await tx
+          .insert(contentItems)
+          .values({
+            authorPersona: "narrator",
+            body: `FULL ${tag.toUpperCase()} BODY MUST STAY OUT OF RECALL`,
+            contentHash: `${marker}:${tag}:hash`,
+            dedupKey: `${marker}:${tag}`,
+            kind: "blog",
+            leagueId,
+            metadata: {
+              contentType: "weekly_recap",
+              leagueSection: "recaps",
+              tags: ["pressure", "rivalry"],
+            },
+            publishedAt: new Date(now.getTime() - 60 * 60_000),
+            summary,
+            title,
+          })
+          .returning({ id: contentItems.id });
+        if (!item) throw new Error("league coverage fixture was not inserted");
+        await tx.insert(aiMemory).values({
+          contentItemId: item.id,
+          embedding: vector,
+          embeddingDimensions: vector.length,
+          embeddingModel: embeddings.model,
+          leagueId,
+          metadata: { contentType: "weekly_recap" },
+          source: "blog_post",
+          textContent: `FULL ${tag.toUpperCase()} BODY MUST STAY OUT OF RECALL`,
+        });
+        return item;
+      });
+
+    const relevantA = await insertLeagueCoverage({
+      leagueId: leagueA.id,
+      summary:
+        "target-pressure-angle already made the rivalry history the lead.",
+      tag: "pool-a-relevant",
+      title: "The rivalry ledger framed Week 1",
+      vector: [1, 0],
+    });
+    const irrelevantA = await insertLeagueCoverage({
+      leagueId: leagueA.id,
+      summary: "A recent but unrelated waiver-budget notebook.",
+      tag: "pool-a-irrelevant",
+      title: "FAB balances after waivers",
+      vector: [0, 1],
+    });
+    const relevantB = await insertLeagueCoverage({
+      leagueId: leagueB.id,
+      summary: "target-pressure-angle belongs only to league B.",
+      tag: "pool-b-relevant",
+      title: "League B pressure notebook",
+      vector: [1, 0],
+    });
+    const central = await insertCentralCoverage({
+      publishedAt: new Date(now.getTime() - 30 * 60_000),
+      summary: "target-pressure-angle belongs only to the central pool.",
+      tag: "league-isolation-central",
+      title: "Central pressure notebook",
+    });
+    const queuedA =
+      "transaction_reaction:cron:mid-week:regular:1:waiver-summary";
+    const queuedB = "weekly_recap:cron:weekly-wrap:regular:1:the-wrap";
+    await withLeagueContext(handle.db, leagueA.id, (tx) =>
+      tx.insert(aiGenerationRuns).values({
+        leagueId: leagueA.id,
+        persona: "beat_reporter",
+        triggerKey: queuedA,
+      }),
+    );
+    await withLeagueContext(handle.db, leagueB.id, (tx) =>
+      tx.insert(aiGenerationRuns).values({
+        leagueId: leagueB.id,
+        persona: "narrator",
+        triggerKey: queuedB,
+      }),
+    );
+
+    const recall = await buildLeagueEditorialRecall({
+      currentPersona: "narrator",
+      db: handle.db,
+      digestLimit: 1,
+      embeddings,
+      leagueId: leagueA.id,
+      now,
+      query: "target-pressure-angle for the next league column",
+    });
+
+    expect(recall).toMatchObject({
+      leagueId: leagueA.id,
+      publicationPool: "league",
+      publishedContentItemIds: [relevantA.id],
+      queuedGenerationKeys: [queuedA],
+    });
+    expect(recall.publishedContentItemIds).not.toContain(irrelevantA.id);
+    expect(recall.publishedContentItemIds).not.toContain(relevantB.id);
+    expect(recall.publishedContentItemIds).not.toContain(central.id);
+    expect(recall.digest).toContain("The rivalry ledger framed Week 1");
+    expect(recall.digest).toContain("same journalist");
+    expect(recall.digest).toContain("Waiver Summary");
+    expect(recall.digest).not.toContain("League B pressure notebook");
+    expect(recall.digest).not.toContain("Central pressure notebook");
+    expect(recall.digest).not.toContain("FULL POOL-A-RELEVANT BODY");
+    expect(recall.queuedGenerationKeys).not.toContain(queuedB);
   });
 });

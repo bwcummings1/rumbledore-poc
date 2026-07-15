@@ -77,6 +77,7 @@ import {
   parseAiContentType,
   validateContentStructure,
 } from "./content-types";
+import { buildLeagueEditorialRecall } from "./editorial-recall";
 import { cosineSimilarity } from "./embedding-similarity";
 import type {
   BlogDraft,
@@ -1957,13 +1958,16 @@ export function buildPromptParts({
     blendedColumnData: context.blended ?? emptyBlendedColumnData(),
     currentScoringPeriod: context.league.currentScoringPeriod,
     duplicateNudge: duplicateNudge ?? null,
+    editorialRecall: context.preGenerationContext,
     generalNflContext: context.generalNfl,
     matchups: context.matchups ?? [],
-    priorPosts: context.priorPosts.map((post) => ({
-      publishedAt: post.publishedAt.toISOString(),
-      summary: post.summary,
-      title: post.title,
-    })),
+    priorPosts: context.preGenerationContext
+      ? []
+      : context.priorPosts.map((post) => ({
+          publishedAt: post.publishedAt.toISOString(),
+          summary: post.summary,
+          title: post.title,
+        })),
     trigger: context.trigger,
     triggerKey,
     untrustedNews: untrustedNewsBlock(newsItems),
@@ -3012,6 +3016,7 @@ async function prepareGeneration({
       matchups: columnContext.matchups,
       memory,
       persona,
+      preGenerationContext: null,
       priorPosts,
       records,
       teams,
@@ -3460,7 +3465,7 @@ export async function generateLeagueBlogPost({
     db: deps.db,
     league: prepared.context.league,
   });
-  const context: LeagueBlogContext = {
+  const contextWithoutRecall: LeagueBlogContext = {
     ...prepared.context,
     arena: await loadArenaContext({
       db: deps.db,
@@ -3474,6 +3479,28 @@ export async function generateLeagueBlogPost({
       week: prepared.context.league.currentScoringPeriod,
     }),
     generalNfl,
+  };
+  const column = columnFormat ? leagueColumnForId(columnFormat) : null;
+  const preGenerationContext = await buildLeagueEditorialRecall({
+    currentGenerationRunId: prepared.runId,
+    currentPersona: input.persona,
+    db: deps.db,
+    embeddings: deps.embeddings,
+    leagueId: input.leagueId,
+    now: now(deps),
+    query: [
+      column?.name,
+      column?.formatContract,
+      input.contentType.replaceAll("_", " "),
+      input.triggerKey,
+      ...contextWithoutRecall.teams.map((team) => team.name),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n"),
+  });
+  const context: LeagueBlogContext = {
+    ...contextWithoutRecall,
+    preGenerationContext,
   };
 
   let newsItems: NewsItem[] = [];
