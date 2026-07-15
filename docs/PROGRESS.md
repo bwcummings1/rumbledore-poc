@@ -1,8 +1,9 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-15 — **P1 editorial foundations complete on
-`ws/p1-editorial-foundations`: league lead signal + unified section assignment.**
+Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 1 complete:** league
+lead-story signal + unified section assignment (P1-FOUND) and owner-central curation gating — tone-editor +
+regenerate now platform-admin only (P1-CUR). Phase 2 (league column lineup) next.
 **Prior merged baseline:** full 2026-07-13 backlog (`specs/47` wave 1, F47 review fixes, P polish, Browserbase
 adapter, and Sleeper parity). Owner live smoke remains pending.
 **48S Sleeper parity (merged):** Sleeper now has provenance-backed decoding dictionaries, cached named-player
@@ -438,10 +439,14 @@ parity on `ws/48-sleeper-parity` for orchestrator review/merge. Gates remain man
   producers can collide within one league (deferred S6; live ingestion idempotency semantics intentionally unchanged).
 
 ## 8. Recent (loop log; newest first)
-- 2026-07-15: P1 editorial foundations — league lead signal + unified section assignment. League AI content now
-  carries deterministic editorial importance so upsets/blowouts, record milestones, and strong rivalry signals can
-  lead the Press over newer routine columns; league blog sections now resolve authoritatively from each content-type
-  template, with persona inference retained only as a legacy fallback and both existing section sets unchanged.
+- 2026-07-15: P1 editorial foundations (P1-FOUND) — league lead signal + unified section assignment. League AI
+  content now carries deterministic editorial importance so upsets/blowouts, record milestones, and strong rivalry
+  signals can lead the Press over newer routine columns; league blog sections now resolve authoritatively from each
+  content-type template, with persona inference retained only as a legacy fallback and both existing section sets
+  unchanged.
+- 2026-07-15: P1 curation gating (P1-CUR) — tone-editor + regenerate owner/platform-admin only. Commissioner/steward
+  callers are rejected before tone mutation, AI dependency construction, or regeneration; retract/correct behavior
+  remains unchanged pending an explicit owner decision.
 - 2026-07-13: Track 48S completed `specs/48` on `ws/48-sleeper-parity`: registered Sleeper decoding closure,
   cached player identity and weekly scoring depth, draft picks, bracket-derived final standings, history/fixture/e2e
   parity, and capability-honest schedule coverage. Two isolated public-league imports each passed all 14 integrity

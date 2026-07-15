@@ -109,14 +109,16 @@ test("LeagueCastView composes roster, insights, thread, and safe navigation", ()
   expect(
     screen.getByRole("link", { name: "The Press" }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/press");
-  expect(
-    screen.getByRole("link", { name: "Tone editor" }).getAttribute("href"),
-  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/cast/tone");
-});
-
-test("LeagueCastView hides the tone editor from members", () => {
-  render(<LeagueCastView data={{ ...data, userRole: "member" }} />);
-
   expect(screen.queryByRole("link", { name: "Tone editor" })).toBeNull();
   expect(screen.getByText("read-only")).toBeDefined();
 });
+
+test.each(["commissioner", "league_admin", "data_steward", "member"] as const)(
+  "LeagueCastView does not expose tone controls to league role %s",
+  (userRole) => {
+    render(<LeagueCastView data={{ ...data, userRole }} />);
+
+    expect(screen.queryByRole("link", { name: "Tone editor" })).toBeNull();
+    expect(screen.getByText("read-only")).toBeDefined();
+  },
+);

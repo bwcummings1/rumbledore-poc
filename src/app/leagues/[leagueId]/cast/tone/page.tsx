@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getLeagueToneProfileEditorData } from "@/ai";
-import { requireLeagueRole } from "@/auth/guards";
+import { isValidLeagueId, requirePlatformAdmin } from "@/auth/guards";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import {
@@ -31,17 +31,12 @@ export default async function LeagueCastTonePage({
   const { leagueId } = await params;
   const query = await searchParams;
   const db = getDb();
-  const access = await requireLeagueRole({
+  const access = await requirePlatformAdmin({
     db,
     headers: await headers(),
-    leagueId,
-    minRole: "data_steward",
   });
 
   if (!access.ok) {
-    if (access.error.code === "INVALID_LEAGUE_ID") {
-      notFound();
-    }
     if (access.error.status === 401) {
       redirectToLeagueDeepLinkOnboarding({
         leagueId,
@@ -51,10 +46,13 @@ export default async function LeagueCastTonePage({
     }
     return (
       <LeagueSectionAccessState
-        title="Steward access required"
-        body="Tone profiles are available to data stewards and commissioners."
+        title="Platform administrator access required"
+        body="Persona tone is centrally curated and is not configurable per league."
       />
     );
+  }
+  if (!isValidLeagueId(leagueId)) {
+    notFound();
   }
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
