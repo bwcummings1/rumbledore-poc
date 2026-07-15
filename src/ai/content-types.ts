@@ -59,9 +59,52 @@ export interface MatchupPreviewEntry {
   prediction: string;
 }
 
+export interface FantasyFridayStructure {
+  flashback: {
+    available: boolean;
+    fact: string;
+    season: number | null;
+  };
+  oddsOrPercentageChanges: {
+    after: number;
+    before: number;
+    market: string;
+    matchup: string;
+    summary: string;
+    unit: "implied_percentage" | "line";
+  }[];
+  thursdayNightSummaries: {
+    awayScore: number | null;
+    awayTeam: string;
+    homeScore: number | null;
+    homeTeam: string;
+    summary: string;
+  }[];
+}
+
+export interface PredictionsStructure {
+  matchups: {
+    endScore: {
+      opponentScore: number | null;
+      teamScore: number | null;
+    };
+    opponent: string;
+    playerPerformances: {
+      leagueTeam: string;
+      player: string;
+      predictedPerformance: string;
+      projectedPoints: number | null;
+    }[];
+    team: string;
+    writtenPrediction: string;
+  }[];
+}
+
 export interface MatchupPreviewStructure {
   type: "matchup_preview";
   matchups: MatchupPreviewEntry[];
+  fantasyFriday?: FantasyFridayStructure;
+  predictions?: PredictionsStructure;
 }
 
 export interface AwardSuperlativeEntry {
@@ -173,6 +216,7 @@ export interface ContentStructureValidationContext {
     holderName: string | null;
     previousHolderName?: string | null;
   }[];
+  players?: readonly string[];
 }
 
 export interface ContentTypeTemplate {
@@ -302,6 +346,17 @@ function nullableNumberValue(value: unknown, field: string): number | null {
   return number;
 }
 
+function nullableNonnegativeNumberValue(
+  value: unknown,
+  field: string,
+): number | null {
+  const number = nullableNumberValue(value, field);
+  if (number !== null && number < 0) {
+    throwStructureError(`${field} must be nonnegative or null`);
+  }
+  return number;
+}
+
 function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
@@ -344,6 +399,16 @@ function ensureKnownEntity(
     throwStructureError(
       `${field} must reference a real league team or manager`,
     );
+  }
+}
+
+function ensureKnownPlayer(
+  value: string,
+  context: ContentStructureValidationContext,
+  field: string,
+): void {
+  if (context.players && !context.players.includes(value)) {
+    throwStructureError(`${field} must reference a supplied player`);
   }
 }
 
@@ -478,9 +543,206 @@ function normalizePowerRankings(
   return { rankings, type: "power_rankings" };
 }
 
+function normalizeFantasyFriday(
+  value: unknown,
+  context: ContentStructureValidationContext,
+): FantasyFridayStructure {
+  const record = asRecord(value);
+  const flashbackRecord = asRecord(record.flashback);
+  const flashback = {
+    available: flashbackRecord.available,
+    fact: cleanText(flashbackRecord.fact),
+    season: nullableNonnegativeNumberValue(
+      flashbackRecord.season,
+      "matchup_preview.fantasyFriday.flashback.season",
+    ),
+  };
+  if (typeof flashback.available !== "boolean" || !flashback.fact) {
+    throwStructureError(
+      "Fantasy Friday requires a fully populated league flashback",
+    );
+  }
+  if (!flashback.available && flashback.season !== null) {
+    throwStructureError(
+      "Fantasy Friday unavailable flashbacks cannot claim a season",
+    );
+  }
+  if (
+    flashback.available &&
+    context.teams.length > 0 &&
+    ![...knownEntityNames(context)].some((name) =>
+      flashback.fact.includes(name),
+    )
+  ) {
+    throwStructureError(
+      "Fantasy Friday flashback must reference a supplied league entity",
+    );
+  }
+
+  const oddsOrPercentageChanges = arrayValue(
+    record.oddsOrPercentageChanges,
+  ).map<FantasyFridayStructure["oddsOrPercentageChanges"][number]>((value) => {
+    const change = asRecord(value);
+    const normalized = {
+      after: numberValue(change.after),
+      before: numberValue(change.before),
+      market: cleanText(change.market),
+      matchup: cleanText(change.matchup),
+      summary: cleanText(change.summary),
+      unit: change.unit,
+    };
+    if (
+      normalized.after === null ||
+      normalized.before === null ||
+      !normalized.market ||
+      !normalized.matchup ||
+      !normalized.summary ||
+      (normalized.unit !== "line" && normalized.unit !== "implied_percentage")
+    ) {
+      throwStructureError(
+        "Fantasy Friday odds or percentage changes must be fully populated",
+      );
+    }
+    return {
+      after: normalized.after,
+      before: normalized.before,
+      market: normalized.market,
+      matchup: normalized.matchup,
+      summary: normalized.summary,
+      unit: normalized.unit === "line" ? "line" : "implied_percentage",
+    };
+  });
+
+  const thursdayNightSummaries = arrayValue(record.thursdayNightSummaries).map(
+    (value) => {
+      const game = asRecord(value);
+      const normalized = {
+        awayScore: nullableNonnegativeNumberValue(
+          game.awayScore,
+          "matchup_preview.fantasyFriday.thursdayNightSummaries.awayScore",
+        ),
+        awayTeam: cleanText(game.awayTeam),
+        homeScore: nullableNonnegativeNumberValue(
+          game.homeScore,
+          "matchup_preview.fantasyFriday.thursdayNightSummaries.homeScore",
+        ),
+        homeTeam: cleanText(game.homeTeam),
+        summary: cleanText(game.summary),
+      };
+      if (!normalized.awayTeam || !normalized.homeTeam || !normalized.summary) {
+        throwStructureError(
+          "Fantasy Friday Thursday-night summaries must be fully populated",
+        );
+      }
+      if ((normalized.awayScore === null) !== (normalized.homeScore === null)) {
+        throwStructureError(
+          "Fantasy Friday Thursday-night scores must be both known or both null",
+        );
+      }
+      return normalized;
+    },
+  );
+
+  return {
+    flashback: {
+      available: flashback.available,
+      fact: flashback.fact,
+      season: flashback.season,
+    },
+    oddsOrPercentageChanges,
+    thursdayNightSummaries,
+  };
+}
+
+function normalizePredictions(
+  value: unknown,
+  context: ContentStructureValidationContext,
+): PredictionsStructure {
+  const record = asRecord(value);
+  const matchups = arrayValue(record.matchups).map((value) => {
+    const matchup = asRecord(value);
+    const endScoreRecord = asRecord(matchup.endScore);
+    const team = cleanText(matchup.team);
+    const opponent = cleanText(matchup.opponent);
+    const writtenPrediction = cleanText(matchup.writtenPrediction);
+    const endScore = {
+      opponentScore: nullableNonnegativeNumberValue(
+        endScoreRecord.opponentScore,
+        "matchup_preview.predictions.matchups.endScore.opponentScore",
+      ),
+      teamScore: nullableNonnegativeNumberValue(
+        endScoreRecord.teamScore,
+        "matchup_preview.predictions.matchups.endScore.teamScore",
+      ),
+    };
+    if (!team || !opponent || !writtenPrediction) {
+      throwStructureError(
+        "Predictions matchup entries must be fully populated",
+      );
+    }
+    if ((endScore.teamScore === null) !== (endScore.opponentScore === null)) {
+      throwStructureError(
+        "Predictions end scores must be both known or both null",
+      );
+    }
+    ensureKnownEntity(team, context, "matchup_preview.predictions.team");
+    ensureKnownEntity(
+      opponent,
+      context,
+      "matchup_preview.predictions.opponent",
+    );
+    const playerPerformances = arrayValue(matchup.playerPerformances).map(
+      (value) => {
+        const player = asRecord(value);
+        const normalized = {
+          leagueTeam: cleanText(player.leagueTeam),
+          player: cleanText(player.player),
+          predictedPerformance: cleanText(player.predictedPerformance),
+          projectedPoints: nullableNonnegativeNumberValue(
+            player.projectedPoints,
+            "matchup_preview.predictions.playerPerformances.projectedPoints",
+          ),
+        };
+        if (
+          !normalized.leagueTeam ||
+          !normalized.player ||
+          !normalized.predictedPerformance
+        ) {
+          throwStructureError(
+            "Predictions player-performance entries must be fully populated",
+          );
+        }
+        ensureKnownEntity(
+          normalized.leagueTeam,
+          context,
+          "matchup_preview.predictions.playerPerformances.leagueTeam",
+        );
+        ensureKnownPlayer(
+          normalized.player,
+          context,
+          "matchup_preview.predictions.playerPerformances.player",
+        );
+        return normalized;
+      },
+    );
+    return {
+      endScore,
+      opponent,
+      playerPerformances,
+      team,
+      writtenPrediction,
+    };
+  });
+  if (matchups.length === 0 && context.teams.length > 0) {
+    throwStructureError("Predictions must include at least one matchup");
+  }
+  return { matchups };
+}
+
 function normalizeMatchupPreview(
   structure: unknown,
   context: ContentStructureValidationContext,
+  columnFormat: LeagueColumnId | null,
 ): MatchupPreviewStructure {
   const record = asRecord(structure);
   const matchups = arrayValue(record.matchups).map((value) => {
@@ -512,7 +774,28 @@ function normalizeMatchupPreview(
     throwStructureError("matchup_preview must include at least one matchup");
   }
 
-  return { matchups, type: "matchup_preview" };
+  const fantasyFriday = record.fantasyFriday
+    ? normalizeFantasyFriday(record.fantasyFriday, context)
+    : null;
+  const predictions = record.predictions
+    ? normalizePredictions(record.predictions, context)
+    : null;
+  if (columnFormat === "fantasy-friday" && !fantasyFriday) {
+    throwStructureError(
+      "Fantasy Friday matchup_preview requires a fantasyFriday section",
+    );
+  }
+  if (columnFormat === "predictions" && !predictions) {
+    throwStructureError(
+      "Predictions matchup_preview requires a predictions section",
+    );
+  }
+  return {
+    matchups,
+    ...(fantasyFriday ? { fantasyFriday } : {}),
+    ...(predictions ? { predictions } : {}),
+    type: "matchup_preview",
+  };
 }
 
 function normalizeAwardsSuperlatives(
@@ -858,7 +1141,7 @@ export function validateContentStructure({
     case "power_rankings":
       return normalizePowerRankings(record, context);
     case "matchup_preview":
-      return normalizeMatchupPreview(record, context);
+      return normalizeMatchupPreview(record, context, columnFormat);
     case "awards_superlatives":
       return normalizeAwardsSuperlatives(record, context);
     case "transaction_reaction":

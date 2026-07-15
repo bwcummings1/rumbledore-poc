@@ -8,6 +8,7 @@ import {
   type LeaguePersonaCard,
   type LlmClient,
 } from "@/ai";
+import type { LeagueColumnId } from "@/ai/league-columns";
 import type { PromptTemplate } from "@/ai/prompt-templates";
 
 export interface EvalLeagueFixture {
@@ -413,11 +414,13 @@ export function contextFor({
 }
 
 export async function generateEvalDraft({
+  columnFormat,
   contentType,
   context,
   llm,
   template,
 }: {
+  columnFormat?: LeagueColumnId | null;
   contentType: AiContentType;
   context: LeagueBlogContext;
   llm: LlmClient;
@@ -432,6 +435,7 @@ export async function generateEvalDraft({
   });
   return llm.generate({
     attempt: 1,
+    columnFormat: columnFormat ?? null,
     contentType,
     context,
     newsItems: [],

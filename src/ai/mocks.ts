@@ -7,10 +7,12 @@ import type {
   ArenaRecapStructure,
   AwardsSuperlativesStructure,
   BlogContentStructure,
+  FantasyFridayStructure,
   InstigationColumnStructure,
   MatchupPreviewStructure,
   MilestoneRecordStructure,
   PowerRankingsStructure,
+  PredictionsStructure,
   RivalryPieceStructure,
   SeasonArcStructure,
   TransactionReactionStructure,
@@ -271,32 +273,206 @@ function powerRankingsStructure({
   };
 }
 
-function matchupPreviewStructure({
-  teams,
-}: {
-  teams: LeagueContextTeam[];
-}): MatchupPreviewStructure {
+function matchupProjectionFor(
+  request: LlmGenerateRequest,
+  team: string,
+  opponent: string,
+) {
+  return request.context.blended?.matchupProjections.find(
+    (projection) =>
+      (projection.team === team && projection.opponent === opponent) ||
+      (projection.team === opponent && projection.opponent === team),
+  );
+}
+
+function teamProjectionFromMatchup(
+  projection: NonNullable<
+    LlmGenerateRequest["context"]["blended"]
+  >["matchupProjections"][number],
+  team: string,
+): number | null {
+  return projection.team === team
+    ? projection.teamProjectedScore
+    : projection.opponentProjectedScore;
+}
+
+function matchupPreviewStructure(
+  request: LlmGenerateRequest,
+): MatchupPreviewStructure {
+  const teams = request.context.teams;
   const ordered = rankedTeams(teams);
   const fallback = ordered[0] ?? null;
+  const scheduledMatchups = request.context.matchups ?? [];
+  const useScheduledMatchups =
+    request.columnFormat === "tale-of-the-tape" ||
+    request.columnFormat === "fantasy-friday" ||
+    request.columnFormat === "predictions";
   const matchups =
-    ordered.length === 0
-      ? []
-      : ordered.map((team, index) => {
-          const nextOpponent = ordered[(index + 1) % ordered.length];
-          let opponent = nextOpponent;
-          if (!opponent) {
-            opponent = fallback ?? team;
-          }
+    useScheduledMatchups && scheduledMatchups.length > 0
+      ? scheduledMatchups.map((matchup) => {
+          const projection = matchupProjectionFor(
+            request,
+            matchup.homeTeam,
+            matchup.awayTeam,
+          );
+          const homeProjection = projection
+            ? teamProjectionFromMatchup(projection, matchup.homeTeam)
+            : null;
+          const awayProjection = projection
+            ? teamProjectionFromMatchup(projection, matchup.awayTeam)
+            : null;
+          const centralPlayer = request.context.generalNfl.facts.find(
+            (fact) =>
+              fact.roster.leagueTeamName === matchup.homeTeam ||
+              fact.roster.leagueTeamName === matchup.awayTeam,
+          );
+          const oddsSignal = request.context.blended?.oddsSignals[0];
           return {
-            edge: `${team.name} has the points-for edge at ${team.pointsFor}.`,
-            keyNumber: `${team.pointsFor} points for`,
-            opponent: opponent.name,
-            prediction: `${team.name} is the lean, not a lock, because this is still fantasy football.`,
-            team: team.name,
-            xFactor: firstManager(team),
+            edge:
+              homeProjection !== null && awayProjection !== null
+                ? `${matchup.homeTeam} projects for ${formatStatNumber(homeProjection)} against ${formatStatNumber(awayProjection)} for ${matchup.awayTeam}.`
+                : `${matchup.homeTeam} vs ${matchup.awayTeam} has no supplied team projection edge.`,
+            keyNumber: oddsSignal
+              ? `Central ${oddsSignal.market} ${oddsSignal.unit.replace("_", " ")}: ${formatStatNumber(oddsSignal.after)}`
+              : "Central odds or percentage unavailable",
+            opponent: matchup.awayTeam,
+            prediction:
+              homeProjection !== null && awayProjection !== null
+                ? `${homeProjection >= awayProjection ? matchup.homeTeam : matchup.awayTeam} is the projection-backed lean, not a lock.`
+                : `${matchup.homeTeam} vs ${matchup.awayTeam} stays a cautious lean without supplied projections.`,
+            team: matchup.homeTeam,
+            xFactor: centralPlayer
+              ? `${centralPlayer.player.fullName}'s supplied general-NFL form`
+              : "No roster-matched general-NFL player fact was supplied",
           };
-        });
+        })
+      : ordered.length === 0
+        ? []
+        : ordered.map((team, index) => {
+            const nextOpponent = ordered[(index + 1) % ordered.length];
+            let opponent = nextOpponent;
+            if (!opponent) {
+              opponent = fallback ?? team;
+            }
+            return {
+              edge: `${team.name} has the points-for edge at ${team.pointsFor}.`,
+              keyNumber: `${team.pointsFor} points for`,
+              opponent: opponent.name,
+              prediction: `${team.name} is the lean, not a lock, because this is still fantasy football.`,
+              team: team.name,
+              xFactor: firstManager(team),
+            };
+          });
   return { matchups, type: "matchup_preview" };
+}
+
+function fantasyFridayStructure(
+  request: LlmGenerateRequest,
+): FantasyFridayStructure {
+  const blended = request.context.blended;
+  const record = request.context.records.find((candidate) =>
+    Boolean(candidate.holderName),
+  );
+  const thursdayNightSummaries = (blended?.thursdayNightGames ?? []).map(
+    (game) => ({
+      awayScore: game.awayScore,
+      awayTeam: game.awayTeam,
+      homeScore: game.homeScore,
+      homeTeam: game.homeTeam,
+      summary:
+        game.awayScore !== null && game.homeScore !== null
+          ? `${game.awayTeam} at ${game.homeTeam} finished ${game.awayScore}-${game.homeScore}.`
+          : `${game.awayTeam} at ${game.homeTeam} is ${game.status}; no final score was supplied.`,
+    }),
+  );
+  const oddsOrPercentageChanges = (blended?.oddsSignals ?? [])
+    .filter((signal) => signal.changed)
+    .map((signal) => ({
+      after: signal.after,
+      before: signal.before,
+      market: signal.market,
+      matchup: signal.event,
+      summary: `${signal.event} ${signal.market} moved from ${formatStatNumber(signal.before)} to ${formatStatNumber(signal.after)} ${signal.unit.replace("_", " ")}.`,
+      unit: signal.unit,
+    }));
+  return {
+    flashback: record?.holderName
+      ? {
+          available: true,
+          fact: `${record.holderName} posted ${formatStatNumber(record.value)} for ${record.label}${record.season === null ? "" : ` in ${record.season}`}.`,
+          season: record.season,
+        }
+      : {
+          available: false,
+          fact: "No supplied league-history record was available for this Friday flashback.",
+          season: null,
+        },
+    oddsOrPercentageChanges,
+    thursdayNightSummaries,
+  };
+}
+
+function playerPredictionsForMatchup(
+  request: LlmGenerateRequest,
+  team: string,
+  opponent: string,
+): PredictionsStructure["matchups"][number]["playerPerformances"] {
+  const leagueTeams = new Set([team, opponent]);
+  return (request.context.blended?.playerProjections ?? [])
+    .filter((projection) => leagueTeams.has(projection.leagueTeam))
+    .slice(0, 4)
+    .map((projection) => {
+      const generalFact = request.context.generalNfl.facts.find(
+        (fact) =>
+          fact.player.fullName === projection.player &&
+          fact.roster.leagueTeamName === projection.leagueTeam,
+      );
+      const suppliedPerformance = generalFact?.latestWeek
+        ? `${formatStatNumber(generalFact.latestWeek.fantasyPoints)} fantasy points in supplied Week ${generalFact.latestWeek.week} general-NFL stats`
+        : "no roster-matched weekly general-NFL stat was supplied";
+      return {
+        leagueTeam: projection.leagueTeam,
+        player: projection.player,
+        predictedPerformance:
+          projection.projectedPoints === null
+            ? `${projection.player} has ${suppliedPerformance}; no point projection was supplied.`
+            : `${projection.player} is projected for ${formatStatNumber(projection.projectedPoints)} points after ${suppliedPerformance}.`,
+        projectedPoints: projection.projectedPoints,
+      };
+    });
+}
+
+function predictionsStructure(
+  request: LlmGenerateRequest,
+  structure: MatchupPreviewStructure,
+): PredictionsStructure {
+  return {
+    matchups: structure.matchups.map((matchup) => {
+      const projection = matchupProjectionFor(
+        request,
+        matchup.team,
+        matchup.opponent,
+      );
+      return {
+        endScore: {
+          opponentScore: projection
+            ? teamProjectionFromMatchup(projection, matchup.opponent)
+            : null,
+          teamScore: projection
+            ? teamProjectionFromMatchup(projection, matchup.team)
+            : null,
+        },
+        opponent: matchup.opponent,
+        playerPerformances: playerPredictionsForMatchup(
+          request,
+          matchup.team,
+          matchup.opponent,
+        ),
+        team: matchup.team,
+        writtenPrediction: matchup.prediction,
+      };
+    }),
+  };
 }
 
 function awardsSuperlativesStructure({
@@ -588,8 +764,22 @@ function structureForRequest(
     }
     case "power_rankings":
       return powerRankingsStructure({ attempt: request.attempt, teams });
-    case "matchup_preview":
-      return matchupPreviewStructure({ teams });
+    case "matchup_preview": {
+      const matchupPreview = matchupPreviewStructure(request);
+      if (request.columnFormat === "fantasy-friday") {
+        return {
+          ...matchupPreview,
+          fantasyFriday: fantasyFridayStructure(request),
+        };
+      }
+      if (request.columnFormat === "predictions") {
+        return {
+          ...matchupPreview,
+          predictions: predictionsStructure(request, matchupPreview),
+        };
+      }
+      return matchupPreview;
+    }
     case "awards_superlatives":
       return awardsSuperlativesStructure({ record, team, teams });
     case "transaction_reaction": {
@@ -695,7 +885,41 @@ function blocksForStructure(
         },
         { text: performsLine, type: "paragraph" },
       ];
-    case "matchup_preview":
+    case "matchup_preview": {
+      const fantasyFridayBlocks = structure.fantasyFriday
+        ? [
+            {
+              items: [
+                ...structure.fantasyFriday.thursdayNightSummaries.map(
+                  (game) => game.summary,
+                ),
+                ...structure.fantasyFriday.oddsOrPercentageChanges.map(
+                  (change) => change.summary,
+                ),
+                `League flashback: ${structure.fantasyFriday.flashback.fact}`,
+              ],
+              type: "list" as const,
+            },
+          ]
+        : [];
+      const predictionBlocks = structure.predictions
+        ? [
+            {
+              items: structure.predictions.matchups.map((matchup) => {
+                const score =
+                  matchup.endScore.teamScore === null ||
+                  matchup.endScore.opponentScore === null
+                    ? "end-score projection unavailable"
+                    : `${matchup.team} ${formatStatNumber(matchup.endScore.teamScore)}, ${matchup.opponent} ${formatStatNumber(matchup.endScore.opponentScore)}`;
+                const players = matchup.playerPerformances
+                  .map((player) => player.predictedPerformance)
+                  .join(" ");
+                return `${matchup.writtenPrediction} End score: ${score}. ${players || "No supplied player-performance projection was available."}`;
+              }),
+              type: "list" as const,
+            },
+          ]
+        : [];
       return [
         { text: `${personaName}'s matchup preview`, type: "heading" },
         { text: personaLine, type: "paragraph" },
@@ -707,11 +931,14 @@ function blocksForStructure(
           ),
           type: "list",
         },
+        ...fantasyFridayBlocks,
+        ...predictionBlocks,
         {
           text: "Predictions stay hedged because the fixture only trusts league-owned facts.",
           type: "paragraph",
         },
       ];
+    }
     case "awards_superlatives":
       return [
         { text: `${personaName}'s weekly awards`, type: "heading" },

@@ -356,6 +356,46 @@ export interface LeagueContextMatchup {
   status: "scheduled" | "in_progress" | "final" | "unknown";
 }
 
+export interface LeagueContextMatchupProjection {
+  opponent: string;
+  opponentProjectedScore: number | null;
+  team: string;
+  teamProjectedScore: number | null;
+}
+
+export interface LeagueContextPlayerProjection {
+  leagueTeam: string;
+  player: string;
+  position: string | null;
+  proTeam: string | null;
+  projectedPoints: number | null;
+}
+
+export interface LeagueContextThursdayNightGame {
+  awayScore: number | null;
+  awayTeam: string;
+  gameTime: string;
+  homeScore: number | null;
+  homeTeam: string;
+  status: "scheduled" | "in_progress" | "final";
+}
+
+export interface LeagueContextOddsSignal {
+  after: number;
+  before: number;
+  changed: boolean;
+  event: string;
+  market: string;
+  unit: "implied_percentage" | "line";
+}
+
+export interface LeagueContextBlendedColumnData {
+  matchupProjections: LeagueContextMatchupProjection[];
+  oddsSignals: LeagueContextOddsSignal[];
+  playerProjections: LeagueContextPlayerProjection[];
+  thursdayNightGames: LeagueContextThursdayNightGame[];
+}
+
 export interface LeagueContextWaiverMove {
   fabRemaining: number | null;
   fabSpent: number | null;
@@ -405,6 +445,7 @@ export interface LeagueBlogContext {
   memory: LeagueContextMemory[];
   trigger: LeagueContextTrigger;
   arena: LeagueContextArena;
+  blended?: LeagueContextBlendedColumnData;
   generalNfl: LeagueContextGeneralNfl;
   matchups?: LeagueContextMatchup[];
   waivers?: LeagueContextWaivers;

@@ -5,8 +5,10 @@ import {
   assertLlmJudgeScorePasses,
   CONTENT_TYPE_TEMPLATES,
   DEFAULT_LLM_JUDGE_RUBRIC,
+  type LeagueBlogContext,
   MockLlmClient,
   MockLlmJudge,
+  validateContentStructure,
 } from "@/ai";
 import {
   getPersonalAgentAnswer,
@@ -203,6 +205,148 @@ describe("offline AI judge eval gate", () => {
         );
         assertLlmJudgeScorePasses({
           label: `${fixture.leagueName}:${contentType}`,
+          score,
+        });
+      }
+    }
+  });
+
+  it("passes Fantasy Friday and Predictions structured fixtures without cross-league leakage", async () => {
+    const llm = new MockLlmClient();
+    const judge = new MockLlmJudge();
+
+    for (const fixture of EVAL_LEAGUE_FIXTURES) {
+      const otherFixture =
+        fixture.leagueId === league95050.leagueId
+          ? isolationLeague
+          : league95050;
+      for (const scheduled of [
+        {
+          cadence: "post-odds-refresh",
+          columnFormat: "fantasy-friday" as const,
+          persona: "betting_advisor" as const,
+        },
+        {
+          cadence: "weekly-preview",
+          columnFormat: "predictions" as const,
+          persona: "analyst" as const,
+        },
+      ]) {
+        const base = contextFor({ fixture, persona: scheduled.persona });
+        const player = base.generalNfl.facts[0]?.player.fullName;
+        if (!player) {
+          throw new Error(`${fixture.leagueName} has no blended player fact`);
+        }
+        const context: LeagueBlogContext = {
+          ...base,
+          blended: {
+            matchupProjections: [
+              {
+                opponent: fixture.secondaryTeam,
+                opponentProjectedScore: 107.8,
+                team: fixture.primaryTeam,
+                teamProjectedScore: 121.4,
+              },
+            ],
+            oddsSignals: [
+              {
+                after: 61.54,
+                before: 58.33,
+                changed: true,
+                event: "KC at DAL",
+                market: "moneyline",
+                unit: "implied_percentage",
+              },
+            ],
+            playerProjections: [
+              {
+                leagueTeam: fixture.primaryTeam,
+                player,
+                position: base.generalNfl.facts[0]?.player.position ?? null,
+                proTeam: base.generalNfl.facts[0]?.player.team ?? null,
+                projectedPoints: 24.2,
+              },
+            ],
+            thursdayNightGames: [
+              {
+                awayScore: 28,
+                awayTeam: "KC",
+                gameTime: "2026-09-20T00:20:00.000Z",
+                homeScore: 30,
+                homeTeam: "DAL",
+                status: "final",
+              },
+            ],
+          },
+          matchups: [
+            {
+              awayScore: 98.2,
+              awayTeam: fixture.secondaryTeam,
+              homeScore: 104.6,
+              homeTeam: fixture.primaryTeam,
+              status: "in_progress",
+            },
+          ],
+          trigger: {
+            ...base.trigger,
+            cadence: {
+              cadence: scheduled.cadence,
+              columnFormat: scheduled.columnFormat,
+              event: null,
+              gamePhase: "pre_kickoff",
+              phase: "regular",
+              seasonWeek: 10,
+              source: "scheduled",
+              stakes: ["weekly_decision_window"],
+              weekToken: "10",
+            },
+          },
+        };
+        const draft = await generateEvalDraft({
+          columnFormat: scheduled.columnFormat,
+          contentType: "matchup_preview",
+          context,
+          llm,
+        });
+        const validated = validateContentStructure({
+          columnFormat: scheduled.columnFormat,
+          contentType: "matchup_preview",
+          context: { ...context, players: [player] },
+          structure: draft.structure,
+        });
+        expect(validated.type).toBe("matchup_preview");
+        if (validated.type !== "matchup_preview") {
+          throw new Error("expected a matchup preview structure");
+        }
+        if (scheduled.columnFormat === "fantasy-friday") {
+          expect(validated.fantasyFriday).toMatchObject({
+            flashback: { available: true, season: 2024 },
+            oddsOrPercentageChanges: [
+              { matchup: "KC at DAL", unit: "implied_percentage" },
+            ],
+            thursdayNightSummaries: [{ awayTeam: "KC", homeTeam: "DAL" }],
+          });
+        } else {
+          expect(validated.predictions).toMatchObject({
+            matchups: [
+              {
+                endScore: { opponentScore: 107.8, teamScore: 121.4 },
+                playerPerformances: [{ player, projectedPoints: 24.2 }],
+              },
+            ],
+          });
+        }
+        const score = await judge.score({
+          leagueFacts: {
+            context,
+            otherLeagueEntityTokens: fixtureTokens(otherFixture),
+          },
+          piece: draft,
+          rubric: DEFAULT_LLM_JUDGE_RUBRIC,
+        });
+        expect(score.leakage).toBe(false);
+        assertLlmJudgeScorePasses({
+          label: `${fixture.leagueName}:${scheduled.columnFormat}`,
           score,
         });
       }

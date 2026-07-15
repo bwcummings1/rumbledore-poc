@@ -139,6 +139,73 @@ const weeklyRecapStructureSchema = z.object({
   upsetOrBlowout: z.string().trim().min(1),
 });
 
+const fantasyFridaySchema = z.object({
+  flashback: z.object({
+    available: z.boolean(),
+    fact: z.string().trim().min(1),
+    season: z.number().int().nonnegative().nullable(),
+  }),
+  oddsOrPercentageChanges: z.array(
+    z.object({
+      after: z.number().finite(),
+      before: z.number().finite(),
+      market: z.string().trim().min(1),
+      matchup: z.string().trim().min(1),
+      summary: z.string().trim().min(1),
+      unit: z.enum(["implied_percentage", "line"]),
+    }),
+  ),
+  thursdayNightSummaries: z.array(
+    z.object({
+      awayScore: z.number().finite().nonnegative().nullable(),
+      awayTeam: z.string().trim().min(1),
+      homeScore: z.number().finite().nonnegative().nullable(),
+      homeTeam: z.string().trim().min(1),
+      summary: z.string().trim().min(1),
+    }),
+  ),
+});
+
+const predictionsSchema = z.object({
+  matchups: z.array(
+    z.object({
+      endScore: z.object({
+        opponentScore: z.number().finite().nonnegative().nullable(),
+        teamScore: z.number().finite().nonnegative().nullable(),
+      }),
+      opponent: z.string().trim().min(1),
+      playerPerformances: z.array(
+        z.object({
+          leagueTeam: z.string().trim().min(1),
+          player: z.string().trim().min(1),
+          predictedPerformance: z.string().trim().min(1),
+          projectedPoints: z.number().finite().nonnegative().nullable(),
+        }),
+      ),
+      team: z.string().trim().min(1),
+      writtenPrediction: z.string().trim().min(1),
+    }),
+  ),
+});
+
+const matchupPreviewStructureSchema = z.object({
+  fantasyFriday: fantasyFridaySchema.optional(),
+  matchups: z
+    .array(
+      z.object({
+        edge: z.string().trim().min(1),
+        keyNumber: z.string().trim().min(1),
+        opponent: z.string().trim().min(1),
+        prediction: z.string().trim().min(1),
+        team: z.string().trim().min(1),
+        xFactor: z.string().trim().min(1),
+      }),
+    )
+    .min(1),
+  predictions: predictionsSchema.optional(),
+  type: z.literal("matchup_preview"),
+});
+
 const structureSchemas = {
   arena_recap: z.object({
     biggestMovers: z.array(z.string().trim().min(1)).min(1),
@@ -168,21 +235,7 @@ const structureSchemas = {
     twoSides: z.array(z.string().trim().min(1)).min(2),
     type: z.literal("instigation_column"),
   }),
-  matchup_preview: z.object({
-    matchups: z
-      .array(
-        z.object({
-          edge: z.string().trim().min(1),
-          keyNumber: z.string().trim().min(1),
-          opponent: z.string().trim().min(1),
-          prediction: z.string().trim().min(1),
-          team: z.string().trim().min(1),
-          xFactor: z.string().trim().min(1),
-        }),
-      )
-      .min(1),
-    type: z.literal("matchup_preview"),
-  }),
+  matchup_preview: matchupPreviewStructureSchema,
   milestone_record: z.object({
     legend: z.string().trim().min(1),
     math: z.string().trim().min(1),
@@ -261,7 +314,17 @@ function blogDraftSchemaForRequest(
         ? transactionReactionStructureSchema.extend({
             waiverSummary: waiverSummarySchema,
           })
-        : structureSchemas[request.contentType];
+        : request.columnFormat === "fantasy-friday" &&
+            request.contentType === "matchup_preview"
+          ? matchupPreviewStructureSchema.extend({
+              fantasyFriday: fantasyFridaySchema,
+            })
+          : request.columnFormat === "predictions" &&
+              request.contentType === "matchup_preview"
+            ? matchupPreviewStructureSchema.extend({
+                predictions: predictionsSchema,
+              })
+            : structureSchemas[request.contentType];
   return z.object({
     ...baseBlogDraftSchemaFields,
     contentType: z.literal(request.contentType),

@@ -295,6 +295,77 @@ describe("AnthropicLlmClient", () => {
           winner: "Fixture Team",
         },
       },
+      {
+        columnFormat: "fantasy-friday" as const,
+        contentType: "matchup_preview" as const,
+        extension: {
+          fantasyFriday: {
+            flashback: {
+              available: false,
+              fact: "No supplied league-history record was available.",
+              season: null,
+            },
+            oddsOrPercentageChanges: [],
+            thursdayNightSummaries: [],
+          },
+        },
+        section: "previews",
+        structure: {
+          matchups: [
+            {
+              edge: "Fixture Team has the supplied edge.",
+              keyNumber: "120 projected points",
+              opponent: "Fixture Opponent",
+              prediction: "Fixture Team is the lean.",
+              team: "Fixture Team",
+              xFactor: "Fixture Manager",
+            },
+          ],
+          type: "matchup_preview",
+        },
+      },
+      {
+        columnFormat: "predictions" as const,
+        contentType: "matchup_preview" as const,
+        extension: {
+          predictions: {
+            matchups: [
+              {
+                endScore: {
+                  opponentScore: 109.2,
+                  teamScore: 121.4,
+                },
+                opponent: "Fixture Opponent",
+                playerPerformances: [
+                  {
+                    leagueTeam: "Fixture Team",
+                    player: "Fixture Quarterback",
+                    predictedPerformance:
+                      "Fixture Quarterback projects for 24.2 points.",
+                    projectedPoints: 24.2,
+                  },
+                ],
+                team: "Fixture Team",
+                writtenPrediction: "Fixture Team is the supplied lean.",
+              },
+            ],
+          },
+        },
+        section: "previews",
+        structure: {
+          matchups: [
+            {
+              edge: "Fixture Team has the supplied edge.",
+              keyNumber: "120 projected points",
+              opponent: "Fixture Opponent",
+              prediction: "Fixture Team is the lean.",
+              team: "Fixture Team",
+              xFactor: "Fixture Quarterback",
+            },
+          ],
+          type: "matchup_preview",
+        },
+      },
     ];
 
     for (const testCase of cases) {

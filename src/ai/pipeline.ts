@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getArenaLeaderboardData } from "@/betting/arena";
 import {
   contentItemIsPublished,
@@ -17,6 +17,8 @@ import {
   aiPersonaCards,
   allTimeRecords,
   members as authMembers,
+  bettingEvents,
+  bettingMarkets,
   contentItems,
   dataIntegrityChecks,
   fantasyMatchups,
@@ -32,6 +34,7 @@ import {
   leagues,
   loreClaims,
   loreVerifications,
+  oddsSnapshots,
   persons,
   polls,
 } from "@/db/schema";
@@ -82,6 +85,7 @@ import type {
   LeagueContextArena,
   LeagueContextArenaMover,
   LeagueContextArenaStanding,
+  LeagueContextBlendedColumnData,
   LeagueContextCadenceFrame,
   LeagueContextCanonLore,
   LeagueContextCorrection,
@@ -92,9 +96,11 @@ import type {
   LeagueContextLore,
   LeagueContextLoreClaim,
   LeagueContextMatchup,
+  LeagueContextMatchupProjection,
   LeagueContextMemory,
   LeagueContextPendingLore,
   LeagueContextPerson,
+  LeagueContextPlayerProjection,
   LeagueContextPoll,
   LeagueContextRefutedLore,
   LeagueContextRivalry,
@@ -840,6 +846,15 @@ function emptyWaiverContext(): LeagueContextWaivers {
   return { fabBudget: null, moves: [] };
 }
 
+function emptyBlendedColumnData(): LeagueContextBlendedColumnData {
+  return {
+    matchupProjections: [],
+    oddsSignals: [],
+    playerProjections: [],
+    thursdayNightGames: [],
+  };
+}
+
 function fabAmountFromDetails(details: Record<string, unknown>): number | null {
   const value = details.bidAmount;
   const amount =
@@ -862,16 +877,27 @@ async function loadScheduledColumnContext({
   teams: readonly { name: string; providerTeamId: string }[];
   tx: LeagueScopedTx;
 }): Promise<{
+  blended: LeagueContextBlendedColumnData;
   matchups: LeagueContextMatchup[];
   waivers: LeagueContextWaivers;
 }> {
   const teamsByProviderId = new Map(
     teams.map((team) => [team.providerTeamId, team.name]),
   );
+  const blended = emptyBlendedColumnData();
   let matchups: LeagueContextMatchup[] = [];
   let waivers = emptyWaiverContext();
+  const usesLeagueMatchups =
+    columnFormat === "the-wrap" ||
+    columnFormat === "tale-of-the-tape" ||
+    columnFormat === "fantasy-friday" ||
+    columnFormat === "predictions";
+  const usesBlendedData =
+    columnFormat === "tale-of-the-tape" ||
+    columnFormat === "fantasy-friday" ||
+    columnFormat === "predictions";
 
-  if (columnFormat === "the-wrap") {
+  if (usesLeagueMatchups) {
     const rows = await tx
       .select({
         awayScore: fantasyMatchups.awayScore,
@@ -908,6 +934,104 @@ async function loadScheduledColumnContext({
           ]
         : [];
     });
+  }
+
+  if (usesBlendedData) {
+    const projectionRows = await tx
+      .select({
+        fantasyPlayerName: fantasyPlayers.fullName,
+        fantasyPlayerPosition: fantasyPlayers.position,
+        fantasyPlayerProTeam: fantasyPlayers.proTeam,
+        metadata: fantasyRosterEntries.metadata,
+        projectedPoints: fantasyRosterEntries.projectedPoints,
+        providerPlayerId: fantasyRosterEntries.providerPlayerId,
+        providerTeamId: fantasyRosterEntries.providerTeamId,
+        started: fantasyRosterEntries.started,
+      })
+      .from(fantasyRosterEntries)
+      .leftJoin(
+        fantasyPlayers,
+        and(
+          eq(fantasyPlayers.leagueId, fantasyRosterEntries.leagueId),
+          eq(fantasyPlayers.provider, fantasyRosterEntries.provider),
+          eq(
+            fantasyPlayers.leagueProviderId,
+            fantasyRosterEntries.leagueProviderId,
+          ),
+          eq(
+            fantasyPlayers.providerPlayerId,
+            fantasyRosterEntries.providerPlayerId,
+          ),
+        ),
+      )
+      .where(
+        and(
+          eq(fantasyRosterEntries.leagueId, league.id),
+          eq(fantasyRosterEntries.leagueProviderId, league.providerLeagueId),
+          eq(fantasyRosterEntries.season, league.season),
+          eq(fantasyRosterEntries.scoringPeriod, league.currentScoringPeriod),
+        ),
+      )
+      .orderBy(
+        desc(fantasyRosterEntries.started),
+        fantasyRosterEntries.providerTeamId,
+        fantasyRosterEntries.slot,
+        fantasyRosterEntries.providerPlayerId,
+      )
+      .limit(240);
+    const projectionsByTeam = new Map<
+      string,
+      { hasProjection: boolean; total: number }
+    >();
+    const playerProjections: LeagueContextPlayerProjection[] = [];
+    for (const row of projectionRows) {
+      if (!row.started) {
+        continue;
+      }
+      const leagueTeam = teamsByProviderId.get(row.providerTeamId);
+      if (!leagueTeam) {
+        continue;
+      }
+      const metadata =
+        row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      const metadataPlayerName =
+        typeof metadata.playerName === "string" ? metadata.playerName : null;
+      const metadataProTeam =
+        typeof metadata.proTeam === "string" ? metadata.proTeam : null;
+      const player = row.fantasyPlayerName ?? metadataPlayerName;
+      if (player) {
+        playerProjections.push({
+          leagueTeam,
+          player,
+          position: row.fantasyPlayerPosition,
+          proTeam: row.fantasyPlayerProTeam ?? metadataProTeam,
+          projectedPoints: row.projectedPoints,
+        });
+      }
+      const aggregate = projectionsByTeam.get(leagueTeam) ?? {
+        hasProjection: false,
+        total: 0,
+      };
+      if (row.projectedPoints !== null) {
+        aggregate.hasProjection = true;
+        aggregate.total += row.projectedPoints;
+      }
+      projectionsByTeam.set(leagueTeam, aggregate);
+    }
+    const projectedScoreFor = (team: string): number | null => {
+      const projection = projectionsByTeam.get(team);
+      return projection?.hasProjection ? projection.total : null;
+    };
+    const matchupProjections: LeagueContextMatchupProjection[] = matchups.map(
+      (matchup) => ({
+        opponent: matchup.awayTeam,
+        opponentProjectedScore: projectedScoreFor(matchup.awayTeam),
+        team: matchup.homeTeam,
+        teamProjectedScore: projectedScoreFor(matchup.homeTeam),
+      }),
+    );
+    blended.matchupProjections = matchupProjections;
+    blended.playerProjections = playerProjections;
   }
 
   if (columnFormat === "waiver-summary") {
@@ -1014,7 +1138,7 @@ async function loadScheduledColumnContext({
     };
   }
 
-  return { matchups, waivers };
+  return { blended, matchups, waivers };
 }
 
 function compactGeneralNflWeek(
@@ -1179,6 +1303,189 @@ async function loadGeneralNflContext({
     boundary: "general_nfl_context_not_league_canon",
     facts: facts.map(compactGeneralNflFact),
     source: facts[0]?.source ?? GENERAL_STATS_MOCK_SOURCE,
+  };
+}
+
+function generalNflGamesForWeek(
+  generalNfl: LeagueContextGeneralNfl,
+  week: number,
+): LeagueContextBlendedColumnData["thursdayNightGames"] {
+  const games = new Map<
+    string,
+    LeagueContextBlendedColumnData["thursdayNightGames"][number]
+  >();
+  for (const fact of generalNfl.facts) {
+    for (const game of fact.schedule) {
+      if (game.week !== week) {
+        continue;
+      }
+      const key = `${game.gameTime}:${game.awayTeam}:${game.homeTeam}`;
+      games.set(key, {
+        awayScore: game.awayScore,
+        awayTeam: game.awayTeam,
+        gameTime: game.gameTime,
+        homeScore: game.homeScore,
+        homeTeam: game.homeTeam,
+        status: game.status,
+      });
+    }
+  }
+  return [...games.values()].sort(
+    (left, right) =>
+      Date.parse(left.gameTime) - Date.parse(right.gameTime) ||
+      left.awayTeam.localeCompare(right.awayTeam),
+  );
+}
+
+function thursdayNightGames(
+  games: LeagueContextBlendedColumnData["thursdayNightGames"],
+): LeagueContextBlendedColumnData["thursdayNightGames"] {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+  });
+  const onThursday = games.filter(
+    (game) => formatter.format(new Date(game.gameTime)) === "Thu",
+  );
+  if (onThursday.length > 0) {
+    return onThursday;
+  }
+  const first = games[0];
+  if (!first) {
+    return [];
+  }
+  const firstTime = Date.parse(first.gameTime);
+  return games.filter(
+    (game) =>
+      Math.abs(Date.parse(game.gameTime) - firstTime) <= 6 * 60 * 60_000,
+  );
+}
+
+function impliedPercentage(americanPrice: number | null): number | null {
+  if (americanPrice === null || americanPrice === 0) {
+    return null;
+  }
+  const percentage =
+    americanPrice < 0
+      ? (-americanPrice / (-americanPrice + 100)) * 100
+      : (100 / (americanPrice + 100)) * 100;
+  return Math.round(percentage * 100) / 100;
+}
+
+async function loadCentralOddsSignals(
+  db: Db,
+  games: LeagueContextBlendedColumnData["thursdayNightGames"],
+): Promise<LeagueContextBlendedColumnData["oddsSignals"]> {
+  if (games.length === 0) {
+    return [];
+  }
+  const timestamps = games
+    .map((game) => Date.parse(game.gameTime))
+    .filter(Number.isFinite);
+  if (timestamps.length === 0) {
+    return [];
+  }
+  const windowStart = new Date(Math.min(...timestamps) - 24 * 60 * 60_000);
+  const windowEnd = new Date(Math.max(...timestamps) + 24 * 60 * 60_000);
+  const rows = await db
+    .select({
+      awayTeam: bettingEvents.awayTeam,
+      capturedAt: oddsSnapshots.capturedAt,
+      createdAt: oddsSnapshots.createdAt,
+      homePrice: oddsSnapshots.homePrice,
+      homeTeam: bettingEvents.homeTeam,
+      line: oddsSnapshots.line,
+      marketId: bettingMarkets.id,
+      marketType: bettingMarkets.type,
+      propType: bettingMarkets.propType,
+      subject: bettingMarkets.subject,
+    })
+    .from(oddsSnapshots)
+    .innerJoin(bettingMarkets, eq(bettingMarkets.id, oddsSnapshots.marketId))
+    .innerJoin(bettingEvents, eq(bettingEvents.id, bettingMarkets.eventId))
+    .where(
+      and(
+        eq(bettingEvents.sport, "nfl"),
+        gte(bettingEvents.startTime, windowStart),
+        lte(bettingEvents.startTime, windowEnd),
+      ),
+    )
+    .orderBy(
+      asc(bettingEvents.startTime),
+      asc(bettingMarkets.id),
+      asc(oddsSnapshots.capturedAt),
+      asc(oddsSnapshots.createdAt),
+    )
+    .limit(240);
+  const rowsByMarket = new Map<string, (typeof rows)[number][]>();
+  for (const row of rows) {
+    const marketRows = rowsByMarket.get(row.marketId) ?? [];
+    marketRows.push(row);
+    rowsByMarket.set(row.marketId, marketRows);
+  }
+
+  const signals: LeagueContextBlendedColumnData["oddsSignals"] = [];
+  for (const marketRows of rowsByMarket.values()) {
+    const first = marketRows[0];
+    const last = marketRows.at(-1);
+    if (!first || !last) {
+      continue;
+    }
+    const unit =
+      first.marketType === "moneyline"
+        ? ("implied_percentage" as const)
+        : ("line" as const);
+    const before =
+      unit === "implied_percentage"
+        ? impliedPercentage(first.homePrice)
+        : first.line;
+    const after =
+      unit === "implied_percentage"
+        ? impliedPercentage(last.homePrice)
+        : last.line;
+    if (before === null || after === null) {
+      continue;
+    }
+    signals.push({
+      after,
+      before,
+      changed: Math.abs(after - before) > 0.0001,
+      event: `${first.awayTeam} at ${first.homeTeam}`,
+      market:
+        first.marketType === "player_prop"
+          ? `player_prop:${first.propType ?? first.subject}`
+          : first.marketType,
+      unit,
+    });
+  }
+  return signals.slice(0, 12);
+}
+
+async function loadBlendedColumnData({
+  base,
+  columnFormat,
+  db,
+  generalNfl,
+  week,
+}: {
+  base: LeagueContextBlendedColumnData | undefined;
+  columnFormat: LeagueColumnId | null;
+  db: Db;
+  generalNfl: LeagueContextGeneralNfl;
+  week: number;
+}): Promise<LeagueContextBlendedColumnData | undefined> {
+  const usesBlendedData =
+    columnFormat === "tale-of-the-tape" ||
+    columnFormat === "fantasy-friday" ||
+    columnFormat === "predictions";
+  if (!usesBlendedData) {
+    return base;
+  }
+  const allWeekGames = generalNflGamesForWeek(generalNfl, week);
+  return {
+    ...(base ?? emptyBlendedColumnData()),
+    oddsSignals: await loadCentralOddsSignals(db, allWeekGames),
+    thursdayNightGames: thursdayNightGames(allWeekGames),
   };
 }
 
@@ -1463,7 +1770,12 @@ function validateDraftOrGeneric({
       structure: validateContentStructure({
         columnFormat,
         contentType,
-        context,
+        context: {
+          ...context,
+          players: context.blended?.playerProjections.map(
+            (projection) => projection.player,
+          ),
+        },
         structure: validated.structure,
       }),
     };
@@ -1637,6 +1949,7 @@ export function buildPromptParts({
   };
   const volatileContext: Record<string, unknown> = {
     arena: context.arena,
+    blendedColumnData: context.blended ?? emptyBlendedColumnData(),
     currentScoringPeriod: context.league.currentScoringPeriod,
     duplicateNudge: duplicateNudge ?? null,
     generalNflContext: context.generalNfl,
@@ -2689,6 +3002,7 @@ async function prepareGeneration({
       league,
       arena: emptyArenaContext(),
       authenticity,
+      blended: columnContext.blended,
       generalNfl: emptyGeneralNflContext(),
       matchups: columnContext.matchups,
       memory,
@@ -3136,18 +3450,26 @@ export async function generateLeagueBlogPost({
     return prepared;
   }
 
+  const columnFormat = prepared.context.trigger.cadence?.columnFormat ?? null;
+  const generalNfl = await loadGeneralNflContext({
+    db: deps.db,
+    league: prepared.context.league,
+  });
   const context: LeagueBlogContext = {
     ...prepared.context,
     arena: await loadArenaContext({
       db: deps.db,
       leagueId: input.leagueId,
     }),
-    generalNfl: await loadGeneralNflContext({
+    blended: await loadBlendedColumnData({
+      base: prepared.context.blended,
+      columnFormat,
       db: deps.db,
-      league: prepared.context.league,
+      generalNfl,
+      week: prepared.context.league.currentScoringPeriod,
     }),
+    generalNfl,
   };
-  const columnFormat = context.trigger.cadence?.columnFormat ?? null;
 
   let newsItems: NewsItem[] = [];
   try {
