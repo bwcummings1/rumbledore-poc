@@ -8,6 +8,7 @@ import { contentItems } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { ingestMockGeneralStats } from "@/general-stats";
 import { MockCentralNewsSource } from "@/news";
+import { centralGenerationKey } from "./central-generation-key";
 import {
   createMockCentralAiDependencies,
   generateCentralColumn,
@@ -207,6 +208,88 @@ describe("central journalist generation pipeline", () => {
         },
       },
     });
+  });
+
+  it("automatically gives the writer recent central angles and queued sibling assignments", async () => {
+    const priorSummary = `${marker} already used pressure mismatches as the matchup lead.`;
+    const [prior] = await handle.db
+      .insert(contentItems)
+      .values({
+        body: "FULL PRIOR ARTICLE BODY MUST STAY OUT OF RECALL",
+        contentHash: `${marker}:prior-angle:hash`,
+        dedupKey: `${marker}:prior-angle`,
+        kind: "news",
+        leagueId: null,
+        metadata: {
+          centralSection: "matchups",
+          journalist: {
+            id: "fantasy-data-analyst",
+            name: "Avery Stone",
+          },
+          tags: ["pressure", "matchups"],
+        },
+        publishedAt: new Date("2026-09-15T13:59:00.000Z"),
+        source: "Avery Stone",
+        summary: priorSummary,
+        title: `${marker} Protection pressure shaped the early slate`,
+      })
+      .returning({ id: contentItems.id });
+    if (!prior) throw new Error("prior central angle was not inserted");
+
+    const llm = new MockLlmClient();
+    const queuedGenerationKey = centralGenerationKey({
+      columnId: "rankings-projections",
+      triggerKey: `${marker}:queued-ranking-sibling`,
+    });
+    const result = await generateCentralColumn({
+      deps: {
+        ...testCentralAiDependencies(),
+        llm,
+        now: () => new Date("2026-09-15T14:00:00.000Z"),
+      },
+      input: {
+        columnId: "matchups",
+        queuedGenerationKeys: [queuedGenerationKey],
+        season: 2026,
+        triggerKey: `${marker}:automatic-recall`,
+        week: 1,
+      },
+    });
+
+    const request = llm.centralRequests[0];
+    expect(request?.context.preGenerationContext).toMatchObject({
+      publicationPool: "central",
+      publishedContentItemIds: expect.arrayContaining([prior.id]),
+      queuedGenerationKeys: [queuedGenerationKey],
+    });
+    expect(request?.context.preGenerationContext?.digest).toContain(
+      priorSummary,
+    );
+    expect(request?.context.preGenerationContext?.digest).toContain(
+      "Rankings & Projections",
+    );
+    expect(request?.context.preGenerationContext?.digest).not.toContain(
+      "FULL PRIOR ARTICLE BODY",
+    );
+    expect(request?.prompt.volatileContext).toContain(priorSummary);
+    expect(request?.prompt.systemPrefix).not.toContain(priorSummary);
+    expect(JSON.stringify(request?.context.evidence)).not.toContain(
+      priorSummary,
+    );
+
+    const [row] = await handle.db
+      .select({ metadata: contentItems.metadata })
+      .from(contentItems)
+      .where(eq(contentItems.id, result.contentItemId));
+    expect(row?.metadata).toMatchObject({
+      preGenerationContext: {
+        injected: true,
+        publicationPool: "central",
+        publishedContentItemIds: expect.arrayContaining([prior.id]),
+        queuedGenerationKeys: [queuedGenerationKey],
+      },
+    });
+    expect(JSON.stringify(row?.metadata)).not.toContain(priorSummary);
   });
 
   it("files a mock injury event to The Wire without a fantasy implication", async () => {

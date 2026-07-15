@@ -113,6 +113,7 @@ export interface ContentGenerateData {
 
 export interface CentralContentGenerateData {
   columnId: CentralColumnId;
+  queuedGenerationKeys?: string[];
   season: number;
   triggerKey: string;
   week: number;
