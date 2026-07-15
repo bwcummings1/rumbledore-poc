@@ -1,22 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { editPersonaToneProfile } from "@/ai";
-import { requireLeagueRole } from "@/auth/guards";
+import { requirePlatformAdmin } from "@/auth/guards";
 import { AppError } from "@/core/result";
 import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({
   db: {},
   editPersonaToneProfile: vi.fn(),
-  requireLeagueRole: vi.fn(),
+  requirePlatformAdmin: vi.fn(),
 }));
 
 vi.mock("@/db", () => ({
   getDb: () => mocks.db,
 }));
 
-vi.mock("@/auth/guards", () => ({
-  requireLeagueRole: mocks.requireLeagueRole,
-}));
+vi.mock("@/auth/guards", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/auth/guards")>();
+  return {
+    ...actual,
+    requirePlatformAdmin: mocks.requirePlatformAdmin,
+  };
+});
 
 vi.mock("@/ai", () => ({
   editPersonaToneProfile: mocks.editPersonaToneProfile,
@@ -51,12 +55,10 @@ function toneProfile() {
   };
 }
 
-function mockAccess() {
-  mocks.requireLeagueRole.mockResolvedValue({
+function mockAdminAccess() {
+  mocks.requirePlatformAdmin.mockResolvedValue({
     ok: true,
     value: {
-      leagueId,
-      role: "data_steward",
       session: { user: { id: userId } },
       userId,
     },
@@ -68,8 +70,8 @@ afterEach(() => {
 });
 
 describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone", () => {
-  it("requires steward access and saves through the tone editor service", async () => {
-    mockAccess();
+  it("allows a platform admin to save through the tone editor service", async () => {
+    mockAdminAccess();
     mocks.editPersonaToneProfile.mockResolvedValue({
       actionId: "action-1",
       card: { toneVersion: 2 },
@@ -91,8 +93,8 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone", () => {
       previousToneVersion: 1,
       status: "changed",
     });
-    expect(requireLeagueRole).toHaveBeenCalledWith(
-      expect.objectContaining({ minRole: "data_steward" }),
+    expect(requirePlatformAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({ db: mocks.db }),
     );
     expect(editPersonaToneProfile).toHaveBeenCalledWith(
       { db: mocks.db },
@@ -108,7 +110,7 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone", () => {
   });
 
   it("rejects invalid tone profile payloads before saving", async () => {
-    mockAccess();
+    mockAdminAccess();
 
     const response = await POST(
       request({ toneProfile: { beats: [] } }),
@@ -119,11 +121,11 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone", () => {
     expect(editPersonaToneProfile).not.toHaveBeenCalled();
   });
 
-  it("rejects non-stewards before service work", async () => {
-    mocks.requireLeagueRole.mockResolvedValue({
+  it("rejects a league commissioner without changing tone config", async () => {
+    mocks.requirePlatformAdmin.mockResolvedValue({
       error: new AppError({
-        code: "LEAGUE_FORBIDDEN",
-        message: "League access requires stewardship",
+        code: "PLATFORM_ADMIN_FORBIDDEN",
+        message: "Platform administrator access is required",
         status: 403,
       }),
       ok: false,
@@ -135,6 +137,9 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone", () => {
     );
 
     expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "PLATFORM_ADMIN_FORBIDDEN" },
+    });
     expect(editPersonaToneProfile).not.toHaveBeenCalled();
   });
 });

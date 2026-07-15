@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseAiPersona, rollbackPersonaToneProfile } from "@/ai";
-import { requireLeagueRole } from "@/auth/guards";
+import { isValidLeagueId, requirePlatformAdmin } from "@/auth/guards";
 import { recordApiHandler } from "@/core/metrics";
 import { AppError, toAppError } from "@/core/result";
 import { getDb } from "@/db";
@@ -26,14 +26,21 @@ async function personaToneRollbackPost(
 ) {
   const { leagueId, persona: personaParam } = await context.params;
   const db = getDb();
-  const access = await requireLeagueRole({
+  const access = await requirePlatformAdmin({
     db,
     headers: request.headers,
-    leagueId,
-    minRole: "data_steward",
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+  if (!isValidLeagueId(leagueId)) {
+    return errorJson(
+      new AppError({
+        code: "INVALID_LEAGUE_ID",
+        message: "League id must be a UUID",
+        status: 400,
+      }),
+    );
   }
 
   const body = await readJsonBody(request, MAX_TONE_BODY_BYTES);

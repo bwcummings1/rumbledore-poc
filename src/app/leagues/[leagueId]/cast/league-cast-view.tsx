@@ -1,4 +1,4 @@
-import { ArrowRight, Home, Radio, Rss, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Home, Radio, Rss } from "lucide-react";
 import Link from "next/link";
 import type { LeagueCastPresenceData } from "@/cast/league-cast";
 import {
@@ -20,10 +20,6 @@ export function LeagueCastView({
   readonly data: LeagueCastPresenceData;
 }) {
   const enabledCount = data.personas.filter((card) => card.enabled).length;
-  const canEditTone =
-    data.userRole === "commissioner" ||
-    data.userRole === "data_steward" ||
-    data.userRole === "league_admin";
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-6 px-4 py-5 pb-[calc(--spacing(6)+env(safe-area-inset-bottom))] sm:px-6">
@@ -84,15 +80,6 @@ export function LeagueCastView({
             <Rss data-icon="inline-start" />
             The Press
           </Link>
-          {canEditTone ? (
-            <Link
-              href={`/leagues/${data.league.id}/cast/tone`}
-              className={cn(buttonVariants({ variant: "outline" }))}
-            >
-              <SlidersHorizontal data-icon="inline-start" />
-              Tone editor
-            </Link>
-          ) : null}
         </div>
       </header>
 
@@ -104,8 +91,8 @@ export function LeagueCastView({
               Persona dossiers
             </h2>
           </div>
-          <StatusPill tone={canEditTone ? "info" : "neutral"} variant="soft">
-            {canEditTone ? "editable" : "read-only"}
+          <StatusPill tone="neutral" variant="soft">
+            read-only
           </StatusPill>
         </div>
         <CastRoster cards={data.personas} />

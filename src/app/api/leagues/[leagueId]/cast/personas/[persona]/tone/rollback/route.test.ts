@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rollbackPersonaToneProfile } from "@/ai";
-import { requireLeagueRole } from "@/auth/guards";
+import { requirePlatformAdmin } from "@/auth/guards";
 import { AppError } from "@/core/result";
 import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({
   db: {},
-  requireLeagueRole: vi.fn(),
+  requirePlatformAdmin: vi.fn(),
   rollbackPersonaToneProfile: vi.fn(),
 }));
 
@@ -14,9 +14,13 @@ vi.mock("@/db", () => ({
   getDb: () => mocks.db,
 }));
 
-vi.mock("@/auth/guards", () => ({
-  requireLeagueRole: mocks.requireLeagueRole,
-}));
+vi.mock("@/auth/guards", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/auth/guards")>();
+  return {
+    ...actual,
+    requirePlatformAdmin: mocks.requirePlatformAdmin,
+  };
+});
 
 vi.mock("@/ai", () => ({
   parseAiPersona: (value: string) => value,
@@ -41,12 +45,10 @@ function request(body: unknown): Request {
   );
 }
 
-function mockAccess() {
-  mocks.requireLeagueRole.mockResolvedValue({
+function mockAdminAccess() {
+  mocks.requirePlatformAdmin.mockResolvedValue({
     ok: true,
     value: {
-      leagueId,
-      role: "data_steward",
       session: { user: { id: userId } },
       userId,
     },
@@ -58,8 +60,8 @@ afterEach(() => {
 });
 
 describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone/rollback", () => {
-  it("requires steward access and rolls back through the tone editor service", async () => {
-    mockAccess();
+  it("allows a platform admin to roll back through the tone editor service", async () => {
+    mockAdminAccess();
     mocks.rollbackPersonaToneProfile.mockResolvedValue({
       actionId: "action-1",
       card: { toneVersion: 3 },
@@ -77,8 +79,8 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone/rollback", (
       previousToneVersion: 2,
       status: "changed",
     });
-    expect(requireLeagueRole).toHaveBeenCalledWith(
-      expect.objectContaining({ minRole: "data_steward" }),
+    expect(requirePlatformAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({ db: mocks.db }),
     );
     expect(rollbackPersonaToneProfile).toHaveBeenCalledWith(
       { db: mocks.db },
@@ -93,7 +95,7 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone/rollback", (
   });
 
   it("rejects invalid rollback targets before service work", async () => {
-    mockAccess();
+    mockAdminAccess();
 
     const response = await POST(request({ toneVersion: 0 }), routeContext());
 
@@ -101,11 +103,11 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone/rollback", (
     expect(rollbackPersonaToneProfile).not.toHaveBeenCalled();
   });
 
-  it("rejects non-stewards before rollback work", async () => {
-    mocks.requireLeagueRole.mockResolvedValue({
+  it("rejects a league commissioner without rolling tone config back", async () => {
+    mocks.requirePlatformAdmin.mockResolvedValue({
       error: new AppError({
-        code: "LEAGUE_FORBIDDEN",
-        message: "League access requires stewardship",
+        code: "PLATFORM_ADMIN_FORBIDDEN",
+        message: "Platform administrator access is required",
         status: 403,
       }),
       ok: false,
@@ -114,6 +116,9 @@ describe("POST /api/leagues/[leagueId]/cast/personas/[persona]/tone/rollback", (
     const response = await POST(request({ toneVersion: 1 }), routeContext());
 
     expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "PLATFORM_ADMIN_FORBIDDEN" },
+    });
     expect(rollbackPersonaToneProfile).not.toHaveBeenCalled();
   });
 });
