@@ -25,6 +25,7 @@ function requestFor(
 ): LlmGenerateRequest {
   return {
     attempt: 1,
+    columnFormat: null,
     contentType: "matchup_preview",
     context: {
       league: {

@@ -35,14 +35,21 @@ import {
   allTimeRecords,
   arenaSeasons,
   arenaStandings,
+  bettingEvents,
+  bettingMarkets,
   contentItems,
   dataIntegrityChecks,
+  fantasyMatchups,
   fantasyMembers,
+  fantasyPlayers,
   fantasyRosterEntries,
   fantasyTeams,
+  fantasyTransactions,
   headToHeadRecords,
+  leagueSeasonSettings,
   leagues,
   loreClaims,
+  oddsSnapshots,
   persons,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
@@ -381,6 +388,200 @@ async function seedMockNflRosteredPlayer(
   });
 }
 
+async function seedLeagueColumnFacts(
+  league: Awaited<ReturnType<typeof seedLeague>>,
+) {
+  const tag = league.providerLeagueId.replace(`${marker}-`, "");
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    await tx.insert(fantasyMembers).values({
+      contentHash: `${marker}-${tag}-opponent-member-hash`,
+      displayName: `${tag} Opponent Manager`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      provider: "espn",
+      providerMemberId: `${tag}-opponent-manager`,
+      role: "member",
+      season: league.season,
+    });
+    await tx.insert(fantasyTeams).values({
+      abbrev: "OPP",
+      contentHash: `${marker}-${tag}-opponent-team-hash`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      losses: 1,
+      name: `${tag} Opponent Team`,
+      ownerMemberIds: [`${tag}-opponent-manager`],
+      pointsAgainst: 110,
+      pointsFor: 105,
+      provider: "espn",
+      providerTeamId: `${tag}-opponent-team`,
+      season: league.season,
+      ties: 0,
+      wins: 1,
+    });
+    await tx.insert(fantasyMatchups).values({
+      awayScore: 104,
+      awayTeamProviderId: `${tag}-opponent-team`,
+      contentHash: `${marker}-${tag}-matchup-hash`,
+      homeScore: 108,
+      homeTeamProviderId: `${tag}-team`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      provider: "espn",
+      providerMatchupId: `${tag}-matchup`,
+      scoringPeriod: league.currentScoringPeriod,
+      season: league.season,
+      status: "in_progress",
+      winner: "unknown",
+    });
+    await tx.insert(leagueSeasonSettings).values({
+      acquisitionBudget: 100,
+      acquisitionType: "FREE_AGENT_BUDGET",
+      contentHash: `${marker}-${tag}-settings-hash`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      leagueSize: 2,
+      provider: "espn",
+      season: league.season,
+    });
+    await tx.insert(fantasyPlayers).values({
+      contentHash: `${marker}-${tag}-waiver-player-hash`,
+      fullName: `${tag} Waiver Player`,
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      position: "RB",
+      proTeam: "KC",
+      provider: "espn",
+      providerPlayerId: `${tag}-waiver-player`,
+    });
+    await tx.insert(fantasyTransactions).values({
+      contentHash: `${marker}-${tag}-waiver-hash`,
+      details: { bidAmount: 15, status: "EXECUTED" },
+      leagueId: league.id,
+      leagueProviderId: league.providerLeagueId,
+      occurredAt: new Date("2026-10-14T08:00:00.000Z"),
+      playerProviderIds: [`${tag}-waiver-player`],
+      provider: "espn",
+      providerTransactionId: `${tag}-waiver`,
+      scoringPeriod: league.currentScoringPeriod,
+      season: league.season,
+      teamProviderIds: [`${tag}-team`],
+      type: "waiver",
+    });
+  });
+}
+
+async function seedBlendedColumnFacts(
+  league: Awaited<ReturnType<typeof seedLeague>>,
+) {
+  const tag = league.providerLeagueId.replace(`${marker}-`, "");
+  await ingestMockGeneralStats(handle.db, {
+    fetchedAt: new Date("2026-09-14T10:00:00.000Z"),
+  });
+  await withLeagueContext(handle.db, league.id, async (tx) => {
+    await tx.insert(fantasyRosterEntries).values([
+      {
+        contentHash: `${marker}-${tag}-mahomes-projection-hash`,
+        leagueId: league.id,
+        leagueProviderId: league.providerLeagueId,
+        metadata: { playerName: "Patrick Mahomes", proTeam: "KC" },
+        projectedPoints: 24.5,
+        provider: "espn",
+        providerPlayerId: "3139477",
+        providerTeamId: `${tag}-team`,
+        scoringPeriod: league.currentScoringPeriod,
+        season: league.season,
+        slot: "QB",
+        started: true,
+        status: "active",
+      },
+      {
+        contentHash: `${marker}-${tag}-jefferson-projection-hash`,
+        leagueId: league.id,
+        leagueProviderId: league.providerLeagueId,
+        metadata: { playerName: "Justin Jefferson", proTeam: "MIN" },
+        projectedPoints: 19.75,
+        provider: "espn",
+        providerPlayerId: "4262921",
+        providerTeamId: `${tag}-opponent-team`,
+        scoringPeriod: league.currentScoringPeriod,
+        season: league.season,
+        slot: "WR",
+        started: true,
+        status: "active",
+      },
+    ]);
+    const [recordHolder] = await tx
+      .insert(persons)
+      .values({
+        canonicalName: `${tag} Historic Manager`,
+        leagueId: league.id,
+      })
+      .returning({ id: persons.id });
+    if (!recordHolder) {
+      throw new Error("blended-column record holder was not inserted");
+    }
+    await tx.insert(allTimeRecords).values({
+      holderPersonId: recordHolder.id,
+      isCurrent: true,
+      leagueId: league.id,
+      recordType: "highest_single_week_score",
+      scoringPeriod: 9,
+      season: 2024,
+      value: 188.4,
+    });
+  });
+
+  const [event] = await handle.db
+    .insert(bettingEvents)
+    .values({
+      awayTeam: "KC",
+      contentHash: `${marker}-${tag}-central-event-hash`,
+      homeTeam: "MIN",
+      provider: marker,
+      providerEventId: `${marker}-${tag}-kc-min`,
+      sport: "nfl",
+      startTime: new Date("2026-09-10T00:20:00.000Z"),
+      status: "final",
+    })
+    .returning({ id: bettingEvents.id });
+  if (!event) {
+    throw new Error("blended-column betting event was not inserted");
+  }
+  const [market] = await handle.db
+    .insert(bettingMarkets)
+    .values({
+      contentHash: `${marker}-${tag}-central-market-hash`,
+      eventId: event.id,
+      period: "full_game",
+      provider: marker,
+      providerMarketId: `${marker}-${tag}-kc-min-moneyline`,
+      status: "open",
+      subject: "game",
+      type: "moneyline",
+    })
+    .returning({ id: bettingMarkets.id });
+  if (!market) {
+    throw new Error("blended-column betting market was not inserted");
+  }
+  await handle.db.insert(oddsSnapshots).values([
+    {
+      capturedAt: new Date("2026-09-09T12:00:00.000Z"),
+      homePrice: -140,
+      marketId: market.id,
+      provider: marker,
+      sourcePayloadHash: `${marker}-${tag}-opening-odds`,
+    },
+    {
+      capturedAt: new Date("2026-09-10T12:00:00.000Z"),
+      homePrice: -160,
+      marketId: market.id,
+      provider: marker,
+      sourcePayloadHash: `${marker}-${tag}-current-odds`,
+    },
+  ]);
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -397,6 +598,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!handle) return;
   await handle.db
+    .delete(bettingEvents)
+    .where(eq(bettingEvents.provider, marker));
+  await handle.db
     .delete(arenaSeasons)
     .where(sql`${arenaSeasons.name} like ${`${marker}-%`}`);
   await handle.db
@@ -406,6 +610,226 @@ afterAll(async () => {
 });
 
 describe("generateLeagueBlogPost", () => {
+  it("threads scheduled column formats into grounded Wrap and Waiver structures", async () => {
+    const league = await seedLeague("column-formats");
+    await seedLeagueColumnFacts(league);
+    const llm = new MockLlmClient();
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      llm,
+    };
+
+    await expect(
+      generateLeagueBlogPost({
+        deps,
+        input: {
+          contentType: "weekly_recap",
+          leagueId: league.id,
+          persona: "narrator",
+          triggerKey: "cron:weekly-wrap:regular:1:the-wrap",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "published" });
+    const wrapRequest = llm.requests[0];
+    expect(wrapRequest).toMatchObject({
+      columnFormat: "the-wrap",
+      context: {
+        matchups: [
+          {
+            awayScore: 104,
+            homeScore: 108,
+            status: "in_progress",
+          },
+        ],
+      },
+    });
+    expect(wrapRequest?.prompt.userTask).toContain(
+      "Scheduled league column format: The Wrap (the-wrap)",
+    );
+    if (!wrapRequest) throw new Error("Wrap request was not recorded");
+    const wrapDraft = await new MockLlmClient().generate(wrapRequest);
+    expect(wrapDraft.structure).toMatchObject({
+      mondayNightOutlook: {
+        matchups: [{ matters: true }],
+      },
+      type: "weekly_recap",
+    });
+
+    await expect(
+      generateLeagueBlogPost({
+        deps,
+        input: {
+          contentType: "transaction_reaction",
+          leagueId: league.id,
+          persona: "beat_reporter",
+          triggerKey: "cron:mid-week:regular:1:waiver-summary",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "published" });
+    const waiverRequest = llm.requests[1];
+    expect(waiverRequest).toMatchObject({
+      columnFormat: "waiver-summary",
+      context: {
+        waivers: {
+          fabBudget: 100,
+          moves: [
+            {
+              fabRemaining: 85,
+              fabSpent: 15,
+              rosterChanges: ["column-formats Waiver Player"],
+              team: "column-formats Team",
+            },
+          ],
+        },
+      },
+    });
+    expect(waiverRequest?.prompt.userTask).toContain(
+      "Scheduled league column format: Waiver Summary (waiver-summary)",
+    );
+    if (!waiverRequest) throw new Error("Waiver request was not recorded");
+    const waiverDraft = await new MockLlmClient().generate(waiverRequest);
+    expect(waiverDraft.structure).toMatchObject({
+      type: "transaction_reaction",
+      waiverSummary: {
+        fabBudget: 100,
+        moves: [{ fabRemaining: 85, fabSpent: 15 }],
+      },
+    });
+  });
+
+  it("localizes mock stats, projections, and odds for the blended columns", async () => {
+    const league = await seedLeague("blended-columns");
+    await seedLeagueColumnFacts(league);
+    await seedBlendedColumnFacts(league);
+    const isolation = await seedLeague("blended-isolation");
+    const llm = new MockLlmClient();
+    const deps = {
+      ...createMockAiDependencies(handle.db),
+      duplicateThreshold: 1.1,
+      llm,
+    };
+
+    for (const input of [
+      {
+        persona: "analyst" as const,
+        triggerKey: "cron:weekly-preview:regular:1:tale-of-the-tape",
+      },
+      {
+        persona: "betting_advisor" as const,
+        triggerKey: "cron:post-odds-refresh:regular:1:fantasy-friday",
+      },
+      {
+        persona: "analyst" as const,
+        triggerKey: "cron:weekly-preview:regular:1:predictions",
+      },
+    ]) {
+      await expect(
+        generateLeagueBlogPost({
+          deps,
+          input: {
+            contentType: "matchup_preview",
+            leagueId: league.id,
+            ...input,
+          },
+        }),
+      ).resolves.toMatchObject({ status: "published" });
+    }
+
+    expect(llm.requests).toHaveLength(3);
+    for (const request of llm.requests) {
+      expect(request.context.blended).toMatchObject({
+        matchupProjections: [
+          {
+            opponent: "blended-columns Opponent Team",
+            opponentProjectedScore: 19.75,
+            team: "blended-columns Team",
+            teamProjectedScore: 24.5,
+          },
+        ],
+        oddsSignals: [
+          {
+            changed: true,
+            event: "KC at MIN",
+            market: "moneyline",
+            unit: "implied_percentage",
+          },
+        ],
+        playerProjections: expect.arrayContaining([
+          expect.objectContaining({
+            leagueTeam: "blended-columns Team",
+            player: "Patrick Mahomes",
+            projectedPoints: 24.5,
+          }),
+          expect.objectContaining({
+            leagueTeam: "blended-columns Opponent Team",
+            player: "Justin Jefferson",
+            projectedPoints: 19.75,
+          }),
+        ]),
+        thursdayNightGames: [
+          expect.objectContaining({
+            awayScore: 31,
+            awayTeam: "KC",
+            homeScore: 27,
+            homeTeam: "MIN",
+          }),
+        ],
+      });
+      expect(JSON.stringify(request)).not.toContain(isolation.name);
+    }
+
+    const taleRequest = llm.requests[0];
+    const fridayRequest = llm.requests[1];
+    const predictionsRequest = llm.requests[2];
+    if (!taleRequest || !fridayRequest || !predictionsRequest) {
+      throw new Error("blended-column generation requests were not recorded");
+    }
+    const mock = new MockLlmClient();
+    const taleDraft = await mock.generate(taleRequest);
+    const fridayDraft = await mock.generate(fridayRequest);
+    const predictionsDraft = await mock.generate(predictionsRequest);
+    expect(taleDraft.structure).toMatchObject({
+      matchups: [
+        {
+          keyNumber: expect.stringContaining("Central moneyline"),
+          xFactor: expect.stringContaining("supplied general-NFL form"),
+        },
+      ],
+      type: "matchup_preview",
+    });
+    expect(fridayDraft.structure).toMatchObject({
+      fantasyFriday: {
+        flashback: {
+          available: true,
+          fact: expect.stringContaining("blended-columns Historic Manager"),
+          season: 2024,
+        },
+        oddsOrPercentageChanges: [
+          { matchup: "KC at MIN", unit: "implied_percentage" },
+        ],
+        thursdayNightSummaries: [{ awayTeam: "KC", homeTeam: "MIN" }],
+      },
+      type: "matchup_preview",
+    });
+    expect(predictionsDraft.structure).toMatchObject({
+      predictions: {
+        matchups: [
+          {
+            endScore: { opponentScore: 19.75, teamScore: 24.5 },
+            playerPerformances: expect.arrayContaining([
+              expect.objectContaining({
+                player: "Patrick Mahomes",
+                projectedPoints: 24.5,
+              }),
+            ]),
+          },
+        ],
+      },
+      type: "matchup_preview",
+    });
+  });
+
   it("publishes deterministic league-owned content and reuses the idempotent run", async () => {
     const league = await seedLeague("alpha");
     await seedLeague("beta");
@@ -2162,11 +2586,16 @@ describe("generateLeagueBlogPost", () => {
       title: `Beat Reporter: ${marker} beat-reporter snapshot`,
     });
     expect(llm.requests).toHaveLength(1);
-    expect(llm.requests[0]?.context.persona).toMatchObject({
-      beat: expect.stringContaining("Transactions"),
-      name: "Beat Reporter",
-      performsWhen: expect.arrayContaining(["transaction events"]),
-      pointOfView: expect.stringContaining("Scoopy"),
+    expect(llm.requests[0]).toMatchObject({
+      columnFormat: null,
+      context: {
+        persona: {
+          beat: expect.stringContaining("Transactions"),
+          name: "Beat Reporter",
+          performsWhen: expect.arrayContaining(["transaction events"]),
+          pointOfView: expect.stringContaining("Scoopy"),
+        },
+      },
     });
 
     const stablePrefix = JSON.parse(

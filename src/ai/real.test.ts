@@ -29,6 +29,7 @@ function requestFor(
 ): LlmGenerateRequest {
   return {
     attempt: 1,
+    columnFormat: null,
     contentType: "matchup_preview",
     context: {
       league: {
@@ -251,6 +252,164 @@ describe("AnthropicLlmClient", () => {
     await expect(llm.generate(requestFor("narrator"))).rejects.toMatchObject({
       code: "AI_LLM_RESPONSE_INVALID",
     } satisfies Partial<AppError>);
+  });
+
+  it("requires scheduled column extensions in the real output schema", async () => {
+    const cases = [
+      {
+        columnFormat: "the-wrap" as const,
+        contentType: "weekly_recap" as const,
+        extension: {
+          mondayNightOutlook: {
+            matchups: [],
+            summary: "No supplied matchup remains open.",
+          },
+        },
+        section: "recaps",
+        structure: {
+          kicker: "Kicker.",
+          lead: "Lead.",
+          standingsShift: "Standings.",
+          topResult: "Top result.",
+          type: "weekly_recap",
+          upsetOrBlowout: "Upset.",
+        },
+      },
+      {
+        columnFormat: "waiver-summary" as const,
+        contentType: "transaction_reaction" as const,
+        extension: {
+          waiverSummary: {
+            fabBudget: 100,
+            moves: [],
+            summary: "No supplied waiver moves were available.",
+          },
+        },
+        section: "previews",
+        structure: {
+          grade: "B+",
+          loser: "Fixture Opponent",
+          move: "Fixture Team made a move.",
+          sourcesSay: "Fixture Team is active.",
+          type: "transaction_reaction",
+          winner: "Fixture Team",
+        },
+      },
+      {
+        columnFormat: "fantasy-friday" as const,
+        contentType: "matchup_preview" as const,
+        extension: {
+          fantasyFriday: {
+            flashback: {
+              available: false,
+              fact: "No supplied league-history record was available.",
+              season: null,
+            },
+            oddsOrPercentageChanges: [],
+            thursdayNightSummaries: [],
+          },
+        },
+        section: "previews",
+        structure: {
+          matchups: [
+            {
+              edge: "Fixture Team has the supplied edge.",
+              keyNumber: "120 projected points",
+              opponent: "Fixture Opponent",
+              prediction: "Fixture Team is the lean.",
+              team: "Fixture Team",
+              xFactor: "Fixture Manager",
+            },
+          ],
+          type: "matchup_preview",
+        },
+      },
+      {
+        columnFormat: "predictions" as const,
+        contentType: "matchup_preview" as const,
+        extension: {
+          predictions: {
+            matchups: [
+              {
+                endScore: {
+                  opponentScore: 109.2,
+                  teamScore: 121.4,
+                },
+                opponent: "Fixture Opponent",
+                playerPerformances: [
+                  {
+                    leagueTeam: "Fixture Team",
+                    player: "Fixture Quarterback",
+                    predictedPerformance:
+                      "Fixture Quarterback projects for 24.2 points.",
+                    projectedPoints: 24.2,
+                  },
+                ],
+                team: "Fixture Team",
+                writtenPrediction: "Fixture Team is the supplied lean.",
+              },
+            ],
+          },
+        },
+        section: "previews",
+        structure: {
+          matchups: [
+            {
+              edge: "Fixture Team has the supplied edge.",
+              keyNumber: "120 projected points",
+              opponent: "Fixture Opponent",
+              prediction: "Fixture Team is the lean.",
+              team: "Fixture Team",
+              xFactor: "Fixture Quarterback",
+            },
+          ],
+          type: "matchup_preview",
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      let parsedStructure: Record<string, unknown> = testCase.structure;
+      const client = {
+        messages: {
+          parse: async () => ({
+            parsed_output: {
+              body: "Body from Claude.",
+              bodyBlocks: [
+                { text: "Scheduled column", type: "heading" },
+                { text: "Body from Claude.", type: "paragraph" },
+              ],
+              citedCanonClaimIds: [],
+              contentType: testCase.contentType,
+              dek: "Dek from Claude.",
+              section: testCase.section,
+              structure: parsedStructure,
+              summary: "Summary from Claude.",
+              tags: ["Fixture Team"],
+              title: "Scheduled column",
+            },
+          }),
+        },
+      } as unknown as AnthropicMessagesClient;
+      const llm = new AnthropicLlmClient({
+        apiKey: fakeKey(),
+        client,
+      });
+      const request = {
+        ...requestFor("narrator"),
+        columnFormat: testCase.columnFormat,
+        contentType: testCase.contentType,
+      };
+
+      await expect(llm.generate(request)).rejects.toMatchObject({
+        code: "AI_LLM_RESPONSE_INVALID",
+      } satisfies Partial<AppError>);
+
+      parsedStructure = { ...testCase.structure, ...testCase.extension };
+      await expect(llm.generate(request)).resolves.toMatchObject({
+        structure: testCase.extension,
+      });
+    }
   });
 
   it("rejects structured output for the wrong requested content type", async () => {

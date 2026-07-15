@@ -1,5 +1,6 @@
 import { AppError } from "@/core/result";
 import type { LeaguePublicationSectionId } from "@/news/sections";
+import type { LeagueColumnId } from "./league-columns";
 import type { AiPersona } from "./personas";
 
 export const AI_CONTENT_TYPES = [
@@ -25,6 +26,15 @@ export interface WeeklyRecapStructure {
   upsetOrBlowout: string;
   standingsShift: string;
   kicker: string;
+  mondayNightOutlook?: {
+    matchups: {
+      matters: boolean;
+      opponent: string;
+      reason: string;
+      team: string;
+    }[];
+    summary: string;
+  };
 }
 
 export interface PowerRankingEntry {
@@ -49,9 +59,52 @@ export interface MatchupPreviewEntry {
   prediction: string;
 }
 
+export interface FantasyFridayStructure {
+  flashback: {
+    available: boolean;
+    fact: string;
+    season: number | null;
+  };
+  oddsOrPercentageChanges: {
+    after: number;
+    before: number;
+    market: string;
+    matchup: string;
+    summary: string;
+    unit: "implied_percentage" | "line";
+  }[];
+  thursdayNightSummaries: {
+    awayScore: number | null;
+    awayTeam: string;
+    homeScore: number | null;
+    homeTeam: string;
+    summary: string;
+  }[];
+}
+
+export interface PredictionsStructure {
+  matchups: {
+    endScore: {
+      opponentScore: number | null;
+      teamScore: number | null;
+    };
+    opponent: string;
+    playerPerformances: {
+      leagueTeam: string;
+      player: string;
+      predictedPerformance: string;
+      projectedPoints: number | null;
+    }[];
+    team: string;
+    writtenPrediction: string;
+  }[];
+}
+
 export interface MatchupPreviewStructure {
   type: "matchup_preview";
   matchups: MatchupPreviewEntry[];
+  fantasyFriday?: FantasyFridayStructure;
+  predictions?: PredictionsStructure;
 }
 
 export interface AwardSuperlativeEntry {
@@ -72,6 +125,16 @@ export interface TransactionReactionStructure {
   winner: string;
   loser: string;
   sourcesSay: string;
+  waiverSummary?: {
+    fabBudget: number | null;
+    moves: {
+      fabRemaining: number | null;
+      fabSpent: number | null;
+      rosterChanges: string[];
+      team: string;
+    }[];
+    summary: string;
+  };
 }
 
 export interface SeasonArcStructure {
@@ -153,6 +216,7 @@ export interface ContentStructureValidationContext {
     holderName: string | null;
     previousHolderName?: string | null;
   }[];
+  players?: readonly string[];
 }
 
 export interface ContentTypeTemplate {
@@ -271,6 +335,28 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function nullableNumberValue(value: unknown, field: string): number | null {
+  if (value === null) {
+    return null;
+  }
+  const number = numberValue(value);
+  if (number === null) {
+    throwStructureError(`${field} must be a finite number or null`);
+  }
+  return number;
+}
+
+function nullableNonnegativeNumberValue(
+  value: unknown,
+  field: string,
+): number | null {
+  const number = nullableNumberValue(value, field);
+  if (number !== null && number < 0) {
+    throwStructureError(`${field} must be nonnegative or null`);
+  }
+  return number;
+}
+
 function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
@@ -316,8 +402,72 @@ function ensureKnownEntity(
   }
 }
 
-function normalizeWeeklyRecap(structure: unknown): WeeklyRecapStructure {
+function ensureKnownPlayer(
+  value: string,
+  context: ContentStructureValidationContext,
+  field: string,
+): void {
+  if (context.players && !context.players.includes(value)) {
+    throwStructureError(`${field} must reference a supplied player`);
+  }
+}
+
+function normalizeMondayNightOutlook(
+  value: unknown,
+  context: ContentStructureValidationContext,
+): NonNullable<WeeklyRecapStructure["mondayNightOutlook"]> {
+  const record = asRecord(value);
+  const summary = cleanText(record.summary);
+  const matchups = arrayValue(record.matchups).map((value) => {
+    const matchup = asRecord(value);
+    const normalized = {
+      matters: matchup.matters,
+      opponent: cleanText(matchup.opponent),
+      reason: cleanText(matchup.reason),
+      team: cleanText(matchup.team),
+    };
+    if (
+      typeof normalized.matters !== "boolean" ||
+      !normalized.team ||
+      !normalized.opponent ||
+      !normalized.reason
+    ) {
+      throwStructureError(
+        "weekly_recap mondayNightOutlook matchups must be fully populated",
+      );
+    }
+    ensureKnownEntity(
+      normalized.team,
+      context,
+      "weekly_recap.mondayNightOutlook.team",
+    );
+    ensureKnownEntity(
+      normalized.opponent,
+      context,
+      "weekly_recap.mondayNightOutlook.opponent",
+    );
+    return {
+      matters: normalized.matters,
+      opponent: normalized.opponent,
+      reason: normalized.reason,
+      team: normalized.team,
+    };
+  });
+  if (!summary) {
+    throwStructureError("weekly_recap mondayNightOutlook requires a summary");
+  }
+  return { matchups, summary };
+}
+
+function normalizeWeeklyRecap(
+  structure: unknown,
+  context: ContentStructureValidationContext,
+  columnFormat: LeagueColumnId | null,
+): WeeklyRecapStructure {
   const record = asRecord(structure);
+  const mondayNightOutlook = record.mondayNightOutlook
+    ? normalizeMondayNightOutlook(record.mondayNightOutlook, context)
+    : null;
   const normalized = {
     kicker: cleanText(record.kicker),
     lead: cleanText(record.lead),
@@ -335,7 +485,14 @@ function normalizeWeeklyRecap(structure: unknown): WeeklyRecapStructure {
   ) {
     throwStructureError("weekly_recap structure is missing a required section");
   }
-  return normalized;
+  if (columnFormat === "the-wrap" && !mondayNightOutlook) {
+    throwStructureError(
+      "The Wrap weekly_recap requires a mondayNightOutlook section",
+    );
+  }
+  return mondayNightOutlook
+    ? { ...normalized, mondayNightOutlook }
+    : normalized;
 }
 
 function normalizePowerRankings(
@@ -386,9 +543,206 @@ function normalizePowerRankings(
   return { rankings, type: "power_rankings" };
 }
 
+function normalizeFantasyFriday(
+  value: unknown,
+  context: ContentStructureValidationContext,
+): FantasyFridayStructure {
+  const record = asRecord(value);
+  const flashbackRecord = asRecord(record.flashback);
+  const flashback = {
+    available: flashbackRecord.available,
+    fact: cleanText(flashbackRecord.fact),
+    season: nullableNonnegativeNumberValue(
+      flashbackRecord.season,
+      "matchup_preview.fantasyFriday.flashback.season",
+    ),
+  };
+  if (typeof flashback.available !== "boolean" || !flashback.fact) {
+    throwStructureError(
+      "Fantasy Friday requires a fully populated league flashback",
+    );
+  }
+  if (!flashback.available && flashback.season !== null) {
+    throwStructureError(
+      "Fantasy Friday unavailable flashbacks cannot claim a season",
+    );
+  }
+  if (
+    flashback.available &&
+    context.teams.length > 0 &&
+    ![...knownEntityNames(context)].some((name) =>
+      flashback.fact.includes(name),
+    )
+  ) {
+    throwStructureError(
+      "Fantasy Friday flashback must reference a supplied league entity",
+    );
+  }
+
+  const oddsOrPercentageChanges = arrayValue(
+    record.oddsOrPercentageChanges,
+  ).map<FantasyFridayStructure["oddsOrPercentageChanges"][number]>((value) => {
+    const change = asRecord(value);
+    const normalized = {
+      after: numberValue(change.after),
+      before: numberValue(change.before),
+      market: cleanText(change.market),
+      matchup: cleanText(change.matchup),
+      summary: cleanText(change.summary),
+      unit: change.unit,
+    };
+    if (
+      normalized.after === null ||
+      normalized.before === null ||
+      !normalized.market ||
+      !normalized.matchup ||
+      !normalized.summary ||
+      (normalized.unit !== "line" && normalized.unit !== "implied_percentage")
+    ) {
+      throwStructureError(
+        "Fantasy Friday odds or percentage changes must be fully populated",
+      );
+    }
+    return {
+      after: normalized.after,
+      before: normalized.before,
+      market: normalized.market,
+      matchup: normalized.matchup,
+      summary: normalized.summary,
+      unit: normalized.unit === "line" ? "line" : "implied_percentage",
+    };
+  });
+
+  const thursdayNightSummaries = arrayValue(record.thursdayNightSummaries).map(
+    (value) => {
+      const game = asRecord(value);
+      const normalized = {
+        awayScore: nullableNonnegativeNumberValue(
+          game.awayScore,
+          "matchup_preview.fantasyFriday.thursdayNightSummaries.awayScore",
+        ),
+        awayTeam: cleanText(game.awayTeam),
+        homeScore: nullableNonnegativeNumberValue(
+          game.homeScore,
+          "matchup_preview.fantasyFriday.thursdayNightSummaries.homeScore",
+        ),
+        homeTeam: cleanText(game.homeTeam),
+        summary: cleanText(game.summary),
+      };
+      if (!normalized.awayTeam || !normalized.homeTeam || !normalized.summary) {
+        throwStructureError(
+          "Fantasy Friday Thursday-night summaries must be fully populated",
+        );
+      }
+      if ((normalized.awayScore === null) !== (normalized.homeScore === null)) {
+        throwStructureError(
+          "Fantasy Friday Thursday-night scores must be both known or both null",
+        );
+      }
+      return normalized;
+    },
+  );
+
+  return {
+    flashback: {
+      available: flashback.available,
+      fact: flashback.fact,
+      season: flashback.season,
+    },
+    oddsOrPercentageChanges,
+    thursdayNightSummaries,
+  };
+}
+
+function normalizePredictions(
+  value: unknown,
+  context: ContentStructureValidationContext,
+): PredictionsStructure {
+  const record = asRecord(value);
+  const matchups = arrayValue(record.matchups).map((value) => {
+    const matchup = asRecord(value);
+    const endScoreRecord = asRecord(matchup.endScore);
+    const team = cleanText(matchup.team);
+    const opponent = cleanText(matchup.opponent);
+    const writtenPrediction = cleanText(matchup.writtenPrediction);
+    const endScore = {
+      opponentScore: nullableNonnegativeNumberValue(
+        endScoreRecord.opponentScore,
+        "matchup_preview.predictions.matchups.endScore.opponentScore",
+      ),
+      teamScore: nullableNonnegativeNumberValue(
+        endScoreRecord.teamScore,
+        "matchup_preview.predictions.matchups.endScore.teamScore",
+      ),
+    };
+    if (!team || !opponent || !writtenPrediction) {
+      throwStructureError(
+        "Predictions matchup entries must be fully populated",
+      );
+    }
+    if ((endScore.teamScore === null) !== (endScore.opponentScore === null)) {
+      throwStructureError(
+        "Predictions end scores must be both known or both null",
+      );
+    }
+    ensureKnownEntity(team, context, "matchup_preview.predictions.team");
+    ensureKnownEntity(
+      opponent,
+      context,
+      "matchup_preview.predictions.opponent",
+    );
+    const playerPerformances = arrayValue(matchup.playerPerformances).map(
+      (value) => {
+        const player = asRecord(value);
+        const normalized = {
+          leagueTeam: cleanText(player.leagueTeam),
+          player: cleanText(player.player),
+          predictedPerformance: cleanText(player.predictedPerformance),
+          projectedPoints: nullableNonnegativeNumberValue(
+            player.projectedPoints,
+            "matchup_preview.predictions.playerPerformances.projectedPoints",
+          ),
+        };
+        if (
+          !normalized.leagueTeam ||
+          !normalized.player ||
+          !normalized.predictedPerformance
+        ) {
+          throwStructureError(
+            "Predictions player-performance entries must be fully populated",
+          );
+        }
+        ensureKnownEntity(
+          normalized.leagueTeam,
+          context,
+          "matchup_preview.predictions.playerPerformances.leagueTeam",
+        );
+        ensureKnownPlayer(
+          normalized.player,
+          context,
+          "matchup_preview.predictions.playerPerformances.player",
+        );
+        return normalized;
+      },
+    );
+    return {
+      endScore,
+      opponent,
+      playerPerformances,
+      team,
+      writtenPrediction,
+    };
+  });
+  if (matchups.length === 0 && context.teams.length > 0) {
+    throwStructureError("Predictions must include at least one matchup");
+  }
+  return { matchups };
+}
+
 function normalizeMatchupPreview(
   structure: unknown,
   context: ContentStructureValidationContext,
+  columnFormat: LeagueColumnId | null,
 ): MatchupPreviewStructure {
   const record = asRecord(structure);
   const matchups = arrayValue(record.matchups).map((value) => {
@@ -420,7 +774,28 @@ function normalizeMatchupPreview(
     throwStructureError("matchup_preview must include at least one matchup");
   }
 
-  return { matchups, type: "matchup_preview" };
+  const fantasyFriday = record.fantasyFriday
+    ? normalizeFantasyFriday(record.fantasyFriday, context)
+    : null;
+  const predictions = record.predictions
+    ? normalizePredictions(record.predictions, context)
+    : null;
+  if (columnFormat === "fantasy-friday" && !fantasyFriday) {
+    throwStructureError(
+      "Fantasy Friday matchup_preview requires a fantasyFriday section",
+    );
+  }
+  if (columnFormat === "predictions" && !predictions) {
+    throwStructureError(
+      "Predictions matchup_preview requires a predictions section",
+    );
+  }
+  return {
+    matchups,
+    ...(fantasyFriday ? { fantasyFriday } : {}),
+    ...(predictions ? { predictions } : {}),
+    type: "matchup_preview",
+  };
 }
 
 function normalizeAwardsSuperlatives(
@@ -458,8 +833,49 @@ function normalizeAwardsSuperlatives(
 function normalizeTransactionReaction(
   structure: unknown,
   context: ContentStructureValidationContext,
+  columnFormat: LeagueColumnId | null,
 ): TransactionReactionStructure {
   const record = asRecord(structure);
+  const waiverSummaryRecord = record.waiverSummary
+    ? asRecord(record.waiverSummary)
+    : null;
+  const waiverSummary = waiverSummaryRecord
+    ? {
+        fabBudget: nullableNumberValue(
+          waiverSummaryRecord.fabBudget,
+          "transaction_reaction.waiverSummary.fabBudget",
+        ),
+        moves: arrayValue(waiverSummaryRecord.moves).map((value) => {
+          const move = asRecord(value);
+          const normalizedMove = {
+            fabRemaining: nullableNumberValue(
+              move.fabRemaining,
+              "transaction_reaction.waiverSummary.moves.fabRemaining",
+            ),
+            fabSpent: nullableNumberValue(
+              move.fabSpent,
+              "transaction_reaction.waiverSummary.moves.fabSpent",
+            ),
+            rosterChanges: arrayValue(move.rosterChanges)
+              .map(cleanText)
+              .filter(Boolean),
+            team: cleanText(move.team),
+          };
+          if (!normalizedMove.team) {
+            throwStructureError(
+              "transaction_reaction waiverSummary moves require a team",
+            );
+          }
+          ensureKnownEntity(
+            normalizedMove.team,
+            context,
+            "transaction_reaction.waiverSummary.moves.team",
+          );
+          return normalizedMove;
+        }),
+        summary: cleanText(waiverSummaryRecord.summary),
+      }
+    : null;
   const normalized = {
     grade: cleanText(record.grade),
     loser: cleanText(record.loser),
@@ -481,7 +897,17 @@ function normalizeTransactionReaction(
   }
   ensureKnownEntity(normalized.winner, context, "transaction_reaction.winner");
   ensureKnownEntity(normalized.loser, context, "transaction_reaction.loser");
-  return normalized;
+  if (waiverSummary && !waiverSummary.summary) {
+    throwStructureError(
+      "transaction_reaction waiverSummary requires a summary",
+    );
+  }
+  if (columnFormat === "waiver-summary" && !waiverSummary) {
+    throwStructureError(
+      "Waiver Summary transaction_reaction requires a waiverSummary section",
+    );
+  }
+  return waiverSummary ? { ...normalized, waiverSummary } : normalized;
 }
 
 function normalizeSeasonArc(
@@ -694,10 +1120,12 @@ export function contentTypePromptContract(
 }
 
 export function validateContentStructure({
+  columnFormat = null,
   contentType,
   context,
   structure,
 }: {
+  columnFormat?: LeagueColumnId | null;
   contentType: AiContentType;
   context: ContentStructureValidationContext;
   structure: unknown;
@@ -709,15 +1137,15 @@ export function validateContentStructure({
 
   switch (contentType) {
     case "weekly_recap":
-      return normalizeWeeklyRecap(record);
+      return normalizeWeeklyRecap(record, context, columnFormat);
     case "power_rankings":
       return normalizePowerRankings(record, context);
     case "matchup_preview":
-      return normalizeMatchupPreview(record, context);
+      return normalizeMatchupPreview(record, context, columnFormat);
     case "awards_superlatives":
       return normalizeAwardsSuperlatives(record, context);
     case "transaction_reaction":
-      return normalizeTransactionReaction(record, context);
+      return normalizeTransactionReaction(record, context, columnFormat);
     case "season_arc":
       return normalizeSeasonArc(record, context);
     case "rivalry_piece":
