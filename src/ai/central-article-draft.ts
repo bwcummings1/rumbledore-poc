@@ -254,6 +254,39 @@ export function centralArticleText(draft: CentralArticleDraft): string {
   ].join("\n\n");
 }
 
+/**
+ * De-duplicated player references drawn from the column's news evidence, in the
+ * `{provider, providerId, label}` shape the league-feed tailoring bridge reads
+ * from `metadata.playerRefs`. Emitting these lets a central column be localized
+ * into league feeds when it mentions a rostered player (REC-007).
+ */
+export function centralPlayerRefsFromEvidence(
+  news: CentralGenerationContext["evidence"]["news"],
+): { label: string | null; provider: string; providerId: string }[] {
+  const byKey = new Map<
+    string,
+    { label: string | null; provider: string; providerId: string }
+  >();
+  for (const item of news) {
+    for (const ref of item.playerRefs) {
+      const provider = ref.provider.trim().toLowerCase();
+      const providerId = ref.providerId.trim();
+      if (!provider || !providerId) {
+        continue;
+      }
+      const key = `${provider}\n${providerId}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, { label: ref.label, provider, providerId });
+      }
+    }
+  }
+  return [...byKey.values()].sort(
+    (left, right) =>
+      left.provider.localeCompare(right.provider) ||
+      left.providerId.localeCompare(right.providerId),
+  );
+}
+
 export function centralArticleMetadata({
   context,
   draft,
@@ -291,6 +324,7 @@ export function centralArticleMetadata({
       week: context.week,
     },
     journalist: context.journalist,
+    playerRefs: centralPlayerRefsFromEvidence(context.evidence.news),
     preGenerationContext: {
       injected: preGenerationContext !== null,
       publicationPool: "central",

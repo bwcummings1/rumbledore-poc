@@ -235,6 +235,9 @@ describe("central journalist generation pipeline", () => {
         centralSection: "rankings-projections",
         contentType: "central_rankings_projections",
         generatedBy: "central-journalist-engine",
+        // REC-007: published central metadata carries the tailoring bridge's
+        // playerRefs (empty here — a stats/odds column with no news evidence).
+        playerRefs: expect.any(Array),
         generation: {
           sourceFreshness: [
             expect.objectContaining({ dataSource: "general-stats" }),
