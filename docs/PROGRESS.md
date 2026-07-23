@@ -1,8 +1,8 @@
 # Rumbledore v2 — Master State & Handoff
 
 **This is the single source of truth.** Any agent/model/tool continuing this work reads this first.
-Keep it current. Last updated: 2026-07-15 — **Editorial architecture (specs/49) Phase 3 P3-FIX complete on
-`ws/p3-central-fix`, pending orchestrator merge:** central reader bodies are rebuilt server-side from validated
+Keep it current. Last updated: 2026-07-23 — **Editorial architecture (specs/49) Phase 3 P3-FIX merged to `main`
+(HEAD `96eaf7c`):** central reader bodies are rebuilt server-side from validated
 structures, so model prose and recall cannot publish ungrounded facts. Central generation now embeds that validated
 reader-facing article, compares recent same-type/model central memories in the `league_id IS NULL` pool, retries once,
 and skips a still-near-duplicate draft. Review regressions also require refresh timestamps to advance, ground Rundown
