@@ -125,6 +125,7 @@ function copyProfile(profile: ToneProfile): ToneProfile {
       noLeakage: [...profile.guardrails.noLeakage],
       noRealMoney: [...profile.guardrails.noRealMoney],
       untrustedNews: [...profile.guardrails.untrustedNews],
+      leagueLore: [...profile.guardrails.leagueLore],
     },
     pointOfView: profile.pointOfView,
     styleDirectives: [...profile.styleDirectives],

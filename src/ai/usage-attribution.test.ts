@@ -6,7 +6,11 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { leagues } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { getAiUsageRollupData, recordAiUsageEvent } from "./usage-attribution";
+import {
+  estimateCostMicrosUsd,
+  getAiUsageRollupData,
+  recordAiUsageEvent,
+} from "./usage-attribution";
 
 const marker = `usage-${randomUUID()}`;
 let handle: DbHandle;
@@ -118,13 +122,16 @@ describe("AI usage attribution", () => {
     expect(result.data.summary).toMatchObject({
       callCount: 3,
       estimatedCallCount: 2,
-      totalCostMicrosUsd: 0,
+      // 236 (80*1+30*5+4*1.25+10*0.1) + 150 (50*1+20*5) + 35 (10*1+5*5), all at
+      // the bulk/haiku fallback price for these mock/fixture models.
+      totalCostMicrosUsd: 421,
       totalTokens: 209,
     });
     expect(result.data.weekly).toHaveLength(2);
     expect(result.data.weekly[0]).toMatchObject({
       callCount: 2,
       estimatedCallCount: 2,
+      totalCostMicrosUsd: 386,
       totalTokens: 194,
       weekStart: "2026-07-06T00:00:00.000Z",
     });
@@ -154,5 +161,44 @@ describe("AI usage attribution", () => {
       provider: "mock",
       totalTokens: 124,
     });
+  });
+
+  it("estimates per-model cost in micros of USD from token usage (REC-005)", () => {
+    // haiku bulk tier: $1/$5 per MTok in/out; cache write 1.25x, read 0.1x.
+    expect(
+      estimateCostMicrosUsd("claude-haiku-4-5-20251001", {
+        cacheCreationInputTokens: 4,
+        cacheReadInputTokens: 10,
+        inputTokens: 80,
+        outputTokens: 30,
+      }),
+    ).toBe(236);
+    // opus flagship tier: $15/$75 per MTok in/out.
+    expect(
+      estimateCostMicrosUsd("claude-opus-4-8", {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 100,
+        outputTokens: 40,
+      }),
+    ).toBe(100 * 15 + 40 * 75);
+    // voyage embeddings: input-only, ~$0.02 per MTok.
+    expect(
+      estimateCostMicrosUsd("voyage-4-lite", {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 1000,
+        outputTokens: 0,
+      }),
+    ).toBe(20);
+    // unknown model falls back to the bulk (haiku) tier.
+    expect(
+      estimateCostMicrosUsd("some-unknown-model", {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 10,
+        outputTokens: 5,
+      }),
+    ).toBe(35);
   });
 });

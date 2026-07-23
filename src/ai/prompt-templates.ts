@@ -79,6 +79,7 @@ function guardrailLines(context: LeagueBlogContext): string[] {
     `No leakage: ${guardrails.noLeakage.join(" | ")}`,
     `No real-money framing: ${guardrails.noRealMoney.join(" | ")}`,
     `Untrusted-news framing: ${guardrails.untrustedNews.join(" | ")}`,
+    `League-lore framing: ${guardrails.leagueLore.join(" | ")}`,
     [
       "Roast consent:",
       `off_limits=${roastConsent.off_limits.join(", ") || "none"} must never be targeted or made the butt of trash-talk;`,

@@ -768,19 +768,21 @@ function stableAuthenticityFacts(context: LeagueBlogContext) {
     relation: claim.relation,
     sourceInstigationId: claim.sourceInstigationId,
     sourcePollId: claim.sourcePollId,
-    statement: claim.statement,
     status: claim.status,
-    title: claim.title,
     verification: claim.verification,
     voteClosesAt: claim.voteClosesAt?.toISOString() ?? null,
+    // NOTE: member-authored free text (title, statement) is deliberately NOT
+    // serialized into this trusted, prompt-cached prefix. It is relocated to the
+    // fenced <untrusted_league_lore> block (see leagueLoreBlock) so a canonized
+    // claim cannot carry a prompt-injection instruction into trusted context.
+    // Correlate back to this entry by `id`.
   });
   return {
     canonLore: context.authenticity.canonLore.map((claim) => ({
       id: claim.id,
       ratifiedAt: claim.ratifiedAt?.toISOString() ?? null,
       ratifiedBy: claim.ratifiedBy,
-      statement: claim.statement,
-      title: claim.title,
+      // title/statement relocated to the fenced <untrusted_league_lore> block.
     })),
     lore: {
       canon: context.authenticity.lore.canon.map((claim) => ({
@@ -1892,6 +1894,45 @@ function untrustedNewsBlock(newsItems: readonly NewsItem[]): string {
   return `<untrusted_news>${JSON.stringify(inertItems)}</untrusted_news>`;
 }
 
+interface FencedLoreEntry {
+  id: string;
+  scope: "canon" | "disputed" | "pending" | "refuted";
+  title: string;
+  statement: string;
+}
+
+/**
+ * Member-authored lore title/statement are league-controlled free text. They are
+ * consumed as *content* (canonized lore is established league history), but the
+ * text must never be treated as an instruction to the model. This fences the free
+ * text into an inert, delimited block — the trusted prefix keeps only the
+ * structured lore metadata (id, status, provenance), correlated by `id`.
+ */
+function leagueLoreBlock(context: LeagueBlogContext): string {
+  const byId = new Map<string, FencedLoreEntry>();
+  const add = (
+    scope: FencedLoreEntry["scope"],
+    claims: readonly { id: string; statement: string; title: string }[],
+  ) => {
+    for (const claim of claims) {
+      if (!byId.has(claim.id)) {
+        byId.set(claim.id, {
+          id: claim.id,
+          scope,
+          statement: claim.statement,
+          title: claim.title,
+        });
+      }
+    }
+  };
+  add("canon", context.authenticity.lore.canon);
+  add("disputed", context.authenticity.lore.disputed);
+  add("pending", context.authenticity.lore.pending);
+  add("refuted", context.authenticity.lore.refuted);
+  add("canon", context.authenticity.canonLore);
+  return `<untrusted_league_lore>${JSON.stringify([...byId.values()])}</untrusted_league_lore>`;
+}
+
 type PersonaCardRow = Omit<LeaguePersonaCard, "toneProfile"> & {
   toneProfile: unknown;
 };
@@ -1970,6 +2011,7 @@ export function buildPromptParts({
         })),
     trigger: context.trigger,
     triggerKey,
+    untrustedLeagueLore: leagueLoreBlock(context),
     untrustedNews: untrustedNewsBlock(newsItems),
     waivers: context.waivers ?? emptyWaiverContext(),
   };

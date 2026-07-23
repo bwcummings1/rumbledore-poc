@@ -1142,7 +1142,8 @@ describe("generateLeagueBlogPost", () => {
       expect.arrayContaining([
         expect.objectContaining({
           contentType: "matchup_preview",
-          costMicrosUsd: 0,
+          // REC-005: cost is now table-derived from tokens (was hardcoded 0).
+          costMicrosUsd: expect.any(Number),
           estimated: true,
           model: "mock-rumbledore-llm-v1",
           persona: "commissioner",
@@ -1150,6 +1151,7 @@ describe("generateLeagueBlogPost", () => {
         }),
       ]),
     );
+    expect(rows.usage.every((event) => event.costMicrosUsd > 0)).toBe(true);
     expect(rows.usage.every((event) => event.totalTokens > 0)).toBe(true);
     expect(rows.usage.every((event) => event.generationRunId)).toBe(true);
     expect(rows.runs.map((run) => run.status).sort()).toEqual([
@@ -1834,47 +1836,51 @@ describe("generateLeagueBlogPost", () => {
       ]),
     );
 
-    const stablePrefix = JSON.parse(
-      llm.requests[0]?.prompt.systemPrefix ?? "{}",
-    ) as {
+    const stablePrefixRaw = llm.requests[0]?.prompt.systemPrefix ?? "{}";
+    const volatileContext = llm.requests[0]?.prompt.volatileContext ?? "";
+    const stablePrefix = JSON.parse(stablePrefixRaw) as {
       authenticity?: {
-        canonLore?: { id?: string; statement?: string }[];
+        canonLore?: { id?: string; statement?: string; title?: string }[];
         lore?: {
-          canon?: { id?: string; statement?: string }[];
-          disputed?: { statement?: string }[];
-          pending?: { statement?: string }[];
-          refuted?: { statement?: string }[];
+          canon?: { id?: string; statement?: string; title?: string }[];
+          disputed?: { id?: string; statement?: string }[];
+          pending?: { id?: string; statement?: string }[];
+          refuted?: { id?: string; statement?: string }[];
         };
         rivalries?: { personAName?: string; personBName?: string }[];
       };
     };
+    // Structured lore metadata (ids, status, provenance) stays in the trusted,
+    // prompt-cached prefix so the writer can cite canon by id.
     expect(stablePrefix.authenticity?.canonLore).toEqual([
-      expect.objectContaining({
-        id: expect.any(String),
-        statement: "Canon Alpha owns the Snow Bowl collapse",
-      }),
+      expect.objectContaining({ id: expect.any(String) }),
     ]);
     expect(stablePrefix.authenticity?.lore?.canon).toEqual([
-      expect.objectContaining({
-        id: expect.any(String),
-        statement: "Canon Alpha owns the Snow Bowl collapse",
-      }),
+      expect.objectContaining({ id: expect.any(String) }),
     ]);
-    expect(stablePrefix.authenticity?.lore?.pending).toEqual([
-      expect.objectContaining({
-        statement: "Unratified Beta dynasty rumor",
-      }),
-    ]);
-    expect(stablePrefix.authenticity?.lore?.disputed).toEqual([
-      expect.objectContaining({
-        statement: "Canon Beta's Canal Bowl title is under challenge",
-      }),
-    ]);
-    expect(stablePrefix.authenticity?.lore?.refuted).toEqual([
-      expect.objectContaining({
-        statement: "Canon Alpha scored 200 in Week 1",
-      }),
-    ]);
+    // REC-001: member-authored free text (title/statement) must NOT appear in the
+    // trusted prefix — a canonized claim could otherwise smuggle a prompt-injection
+    // instruction into the region the model treats as fact.
+    expect(stablePrefix.authenticity?.canonLore?.[0]).not.toHaveProperty(
+      "statement",
+    );
+    expect(stablePrefix.authenticity?.lore?.canon?.[0]).not.toHaveProperty(
+      "statement",
+    );
+    expect(stablePrefixRaw).not.toContain(
+      "Canon Alpha owns the Snow Bowl collapse",
+    );
+    expect(stablePrefixRaw).not.toContain("Unratified Beta dynasty rumor");
+    // The free text is fenced into the inert <untrusted_league_lore> block in the
+    // volatile (untrusted) context, correlated back to the prefix entries by id.
+    expect(volatileContext).toContain("untrusted_league_lore");
+    expect(volatileContext).toContain(
+      "Canon Alpha owns the Snow Bowl collapse",
+    );
+    expect(volatileContext).toContain("Unratified Beta dynasty rumor");
+    expect(volatileContext).toContain(
+      "Canon Beta's Canal Bowl title is under challenge",
+    );
     expect(stablePrefix.authenticity?.rivalries).toEqual([
       expect.objectContaining({
         personAName: "Canon Alpha",
