@@ -7,8 +7,10 @@ import {
   generateCentralColumn,
 } from "@/ai";
 import { centralColumnForId } from "@/ai/central-columns";
+import { logger } from "@/core/logging";
 import { recordJobRun } from "@/core/metrics";
 import { AppError } from "@/core/result";
+import { tailorCentralNewsToLeagues } from "@/news";
 import { inngest } from "../client";
 import { type CentralContentGenerateData, JOB_EVENTS } from "../events";
 
@@ -65,8 +67,26 @@ export async function runCentralContentGenerate({
   deps: CentralContentGenerateDependencies;
 }): Promise<CentralContentGenerateResponse> {
   const data = parseCentralContentGenerateData(rawData);
+  const result = await generateCentralColumn({ deps, input: data });
+  // REC-007: localize a published central column into league feeds through the
+  // existing tailoring bridge (it references central items into a league's feed
+  // when they mention a rostered player). Best-effort — the article is already
+  // committed in its own transaction and tailoring is idempotent, so a failure
+  // here must never fail or retry the generation.
+  if (result.status === "published") {
+    try {
+      await tailorCentralNewsToLeagues(deps.db, {
+        contentItemIds: [result.contentItemId],
+      });
+    } catch (error) {
+      logger.warn("central_content_tailoring_failed", {
+        contentItemId: result.contentItemId,
+        error,
+      });
+    }
+  }
   return {
-    ...(await generateCentralColumn({ deps, input: data })),
+    ...result,
     eventName: JOB_EVENTS.centralContentGenerate,
     ok: true,
   };

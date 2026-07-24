@@ -123,6 +123,59 @@ function billableUnits(usage: LlmUsageBreakdown): number {
   );
 }
 
+interface ModelPriceMicrosPerToken {
+  input: number;
+  output: number;
+  cacheCreation: number;
+  cacheRead: number;
+}
+
+/**
+ * List-price ESTIMATES in micros of USD per token for the pinned models
+ * (`src/ai/model-config.ts`). Anthropic ephemeral cache writes bill ~1.25x input
+ * and cache reads ~0.1x input. The derived `costMicrosUsd` is a pre-real-billing
+ * estimate for per-league economics; reconcile it against a real provider invoice
+ * once `MOCK_ANTHROPIC`/`MOCK_VOYAGE` are flipped (Phase 4 §G). Update the numbers
+ * here when provider pricing changes — no other code needs to move.
+ */
+export const MODEL_PRICE_MICROS_PER_TOKEN: Record<
+  "opus" | "haiku" | "voyage",
+  ModelPriceMicrosPerToken
+> = {
+  opus: { cacheCreation: 18.75, cacheRead: 1.5, input: 15, output: 75 },
+  haiku: { cacheCreation: 1.25, cacheRead: 0.1, input: 1, output: 5 },
+  voyage: { cacheCreation: 0, cacheRead: 0, input: 0.02, output: 0 },
+};
+
+function modelPriceFor(model: string): ModelPriceMicrosPerToken {
+  const key = model.toLowerCase();
+  if (key.includes("opus")) {
+    return MODEL_PRICE_MICROS_PER_TOKEN.opus;
+  }
+  if (key.includes("voyage")) {
+    return MODEL_PRICE_MICROS_PER_TOKEN.voyage;
+  }
+  // Haiku is the configured default (bulk) tier; unknown models estimate against it.
+  return MODEL_PRICE_MICROS_PER_TOKEN.haiku;
+}
+
+/**
+ * Estimated cost of one generation, in integer micros of USD, from the model
+ * price table and token usage. A table-derived estimate, not a billed figure.
+ */
+export function estimateCostMicrosUsd(
+  model: string,
+  usage: LlmUsageBreakdown,
+): number {
+  const price = modelPriceFor(model);
+  return Math.round(
+    nonnegativeInt(usage.inputTokens) * price.input +
+      nonnegativeInt(usage.outputTokens) * price.output +
+      nonnegativeInt(usage.cacheCreationInputTokens) * price.cacheCreation +
+      nonnegativeInt(usage.cacheReadInputTokens) * price.cacheRead,
+  );
+}
+
 function asNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -171,6 +224,7 @@ export async function recordAiUsageEvent(
         ),
         cacheReadInputTokens: nonnegativeInt(input.usage.cacheReadInputTokens),
         contentType: input.contentType,
+        costMicrosUsd: estimateCostMicrosUsd(input.model, input.usage),
         ...(input.createdAt ? { createdAt: input.createdAt } : {}),
         estimated: input.estimated,
         generationRunId: input.generationRunId ?? null,

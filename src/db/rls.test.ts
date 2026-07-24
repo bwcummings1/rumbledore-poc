@@ -162,6 +162,100 @@ describe("RLS catalog state (migration 0002)", () => {
   });
 });
 
+describe("RLS completeness (schema-driven — every league_id table is isolated)", () => {
+  // Tables that carry a `league_id` column but are intentionally central /
+  // auth-plane and therefore have NO restrictive RLS. Each entry is a deliberate,
+  // reviewed exemption. This is a DENY-BY-DEFAULT list: a new league-scoped table
+  // added without a policy fails the assertion below unless it is consciously
+  // added here with a justification — which is exactly the review moment we want.
+  const centralLeagueIdAllowlist = new Map<string, string>([
+    [
+      "arena_standing",
+      "central cross-league leaderboard derived from league ledgers (spec 15)",
+    ],
+    [
+      "league_entitlements",
+      "auth-plane-central; entitlements must be readable before a league context exists",
+    ],
+    [
+      "entitlement_events",
+      "auth-plane-central audit; single-scope check enforces league XOR user scope",
+    ],
+  ]);
+
+  it("forces RLS + a current_league_id() policy on every table with a league_id column (except the documented central allowlist)", async () => {
+    const { rows } = await handle.pool.query<{
+      relname: string;
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+      policy_quals: string[];
+    }>(
+      `select c.relname,
+              c.relrowsecurity,
+              c.relforcerowsecurity,
+              array_remove(array_agg(p.qual), null) as policy_quals
+       from pg_class c
+       join pg_namespace n on n.oid = c.relnamespace
+       left join pg_policies p
+         on p.tablename = c.relname and p.schemaname = 'public'
+       where n.nspname = 'public'
+         and c.relkind = 'r'
+         and exists (
+           select 1 from information_schema.columns col
+           where col.table_schema = 'public'
+             and col.table_name = c.relname
+             and col.column_name = 'league_id'
+         )
+       group by c.relname, c.relrowsecurity, c.relforcerowsecurity`,
+    );
+
+    // Sanity: the schema really does have league-scoped tables to check.
+    expect(rows.length).toBeGreaterThan(0);
+
+    const violations: string[] = [];
+    const seenAllowlisted = new Set<string>();
+
+    for (const row of rows) {
+      if (centralLeagueIdAllowlist.has(row.relname)) {
+        seenAllowlisted.add(row.relname);
+        // A deliberately-central table that later gains FORCE RLS should be
+        // removed from the allowlist so the exemption cannot mask a real policy.
+        if (row.relforcerowsecurity) {
+          violations.push(
+            `${row.relname}: on the central allowlist but now has FORCE RLS — remove it from centralLeagueIdAllowlist`,
+          );
+        }
+        continue;
+      }
+      if (!row.relrowsecurity || !row.relforcerowsecurity) {
+        violations.push(
+          `${row.relname}: has a league_id column but RLS is not enabled+forced — declare a pgPolicy + hand-add FORCE ROW LEVEL SECURITY in its migration, or allowlist it as central with a reason`,
+        );
+        continue;
+      }
+      if (
+        !row.policy_quals.some((qual) => qual?.includes("current_league_id()"))
+      ) {
+        violations.push(
+          `${row.relname}: FORCE RLS is on but no policy references current_league_id() — the table is locked with no league-scoping rule`,
+        );
+      }
+    }
+
+    // The allowlist must not rot: every exemption must still name a real
+    // league_id table (a renamed/dropped table leaves a stale exemption).
+    for (const table of centralLeagueIdAllowlist.keys()) {
+      if (!seenAllowlisted.has(table)) {
+        violations.push(
+          `${table}: on the central allowlist but no longer has a league_id column — remove the stale exemption`,
+        );
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+});
+
 describe("current_league_id()", () => {
   it("is NULL outside any league context", async () => {
     const { rows } = await handle.pool.query(

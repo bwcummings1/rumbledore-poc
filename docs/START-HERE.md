@@ -1,7 +1,8 @@
 # START HERE — Rumbledore onboarding (read this first)
 
 > One-page orientation for any agent/person picking up this project. If you read one doc first, read this.
-> **Last reconciled: 2026-07-10 (through T19; migrations through 0072).** Keep this current when the
+> **Last reconciled: 2026-07-23 (through specs/47–49 — ingestion-bulletproofing, Sleeper parity, and the
+> editorial architecture P0–P3, all merged to `main`; migrations through 0078).** Keep this current when the
 > project's shape changes; keep live task state in `docs/PROGRESS.md`.
 
 You are picking up **Rumbledore v2** — a mobile-first, per-league fantasy-football companion PWA (Next.js App Router,
@@ -29,7 +30,12 @@ Drizzle/Postgres + RLS, Better Auth, Inngest, Anthropic; ESPN now, Sleeper/Yahoo
 > adversarial review, the 2026-07-10 dev-DB incident + recovery, provider reliability posture, and the agreed next
 > steps — read **`docs/HANDOFF-NEXT-AGENT.md`** after this page.
 
-## 2. Current state (through T19, merged to `main`; migrations through 0072)
+## 2. Current state (through specs/47–49, merged to `main`; migrations through 0078)
+> Since the T19 baseline below, three arcs merged: **specs/47** (ingestion bulletproofing — vocab corpus,
+> property suite, capability map + shadow-import quarantine + drift canaries), **specs/48** (Sleeper parity),
+> and **specs/49** (editorial architecture P0–P3 — league columns, the central journalist engine, editorial
+> recall, and the P3-FIX grounding/near-dup remediation). Read `docs/PROGRESS.md` for the live detail.
+
 The **data substrate (layer 1) is built and hardened**:
 - Per-league **curated data** with a save→push state machine + edit ledger + eras, and a read-only **Record Book**
   projected from pushed snapshots, including player-level records from pushed player/draft/roster facts (T1–T11, T19).
@@ -51,7 +57,11 @@ Nightly dev DB backups should run with `PATH=/usr/bin:$PATH RUMBLEDORE_BACKUP_DI
 the script writes `pg_dump` custom-format files outside the repo and prunes old dumps by retention.
 
 The **editorial and arrival layer is built behind mock/$0 boundaries**:
-- AI league context and records provenance use pushed canon through a branded `CanonCatalog`.
+- AI provenance runs three regimes (verify against code before assuming one universal rule): the **member Q&A
+  personal agent** and the **Record Book** consume pushed canon through the branded `CanonCatalog` (unforgeable);
+  the **central journalist engine** publishes bodies rebuilt server-side from validated structures; the **league
+  blogger** reads live records under a data-integrity gate (intended, so current-week recaps have live facts) —
+  it is *not* `CanonCatalog`-gated. "Compiler-enforced canon" describes the first regime, not all AI output.
 - Content has lifecycle state, append-only editorial actions, retract/regenerate/correction controls, generation failure
   visibility, versioned persona tone editing, typed live embeds, reactions, and roast-consent guardrails.
 - Distribution has social metadata/OG cards, logged-out league article teasers, launch editions, mock league webhooks,
