@@ -62,7 +62,39 @@ tier on every user. Columns are cheap now; retroactively obtaining user actions 
 practice* — the alternative is asking existing users to re-verify.
 
 **Open assumptions → spikes:** ~~player-props feasibility → `T-002`~~ **RESOLVED — see DD-7.**
-Yahoo code-space size → `T-003`. No task downstream of `T-003` may start before it reports.
+~~Yahoo code-space size → `T-003`~~ **PARTIALLY RESOLVED — see DD-8.** The gating *shape* question is
+answered and R2 is retired; exact sizing needs a real league (already gated by T-020's approval flag).
+
+**DD-8 — Yahoo needs no interface change; reuse Sleeper's string→numeric bridge.** *(resolves R2; evidence: T-003, 2026-07-28)*
+
+**The gating question — string keys or numeric ids — is answered: Yahoo uses STRINGS.** Verified from the
+client (`display_position: string` at `src/providers/yahoo/client.ts:804`, `selected_position` at `:805`)
+and from fixtures (`"QB"`, `"BN"`, `"KC"`, `"add/drop"`).
+
+**R2 is retired — this is not a blocker, because Sleeper is string-keyed too and already solved it.**
+`src/providers/sleeper/reference-data.ts` bridges strings into the numeric
+`ProviderDecodingDictionary` contract with a stable-hash encoder: `stableCodeId(kind, code)` derives a
+deterministic numeric id (`:424`), `numericDictionary()` builds `Record<number,T>` from `Record<string,T>`
+and **throws on collision at module load** (`:454-474`), and `encodeObservedCode()` returns `+id` for known
+codes and `−id` for unknown ones (`:442-452`) — the negative sentinel is how an unknown code surfaces to
+the integrity check. Yahoo follows the identical pattern. **No change to `decoding.ts`, and no ripple into
+ESPN or Sleeper.**
+
+**New blocking predecessor for T-019 (replaces the interface-widening branch, which is not triggered):**
+the bridge is **Sleeper-private** — `normalizedCode`, `stableCodeId`, `encodeCode`, `numericDictionary`,
+and `encodeObservedCode` are all non-exported module locals. T-019 must **extract them to a shared
+provider-codes module** before building Yahoo's dictionary. Copying instead would repeat the triplicated
+hand-rolled-RESP-client mistake the audit already flags (prior §5) — three copies of a collision-detecting
+hash encoder is exactly the divergence risk that finding describes.
+
+**Sizing — Inferred, not Verified.** Yahoo's fixtures are 21.5KB of **synthetic stubs**, not a vocabulary
+corpus: 2 positions (`QB`, `RB`), 2 slots (`BN`, `QB`), 1 pro team (`KC`), 1 transaction type (`add/drop`),
+**zero** `stat_id` values and **zero** `roster_positions` declarations. They cannot enumerate the real code
+space. By analogy to Sleeper's real dictionary (~250 entries across the five classes, 574 lines), T-019 is
+estimated at **L, ~400–600 lines** — but this is an estimate by analogy, and Yahoo's `stat_id` space in
+particular is entirely unobserved. Yahoo's public developer landing page does not publish the
+enumerations (checked); they sit behind the full API docs or a live league.
+**⛔ Firm sizing and the closure test require a real Yahoo league — already gated by T-020/T-021.**
 
 **DD-7 — Ingest player props. Path A confirmed.** *(resolves D1; evidence: T-002, 2026-07-28)*
 
@@ -439,14 +471,25 @@ double submit yields one pick; times render in the viewer's locale.
 ### M3 — Provider parity *(gated on T-003)*
 
 ---
-**T-019** · pending · traces to: `UIX-116` · **L** · *sized by T-003*
+**T-019** · pending · traces to: `UIX-116` · **L** · *sized by T-003 → DD-8*
 **Objective:** Build and register the Yahoo decoding dictionary.
-**Context pointers:** T-003's findings; `src/providers/sleeper/reference-data.ts` (574 lines — the model);
-`src/providers/decoding.ts:50-61`; `src/providers/yahoo/client.ts` (transport already real — D2).
-**Approach:** Cover all five code classes. Register Yahoo in `PROVIDER_DECODING_DICTIONARIES`. Until this
-lands, any real Yahoo payload quarantines as `dictionary_missing` **by design** — that is the current
-behavior, not a bug to suppress.
-**Dependencies:** T-003 (**hard gate**). **Parallel with:** all of M2.
+**Context pointers:** **DD-8** (read first); `src/providers/sleeper/reference-data.ts:418-474` (the bridge to
+extract), `:539-545` (the dictionary shape to mirror); `src/providers/decoding.ts:50-61`;
+`src/providers/yahoo/client.ts:804-805` (string positions — D2, DD-8).
+**Approach — two steps, in order:**
+1. **Extract the string→numeric bridge to a shared module** (`normalizedCode`, `stableCodeId`, `encodeCode`,
+   `numericDictionary`, `encodeObservedCode`), and re-point Sleeper at it. **Sleeper's behavior must not
+   change** — its existing tests are the guard. Do not copy the bridge into Yahoo (DD-8: that repeats the
+   triplicated-RESP-client mistake).
+2. Build Yahoo's five dictionaries on the shared bridge and register Yahoo in
+   `PROVIDER_DECODING_DICTIONARIES`.
+Until this lands, a real Yahoo payload quarantines as `dictionary_missing` **by design** — current behavior,
+not a bug to suppress.
+**Known trap:** `numericDictionary` throws on hash collision at module load, so a collision surfaces as a
+**startup crash, not a test failure**. Import the new module in a test to catch it in CI.
+**Dependencies:** T-003 ✅ (shape resolved). **Blocked on:** a real Yahoo league for firm sizing and the
+closure test → T-021. Step 1 (the extraction) is **unblocked and can start now**.
+**Parallel with:** all of M2.
 **Out of scope:** Yahoo OAuth credentials (T-021); ESPN/Sleeper dictionaries — do not "harmonize" them.
 **Acceptance:** a vocabulary-closure test for Yahoo mirroring the ESPN/Sleeper pattern passes;
 `pnpm test src/providers/` green.
@@ -731,7 +774,8 @@ load-flake suites — re-run in isolation before blaming your change.
 |---|---|---|---|---|---|
 | T-001 | **done** | infra | S | 2026-07-28 | Artifacts committed; baseline observed & recorded in §5.1 (1,412/0/5, all gates green) |
 | T-002 | **done** | D1/UIX-113 | S | 2026-07-28 | Path A: props affordable (~$30/mo, fixed cost, not per-league). Schema already has `player_prop`. See DD-7 + Discoveries #1/#2. No live key used. |
-| T-003 | pending | UIX-116 | S | — | 🔬 spike — gates T-019 |
+| T-003 | **done** | UIX-116 | S | 2026-07-28 | Yahoo is string-keyed; **R2 retired** — Sleeper's bridge already solves it, no interface change. New predecessor: extract the bridge (T-019 step 1, unblocked). Firm sizing needs a real league. See DD-8. |
+| T-019a | pending | UIX-116 | M | — | *(split from T-019 by DD-8)* Extract the string→numeric bridge to a shared module; re-point Sleeper. **Unblocked.** |
 | T-004 | pending | UIX-109 | S | — | |
 | T-005 | pending | UIX-111 | M | — | |
 | T-006 | pending | UIX-119 | M | — | |
