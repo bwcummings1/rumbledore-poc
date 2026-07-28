@@ -65,6 +65,31 @@ practice* — the alternative is asking existing users to re-verify.
 ~~Yahoo code-space size → `T-003`~~ **PARTIALLY RESOLVED — see DD-8.** The gating *shape* question is
 answered and R2 is retired; exact sizing needs a real league (already gated by T-020's approval flag).
 
+**DD-11 — `UIX-101` is a missing producer, not a missing id. T-007 moves into M2.** *(2026-07-28, structural; from T-007)*
+
+**The card's approach is unviable as written.** It said the emitter "must resolve the fantasy matchup to its
+corresponding `betting_event`." **There is no correspondence to resolve.** A `fantasy_matchups` row is two
+*fantasy* teams meeting in week N; a `betting_event` row is a real NFL game (`homeTeam`, `awayTeam`,
+`startTime`, `providerEventId`). A fantasy matchup does not map to one NFL game — no join, no heuristic,
+no shared key. `AGENTS.md` describes the intended split correctly; what is missing is the **producer**.
+
+**Verified absent:** `game.final` has exactly one production emitter (`ingestion-live.ts:1360-1376`), which
+fires on *fantasy* matchups for AI recaps. `odds-poll.ts` — the only job that touches the odds catalog —
+emits **zero** events (`grep -c 'gameFinal|sendEvent'` = 0). Nothing anywhere detects a real NFL game
+finishing. So bets are never settled because **nobody ever says a game ended.**
+
+**The fix is a betting-event results producer:** after refreshing the odds catalog, select events whose
+`startTime` has passed and whose status is not final, and emit `game.final` carrying `bettingEventId` per
+interested entry. The settle path is already safe for optimistic emission — `settleBettingEvent` returns
+`skippedReason: "result_not_final"` and mutates nothing when the result is not yet final
+(`settlement.ts:750-761`).
+
+**Why it moves to M2 rather than landing now:** the producer must emit one event per *interested party*,
+and "who is interested" is currently a `bet_slips` query — a table **T-011 deletes**. Building it against
+the bankroll model and rewriting it against picks two tasks later is pure waste. The event-identity half is
+design-independent and survives; the fan-out half is not. **Resequenced: T-007 becomes T-013a, built once,
+correctly, against the Pick 'em model.** M1's other three items are independent and proceed now.
+
 **DD-9 — Central AI usage goes in its own central table, not a nullable `ai_usage_event`.** *(2026-07-28, from T-005/T-006)*
 
 The obvious move — make `ai_usage_event.league_id` nullable and switch to the mixed-scope policy that
@@ -834,7 +859,8 @@ load-flake suites — re-run in isolation before blaming your change.
 | T-005a | pending | UIX-111 | M | — | Central usage → own central table per DD-9. Unblocked (T-006 done). |
 | T-005b | pending | UIX-111 | M | — | Embedding usage; needs `EmbeddingProvider` contract change. |
 | T-006 | **done** | UIX-119 | M | 2026-07-28 | Migration 0079 (geo_state, phone_verified) journaled + applied; 6 overflow-prone sum casts widened. Overflow test falsified (`integer out of range`). Suite 1,413/0/5. Scope corrected by DD-9/DD-10. |
-| T-007 | pending | UIX-101 | M | — | CRITICAL |
+| T-007 | **resequenced → T-013a** | UIX-101 | — | 2026-07-28 | Structural: no fantasy-matchup↔betting-event correspondence exists; the real gap is a missing results **producer**, whose fan-out depends on a table T-011 deletes. See DD-11. |
+| T-013a | pending | UIX-101 | M | — | Betting-event results producer, built once against Pick 'em. **CRITICAL** — carries UIX-101. |
 | T-008 | pending | UIX-102 | S | — | CRITICAL |
 | T-009 | pending | UIX-103 | M | — | |
 | T-010 | pending | UIX-104 | S | — | |
