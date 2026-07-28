@@ -27,10 +27,22 @@ export const roles = {
     ...ownerAc.statements,
     leagueData: ["review", "manage"],
   }),
-  // Org admin equivalent: manages members/invitations, may review data.
+  // Org admin equivalent: manages members/invitations, and — like the
+  // commissioner — may manage league data.
+  //
+  // This deliberately grants `manage`, matching ROLE_RANK in src/auth/guards.ts,
+  // where league_admin outranks data_steward. The owner's ruling is that an
+  // admin can do anything an assigned role can do, while an assigned role
+  // cannot do everything an admin can (PROJECT_CONTEXT.md §7.1, DD-5).
+  //
+  // It previously granted only ["review"], which contradicted the rank ladder.
+  // Because every route guard resolves through ROLE_RANK and nothing server-side
+  // calls hasPermission, the ladder silently won and league_admin already passed
+  // every data_steward gate — the ACL was decorative and misleading rather than
+  // enforced. Aligning it here removes the second, disagreeing authority model.
   league_admin: ac.newRole({
     ...adminAc.statements,
-    leagueData: ["review"],
+    leagueData: ["review", "manage"],
   }),
   // Regular member plus the data-cleaning mandate.
   data_steward: ac.newRole({
