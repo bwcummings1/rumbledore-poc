@@ -554,6 +554,13 @@
       "when": 1784073600000,
       "tag": "0078_central_article_embeddings",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1784160000000,
+      "tag": "0079_prize_readiness_user_fields",
+      "breakpoints": true
     }
   ]
 }

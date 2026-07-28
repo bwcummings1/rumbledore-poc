@@ -294,8 +294,8 @@ export async function getAiUsageRollupData(
           estimatedCallCount: sql<number>`count(*) filter (where ${aiUsageEvents.estimated})::int`,
           firstCallAt: sql<Date | null>`min(${aiUsageEvents.createdAt})`,
           lastCallAt: sql<Date | null>`max(${aiUsageEvents.createdAt})`,
-          totalCostMicrosUsd: sql<number>`coalesce(sum(${aiUsageEvents.costMicrosUsd}), 0)::int`,
-          totalTokens: sql<number>`coalesce(sum(${aiUsageEvents.totalTokens}), 0)::int`,
+          totalCostMicrosUsd: sql<number>`coalesce(sum(${aiUsageEvents.costMicrosUsd}), 0)::double precision`,
+          totalTokens: sql<number>`coalesce(sum(${aiUsageEvents.totalTokens}), 0)::double precision`,
         })
         .from(aiUsageEvents)
         .where(eq(aiUsageEvents.leagueId, input.leagueId));
@@ -304,8 +304,8 @@ export async function getAiUsageRollupData(
         .select({
           callCount: sql<number>`count(*)::int`,
           estimatedCallCount: sql<number>`count(*) filter (where ${aiUsageEvents.estimated})::int`,
-          totalCostMicrosUsd: sql<number>`coalesce(sum(${aiUsageEvents.costMicrosUsd}), 0)::int`,
-          totalTokens: sql<number>`coalesce(sum(${aiUsageEvents.totalTokens}), 0)::int`,
+          totalCostMicrosUsd: sql<number>`coalesce(sum(${aiUsageEvents.costMicrosUsd}), 0)::double precision`,
+          totalTokens: sql<number>`coalesce(sum(${aiUsageEvents.totalTokens}), 0)::double precision`,
           weekStart: weekStartExpr,
         })
         .from(aiUsageEvents)
@@ -332,8 +332,8 @@ export async function getAiUsageRollupData(
                 model: aiUsageEvents.model,
                 persona: aiUsageEvents.persona,
                 provider: aiUsageEvents.provider,
-                totalCostMicrosUsd: sql<number>`coalesce(sum(${aiUsageEvents.costMicrosUsd}), 0)::int`,
-                totalTokens: sql<number>`coalesce(sum(${aiUsageEvents.totalTokens}), 0)::int`,
+                totalCostMicrosUsd: sql<number>`coalesce(sum(${aiUsageEvents.costMicrosUsd}), 0)::double precision`,
+                totalTokens: sql<number>`coalesce(sum(${aiUsageEvents.totalTokens}), 0)::double precision`,
                 weekStart: weekStartExpr,
               })
               .from(aiUsageEvents)

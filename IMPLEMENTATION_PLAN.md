@@ -65,6 +65,35 @@ practice* — the alternative is asking existing users to re-verify.
 ~~Yahoo code-space size → `T-003`~~ **PARTIALLY RESOLVED — see DD-8.** The gating *shape* question is
 answered and R2 is retired; exact sizing needs a real league (already gated by T-020's approval flag).
 
+**DD-9 — Central AI usage goes in its own central table, not a nullable `ai_usage_event`.** *(2026-07-28, from T-005/T-006)*
+
+The obvious move — make `ai_usage_event.league_id` nullable and switch to the mixed-scope policy that
+`content_item` and `ai_memory` use — is **rejected**. Two reasons:
+
+1. **It would weaken league isolation for no benefit.** A mixed-scope policy matches `league_id IS NULL`
+   rows from *any* league context, so platform-level cost data becomes readable inside every league.
+   `ai_usage_event` is at `src/db/rls.test.ts:43` in the strict `leagueScopedTables` group precisely
+   because it is customer-attributable data.
+2. **Pricing needs them separated anyway.** Per `PROJECT_CONTEXT.md` §3.2, the league AI tier is priced
+   from **league-attributable** cost, while central-hub generation is **platform overhead** absorbed by the
+   business. Merging them into one table with a nullable discriminator makes the pricing query harder, not
+   easier.
+
+**Decision:** central usage lands in a separate central-plane table (no restrictive RLS), following the
+established convention for `arena_standing` / `betting_event` / `betting_market` (audit §3, §9.14).
+`ai_usage_event` keeps its `notNull` league scope and its `_isolation` policy unchanged — **no RLS test
+churn, no isolation weakened.** Rejected alternative (c), "don't record central usage," leaves the pricing
+instrument incomplete, which is the whole point of `UIX-111`.
+
+**Consequence:** T-006 no longer needs an `ai_usage_event` migration. T-005a builds the central table.
+
+**DD-10 — The cost-rollup overflow is in the cast, not the column.** *(2026-07-28, corrects Discovery-era framing)*
+`sum(integer)` already returns `bigint` in Postgres, so the column never overflows — `::int` on the sum is
+what throws at ~$2,147/league. A single event cannot approach `int4` (one generation costs single-digit
+dollars at most), so **no column migration is required**. Casting to `::double precision` fixes it and
+returns a JS `number` (exact for integers to 2^53 ≈ $9B), avoiding the `pg`-returns-`int8`-as-string trap
+that `::bigint` would introduce against the `sql<number>` types.
+
 **DD-8 — Yahoo needs no interface change; reuse Sleeper's string→numeric bridge.** *(resolves R2; evidence: T-003, 2026-07-28)*
 
 **The gating question — string keys or numeric ids — is answered: Yahoo uses STRINGS.** Verified from the
@@ -234,19 +263,43 @@ Test fails if the Opus row is reverted to 15/75. `pnpm typecheck && pnpm lint` e
 **Risk/rollback:** trivial — one constant + one test. Revert the commit.
 
 ---
-**T-005** · pending · traces to: `UIX-111` · **M**
-**Objective:** Record AI usage for the central pipeline and embedding calls, not just the league blogger.
-**Context pointers:** `src/ai/usage-attribution.ts` (`recordAiUsageEvent` — one non-test caller today),
-`src/ai/pipeline.ts:414` (the sole call site), `src/ai/central-pipeline.ts` (records nothing),
-`MODEL_PRICE_MICROS_PER_TOKEN.voyage` (currently unreachable dead config). Context §7.3.
-**Approach:** Add usage recording at the central-pipeline and embedding boundaries, mirroring the blogger's
-per-attempt pattern. The `voyage` price row becomes live — verify it against current Voyage pricing and
-correct it if wrong (it was **Unverified** at plan time).
-**Dependencies:** T-004 (shared file; avoids a conflict). **Parallel with:** M1.
-**Out of scope:** the rollup `sum(...)::int` overflow ceiling (T-006). No pricing-tier logic.
-**Acceptance:** a mock central generation writes a non-zero `ai_usage_event` row; an embedding call does
-too; `pnpm test src/ai/` passes; `pnpm eval:ai:offline` still 8/8.
-**Risk/rollback:** low — additive instrumentation. Revert the commit.
+> **⚠️ AMENDED 2026-07-28 (material divergence, logged).** The original card assumed this was "additive
+> instrumentation, low risk." **That assumption is false**, verified before any code was written:
+> 1. `ai_usage_event.league_id` is `uuid(...).notNull()` with an FK to `leagues.id`
+>    (`src/db/schema.ts:3747-3749`), and `recordAiUsageEvent` inserts through
+>    `withLeagueContext(db, input.leagueId, …)`. **Central content is `league_id IS NULL` by design**, so
+>    central usage cannot be recorded without a nullable column *and* an RLS policy change.
+> 2. `EmbeddingProvider.embed()` returns `Promise<number[]>` (`src/ai/interfaces.ts:754`) — **no token or
+>    usage data exists to record.** Capturing it changes the provider contract, both mocks, the real Voyage
+>    client, and both call sites.
+>
+> Neither is unviable — the repo already has a proven mixed-scope pattern (`content_item`, `ai_memory` use
+> `league_id IS NULL OR = current_league_id()`) — but this is schema + interface work, not instrumentation.
+> **Split into T-005a / T-005b; the schema change folds into T-006, which already touches this table.**
+
+---
+**T-005a** · pending · traces to: `UIX-111` · **M**
+**Objective:** Record central-pipeline AI usage (needs T-006's schema change first).
+**Context pointers:** `src/ai/central-pipeline.ts:660,684` (the two `generateCentral` calls),
+`src/ai/pipeline.ts:405-425` (the per-attempt pattern to mirror), `src/ai/usage-attribution.ts:220-242`.
+**Approach:** After T-006 makes `leagueId` nullable with a mixed-scope policy, record a `league_id = NULL`
+usage row per central attempt, mirroring the blogger's shape. Central generation retries once, so record
+**per attempt**, not per publish.
+**Dependencies:** **T-006** (hard gate — schema). **Out of scope:** embeddings (T-005b); pricing logic.
+**Acceptance:** a mock central generation writes a `costMicrosUsd > 0` row with `league_id IS NULL`;
+`pnpm test src/ai/ && pnpm eval:ai:offline` green.
+
+---
+**T-005b** · pending · traces to: `UIX-111` · **M**
+**Objective:** Capture embedding usage — requires widening the `EmbeddingProvider` contract.
+**Context pointers:** `src/ai/interfaces.ts:752-755`, `src/ai/dependencies.ts:226-238`,
+`src/ai/mocks.ts:1794,1814` (two impls), `src/ai/central-pipeline.ts:664,688`.
+**Approach:** Return usage alongside the vector (e.g. `{embedding, usage}`) or add a parallel
+`embedWithUsage`. **The `voyage` price row (`$0.02/MTok`) is Unverified and becomes live here — check it
+against current Voyage pricing and correct it, applying T-004's lesson: assert an independent literal.**
+**Dependencies:** T-006. **Out of scope:** the near-dup gate's semantics; retrieval behavior.
+**Acceptance:** an embedding call writes a usage row; both mocks updated; `pnpm test src/ai/` green.
+**Risk:** medium — changes a provider contract with four implementors.
 
 ---
 **T-006** · pending · traces to: `UIX-119`, `UIX-111` · **M**
@@ -777,8 +830,10 @@ load-flake suites — re-run in isolation before blaming your change.
 | T-003 | **done** | UIX-116 | S | 2026-07-28 | Yahoo is string-keyed; **R2 retired** — Sleeper's bridge already solves it, no interface change. New predecessor: extract the bridge (T-019 step 1, unblocked). Firm sizing needs a real league. See DD-8. |
 | T-019a | pending | UIX-116 | M | — | *(split from T-019 by DD-8)* Extract the string→numeric bridge to a shared module; re-point Sleeper. **Unblocked.** |
 | T-004 | **done** | UIX-109 | S | 2026-07-28 | Opus 15/75 → 5/25 (+ derived cache rows). Test rewritten to an independent literal; falsified — reverting yields 4680 vs 1560, confirming the 3× overstatement numerically. Suite 1,412/0/5. Discovery #3 filed. |
-| T-005 | pending | UIX-111 | M | — | |
-| T-006 | pending | UIX-119 | M | — | |
+| T-005 | **split** | UIX-111 | — | 2026-07-28 | Material divergence: `league_id` is notNull and `embed()` returns no usage. Split → T-005a/T-005b; see amendment + DD-9. |
+| T-005a | pending | UIX-111 | M | — | Central usage → own central table per DD-9. Unblocked (T-006 done). |
+| T-005b | pending | UIX-111 | M | — | Embedding usage; needs `EmbeddingProvider` contract change. |
+| T-006 | **done** | UIX-119 | M | 2026-07-28 | Migration 0079 (geo_state, phone_verified) journaled + applied; 6 overflow-prone sum casts widened. Overflow test falsified (`integer out of range`). Suite 1,413/0/5. Scope corrected by DD-9/DD-10. |
 | T-007 | pending | UIX-101 | M | — | CRITICAL |
 | T-008 | pending | UIX-102 | S | — | CRITICAL |
 | T-009 | pending | UIX-103 | M | — | |

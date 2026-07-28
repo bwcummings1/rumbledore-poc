@@ -599,6 +599,15 @@ export const users = pgTable(
     // Better Auth core user fields (`name` maps to displayName in src/auth).
     emailVerified: boolean("email_verified").notNull().default(false),
     image: text("image"),
+    // Prize-readiness fields, collected but NOT enforced (PROJECT_CONTEXT.md
+    // DD-6). If an inter-league prize is ever activated it becomes a sweepstakes,
+    // which needs per-user geo eligibility and a verified human behind each entry.
+    // These are captured from first signup because a column is cheap to add later
+    // while a user ACTION is not — you cannot retroactively ask existing members
+    // to verify a phone number. Nothing reads these yet; enforcement is a separate,
+    // owner-gated decision.
+    geoState: text("geo_state"),
+    phoneVerified: boolean("phone_verified").notNull().default(false),
     ...timestamps,
   },
   (table) => [uniqueIndex("users_email_unique").on(table.email)],

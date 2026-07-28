@@ -163,6 +163,49 @@ describe("AI usage attribution", () => {
     });
   });
 
+  it("rolls up a league whose accumulated cost exceeds int4 without overflowing", async () => {
+    const league = await seedLeague("overflow");
+
+    // Each event's own cost_micros_usd fits in int4 (200M input tokens x 5
+    // micros = 1,000,000,000 < 2,147,483,647), but three of them sum past it.
+    // Postgres `sum(integer)` returns bigint, so the column was never the
+    // problem — the `::int` cast on the SUM was, and it raised "integer out of
+    // range" at roughly $2,147 of accumulated spend per league. Unreachable
+    // while costMicrosUsd was always 0; reachable the moment REC-005 populated
+    // it. See IMPLEMENTATION_PLAN.md DD-10.
+    for (const week of [1, 2, 3]) {
+      await recordAiUsageEvent(handle.db, {
+        contentType: "weekly_recap",
+        createdAt: new Date(`2026-07-0${week}T12:00:00.000Z`),
+        estimated: false,
+        leagueId: league.id,
+        model: "claude-opus-4-8",
+        persona: "narrator",
+        provider: "anthropic",
+        triggerKey: `overflow:2026:${week}`,
+        usage: {
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+          inputTokens: 200_000_000,
+          outputTokens: 0,
+        },
+      });
+    }
+
+    const result = await getAiUsageRollupData(handle.db, {
+      leagueId: league.id,
+      now: new Date("2026-07-09T13:00:00.000Z"),
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected ready rollup");
+    }
+    // 3 x 200,000,000 x 5 = 3,000,000,000 micros = $3,000, comfortably past
+    // int4's 2,147,483,647 ceiling.
+    expect(result.data.summary.totalCostMicrosUsd).toBe(3_000_000_000);
+  });
+
   it("estimates per-model cost in micros of USD from token usage (REC-005)", () => {
     // haiku bulk tier: $1/$5 per MTok in/out; cache write 1.25x, read 0.1x.
     expect(
