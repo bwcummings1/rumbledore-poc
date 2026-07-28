@@ -561,6 +561,13 @@
       "when": 1784160000000,
       "tag": "0079_prize_readiness_user_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1784246400000,
+      "tag": "0080_pickem_entries",
+      "breakpoints": true
     }
   ]
 }

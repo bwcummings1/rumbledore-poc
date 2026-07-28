@@ -865,10 +865,10 @@ load-flake suites — re-run in isolation before blaming your change.
 | T-008a | pending | UIX-102 / ctx Q16 | M | — | Collapse `league_admin` into commissioner in the `league_role` enum (migration + guards + invites + UI). Wider blast radius than the ACL fix. |
 | T-009 | **done** | UIX-103 | M | 2026-07-28 | Fenced `/organization/update-member-role` + `/remove-member` at the catch-all mount; rest of the auth surface passes through. 5 tests, falsified. Suite 1,427/0/5, build 0, flagship e2e 2/2. |
 | T-010 | **done** | UIX-104 | S | 2026-07-28 | Unparseable body now 400s instead of becoming a successful `{}`; absent body still `{}`. Cap enforced on bytes read via a bounded stream, closing the chunked bypass. 6 contract tests. Suite 1,422/0/5. |
-| T-011 | pending | UIX-114 | S | — | High blast radius |
+| T-011 | **partial** | UIX-114 | S | 2026-07-28 | Tag `bankroll-engine-v1` created + pushed, recovery verified. **Deletion resequenced to the END of M2** — bankroll has 10 importers, so delete-first would leave the trunk red across several L tasks. Always-green outranks delete-first tidiness. |
 | T-012 | pending | UIX-113 | M | — | Gated on T-002 |
-| T-013 | pending | UIX-113 | L | — | |
-| T-014 | pending | UIX-113 | M | — | |
+| T-013 | **partial** | UIX-113 | L | 2026-07-28 | Schema landed: migration 0080 (`pick_weeks`, `picks`, `pick_status`), RLS enabled+forced+policied, verified against the live catalog. Submission/lock logic still to come. |
+| T-014 | **done** | UIX-113 | M | 2026-07-28 | Absolute-denominator scoring + participation gate + push voiding + tie grouping. 10 tests pinning PROJECT_CONTEXT §3.3's worked examples; falsified (swapping the denominator breaks exactly the 4 anti-loophole tests). |
 | T-015 | pending | UIX-113 | M | — | |
 | T-016 | pending | UIX-106 | S | — | |
 | T-017 | pending | UIX-113 | M | — | ⛔ approval |

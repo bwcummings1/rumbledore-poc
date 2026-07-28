@@ -3113,6 +3113,125 @@ export const betSettlements = pgTable(
   ],
 );
 
+// ── Inter-league Pick 'em (replaces the bankroll model; specs 08/15 rewrite) ──
+//
+// A weekly entry with a SNAPSHOTTED roster size, plus one row per pick. Scoring
+// is "absolute denominator": accuracy is graded against the entry's maximum
+// POSSIBLE picks, so an unsubmitted pick is mathematically identical to a wrong
+// one and league size normalises away (a 10-person and a 12-person league
+// compete on the same percentage). See PROJECT_CONTEXT.md §3.3.
+//
+// The competitor is modelled as an ENTRY carrying its own roster size rather
+// than as "a paid league", so a future free/AMOE entrant needs no schema change
+// (PROJECT_CONTEXT.md §9 P1).
+
+export const pickStatus = pgEnum("pick_status", [
+  "pending",
+  "correct",
+  "incorrect",
+  // A push (result lands exactly on the line) is VOID: it counts toward neither
+  // the numerator nor that user's denominator. Grading it incorrect would
+  // punish an undecidable outcome and push users off whole-number lines,
+  // narrowing the pick pool through the back door (IMPLEMENTATION_PLAN.md DD-2).
+  "void",
+]);
+
+export const pickWeeks = pgTable(
+  "pick_weeks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    season: integer("season").notNull(),
+    week: integer("week").notNull(),
+    // Snapshotted when the week opens so a league cannot shrink its denominator
+    // by cutting inactive members mid-week.
+    rosterSize: integer("roster_size").notNull(),
+    maxPicksPerUser: integer("max_picks_per_user").notNull().default(10),
+    opensAt: timestamp("opens_at", { withTimezone: true }).notNull(),
+    closesAt: timestamp("closes_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("pick_weeks_league_season_week_unique").on(
+      table.leagueId,
+      table.season,
+      table.week,
+    ),
+    check("pick_weeks_roster_size_positive", sql`${table.rosterSize} > 0`),
+    check("pick_weeks_max_picks_positive", sql`${table.maxPicksPerUser} > 0`),
+    pgPolicy("pick_weeks_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
+export const picks = pgTable(
+  "picks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leagueId: uuid("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    pickWeekId: uuid("pick_week_id")
+      .notNull()
+      .references(() => pickWeeks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => bettingMarkets.id, { onDelete: "cascade" }),
+    oddsSnapshotId: uuid("odds_snapshot_id")
+      .notNull()
+      .references(() => oddsSnapshots.id, { onDelete: "cascade" }),
+    // Which side was taken. Reuses the existing selection vocabulary so the
+    // grader can share the odds/result plumbing that survives the rewrite.
+    selection: betLegSelection("selection").notNull(),
+    lockedLine: numeric("locked_line", {
+      mode: "number",
+      precision: 10,
+      scale: 2,
+    }),
+    status: pickStatus("status").notNull().default("pending"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    gradedAt: timestamp("graded_at", { withTimezone: true }),
+    resultDetail: jsonb("result_detail")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // One user intent -> one pick, so a retry after a timeout cannot double-submit
+    // (the reshaped UIX-001).
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("picks_idempotency_unique").on(
+      table.leagueId,
+      table.userId,
+      table.idempotencyKey,
+    ),
+    // A user takes at most one side of any given market in a week.
+    uniqueIndex("picks_user_market_unique").on(
+      table.pickWeekId,
+      table.userId,
+      table.marketId,
+    ),
+    index("picks_week_status_idx").on(table.pickWeekId, table.status),
+    index("picks_league_user_idx").on(table.leagueId, table.userId),
+    pgPolicy("picks_isolation", {
+      for: "all",
+      using: sql`${table.leagueId} = current_league_id()`,
+      withCheck: sql`${table.leagueId} = current_league_id()`,
+    }),
+  ],
+);
+
 // ── Content and AI blogger state ──────────────────────────────────────────
 
 export const contentItems = pgTable(
