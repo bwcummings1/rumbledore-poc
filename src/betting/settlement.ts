@@ -14,11 +14,8 @@ import {
 } from "@/db/schema";
 import { stableContentHash } from "@/ingestion/hash";
 import { appendBankrollLedgerEntryInContext } from "./bankroll";
-import type {
-  EventResult,
-  ResultsPlayerStat,
-  ResultsProvider,
-} from "./interfaces";
+import { gradeSelection } from "./grading";
+import type { EventResult, ResultsProvider } from "./interfaces";
 
 type LegStatus = "pending" | "won" | "lost" | "push" | "void";
 type FinalSlipStatus = "won" | "lost" | "push" | "void" | "partial_void";
@@ -159,122 +156,27 @@ function payoutFor(
   };
 }
 
-function compare(value: number): -1 | 0 | 1 {
-  if (Math.abs(value) < 1e-9) return 0;
-  return value > 0 ? 1 : -1;
-}
-
-function scoreDetail(result: EventResult): string {
-  return `home ${result.homeScore}, away ${result.awayScore}`;
-}
-
-function lineDetail(prefix: string, value: number, line: number): string {
-  return `${prefix} ${value} vs line ${line}`;
-}
-
-function findPlayerStat(
-  stats: readonly ResultsPlayerStat[],
-  playerId: string,
-  propType: string | null,
-): number | null {
-  if (!propType) {
-    return null;
-  }
-  const player = stats.find((entry) => entry.playerId === playerId);
-  const value = player?.stats[propType];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function gradeFromComparison(
-  diff: number,
-  wantsOverOrHome: boolean,
-): "won" | "lost" | "push" {
-  const comparison = compare(diff);
-  if (comparison === 0) return "push";
-  return comparison > 0 === wantsOverOrHome ? "won" : "lost";
-}
-
+/**
+ * Grades one pending leg.
+ *
+ * The outcome math now lives in `./grading.ts`, shared with the Pick 'em
+ * grader so the two cannot drift apart. This wrapper keeps the leg-row shape
+ * this module works in.
+ */
 function gradePendingLeg(
   leg: PendingLegRow,
   result: EventResult,
 ): { detail: string; status: Exclude<LegStatus, "pending"> } | null {
-  if (result.finalStatus === "postponed" || result.finalStatus === "canceled") {
-    return {
-      detail: `event ${result.finalStatus}`,
-      status: "void",
-    };
-  }
-  if (result.finalStatus !== "final") {
-    return null;
-  }
-  if (result.homeScore === null || result.awayScore === null) {
-    return {
-      detail: "final result missing score",
-      status: "void",
-    };
-  }
-
-  switch (leg.marketType) {
-    case "moneyline": {
-      const diff = result.homeScore - result.awayScore;
-      if (compare(diff) === 0) {
-        return { detail: scoreDetail(result), status: "push" };
-      }
-      return {
-        detail: scoreDetail(result),
-        status: gradeFromComparison(diff, leg.selection === "home"),
-      };
-    }
-    case "spread": {
-      if (leg.lockedLine === null) {
-        return { detail: "spread missing locked line", status: "void" };
-      }
-      const pickedHome = leg.selection === "home";
-      const pickedScore = pickedHome ? result.homeScore : result.awayScore;
-      const opponentScore = pickedHome ? result.awayScore : result.homeScore;
-      const adjustedMargin = pickedScore + leg.lockedLine - opponentScore;
-      return {
-        detail: lineDetail(
-          pickedHome ? "home adjusted margin" : "away adjusted margin",
-          adjustedMargin,
-          0,
-        ),
-        status: gradeFromComparison(adjustedMargin, true),
-      };
-    }
-    case "total": {
-      if (leg.lockedLine === null) {
-        return { detail: "total missing locked line", status: "void" };
-      }
-      const total = result.homeScore + result.awayScore;
-      return {
-        detail: lineDetail("total", total, leg.lockedLine),
-        status: gradeFromComparison(
-          total - leg.lockedLine,
-          leg.selection === "over",
-        ),
-      };
-    }
-    case "player_prop": {
-      if (leg.lockedLine === null) {
-        return { detail: "player prop missing locked line", status: "void" };
-      }
-      const stat = findPlayerStat(
-        result.playerStats,
-        leg.marketSubject,
-        leg.propType,
-      );
-      if (stat === null) {
-        return { detail: "player prop result missing stat", status: "void" };
-      }
-      const wantsOver =
-        leg.selection === "over" || leg.selection === "player_over";
-      return {
-        detail: lineDetail(leg.propType ?? "player_stat", stat, leg.lockedLine),
-        status: gradeFromComparison(stat - leg.lockedLine, wantsOver),
-      };
-    }
-  }
+  return gradeSelection(
+    {
+      lockedLine: leg.lockedLine,
+      marketSubject: leg.marketSubject,
+      marketType: leg.marketType,
+      propType: leg.propType,
+      selection: leg.selection,
+    },
+    result,
+  );
 }
 
 function shouldGradeResult(result: EventResult): boolean {
