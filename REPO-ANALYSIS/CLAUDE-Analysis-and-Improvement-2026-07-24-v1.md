@@ -268,6 +268,60 @@ Twelve further client-state defects (stale-prop, double-submit, and error-surfac
 
 ---
 
+---
+
+## 8. Maintainer verdicts applied (2026-07-28) — see `PROJECT_CONTEXT.md`
+
+A 5-round context interview (2026-07-27 → 07-28, pinned `e28265d`) resolved the intent questions this
+backlog could not answer from code. **`PROJECT_CONTEXT.md` at the repo root is now the authority on intent**;
+the changes it forces are applied here.
+
+**Standing verdict: adopt-all.** Every item in §4 and §7 is adopted. The project is a commercial,
+multi-tenant product targeting App Store submission after hardening — *not* a single-league build. Ship
+blockers are calibrated accordingly. Sequence is agent-owned but requires maintainer greenlight before
+execution.
+
+### 8.1 Reclassified
+
+| Item | Was | Now | Why |
+|---|---|---|---|
+| **UIX-102** | Fix the rank ladder to match the ACL | **Fix the ACL to match the ladder** — direction inverted | Maintainer ruling: admins (= commissioners) must be able to do anything an assigned role can do. The ladder encodes intent; `permissions.ts` is wrong. Collapse `league_admin` into commissioner; keep role assignment commissioner-only. Wire or delete `hasPermission` — do not leave two authority models. |
+| **UIX-109** | MINOR — Opus prices 3× high | **Pricing-blocking** | AI tier pricing is set from measured cost. The meter reads ~3× on the flagship model. |
+| **UIX-111** | MINOR — usage recorded for the blogger only | **Pricing-blocking** | Same reason: central pipeline and embeddings record nothing, so totals undercount. |
+| **UIX-001** | Bet idempotency (double-stake) | **Reshaped — double-pick idempotency** | No stakes under Pick 'em; the idempotency requirement survives. |
+| **UIX-101** | CRITICAL | **CRITICAL (reaffirmed)** | Resolving a real game result to an entry is required under Pick 'em too; the id-class mismatch is design-independent. |
+
+### 8.2 Moot — closed, do not action
+
+- **UIX-009** (settled-slip truthfulness: won/lost/refunded amounts, payout display) — no money in Pick 'em.
+- **UIX-105** (cross-event parlay settlement race) — no parlays in Pick 'em.
+- Bankroll-rollover concerns embedded in **UIX-107**'s context — the rollover is removed.
+
+These die with the bankroll engine (§8.3). Their *underlying* lessons — grade explainability, and
+concurrent grading across events — carry into the Pick 'em grader.
+
+### 8.3 New items
+
+| ID | Item | Note |
+|---|---|---|
+| **UIX-113** | Pick 'em engine: picks, weekly allowance, roster snapshot, absolute-denominator scoring, 90% participation gate, void-on-push, `DECIMAL(6,4)` accuracy, tie split | Replaces specs 08/15's bankroll model. Odds ingestion, `betting_event`/`betting_market`, the grading trigger and the arena shell all survive. |
+| **UIX-114** | Tag-and-delete the bankroll engine | Tag the commit, write an ADR, delete cleanly. No fork, no feature flag — git history is the archive. |
+| **UIX-115** | Lore character digest | Replace wholesale claim serialization with a regenerated per-league digest. Refuted claims **stay** (refutation is signal). Guards verbatim parroting, bounds prompt growth, shrinks the injection surface behind UIX-110. Maintainer wants to review a sample before it goes live. |
+| **UIX-116** | Yahoo decoding dictionary + registration + real OAuth + closure test | Yahoo ships this season. Today any real Yahoo payload quarantines as `dictionary_missing`. |
+| **UIX-117** | Two-axis entitlements | League axis (data → +league AI) and user axis (+personal assistant) are **independent**. Replaces today's open-by-default override. |
+| **UIX-118** | Billing | $40/league/year base; league AI and personal assistant monthly/annual with annual discount. |
+| **UIX-119** | Prize-readiness data model | Collect `geo_state`, `phone_verified`, tier from first signup while unenforced; keep accuracy independent of prize eligibility. Columns are cheap now, backfilling user actions later is not. |
+
+### 8.4 Explicitly not building
+
+- **The "Basic Sync" free tier.** A legal instrument for a prize that is not shipping in season 1, proposed
+  by a model without project access. If a prize activates, a free-entry form is a far cheaper AMOE than free
+  league sync. Reasoning recorded in `PROJECT_CONTEXT.md` §4 so it is not re-derived.
+- **Dropping refuted lore claims from AI context** — proposed in §7.2 (UIX-110 discussion) and **rejected**
+  by the maintainer. Refutation is context, not noise.
+
+---
+
 *Addendum evidence basis: all gates re-run on this box at `389a912` (results above). Five read-only auditors swept API routes, client state, jobs/settlement, doc-claim verification, and the REC delta; every CRITICAL and IMPORTANT finding above was then re-verified directly by the primary analyzer before inclusion — including reading both key spaces in `schema.ts` for UIX-101, the `ROLE_RANK`/ACL pair and the empty `hasPermission` caller set for UIX-102, and the current published Anthropic price sheet for UIX-109. Pricing was checked against the live reference rather than recalled.*
 
 ---
