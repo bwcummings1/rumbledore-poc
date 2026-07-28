@@ -323,4 +323,68 @@ describe("prompt templates", () => {
     expect(newsEntries[0]?.text).toBe(newsBreakout);
     expect(newsEntries[0]?.url).toBe("https://example.test/a?x=1&y=2");
   });
+
+  it("names every fenced block in the preamble the model actually receives (T-031)", () => {
+    const parts = buildPromptParts({
+      contentType: "weekly_recap",
+      context: contextFixture(),
+      newsItems: [],
+      triggerKey: "t-031-preamble",
+    });
+
+    // Assert on the preamble LINE, not the whole user task. `renderUserTask`
+    // embeds the volatile JSON — which contains the fence tags — so a whole-task
+    // `toContain` would pass even with the preamble left unfixed.
+    const preamble = (parts.userTask ?? "").split("\n")[0] ?? "";
+    expect(preamble).toContain("<untrusted_news>");
+    expect(preamble).toContain("<untrusted_league_lore>");
+
+    // `real.ts`'s `userTask()` fallback was updated instead of this path, but it
+    // returns `request.prompt.userTask` first and `buildPromptParts` always sets
+    // it — so the fallback never renders. Pin that: the live task is the
+    // populated one, and it is what names the fences.
+    expect(parts.userTask).toBeTruthy();
+
+    // Bind the preamble to reality — every block it names must actually exist in
+    // the JSON it introduces. Renaming a fence without updating the wording (or
+    // announcing a block that is never emitted) fails here.
+    for (const tag of ["<untrusted_news>", "<untrusted_league_lore>"]) {
+      expect(parts.volatileContext).toContain(tag);
+    }
+
+    // The volatile_task system line is a SECOND dead branch of the same kind as
+    // the one this card fixes: `renderSystemInstructions` drops every section
+    // whose placement is "volatile", and the default template marks volatile_task
+    // exactly that — so the default prompt never renders the line at all.
+    expect(parts.systemInstructions ?? "").not.toContain(
+      "Volatile trigger context",
+    );
+
+    // Its wording is corrected anyway (a custom template may place it in the
+    // prefix) and pinned through such a template, so the string cannot rot
+    // unnoticed. Asserting it against `parts.systemInstructions` instead would
+    // not be evidence: the persona `leagueLore` guardrail already names the block
+    // there and would carry the assertion on its own.
+    const prefixedVolatileTask: PromptTemplate = {
+      ...DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE,
+      sections: DEFAULT_LEAGUE_BLOG_PROMPT_TEMPLATE.sections.map((section) =>
+        section.kind === "volatile_task"
+          ? { ...section, placement: "prefix" as const }
+          : section,
+      ),
+    };
+    const volatileTaskLine = (
+      buildPromptParts({
+        contentType: "weekly_recap",
+        context: contextFixture(),
+        newsItems: [],
+        template: prefixedVolatileTask,
+        triggerKey: "t-031-volatile-task-line",
+      }).systemInstructions ?? ""
+    )
+      .split("\n")
+      .find((line) => line.startsWith("Volatile trigger context"));
+    expect(volatileTaskLine).toContain("<untrusted_news>");
+    expect(volatileTaskLine).toContain("<untrusted_league_lore>");
+  });
 });
