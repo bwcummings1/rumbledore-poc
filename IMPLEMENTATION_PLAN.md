@@ -61,8 +61,41 @@ demoting `league_admin` below `data_steward` — contradicts recorded intent tha
 tier on every user. Columns are cheap now; retroactively obtaining user actions is not. *One-way door in
 practice* — the alternative is asking existing users to re-verify.
 
-**Open assumptions → spikes:** player-props feasibility → `T-002`. Yahoo code-space size → `T-003`.
-No task downstream of either may start before its spike reports.
+**Open assumptions → spikes:** ~~player-props feasibility → `T-002`~~ **RESOLVED — see DD-7.**
+Yahoo code-space size → `T-003`. No task downstream of `T-003` may start before it reports.
+
+**DD-7 — Ingest player props. Path A confirmed.** *(resolves D1; evidence: T-002, 2026-07-28)*
+
+Three findings, all **Verified**:
+
+1. **The schema already supports props.** `bettingMarketType` (`src/db/schema.ts:390-395`) already enumerates
+   `player_prop` alongside `moneyline`/`spread`/`total`, and `betting_market` already carries `subject`
+   (default `"game"`) and `propType` (`:2758-2761`). **No schema widening is required** — this was the
+   assumed-expensive part of T-012 and it is already done.
+2. **Props need a different endpoint and a per-event call.** Featured markets come from
+   `/v4/sports/{sport}/odds` (one call, all games — `src/betting/real.ts:434`). Props come from
+   `/v4/sports/{sport}/events/{eventId}/odds`, **one request per event**. Cost formula:
+   `credits = markets × regions`, charged per request.
+3. **The cost is fixed per sport, not per league — this is the decisive point.** `betting_event` and
+   `betting_market` are central and league-agnostic (audit §3), so every league picks from the same NFL
+   slate. Props quota is a **flat platform cost that does not scale with tenant count.**
+
+**Sizing** (NFL ≈ 16 games/week, 1 region, refreshing 4×/day over the 4 days before a slate ≈ 16 refreshes/week):
+
+| Scenario | Markets | Credits/refresh | Credits/month | Plan needed |
+|---|---|---|---|---|
+| Featured only (today) | 3 | 3 | ~200 | Free (500/mo) |
+| Modest props | 5 | 80 | ~5,500 | **$30/mo (20K)** |
+| Rich DFS-style props | 15 | 240 | ~16,500 | **$30/mo (20K)**, tight — $59 (100K) for headroom |
+
+At $40/league/year, roughly **nine paying leagues** cover the $30/month plan outright, and the cost never
+grows with adoption. Props are affordable; the pick-universe breadth that the syndicate defense depends on
+(context §7.4) is preserved. **T-012 proceeds down path A.**
+
+**Two conditions on that verdict:**
+- ⛔ **The free tier is insufficient.** 500 credits/month cannot cover even the modest scenario. A paid Odds
+  API plan must be active before props ingestion goes live — a maintainer spend decision, flagged on `T-012`.
+- The spend guard's odds cap is denominated in the **wrong unit** for this endpoint — see Discovery #1.
 
 ---
 
@@ -697,7 +730,7 @@ load-flake suites — re-run in isolation before blaming your change.
 | Task | State | Traces to | Size | Updated | Note |
 |---|---|---|---|---|---|
 | T-001 | **done** | infra | S | 2026-07-28 | Artifacts committed; baseline observed & recorded in §5.1 (1,412/0/5, all gates green) |
-| T-002 | pending | D1/UIX-113 | S | — | 🔬 spike — gates T-012 |
+| T-002 | **done** | D1/UIX-113 | S | 2026-07-28 | Path A: props affordable (~$30/mo, fixed cost, not per-league). Schema already has `player_prop`. See DD-7 + Discoveries #1/#2. No live key used. |
 | T-003 | pending | UIX-116 | S | — | 🔬 spike — gates T-019 |
 | T-004 | pending | UIX-109 | S | — | |
 | T-005 | pending | UIX-111 | M | — | |
@@ -742,7 +775,8 @@ fixed inline. Each entry: what was found, where, and where it should go.
 
 | # | Discovery | Location | Found during | Disposition |
 |---|---|---|---|---|
-| — | *(none yet)* | | | |
+| **1** | **The odds spend guard counts the wrong unit.** Its cap is `250 **requests**/24h` (`SPEND_GUARD_ODDS_REQUESTS`), but The Odds API bills **credits**, and a per-event props request costs `markets × regions` credits — not 1. At 15 prop markets, 250 requests burns **3,750 credits** while the guard reads "250, fine." The guard under-protects by the market multiplier, and the gap only opens once props ingestion lands (T-012). Featured-markets calls are unaffected (1 request ⇒ 3 credits, near enough). | `src/core/env/schema.ts:163,297-301`; formula per T-002 | T-002 | **Backlog propagation** — file as a new `UIX-###`. Fix is to charge the guard `markets × regions` per call rather than 1. Must land with or before T-012. |
+| **2** | **`bettingMarketPeriod` has exactly one value, `full_game`** (`src/db/schema.ts:397-399`). Player props are frequently period-scoped (1H, Q1) and alternate lines are common. If the pick universe later wants period markets, this enum needs widening plus a migration. Not blocking — T-012 ingests full-game props only. | `src/db/schema.ts:397-399` | T-002 | **Discoveries** — revisit if period markets are wanted. No action now. |
 
 ---
 
