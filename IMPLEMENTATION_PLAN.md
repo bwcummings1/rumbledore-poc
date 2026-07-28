@@ -883,9 +883,9 @@ load-flake suites — re-run in isolation before blaming your change.
 | T-026 | pending | UIX-118 | L | — | ⛔ approval — real money |
 | T-027 | pending | UIX-119 | M | — | Assessment only |
 | T-028 | pending | UIX-115 | L | — | ⛔ approval — sample |
-| T-029 | pending | UIX-110 | S | — | |
-| T-030 | pending | UIX-110 | S | — | |
-| T-031 | pending | UIX-110 | S | — | |
+| T-029 | **done** | UIX-110 | S | 2026-07-28 | Both fences non-escapable via `\uXXXX` escaping of `<`/`>` (nonce rejected — would bust the cached prefix). Falsified per builder: lore 3→1, news 4→1 closing tags. Suite 1,440/0/5. |
+| T-030 | **done** | UIX-110 | S | 2026-07-28 | Judge fenced + instruction-hierarchy guardrail. **Two routes, not one**: `buildEntityTokens` also folds lore title/statement into `entityTokens`, so the card's `real.ts:583-586` fix alone was insufficient — falsification #2 proves it. Lore free text dropped (ctx §7.5: not a citable corpus). |
+| T-031 | **done** | UIX-110 | S | 2026-07-28 | Preamble moved to `renderUserTask` (live). Found a **second dead branch**: `:149`'s volatile_task line never renders — `renderSystemInstructions` filters `placement:"volatile"`. Corrected + pinned via custom template. See Discoveries. |
 | T-032 | pending | UIX-007/003 | M | — | |
 | T-033 | pending | UIX-005/006/011 | M | — | |
 | T-034 | pending | UIX-004/012/013 | M | — | |
