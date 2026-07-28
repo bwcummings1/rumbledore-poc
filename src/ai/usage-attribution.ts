@@ -137,12 +137,21 @@ interface ModelPriceMicrosPerToken {
  * estimate for per-league economics; reconcile it against a real provider invoice
  * once `MOCK_ANTHROPIC`/`MOCK_VOYAGE` are flipped (Phase 4 §G). Update the numbers
  * here when provider pricing changes — no other code needs to move.
+ *
+ * Micros per token == dollars per million tokens, so these read directly off a
+ * price sheet: opus `claude-opus-4-8` at $5 in / $25 out, haiku `claude-haiku-4-5`
+ * at $1 in / $5 out. Cache rows are derived (input x 1.25 and x 0.1).
+ *
+ * These feed the AI-tier pricing decision (`PROJECT_CONTEXT.md` §3.2), so a wrong
+ * number here misprices the product. Assert against independently-computed dollar
+ * amounts in the test — never against these constants, or the test can only prove
+ * the table equals itself.
  */
 export const MODEL_PRICE_MICROS_PER_TOKEN: Record<
   "opus" | "haiku" | "voyage",
   ModelPriceMicrosPerToken
 > = {
-  opus: { cacheCreation: 18.75, cacheRead: 1.5, input: 15, output: 75 },
+  opus: { cacheCreation: 6.25, cacheRead: 0.5, input: 5, output: 25 },
   haiku: { cacheCreation: 1.25, cacheRead: 0.1, input: 1, output: 5 },
   voyage: { cacheCreation: 0, cacheRead: 0, input: 0.02, output: 0 },
 };

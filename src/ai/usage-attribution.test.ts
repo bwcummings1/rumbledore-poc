@@ -173,15 +173,19 @@ describe("AI usage attribution", () => {
         outputTokens: 30,
       }),
     ).toBe(236);
-    // opus flagship tier: $15/$75 per MTok in/out.
+    // opus flagship tier: claude-opus-4-8 lists at $5/$25 per MTok in/out, so
+    // 5 and 25 micros/token; cache write 1.25x (6.25) and read 0.1x (0.5).
+    // 100*5 + 40*25 + 8*6.25 + 20*0.5 = 500 + 1000 + 50 + 10 = 1560.
+    // Stated as a literal on purpose: asserting `100 * 5 + 40 * 25` would only
+    // prove the table equals itself and could not catch a mispriced row.
     expect(
       estimateCostMicrosUsd("claude-opus-4-8", {
-        cacheCreationInputTokens: 0,
-        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 8,
+        cacheReadInputTokens: 20,
         inputTokens: 100,
         outputTokens: 40,
       }),
-    ).toBe(100 * 15 + 40 * 75);
+    ).toBe(1560);
     // voyage embeddings: input-only, ~$0.02 per MTok.
     expect(
       estimateCostMicrosUsd("voyage-4-lite", {
