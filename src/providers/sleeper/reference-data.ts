@@ -1,7 +1,11 @@
 // Sleeper's public API uses strings rather than numeric ids for these vocabularies.
 // The shared integrity registry is numeric, so this module also exposes stable,
 // kind-scoped 31-bit ids. Raw strings remain the source of truth; the ids are only
-// an adapter for provider_code_decoding and persisted metadata.
+// an adapter for provider_code_decoding and persisted metadata. The string→numeric
+// bridge itself lives in ../code-registry and is shared with the other string-keyed
+// providers.
+
+import { createProviderCodeRegistry, normalizedCode } from "../code-registry";
 
 export type SleeperTransactionCategory =
   | "add"
@@ -44,6 +48,9 @@ type SleeperRegistryCodeKind =
   | "position"
   | "pro_team"
   | "scoring_stat";
+
+const sleeperCodes =
+  createProviderCodeRegistry<SleeperRegistryCodeKind>("Sleeper");
 
 const SLEEPER_PLAYERS_SOURCE =
   "Sleeper GET /v1/players/nfl response captured 2026-07-13 (daily-cached)";
@@ -415,70 +422,17 @@ export const SLEEPER_SCORING_SETTINGS_KEY_MAP: Readonly<
   ),
 );
 
-function normalizedCode(value: string, uppercase: boolean): string | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  return uppercase ? trimmed.toUpperCase() : trimmed.toLowerCase();
-}
-
-function stableCodeId(kind: SleeperRegistryCodeKind, value: string): number {
-  let hash = 2_166_136_261;
-  for (const character of `${kind}:${value}`) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return (hash >>> 0) & 0x7fff_ffff || 1;
-}
-
-function encodeCode(
-  kind: SleeperRegistryCodeKind,
-  value: string,
-  uppercase: boolean,
-): number | undefined {
-  const normalized = normalizedCode(value, uppercase);
-  return normalized ? stableCodeId(kind, normalized) : undefined;
-}
-
-function encodeObservedCode<T>(
-  kind: SleeperRegistryCodeKind,
-  value: string,
-  uppercase: boolean,
-  dictionary: Readonly<Record<string, T>>,
-): number | undefined {
-  const normalized = normalizedCode(value, uppercase);
-  if (!normalized) return undefined;
-  const id = stableCodeId(kind, normalized);
-  return dictionary[normalized] === undefined ? -id : id;
-}
-
-function numericDictionary<T>(
-  kind: SleeperRegistryCodeKind,
-  dictionary: Readonly<Record<string, T>>,
-  uppercase: boolean,
-): Readonly<Partial<Record<number, T>>> {
-  const entries: [number, T][] = [];
-  const rawById = new Map<number, string>();
-  for (const [rawCode, definition] of Object.entries(dictionary)) {
-    const id = encodeCode(kind, rawCode, uppercase);
-    if (id === undefined) continue;
-    const collision = rawById.get(id);
-    if (collision && collision !== rawCode) {
-      throw new Error(
-        `Sleeper ${kind} adapter collision: ${collision} and ${rawCode} encode to ${id}`,
-      );
-    }
-    rawById.set(id, rawCode);
-    entries.push([id, definition]);
-  }
-  return Object.freeze(Object.fromEntries(entries));
-}
-
 export function encodeSleeperPosition(value: string): number | undefined {
-  return encodeObservedCode("position", value, true, SLEEPER_POSITION_MAP);
+  return sleeperCodes.encodeObservedCode(
+    "position",
+    value,
+    true,
+    SLEEPER_POSITION_MAP,
+  );
 }
 
 export function encodeSleeperRosterSlot(value: string): number | undefined {
-  return encodeObservedCode(
+  return sleeperCodes.encodeObservedCode(
     "lineup_slot",
     value,
     true,
@@ -487,13 +441,18 @@ export function encodeSleeperRosterSlot(value: string): number | undefined {
 }
 
 export function encodeSleeperProTeam(value: string): number | undefined {
-  return encodeObservedCode("pro_team", value, true, SLEEPER_PRO_TEAM_MAP);
+  return sleeperCodes.encodeObservedCode(
+    "pro_team",
+    value,
+    true,
+    SLEEPER_PRO_TEAM_MAP,
+  );
 }
 
 export function encodeSleeperTransactionType(
   value: string,
 ): number | undefined {
-  return encodeObservedCode(
+  return sleeperCodes.encodeObservedCode(
     "activity",
     value,
     false,
@@ -502,7 +461,7 @@ export function encodeSleeperTransactionType(
 }
 
 export function encodeSleeperScoringSetting(value: string): number | undefined {
-  return encodeObservedCode(
+  return sleeperCodes.encodeObservedCode(
     "scoring_stat",
     value,
     false,
@@ -510,27 +469,27 @@ export function encodeSleeperScoringSetting(value: string): number | undefined {
   );
 }
 
-export const SLEEPER_POSITION_BY_ID = numericDictionary(
+export const SLEEPER_POSITION_BY_ID = sleeperCodes.numericDictionary(
   "position",
   SLEEPER_POSITION_MAP,
   true,
 );
-export const SLEEPER_ROSTER_SLOT_BY_ID = numericDictionary(
+export const SLEEPER_ROSTER_SLOT_BY_ID = sleeperCodes.numericDictionary(
   "lineup_slot",
   SLEEPER_ROSTER_SLOT_MAP,
   true,
 );
-export const SLEEPER_PRO_TEAM_BY_ID = numericDictionary(
+export const SLEEPER_PRO_TEAM_BY_ID = sleeperCodes.numericDictionary(
   "pro_team",
   SLEEPER_PRO_TEAM_MAP,
   true,
 );
-export const SLEEPER_TRANSACTION_TYPE_BY_ID = numericDictionary(
+export const SLEEPER_TRANSACTION_TYPE_BY_ID = sleeperCodes.numericDictionary(
   "activity",
   SLEEPER_TRANSACTION_TYPE_MAP,
   false,
 );
-export const SLEEPER_SCORING_SETTING_BY_ID = numericDictionary(
+export const SLEEPER_SCORING_SETTING_BY_ID = sleeperCodes.numericDictionary(
   "scoring_stat",
   SLEEPER_SCORING_SETTINGS_KEY_MAP,
   false,
