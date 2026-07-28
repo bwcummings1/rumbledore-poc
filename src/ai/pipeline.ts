@@ -1878,11 +1878,40 @@ async function judgeDraftFailureReason({
   }
 }
 
-function untrustedNewsBlock(newsItems: readonly NewsItem[]): string {
-  if (newsItems.length === 0) {
-    return "<untrusted_news>[]</untrusted_news>";
-  }
+/**
+ * Wrap an untrusted payload in a delimited fence the payload cannot escape.
+ *
+ * `JSON.stringify` escapes quotes, backslashes and control characters, but it
+ * does **not** escape `<`, `>` or `/`. Author-controlled free text containing a
+ * literal `</untrusted_league_lore>` therefore emits a block with two closing
+ * tags, and everything after the injected one reads to the model as un-fenced
+ * prompt. That is reachable without a league vote: a `data_verifiable` claim is
+ * canonized on submission (`src/lore/engine.ts`) and `statement` is an
+ * unconstrained `text` column.
+ *
+ * Escaping `<` and `>` into their `\uXXXX` JSON forms closes this structurally:
+ * no tag-like sequence can survive serialization, so no payload can produce the
+ * fence's closing delimiter. `<`/`>` never occur outside string literals in
+ * `JSON.stringify` output, so the result is still valid JSON that parses back to
+ * the original text — no content is lost, only its ability to look like markup.
+ * There is no double-decoding vector: an author who types out an escape sequence
+ * by hand gets its leading backslash doubled by `JSON.stringify` first, so it
+ * survives as inert literal text instead of decoding back into a `<`.
+ *
+ * Chosen over a per-request nonce tag because the tag name is *named* in the
+ * prompt-cached stable prefix and persona guardrails (`src/ai/personas.ts`,
+ * `src/ai/prompt-templates.ts`); a per-request nonce would change that cached
+ * prefix on every call and defeat prompt caching. Escaping is deterministic and
+ * leaves the cache intact.
+ */
+function fencedUntrustedBlock(tag: string, payload: unknown): string {
+  const inert = JSON.stringify(payload)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e");
+  return `<${tag}>${inert}</${tag}>`;
+}
 
+function untrustedNewsBlock(newsItems: readonly NewsItem[]): string {
   const inertItems = newsItems.map((item) => ({
     id: item.id,
     publishedAt: item.publishedAt.toISOString(),
@@ -1891,7 +1920,7 @@ function untrustedNewsBlock(newsItems: readonly NewsItem[]): string {
     title: item.title,
     url: item.url,
   }));
-  return `<untrusted_news>${JSON.stringify(inertItems)}</untrusted_news>`;
+  return fencedUntrustedBlock("untrusted_news", inertItems);
 }
 
 interface FencedLoreEntry {
@@ -1930,7 +1959,7 @@ function leagueLoreBlock(context: LeagueBlogContext): string {
   add("pending", context.authenticity.lore.pending);
   add("refuted", context.authenticity.lore.refuted);
   add("canon", context.authenticity.canonLore);
-  return `<untrusted_league_lore>${JSON.stringify([...byId.values()])}</untrusted_league_lore>`;
+  return fencedUntrustedBlock("untrusted_league_lore", [...byId.values()]);
 }
 
 type PersonaCardRow = Omit<LeaguePersonaCard, "toneProfile"> & {
