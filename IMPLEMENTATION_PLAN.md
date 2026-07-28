@@ -864,7 +864,7 @@ load-flake suites — re-run in isolation before blaming your change.
 | T-008 | **done** | UIX-102 | S | 2026-07-28 | ACL now grants league_admin `leagueData:manage`, matching ROLE_RANK per the owner's ruling. New monotonicity invariant test pins the two authority models together; falsified. Suite 1,416/0/5. Role *collapse* split out → T-008a. |
 | T-008a | pending | UIX-102 / ctx Q16 | M | — | Collapse `league_admin` into commissioner in the `league_role` enum (migration + guards + invites + UI). Wider blast radius than the ACL fix. |
 | T-009 | pending | UIX-103 | M | — | |
-| T-010 | pending | UIX-104 | S | — | |
+| T-010 | **done** | UIX-104 | S | 2026-07-28 | Unparseable body now 400s instead of becoming a successful `{}`; absent body still `{}`. Cap enforced on bytes read via a bounded stream, closing the chunked bypass. 6 contract tests. Suite 1,422/0/5. |
 | T-011 | pending | UIX-114 | S | — | High blast radius |
 | T-012 | pending | UIX-113 | M | — | Gated on T-002 |
 | T-013 | pending | UIX-113 | L | — | |
