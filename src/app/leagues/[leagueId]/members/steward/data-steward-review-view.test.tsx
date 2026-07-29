@@ -261,6 +261,60 @@ test("ordinary members can inspect the public ledger without edit controls", () 
   expect(screen.getAllByText(/canonical_name/)[0]).toBeDefined();
 });
 
+test("a persisted steward edit is not reported as failed when the ledger read fails", async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/curation/ledger")) {
+        return new Response(
+          JSON.stringify({ error: { message: "ledger unavailable" } }),
+          { headers: { "content-type": "application/json" }, status: 500 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ ok: true, requestBody: parseRequestBody(init?.body) }),
+        { headers: { "content-type": "application/json" }, status: 200 },
+      );
+    });
+
+  render(
+    <DataStewardReviewView
+      curation={curationSummary}
+      initialSummary={initialSummary}
+      league={league}
+    />,
+  );
+
+  fireEvent.change(screen.getAllByDisplayValue("Fixture Manger")[0], {
+    target: { value: "Fixture Manager" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+  await waitFor(() => {
+    expect(screen.getByText(/Person name was recorded\./)).toBeDefined();
+  });
+  expect(screen.queryByText("Steward action failed")).toBeNull();
+  expect(screen.queryByText("ledger unavailable")).toBeNull();
+
+  fireEvent.change(screen.getByDisplayValue("1"), { target: { value: "2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save span" }));
+
+  await waitFor(() => {
+    expect(screen.getByText(/Matchup span edit was recorded\./)).toBeDefined();
+  });
+  expect(screen.queryByText("Steward action failed")).toBeNull();
+
+  // Exactly one write per edit: a false failure banner is what invites the retry that
+  // duplicates the substantive matchup-span entry in the audit ledger.
+  const editWrites = fetchMock.mock.calls.filter(
+    ([input, init]) =>
+      String(input).includes("/curation/edits") &&
+      (init as RequestInit | undefined)?.method === "POST",
+  );
+  expect(editWrites.length).toBe(2);
+});
+
 test("commissioners can submit curation edits, era confirms, and handoff actions", async () => {
   const fetchMock = vi
     .spyOn(globalThis, "fetch")

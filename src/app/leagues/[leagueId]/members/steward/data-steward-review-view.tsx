@@ -242,6 +242,24 @@ export function DataStewardReviewView({
     setLedgerEntries(payload.entries);
   }
 
+  // The ledger read is a follow-up refresh, never part of the write. It used to be awaited
+  // inside the write's own `try`, so a transient non-2xx from GET /curation/ledger threw
+  // past `setSuccessMessage` and painted "Steward action failed" over an edit that had
+  // already persisted. The retry that invited then either silently no-opped (the equality
+  // guard now matches the value applied locally) or, for matchup spans, wrote a duplicate
+  // audit-ledger entry. Report the write on the write's own outcome and degrade the ledger
+  // panel instead.
+  async function reportWrite(message: string) {
+    try {
+      await refreshLedger();
+      setSuccessMessage(message);
+    } catch {
+      setSuccessMessage(
+        `${message} The ledger list below could not be refreshed; reload to see it.`,
+      );
+    }
+  }
+
   async function submitPersonName(
     event: FormEvent<HTMLFormElement>,
     person: CurationPerson,
@@ -276,8 +294,7 @@ export function DataStewardReviewView({
             : candidate,
         ),
       });
-      await refreshLedger();
-      setSuccessMessage("Person name was recorded.");
+      await reportWrite("Person name was recorded.");
     } catch (cause) {
       setError(onboardingPanelError(cause));
     } finally {
@@ -330,8 +347,7 @@ export function DataStewardReviewView({
             : candidate,
         ),
       });
-      await refreshLedger();
-      setSuccessMessage("Team-season edit was recorded.");
+      await reportWrite("Team-season edit was recorded.");
     } catch (cause) {
       setError(onboardingPanelError(cause));
     } finally {
@@ -374,8 +390,7 @@ export function DataStewardReviewView({
             : candidate,
         ),
       });
-      await refreshLedger();
-      setSuccessMessage("Matchup span edit was recorded.");
+      await reportWrite("Matchup span edit was recorded.");
     } catch (cause) {
       setError(onboardingPanelError(cause));
     } finally {
@@ -421,8 +436,7 @@ export function DataStewardReviewView({
           candidate.id === groupingId ? payload.grouping : candidate,
         ),
       });
-      await refreshLedger();
-      setSuccessMessage("Season grouping was confirmed.");
+      await reportWrite("Season grouping was confirmed.");
     } catch (cause) {
       setError(onboardingPanelError(cause));
     } finally {
@@ -460,8 +474,7 @@ export function DataStewardReviewView({
         },
         commissionerCandidates: [],
       });
-      await refreshLedger();
-      setSuccessMessage("Commissioner handoff was recorded.");
+      await reportWrite("Commissioner handoff was recorded.");
     } catch (cause) {
       setError(onboardingPanelError(cause));
     } finally {
