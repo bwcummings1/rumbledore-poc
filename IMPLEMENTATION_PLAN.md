@@ -870,7 +870,7 @@ load-flake suites — re-run in isolation before blaming your change.
 | T-013 | **done** | UIX-113 | L | 2026-07-28 | Schema (migration 0080) + submission: per-intent idempotency, kickoff lock, server-side allowance, roster snapshot immutability, void-vs-submitted tally. 6 DB tests; both key invariants falsified. |
 | T-014b | **done** | UIX-113 | M | 2026-07-29 | Grading math extracted to `grading.ts`, shared by the Pick 'em grader and the settler so they cannot drift. Push→void mapping pinned. 13 tests; falsified (push→incorrect, and exact-zero compare). Settlement's 6 tests pass **unedited** — the behavior-preservation proof. |
 | T-014 | **done** | UIX-113 | M | 2026-07-28 | Absolute-denominator scoring + participation gate + push voiding + tie grouping. 10 tests pinning PROJECT_CONTEXT §3.3's worked examples; falsified (swapping the denominator breaks exactly the 4 anti-loophole tests). |
-| T-015 | pending | UIX-113 | M | — | |
+| T-015 | **partial** | UIX-113 | M | 2026-07-29 | Season standings from picks landed (`pickem-standings.ts`): sums counts rather than averaging weekly percentages, LEFT-joins so an unpicked week keeps its denominator, ties share a rank. 4 tests, both properties falsified. Re-pointing `arena.ts` off PnL lands with T-011's deletion. |
 | T-016 | pending | UIX-106 | S | — | |
 | T-017 | pending | UIX-113 | M | — | ⛔ approval |
 | T-018 | pending | UIX-113/001 | L | — | |
