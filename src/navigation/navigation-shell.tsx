@@ -1869,6 +1869,13 @@ function useShellRealtime(
         }
 
         clearReconnectTimer();
+        // A transient auth blip on the token route opens nothing and carries no
+        // `expiresAt`, so the branch below would schedule no reconnect and the pill would
+        // read "offline" for the rest of the tab's life. Treat it as retryable.
+        if (handle.retry) {
+          scheduleReconnect();
+          return;
+        }
         setStatus(handle.expiresAt ? "live" : "offline");
         if (handle.expiresAt) {
           const refreshInMs = Math.max(
@@ -1886,11 +1893,19 @@ function useShellRealtime(
       }
     }
 
+    // Coming back online is a stronger signal than the backoff timer; the separate
+    // online/offline effect only relabels the pill, it never re-invokes connect.
+    const reconnectWhenOnline = () => {
+      void connect();
+    };
+
     void connect();
+    window.addEventListener("online", reconnectWhenOnline);
 
     return () => {
       closed = true;
       clearReconnectTimer();
+      window.removeEventListener("online", reconnectWhenOnline);
       handle?.unsubscribe();
     };
   }, [leagueIds, subscriptions]);
@@ -1949,6 +1964,10 @@ function useShellRealtime(
           return;
         }
         clearReconnectTimer();
+        if (handle.retry) {
+          scheduleReconnect();
+          return;
+        }
         if (handle.expiresAt) {
           const refreshInMs = Math.max(
             SHELL_REALTIME_RECONNECT_MS,

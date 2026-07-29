@@ -94,6 +94,13 @@ export interface RealtimeRefreshEvent {
 
 export interface RealtimeRefreshHandle {
   expiresAt: string | null;
+  /**
+   * Set when nothing was opened for a *transient* reason — an auth blip on the token
+   * route — rather than a settled one such as "no channels granted" or a mock transport.
+   * A handle with no `expiresAt` schedules no refresh, so without this flag a single 401
+   * killed realtime for the whole lifetime of the tab. Consumers must reconnect on it.
+   */
+  retry: boolean;
   unsubscribe(): void;
 }
 
@@ -178,9 +185,13 @@ function defaultCreateClient(
   }) as unknown as BrowserRealtimeClient;
 }
 
-function noopHandle(expiresAt: string | null = null): RealtimeRefreshHandle {
+function noopHandle(
+  expiresAt: string | null = null,
+  retry = false,
+): RealtimeRefreshHandle {
   return {
     expiresAt,
+    retry,
     unsubscribe() {
       // No channels were opened.
     },
@@ -216,7 +227,7 @@ export async function openRealtimeRefreshSubscription({
   });
 
   if (response.status === 401 || response.status === 403) {
-    return noopHandle();
+    return noopHandle(null, true);
   }
   if (!response.ok) {
     throw new Error(`Realtime token request failed with ${response.status}`);
@@ -266,6 +277,7 @@ export async function openRealtimeRefreshSubscription({
 
   return {
     expiresAt: grant.expiresAt,
+    retry: false,
     unsubscribe() {
       for (const channel of channels) {
         void client.removeChannel(channel);
@@ -294,7 +306,7 @@ export async function openRealtimePresenceSubscription({
 
   if (response.status === 401 || response.status === 403) {
     offline();
-    return noopHandle();
+    return noopHandle(null, true);
   }
   if (!response.ok) {
     throw new Error(`Realtime token request failed with ${response.status}`);
@@ -353,6 +365,7 @@ export async function openRealtimePresenceSubscription({
 
   return {
     expiresAt: grant.expiresAt,
+    retry: false,
     unsubscribe() {
       void client.removeChannel(channel);
     },
@@ -435,6 +448,10 @@ export function useRealtimeRefresh({
         }
 
         clearRefreshTimer();
+        if (handle.retry) {
+          scheduleReconnect();
+          return;
+        }
         if (handle.expiresAt) {
           const refreshInMs = Math.max(
             RECONNECT_FALLBACK_MS,
@@ -453,11 +470,18 @@ export function useRealtimeRefresh({
       }
     };
 
+    // Regaining connectivity is the one signal worth more than the backoff timer.
+    const reconnectWhenOnline = () => {
+      void connect();
+    };
+
     void connect();
+    window.addEventListener("online", reconnectWhenOnline);
 
     return () => {
       closed = true;
       clearRefreshTimer();
+      window.removeEventListener("online", reconnectWhenOnline);
       handle?.unsubscribe();
     };
   }, [createClient, fetcher, leagueIds, refresh, subscriptions]);

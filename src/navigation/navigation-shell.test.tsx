@@ -35,7 +35,8 @@ const realtimeMock = vi.hoisted(() => {
           status: "online",
         });
         return {
-          expiresAt: "2026-06-12T00:05:00.000Z",
+          expiresAt: "2026-06-12T00:05:00.000Z" as string | null,
+          retry: false,
           unsubscribe: vi.fn(),
         };
       },
@@ -44,7 +45,8 @@ const realtimeMock = vi.hoisted(() => {
       async (options: { onRefresh: (event: unknown) => void }) => {
         state.lastRefresh = options.onRefresh;
         return {
-          expiresAt: "2026-06-12T00:05:00.000Z",
+          expiresAt: "2026-06-12T00:05:00.000Z" as string | null,
+          retry: false,
           unsubscribe: vi.fn(),
         };
       },
@@ -484,6 +486,81 @@ describe("NavigationShellView", () => {
         .getByRole("link", { name: /Settle it: lore vote opened/i })
         .getAttribute("href"),
     ).toBe("/leagues/league-a/lore/claim-1");
+  });
+
+  it("reconnects the shell after a transient unauthorized realtime grant", async () => {
+    vi.useFakeTimers();
+    realtimeMock.openRealtimeRefreshSubscription
+      .mockImplementationOnce(async () => ({
+        expiresAt: null,
+        retry: true,
+        unsubscribe: vi.fn(),
+      }))
+      .mockImplementationOnce(async (options) => {
+        realtimeMock.state.lastRefresh = options.onRefresh;
+        return {
+          expiresAt: "2026-06-12T00:05:00.000Z",
+          retry: false,
+          unsubscribe: vi.fn(),
+        };
+      });
+
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a/lore")}
+        items={items}
+      >
+        <main>League lore</main>
+      </NavigationShellView>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(realtimeMock.openRealtimeRefreshSubscription).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      screen
+        .getAllByRole("region", { name: "League wire" })[0]
+        ?.getAttribute("data-state"),
+    ).toBe("reconnecting");
+
+    // Before the fix a `retry` handle scheduled nothing, so this second attempt never came
+    // and the pill stayed "offline" for the rest of the tab's life.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(realtimeMock.openRealtimeRefreshSubscription).toHaveBeenCalledTimes(
+      2,
+    );
+
+    act(() => {
+      realtimeMock.state.lastRefresh?.({
+        event: REALTIME_EVENTS.loreVoteOpened,
+        payload: {
+          at: "2026-06-16T12:00:00.000Z",
+          claimId: "claim-9",
+          leagueId: "league-a",
+          type: REALTIME_EVENTS.loreVoteOpened,
+          v: 1,
+          voteClosesAt: "2026-06-17T12:00:00.000Z",
+        },
+        topic: leagueRealtimeChannel("league-a", "lore"),
+      });
+    });
+
+    expect(
+      screen
+        .getAllByRole("region", { name: "League wire" })[0]
+        ?.getAttribute("data-state"),
+    ).toBe("live");
   });
 
   it("toggles the wire between general and personal news and persists the preference", async () => {

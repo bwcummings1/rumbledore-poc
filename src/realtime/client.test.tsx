@@ -216,6 +216,48 @@ describe("realtime browser client", () => {
     forbiddenHandle.unsubscribe();
 
     expect(createClient).not.toHaveBeenCalled();
+    // A mock transport is settled; an auth rejection is transient and must be retried.
+    expect(mockHandle.retry).toBe(false);
+    expect(forbiddenHandle.retry).toBe(true);
+  });
+
+  it("reconnects after a transient unauthorized token response", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-12T00:00:00.000Z"));
+
+    const topic = leagueRealtimeChannel(leagueId, "blog");
+    const grant = supabaseGrant(topic);
+    const client = new FakeClient();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ error: "unauthorized" }, 401))
+      .mockResolvedValue(jsonResponse(grant));
+
+    render(
+      <RealtimeHarness
+        createClient={() => client}
+        fetcher={fetcher}
+        subscriptions={[{ events: [REALTIME_EVENTS.blogPublished], topic }]}
+      />,
+    );
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(client.channels).toHaveLength(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_999);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await flushAsyncWork();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(client.channels).toHaveLength(1);
+    expect(client.channels[0]?.subscribed).toBe(true);
   });
 
   it("subscribes to granted Supabase broadcasts and cleans them up", async () => {
