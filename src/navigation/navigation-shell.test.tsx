@@ -73,10 +73,14 @@ const routerMock = vi.hoisted(() => ({
   replace: vi.fn(),
 }));
 
+const pathnameMock = vi.hoisted(() => ({ current: "/leagues/league-a" }));
+
 vi.mock("next/navigation", () => ({
+  usePathname: () => pathnameMock.current,
   useRouter: () => routerMock,
 }));
 
+let NavigationShell!: typeof NavigationShellModule.NavigationShell;
 let NavigationShellView!: typeof NavigationShellModule.NavigationShellView;
 let shouldShowNavigationShell!: typeof NavigationShellModule.shouldShowNavigationShell;
 let deriveActiveNavigationState!: typeof ScopeModule.deriveActiveNavigationState;
@@ -101,8 +105,10 @@ const items = [
 beforeEach(async () => {
   assertJsdomHarness();
   vi.resetModules();
+  pathnameMock.current = "/leagues/league-a";
   const shellModule = await import("./navigation-shell");
   const scopeModule = await import("./scope");
+  NavigationShell = shellModule.NavigationShell;
   NavigationShellView = shellModule.NavigationShellView;
   shouldShowNavigationShell = shellModule.shouldShowNavigationShell;
   deriveActiveNavigationState = scopeModule.deriveActiveNavigationState;
@@ -790,6 +796,104 @@ describe("NavigationShellView", () => {
     expect(assign).not.toHaveBeenCalled();
   });
 });
+
+describe("NavigationShell", () => {
+  it("fetches the league switcher once per session instead of once per route", async () => {
+    const fetchMock = stubShellFetch();
+
+    const { rerender } = render(
+      <NavigationShell>
+        <main>League home</main>
+      </NavigationShell>,
+    );
+
+    await waitFor(() => {
+      expect(switcherFetchCount(fetchMock)).toBe(1);
+    });
+
+    for (const pathname of [
+      "/leagues/league-a/records",
+      "/news",
+      "/arena",
+      "/leagues/league-b/lore",
+    ]) {
+      pathnameMock.current = pathname;
+      rerender(
+        <NavigationShell>
+          <main>League home</main>
+        </NavigationShell>,
+      );
+      await waitFor(() => {
+        expect(
+          screen.getAllByRole("button", { name: "Open command palette" })
+            .length,
+        ).toBeGreaterThan(0);
+      });
+    }
+
+    // The endpoint answers from the session alone, so four in-app navigations
+    // must not cost four authenticated round trips.
+    expect(switcherFetchCount(fetchMock)).toBe(1);
+  });
+
+  it("refetches the league switcher when the shell re-enters after an auth-boundary route", async () => {
+    const fetchMock = stubShellFetch();
+
+    const { rerender } = render(
+      <NavigationShell>
+        <main>League home</main>
+      </NavigationShell>,
+    );
+
+    await waitFor(() => {
+      expect(switcherFetchCount(fetchMock)).toBe(1);
+    });
+
+    // `/onboarding` hides the shell; coming back is the one route transition
+    // that can carry a changed session.
+    pathnameMock.current = "/onboarding/espn";
+    rerender(
+      <NavigationShell>
+        <main>Onboarding</main>
+      </NavigationShell>,
+    );
+
+    pathnameMock.current = "/leagues/league-b";
+    rerender(
+      <NavigationShell>
+        <main>League home</main>
+      </NavigationShell>,
+    );
+
+    await waitFor(() => {
+      expect(switcherFetchCount(fetchMock)).toBe(2);
+    });
+  });
+});
+
+function stubShellFetch() {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("/api/navigation/league-switcher")) {
+      return new Response(JSON.stringify({ items }), { status: 200 });
+    }
+    if (url.startsWith("/news/wire")) {
+      return new Response(
+        JSON.stringify({ items: [], mode: "general", status: "ready" }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function switcherFetchCount(fetchMock: ReturnType<typeof stubShellFetch>) {
+  return fetchMock.mock.calls.filter(([input]) =>
+    String(input).startsWith("/api/navigation/league-switcher"),
+  ).length;
+}
 
 function item(
   overrides: Partial<LeagueSwitcherViewItem>,

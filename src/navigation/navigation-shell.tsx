@@ -231,6 +231,22 @@ export function NavigationShell({
     setItems(initialItems);
   }, [initialItems]);
 
+  // `/api/navigation/league-switcher` answers purely from the caller's session
+  // (`requireSession` -> `listLeagueSwitcherItemsForUser(userId)`); the route
+  // never enters into it. Keying this effect on `pathname` meant a redundant
+  // authenticated round trip on every single client-side navigation, all of
+  // them returning the same list.
+  //
+  // The shell is mounted by the root layout, so it outlives every in-app route
+  // change and one fetch per mount is one fetch per session. `showShell` stays
+  // a dependency because it is the auth boundary in disguise: it goes false on
+  // the signed-out/onboarding/invite segments and back true on re-entry, which
+  // is precisely when the session — and so this list — can have changed.
+  //
+  // Deliberately not keyed on `useSession()` from `@/lib/auth-client`: nothing
+  // else in the always-loaded shell imports the auth client (the sign-out
+  // button is already behind `dynamic()`), so reaching for it here would drag
+  // better-auth's browser client into every route's main chunk to save a fetch.
   useEffect(() => {
     if (!showShell) {
       return;
@@ -255,10 +271,7 @@ export function NavigationShell({
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          console.error(
-            `Failed to load navigation leagues for ${pathname}`,
-            error,
-          );
+          console.error("Failed to load navigation leagues", error);
         }
       }
     }
@@ -268,7 +281,7 @@ export function NavigationShell({
     return () => {
       controller.abort();
     };
-  }, [pathname, showShell]);
+  }, [showShell]);
 
   if (!showShell) {
     return <>{children}</>;
