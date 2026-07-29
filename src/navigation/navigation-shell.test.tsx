@@ -75,6 +75,18 @@ const routerMock = vi.hoisted(() => ({
 
 const pathnameMock = vi.hoisted(() => ({ current: "/leagues/league-a" }));
 
+/**
+ * The palette, both sheets, and both menu panels are `next/dynamic` surfaces:
+ * clicking their trigger starts a real module import, so they land a tick or
+ * more after the event rather than in the same commit. Testing Library's
+ * default 1s window is tight for that when the suite is running at full worker
+ * concurrency, which showed up as a rare flake in the scope-switcher test. This
+ * is headroom for an import, not a slack budget for a broken assertion — the
+ * suite's own `testTimeout` is 30s, so a genuinely missing surface still fails
+ * the test, just later.
+ */
+const DYNAMIC_SURFACE = { timeout: 10_000 } as const;
+
 vi.mock("next/navigation", () => ({
   usePathname: () => pathnameMock.current,
   useRouter: () => routerMock,
@@ -334,9 +346,11 @@ describe("NavigationShellView", () => {
 
     // The sheet is `next/dynamic`-loaded on the interaction, so it arrives a
     // microtask after the click rather than in the same commit.
-    const dialog = await screen.findByRole("dialog", {
-      name: /Switch environments/i,
-    });
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: /Switch environments/i },
+      DYNAMIC_SURFACE,
+    );
     expect(dialog.getAttribute("data-slot")).toBe("sheet");
     expect(
       within(dialog).getByRole("button", { name: "Resize sheet" }),
@@ -372,10 +386,10 @@ describe("NavigationShellView", () => {
       expect(
         screen.queryByRole("dialog", { name: /Switch environments/i }),
       ).toBeNull();
-    });
+    }, DYNAMIC_SURFACE);
     await waitFor(() => {
       expect(document.activeElement).toBe(trigger);
-    });
+    }, DYNAMIC_SURFACE);
   });
 
   it("keeps the desktop sidebar collapsible while preserving destinations", () => {
@@ -431,7 +445,11 @@ describe("NavigationShellView", () => {
 
     // The panel is `next/dynamic`-loaded on the interaction; only its trigger
     // and unread badge are in the initial render.
-    const dialog = await screen.findByRole("dialog", { name: "Notifications" });
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "Notifications" },
+      DYNAMIC_SURFACE,
+    );
     expect(within(dialog).getByText("1 unread")).toBeDefined();
     expect(within(dialog).getByText("League wire online")).toBeDefined();
 
@@ -504,7 +522,11 @@ describe("NavigationShellView", () => {
     fireEvent.click(
       screen.getAllByRole("button", { name: "Open notifications" })[0],
     );
-    const dialog = await screen.findByRole("dialog", { name: "Notifications" });
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "Notifications" },
+      DYNAMIC_SURFACE,
+    );
     expect(
       within(dialog)
         .getByRole("link", { name: /Settle it: lore vote opened/i })
@@ -788,9 +810,11 @@ describe("NavigationShellView", () => {
     }
     fireEvent.click(searchButton);
 
-    const option = await screen.findByRole("option", {
-      name: /Rumbledore News/i,
-    });
+    const option = await screen.findByRole(
+      "option",
+      { name: /Rumbledore News/i },
+      DYNAMIC_SURFACE,
+    );
     fireEvent.click(option);
 
     expect(routerMock.push).toHaveBeenCalledWith("/news");
@@ -820,7 +844,11 @@ describe("NavigationShellView", () => {
     fireEvent.keyDown(window, { ctrlKey: true, key: "k" });
 
     expect(
-      await screen.findByRole("dialog", { name: "Command palette" }),
+      await screen.findByRole(
+        "dialog",
+        { name: "Command palette" },
+        DYNAMIC_SURFACE,
+      ),
     ).toBeDefined();
   });
 
@@ -838,7 +866,11 @@ describe("NavigationShellView", () => {
       screen.getAllByRole("button", { name: "Open account menu" })[0],
     );
 
-    const dialog = await screen.findByRole("dialog", { name: "Account" });
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "Account" },
+      DYNAMIC_SURFACE,
+    );
     // "ESPN" appears twice: as the active scope's provider label and as a
     // connected-provider tag.
     expect(within(dialog).getAllByText("ESPN").length).toBe(2);
@@ -864,7 +896,11 @@ describe("NavigationShellView", () => {
     const trigger = screen.getByRole("button", { name: "Open The Wire" });
     fireEvent.click(trigger);
 
-    const dialog = await screen.findByRole("dialog", { name: "The Wire" });
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "The Wire" },
+      DYNAMIC_SURFACE,
+    );
     expect(dialog.getAttribute("data-slot")).toBe("sheet");
     // The ticker is passed as children from the shell rather than imported by
     // the lazy module, so the sheet must still receive it — in its expanded
@@ -880,11 +916,11 @@ describe("NavigationShellView", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "The Wire" })).toBeNull();
-    });
+    }, DYNAMIC_SURFACE);
     // Re-opening must not need a second chunk fetch or a remount.
     fireEvent.click(trigger);
     expect(
-      await screen.findByRole("dialog", { name: "The Wire" }),
+      await screen.findByRole("dialog", { name: "The Wire" }, DYNAMIC_SURFACE),
     ).toBeDefined();
   });
 });
