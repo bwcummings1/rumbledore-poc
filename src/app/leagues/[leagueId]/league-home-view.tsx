@@ -81,14 +81,6 @@ function formatWinPercentage(value: number): string {
   return `${Math.round(value * 1000) / 10}%`;
 }
 
-function formatCents(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    maximumFractionDigits: 0,
-    style: "currency",
-  }).format(value / 100);
-}
-
 function formatRole(value: LeagueHomeData["userRole"]): string {
   return value.replaceAll("_", " ");
 }

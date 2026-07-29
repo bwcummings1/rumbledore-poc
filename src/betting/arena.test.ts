@@ -14,7 +14,6 @@ import {
   leagues,
   oddsSnapshots,
   picks,
-  pickWeeks,
   type User,
   users,
 } from "@/db/schema";

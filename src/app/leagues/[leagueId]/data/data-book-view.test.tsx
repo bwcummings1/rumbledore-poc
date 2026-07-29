@@ -1038,6 +1038,59 @@ test("restore calls the selected checkpoint restore API and refreshes the route"
   await waitFor(() => expect(router.refresh).toHaveBeenCalled());
 });
 
+test("adopts server data when a restore changes the active checkpoint (T-035)", () => {
+  // `draftData` is seeded once from props, so `router.refresh()` after a
+  // restore used to re-render the server component and change nothing on
+  // screen: the banner said "Refreshing draft tables" while the user kept
+  // looking at the pre-restore rows, and a save from that view would have
+  // written a value derived from data the server had already discarded.
+  const before = {
+    createdAt: "2026-06-23T00:00:00.000Z",
+    id: "00000000-0000-4000-8000-000000000003",
+    label: "Before bad edit",
+    latestEditId: "edit-1",
+    markerEditId: "marker-1",
+    note: null,
+    seasons: [2026, 2025],
+  };
+  const after = { ...before, id: "00000000-0000-4000-8000-00000000000f" };
+
+  const { rerender } = render(
+    <DataBookView
+      canEditData={true}
+      data={{
+        ...data,
+        curation: curationState({
+          activeCheckpoint: before,
+          checkpoints: [before],
+        }),
+      }}
+    />,
+  );
+  openCurationDetails();
+  // The option renders as "<label> / <timestamp>", so match on the label.
+  expect(screen.getAllByText(/Before bad edit/).length).toBeGreaterThan(0);
+
+  rerender(
+    <DataBookView
+      canEditData={true}
+      data={{
+        ...data,
+        curation: curationState({
+          activeCheckpoint: after,
+          checkpoints: [{ ...after, label: "Restored point" }],
+        }),
+      }}
+    />,
+  );
+
+  openCurationDetails();
+  // The positive assertion is the falsifiable one: without reconciliation the
+  // checkpoint list comes from the stale local state, which only ever knew
+  // about "Before bad edit", so the restored label cannot appear at all.
+  expect(screen.getAllByText(/Restored point/).length).toBeGreaterThan(0);
+});
+
 test("dismissing the restore dialog does not restore the checkpoint", async () => {
   const checkpoint = {
     createdAt: "2026-06-23T00:00:00.000Z",

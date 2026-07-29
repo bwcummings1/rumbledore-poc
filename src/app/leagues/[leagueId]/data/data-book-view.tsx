@@ -2371,6 +2371,30 @@ export function DataBookView({
     }
   }, [curationState.checkpoints, restoreCheckpointId]);
 
+  // Reconcile the local tables when the server rolls back to a different
+  // checkpoint.
+  //
+  // `draftData` is seeded once from props, so `router.refresh()` after a
+  // restore re-rendered the server component and changed nothing on screen:
+  // the banner said "Refreshing draft tables" while the user kept looking at
+  // the pre-restore rows. Saving an edit from that view would have written a
+  // value derived from data the server had already discarded.
+  //
+  // Keyed on the ACTIVE CHECKPOINT rather than on the props object. Next.js
+  // hands back a fresh object on every refresh, so adopting on identity would
+  // throw away in-progress edits any time anything refreshed. A restore is
+  // precisely the event that invalidates drafts, and it is the only one that
+  // moves this id.
+  const serverCheckpointId = data.curation.activeCheckpoint?.id ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `data` is read but deliberately excluded — including it would fire on every router.refresh() and discard in-progress edits.
+  useEffect(() => {
+    setDraftData(data);
+    setCurationState(data.curation);
+    setEraProposals(data.eraProposals);
+    setDraftCellKeys(new Set());
+    setDraftMessage(null);
+  }, [serverCheckpointId]);
+
   function isDraftCell(
     targetKind: "person" | "team_season",
     targetId: string | null | undefined,
