@@ -1133,8 +1133,34 @@ describe("generateLeagueBlogPost", () => {
 
     expect(rows.posts).toHaveLength(2);
     expect(rows.memory).toHaveLength(2);
-    expect(rows.usage).toHaveLength(2);
-    expect(rows.usage.map((event) => event.triggerKey).sort()).toEqual([
+
+    // Four usage rows for two generations: one per draft, plus one per judge
+    // call. The judge was previously unmetered — `scoreWithUsage` existed but
+    // the pipeline called plain `score()` and discarded the usage — so every
+    // judged generation made a real paid call the cost meter never saw. Since
+    // AI tier pricing is set from this meter, asserting the COMPOSITION rather
+    // than just the count keeps that hole from silently reopening.
+    const judgeUsage = rows.usage.filter(
+      (event) =>
+        (event.metadata as { operation?: string } | null)?.operation ===
+        "judge.score",
+    );
+    const draftUsage = rows.usage.filter(
+      (event) =>
+        (event.metadata as { operation?: string } | null)?.operation !==
+        "judge.score",
+    );
+
+    expect(rows.usage).toHaveLength(4);
+    expect(draftUsage).toHaveLength(2);
+    expect(judgeUsage).toHaveLength(2);
+    // The judge always runs on the bulk model regardless of which model wrote
+    // the draft, so its rows must not inherit the generation model — pricing a
+    // Haiku call at Opus rates is the exact error T-004 corrected.
+    for (const event of judgeUsage) {
+      expect(event.model).toBe("claude-haiku-4-5-20251001");
+    }
+    expect(draftUsage.map((event) => event.triggerKey).sort()).toEqual([
       "weekly:2026:1",
       "weekly:2026:2",
     ]);
@@ -2027,7 +2053,18 @@ describe("generateLeagueBlogPost", () => {
         .from(aiUsageEvents)
         .where(eq(aiUsageEvents.leagueId, league.id)),
     );
-    expect(usage).toHaveLength(2);
+    // Two draft attempts plus the two judge calls that scored them. The judge
+    // is metered per attempt, so a draft that fails the judge and is rewritten
+    // costs two judge calls — which is exactly the spend the meter previously
+    // hid from the pricing decision.
+    expect(usage).toHaveLength(4);
+    expect(
+      usage.filter(
+        (event) =>
+          (event.metadata as { operation?: string } | null)?.operation ===
+          "judge.score",
+      ),
+    ).toHaveLength(2);
     expect(usage.map((event) => event.metadata)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ attempt: 1, duplicateNudge: false }),

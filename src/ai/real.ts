@@ -404,14 +404,9 @@ export interface AnthropicLlmJudgeOptions {
 export type AnthropicUsageBreakdown = LlmUsageBreakdown;
 export type AnthropicGenerateResult = LlmGenerateResult;
 
-export interface LlmJudgeResult {
-  score: LlmJudgeScore;
-  usage: LlmUsageBreakdown;
-}
+export type { LlmJudgeResult, UsageReportingLlmJudge } from "./interfaces";
 
-export interface UsageReportingLlmJudge extends LlmJudge {
-  scoreWithUsage(request: LlmJudgeRequest): Promise<LlmJudgeResult>;
-}
+import type { LlmJudgeResult, UsageReportingLlmJudge } from "./interfaces";
 
 interface AnthropicResponseWithUsage {
   parsed_output?: unknown;

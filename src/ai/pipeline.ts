@@ -114,12 +114,15 @@ import type {
   LlmGenerateRequest,
   LlmGenerateResult,
   LlmJudge,
+  LlmJudgeRequest,
+  LlmJudgeResult,
   LlmJudgeScore,
   LlmModelMetadataResolver,
   LlmModelProviderKeyResolver,
   NewsItem,
   PromptParts,
   UsageReportingLlmClient,
+  UsageReportingLlmJudge,
   WebGrounding,
 } from "./interfaces";
 import { assertLlmJudgeScorePasses, DEFAULT_LLM_JUDGE_RUBRIC } from "./judge";
@@ -130,6 +133,7 @@ import {
   MockLlmJudge,
   MockWebGrounding,
 } from "./mocks";
+import { ANTHROPIC_BULK_MODEL } from "./model-config";
 import {
   AI_PERSONAS,
   type AiPersona,
@@ -1848,22 +1852,92 @@ function llmJudgeSkipReason(score: LlmJudgeScore): string {
   return `llm_judge:${reasons.join(",") || "failed"}`;
 }
 
+/**
+ * Scores a draft, reporting usage when the judge can supply it.
+ *
+ * Mirrors `generateDraftWithUsage`'s optional-capability probe so every small
+ * `LlmJudge` test double stays valid without implementing the wider interface.
+ *
+ * This exists because the judge was **entirely unmetered**: `scoreWithUsage`
+ * has always been available on the real judge, but the pipeline called plain
+ * `score()` and discarded the usage. Every judged league generation therefore
+ * made a real paid bulk-model call the cost meter never saw — and AI tier
+ * pricing is set from that meter (`PROJECT_CONTEXT.md` §3.2), so the number a
+ * pricing decision reads was missing one call per generation attempt.
+ */
+async function judgeDraftWithUsage(
+  judge: AiGenerationDependencies["judge"],
+  request: LlmJudgeRequest,
+): Promise<LlmJudgeResult> {
+  const usageJudge = judge as Partial<UsageReportingLlmJudge>;
+  if (usageJudge.scoreWithUsage) {
+    return usageJudge.scoreWithUsage(request);
+  }
+  return {
+    estimated: true,
+    score: await judge.score(request),
+    usage: {
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      inputTokens: estimateTokenCount(
+        [
+          request.piece.title,
+          request.piece.body,
+          ...(request.leagueFacts.otherLeagueEntityTokens ?? []),
+        ].join(" "),
+      ),
+      outputTokens: 0,
+    },
+  };
+}
+
 async function judgeDraftFailureReason({
   context,
   deps,
   draft,
   input,
+  runId,
 }: {
   context: LeagueBlogContext;
-  deps: Pick<AiGenerationDependencies, "judge">;
+  deps: Pick<AiGenerationDependencies, "db" | "judge">;
   draft: BlogDraft;
   input: GenerateLeagueBlogPostInput;
+  runId?: string;
 }): Promise<string | null> {
-  const score = await deps.judge.score({
+  const judged = await judgeDraftWithUsage(deps.judge, {
     leagueFacts: { context },
     piece: draft,
     rubric: DEFAULT_LLM_JUDGE_RUBRIC,
   });
+  const score = judged.score;
+
+  // Record the judge's own spend. Best-effort: a metering failure must never
+  // turn a passing draft into a skipped one — the meter informs pricing, it is
+  // not part of the publish decision.
+  if (deps.db) {
+    try {
+      await recordAiUsageEvent(deps.db, {
+        contentType: input.contentType,
+        estimated: judged.estimated ?? false,
+        ...(runId ? { generationRunId: runId } : {}),
+        leagueId: input.leagueId,
+        metadata: { operation: "judge.score" },
+        // The judge always runs on the bulk model regardless of which model
+        // generated the draft, so it must NOT inherit the generation model —
+        // that would price a Haiku call at Opus rates.
+        model: ANTHROPIC_BULK_MODEL,
+        persona: input.persona,
+        provider: "anthropic",
+        triggerKey: input.triggerKey,
+        usage: judged.usage,
+      });
+    } catch (error) {
+      logger.warn("ai_judge_usage_record_failed", {
+        error,
+        leagueId: input.leagueId,
+      });
+    }
+  }
   try {
     assertLlmJudgeScorePasses({
       label: `${input.leagueId}:${input.persona}:${input.contentType}:${input.triggerKey}`,
@@ -3766,6 +3840,7 @@ export async function generateLeagueBlogPost({
     deps,
     draft,
     input,
+    runId: prepared.runId,
   });
 
   if (judgeFailureReason && !alreadyRetried) {
@@ -3838,6 +3913,7 @@ export async function generateLeagueBlogPost({
       deps,
       draft,
       input,
+      runId: prepared.runId,
     });
   }
 

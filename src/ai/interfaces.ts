@@ -749,6 +749,21 @@ export interface LlmJudge {
   score(request: LlmJudgeRequest): Promise<LlmJudgeScore>;
 }
 
+export interface LlmJudgeResult {
+  score: LlmJudgeScore;
+  usage: LlmUsageBreakdown;
+  estimated?: boolean;
+}
+
+/**
+ * Optional capability, mirroring `UsageReportingLlmClient`. Declared here rather
+ * than in `real.ts` so `pipeline.ts` can probe for it without importing the real
+ * Anthropic client into its module graph.
+ */
+export interface UsageReportingLlmJudge extends LlmJudge {
+  scoreWithUsage(request: LlmJudgeRequest): Promise<LlmJudgeResult>;
+}
+
 export interface WebGrounding {
   fetch(input: {
     leagueId: string;
