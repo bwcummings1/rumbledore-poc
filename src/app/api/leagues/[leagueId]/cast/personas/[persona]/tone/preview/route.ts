@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parseAiPersona, previewPersonaToneProfile } from "@/ai";
 import { isValidLeagueId, requirePlatformAdmin } from "@/auth/guards";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
@@ -50,6 +51,17 @@ async function personaTonePreviewPost(
         status: 400,
       }),
     );
+  }
+
+  const limited = await enforceApiRateLimitOrReject({
+    max: 20,
+    message: "Too many tone previews. Try again shortly.",
+    scope: "persona-tone-preview",
+    subject: access.value.userId,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request, MAX_TONE_BODY_BYTES);

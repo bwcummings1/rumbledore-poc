@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAiDependencies } from "@/ai/dependencies";
 import { requirePlatformAdmin } from "@/auth/guards";
@@ -16,6 +17,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/db", () => ({
   getDb: () => mocks.db,
+}));
+
+// The limiter is mocked so this suite never depends on Redis and never carries
+// counter state between runs; src/core/rate-limit.test.ts covers the guard.
+vi.mock("@/core/rate-limit", () => ({
+  enforceApiRateLimitOrReject: vi.fn(async () => null),
 }));
 
 vi.mock("@/core/env", () => ({
@@ -103,6 +110,38 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/regenerate", () => {
       leagueId,
       reason: "Sharper correction.",
     });
+  });
+
+  it("answers a malformed post id with a 400 instead of a Postgres 500", async () => {
+    mockAdminAccess();
+
+    const response = await POST(request({}), {
+      params: Promise.resolve({ leagueId, postId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_POST_ID" },
+    });
+    expect(regenerateEditorialContentItem).not.toHaveBeenCalled();
+  });
+
+  it("returns the rate-limit rejection before spending a generation", async () => {
+    mockAdminAccess();
+    const { enforceApiRateLimitOrReject } = await import("@/core/rate-limit");
+    vi.mocked(enforceApiRateLimitOrReject).mockResolvedValueOnce(
+      NextResponse.json(
+        { error: { code: "RATE_LIMITED", message: "Slow down." } },
+        { headers: { "Retry-After": "60" }, status: 429 },
+      ),
+    );
+
+    const response = await POST(request({}), routeContext());
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(createAiDependencies).not.toHaveBeenCalled();
+    expect(regenerateEditorialContentItem).not.toHaveBeenCalled();
   });
 
   it("rejects oversized reasons before regeneration", async () => {

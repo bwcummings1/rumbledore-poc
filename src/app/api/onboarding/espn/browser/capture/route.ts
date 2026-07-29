@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError } from "@/core/result";
 import { getEspnOnboardingDependencies } from "@/onboarding/deps";
 import { completeEspnBrowserConnect } from "@/onboarding/espn-service";
@@ -20,6 +21,16 @@ async function browserCapturePost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
+  }
+  const limited = await enforceApiRateLimitOrReject({
+    max: 10,
+    message: "Too many browser capture attempts. Try again shortly.",
+    scope: "espn-browser-capture",
+    subject: userId.value,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request);

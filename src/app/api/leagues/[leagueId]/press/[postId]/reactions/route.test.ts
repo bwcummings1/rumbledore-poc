@@ -14,6 +14,12 @@ vi.mock("@/db", () => ({
   getDb: () => mocks.db,
 }));
 
+// The limiter is mocked so this suite never depends on Redis and never carries
+// counter state between runs; src/core/rate-limit.test.ts covers the guard.
+vi.mock("@/core/rate-limit", () => ({
+  enforceApiRateLimitOrReject: vi.fn(async () => null),
+}));
+
 vi.mock("@/auth/guards", () => ({
   requireLeagueRole: mocks.requireLeagueRole,
 }));
@@ -85,6 +91,20 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/reactions", () => {
         userId,
       },
     );
+  });
+
+  it("answers a malformed post id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+
+    const response = await POST(request({ emoji: "fire" }), {
+      params: Promise.resolve({ leagueId, postId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_POST_ID" },
+    });
+    expect(setContentReaction).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported reaction emoji before mutation", async () => {

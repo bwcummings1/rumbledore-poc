@@ -16,6 +16,11 @@ describe("mobile PWA performance budget", () => {
     expect(budget.thresholds.interactionToNextPaintMs).toBeLessThanOrEqual(200);
     expect(budget.thresholds.minimumTapTargetPx).toBeGreaterThanOrEqual(44);
     expect(budget.thresholds.maxRouteJsGzipKb).toBeGreaterThan(0);
+    // The ceiling, not just a floor. `toBeGreaterThan(0)` was the whole
+    // assertion, so raising the budget to 900KB passed both this suite and
+    // `pnpm perf:pwa` — the one threshold meant to catch a size regression was
+    // the one that could not fail on one.
+    expect(budget.thresholds.maxRouteJsGzipKb).toBeLessThanOrEqual(300);
   });
 
   it("requires an App Router skeleton loading state instead of route spinners", () => {

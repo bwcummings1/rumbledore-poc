@@ -144,6 +144,20 @@ describe("PATCH /api/leagues/[leagueId]/webhooks/[webhookId]", () => {
     });
   });
 
+  it("answers a malformed webhook id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+
+    const response = await PATCH(patchRequest({ name: "Renamed" }), {
+      params: Promise.resolve({ leagueId, webhookId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_WEBHOOK_ID" },
+    });
+    expect(updateLeagueWebhook).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid update payloads before service work", async () => {
     mockAccess();
 
@@ -196,6 +210,20 @@ describe("DELETE /api/leagues/[leagueId]/webhooks/[webhookId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "not_found",
     });
+  });
+
+  it("answers a malformed webhook id on delete with a 400", async () => {
+    mockAccess();
+
+    const response = await DELETE(deleteRequest(), {
+      params: Promise.resolve({ leagueId, webhookId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_WEBHOOK_ID" },
+    });
+    expect(deleteLeagueWebhook).not.toHaveBeenCalled();
   });
 
   it("rejects non-commissioners before service work", async () => {

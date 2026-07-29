@@ -1,5 +1,6 @@
 import { recordApiHandler } from "@/core/metrics";
 import { AppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { getLoreClaimDetailData } from "@/lore/member-experience";
 import { errorJson, okJson } from "@/onboarding/http";
 import {
@@ -20,6 +21,14 @@ async function loreClaimGet(request: Request, context: LoreClaimRouteContext) {
   const { access, db } = await authorizeLoreMember(request, leagueId);
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidClaimId = uuidParamError(claimId, {
+    code: "INVALID_CLAIM_ID",
+    label: "Lore claim id",
+  });
+  if (invalidClaimId) {
+    return errorJson(invalidClaimId);
   }
 
   try {

@@ -224,6 +224,22 @@ describe("POST /api/leagues/[leagueId]/lore/claims/[claimId]/steward", () => {
     });
   });
 
+  it("answers a malformed claim id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+    mockMembership();
+
+    const response = await POST(
+      request({ action: "extend", reason: "More time." }),
+      { params: Promise.resolve({ claimId: "not-a-uuid", leagueId }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_CLAIM_ID" },
+    });
+    expect(stewardLoreClaim).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed steward payloads before member lookup", async () => {
     mockAccess();
 

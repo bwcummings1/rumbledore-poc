@@ -4,7 +4,9 @@ import { isValidLeagueId, requirePlatformAdmin } from "@/auth/guards";
 import { regenerateEditorialContentItem } from "@/content/editorial";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
 
@@ -42,6 +44,27 @@ async function editorialRegeneratePost(
         status: 400,
       }),
     );
+  }
+
+  const invalidPostId = uuidParamError(postId, {
+    code: "INVALID_POST_ID",
+    label: "Post id",
+  });
+  if (invalidPostId) {
+    return errorJson(invalidPostId);
+  }
+
+  // Every accepted request bills a model generation, so the cap is on the
+  // billable work rather than on the authorization check above it.
+  const limited = await enforceApiRateLimitOrReject({
+    max: 10,
+    message: "Too many regeneration requests. Try again shortly.",
+    scope: "editorial-regenerate",
+    subject: access.value.userId,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request, MAX_EDITORIAL_BODY_BYTES);

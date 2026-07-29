@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError } from "@/core/result";
 import { getYahooOnboardingDependencies } from "@/onboarding/deps";
 import {
@@ -32,6 +33,16 @@ async function yahooStartPost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
+  }
+  const limited = await enforceApiRateLimitOrReject({
+    max: 10,
+    message: "Too many Yahoo connect attempts. Try again shortly.",
+    scope: "yahoo-oauth-start",
+    subject: userId.value,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request, 4096);

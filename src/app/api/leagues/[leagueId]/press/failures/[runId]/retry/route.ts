@@ -3,7 +3,9 @@ import { createAiDependencies } from "@/ai/dependencies";
 import { requireLeagueRole } from "@/auth/guards";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { getDb } from "@/db";
 import { errorJson, okJson } from "@/onboarding/http";
 
@@ -28,6 +30,26 @@ async function generationFailureRetryPost(
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+  const invalidRunId = uuidParamError(runId, {
+    code: "INVALID_RUN_ID",
+    label: "Generation run id",
+  });
+  if (invalidRunId) {
+    return errorJson(invalidRunId);
+  }
+
+  // A retry re-runs the failed generation, so an unbounded retry button is an
+  // unbounded model spend.
+  const limited = await enforceApiRateLimitOrReject({
+    max: 10,
+    message: "Too many retry requests. Try again shortly.",
+    scope: "generation-failure-retry",
+    subject: access.value.userId,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   try {

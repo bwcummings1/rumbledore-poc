@@ -142,7 +142,10 @@ export function ContentReactionStrip({
                   size: "sm",
                   variant: pressed ? "default" : "outline",
                 }),
-                "min-h-10 min-w-14 gap-1 px-2 font-mono text-xs tabular-nums",
+                // 44px, not the 40px `min-h-10` this used to carry: the mobile
+                // budget's minimumTapTargetPx floor, enforced by
+                // e2e/mobile-tap-targets.spec.ts.
+                "min-h-11 min-w-14 gap-1 px-2 font-mono text-xs tabular-nums",
                 !canReact && "cursor-default",
               )}
               disabled={!canReact || isPending}

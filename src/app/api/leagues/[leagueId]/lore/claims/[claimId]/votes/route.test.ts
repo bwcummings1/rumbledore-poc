@@ -16,6 +16,12 @@ vi.mock("@/db", () => ({
   getDb: () => mocks.db,
 }));
 
+// The limiter is mocked so this suite never depends on Redis and never carries
+// counter state between runs; src/core/rate-limit.test.ts covers the guard.
+vi.mock("@/core/rate-limit", () => ({
+  enforceApiRateLimitOrReject: vi.fn(async () => null),
+}));
+
 vi.mock("@/auth/guards", () => ({
   requireLeagueRole: mocks.requireLeagueRole,
 }));
@@ -133,6 +139,21 @@ describe("POST /api/leagues/[leagueId]/lore/claims/[claimId]/votes", () => {
       leagueId,
       memberId,
     });
+  });
+
+  it("answers a malformed claim id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+    mockMembership();
+
+    const response = await POST(request({ choice: "affirm" }), {
+      params: Promise.resolve({ claimId: "not-a-uuid", leagueId }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_CLAIM_ID" },
+    });
+    expect(castLoreVote).not.toHaveBeenCalled();
   });
 
   it("rejects malformed vote payloads before touching membership", async () => {

@@ -115,6 +115,20 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/retract", () => {
     );
   });
 
+  it("answers a malformed post id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+
+    const response = await POST(request({ reason: "Wrong result." }), {
+      params: Promise.resolve({ leagueId, postId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_POST_ID" },
+    });
+    expect(retractEditorialContentItem).not.toHaveBeenCalled();
+  });
+
   it("rejects missing reasons before mutating content", async () => {
     mockAccess();
 

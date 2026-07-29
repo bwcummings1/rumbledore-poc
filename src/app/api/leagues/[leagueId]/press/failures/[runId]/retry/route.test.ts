@@ -18,6 +18,12 @@ vi.mock("@/db", () => ({
   getDb: () => mocks.db,
 }));
 
+// The limiter is mocked so this suite never depends on Redis and never carries
+// counter state between runs; src/core/rate-limit.test.ts covers the guard.
+vi.mock("@/core/rate-limit", () => ({
+  enforceApiRateLimitOrReject: vi.fn(async () => null),
+}));
+
 vi.mock("@/core/env", () => ({
   getEnv: () => mocks.env,
 }));
@@ -95,6 +101,20 @@ describe("POST /api/leagues/[leagueId]/press/failures/[runId]/retry", () => {
       leagueId,
       runId,
     });
+  });
+
+  it("answers a malformed run id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+
+    const response = await POST(request(), {
+      params: Promise.resolve({ leagueId, runId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_RUN_ID" },
+    });
+    expect(retryGenerationFailureRun).not.toHaveBeenCalled();
   });
 
   it("rejects non-stewards before creating AI dependencies", async () => {
