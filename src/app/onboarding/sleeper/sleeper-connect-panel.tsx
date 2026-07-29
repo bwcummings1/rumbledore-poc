@@ -134,10 +134,12 @@ export function SleeperConnectPanel({
           nextLeagues.filter(canImportLeague).map(leagueKey),
         );
         if (preserveSelection) {
-          const retained = current.filter((key) => selectableKeys.has(key));
-          if (retained.length > 0) {
-            return retained;
-          }
+          // Returned unconditionally, INCLUDING when empty. Falling through to
+          // the recommended set on an empty result conflated "the user cleared
+          // the selection" with "we have not seeded one yet", so a user who
+          // unchecked every league watched a background refresh check them all
+          // again — and could then import leagues they had explicitly refused.
+          return current.filter((key) => selectableKeys.has(key));
         }
         return recommendedKeys(nextLeagues);
       });
@@ -393,7 +395,12 @@ export function SleeperConnectPanel({
         loading={discoveryLoading}
         onImportLeague={(league) => void importLeague(league)}
         onImportSelected={() => void importSelectedLeagues()}
-        onRefresh={() => void loadDiscoveredLeagues()}
+        // Re-discovering leagues must not undo the user's choices. Without
+        // this the button silently re-checked everything recommended,
+        // including leagues the user had just refused.
+        onRefresh={() =>
+          void loadDiscoveredLeagues({ preserveSelection: true })
+        }
         onToggleLeague={toggleLeague}
         remainingImportCount={remainingImportCount}
         selectedKeys={selectedKeys}

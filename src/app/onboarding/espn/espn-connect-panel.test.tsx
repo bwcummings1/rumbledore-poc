@@ -315,3 +315,51 @@ test("ESPN connect panel renders reconnect CTA from import auth errors", async (
     await screen.findByRole("link", { name: /reconnect espn/i }),
   ).toBeDefined();
 });
+
+test("a silent refresh does not re-check leagues the user deselected (T-035)", async () => {
+  // The preserve-selection path fell through to the RECOMMENDED set whenever
+  // the retained selection came back empty, conflating "the user cleared this"
+  // with "we have not seeded it yet". A user who unchecked every league saw a
+  // background refresh check them all again — and could then import leagues
+  // they had explicitly refused.
+  let discoveryReads = 0;
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input.toString();
+    if (url === "/api/onboarding/discovered") {
+      discoveryReads += 1;
+      return jsonResponse([discoveredLeague, oldLeague]);
+    }
+    if (url === "/api/onboarding/import") {
+      return jsonResponse({
+        leagueId: "league-95050",
+        onboardingState: "live",
+        sync: { matchups: { total: 1 }, members: { total: 1 } },
+      });
+    }
+    return jsonResponse(
+      { error: { message: `Unexpected request: ${url}` } },
+      { status: 500 },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<EspnConnectPanel />);
+
+  const currentLeague = (await screen.findByRole("checkbox", {
+    name: /nhs alumni annual/i,
+  })) as HTMLInputElement;
+  expect(currentLeague.checked).toBe(true);
+
+  // The user rejects the only recommended league, emptying the selection.
+  fireEvent.click(currentLeague);
+  expect(currentLeague.checked).toBe(false);
+
+  // A refresh that preserves selection must leave it empty.
+  fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+  await waitFor(() => expect(discoveryReads).toBeGreaterThan(1));
+
+  const afterRefresh = screen.getByRole("checkbox", {
+    name: /nhs alumni annual/i,
+  }) as HTMLInputElement;
+  expect(afterRefresh.checked).toBe(false);
+});
