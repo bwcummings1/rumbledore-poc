@@ -64,6 +64,35 @@ vi.mock("@/realtime/client", () => {
   };
 });
 
+const routerMock = vi.hoisted(() => ({
+  back: vi.fn(),
+  forward: vi.fn(),
+  prefetch: vi.fn(),
+  push: vi.fn(),
+  refresh: vi.fn(),
+  replace: vi.fn(),
+}));
+
+const pathnameMock = vi.hoisted(() => ({ current: "/leagues/league-a" }));
+
+/**
+ * The palette, both sheets, and both menu panels are `next/dynamic` surfaces:
+ * clicking their trigger starts a real module import, so they land a tick or
+ * more after the event rather than in the same commit. Testing Library's
+ * default 1s window is tight for that when the suite is running at full worker
+ * concurrency, which showed up as a rare flake in the scope-switcher test. This
+ * is headroom for an import, not a slack budget for a broken assertion — the
+ * suite's own `testTimeout` is 30s, so a genuinely missing surface still fails
+ * the test, just later.
+ */
+const DYNAMIC_SURFACE = { timeout: 10_000 } as const;
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => pathnameMock.current,
+  useRouter: () => routerMock,
+}));
+
+let NavigationShell!: typeof NavigationShellModule.NavigationShell;
 let NavigationShellView!: typeof NavigationShellModule.NavigationShellView;
 let shouldShowNavigationShell!: typeof NavigationShellModule.shouldShowNavigationShell;
 let deriveActiveNavigationState!: typeof ScopeModule.deriveActiveNavigationState;
@@ -88,8 +117,10 @@ const items = [
 beforeEach(async () => {
   assertJsdomHarness();
   vi.resetModules();
+  pathnameMock.current = "/leagues/league-a";
   const shellModule = await import("./navigation-shell");
   const scopeModule = await import("./scope");
+  NavigationShell = shellModule.NavigationShell;
   NavigationShellView = shellModule.NavigationShellView;
   shouldShowNavigationShell = shellModule.shouldShowNavigationShell;
   deriveActiveNavigationState = scopeModule.deriveActiveNavigationState;
@@ -105,6 +136,7 @@ afterEach(() => {
   realtimeMock.state.lastRefresh = null;
   realtimeMock.openRealtimePresenceSubscription.mockClear();
   realtimeMock.openRealtimeRefreshSubscription.mockClear();
+  routerMock.push.mockClear();
 });
 
 function assertJsdomHarness() {
@@ -312,9 +344,13 @@ describe("NavigationShellView", () => {
     const trigger = screen.getByRole("button", { name: "Open scope switcher" });
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole("dialog", {
-      name: /Switch environments/i,
-    });
+    // The sheet is `next/dynamic`-loaded on the interaction, so it arrives a
+    // microtask after the click rather than in the same commit.
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: /Switch environments/i },
+      DYNAMIC_SURFACE,
+    );
     expect(dialog.getAttribute("data-slot")).toBe("sheet");
     expect(
       within(dialog).getByRole("button", { name: "Resize sheet" }),
@@ -350,10 +386,10 @@ describe("NavigationShellView", () => {
       expect(
         screen.queryByRole("dialog", { name: /Switch environments/i }),
       ).toBeNull();
-    });
+    }, DYNAMIC_SURFACE);
     await waitFor(() => {
       expect(document.activeElement).toBe(trigger);
-    });
+    }, DYNAMIC_SURFACE);
   });
 
   it("keeps the desktop sidebar collapsible while preserving destinations", () => {
@@ -393,7 +429,7 @@ describe("NavigationShellView", () => {
     ).toBeDefined();
   });
 
-  it("surfaces notification chrome with unread state and mark-read action", () => {
+  it("surfaces notification chrome with unread state and mark-read action", async () => {
     render(
       <NavigationShellView
         activeState={deriveActiveNavigationState("/leagues/league-a")}
@@ -407,7 +443,13 @@ describe("NavigationShellView", () => {
       screen.getAllByRole("button", { name: "Open notifications" })[0],
     );
 
-    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    // The panel is `next/dynamic`-loaded on the interaction; only its trigger
+    // and unread badge are in the initial render.
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "Notifications" },
+      DYNAMIC_SURFACE,
+    );
     expect(within(dialog).getByText("1 unread")).toBeDefined();
     expect(within(dialog).getByText("League wire online")).toBeDefined();
 
@@ -480,7 +522,11 @@ describe("NavigationShellView", () => {
     fireEvent.click(
       screen.getAllByRole("button", { name: "Open notifications" })[0],
     );
-    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "Notifications" },
+      DYNAMIC_SURFACE,
+    );
     expect(
       within(dialog)
         .getByRole("link", { name: /Settle it: lore vote opened/i })
@@ -740,7 +786,242 @@ describe("NavigationShellView", () => {
 
     expect(screen.getByLabelText("Local time 12:34:57")).toBeDefined();
   });
+
+  it("navigates command palette selections through the client router", async () => {
+    // `window.location.assign` is non-configurable in jsdom, so the whole
+    // `location` object is stubbed to observe it.
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    const [searchButton] = screen.getAllByRole("button", {
+      name: "Open command palette",
+    });
+    if (!searchButton) {
+      throw new Error("expected a command palette trigger in the shell");
+    }
+    fireEvent.click(searchButton);
+
+    const option = await screen.findByRole(
+      "option",
+      { name: /Rumbledore News/i },
+      DYNAMIC_SURFACE,
+    );
+    fireEvent.click(option);
+
+    expect(routerMock.push).toHaveBeenCalledWith("/news");
+    // A full document load would discard the realtime subscriptions and the
+    // RSC cache and re-download the bundle, which is the whole point of the
+    // palette staying on the client router.
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("opens the command palette from Cmd/Ctrl+K", async () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    // The palette is only rendered while open now, so it can no longer own the
+    // shortcut that opens it — the shell does. Without that the hotkey would
+    // silently do nothing.
+    expect(
+      screen.queryByRole("dialog", { name: "Command palette" }),
+    ).toBeNull();
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: "k" });
+
+    expect(
+      await screen.findByRole(
+        "dialog",
+        { name: "Command palette" },
+        DYNAMIC_SURFACE,
+      ),
+    ).toBeDefined();
+  });
+
+  it("opens the account panel on demand with the connected providers", async () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Open account menu" })[0],
+    );
+
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "Account" },
+      DYNAMIC_SURFACE,
+    );
+    // "ESPN" appears twice: as the active scope's provider label and as a
+    // connected-provider tag.
+    expect(within(dialog).getAllByText("ESPN").length).toBe(2);
+    expect(within(dialog).getByText("Sleeper")).toBeDefined();
+    // Rendered by the shell and handed in as a node, so it must survive the
+    // move into the deferred chunk.
+    expect(within(dialog).getByRole("switch", { name: "Reduced motion" }));
+    expect(
+      within(dialog).getAllByText("NHS Alumni Annual").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("opens the expanded wire sheet from the mobile wire strip", async () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Open The Wire" });
+    fireEvent.click(trigger);
+
+    const dialog = await screen.findByRole(
+      "dialog",
+      { name: "The Wire" },
+      DYNAMIC_SURFACE,
+    );
+    expect(dialog.getAttribute("data-slot")).toBe("sheet");
+    // The ticker is passed as children from the shell rather than imported by
+    // the lazy module, so the sheet must still receive it — in its expanded
+    // list form, not the marquee strip.
+    const ticker = dialog.querySelector('[data-slot="wire-ticker"]');
+    expect(ticker).not.toBeNull();
+    expect(ticker?.getAttribute("aria-label")).toBe("The Wire");
+    expect(ticker?.querySelector('[data-slot="wire-marquee"]')).toBeNull();
+
+    // The sheet is mounted lazily but then stays mounted and closed, exactly as
+    // it behaved when statically imported, so Escape must still dismiss it
+    // rather than leave a dialog stranded in the tree.
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "The Wire" })).toBeNull();
+    }, DYNAMIC_SURFACE);
+    // Re-opening must not need a second chunk fetch or a remount.
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByRole("dialog", { name: "The Wire" }, DYNAMIC_SURFACE),
+    ).toBeDefined();
+  });
 });
+
+describe("NavigationShell", () => {
+  it("fetches the league switcher once per session instead of once per route", async () => {
+    const fetchMock = stubShellFetch();
+
+    const { rerender } = render(
+      <NavigationShell>
+        <main>League home</main>
+      </NavigationShell>,
+    );
+
+    await waitFor(() => {
+      expect(switcherFetchCount(fetchMock)).toBe(1);
+    });
+
+    for (const pathname of [
+      "/leagues/league-a/records",
+      "/news",
+      "/arena",
+      "/leagues/league-b/lore",
+    ]) {
+      pathnameMock.current = pathname;
+      rerender(
+        <NavigationShell>
+          <main>League home</main>
+        </NavigationShell>,
+      );
+      await waitFor(() => {
+        expect(
+          screen.getAllByRole("button", { name: "Open command palette" })
+            .length,
+        ).toBeGreaterThan(0);
+      });
+    }
+
+    // The endpoint answers from the session alone, so four in-app navigations
+    // must not cost four authenticated round trips.
+    expect(switcherFetchCount(fetchMock)).toBe(1);
+  });
+
+  it("refetches the league switcher when the shell re-enters after an auth-boundary route", async () => {
+    const fetchMock = stubShellFetch();
+
+    const { rerender } = render(
+      <NavigationShell>
+        <main>League home</main>
+      </NavigationShell>,
+    );
+
+    await waitFor(() => {
+      expect(switcherFetchCount(fetchMock)).toBe(1);
+    });
+
+    // `/onboarding` hides the shell; coming back is the one route transition
+    // that can carry a changed session.
+    pathnameMock.current = "/onboarding/espn";
+    rerender(
+      <NavigationShell>
+        <main>Onboarding</main>
+      </NavigationShell>,
+    );
+
+    pathnameMock.current = "/leagues/league-b";
+    rerender(
+      <NavigationShell>
+        <main>League home</main>
+      </NavigationShell>,
+    );
+
+    await waitFor(() => {
+      expect(switcherFetchCount(fetchMock)).toBe(2);
+    });
+  });
+});
+
+function stubShellFetch() {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("/api/navigation/league-switcher")) {
+      return new Response(JSON.stringify({ items }), { status: 200 });
+    }
+    if (url.startsWith("/news/wire")) {
+      return new Response(
+        JSON.stringify({ items: [], mode: "general", status: "ready" }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function switcherFetchCount(fetchMock: ReturnType<typeof stubShellFetch>) {
+  return fetchMock.mock.calls.filter(([input]) =>
+    String(input).startsWith("/api/navigation/league-switcher"),
+  ).length;
+}
 
 function item(
   overrides: Partial<LeagueSwitcherViewItem>,
