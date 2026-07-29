@@ -122,3 +122,19 @@ test.each(["commissioner", "data_steward", "member"] as const)(
     expect(screen.getByText("read-only")).toBeDefined();
   },
 );
+
+test("LeagueCastView links platform administrators to the tone editor", () => {
+  render(<LeagueCastView canEditTone={true} data={data} />);
+
+  // The route requires requirePlatformAdmin, and until now nothing in the app
+  // linked to it at all: the editor was reachable only by typing the URL.
+  expect(
+    screen.getByRole("link", { name: "Tone editor" }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/cast/tone");
+});
+
+test("LeagueCastView hides the tone editor from non-administrators", () => {
+  render(<LeagueCastView canEditTone={false} data={data} />);
+
+  expect(screen.queryByRole("link", { name: "Tone editor" })).toBeNull();
+});

@@ -1,4 +1,4 @@
-import { ArrowRight, Home, Radio, Rss } from "lucide-react";
+import { ArrowRight, Home, Radio, Rss, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import type { LeagueCastPresenceData } from "@/cast/league-cast";
 import {
@@ -15,8 +15,14 @@ import { cn } from "@/lib/utils";
 import { LeagueRealtimeRefresh } from "@/realtime/client";
 
 export function LeagueCastView({
+  canEditTone = false,
   data,
 }: {
+  /**
+   * Platform administrator. Defaults to false so a caller that forgets to pass
+   * it hides the link rather than advertising a route it cannot open.
+   */
+  readonly canEditTone?: boolean;
   readonly data: LeagueCastPresenceData;
 }) {
   const enabledCount = data.personas.filter((card) => card.enabled).length;
@@ -80,6 +86,15 @@ export function LeagueCastView({
             <Rss data-icon="inline-start" />
             The Press
           </Link>
+          {canEditTone ? (
+            <Link
+              href={`/leagues/${data.league.id}/cast/tone`}
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              <SlidersHorizontal data-icon="inline-start" />
+              Tone editor
+            </Link>
+          ) : null}
         </div>
       </header>
 
