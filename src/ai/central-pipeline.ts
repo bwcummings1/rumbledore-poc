@@ -60,6 +60,7 @@ import type {
 } from "./interfaces";
 import { DeterministicEmbeddingProvider, MockLlmClient } from "./mocks";
 import { recordCentralAiUsageEvent } from "./usage-attribution";
+import { embedWithUsage, estimateTokenCount } from "./usage-estimation";
 
 const CENTRAL_NEWS_LIMIT = 12;
 const CENTRAL_ODDS_LIMIT = 240;
@@ -610,11 +611,6 @@ export function createMockCentralAiDependencies(
   };
 }
 
-function estimateTokenCount(text: string): number {
-  const compact = text.replace(/\s+/g, " ").trim();
-  return compact ? Math.max(1, Math.ceil(compact.length / 4)) : 0;
-}
-
 function centralDraftTextForUsage(draft: CentralArticleDraft): string {
   try {
     return centralArticleText(draft);
@@ -696,6 +692,48 @@ async function generateAttributedCentralDraft({
   return result.draft;
 }
 
+/**
+ * Embed a central draft and meter the embedding call. Embeddings are a real,
+ * separately-billed line item (Voyage charges per input token) that the meter
+ * previously recorded nothing for; the near-duplicate gate runs one per
+ * attempt, so this is metered per attempt too.
+ */
+async function embedAttributedCentralArticle({
+  articleText,
+  attempt,
+  context,
+  createdAt,
+  deps,
+  input,
+}: {
+  articleText: string;
+  attempt: CentralLlmGenerateRequest["attempt"];
+  context: CentralGenerationContext;
+  createdAt: Date;
+  deps: CentralAiGenerationDependencies;
+  input: GenerateCentralColumnInput;
+}): Promise<number[]> {
+  const result = await embedWithUsage(deps.embeddings, articleText);
+  await recordCentralAiUsageEvent(deps.db, {
+    columnId: input.columnId,
+    contentType: context.column.contentType,
+    createdAt,
+    estimated: result.estimated ?? false,
+    metadata: {
+      attempt,
+      season: input.season,
+      week: input.week,
+    },
+    model: result.model,
+    operation: "embeddings.embed",
+    persona: context.journalist.persona,
+    provider: result.provider ?? CENTRAL_FALLBACK_PROVIDER,
+    triggerKey: input.triggerKey,
+    usage: result.usage,
+  });
+  return result.embedding;
+}
+
 export async function generateCentralColumn({
   deps,
   input,
@@ -763,7 +801,14 @@ export async function generateCentralColumn({
     { context },
   );
   let articleText = centralArticleText(draft);
-  let embedding = await deps.embeddings.embed(articleText);
+  let embedding = await embedAttributedCentralArticle({
+    articleText,
+    attempt: 1,
+    context,
+    createdAt: requestedAt,
+    deps,
+    input,
+  });
   let nearestMemories = await loadNearestCentralArticleMemories({
     contentType: context.column.contentType,
     deps,
@@ -792,7 +837,14 @@ export async function generateCentralColumn({
       { context },
     );
     articleText = centralArticleText(draft);
-    embedding = await deps.embeddings.embed(articleText);
+    embedding = await embedAttributedCentralArticle({
+      articleText,
+      attempt: 2,
+      context,
+      createdAt: requestedAt,
+      deps,
+      input,
+    });
     nearestMemories = await loadNearestCentralArticleMemories({
       contentType: context.column.contentType,
       deps,

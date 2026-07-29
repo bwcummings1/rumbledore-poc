@@ -120,6 +120,7 @@ export type {
   CentralLlmGenerateResult,
   CentralPreGenerationContext,
   EmbeddingProvider,
+  EmbeddingResult,
   LeagueAuthenticityContext,
   LeagueBlogContext,
   LeagueContextCadenceFrame,
@@ -152,6 +153,7 @@ export type {
   NewsItem,
   PromptParts,
   UsageReportingCentralLlmClient,
+  UsageReportingEmbeddingProvider,
   UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
@@ -229,3 +231,4 @@ export {
   recordAiUsageEvent,
   recordCentralAiUsageEvent,
 } from "./usage-attribution";
+export { embedWithUsage, estimateTokenCount } from "./usage-estimation";

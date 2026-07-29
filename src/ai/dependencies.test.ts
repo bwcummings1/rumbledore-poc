@@ -490,5 +490,16 @@ describe("guarded AI provider fallbacks", () => {
     await expect(embeddings.embed("fixture text")).resolves.toEqual([
       0.25, 0.75,
     ]);
+
+    // Usage must name the provider that actually served the call. Metering a
+    // mock fallback as a paid Voyage call would overstate the platform cost
+    // the AI tier is priced from.
+    const result = await embeddings.embedWithUsage("fixture text");
+    expect(result).toMatchObject({
+      embedding: [0.25, 0.75],
+      estimated: true,
+      model: "mock-fixture",
+    });
+    expect(result.usage.inputTokens).toBeGreaterThan(0);
   });
 });

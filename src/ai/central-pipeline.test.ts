@@ -363,12 +363,14 @@ describe("central journalist generation pipeline", () => {
       1, 1, 2,
     ]);
 
-    const rows = await handle.db
-      .select()
-      .from(centralAiUsageEvents)
-      .where(
-        sql`${centralAiUsageEvents.triggerKey} like ${`${marker}:metered:%`}`,
-      );
+    const rows = (
+      await handle.db
+        .select()
+        .from(centralAiUsageEvents)
+        .where(
+          sql`${centralAiUsageEvents.triggerKey} like ${`${marker}:metered:%`}`,
+        )
+    ).filter((row) => row.operation === "llm.generate");
     const attemptsFor = (triggerKey: string) =>
       rows
         .filter((row) => row.triggerKey === triggerKey)
@@ -415,6 +417,81 @@ describe("central journalist generation pipeline", () => {
             row.cacheReadInputTokens * 0.1,
         ),
       );
+      expect(row.costMicrosUsd).toBeGreaterThan(0);
+    }
+  });
+
+  it("meters the embedding call behind the near-duplicate gate, per attempt", async () => {
+    const llm = new MockLlmClient();
+    const deps = {
+      ...testCentralAiDependencies(),
+      duplicateThreshold: 0.92,
+      embeddings: new DeterministicEmbeddingProvider(23),
+      llm,
+      now: () => new Date("2026-09-15T17:00:00.000Z"),
+    };
+    const publishedInput = {
+      columnId: "mnf-recap" as const,
+      newsContentItemIds: [],
+      season: 2197,
+      triggerKey: `${marker}:embed-meter:published`,
+      week: 25,
+    };
+    const skippedInput = {
+      ...publishedInput,
+      triggerKey: `${marker}:embed-meter:skipped`,
+    };
+
+    expect(
+      await generateCentralColumn({ deps, input: publishedInput }),
+    ).toMatchObject({ status: "published" });
+    expect(
+      await generateCentralColumn({ deps, input: skippedInput }),
+    ).toMatchObject({ status: "skipped" });
+
+    const rows = (
+      await handle.db
+        .select()
+        .from(centralAiUsageEvents)
+        .where(
+          sql`${centralAiUsageEvents.triggerKey} like ${`${marker}:embed-meter:%`}`,
+        )
+    ).filter((row) => row.operation === "embeddings.embed");
+
+    // The gate embeds once per attempt: one for the published draft, two for
+    // the generation that retried and then published nothing.
+    expect(
+      rows
+        .filter((row) => row.triggerKey === publishedInput.triggerKey)
+        .map((row) => Number(row.metadata.attempt)),
+    ).toEqual([1]);
+    expect(
+      rows
+        .filter((row) => row.triggerKey === skippedInput.triggerKey)
+        .map((row) => Number(row.metadata.attempt))
+        .sort((left, right) => left - right),
+    ).toEqual([1, 2]);
+
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        columnId: "mnf-recap",
+        contentType: "central_mnf_recap",
+        estimated: true,
+        // The mock provider served these, and the row says so — metering a
+        // mock fallback as a paid Voyage call would overstate cost.
+        model: "mock-hash-embedding-v1",
+        provider: "mock",
+      });
+      // Embeddings are input-only: no completion, no cache tiers.
+      expect(row.outputTokens).toBe(0);
+      expect(row.cacheCreationInputTokens).toBe(0);
+      expect(row.cacheReadInputTokens).toBe(0);
+      expect(row.inputTokens).toBeGreaterThan(0);
+      expect(row.totalTokens).toBe(row.inputTokens);
+      // The mock embedding model is unknown to the price table, so it
+      // estimates at the bulk Haiku input rate of $1 per million tokens — one
+      // micro of USD per token. Independent literal, not the table constant.
+      expect(row.costMicrosUsd).toBe(row.inputTokens * 1);
       expect(row.costMicrosUsd).toBeGreaterThan(0);
     }
   });

@@ -163,6 +163,14 @@ interface ModelPriceMicrosPerToken {
  * price sheet: opus `claude-opus-4-8` at $5 in / $25 out, haiku `claude-haiku-4-5`
  * at $1 in / $5 out. Cache rows are derived (input x 1.25 and x 0.1).
  *
+ * The `voyage` row is the **voyage-4-lite** rate — $0.02 per MTok, verified
+ * against docs.voyageai.com/docs/pricing on 2026-07-29, matching the pinned
+ * `VOYAGE_EMBEDDING_MODEL`. ⚠ `modelPriceFor` matches on the substring
+ * "voyage", so every Voyage model prices at the lite rate: repointing the
+ * pinned model to `voyage-4` ($0.06) or `voyage-4-large` ($0.12) would
+ * under-report embedding cost by 3x or 6x. The pricing test pins the model
+ * constant alongside the rate so that repoint cannot pass silently.
+ *
  * These feed the AI-tier pricing decision (`PROJECT_CONTEXT.md` §3.2), so a wrong
  * number here misprices the product. Assert against independently-computed dollar
  * amounts in the test — never against these constants, or the test can only prove
