@@ -24,7 +24,6 @@ import type {
   EmbeddingResult,
   LlmGenerateRequest,
   LlmGenerateResult,
-  LlmJudge,
   LlmJudgeRequest,
   LlmJudgeScore,
   LlmUsageBreakdown,

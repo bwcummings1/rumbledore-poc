@@ -5,8 +5,8 @@ import {
   bettingEvents,
   bettingMarkets,
   oddsSnapshots,
-  pickWeeks,
   picks,
+  pickWeeks,
 } from "@/db/schema";
 import { scorePickWeek } from "./pickem-scoring";
 
@@ -143,10 +143,7 @@ export async function getLeaguePickemData(
       .innerJoin(bettingMarkets, eq(bettingMarkets.id, picks.marketId))
       .innerJoin(bettingEvents, eq(bettingEvents.id, bettingMarkets.eventId))
       .where(
-        and(
-          eq(picks.leagueId, input.leagueId),
-          eq(picks.pickWeekId, week.id),
-        ),
+        and(eq(picks.leagueId, input.leagueId), eq(picks.pickWeekId, week.id)),
       );
 
     const yours = weekPicks.filter((row) => row.userId === input.userId);

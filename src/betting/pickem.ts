@@ -31,7 +31,20 @@ import { DEFAULT_MAX_PICKS_PER_USER } from "./pickem-scoring";
  *     remaining count, but the client is not the authority.
  */
 
-export type PickSelection = "home" | "away" | "over" | "under" | "outcome";
+/**
+ * Declared as a const array so the HTTP schema and the domain type cannot
+ * drift: adding a selection here is the only edit needed to accept it at the
+ * edge, and removing one fails typecheck at every use site.
+ */
+export const PICK_SELECTIONS = [
+  "home",
+  "away",
+  "over",
+  "under",
+  "outcome",
+] as const;
+
+export type PickSelection = (typeof PICK_SELECTIONS)[number];
 
 export interface SubmitPickInput {
   readonly leagueId: string;

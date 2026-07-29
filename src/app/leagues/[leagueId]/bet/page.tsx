@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
-import { getLeagueBetData } from "@/betting";
+import { getLeaguePickemData } from "@/betting/league-pickem";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import {
@@ -10,13 +10,13 @@ import {
   redirectToLeagueDeepLinkOnboarding,
 } from "../league-deep-link-routing";
 import { LeagueSectionAccessState } from "../league-section-access-state";
-import { LeagueBetView } from "./league-bet-view";
+import { LeaguePickemView } from "./league-pickem-view";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Bet | Rumbledore",
-  description: "League-scoped paper betting markets and bankroll.",
+  title: "Pick 'em | Rumbledore",
+  description: "League-scoped weekly picks, accuracy, and the slate.",
 };
 
 interface LeagueBetPageProps {
@@ -59,15 +59,10 @@ export default async function LeagueBetPage({
 
   await markLeagueOpened(db, { leagueId, userId: access.value.userId });
 
-  const result = await getLeagueBetData(db, {
+  const data = await getLeaguePickemData(db, {
     leagueId,
     userId: access.value.userId,
   });
 
-  switch (result.status) {
-    case "ready":
-      return <LeagueBetView data={result.data} />;
-    case "not_found":
-      notFound();
-  }
+  return <LeaguePickemView data={data} leagueId={leagueId} />;
 }
