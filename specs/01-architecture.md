@@ -47,7 +47,7 @@ Append-only `odds_snapshots`; bet placement copies (locks) the odds; **event-sou
 Supabase Realtime Broadcast: workers publish (scores, odds, leaderboard, blog-published); clients subscribe per-league + central channels.
 
 ## Auth & roles
-Better Auth with the organization plugin: org = league. Roles: `super_admin`, `league_owner`/`commissioner`, `league_admin`, `data_steward`, `member`. Route + data guards derive `current_league_id` and set the RLS session var.
+Better Auth with the organization plugin: org = league. Roles: `super_admin`, `league_owner`/`commissioner`, `data_steward`, `member`. (`league_admin` was collapsed into `commissioner` by migration 0082 — see spec 09 §Roles.) Route + data guards derive `current_league_id` and set the RLS session var.
 
 ## Config & secrets
 All config via env, validated at boot (`src/core/env`) — fail fast on missing required keys. Secrets only in `.env.local` (gitignored). Paid integrations sit behind interfaces with mock implementations so the app runs fully on local Postgres/Redis + fixtures until keys are added.

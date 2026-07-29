@@ -886,7 +886,7 @@ function normalizeMemberRole(member: EspnMember): NormalizedMemberRole {
     return "commissioner";
   }
   if (member.isLeagueManager) {
-    return "league_admin";
+    return "league_manager";
   }
   return "member";
 }

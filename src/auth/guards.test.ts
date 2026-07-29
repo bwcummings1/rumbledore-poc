@@ -19,7 +19,7 @@ const marker = `guardtest-${randomUUID()}`;
 let handle: DbHandle;
 let memberUserId: string;
 let stewardUserId: string;
-let adminUserId: string;
+let commissionerUserId: string;
 let outsiderUserId: string;
 let platformAdminUserId: string;
 let leagueId: string;
@@ -71,13 +71,13 @@ beforeAll(async () => {
   [
     memberUserId,
     stewardUserId,
-    adminUserId,
+    commissionerUserId,
     outsiderUserId,
     platformAdminUserId,
   ] = await Promise.all([
     seedUser("member"),
     seedUser("steward"),
-    seedUser("admin"),
+    seedUser("commissioner"),
     seedUser("outsider"),
     seedUser("platform-admin"),
   ]);
@@ -89,11 +89,15 @@ beforeAll(async () => {
   await handle.db.insert(members).values([
     { organizationId: leagueId, role: "member", userId: memberUserId },
     { organizationId: leagueId, role: "data_steward", userId: stewardUserId },
-    { organizationId: leagueId, role: "league_admin", userId: adminUserId },
+    {
+      organizationId: leagueId,
+      role: "commissioner",
+      userId: commissionerUserId,
+    },
     {
       organizationId: otherLeagueId,
       role: "commissioner",
-      userId: adminUserId,
+      userId: commissionerUserId,
     },
   ]);
   await handle.db.insert(platformAdmins).values({
@@ -171,28 +175,63 @@ describe("auth guards", () => {
     expect(nonMember.error.status).toBe(403);
     expect(nonMember.error.code).toBe("LEAGUE_FORBIDDEN");
 
-    const memberAsAdmin = await requireLeagueRoleForUser(handle.db, {
+    const memberAsCommissioner = await requireLeagueRoleForUser(handle.db, {
       leagueId,
-      minRole: "league_admin",
+      minRole: "commissioner",
       userId: memberUserId,
     });
-    expect(memberAsAdmin.ok).toBe(false);
-    if (memberAsAdmin.ok) return;
-    expect(memberAsAdmin.error.status).toBe(403);
-    expect(memberAsAdmin.error.code).toBe("LEAGUE_FORBIDDEN");
+    expect(memberAsCommissioner.ok).toBe(false);
+    if (memberAsCommissioner.ok) return;
+    expect(memberAsCommissioner.error.status).toBe(403);
+    expect(memberAsCommissioner.error.code).toBe("LEAGUE_FORBIDDEN");
+  });
+
+  it("admits a data_steward to a steward gate but not to a commissioner gate", async () => {
+    // Pins the collapsed ladder from the other side: after `league_admin` was
+    // folded into `commissioner` (migration 0082) there is exactly one rung
+    // above `data_steward`, and the steward must not have been promoted into it.
+    const atStewardGate = await requireLeagueRoleForUser(handle.db, {
+      leagueId,
+      minRole: "data_steward",
+      userId: stewardUserId,
+    });
+    expect(atStewardGate.ok).toBe(true);
+
+    const atCommissionerGate = await requireLeagueRoleForUser(handle.db, {
+      leagueId,
+      minRole: "commissioner",
+      userId: stewardUserId,
+    });
+    expect(atCommissionerGate.ok).toBe(false);
+  });
+
+  it("clears every gate for a commissioner, including the steward gate", async () => {
+    // The maintainer's ruling made concrete: an admin (= commissioner) may do
+    // anything an assigned role can. A `league_admin` row seeded before 0082 is
+    // now stored as `commissioner`, so this is the path such a user takes.
+    for (const minRole of ["member", "data_steward", "commissioner"] as const) {
+      const result = await requireLeagueRoleForUser(handle.db, {
+        leagueId,
+        minRole,
+        userId: commissionerUserId,
+      });
+      expect(result.ok, `commissioner denied at minRole=${minRole}`).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.role).toBe("commissioner");
+    }
   });
 
   it("lists requested memberships through the shared role filter", async () => {
     const result = await listLeagueMembershipsForUser(handle.db, {
       leagueIds: [leagueId, otherLeagueId],
-      minRole: "league_admin",
-      userId: adminUserId,
+      minRole: "commissioner",
+      userId: commissionerUserId,
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const expected = [
-      { leagueId, role: "league_admin" },
+      { leagueId, role: "commissioner" },
       { leagueId: otherLeagueId, role: "commissioner" },
     ].sort((left, right) => left.leagueId.localeCompare(right.leagueId));
     expect(result.value).toEqual(expected);
@@ -226,10 +265,10 @@ describe("auth guards", () => {
     });
   });
 
-  it("does not treat league admins or commissioners as platform admins", async () => {
+  it("does not treat league commissioners as platform admins", async () => {
     const result = await requirePlatformAdmin({
       db: handle.db,
-      getSession: sessionFor(adminUserId),
+      getSession: sessionFor(commissionerUserId),
       headers: new Headers(),
     });
 

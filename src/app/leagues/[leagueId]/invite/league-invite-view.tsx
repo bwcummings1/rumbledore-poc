@@ -65,7 +65,7 @@ interface DataStewardCandidate {
   email: string;
   isDataSteward: boolean;
   memberId: string;
-  role: "member" | "data_steward" | "league_admin" | "commissioner";
+  role: "member" | "data_steward" | "commissioner";
   userId: string;
 }
 

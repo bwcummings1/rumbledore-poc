@@ -69,7 +69,6 @@ function canEditData(role: LeagueRole): boolean {
   switch (role) {
     case "commissioner":
     case "data_steward":
-    case "league_admin":
       return true;
     case "member":
       return false;

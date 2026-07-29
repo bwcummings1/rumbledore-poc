@@ -577,6 +577,13 @@
       "breakpoints": true
     },
     {
+      "idx": 82,
+      "version": "7",
+      "when": 1784419200000,
+      "tag": "0082_collapse_league_admin_role",
+      "breakpoints": true
+    },
+    {
       "idx": 83,
       "version": "7",
       "when": 1784505600000,

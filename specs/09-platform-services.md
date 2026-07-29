@@ -24,12 +24,13 @@ Three invariants govern everything here:
 | Role | Capability |
 |---|---|
 | `super_admin` | Platform-wide (global, not per-league); manage any league, run ops, impersonate for support (audited). |
-| `league_owner` / `commissioner` | Full control of their league: settings, members, roles, invites, trigger imports, delete league. |
-| `league_admin` | Manage members/content/jobs for the league; cannot delete the league or change owner. |
+| `league_owner` / `commissioner` | Full control of their league: settings, members, roles, invites, trigger imports, delete league. Also covers what used to be `league_admin` — managing members/content/jobs. |
 | `data_steward` | Review/clean **this** league's ingested data (identity resolution, corrections); read-all within league, write to curation surfaces. |
 | `member` | Read league surfaces; place paper bets; read/post in chat; no admin. |
 
 `super_admin` is a platform attribute (on the user / a platform-admins table), not an org role. `commissioner` is the canonical owner alias for fantasy users; treat as synonym of `league_owner`.
+
+`league_admin` **no longer exists**: migration 0082 collapsed it into `commissioner` (context Q16, DD-5). The two carried identical authority once the ACL was corrected in T-008, and two names for one level is a drift hazard. "Admin" means commissioner. Only the commissioner assigns roles (context Q17).
 
 **Route guards (server):** a single `requireSession()` / `requireLeagueRole(leagueId, minRole)` helper used by every protected route handler and server action. It (1) resolves the session, (2) resolves the user's membership+role in the target league, (3) rejects with **401** (no session) or **403** (not a member / insufficient role) *before* any query runs. No protected handler reaches the DB without passing a guard.
 

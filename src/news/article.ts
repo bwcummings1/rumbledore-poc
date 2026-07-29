@@ -261,11 +261,7 @@ function metadataNumber(value: unknown): number | null {
 }
 
 function canManageEditorial(role: Member["role"]): boolean {
-  return (
-    role === "commissioner" ||
-    role === "data_steward" ||
-    role === "league_admin"
-  );
+  return role === "commissioner" || role === "data_steward";
 }
 
 function articleStructure(metadata: unknown): Record<string, unknown> {

@@ -206,6 +206,12 @@ concept, and keep role assignment commissioner-only. This **inverts** the fix di
 backlog §7.1. `hasPermission` has zero server-side callers today; either wire it to the corrected
 statements or delete it, but do not leave two disagreeing authority models in the tree.
 
+**Status: resolved.** T-008 amended the ACL; T-008a completed the collapse — migration 0082 remapped every
+`league_admin` row to `commissioner` and rebuilt the `league_role` enum without the label, so the value is
+now unrepresentable rather than merely unused. `ROLE_RANK` has three rungs (`member` < `data_steward` <
+`commissioner`), and `src/auth/permissions.test.ts` pins the pg enum, the ladder, and the ACL to one
+vocabulary so they cannot drift apart again. Role assignment remains `minRole: "commissioner"`.
+
 ### 7.2 Provider readiness (answers Q3's stated uncertainty)
 
 - **Sleeper — ready.** Full decoding dictionary registered, provider always real (public read-only API,
