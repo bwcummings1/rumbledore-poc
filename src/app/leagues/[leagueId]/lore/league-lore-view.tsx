@@ -223,13 +223,15 @@ export function LeagueLoreView({ data }: { data: LoreSectionData }) {
               <FilePlus2 data-icon="inline-start" />
               Submit claim
             </Link>
-            <Link
-              href={data.stewardReviewHref}
-              className={cn(buttonVariants({ variant: "outline" }))}
-            >
-              <ShieldCheck data-icon="inline-start" />
-              Steward review
-            </Link>
+            {data.isSteward ? (
+              <Link
+                href={data.stewardReviewHref}
+                className={cn(buttonVariants({ variant: "outline" }))}
+              >
+                <ShieldCheck data-icon="inline-start" />
+                Steward review
+              </Link>
+            ) : null}
           </div>
         </div>
       </header>

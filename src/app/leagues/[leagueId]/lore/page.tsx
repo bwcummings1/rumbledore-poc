@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireLeagueRole } from "@/auth/guards";
 import { getDb } from "@/db";
-import { getLoreMemberIdForUser } from "@/lore/member-auth";
+import { getLoreMemberIdForUser, isLoreSteward } from "@/lore/member-auth";
 import { getLoreSectionData } from "@/lore/member-experience";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
 import {
@@ -70,6 +70,7 @@ export default async function LeagueLorePage({
   });
 
   const result = await getLoreSectionData(db, {
+    isSteward: isLoreSteward(access.value),
     leagueId,
     memberId,
     subject: activeSubject,

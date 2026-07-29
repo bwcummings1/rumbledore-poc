@@ -36,6 +36,7 @@ const data: LoreSectionData = {
     refuted: 0,
     total: 0,
   },
+  isSteward: false,
   league: {
     id: leagueId,
     name: "NHS Alumni Annual",

@@ -52,7 +52,12 @@ export type LoreSectionResult =
 
 export async function getLoreSectionData(
   db: Db,
-  input: { leagueId: string; memberId?: string; subject?: string | null },
+  input: {
+    isSteward: boolean;
+    leagueId: string;
+    memberId?: string;
+    subject?: string | null;
+  },
 ): Promise<LoreSectionResult> {
   const [league] = await db
     .select({
@@ -114,6 +119,7 @@ export async function getLoreSectionData(
       activeSubject: scoped.activeSubject,
       canon: scoped.canon,
       counts: scoped.counts,
+      isSteward: input.isSteward,
       league,
       openVotes: scoped.openVotes,
       subjectFilters: scoped.subjectFilters,
