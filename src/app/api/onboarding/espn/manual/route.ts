@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError } from "@/core/result";
 import { getEspnOnboardingDependencies } from "@/onboarding/deps";
 import { connectEspnManual } from "@/onboarding/espn-service";
@@ -21,6 +22,18 @@ async function manualConnectPost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
+  }
+  // Each accepted payload is validated against ESPN, so an unlimited route is a
+  // free credential-stuffing oracle against a third party.
+  const limited = await enforceApiRateLimitOrReject({
+    max: 10,
+    message: "Too many ESPN connect attempts. Try again shortly.",
+    scope: "espn-manual-connect",
+    subject: userId.value,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request);

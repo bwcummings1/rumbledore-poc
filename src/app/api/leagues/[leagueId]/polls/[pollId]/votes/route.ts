@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
 import { castPollVote } from "@/instigator";
 import { getLorePollVoteStatus } from "@/lore/member-experience";
@@ -28,6 +29,17 @@ async function pollVotesPost(request: Request, context: PollVotesRouteContext) {
   const { access, db } = await authorizeLoreMember(request, leagueId);
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const limited = await enforceApiRateLimitOrReject({
+    max: 60,
+    message: "Too many poll votes. Try again shortly.",
+    scope: "poll-vote",
+    subject: access.value.userId,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request, MAX_POLL_VOTE_BODY_BYTES);

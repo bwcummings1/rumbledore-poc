@@ -3,6 +3,7 @@ import { requireLeagueRole } from "@/auth/guards";
 import { CONTENT_REACTION_EMOJIS } from "@/content/reaction-types";
 import { setContentReaction } from "@/content/reactions";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
@@ -34,6 +35,19 @@ async function contentReactionPost(
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  // Generous enough that a member tapping through a feed never notices, tight
+  // enough that a script cannot churn the reaction table.
+  const limited = await enforceApiRateLimitOrReject({
+    max: 60,
+    message: "Too many reactions. Try again shortly.",
+    scope: "content-reaction",
+    subject: access.value.userId,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request, MAX_REACTION_BODY_BYTES);

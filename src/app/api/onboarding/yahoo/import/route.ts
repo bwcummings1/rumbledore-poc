@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError } from "@/core/result";
 import { getYahooOnboardingDependencies } from "@/onboarding/deps";
 import {
@@ -21,6 +22,16 @@ async function yahooImportDiscoveredPost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
+  }
+  const limited = await enforceApiRateLimitOrReject({
+    max: 10,
+    message: "Too many league imports. Try again shortly.",
+    scope: "yahoo-import",
+    subject: userId.value,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request);

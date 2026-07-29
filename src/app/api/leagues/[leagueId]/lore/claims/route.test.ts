@@ -26,6 +26,12 @@ vi.mock("@/db", () => ({
   getDb: () => mocks.db,
 }));
 
+// The limiter is mocked so this suite never depends on Redis and never carries
+// counter state between runs; src/core/rate-limit.test.ts covers the guard.
+vi.mock("@/core/rate-limit", () => ({
+  enforceApiRateLimitOrReject: vi.fn(async () => null),
+}));
+
 vi.mock("@/jobs/client", () => ({
   inngest: { send: mocks.inngestSend },
 }));

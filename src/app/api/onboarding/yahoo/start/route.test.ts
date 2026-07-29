@@ -6,6 +6,12 @@ import { POST } from "./route";
 
 vi.mock("server-only", () => ({}));
 
+// The limiter is mocked so this suite never depends on Redis and never carries
+// counter state between runs; src/core/rate-limit.test.ts covers the guard.
+vi.mock("@/core/rate-limit", () => ({
+  enforceApiRateLimitOrReject: vi.fn(async () => null),
+}));
+
 vi.mock("@/auth/guards", () => ({
   requireSession: vi.fn(async () =>
     ok({ session: { user: { id: "user-1" } }, userId: "user-1" }),

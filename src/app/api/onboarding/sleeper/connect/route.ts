@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError } from "@/core/result";
 import { getSleeperOnboardingDependencies } from "@/onboarding/deps";
 import {
@@ -25,6 +26,18 @@ async function sleeperConnectPost(request: Request) {
   const userId = await requireUserId(request);
   if (!userId.ok) {
     return errorJson(userId.error);
+  }
+  // Every accepted body fans out to Sleeper's public API; without a cap this is
+  // a free username-enumeration proxy pointed at a third party.
+  const limited = await enforceApiRateLimitOrReject({
+    max: 10,
+    message: "Too many Sleeper connect attempts. Try again shortly.",
+    scope: "sleeper-connect",
+    subject: userId.value,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request);

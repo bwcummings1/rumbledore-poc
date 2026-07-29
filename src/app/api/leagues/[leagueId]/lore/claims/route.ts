@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
 import { inngest } from "@/jobs/client";
 import { JOB_EVENTS } from "@/jobs/events";
@@ -127,6 +128,19 @@ async function loreClaimsPost(
   const { access, db } = await authorizeLoreMember(request, leagueId);
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  // Submitting a claim writes lore, fans out push + realtime, and can schedule a
+  // vote-close job, so the write is the expensive part, not the read below it.
+  const limited = await enforceApiRateLimitOrReject({
+    max: 20,
+    message: "Too many lore submissions. Try again shortly.",
+    scope: "lore-claim-submit",
+    subject: access.value.userId,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request, MAX_LORE_CLAIM_BODY_BYTES);
