@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import {
   CONTENT_REACTION_DISPLAY,
@@ -62,24 +62,38 @@ export function ContentReactionStrip({
 }) {
   const [state, setState] = useState(summary);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
+  // `useTransition`'s `isPending` used to be the in-flight guard, but the transition scope
+  // scheduled no state update — the fetch was fired with `void` and settled in a `.then`
+  // outside the scope — so React resolved the transition on the next commit and re-enabled
+  // the buttons while the POST was still open. A ref is the guard because it closes
+  // synchronously, before the re-render that applies `disabled`.
+  const inFlight = useRef(false);
   const canReact = Boolean(state.apiUrl);
 
   function onReact(emoji: ContentReactionEmoji) {
-    if (!state.apiUrl || isPending) {
+    const apiUrl = state.apiUrl;
+    if (!apiUrl || inFlight.current) {
       return;
     }
+    // Serializing the requests is what makes the rollback safe: `previous` can only ever be
+    // the state the one open request started from, so a failure cannot roll back over a
+    // newer reaction and two responses cannot race for the display.
     const previous = state;
+    inFlight.current = true;
+    setIsPending(true);
     setError(null);
     setState((current) => recastSummary(current, emoji));
-    startTransition(() => {
-      void postReaction(state.apiUrl ?? "", emoji)
-        .then((next) => setState(next))
-        .catch(() => {
-          setState(previous);
-          setError("Reaction not saved.");
-        });
-    });
+    void postReaction(apiUrl, emoji)
+      .then((next) => setState(next))
+      .catch(() => {
+        setState(previous);
+        setError("Reaction not saved.");
+      })
+      .finally(() => {
+        inFlight.current = false;
+        setIsPending(false);
+      });
   }
 
   return (

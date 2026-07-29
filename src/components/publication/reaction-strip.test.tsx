@@ -79,6 +79,58 @@ test("content reaction strip posts recastable reactions", async () => {
   ).toBe("true");
 });
 
+test("content reaction strip refuses a second reaction while one is in flight", async () => {
+  let release!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(() => pending);
+
+  render(<ContentReactionStrip summary={summary()} variant="article" />);
+
+  fireEvent.click(screen.getByRole("button", { name: /skull reaction/i }));
+  fireEvent.click(screen.getByRole("button", { name: /laugh reaction/i }));
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toBe(
+    JSON.stringify({ emoji: "skull" }),
+  );
+  expect(
+    screen
+      .getByRole("button", { name: /laugh reaction/i })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+
+  release(
+    new Response(
+      JSON.stringify(
+        summary({
+          counts: CONTENT_REACTION_EMOJIS.map((emoji) => ({
+            count: emoji === "skull" ? 3 : emoji === "fire" ? 1 : 0,
+            emoji,
+            ...CONTENT_REACTION_DISPLAY[emoji],
+          })),
+          currentEmoji: "skull",
+          total: 4,
+        }),
+      ),
+      { headers: { "content-type": "application/json" }, status: 200 },
+    ),
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText("4 total")).toBeDefined();
+  });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(
+    screen
+      .getByRole("button", { name: /skull reaction, 3 votes/i })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
 test("content reaction strip renders read-only counts without an API URL", () => {
   render(<ContentReactionStrip summary={summary({ apiUrl: undefined })} />);
 
