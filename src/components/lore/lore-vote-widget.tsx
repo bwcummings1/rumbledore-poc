@@ -222,15 +222,26 @@ function PollMeter({ poll }: { readonly poll: LorePollStatusSummary }) {
 
 function LoreVoteWidget(props: LoreVoteWidgetProps) {
   const id = useId();
-  const [loreVote, setLoreVote] = useState(
-    props.mode === "lore" ? props.vote : null,
-  );
-  const [poll, setPoll] = useState(props.mode === "poll" ? props.poll : null);
+  const serverVote = props.mode === "lore" ? props.vote : null;
+  const serverPoll = props.mode === "poll" ? props.poll : null;
+  const [loreVote, setLoreVote] = useState(serverVote);
+  const [poll, setPoll] = useState(serverPoll);
+  const [seeded, setSeeded] = useState({ poll: serverPoll, vote: serverVote });
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const size = props.size ?? "full";
   const isCompact = size === "compact";
+
+  // The `lore` realtime channel refreshes the server payload in place, so this widget is
+  // handed a new snapshot without remounting. Adopt it: otherwise the meter stays frozen
+  // at the tally it was first rendered with, and — worse — `isOpen` stays frozen too, so
+  // the radios keep accepting votes the server has already stopped taking.
+  if (seeded.vote !== serverVote || seeded.poll !== serverPoll) {
+    setSeeded({ poll: serverPoll, vote: serverVote });
+    setLoreVote(serverVote);
+    setPoll(serverPoll);
+  }
 
   async function castLore(choice: LoreVoteChoice) {
     if (props.mode !== "lore" || !loreVote?.isOpen || busy) {

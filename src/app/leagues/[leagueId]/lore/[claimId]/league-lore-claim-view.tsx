@@ -600,6 +600,7 @@ function BranchControls({
 export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
   const loreHref = `/leagues/${encodeURIComponent(data.league.id)}/lore`;
   const [claim, setClaim] = useState(data.claim);
+  const [seededClaim, setSeededClaim] = useState(data.claim);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [branchResult, setBranchResult] = useState<{
@@ -607,6 +608,14 @@ export function LeagueLoreClaimView({ data }: { data: LoreClaimDetailData }) {
     message: string;
   } | null>(null);
   const threadTree = buildThreadTree(data.thread);
+
+  // `router.refresh()` from the `lore` realtime channel swaps `data` in place without
+  // remounting this view, so a claim held only in state would never see a canonized
+  // status or a moved vote tally. Adopt each new server snapshot.
+  if (seededClaim !== data.claim) {
+    setSeededClaim(data.claim);
+    setClaim(data.claim);
+  }
 
   async function stewardAction(action: StewardLoreAction, reason: string) {
     setError(null);
