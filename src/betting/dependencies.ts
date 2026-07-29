@@ -22,7 +22,11 @@ import type {
   ResultsProviderInput,
 } from "./interfaces";
 import { MockOddsProvider, MockResultsProvider } from "./mocks";
-import { SportsDataIoResultsProvider, TheOddsApiProvider } from "./real";
+import {
+  ODDS_CREDITS_PER_LIST_CALL,
+  SportsDataIoResultsProvider,
+  TheOddsApiProvider,
+} from "./real";
 
 function isBettingProviderUnavailableError(error: unknown): boolean {
   if (!(error instanceof AppError)) {
@@ -111,13 +115,28 @@ export class GuardedOddsProvider implements OddsProvider {
     return this.delegate;
   }
 
+  /**
+   * Charges the guard what the call actually costs.
+   *
+   * The units were hard-coded to 1 while The Odds API bills
+   * `markets x regions` CREDITS per request, so at three featured markets the
+   * guard under-protected threefold: a cap reading "250" was really 750
+   * credits of exposure, and the gap widens with every market added.
+   *
+   * Recording once per instance is deliberate and stays: `TheOddsApiProvider`
+   * memoizes `fetchOdds` per sport, and there is exactly one sport, so one
+   * instance makes at most one real HTTP request. If a second sport is ever
+   * added that stops being true and this must move to per-fetch accounting.
+   */
   private async recordRealUsage(operation: string): Promise<void> {
     if (this.recordedRealUsage) {
       return;
     }
 
     this.recordedRealUsage = true;
-    const record = await this.guard.record("odds", { units: 1 });
+    const record = await this.guard.record("odds", {
+      units: ODDS_CREDITS_PER_LIST_CALL,
+    });
     logProviderUsage({
       cap: record.cap,
       capReached: record.breached,

@@ -85,17 +85,23 @@ describe("createOddsDependencies", () => {
       callCount: 1,
       cap: 10,
       demotionCount: 0,
-      latestCumulative: 1,
+      // 3 CREDITS, not 1 request. The Odds API bills markets x regions per
+      // call, so the three featured markets over one region cost three. The
+      // guard used to charge 1 and therefore permitted three times the spend
+      // its cap advertised. Stated as a literal rather than derived from
+      // ODDS_CREDITS_PER_LIST_CALL, which would only prove the constant
+      // equals itself.
+      latestCumulative: 3,
       operations: {
         "odds.listEvents": {
           callCount: 1,
           demotionCount: 0,
-          totalUnits: 1,
+          totalUnits: 3,
         },
       },
       realCallCount: 1,
-      totalUnits: 1,
-      unit: "requests",
+      totalUnits: 3,
+      unit: "credits",
     });
   });
 

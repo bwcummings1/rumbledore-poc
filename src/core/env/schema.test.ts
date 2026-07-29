@@ -444,7 +444,7 @@ describe("parseEnv", () => {
       providers: {
         anthropic: { cap: 1, unit: "tokens" },
         browserbase: { cap: 2, unit: "sessions" },
-        odds: { cap: 3, unit: "requests" },
+        odds: { cap: 3, unit: "credits" },
         sportsdataio: { cap: 4, unit: "requests" },
         tavily: { cap: 5, unit: "requests" },
         voyage: { cap: 6, unit: "requests" },

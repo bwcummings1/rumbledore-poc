@@ -63,6 +63,18 @@ const SPORT_KEYS: Record<BettingSport, string> = {
 };
 
 const FEATURED_MARKETS = ["h2h", "spreads", "totals"] as const;
+const ODDS_REGIONS = ["us"] as const;
+
+/**
+ * Credits one `/odds` call costs at The Odds API.
+ *
+ * The API bills `markets x regions` per request, NOT one per request. The
+ * spend guard was charging 1, so at three featured markets it under-counted
+ * threefold — a cap reading "250" was really 750 credits of exposure, and the
+ * gap widens with every market added.
+ */
+export const ODDS_CREDITS_PER_LIST_CALL =
+  FEATURED_MARKETS.length * ODDS_REGIONS.length;
 
 function parseDate(value: string | undefined, fallback: Date): Date {
   const parsed = value ? new Date(value) : null;
@@ -432,7 +444,7 @@ export class TheOddsApiProvider implements OddsProvider {
     }
 
     const url = new URL(`/v4/sports/${SPORT_KEYS[sport]}/odds`, this.baseUrl);
-    url.searchParams.set("regions", "us");
+    url.searchParams.set("regions", ODDS_REGIONS.join(","));
     url.searchParams.set("markets", FEATURED_MARKETS.join(","));
     url.searchParams.set("oddsFormat", "american");
     url.searchParams.set("apiKey", this.apiKey);

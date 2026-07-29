@@ -139,7 +139,7 @@ export type SpendGuardProvider = (typeof SPEND_GUARD_PROVIDERS)[number];
 
 export const SPEND_GUARD_WINDOWS = ["total-run", "rolling-24h"] as const;
 export type SpendGuardWindow = (typeof SPEND_GUARD_WINDOWS)[number];
-export type SpendGuardUnit = "requests" | "sessions" | "tokens";
+export type SpendGuardUnit = "credits" | "requests" | "sessions" | "tokens";
 
 export interface SpendGuardProviderConfig {
   cap: number;
@@ -160,7 +160,10 @@ export const DEFAULT_ENTITLEMENT_CAPS = {
 export const DEFAULT_SPEND_GUARD_CAPS = {
   anthropic: { cap: 2_000_000, unit: "tokens" },
   browserbase: { cap: 25, unit: "sessions" },
-  odds: { cap: 250, unit: "requests" },
+  // "credits", not "requests": The Odds API bills markets x regions per call.
+  // The env var is still SPEND_GUARD_ODDS_REQUESTS because renaming it would
+  // silently reset a deployed operator's configured cap to the default.
+  odds: { cap: 250, unit: "credits" },
   sportsdataio: { cap: 250, unit: "requests" },
   tavily: { cap: 250, unit: "requests" },
   voyage: { cap: 25_000, unit: "requests" },
@@ -954,7 +957,9 @@ export function parseEnv(raw: Record<string, string | undefined>): Env {
         },
         odds: {
           cap: parsed.SPEND_GUARD_ODDS_REQUESTS,
-          unit: "requests",
+          // Credits, not requests — see DEFAULT_SPEND_GUARD_CAPS. This second
+          // literal is why the label and the default could disagree.
+          unit: DEFAULT_SPEND_GUARD_CAPS.odds.unit,
         },
         sportsdataio: {
           cap: parsed.SPEND_GUARD_SPORTSDATAIO_REQUESTS,
