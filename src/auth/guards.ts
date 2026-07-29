@@ -167,6 +167,24 @@ export async function requireLeagueRole({
   return ok({ ...access.value, session: session.value.session });
 }
 
+/**
+ * The non-throwing half of {@link requirePlatformAdmin}, for surfaces that only
+ * need to decide whether to render an admin-only entry point. Sharing the query
+ * keeps "who is a platform admin" a single definition instead of letting a
+ * navigation link drift from the route it points at.
+ */
+export async function isPlatformAdminUser(
+  db: Db,
+  userId: string,
+): Promise<boolean> {
+  const [admin] = await db
+    .select({ userId: platformAdmins.userId })
+    .from(platformAdmins)
+    .where(eq(platformAdmins.userId, userId))
+    .limit(1);
+  return admin !== undefined;
+}
+
 export async function requirePlatformAdmin({
   db,
   getSession,
@@ -177,13 +195,7 @@ export async function requirePlatformAdmin({
     return session;
   }
 
-  const [admin] = await db
-    .select({ userId: platformAdmins.userId })
-    .from(platformAdmins)
-    .where(eq(platformAdmins.userId, session.value.userId))
-    .limit(1);
-
-  if (!admin) {
+  if (!(await isPlatformAdminUser(db, session.value.userId))) {
     return err(forbiddenPlatformAdminError());
   }
 

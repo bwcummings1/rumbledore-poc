@@ -9,6 +9,12 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { CommandPalette } from "./command-palette";
 
+const router = vi.hoisted(() => ({ push: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
+
 const items = [
   {
     group: "Global",
@@ -27,6 +33,21 @@ const items = [
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  router.push.mockClear();
+});
+
+test("selecting an href item routes with the app router instead of reloading", () => {
+  const assign = vi.fn();
+  vi.stubGlobal("location", { ...window.location, assign });
+
+  render(<CommandPalette defaultOpen={true} items={items} />);
+
+  const dialog = screen.getByRole("dialog", { name: "Command palette" });
+  fireEvent.click(within(dialog).getByRole("option", { name: /News/ }));
+
+  expect(router.push).toHaveBeenCalledWith("/news");
+  expect(assign).not.toHaveBeenCalled();
 });
 
 test("CommandPalette filters results and runs the highlighted item", () => {

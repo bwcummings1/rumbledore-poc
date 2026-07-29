@@ -12,6 +12,7 @@ const data: LoreSectionData = {
     refuted: 1,
     total: 6,
   },
+  isSteward: true,
   league: {
     id: "00000000-0000-4000-8000-000000000001",
     name: "NHS Alumni Annual",
@@ -52,6 +53,18 @@ test("league lore view renders the section front and submit entry", () => {
   expect(
     screen.getByRole("link", { name: /steward review/i }).getAttribute("href"),
   ).toBe("/leagues/00000000-0000-4000-8000-000000000001/lore/steward");
+});
+
+test("ordinary members are not shown the steward review entry point", () => {
+  render(<LeagueLoreView data={{ ...data, isSteward: false }} />);
+
+  // The route itself requires data_steward; showing the link to everyone only
+  // ever led members to an access-denied panel.
+  expect(screen.queryByRole("link", { name: /steward review/i })).toBeNull();
+  // The member-facing entry point is untouched.
+  expect(
+    screen.getByRole("link", { name: /submit claim/i }).getAttribute("href"),
+  ).toBe("/leagues/00000000-0000-4000-8000-000000000001/lore/new");
 });
 
 test("league lore view renders canon story cards and subject filters", () => {

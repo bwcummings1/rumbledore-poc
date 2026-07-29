@@ -153,3 +153,54 @@ test("LeagueWebhookManagerView posts create requests and refreshes", async () =>
   await waitFor(() => expect(router.refresh).toHaveBeenCalled());
   expect(await screen.findByText("Webhook target created.")).toBeDefined();
 });
+
+test("LeagueWebhookManagerView deletes a target only after the dialog is confirmed", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ status: "deleted" }), { status: 200 }),
+    );
+  vi.stubGlobal("fetch", fetch);
+
+  render(<LeagueWebhookManagerView data={data} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText(/Delete "League Discord"/)).toBeDefined();
+  expect(fetch).not.toHaveBeenCalled();
+
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Confirm delete" }),
+  );
+
+  await waitFor(() => {
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/leagues/${leagueId}/webhooks/00000000-0000-4000-8000-000000000301`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+  await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+});
+
+test("LeagueWebhookManagerView sends no delete request when the dialog is dismissed", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ status: "deleted" }), { status: 200 }),
+    );
+  vi.stubGlobal("fetch", fetch);
+
+  render(<LeagueWebhookManagerView data={data} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+  const dialog = screen.getByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(fetch).not.toHaveBeenCalled();
+  expect(router.refresh).not.toHaveBeenCalled();
+  // The target is still listed and still deletable.
+  expect(screen.getByRole("button", { name: "Delete" })).toBeDefined();
+});

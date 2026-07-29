@@ -19,6 +19,7 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -365,7 +366,10 @@ function WebhookCard({
     stateForWebhook(webhook),
   );
   const [request, setRequest] = useState<RequestState>({ status: "idle" });
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isBusy = isRequestBusy(request);
+  const isDeleting =
+    request.status === "loading" && request.action === "delete";
   const endpoint = `/api/leagues/${leagueId}/webhooks/${webhook.id}`;
 
   async function saveWebhook(event: FormEvent<HTMLFormElement>) {
@@ -400,9 +404,11 @@ function WebhookCard({
     try {
       const response = await webhookFetch(endpoint, { method: "DELETE" });
       await readJsonResponse(response);
+      setConfirmingDelete(false);
       setRequest({ message: "Webhook target deleted.", status: "success" });
       router.refresh();
     } catch (error) {
+      setConfirmingDelete(false);
       setRequest({
         message:
           error instanceof Error ? error.message : "Webhook delete failed.",
@@ -506,7 +512,7 @@ function WebhookCard({
           </Button>
           <Button
             disabled={isBusy}
-            onClick={deleteWebhook}
+            onClick={() => setConfirmingDelete(true)}
             type="button"
             variant="danger"
           >
@@ -515,6 +521,43 @@ function WebhookCard({
           </Button>
         </div>
       </form>
+      <Dialog
+        closeLabel="Keep webhook target"
+        description={`Delete "${webhook.name}" (${webhook.urlLabel}). League posts stop mirroring to this endpoint and the encrypted URL is destroyed — restoring it means re-entering the URL from the provider.`}
+        footer={
+          <>
+            <Button
+              disabled={isDeleting}
+              onClick={() => setConfirmingDelete(false)}
+              type="button"
+              variant="ghost"
+            >
+              Cancel
+            </Button>
+            <Button
+              loading={isDeleting}
+              loadingLabel="Deleting target"
+              onClick={() => void deleteWebhook()}
+              type="button"
+              variant="danger"
+            >
+              Confirm delete
+            </Button>
+          </>
+        }
+        loading={isDeleting}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setConfirmingDelete(false);
+          }
+        }}
+        open={confirmingDelete}
+        title="Delete webhook target"
+      >
+        <p className="text-sm text-muted-foreground">
+          Delivery history for this target stays in the log for audit.
+        </p>
+      </Dialog>
       <div className="grid gap-2 border-t border-[var(--hair)] pt-3 text-xs text-muted-foreground sm:grid-cols-2">
         <p>Last delivered: {formatDate(webhook.lastDeliveryAt)}</p>
         <p>Last failed: {formatDate(webhook.lastFailureAt)}</p>

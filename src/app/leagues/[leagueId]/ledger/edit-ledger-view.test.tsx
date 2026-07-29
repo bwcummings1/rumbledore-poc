@@ -1,7 +1,13 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { EditLedgerPageData } from "./edit-ledger-data";
 import { EditLedgerView } from "./edit-ledger-view";
+
+// Pagination routes with the app router instead of reloading the document, so
+// the shared primitive now needs a router in every suite that renders it.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 
 const data: EditLedgerPageData = {
   entries: [

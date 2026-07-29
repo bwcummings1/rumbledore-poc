@@ -11,6 +11,7 @@ import {
   type SubmitLoreClaimResult,
   submitLoreClaim,
 } from "@/lore";
+import { isLoreSteward } from "@/lore/member-auth";
 import {
   getLoreClaimVerificationSummary,
   getLoreSectionData,
@@ -220,7 +221,10 @@ async function loreClaimsGet(
     return errorJson(access.error);
   }
 
-  const result = await getLoreSectionData(db, { leagueId });
+  const result = await getLoreSectionData(db, {
+    isSteward: isLoreSteward(access.value),
+    leagueId,
+  });
   switch (result.status) {
     case "ready":
       return okJson(result.data);

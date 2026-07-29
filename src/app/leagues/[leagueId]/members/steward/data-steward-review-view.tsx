@@ -61,6 +61,12 @@ interface DataStewardReviewViewProps {
 
 type PendingStewardAction =
   | { check: DataIntegrityReviewItem; kind: "mark_reviewed" }
+  | {
+      kind: "commissioner_handoff";
+      reason: string;
+      targetLabel: string;
+      targetMemberId: string;
+    }
   | { kind: "rerun_integrity" }
   | { kind: "suggestion"; suggestion: SuggestedIdentityLink };
 
@@ -444,7 +450,7 @@ export function DataStewardReviewView({
     }
   }
 
-  async function submitCommissionerHandoff(event: FormEvent<HTMLFormElement>) {
+  function requestCommissionerHandoff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!curationState) {
       return;
@@ -455,13 +461,31 @@ export function DataStewardReviewView({
     if (!targetMemberId) {
       return;
     }
+    const candidate = curationState.commissionerCandidates.find(
+      (entry) => entry.memberId === targetMemberId,
+    );
+    setPendingAction({
+      kind: "commissioner_handoff",
+      reason,
+      targetLabel: candidate?.displayName ?? "the selected member",
+      targetMemberId,
+    });
+  }
+
+  async function runCommissionerHandoff(pending: {
+    reason: string;
+    targetMemberId: string;
+  }) {
+    if (!curationState) {
+      return;
+    }
     setBusyKey("commissioner-handoff");
     setError(null);
     setSuccessMessage(null);
     try {
       await postJson(handoffApiUrl, {
-        reason: reason || "Commissioner handoff",
-        targetMemberId,
+        reason: pending.reason || "Commissioner handoff",
+        targetMemberId: pending.targetMemberId,
       });
       setCurationState({
         ...curationState,
@@ -540,7 +564,13 @@ export function DataStewardReviewView({
     if (!pending) {
       return;
     }
+    // The pending action is cleared only after the awaited write settles, so
+    // the dialog keeps its loading state instead of vanishing mid-request.
+    await runPendingAction(pending);
     setPendingAction(null);
+  }
+
+  async function runPendingAction(pending: PendingStewardAction) {
     if (pending.kind === "suggestion") {
       await confirmSuggestion(pending.suggestion);
       return;
@@ -549,7 +579,23 @@ export function DataStewardReviewView({
       await markReviewed(pending.check);
       return;
     }
+    if (pending.kind === "commissioner_handoff") {
+      await runCommissionerHandoff(pending);
+      return;
+    }
     await rerunIntegrity();
+  }
+
+  function pendingActionTitle(action: PendingStewardAction): string {
+    return action.kind === "commissioner_handoff"
+      ? "Hand off commissioner authority"
+      : "Write audited correction";
+  }
+
+  function pendingActionConfirmLabel(action: PendingStewardAction): string {
+    return action.kind === "commissioner_handoff"
+      ? "Confirm handoff"
+      : "Confirm action";
   }
 
   function pendingActionBody(action: PendingStewardAction): string {
@@ -558,6 +604,9 @@ export function DataStewardReviewView({
     }
     if (action.kind === "mark_reviewed") {
       return `Mark ${checkLabel(action.check.checkKey)} as reviewed for trusted record reads.`;
+    }
+    if (action.kind === "commissioner_handoff") {
+      return `Transfer commissioner authority to ${action.targetLabel}. You lose commissioner powers in this league immediately and cannot undo this yourself.`;
     }
     return "Rerun the integrity checks for this league.";
   }
@@ -1031,7 +1080,7 @@ export function DataStewardReviewView({
               {curationState.commissionerCandidates.length > 0 ? (
                 <form
                   className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
-                  onSubmit={(event) => void submitCommissionerHandoff(event)}
+                  onSubmit={requestCommissionerHandoff}
                 >
                   <Field controlId="handoff-target" label="New commissioner">
                     <Select
@@ -1307,6 +1356,7 @@ export function DataStewardReviewView({
           footer={
             <>
               <Button
+                disabled={busyKey !== null}
                 type="button"
                 variant="ghost"
                 onClick={() => setPendingAction(null)}
@@ -1319,17 +1369,18 @@ export function DataStewardReviewView({
                 onClick={() => void confirmPendingAction()}
                 loading={busyKey !== null}
               >
-                Confirm action
+                {pendingActionConfirmLabel(pendingAction)}
               </Button>
             </>
           }
+          loading={busyKey !== null}
           onOpenChange={(nextOpen) => {
-            if (!nextOpen) {
+            if (!nextOpen && busyKey === null) {
               setPendingAction(null);
             }
           }}
           open={true}
-          title="Write audited correction"
+          title={pendingActionTitle(pendingAction)}
         >
           <p className="eyebrow text-warning">Confirm steward action</p>
         </Dialog>

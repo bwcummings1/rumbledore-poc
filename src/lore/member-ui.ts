@@ -95,6 +95,12 @@ export interface LoreSectionData {
     readonly refuted: number;
     readonly total: number;
   };
+  /**
+   * Commissioner or data steward. The steward review route enforces the same
+   * rule server-side; this exists so the section does not advertise a link
+   * that will only render an access-denied panel.
+   */
+  readonly isSteward: boolean;
   readonly league: {
     readonly id: string;
     readonly name: string;

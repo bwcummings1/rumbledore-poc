@@ -569,6 +569,7 @@ test("Settings grain dismisses proposed eras", async () => {
 
   fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
   fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm dismiss" }));
 
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   expect(requestBody(fetchMock)).toMatchObject({
@@ -580,6 +581,29 @@ test("Settings grain dismisses proposed eras", async () => {
     expect(screen.queryByText("12-team era (2026-present)")).toBeNull();
   });
   expect(screen.queryByRole("region", { name: "Era proposals" })).toBeNull();
+});
+
+test("dismissing the era confirm dialog leaves the proposal untouched", async () => {
+  const fetchMock = mockEditResponse({ grouping: data.eraProposals[0] });
+  render(<DataBookView canEditData={true} data={data} />);
+
+  fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+  const dialog = screen.getByRole("dialog");
+  expect(
+    within(dialog).getByText(
+      /Dismiss the "12-team era \(2026-present\)" era proposal/,
+    ),
+  ).toBeDefined();
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(fetchMock).not.toHaveBeenCalled();
+  // The proposal is still listed and still dismissable.
+  expect(screen.getByText("12-team era (2026-present)")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Dismiss" })).toBeDefined();
 });
 
 test("Data Book year dropdown changes the displayed season", () => {
@@ -1001,6 +1025,7 @@ test("restore calls the selected checkpoint restore API and refreshes the route"
 
   openCurationDetails();
   fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm restore" }));
 
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   expect(fetchMock).toHaveBeenCalledWith(
@@ -1011,6 +1036,45 @@ test("restore calls the selected checkpoint restore API and refreshes the route"
     reason: "Restored checkpoint from Data Book",
   });
   await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+});
+
+test("dismissing the restore dialog does not restore the checkpoint", async () => {
+  const checkpoint = {
+    createdAt: "2026-06-23T00:00:00.000Z",
+    id: "00000000-0000-4000-8000-000000000003",
+    label: "Before bad edit",
+    latestEditId: "edit-1",
+    markerEditId: "marker-1",
+    note: null,
+    seasons: [2026, 2025],
+  };
+  const fetchMock = mockEditResponse({ checkpoint });
+  render(
+    <DataBookView
+      canEditData={true}
+      data={{
+        ...data,
+        curation: curationState({
+          activeCheckpoint: checkpoint,
+          checkpoints: [checkpoint],
+        }),
+      }}
+    />,
+  );
+
+  openCurationDetails();
+  fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText(/Before bad edit/)).toBeDefined();
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(router.refresh).not.toHaveBeenCalled();
+  // The control is still there, so a cancel is not a dead end.
+  expect(screen.getByRole("button", { name: "Restore" })).toBeDefined();
 });
 
 test("push season and push all call the push API with the correct arguments", async () => {

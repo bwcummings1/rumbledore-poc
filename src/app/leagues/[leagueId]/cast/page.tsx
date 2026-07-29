@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { requireLeagueRole } from "@/auth/guards";
+import { isPlatformAdminUser, requireLeagueRole } from "@/auth/guards";
 import { getLeagueCastPresenceData } from "@/cast/league-cast";
 import { getDb } from "@/db";
 import { markLeagueOpened } from "@/navigation/league-switcher-data";
@@ -67,7 +67,12 @@ export default async function LeagueCastPage({
 
   switch (result.status) {
     case "ready":
-      return <LeagueCastView data={result.data} />;
+      return (
+        <LeagueCastView
+          canEditTone={await isPlatformAdminUser(db, access.value.userId)}
+          data={result.data}
+        />
+      );
     case "forbidden":
       return (
         <LeagueSectionAccessState

@@ -2,6 +2,7 @@
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -64,6 +65,7 @@ function CommandPalette({
   placeholder = "Search leagues, sections, actions",
   trigger,
 }: CommandPaletteProps) {
+  const router = useRouter();
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -114,7 +116,9 @@ function CommandPalette({
     setQuery("");
 
     if (item.href && !item.onSelect && !onSelect) {
-      window.location.assign(item.href);
+      // Route on the client. A document load here would throw away the
+      // palette's own state and re-download the bundle for an in-app target.
+      router.push(item.href);
     }
   }
 

@@ -8,9 +8,17 @@ import {
 import { afterEach, expect, test, vi } from "vitest";
 import { InviteAcceptPanel } from "./invite-accept-panel";
 
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  router.push.mockClear();
+  router.refresh.mockClear();
 });
 
 test("invite accept panel sends unauthenticated users to provider onboarding", () => {
@@ -122,4 +130,34 @@ test("open invite accept panel posts the selected provider member", async () => 
       }),
     );
   });
+});
+
+test("accepting an invite routes with the app router instead of reloading", async () => {
+  const assign = vi.fn();
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ leagueUrl: "/leagues/league-a" }), {
+      status: 200,
+    }),
+  );
+  vi.stubGlobal("location", { ...window.location, assign, reload: vi.fn() });
+
+  render(
+    <InviteAcceptPanel
+      acceptUrl="/api/invite/league/token/accept"
+      claimMode="targeted"
+      claimTargets={[]}
+      isAuthenticated={true}
+      onboardingUrl="/onboarding/espn"
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /accept invite/i }));
+
+  await waitFor(() =>
+    expect(router.push).toHaveBeenCalledWith("/leagues/league-a"),
+  );
+  expect(router.refresh).toHaveBeenCalled();
+  expect(assign).not.toHaveBeenCalled();
+
+  vi.unstubAllGlobals();
 });
