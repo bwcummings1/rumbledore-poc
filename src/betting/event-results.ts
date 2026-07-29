@@ -100,7 +100,13 @@ export async function findFinishedEvents(
     // graded is undefined, and a given event could be starved indefinitely
     // while others are re-selected. Newest-first also matches what people are
     // actually waiting on: the game that just ended, not one from weeks ago.
-    .orderBy(desc(bettingEvents.startTime))
+    // Newest kickoff first, then id. The id is not decoration: `start_time`
+    // is NOT unique — a full NFL Sunday puts a dozen games at the same
+    // kickoff — so ordering on it alone leaves the slice at the LIMIT
+    // boundary undefined, and an event unlucky enough to sit on that boundary
+    // can be dropped from every pass forever. A total order makes which
+    // events a pass considers reproducible.
+    .orderBy(desc(bettingEvents.startTime), bettingEvents.id)
     .limit(input.limit ?? DEFAULT_LIMIT);
 
   if (candidates.length === 0) {

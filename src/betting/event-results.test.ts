@@ -33,12 +33,22 @@ import { openPickWeek, submitPick } from "./pickem";
  */
 
 const marker = `eventresults-${randomUUID()}`;
-const opensAt = new Date("2026-09-08T12:00:00.000Z");
-const closesAt = new Date("2026-09-20T12:00:00.000Z");
-const kickoff = new Date("2026-09-13T17:00:00.000Z");
-const beforeKickoff = new Date("2026-09-13T16:00:00.000Z");
+/**
+ * Dated far ahead of every other suite's fixtures on purpose.
+ *
+ * The producer takes the newest kickoffs first and bounds each pass with a
+ * LIMIT. Other suites leave events behind in this shared database — well over
+ * a thousand of them, all clustered within a two-hour window — so a fixture
+ * sharing that window competes for the slice and can be truncated out of it.
+ * Seeding a decade later puts these events unambiguously first, which makes
+ * the suite independent of how much other work has run before it.
+ */
+const opensAt = new Date("2036-09-08T12:00:00.000Z");
+const closesAt = new Date("2036-09-20T12:00:00.000Z");
+const kickoff = new Date("2036-09-13T17:00:00.000Z");
+const beforeKickoff = new Date("2036-09-13T16:00:00.000Z");
 /** Well after the 3.5h settle window. */
-const wellAfter = new Date("2026-09-13T23:00:00.000Z");
+const wellAfter = new Date("2036-09-13T23:00:00.000Z");
 
 let handle: DbHandle;
 let league: League;
@@ -153,18 +163,21 @@ afterAll(async () => {
 
 describe("finished-event producer", () => {
   it("ignores events that have not started", async () => {
-    const { snapshot } = await seedEvent();
+    const { event, snapshot } = await seedEvent();
     await pickOn(snapshot.id, league, 1);
 
     const found = await findFinishedEvents(handle.db, {
       limit: 1000,
       now: beforeKickoff,
     });
-    expect(found).toHaveLength(0);
+    // Scoped to THIS suite's event. Asserting a globally empty result would be
+    // asserting that no other suite has ever left a finished event behind in
+    // the shared database, which is not a property of the code under test.
+    expect(found.map((row) => row.bettingEventId)).not.toContain(event.id);
   });
 
   it("ignores an event still inside the settle window", async () => {
-    const { snapshot } = await seedEvent();
+    const { event, snapshot } = await seedEvent();
     await pickOn(snapshot.id, league, 2);
 
     // One hour after kickoff: the game is plausibly still being played.
@@ -172,7 +185,7 @@ describe("finished-event producer", () => {
       limit: 1000,
       now: new Date(kickoff.getTime() + 60 * 60 * 1000),
     });
-    expect(found).toHaveLength(0);
+    expect(found.map((row) => row.bettingEventId)).not.toContain(event.id);
   });
 
   it("finds an event once the settle window has elapsed", async () => {

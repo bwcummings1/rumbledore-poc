@@ -323,7 +323,7 @@ test("a silent refresh does not re-check leagues the user deselected (T-035)", a
   // background refresh check them all again — and could then import leagues
   // they had explicitly refused.
   let discoveryReads = 0;
-  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = input.toString();
     if (url === "/api/onboarding/discovered") {
       discoveryReads += 1;
