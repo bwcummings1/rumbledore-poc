@@ -628,6 +628,15 @@ export interface CentralLlmGenerateRequest {
 export interface CentralLlmGenerateResult {
   draft: CentralArticleDraft;
   estimated?: boolean;
+  /**
+   * The model and provider that actually served this call. Central content
+   * types are outside the blogger's `AiContentType` routing vocabulary, so the
+   * central meter cannot ask a route resolver to *predict* the model — the
+   * client reports what it used. Omitted means "unknown"; the central pipeline
+   * then records the mock identity, matching `pipeline.ts`'s fallback.
+   */
+  model?: string;
+  provider?: string;
   usage: LlmUsageBreakdown;
 }
 

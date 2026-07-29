@@ -1,8 +1,9 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { aiUsageEvents, leagues } from "@/db/schema";
+import { aiUsageEvents, centralAiUsageEvents, leagues } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import type { CentralColumnContentType } from "./central-columns";
 import {
   type AiContentType,
   CONTENT_TYPE_TEMPLATES,
@@ -26,6 +27,26 @@ export interface RecordAiUsageEventInput {
   readonly leagueId: string;
   readonly metadata?: Record<string, unknown>;
   readonly model: string;
+  readonly persona: AiPersona;
+  readonly provider: string;
+  readonly triggerKey: string;
+  readonly usage: LlmUsageBreakdown;
+}
+
+/**
+ * A central-plane AI call. Central generation is platform overhead, not
+ * league-attributable cost (DD-9), so it carries no `leagueId` and is written
+ * outside `withLeagueContext` — `central_ai_usage_event` has no RLS policy.
+ * `operation` separates LLM generation from embedding calls in the same meter.
+ */
+export interface RecordCentralAiUsageEventInput {
+  readonly columnId: string;
+  readonly contentType: CentralColumnContentType;
+  readonly createdAt?: Date;
+  readonly estimated: boolean;
+  readonly metadata?: Record<string, unknown>;
+  readonly model: string;
+  readonly operation?: string;
   readonly persona: AiPersona;
   readonly provider: string;
   readonly triggerKey: string;
@@ -252,6 +273,41 @@ export async function recordAiUsageEvent(
 
   if (!row) {
     throw new Error("AI usage event could not be recorded");
+  }
+  return row;
+}
+
+export async function recordCentralAiUsageEvent(
+  db: Db,
+  input: RecordCentralAiUsageEventInput,
+): Promise<{ id: string }> {
+  const [row] = await db
+    .insert(centralAiUsageEvents)
+    .values({
+      billableUnits: billableUnits(input.usage),
+      cacheCreationInputTokens: nonnegativeInt(
+        input.usage.cacheCreationInputTokens,
+      ),
+      cacheReadInputTokens: nonnegativeInt(input.usage.cacheReadInputTokens),
+      columnId: input.columnId,
+      contentType: input.contentType,
+      costMicrosUsd: estimateCostMicrosUsd(input.model, input.usage),
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      estimated: input.estimated,
+      inputTokens: nonnegativeInt(input.usage.inputTokens),
+      metadata: input.metadata ?? {},
+      model: input.model,
+      ...(input.operation ? { operation: input.operation } : {}),
+      outputTokens: nonnegativeInt(input.usage.outputTokens),
+      persona: input.persona,
+      provider: input.provider,
+      totalTokens: totalTokens(input.usage),
+      triggerKey: input.triggerKey,
+    })
+    .returning({ id: centralAiUsageEvents.id });
+
+  if (!row) {
+    throw new Error("Central AI usage event could not be recorded");
   }
   return row;
 }

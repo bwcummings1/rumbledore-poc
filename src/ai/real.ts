@@ -831,6 +831,8 @@ export class AnthropicLlmClient
     }
     return {
       draft: parsed.data,
+      model: this.modelForPersona(request.context.journalist.persona),
+      provider: "anthropic",
       usage: usageFromAnthropicResponse(response),
     };
   }
@@ -1183,6 +1185,8 @@ export class OpenAiCompatibleLlmClient
     }
     return {
       draft: parsed.data,
+      model: this.model,
+      provider: "custom",
       usage: openAiCompatibleUsage(payload.usage),
     };
   }

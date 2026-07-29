@@ -4,7 +4,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
-import { aiMemory, contentItems } from "@/db/schema";
+import { aiMemory, centralAiUsageEvents, contentItems } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
 import { ingestMockGeneralStats } from "@/general-stats";
 import { getCentralNewsArticleData, MockCentralNewsSource } from "@/news";
@@ -92,6 +92,9 @@ afterAll(async () => {
   await handle.db
     .delete(contentItems)
     .where(sql`${contentItems.dedupKey} like ${`%${marker}%`}`);
+  await handle.db
+    .delete(centralAiUsageEvents)
+    .where(sql`${centralAiUsageEvents.triggerKey} like ${`%${marker}%`}`);
   await handle.pool.end();
 });
 
@@ -324,6 +327,96 @@ describe("central journalist generation pipeline", () => {
         ),
       );
     expect(skippedRows).toEqual([]);
+  });
+
+  it("meters every central attempt as platform cost, including a retry that publishes nothing", async () => {
+    const llm = new MockLlmClient();
+    const deps = {
+      ...testCentralAiDependencies(),
+      duplicateThreshold: 0.92,
+      embeddings: new DeterministicEmbeddingProvider(19),
+      llm,
+      now: () => new Date("2026-09-15T16:00:00.000Z"),
+    };
+    const publishedInput = {
+      columnId: "mnf-recap" as const,
+      newsContentItemIds: [],
+      season: 2198,
+      triggerKey: `${marker}:metered:published`,
+      week: 25,
+    };
+    const skippedInput = {
+      ...publishedInput,
+      triggerKey: `${marker}:metered:skipped`,
+    };
+
+    const published = await generateCentralColumn({
+      deps,
+      input: publishedInput,
+    });
+    expect(published).toMatchObject({ reused: false, status: "published" });
+    const skipped = await generateCentralColumn({ deps, input: skippedInput });
+    expect(skipped).toMatchObject({ status: "skipped" });
+    // Three LLM calls total: one that published, then a first attempt plus the
+    // near-duplicate retry that produced nothing publishable.
+    expect(llm.centralRequests.map((request) => request.attempt)).toEqual([
+      1, 1, 2,
+    ]);
+
+    const rows = await handle.db
+      .select()
+      .from(centralAiUsageEvents)
+      .where(
+        sql`${centralAiUsageEvents.triggerKey} like ${`${marker}:metered:%`}`,
+      );
+    const attemptsFor = (triggerKey: string) =>
+      rows
+        .filter((row) => row.triggerKey === triggerKey)
+        .map((row) => Number(row.metadata.attempt))
+        .sort((left, right) => left - right);
+
+    // Per attempt, not per publish: the skipped generation still burned two
+    // calls' worth of platform money and must be metered as such.
+    expect(attemptsFor(publishedInput.triggerKey)).toEqual([1]);
+    expect(attemptsFor(skippedInput.triggerKey)).toEqual([1, 2]);
+    expect(
+      rows
+        .filter((row) => row.triggerKey === skippedInput.triggerKey)
+        .find((row) => Number(row.metadata.attempt) === 2)?.metadata
+        .duplicateNudge,
+    ).toBe(true);
+
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        columnId: "mnf-recap",
+        contentType: "central_mnf_recap",
+        estimated: true,
+        model: "mock-rumbledore-llm-v1",
+        operation: "llm.generate",
+        persona: "narrator",
+        provider: "mock",
+      });
+      expect(row.totalTokens).toBe(
+        row.inputTokens +
+          row.outputTokens +
+          row.cacheCreationInputTokens +
+          row.cacheReadInputTokens,
+      );
+      // Independently computed from the published Haiku list price the mock
+      // model estimates against ($1 in / $5 out per MTok; cache writes 1.25x
+      // input, cache reads 0.1x input) — deliberately NOT read back from
+      // MODEL_PRICE_MICROS_PER_TOKEN, or this could only prove the table
+      // equals itself (T-004's lesson).
+      expect(row.costMicrosUsd).toBe(
+        Math.round(
+          row.inputTokens * 1 +
+            row.outputTokens * 5 +
+            row.cacheCreationInputTokens * 1.25 +
+            row.cacheReadInputTokens * 0.1,
+        ),
+      );
+      expect(row.costMicrosUsd).toBeGreaterThan(0);
+    }
   });
 
   it("automatically gives the writer recent central angles and queued sibling assignments", async () => {

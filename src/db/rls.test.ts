@@ -136,6 +136,33 @@ describe("RLS catalog state (migration 0002)", () => {
     ]);
   });
 
+  // DD-9: central AI cost is platform overhead, kept out of `ai_usage_event`
+  // rather than folded in behind a nullable `league_id`. The meter is only
+  // trustworthy if it stays that shape — a `league_id` column here would drag
+  // it into the completeness check below, and enabling RLS on a table with no
+  // league column would lock the meter with no scoping rule at all.
+  it("keeps the central AI usage meter central: no league_id column, no RLS", async () => {
+    const { rows } = await handle.pool.query(
+      `select c.relrowsecurity,
+              c.relforcerowsecurity,
+              (select count(*)
+                 from information_schema.columns col
+                where col.table_schema = 'public'
+                  and col.table_name = c.relname
+                  and col.column_name = 'league_id')::int as league_id_columns
+         from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relname = 'central_ai_usage_event'`,
+    );
+    expect(rows).toEqual([
+      {
+        league_id_columns: 0,
+        relforcerowsecurity: false,
+        relrowsecurity: false,
+      },
+    ]);
+  });
+
   it("allows central rows while scoping league rows", async () => {
     const { rows } = await handle.pool.query(
       `select tablename, policyname, cmd, qual, with_check

@@ -3946,6 +3946,97 @@ export const aiUsageEvents = pgTable(
   ],
 );
 
+// ── Central AI usage meter (platform overhead; no restrictive RLS) ────────
+//
+// DD-9: central-hub generation is platform overhead absorbed by the business,
+// while `ai_usage_event` measures league-attributable cost that the AI tier is
+// priced from (`PROJECT_CONTEXT.md` §3.2). They are deliberately two tables,
+// not one table with a nullable `league_id`: a mixed-scope policy would match
+// `league_id IS NULL` rows from *every* league context, leaking platform cost
+// into league scope and weakening the isolation `ai_usage_event` is in the
+// strict `leagueScopedTables` group for.
+//
+// This follows the central-table convention of `arena_standing` /
+// `betting_event` / `betting_market`: no `league_id` column, therefore no
+// policy — and nothing for the schema-driven RLS completeness test in
+// `src/db/rls.test.ts` to require. Columns mirror `ai_usage_event` minus the
+// league scope, plus `column_id` (which central column spent the money).
+export const centralAiUsageEvents = pgTable(
+  "central_ai_usage_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    columnId: text("column_id").notNull(),
+    persona: aiPersona("persona").notNull(),
+    contentType: text("content_type").notNull(),
+    triggerKey: text("trigger_key").notNull(),
+    operation: text("operation").notNull().default("llm.generate"),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheCreationInputTokens: integer("cache_creation_input_tokens")
+      .notNull()
+      .default(0),
+    cacheReadInputTokens: integer("cache_read_input_tokens")
+      .notNull()
+      .default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    billableUnits: integer("billable_units").notNull().default(0),
+    estimated: boolean("estimated").notNull().default(true),
+    costMicrosUsd: integer("cost_micros_usd").notNull().default(0),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("central_ai_usage_event_created_idx").on(table.createdAt),
+    index("central_ai_usage_event_column_created_idx").on(
+      table.columnId,
+      table.createdAt,
+    ),
+    index("central_ai_usage_event_operation_created_idx").on(
+      table.operation,
+      table.createdAt,
+    ),
+    check(
+      "central_ai_usage_event_column_id_not_blank",
+      sql`length(btrim(${table.columnId})) > 0`,
+    ),
+    check(
+      "central_ai_usage_event_content_type_not_blank",
+      sql`length(btrim(${table.contentType})) > 0`,
+    ),
+    check(
+      "central_ai_usage_event_trigger_key_not_blank",
+      sql`length(btrim(${table.triggerKey})) > 0`,
+    ),
+    check(
+      "central_ai_usage_event_operation_not_blank",
+      sql`length(btrim(${table.operation})) > 0`,
+    ),
+    check(
+      "central_ai_usage_event_provider_not_blank",
+      sql`length(btrim(${table.provider})) > 0`,
+    ),
+    check(
+      "central_ai_usage_event_model_not_blank",
+      sql`length(btrim(${table.model})) > 0`,
+    ),
+    check(
+      "central_ai_usage_event_tokens_nonnegative",
+      sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.cacheCreationInputTokens} >= 0 AND ${table.cacheReadInputTokens} >= 0 AND ${table.totalTokens} >= 0 AND ${table.billableUnits} >= 0`,
+    ),
+    check(
+      "central_ai_usage_event_cost_nonnegative",
+      sql`${table.costMicrosUsd} >= 0`,
+    ),
+  ],
+);
+
 export const aiMemory = pgTable(
   "ai_memory",
   {
@@ -4956,6 +5047,8 @@ export type AiGenerationRun = typeof aiGenerationRuns.$inferSelect;
 export type NewAiGenerationRun = typeof aiGenerationRuns.$inferInsert;
 export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
 export type NewAiUsageEvent = typeof aiUsageEvents.$inferInsert;
+export type CentralAiUsageEvent = typeof centralAiUsageEvents.$inferSelect;
+export type NewCentralAiUsageEvent = typeof centralAiUsageEvents.$inferInsert;
 export type AiMemory = typeof aiMemory.$inferSelect;
 export type NewAiMemory = typeof aiMemory.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

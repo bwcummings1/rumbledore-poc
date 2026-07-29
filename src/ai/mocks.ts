@@ -1692,6 +1692,8 @@ export class MockLlmClient implements LlmClient, CentralLlmClient {
     return {
       draft,
       estimated: true,
+      model: this.resolveModelName(),
+      provider: this.resolveModelProviderKey(),
       usage: {
         cacheCreationInputTokens: estimateTokenCount(
           request.prompt.systemPrefix,

@@ -225,5 +225,7 @@ export {
   type AiUsageWeeklyRollup,
   getAiUsageRollupData,
   type RecordAiUsageEventInput,
+  type RecordCentralAiUsageEventInput,
   recordAiUsageEvent,
+  recordCentralAiUsageEvent,
 } from "./usage-attribution";
