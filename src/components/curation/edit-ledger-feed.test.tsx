@@ -10,6 +10,12 @@ import { afterEach, expect, test, vi } from "vitest";
 import { EditLedgerFeed } from "./edit-ledger-feed";
 import type { EditLedgerEntry } from "./edit-ledger-types";
 
+// Pagination routes with the app router instead of reloading the document, so
+// the shared primitive now needs a router in every suite that renders it.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const actorId = "00000000-0000-4000-8000-000000000010";
 
 const entries: readonly EditLedgerEntry[] = [
