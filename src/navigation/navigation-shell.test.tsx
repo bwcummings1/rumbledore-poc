@@ -64,6 +64,19 @@ vi.mock("@/realtime/client", () => {
   };
 });
 
+const routerMock = vi.hoisted(() => ({
+  back: vi.fn(),
+  forward: vi.fn(),
+  prefetch: vi.fn(),
+  push: vi.fn(),
+  refresh: vi.fn(),
+  replace: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => routerMock,
+}));
+
 let NavigationShellView!: typeof NavigationShellModule.NavigationShellView;
 let shouldShowNavigationShell!: typeof NavigationShellModule.shouldShowNavigationShell;
 let deriveActiveNavigationState!: typeof ScopeModule.deriveActiveNavigationState;
@@ -105,6 +118,7 @@ afterEach(() => {
   realtimeMock.state.lastRefresh = null;
   realtimeMock.openRealtimePresenceSubscription.mockClear();
   realtimeMock.openRealtimeRefreshSubscription.mockClear();
+  routerMock.push.mockClear();
 });
 
 function assertJsdomHarness() {
@@ -739,6 +753,41 @@ describe("NavigationShellView", () => {
     });
 
     expect(screen.getByLabelText("Local time 12:34:57")).toBeDefined();
+  });
+
+  it("navigates command palette selections through the client router", async () => {
+    // `window.location.assign` is non-configurable in jsdom, so the whole
+    // `location` object is stubbed to observe it.
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    const [searchButton] = screen.getAllByRole("button", {
+      name: "Open command palette",
+    });
+    if (!searchButton) {
+      throw new Error("expected a command palette trigger in the shell");
+    }
+    fireEvent.click(searchButton);
+
+    const option = await screen.findByRole("option", {
+      name: /Rumbledore News/i,
+    });
+    fireEvent.click(option);
+
+    expect(routerMock.push).toHaveBeenCalledWith("/news");
+    // A full document load would discard the realtime subscriptions and the
+    // RSC cache and re-download the bundle, which is the whole point of the
+    // palette staying on the client router.
+    expect(assign).not.toHaveBeenCalled();
   });
 });
 

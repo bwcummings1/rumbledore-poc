@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   type ComponentPropsWithoutRef,
   type CSSProperties,
@@ -285,6 +286,7 @@ export function NavigationShellView({
   children,
   items,
 }: NavigationShellViewProps) {
+  const router = useRouter();
   const [mobileSwitcherOpen, setMobileSwitcherOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [desktopSwitcherOpen, setDesktopSwitcherOpen] = useState(false);
@@ -345,6 +347,18 @@ export function NavigationShellView({
       new Set(shellNotifications.map((notification) => notification.id)),
     );
   }, [shellNotifications]);
+  // The palette is in-app navigation, so it has to go through the App Router.
+  // `window.location.assign` was a full document load: every client store, the
+  // realtime subscriptions, and the RSC cache were thrown away and the whole
+  // bundle was re-downloaded on each palette jump.
+  const selectCommandItem = useCallback(
+    (item: CommandPaletteItem) => {
+      if (item.href) {
+        router.push(item.href);
+      }
+    },
+    [router],
+  );
   const closeMobileSwitcher = useCallback(() => {
     setMobileSwitcherOpen(false);
     window.requestAnimationFrame(() => {
@@ -502,11 +516,7 @@ export function NavigationShellView({
       <CommandPalette
         items={commandItems}
         onOpenChange={setCommandPaletteOpen}
-        onSelect={(item) => {
-          if (item.href) {
-            window.location.assign(item.href);
-          }
-        }}
+        onSelect={selectCommandItem}
         open={commandPaletteOpen}
       />
     </div>
