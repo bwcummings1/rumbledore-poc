@@ -179,6 +179,79 @@ test("invite view makes roster links and SMS the primary actions", async () => {
   );
 });
 
+function mockShareInviteFetch() {
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        channel: string;
+        providerMemberId?: string;
+      };
+      const slug = body.providerMemberId ?? "open-claim";
+      return new Response(
+        JSON.stringify({
+          channel: body.channel,
+          expiresAt: "2026-07-12T12:00:00.000Z",
+          inviteUrl: `https://rumbledore.example/invite/00000000-0000-4000-8000-000000000001/${slug}`,
+          target: null,
+          targetHint: null,
+          token: `${slug}-share`,
+        }),
+        { headers: { "content-type": "application/json" }, status: 201 },
+      );
+    });
+}
+
+test("invite view surfaces a clipboard rejection from the bare copy buttons", async () => {
+  mockShareInviteFetch();
+
+  render(<LeagueInviteView initialSummary={initialSummary} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Copy claim link" }));
+  await waitFor(() => {
+    expect(screen.getByLabelText("League claim link")).toBeDefined();
+  });
+
+  // The icon button fires `void copyInvite(...)`, so a rejection here used to escape
+  // entirely unhandled and the member was told nothing.
+  clipboardWrite.mockImplementationOnce(async () => {
+    throw new Error("Write permission denied");
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Copy league claim link" }),
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText("Write permission denied")).toBeDefined();
+  });
+});
+
+test("invite view reports copying as unavailable outside a secure context", async () => {
+  mockShareInviteFetch();
+  const clipboard = navigator.clipboard;
+  Object.assign(navigator, { clipboard: undefined });
+
+  try {
+    render(<LeagueInviteView initialSummary={initialSummary} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy roster links" }));
+
+    // The button re-enables in the handler's `finally`, strictly after the copy verdict.
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole("button", { name: "Copy roster links" })
+          .hasAttribute("disabled"),
+      ).toBe(false);
+    });
+    expect(screen.queryByText("Roster links copied")).toBeNull();
+    expect(screen.getByText(/Copying is unavailable here/)).toBeDefined();
+    expect(clipboardWrite).not.toHaveBeenCalled();
+  } finally {
+    Object.assign(navigator, { clipboard });
+  }
+});
+
 test("invite view keeps email behind an entered-address fallback", async () => {
   const fetchMock = vi
     .spyOn(globalThis, "fetch")

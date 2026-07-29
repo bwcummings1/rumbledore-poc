@@ -543,8 +543,25 @@ export function LeagueInviteView({
     }
   }
 
-  async function copyInvite(url: string) {
-    await navigator.clipboard?.writeText(url);
+  // `navigator.clipboard?.writeText(url)` resolves to `undefined` on any non-secure-context
+  // origin, so the optional chain used to report a copy that never happened — and a
+  // rejection escaped the bare `void copyInvite(...)` handlers unhandled. Mirror the guard
+  // in `article-share-actions.tsx` and report the outcome instead of assuming it.
+  async function copyInvite(url: string): Promise<boolean> {
+    if (!navigator.clipboard?.writeText) {
+      setError({
+        message:
+          "Copying is unavailable here. Select the link above and copy it manually.",
+      });
+      return false;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      return true;
+    } catch (cause) {
+      setError(onboardingPanelError(cause));
+      return false;
+    }
   }
 
   async function createShareLink(target: LeagueInviteTarget) {
@@ -567,8 +584,7 @@ export function LeagueInviteView({
           existing ?? (await requestInvite({ channel: "share", target }));
         lines.push(`${target.displayName}: ${invite.inviteUrl}`);
       }
-      await copyInvite(lines.join("\n"));
-      setRosterLinksCopied(true);
+      setRosterLinksCopied(await copyInvite(lines.join("\n")));
     } catch (cause) {
       setError(onboardingPanelError(cause));
     } finally {
