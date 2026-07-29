@@ -575,6 +575,13 @@
       "when": 1784332800000,
       "tag": "0081_central_ai_usage_event",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1784419200000,
+      "tag": "0082_collapse_league_admin_role",
+      "breakpoints": true
     }
   ]
 }

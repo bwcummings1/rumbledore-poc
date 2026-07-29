@@ -57,7 +57,6 @@ function invalidTarget(): AppError {
 function canOpenReview(role: LeagueRole): boolean {
   switch (role) {
     case "data_steward":
-    case "league_admin":
     case "commissioner":
       return true;
     case "member":
@@ -74,7 +73,9 @@ function canBeDesignated(role: LeagueRole): boolean {
     case "member":
     case "data_steward":
       return true;
-    case "league_admin":
+    // A commissioner already holds every steward capability, so designating one
+    // would be a demotion dressed as a promotion. (Pre-0082 `league_admin` was
+    // excluded here for the same reason and collapsed into this case.)
     case "commissioner":
       return false;
   }

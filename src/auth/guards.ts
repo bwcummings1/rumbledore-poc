@@ -41,11 +41,16 @@ export interface PlatformAdminGuardInput extends SessionGuardInput {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// The enforced authority ladder. `league_admin` used to sit between
+// `data_steward` and `commissioner`; migration 0082 collapsed it into
+// `commissioner` because the two carried identical authority (an admin may do
+// anything an assigned role can — PROJECT_CONTEXT.md Q16/§7.1). Adding a rung
+// here means adding it to the `league_role` pg enum and to `roles` in
+// ./permissions.ts; ./permissions.test.ts fails if the three drift apart.
 const ROLE_RANK: Record<LeagueRole, number> = {
   member: 0,
   data_steward: 1,
-  league_admin: 2,
-  commissioner: 3,
+  commissioner: 2,
 };
 
 function authError(): AppError {

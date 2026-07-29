@@ -13,8 +13,8 @@ const { GET, POST } = await import("./[...all]/route");
  * Leagues are Better Auth organizations, so enabling the organization plugin
  * also HTTP-exposes its member CRUD under this catch-all mount. Those endpoints
  * authorize against the plugin's own statements and skip `requireLeagueRole`,
- * the audit ledger, and league-scoped cleanup — so a league_admin refused by
- * the commissioner-only steward route could simply POST
+ * the audit ledger, and league-scoped cleanup — so a non-commissioner refused
+ * by the commissioner-only steward route could simply POST
  * /api/auth/organization/update-member-role instead.
  *
  * These tests pin the fence: membership mutations must not reach Better Auth,

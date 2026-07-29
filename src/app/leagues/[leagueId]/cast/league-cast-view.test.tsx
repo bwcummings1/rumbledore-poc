@@ -113,7 +113,7 @@ test("LeagueCastView composes roster, insights, thread, and safe navigation", ()
   expect(screen.getByText("read-only")).toBeDefined();
 });
 
-test.each(["commissioner", "league_admin", "data_steward", "member"] as const)(
+test.each(["commissioner", "data_steward", "member"] as const)(
   "LeagueCastView does not expose tone controls to league role %s",
   (userRole) => {
     render(<LeagueCastView data={{ ...data, userRole }} />);

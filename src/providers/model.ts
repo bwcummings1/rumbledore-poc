@@ -146,9 +146,20 @@ export interface NormalizedTeam extends SeasonScopedProviderEntityRef {
   };
 }
 
+/**
+ * What the *provider* says a member is, stored descriptively in
+ * `fantasy_members.role` (a text column). This is deliberately NOT the
+ * `league_role` authority enum: it carries provider-only facts and `unknown`,
+ * and nothing authorizes against it.
+ *
+ * `league_admin` used to appear here, mirroring a `league_role` value that
+ * migration 0082 collapsed into `commissioner`. It is spelled `league_manager`
+ * now — ESPN's own `isLeagueManager` wording — so the provider fact survives
+ * without re-creating a league-role name the authority model no longer has.
+ */
 export type NormalizedMemberRole =
   | "commissioner"
-  | "league_admin"
+  | "league_manager"
   | "data_steward"
   | "member"
   | "unknown";

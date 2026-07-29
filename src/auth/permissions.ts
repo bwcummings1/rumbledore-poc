@@ -1,6 +1,5 @@
 import { createAccessControl } from "better-auth/plugins/access";
 import {
-  adminAc,
   defaultStatements,
   memberAc,
   ownerAc,
@@ -22,26 +21,21 @@ const statement = {
 export const ac = createAccessControl(statement);
 
 export const roles = {
-  // Org owner equivalent: full control of the league plus its data.
+  // Org owner *and* org admin equivalent: full control of the league plus its
+  // data, and the only role that may assign roles (PROJECT_CONTEXT.md Q17).
+  //
+  // `league_admin` used to be a separate key here. T-008 granted it
+  // `leagueData: ["review", "manage"]` so the ACL would stop contradicting
+  // ROLE_RANK in src/auth/guards.ts — which left two names for one authority
+  // level. That is the state a later edit would have broken again by amending
+  // one name and not the other, so migration 0082 collapsed the value into
+  // `commissioner` in the `league_role` pg enum and this key went with it
+  // (PROJECT_CONTEXT.md Q16/§7.1, DD-5). Nothing is lost by dropping the key:
+  // Better Auth's `ownerAc` statements are a strict superset of `adminAc`'s
+  // (owner additionally holds `organization: delete`), so every action the old
+  // `league_admin` could express is still expressible here.
   commissioner: ac.newRole({
     ...ownerAc.statements,
-    leagueData: ["review", "manage"],
-  }),
-  // Org admin equivalent: manages members/invitations, and — like the
-  // commissioner — may manage league data.
-  //
-  // This deliberately grants `manage`, matching ROLE_RANK in src/auth/guards.ts,
-  // where league_admin outranks data_steward. The owner's ruling is that an
-  // admin can do anything an assigned role can do, while an assigned role
-  // cannot do everything an admin can (PROJECT_CONTEXT.md §7.1, DD-5).
-  //
-  // It previously granted only ["review"], which contradicted the rank ladder.
-  // Because every route guard resolves through ROLE_RANK and nothing server-side
-  // calls hasPermission, the ladder silently won and league_admin already passed
-  // every data_steward gate — the ACL was decorative and misleading rather than
-  // enforced. Aligning it here removes the second, disagreeing authority model.
-  league_admin: ac.newRole({
-    ...adminAc.statements,
     leagueData: ["review", "manage"],
   }),
   // Regular member plus the data-cleaning mandate.

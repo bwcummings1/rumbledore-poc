@@ -2,11 +2,7 @@ import type { FantasyProviderId } from "@/providers/ids";
 import { FANTASY_PROVIDER_IDS } from "@/providers/ids";
 import { getProviderBadgeLabel } from "./scope";
 
-export type LeagueSwitcherRole =
-  | "member"
-  | "data_steward"
-  | "league_admin"
-  | "commissioner";
+export type LeagueSwitcherRole = "member" | "data_steward" | "commissioner";
 
 export interface LeagueSwitcherItem {
   readonly lastOpenedAt: Date | null;

@@ -523,9 +523,15 @@ export interface LeagueWebhookEventSelection {
 }
 
 // Per-league roles (spec 01 §Auth). `super_admin` is global, not a league role.
+//
+// `league_admin` was collapsed into `commissioner` by migration 0082: the two
+// named the same authority level (PROJECT_CONTEXT.md Q16/§7.1, DD-5), so any
+// future edit to one and not the other would have silently reintroduced the
+// disagreement T-008 had just removed. Keep this list identical to the keys of
+// `roles` in `src/auth/permissions.ts` and to `ROLE_RANK` in
+// `src/auth/guards.ts`; `src/auth/permissions.test.ts` asserts that.
 export const leagueRole = pgEnum("league_role", [
   "commissioner",
-  "league_admin",
   "data_steward",
   "member",
 ]);

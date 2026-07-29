@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEnv } from "@/core/env/schema";
@@ -218,5 +219,131 @@ describe("baseline schema (users, leagues, auth-plane members)", () => {
           .values({ organizationId: randomUUID(), userId: user.id }),
       ),
     ).toBe("members_organization_id_leagues_id_fk");
+  });
+});
+
+/**
+ * Migration 0082 collapsed `league_admin` into `commissioner` (T-008a). The
+ * live database is already migrated, so a pre-0082 row cannot be created here
+ * to watch it move. Instead the migration file is replayed *verbatim* against a
+ * throwaway schema that has been rebuilt into the pre-0082 shape: the file uses
+ * unqualified names precisely so `search_path` can point it at that schema.
+ * Breaking the SQL in the file therefore breaks this test.
+ */
+const LEGACY_ROLE_LABELS = [
+  "commissioner",
+  "league_admin",
+  "data_steward",
+  "member",
+];
+
+describe("league_role collapse (migration 0082)", () => {
+  it("remaps pre-existing league_admin rows to commissioner when replayed", async () => {
+    const schema = `t008a_${randomUUID().replaceAll("-", "")}`;
+    const migration = await readFile(
+      "src/db/migrations/0082_collapse_league_admin_role.sql",
+      "utf8",
+    );
+    const statements = migration
+      .split("--> statement-breakpoint")
+      .map((statement) => statement.trim())
+      .filter((statement) => statement.length > 0);
+
+    const client = await handle.pool.connect();
+    try {
+      // Everything below is rolled back: DDL is transactional in Postgres, so
+      // the replica schema, the legacy type and the `search_path` override all
+      // disappear without touching the live schema or the pooled connection.
+      await client.query("begin");
+      await client.query(`create schema "${schema}"`);
+      // `pg_catalog` stays implicitly first; `public` is deliberately absent so
+      // an unqualified name in the migration can only resolve to the replica.
+      await client.query(`set local search_path to "${schema}"`);
+      await client.query(
+        `create type league_role as enum (${LEGACY_ROLE_LABELS.map((label) => `'${label}'`).join(", ")})`,
+      );
+      for (const table of ["members", "invitations"]) {
+        await client.query(
+          `create table ${table} (id text primary key, role league_role not null default 'member')`,
+        );
+        await client.query(
+          `insert into ${table} (id, role) values
+             ('legacy-admin', 'league_admin'),
+             ('legacy-commissioner', 'commissioner'),
+             ('legacy-steward', 'data_steward'),
+             ('legacy-member', 'member')`,
+        );
+      }
+
+      for (const statement of statements) {
+        await client.query(statement);
+      }
+
+      for (const table of ["members", "invitations"]) {
+        const { rows } = await client.query<{ id: string; role: string }>(
+          `select id, role::text as role from ${table} order by id`,
+        );
+        expect(rows, `${table} after replay`).toEqual([
+          { id: "legacy-admin", role: "commissioner" },
+          { id: "legacy-commissioner", role: "commissioner" },
+          { id: "legacy-member", role: "member" },
+          { id: "legacy-steward", role: "data_steward" },
+        ]);
+
+        // The remap must not have cost the column its default.
+        const { rows: defaults } = await client.query<{ def: string | null }>(
+          `select column_default as def from information_schema.columns
+             where table_schema = $1 and table_name = $2 and column_name = 'role'`,
+          [schema, table],
+        );
+        expect(defaults[0]?.def, `${table}.role default`).toContain("'member'");
+      }
+
+      // The type was rebuilt, not merely emptied of users: the label is gone,
+      // so a legacy value is unrepresentable rather than just unexpected.
+      const { rows: labels } = await client.query<{ label: string }>(
+        `select e.enumlabel as label
+           from pg_enum e
+           join pg_type t on t.oid = e.enumtypid
+           join pg_namespace n on n.oid = t.typnamespace
+          where t.typname = 'league_role' and n.nspname = $1
+          order by e.enumsortorder`,
+        [schema],
+      );
+      expect(labels.map((row) => row.label)).toEqual([
+        "commissioner",
+        "data_steward",
+        "member",
+      ]);
+    } finally {
+      try {
+        await client.query("rollback");
+      } finally {
+        client.release();
+      }
+    }
+  });
+
+  it("leaves no league_admin behind in the live database", async () => {
+    const { rows: labels } = await handle.pool.query<{ label: string }>(
+      `select e.enumlabel as label
+         from pg_enum e
+         join pg_type t on t.oid = e.enumtypid
+         join pg_namespace n on n.oid = t.typnamespace
+        where t.typname = 'league_role' and n.nspname = 'public'
+        order by e.enumsortorder`,
+    );
+    expect(labels.map((row) => row.label)).toEqual([
+      "commissioner",
+      "data_steward",
+      "member",
+    ]);
+
+    for (const table of ["members", "invitations"]) {
+      const { rows } = await handle.pool.query<{ count: string }>(
+        `select count(*)::text as count from ${table} where role::text = 'league_admin'`,
+      );
+      expect(rows[0]?.count, `${table} legacy rows`).toBe("0");
+    }
   });
 });
