@@ -14,13 +14,10 @@ import {
   PanelLeftOpen,
   ScrollText,
   Search,
-  Settings,
-  Smartphone,
   Ticket,
   Trophy,
   User,
   Users,
-  X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -38,12 +35,8 @@ import {
 import { AmbientAgentPanel } from "@/components/ambient-agent/ambient-agent-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  CommandPalette,
-  type CommandPaletteItem,
-} from "@/components/ui/command-palette";
+import type { CommandPaletteItem } from "@/components/ui/command-palette";
 import { Presence } from "@/components/ui/presence";
-import { Sheet } from "@/components/ui/sheet";
 import { Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 import type {
@@ -63,7 +56,6 @@ import {
   type LeagueSwitcherViewItem,
   sortLeagueSwitcherItems,
 } from "./league-switcher-model";
-import { LeagueSwitcherView } from "./league-switcher-view";
 import {
   type ActiveNavigationState,
   ARENA_NAVIGATION_SECTIONS,
@@ -80,24 +72,62 @@ import {
 } from "./scope";
 import { useActiveNavigationState } from "./use-active-navigation-state";
 
-const DeferredInstallAffordance = dynamic(
+/**
+ * Interaction-gated shell surfaces.
+ *
+ * Every one of these is unreachable until the user clicks or taps something,
+ * yet each was statically imported and so shipped in the initial JS of every
+ * single route — the command palette and both sheets dragged
+ * `@base-ui/react/dialog` along with them, and the scope switcher dragged the
+ * whole `LeagueSwitcherView`.
+ *
+ * `ssr: false` is load-bearing, not incidental. It is what keeps these modules
+ * out of the route's client-reference manifest, and the client-reference
+ * manifest is what the per-route JS budget in
+ * `scripts/check-mobile-pwa-budget.mjs` measures. An `ssr: true` dynamic import
+ * would still be needed for hydration and would still be counted.
+ *
+ * Each is rendered only while its surface is open, so the chunk is requested on
+ * the interaction rather than at import time. The always-visible triggers stay
+ * in this file — see `notifications-panel.tsx` and `account-panel.tsx` for why
+ * the tap-target gate requires that.
+ */
+const DeferredCommandPalette = dynamic(
   () =>
-    import("@/components/pwa/install-affordance").then(
-      (mod) => mod.InstallAffordance,
-    ),
+    import("@/components/ui/command-palette").then((mod) => mod.CommandPalette),
   { loading: () => null, ssr: false },
 );
 
-const DeferredSignOutButton = dynamic(
-  () => import("@/app/you/sign-out-button").then((mod) => mod.SignOutButton),
-  {
-    loading: () => (
-      <Button disabled size="sm" type="button" variant="outline">
-        Sign out
-      </Button>
-    ),
-    ssr: false,
-  },
+const DeferredMobileSwitcherSheet = dynamic(
+  () =>
+    import("./mobile-switcher-sheet").then((mod) => mod.MobileSwitcherSheet),
+  { loading: () => null, ssr: false },
+);
+
+const DeferredWireSheet = dynamic(
+  () => import("./wire-sheet").then((mod) => mod.WireSheet),
+  { loading: () => null, ssr: false },
+);
+
+const DeferredNotificationsPanel = dynamic(
+  () => import("./notifications-panel").then((mod) => mod.NotificationsPanel),
+  { loading: () => null, ssr: false },
+);
+
+const DeferredAccountPanel = dynamic(
+  () => import("./account-panel").then((mod) => mod.AccountPanel),
+  { loading: () => null, ssr: false },
+);
+
+/**
+ * The desktop scope popover renders the same `LeagueSwitcherView` as the mobile
+ * sheet and is equally interaction-gated. It has to be deferred too, or the
+ * static import here would keep the switcher in the main chunk and the mobile
+ * sheet's split would buy nothing.
+ */
+const DeferredLeagueSwitcherView = dynamic(
+  () => import("./league-switcher-view").then((mod) => mod.LeagueSwitcherView),
+  { loading: () => null, ssr: false },
 );
 
 type NavigationShellItem =
@@ -380,6 +410,25 @@ export function NavigationShellView({
         ?.focus();
     });
   }, []);
+  // These two surfaces mount on first open and then stay mounted, closed, for
+  // the rest of the session. That is deliberate: Base UI's dialog owns focus
+  // return to the trigger and the body scroll lock, and it releases both from
+  // effect cleanups that a hard unmount-on-close skips — closing The Wire with
+  // Escape left focus on `<body>`. Mounting lazily but not unmounting keeps the
+  // pre-split behaviour exactly while still keeping the chunk out of the
+  // initial load, which is the only thing the route budget measures.
+  const [commandPaletteTouched, setCommandPaletteTouched] = useState(false);
+  const [wireSheetTouched, setWireSheetTouched] = useState(false);
+  const openCommandPalette = useCallback(() => {
+    setCommandPaletteTouched(true);
+    setCommandPaletteOpen(true);
+  }, []);
+  const openWireSheet = useCallback(() => {
+    setWireSheetTouched(true);
+    setWireSheetOpen(true);
+  }, []);
+
+  useCommandPaletteHotkey(openCommandPalette);
 
   useEffect(() => {
     try {
@@ -456,7 +505,7 @@ export function NavigationShellView({
         notifications={shellNotifications}
         onMarkAllNotificationsRead={markAllNotificationsRead}
         onMotionChange={setMotionOff}
-        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        onOpenCommandPalette={openCommandPalette}
         onWireModeChange={setWireMode}
         realtimeStatus={shellRealtime.status}
         unreadNotificationCount={unreadNotificationCount}
@@ -471,7 +520,7 @@ export function NavigationShellView({
         notifications={shellNotifications}
         onMarkAllNotificationsRead={markAllNotificationsRead}
         onMotionChange={setMotionOff}
-        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        onOpenCommandPalette={openCommandPalette}
         onOpenSwitcher={() => setMobileSwitcherOpen(true)}
         onWireModeChange={setWireMode}
         presenceByLeagueId={shellRealtime.presenceByLeagueId}
@@ -485,7 +534,7 @@ export function NavigationShellView({
         collapsed={sidebarCollapsed}
         items={wireItems}
         motion={motionMode}
-        onOpenWire={() => setWireSheetOpen(true)}
+        onOpenWire={openWireSheet}
         realtimeStatus={shellRealtime.status}
       />
 
@@ -510,7 +559,7 @@ export function NavigationShellView({
       />
 
       {mobileSwitcherOpen ? (
-        <MobileSwitcherSheet
+        <DeferredMobileSwitcherSheet
           activeState={activeState}
           items={sortedItems}
           onClose={closeMobileSwitcher}
@@ -518,22 +567,55 @@ export function NavigationShellView({
         />
       ) : null}
 
-      <WireSheet
-        items={wireItems}
-        motion={motionMode}
-        onOpenChange={setWireSheetOpen}
-        open={wireSheetOpen}
-        realtimeStatus={shellRealtime.status}
-      />
+      {wireSheetTouched ? (
+        <DeferredWireSheet onOpenChange={setWireSheetOpen} open={wireSheetOpen}>
+          <ShellWireTicker
+            aria-label="The Wire"
+            expanded
+            items={wireItems}
+            motion={motionMode}
+            status={wireStatusForRealtime(shellRealtime.status, wireItems)}
+            variant="live"
+          />
+        </DeferredWireSheet>
+      ) : null}
 
-      <CommandPalette
-        items={commandItems}
-        onOpenChange={setCommandPaletteOpen}
-        onSelect={selectCommandItem}
-        open={commandPaletteOpen}
-      />
+      {commandPaletteTouched ? (
+        <DeferredCommandPalette
+          // The Cmd/Ctrl+K listener lives in this file now (see
+          // `useCommandPaletteHotkey`), because the palette is not mounted at
+          // all until it is first opened and so cannot own the shortcut that
+          // opens it. `hotkey={false}` stops the two from both handling the
+          // same keystroke once the chunk has loaded.
+          hotkey={false}
+          items={commandItems}
+          onOpenChange={setCommandPaletteOpen}
+          onSelect={selectCommandItem}
+          open={commandPaletteOpen}
+        />
+      ) : null}
     </div>
   );
+}
+
+/**
+ * Cmd/Ctrl+K used to be handled inside `CommandPalette`, which worked only
+ * because the palette was mounted on every route whether or not it was open.
+ * Now that it is deferred and rendered only while open, the shortcut that opens
+ * it has to live outside it.
+ */
+function useCommandPaletteHotkey(onOpen: () => void): void {
+  useEffect(() => {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        onOpen();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onOpen]);
 }
 
 export function shouldShowNavigationShell(pathname: string): boolean {
@@ -708,7 +790,7 @@ function DesktopSidebar({
                 collapsed ? "left-20" : "left-[18.5rem]",
               )}
             >
-              <LeagueSwitcherView
+              <DeferredLeagueSwitcherView
                 activeState={activeState}
                 items={items}
                 presenceByLeagueId={presenceByLeagueId}
@@ -926,44 +1008,6 @@ function MobileBottomTabs({
         />
       ))}
     </nav>
-  );
-}
-
-function MobileSwitcherSheet({
-  activeState,
-  items,
-  onClose,
-  presenceByLeagueId,
-}: {
-  readonly activeState: ActiveNavigationState;
-  readonly items: readonly LeagueSwitcherViewItem[];
-  readonly onClose: () => void;
-  readonly presenceByLeagueId: Readonly<Record<string, number>>;
-}) {
-  return (
-    <Sheet
-      closeLabel="Close scope switcher"
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-      open={true}
-      title={
-        <span className="grid gap-1">
-          <span className="eyebrow">Scope</span>
-          <span>Switch environments</span>
-        </span>
-      }
-    >
-      <LeagueSwitcherView
-        activeState={activeState}
-        className="border-0 bg-transparent p-0 shadow-none"
-        items={items}
-        presenceByLeagueId={presenceByLeagueId}
-        showHeader={false}
-      />
-    </Sheet>
   );
 }
 
@@ -1185,39 +1229,6 @@ function ShellWire({
   );
 }
 
-function WireSheet({
-  items,
-  motion,
-  onOpenChange,
-  open,
-  realtimeStatus,
-}: {
-  readonly items: readonly ShellWireItem[];
-  readonly motion: ShellMotionMode;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly open: boolean;
-  readonly realtimeStatus: ShellRealtimeStatus;
-}) {
-  return (
-    <Sheet
-      closeLabel="Close The Wire"
-      description="General NFL and fantasy headlines, or the same wire filtered to your rostered players."
-      onOpenChange={onOpenChange}
-      open={open}
-      title="The Wire"
-    >
-      <ShellWireTicker
-        aria-label="The Wire"
-        expanded
-        items={items}
-        motion={motion}
-        status={wireStatusForRealtime(realtimeStatus, items)}
-        variant="live"
-      />
-    </Sheet>
-  );
-}
-
 function ShellWireTicker({
   "aria-label": ariaLabel,
   className,
@@ -1435,19 +1446,12 @@ function NotificationsMenu({
   readonly unreadCount: number;
 }) {
   const [open, setOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (open) {
-      panelRef.current?.focus();
-    }
-  }, [open]);
-
-  function closePanel() {
+  const closePanel = useCallback(() => {
     setOpen(false);
     triggerRef.current?.focus();
-  }
+  }, []);
 
   return (
     <div className="relative shrink-0">
@@ -1471,112 +1475,20 @@ function NotificationsMenu({
         />
       ) : null}
       {open ? (
-        <div
-          aria-labelledby="notifications-panel-title"
-          className="panel fixed inset-x-3 bottom-[calc(var(--space-3)+env(safe-area-inset-bottom))] z-50 grid max-h-[80dvh] gap-3 overflow-y-auto p-3 shadow-overlay md:absolute md:inset-x-auto md:right-0 md:bottom-auto md:top-12 md:w-80"
-          data-slot="notifications-panel"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              closePanel();
-            }
-          }}
-          ref={panelRef}
-          role="dialog"
-          tabIndex={-1}
-        >
-          <header className="flex items-start justify-between gap-3">
-            <div>
-              <h2
-                className="font-display text-sm font-semibold text-foreground"
-                id="notifications-panel-title"
-              >
-                Notifications
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Live shell notices and recent league activity.
-              </p>
-            </div>
-            <Button
-              aria-label="Close notifications"
-              onClick={closePanel}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <X aria-hidden="true" />
-            </Button>
-          </header>
-          <div className="flex items-center justify-between gap-3">
-            <span className="metric text-xs text-muted-foreground">
-              {unreadCount > 0 ? `${unreadCount} unread` : "All read"}
-            </span>
-            <Button
-              disabled={unreadCount === 0}
-              onClick={onMarkAllRead}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              Mark all read
-            </Button>
-          </div>
-          {realtimeStatus === "reconnecting" || realtimeStatus === "offline" ? (
-            <div
-              aria-live="polite"
-              className="cell flex min-h-11 items-center gap-2 border-warning/40 bg-warning/10 px-3 py-2 text-sm text-muted-foreground"
-            >
-              <Presence
-                label={realtimeStatusLabel(realtimeStatus)}
-                status={realtimeStatus === "offline" ? "offline" : "idle"}
-              />
-              <span>{realtimeStatusLabel(realtimeStatus)}</span>
-            </div>
-          ) : null}
-          {notifications.length === 0 ? (
-            <div className="cell grid gap-1 p-4 text-sm text-muted-foreground">
-              <p className="font-display font-semibold text-foreground">
-                All caught up.
-              </p>
-              <p>The notification stream is quiet.</p>
-            </div>
-          ) : (
-            <ul className="grid gap-2">
-              {notifications.map((notification) => (
-                <li key={notification.id}>
-                  <Link
-                    className={cn(
-                      "cell grid min-h-14 gap-1 p-3 text-sm outline-none transition-colors hover:bg-primary/10 focus-visible:shadow-[var(--focus-ring-shadow)]",
-                      !notification.read &&
-                        "border-primary/40 shadow-[inset_3px_0_0_var(--primary),var(--bevel)]",
-                    )}
-                    href={notification.href}
-                    onClick={closePanel}
-                  >
-                    <span className="flex items-start justify-between gap-3">
-                      <span className="font-display font-semibold text-foreground">
-                        {notification.title}
-                      </span>
-                      <span className="metric shrink-0 text-xs text-muted-foreground">
-                        {notification.timestamp}
-                      </span>
-                    </span>
-                    <span className="text-muted-foreground">
-                      {notification.detail}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link
-            className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
-            href="/you"
-            onClick={closePanel}
-          >
-            <Settings className="size-4" aria-hidden="true" />
-            Notification settings
-          </Link>
-        </div>
+        <DeferredNotificationsPanel
+          notifications={notifications}
+          onClose={closePanel}
+          onMarkAllRead={onMarkAllRead}
+          realtimeNotice={
+            realtimeStatus === "reconnecting" || realtimeStatus === "offline"
+              ? {
+                  label: realtimeStatusLabel(realtimeStatus),
+                  status: realtimeStatus === "offline" ? "offline" : "idle",
+                }
+              : null
+          }
+          unreadCount={unreadCount}
+        />
       ) : null}
     </div>
   );
@@ -1596,29 +1508,12 @@ function AccountMenu({
   readonly onMotionChange: (motionOff: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const connectedProviders = useMemo(() => {
-    const providerLabels = new Map<string, string>();
-    for (const item of items) {
-      providerLabels.set(item.provider, item.providerLabel);
-    }
-    return [...providerLabels.entries()].map(([provider, label]) => ({
-      label,
-      provider,
-    }));
-  }, [items]);
 
-  useEffect(() => {
-    if (open) {
-      panelRef.current?.focus();
-    }
-  }, [open]);
-
-  function closePanel() {
+  const closePanel = useCallback(() => {
     setOpen(false);
     triggerRef.current?.focus();
-  }
+  }, []);
 
   return (
     <div className="relative shrink-0">
@@ -1635,98 +1530,24 @@ function AccountMenu({
         <CircleUserRound aria-hidden="true" />
       </Button>
       {open ? (
-        <div
-          aria-labelledby="account-panel-title"
-          className="panel fixed inset-x-3 bottom-[calc(var(--space-3)+env(safe-area-inset-bottom))] z-50 grid max-h-[82dvh] gap-4 overflow-y-auto p-3 shadow-overlay md:absolute md:inset-x-auto md:right-0 md:bottom-auto md:top-12 md:w-80"
-          data-slot="account-panel"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              closePanel();
-            }
-          }}
-          ref={panelRef}
-          role="dialog"
-          tabIndex={-1}
-        >
-          <header className="flex items-start justify-between gap-3">
-            <div>
-              <h2
-                className="font-display text-sm font-semibold text-foreground"
-                id="account-panel-title"
-              >
-                Account
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {scopeDisplayName(activeState, activeLeague)}
-              </p>
-            </div>
-            <Button
-              aria-label="Close account menu"
-              onClick={closePanel}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <X aria-hidden="true" />
-            </Button>
-          </header>
-          <div className="cell grid gap-2 p-3">
-            <span className="eyebrow">Current scope</span>
-            <div className="flex min-w-0 items-center gap-3">
-              <ScopeAvatar
-                activeLeague={activeLeague}
-                activeState={activeState}
-              />
-              <div className="min-w-0">
-                <p className="truncate font-display text-sm font-semibold">
-                  {scopeDisplayName(activeState, activeLeague)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {activeLeague?.providerLabel ?? "Global"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <span className="eyebrow">Connected providers</span>
-            <div className="flex flex-wrap gap-2">
-              {connectedProviders.length > 0 ? (
-                connectedProviders.map((provider) => (
-                  <Tag key={provider.provider}>{provider.label}</Tag>
-                ))
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  No connected league providers yet.
-                </span>
-              )}
-            </div>
-          </div>
-
-          <MotionToggle motionOff={motionOff} onMotionChange={onMotionChange} />
-
-          <DeferredInstallAffordance />
-
-          <div className="grid gap-2 border-t border-[var(--hair)] pt-3">
-            <Link
-              className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
-              href="/you"
-              onClick={closePanel}
-            >
-              <Settings className="size-4" aria-hidden="true" />
-              Account and settings
-            </Link>
-            <Link
-              className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-primary/10 hover:text-foreground focus-visible:shadow-[var(--focus-ring-shadow)]"
-              href="/you"
-              onClick={closePanel}
-            >
-              <Smartphone className="size-4" aria-hidden="true" />
-              Push, install, and providers
-            </Link>
-            <DeferredSignOutButton />
-          </div>
-        </div>
+        <DeferredAccountPanel
+          items={items}
+          motionToggle={
+            <MotionToggle
+              motionOff={motionOff}
+              onMotionChange={onMotionChange}
+            />
+          }
+          onClose={closePanel}
+          scopeAvatar={
+            <ScopeAvatar
+              activeLeague={activeLeague}
+              activeState={activeState}
+            />
+          }
+          scopeName={scopeDisplayName(activeState, activeLeague)}
+          scopeProviderLabel={activeLeague?.providerLabel ?? "Global"}
+        />
       ) : null}
     </div>
   );

@@ -332,7 +332,9 @@ describe("NavigationShellView", () => {
     const trigger = screen.getByRole("button", { name: "Open scope switcher" });
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole("dialog", {
+    // The sheet is `next/dynamic`-loaded on the interaction, so it arrives a
+    // microtask after the click rather than in the same commit.
+    const dialog = await screen.findByRole("dialog", {
       name: /Switch environments/i,
     });
     expect(dialog.getAttribute("data-slot")).toBe("sheet");
@@ -413,7 +415,7 @@ describe("NavigationShellView", () => {
     ).toBeDefined();
   });
 
-  it("surfaces notification chrome with unread state and mark-read action", () => {
+  it("surfaces notification chrome with unread state and mark-read action", async () => {
     render(
       <NavigationShellView
         activeState={deriveActiveNavigationState("/leagues/league-a")}
@@ -427,7 +429,9 @@ describe("NavigationShellView", () => {
       screen.getAllByRole("button", { name: "Open notifications" })[0],
     );
 
-    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    // The panel is `next/dynamic`-loaded on the interaction; only its trigger
+    // and unread badge are in the initial render.
+    const dialog = await screen.findByRole("dialog", { name: "Notifications" });
     expect(within(dialog).getByText("1 unread")).toBeDefined();
     expect(within(dialog).getByText("League wire online")).toBeDefined();
 
@@ -500,7 +504,7 @@ describe("NavigationShellView", () => {
     fireEvent.click(
       screen.getAllByRole("button", { name: "Open notifications" })[0],
     );
-    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    const dialog = await screen.findByRole("dialog", { name: "Notifications" });
     expect(
       within(dialog)
         .getByRole("link", { name: /Settle it: lore vote opened/i })
@@ -794,6 +798,94 @@ describe("NavigationShellView", () => {
     // RSC cache and re-download the bundle, which is the whole point of the
     // palette staying on the client router.
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("opens the command palette from Cmd/Ctrl+K", async () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    // The palette is only rendered while open now, so it can no longer own the
+    // shortcut that opens it — the shell does. Without that the hotkey would
+    // silently do nothing.
+    expect(
+      screen.queryByRole("dialog", { name: "Command palette" }),
+    ).toBeNull();
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: "k" });
+
+    expect(
+      await screen.findByRole("dialog", { name: "Command palette" }),
+    ).toBeDefined();
+  });
+
+  it("opens the account panel on demand with the connected providers", async () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Open account menu" })[0],
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Account" });
+    // "ESPN" appears twice: as the active scope's provider label and as a
+    // connected-provider tag.
+    expect(within(dialog).getAllByText("ESPN").length).toBe(2);
+    expect(within(dialog).getByText("Sleeper")).toBeDefined();
+    // Rendered by the shell and handed in as a node, so it must survive the
+    // move into the deferred chunk.
+    expect(within(dialog).getByRole("switch", { name: "Reduced motion" }));
+    expect(
+      within(dialog).getAllByText("NHS Alumni Annual").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("opens the expanded wire sheet from the mobile wire strip", async () => {
+    render(
+      <NavigationShellView
+        activeState={deriveActiveNavigationState("/leagues/league-a")}
+        items={items}
+      >
+        <main>League home</main>
+      </NavigationShellView>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Open The Wire" });
+    fireEvent.click(trigger);
+
+    const dialog = await screen.findByRole("dialog", { name: "The Wire" });
+    expect(dialog.getAttribute("data-slot")).toBe("sheet");
+    // The ticker is passed as children from the shell rather than imported by
+    // the lazy module, so the sheet must still receive it — in its expanded
+    // list form, not the marquee strip.
+    const ticker = dialog.querySelector('[data-slot="wire-ticker"]');
+    expect(ticker).not.toBeNull();
+    expect(ticker?.getAttribute("aria-label")).toBe("The Wire");
+    expect(ticker?.querySelector('[data-slot="wire-marquee"]')).toBeNull();
+
+    // The sheet is mounted lazily but then stays mounted and closed, exactly as
+    // it behaved when statically imported, so Escape must still dismiss it
+    // rather than leave a dialog stranded in the tree.
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "The Wire" })).toBeNull();
+    });
+    // Re-opening must not need a second chunk fetch or a remount.
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByRole("dialog", { name: "The Wire" }),
+    ).toBeDefined();
   });
 });
 
