@@ -13,6 +13,7 @@ import {
   type ResultsProvider,
   type ResultsProviderInput,
 } from "@/betting";
+import { openPickWeek } from "@/betting/pickem";
 import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -26,6 +27,7 @@ import {
   leagues,
   members,
   oddsSnapshots,
+  picks,
   type User,
   users,
 } from "@/db/schema";
@@ -165,88 +167,113 @@ async function seedRivalSettledSingle() {
   });
 }
 
+/**
+ * Puts a Pick 'em entry on the SAME event for each league.
+ *
+ * The arena ranks on graded picks now, not on settled slips, so without this
+ * the rebuild that follows settlement finds no picks, produces no standings,
+ * and emits no swing -- and the fan-out this test exists to prove never fires.
+ *
+ * `user` takes the winner and `rivalUser` the loser, so after grading the
+ * focus league passes the rival and the rank swing is real rather than staged.
+ */
+async function seedPickemEntries(eventId: string, marketId: string) {
+  const [snapshot] = await handle.db
+    .select({ id: oddsSnapshots.id })
+    .from(oddsSnapshots)
+    .where(eq(oddsSnapshots.marketId, marketId))
+    .limit(1);
+
+  for (const entry of [
+    { leagueId: league.id, selection: "home" as const, userId: user.id },
+    {
+      leagueId: rivalLeague.id,
+      selection: "away" as const,
+      userId: rivalUser.id,
+    },
+  ]) {
+    const week = await openPickWeek(handle.db, {
+      closesAt: new Date("2037-09-14T00:00:00.000Z"),
+      leagueId: entry.leagueId,
+      maxPicksPerUser: 1,
+      opensAt: new Date("2037-09-01T00:00:00.000Z"),
+      rosterSize: 1,
+      season: 2037,
+      week: 1,
+    });
+    await withLeagueContext(handle.db, entry.leagueId, (tx) =>
+      tx.insert(picks).values({
+        idempotencyKey: `${marker}:pick:${entry.leagueId}`,
+        leagueId: entry.leagueId,
+        marketId,
+        oddsSnapshotId: snapshot.id,
+        pickWeekId: week.pickWeekId,
+        selection: entry.selection,
+        userId: entry.userId,
+      }),
+    );
+  }
+  return eventId;
+}
+
 async function seedPriorArenaSnapshot(seasonId: string) {
   const computedAt = new Date("2037-09-07T21:00:00.000Z");
   await handle.db.insert(arenaStandings).values([
     {
       computedAt,
-      currentBalanceCents: 990_000,
+      accuracyBps: 6_250,
+      correctPicks: 25,
       kind: "league",
       leagueId: league.id,
-      netPnlCents: -10_000,
-      pushVoidSlipCount: 0,
+      eligibleWeeks: 1,
       rank: 2,
       rankDelta: 0,
-      roiBps: -10_000,
       seasonId,
-      settledSlipCount: 0,
       subjectId: league.id,
-      totalReturnCents: 0,
-      totalStakeCents: 10_000,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 0,
-      wonSlipCount: 0,
+      scorablePicks: 40,
     },
     {
       computedAt,
-      currentBalanceCents: 1_005_000,
+      accuracyBps: 6_250,
+      correctPicks: 25,
       kind: "league",
       leagueId: rivalLeague.id,
-      netPnlCents: 5_000,
-      pushVoidSlipCount: 0,
+      eligibleWeeks: 1,
       rank: 1,
       rankDelta: 0,
-      roiBps: 5_000,
       seasonId,
-      settledSlipCount: 1,
       subjectId: rivalLeague.id,
-      totalReturnCents: 15_000,
-      totalStakeCents: 10_000,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
-      wonSlipCount: 1,
+      scorablePicks: 40,
     },
     {
       computedAt,
-      currentBalanceCents: 990_000,
+      accuracyBps: 6_250,
+      correctPicks: 25,
       kind: "individual",
-      netPnlCents: -10_000,
-      pushVoidSlipCount: 0,
+      eligibleWeeks: 1,
       rank: 2,
       rankDelta: 0,
-      roiBps: -10_000,
       seasonId,
-      settledSlipCount: 0,
       subjectId: user.id,
-      totalReturnCents: 0,
-      totalStakeCents: 10_000,
       userId: user.id,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 0,
-      wonSlipCount: 0,
+      scorablePicks: 40,
     },
     {
       computedAt,
-      currentBalanceCents: 1_005_000,
+      accuracyBps: 6_250,
+      correctPicks: 25,
       kind: "individual",
-      netPnlCents: 5_000,
-      pushVoidSlipCount: 0,
+      eligibleWeeks: 1,
       rank: 1,
       rankDelta: 0,
-      roiBps: 5_000,
       seasonId,
-      settledSlipCount: 1,
       subjectId: rivalUser.id,
-      totalReturnCents: 15_000,
-      totalStakeCents: 10_000,
       userId: rivalUser.id,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
-      wonSlipCount: 1,
+      scorablePicks: 40,
     },
   ]);
 }
@@ -331,6 +358,7 @@ describe("betting game.final settlement job", () => {
       startsAt: new Date("2037-09-01T00:00:00.000Z"),
     });
     await seedRivalSettledSingle();
+    await seedPickemEntries(seeded.event.id, seeded.placed.legs[0].marketId);
     await seedPriorArenaSnapshot(arenaSeason.id);
     const push = new RecordingPushNotifier();
     const realtime = new RecordingRealtimePublisher();

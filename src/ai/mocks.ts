@@ -161,10 +161,9 @@ function teamRecord(team: LeagueContextTeam): string {
   return `${team.wins}-${team.losses}-${team.ties}`;
 }
 
-function formatMoney(cents: number): string {
-  const sign = cents < 0 ? "-" : "";
-  const absolute = Math.abs(cents);
-  return `${sign}$${Math.round(absolute / 100).toLocaleString("en-US")}`;
+/** Basis points to a human percentage: 6250 -> "62.5%". */
+function formatAccuracy(bps: number): string {
+  return `${(bps / 100).toFixed(1)}%`;
 }
 
 function formatStatNumber(value: number): string {
@@ -646,14 +645,14 @@ function arenaRecapStructure({
             `${anchorName} sees no rank-change mover yet, so the board is daring someone to move it.`,
           ],
     fieldLeader: leader
-      ? `${leader.displayName} leads the field at rank ${leader.rank} with ${formatMoney(leader.netPnlCents)} net.`
+      ? `${leader.displayName} leads the field at rank ${leader.rank} with ${formatAccuracy(leader.accuracyBps)} accuracy.`
       : `${context.league.name} has no arena field leader until standings materialize.`,
     leaguePosition: standing
-      ? `${anchorName} is ${standing.rank} in the arena with ${formatMoney(standing.netPnlCents)} net.`
+      ? `${anchorName} is ${standing.rank} in the arena with ${formatAccuracy(standing.accuracyBps)} accuracy.`
       : `${context.league.name} is waiting on an arena standing.`,
     needle: `${teamNeedle} This stays play-money bragging rights, not a payout pitch.`,
     rivalWatch: headToHead
-      ? `${headToHead.anchor.displayName} is ${headToHead.comparison} ${headToHead.rival.displayName} by ${formatMoney(headToHead.marginCents)} with ${headToHead.rankGap} rank slot${headToHead.rankGap === 1 ? "" : "s"} between them.`
+      ? `${headToHead.anchor.displayName} is ${headToHead.comparison} ${headToHead.rival.displayName} by ${formatAccuracy(headToHead.marginBps)} with ${headToHead.rankGap} rank slot${headToHead.rankGap === 1 ? "" : "s"} between them.`
       : `${anchorName} needs a second league on the board before the natural rival forms.`,
     type: "arena_recap",
   };

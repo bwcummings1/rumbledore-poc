@@ -8,6 +8,10 @@ import {
 } from "@/betting/arena";
 import { createBettingSettlementDependencies } from "@/betting/dependencies";
 import {
+  gradePicksForEvent,
+  loadGradableEvent,
+} from "@/betting/pickem-grading";
+import {
   type BettingSettlementDependencies,
   type SettleBettingEventResult,
   settleBettingEvent,
@@ -49,8 +53,10 @@ interface PlannedArenaStandingsSwingEvent {
 
 export type BettingSettleGameFinalResponse = Omit<
   SettleBettingEventResult,
-  "ledgerEntries" | "settlements"
+  "eventResult" | "ledgerEntries" | "settlements"
 > & {
+  /** Pick 'em outcomes written for this event. */
+  gradedPicks: { correct: number; incorrect: number; void: number };
   arenaLeaderboardUpdates: ArenaLeaderboardUpdatedPayload[];
   arenaRecapEvents: PlannedArenaStandingsSwingEvent[];
   arenaSwingSignals: ArenaStandingsSwingPayload[];
@@ -347,9 +353,9 @@ async function publishSettlementRealtimeSignals({
       computedAt: arenaResult.computedAt,
       seasonId: arenaResult.season.id,
       swings: swings.map((swing) => ({
+        accuracyBps: swing.accuracyBps,
         kind: swing.kind,
         leagueId: swing.leagueId,
-        netPnlCents: swing.netPnlCents,
         newRank: swing.newRank,
         oldRank: swing.oldRank,
         rankDelta: swing.rankDelta,
@@ -530,15 +536,45 @@ export async function runBettingSettleGameFinal({
       leagueId: data.leagueId,
     },
   });
+  // Grade Pick 'em entries for the same event. This is a separate engine that
+  // happens to be triggered by the same signal: bet slips belong to the
+  // bankroll being removed, picks are what the arena now ranks on. It reuses
+  // the result settlement already fetched rather than paying for a second
+  // provider call that could disagree.
+  const pickGrading = result.eventResult
+    ? await gradePicksForEvent(deps.db, {
+        bettingEventId: result.bettingEventId,
+        result: result.eventResult,
+      })
+    : {
+        affectedLeagueIds: [] as readonly string[],
+        correct: 0,
+        incorrect: 0,
+        void: 0,
+      };
+
   let arenaLeaderboardUpdates: ArenaLeaderboardUpdatedPayload[] = [];
   let arenaRecapEvents: PlannedArenaStandingsSwingEvent[] = [];
   let arenaSwingSignals: ArenaStandingsSwingPayload[] = [];
   let leagueLeaderboardUpdates: LeagueLeaderboardUpdatedPayload[] = [];
 
-  if (result.finalizedSlips > 0) {
+  // Either engine can move the board, and they move it for different reasons:
+  // settled slips still drive the league bankroll leaderboard, while graded
+  // picks are what the ARENA now ranks on. Gating the whole block on
+  // `finalizedSlips > 0` would mean a game that graded picks but settled no
+  // slips left the arena stale until something else happened to rebuild it.
+  const gradedAnyPicks = pickGrading.affectedLeagueIds.length > 0;
+  if (result.finalizedSlips > 0 || gradedAnyPicks) {
     const details = await loadSettlementNotificationDetails(deps.db, result);
+    // Bankroll weeks locate the season for slips; the event's own kickoff
+    // locates it for picks, which have no bankroll week to point at.
+    const event = await loadGradableEvent(deps.db, result.bettingEventId);
+    const weekStarts = [
+      ...details.map((detail) => detail.weekStart),
+      ...(gradedAnyPicks && event ? [event.startTime] : []),
+    ];
     const arenaSeasonIds = await findArenaSeasonIdsForWeekStarts(deps.db, {
-      weekStarts: details.map((detail) => detail.weekStart),
+      weekStarts,
     });
     const arenaResults = await rebuildAllArenaStandings(deps.db, {
       seasonIds: arenaSeasonIds,
@@ -589,6 +625,11 @@ export async function runBettingSettleGameFinal({
     eventName: JOB_EVENTS.gameFinal,
     finalizedSlips: result.finalizedSlips,
     gradedLegs: result.gradedLegs,
+    gradedPicks: {
+      correct: pickGrading.correct,
+      incorrect: pickGrading.incorrect,
+      void: pickGrading.void,
+    },
     leagueId: result.leagueId,
     ledgerEntryIds: result.ledgerEntries.map((entry) => entry.id),
     leagueLeaderboardUpdates,

@@ -20,6 +20,7 @@ import {
   leagues,
   users,
 } from "@/db/schema";
+import { scorePickWeek, WEEKLY_PARTICIPATION_FLOOR } from "./pickem-scoring";
 
 const DEFAULT_LIMIT = 25;
 const DEFAULT_MOVEMENT_LIMIT = 3;
@@ -28,23 +29,22 @@ const MAX_LIMIT = 100;
 type ArenaStandingKind = "league" | "individual";
 type ArenaSeasonStatus = "active" | "complete" | "upcoming";
 
-interface UserLeagueMetricRow {
-  current_balance_cents: number | string | null;
+/**
+ * One row per (league, week, user). A week in which nobody picked still
+ * produces a row, with `user_id` null -- the league denominator must count it.
+ */
+interface PickMetricRow {
+  correct_picks: number | string | null;
   league_id: string;
   league_name: string;
-  net_pnl_cents: number | string | null;
-  push_void_slip_count: number | string | null;
-  roi_bps: number | string | null;
-  settled_slip_count: number | string | null;
-  total_return_cents: number | string | null;
-  total_stake_cents: number | string | null;
-  user_display_name: string;
-  user_email: string;
-  user_id: string;
-  weeks_played: number | string | null;
-  weeks_survived: number | string | null;
-  win_rate_bps: number | string | null;
-  won_slip_count: number | string | null;
+  max_picks_per_user: number | string;
+  pick_week_id: string;
+  roster_size: number | string;
+  submitted_picks: number | string | null;
+  user_display_name: string | null;
+  user_email: string | null;
+  user_id: string | null;
+  void_picks: number | string | null;
 }
 
 interface LeagueListRow {
@@ -53,22 +53,18 @@ interface LeagueListRow {
 }
 
 interface ComputedStanding {
-  currentBalanceCents: number;
+  accuracyBps: number;
+  correctPicks: number;
+  eligibleWeeks: number;
   kind: ArenaStandingKind;
   leagueId: string | null;
-  netPnlCents: number;
-  pushVoidSlipCount: number;
   rank: number;
-  roiBps: number;
-  settledSlipCount: number;
+  scorablePicks: number;
   subjectId: string;
-  totalReturnCents: number;
-  totalStakeCents: number;
+  submittedPicks: number;
   userId: string | null;
+  voidPicks: number;
   weeksPlayed: number;
-  weeksSurvived: number;
-  winRateBps: number;
-  wonSlipCount: number;
 }
 
 export interface EnsureArenaSeasonInput {
@@ -78,22 +74,18 @@ export interface EnsureArenaSeasonInput {
 }
 
 export interface ArenaLeaderboardRow {
-  currentBalanceCents: number;
+  accuracyBps: number;
+  correctPicks: number;
   displayName: string;
+  eligibleWeeks: number;
   id: string;
-  netPnlCents: number;
   previousRank: number | null;
-  pushVoidSlipCount: number;
   rank: number;
   rankDelta: number;
-  roiBps: number;
-  settledSlipCount: number;
-  totalReturnCents: number;
-  totalStakeCents: number;
+  scorablePicks: number;
+  submittedPicks: number;
+  voidPicks: number;
   weeksPlayed: number;
-  weeksSurvived: number;
-  winRateBps: number;
-  wonSlipCount: number;
 }
 
 export interface ArenaSeasonSummary {
@@ -107,36 +99,36 @@ export interface ArenaSeasonSummary {
 }
 
 export interface ArenaMover {
+  accuracyBps: number;
   displayName: string;
   id: string;
   kind: ArenaStandingKind;
-  netPnlCents: number;
   previousRank: number;
   rank: number;
   rankDelta: number;
 }
 
 export interface ArenaLeagueRivalOption {
+  accuracyBps: number;
   displayName: string;
   id: string;
-  netPnlCents: number;
   rank: number;
 }
 
 export interface ArenaHeadToHeadLeague extends ArenaLeagueRivalOption {
-  currentBalanceCents: number;
+  correctPicks: number;
+  eligibleWeeks: number;
   rankDelta: number;
-  roiBps: number;
+  scorablePicks: number;
   weeksPlayed: number;
-  weeksSurvived: number;
-  winRateBps: number;
 }
 
 export interface ArenaHeadToHead {
   anchor: ArenaHeadToHeadLeague;
   comparison: "leading" | "tied" | "trailing";
   leader: ArenaHeadToHeadLeague | null;
-  marginCents: number;
+  /** Accuracy gap in basis points. Absolute, so it never encodes direction. */
+  marginBps: number;
   rankGap: number;
   rival: ArenaHeadToHeadLeague;
 }
@@ -166,9 +158,9 @@ export interface RebuildArenaStandingsResult extends ArenaLeaderboardData {
 }
 
 export interface ArenaStandingSwingSignal {
+  accuracyBps: number;
   kind: ArenaStandingKind;
   leagueId: string | null;
-  netPnlCents: number;
   newRank: number;
   oldRank: number;
   rankDelta: number;
@@ -348,131 +340,55 @@ function seasonSummary(
   };
 }
 
-async function loadUserLeagueMetrics(
+/**
+ * Loads graded pick counts for every league, one row per (league, week, user).
+ *
+ * Runs per league inside `withLeagueContext` because `pick_weeks` and `picks`
+ * are RLS-protected: a single cross-league query would return nothing.
+ *
+ * The LEFT JOIN is load-bearing. A week in which nobody picked still yields a
+ * row (with a null user), and that week's full denominator still counts
+ * against the league. An inner join would drop it and flatter every league
+ * that skipped a week -- the exact opposite of the intended rule.
+ */
+async function loadPickMetrics(
   db: Db,
   season: Pick<ArenaSeason, "endsAt" | "startsAt">,
-): Promise<UserLeagueMetricRow[]> {
+): Promise<PickMetricRow[]> {
   const leagueRows: LeagueListRow[] = await db
     .select({ id: leagues.id, name: leagues.name })
     .from(leagues)
     .orderBy(leagues.name);
-  const rows: UserLeagueMetricRow[] = [];
+  const rows: PickMetricRow[] = [];
 
   for (const league of leagueRows) {
     const leagueRowsForSeason = await withLeagueContext(db, league.id, (tx) =>
-      executeRows<
-        Omit<UserLeagueMetricRow, "league_id" | "league_name"> & {
-          league_id: string;
-          league_name: string;
-        }
-      >(
+      executeRows<PickMetricRow>(
         tx,
         sql`
-      with season_weeks as (
-        select
-          bw.id,
-          bw.league_id,
-          bw.user_id,
-          bw.floor_cents,
-          bw.week_start,
-          latest.running_balance_cents as latest_balance_cents
-        from bankroll_weeks bw
-        join lateral (
-          select bl.running_balance_cents
-          from bankroll_ledger bl
-          where bl.bankroll_week_id = bw.id
-            and bl.league_id = bw.league_id
-            and bl.user_id = bw.user_id
-          order by bl.seq desc
-          limit 1
-        ) latest on true
-        where bw.league_id = ${league.id}
-          and bw.week_start >= ${season.startsAt}
-          and bw.week_start < ${season.endsAt}
-      ),
-      latest_user_league_week as (
-        select distinct on (league_id, user_id)
-          league_id,
-          user_id,
-          floor_cents,
-          latest_balance_cents
-        from season_weeks
-        order by league_id, user_id, week_start desc
-      ),
-      week_counts as (
-        select
-          league_id,
-          user_id,
-          count(*)::integer as weeks_played,
-          count(*) filter (where latest_balance_cents > 0)::integer as weeks_survived
-        from season_weeks
-        group by league_id, user_id
-      ),
-      ledger_totals as (
-        select
-          sw.league_id,
-          sw.user_id,
-          coalesce(sum(case when bl.entry_type = 'bet_stake' then -bl.amount_cents else 0 end), 0)::integer as total_stake_cents,
-          coalesce(sum(case when bl.entry_type in ('bet_payout', 'bet_refund') then bl.amount_cents else 0 end), 0)::integer as total_return_cents
-        from season_weeks sw
-        join bankroll_ledger bl
-          on bl.bankroll_week_id = sw.id
-          and bl.league_id = sw.league_id
-          and bl.user_id = sw.user_id
-        group by sw.league_id, sw.user_id
-      ),
-      slip_totals as (
-        select
-          bw.league_id,
-          bw.user_id,
-          count(bs.id)::integer as settled_slip_count,
-          count(bs.id) filter (where bs.status in ('won', 'partial_void'))::integer as won_slip_count,
-          count(bs.id) filter (where bs.status in ('push', 'void'))::integer as push_void_slip_count
-        from bankroll_weeks bw
-        join bet_slips bs
-          on bs.bankroll_week_id = bw.id
-          and bs.league_id = bw.league_id
-          and bs.user_id = bw.user_id
-        where bw.league_id = ${league.id}
-          and bw.week_start >= ${season.startsAt}
-          and bw.week_start < ${season.endsAt}
-          and bs.status <> 'pending'
-        group by bw.league_id, bw.user_id
-      )
       select
-        latest.league_id,
+        pw.league_id,
         ${league.name}::text as league_name,
-        latest.user_id,
+        pw.id as pick_week_id,
+        pw.roster_size,
+        pw.max_picks_per_user,
+        p.user_id,
         u.display_name as user_display_name,
         u.email as user_email,
-        latest.latest_balance_cents::integer as current_balance_cents,
-        (latest.latest_balance_cents - latest.floor_cents)::integer as net_pnl_cents,
-        coalesce(ledger.total_stake_cents, 0)::integer as total_stake_cents,
-        coalesce(ledger.total_return_cents, 0)::integer as total_return_cents,
-        coalesce(slips.settled_slip_count, 0)::integer as settled_slip_count,
-        coalesce(slips.won_slip_count, 0)::integer as won_slip_count,
-        coalesce(slips.push_void_slip_count, 0)::integer as push_void_slip_count,
-        week_counts.weeks_played,
-        week_counts.weeks_survived,
-        case
-          when coalesce(ledger.total_stake_cents, 0) = 0 then 0
-          else round(((coalesce(ledger.total_return_cents, 0) - ledger.total_stake_cents)::numeric / ledger.total_stake_cents) * 10000)::integer
-        end as roi_bps,
-        case
-          when coalesce(slips.settled_slip_count, 0) = 0 then 0
-          else round((coalesce(slips.won_slip_count, 0)::numeric / slips.settled_slip_count) * 10000)::integer
-        end as win_rate_bps
-      from latest_user_league_week latest
-      join week_counts
-        on week_counts.league_id = latest.league_id
-        and week_counts.user_id = latest.user_id
-      join users u on u.id = latest.user_id
-      left join ledger_totals ledger
-        on ledger.league_id = latest.league_id
-        and ledger.user_id = latest.user_id
-      left join slip_totals slips
-        on slips.league_id = latest.league_id
-        and slips.user_id = latest.user_id
+        count(p.id) filter (where p.status = 'correct')::int as correct_picks,
+        count(p.id) filter (where p.status = 'void')::int as void_picks,
+        count(p.id)::int as submitted_picks
+      from pick_weeks pw
+      left join picks p
+        on p.pick_week_id = pw.id
+        and p.league_id = pw.league_id
+      left join users u on u.id = p.user_id
+      where pw.league_id = ${league.id}
+        and pw.opens_at >= ${season.startsAt}
+        and pw.opens_at < ${season.endsAt}
+      group by
+        pw.league_id, pw.id, pw.roster_size, pw.max_picks_per_user,
+        p.user_id, u.display_name, u.email
     `,
       ),
     );
@@ -482,139 +398,187 @@ async function loadUserLeagueMetrics(
   return rows;
 }
 
+/**
+ * Orders standings by accuracy and assigns standard competition ranks.
+ *
+ * Ties SHARE a rank (1,1,3) rather than being broken arbitrarily. The prize
+ * rule is an even split among tied entries, so inventing an order here would
+ * misreport who actually won. `subjectId` still breaks the sort for stable
+ * output, but it does not break the rank.
+ */
 function rankStandings(
   rows: Omit<ComputedStanding, "rank">[],
 ): ComputedStanding[] {
-  return [...rows]
-    .sort((a, b) => {
-      const net = b.netPnlCents - a.netPnlCents;
-      if (net !== 0) return net;
-      const roi = b.roiBps - a.roiBps;
-      if (roi !== 0) return roi;
-      const balance = b.currentBalanceCents - a.currentBalanceCents;
-      if (balance !== 0) return balance;
-      const winRate = b.winRateBps - a.winRateBps;
-      if (winRate !== 0) return winRate;
-      return a.subjectId.localeCompare(b.subjectId);
-    })
-    .map((row, index) => ({ ...row, rank: index + 1 }));
+  const sorted = [...rows].sort((a, b) => {
+    const accuracy = b.accuracyBps - a.accuracyBps;
+    if (accuracy !== 0) return accuracy;
+    // Same accuracy on a larger denominator is the harder achievement.
+    const volume = b.scorablePicks - a.scorablePicks;
+    if (volume !== 0) return volume;
+    return a.subjectId.localeCompare(b.subjectId);
+  });
+
+  const ranked: ComputedStanding[] = [];
+  let rank = 0;
+  let seen = 0;
+  let previousAccuracy: number | null = null;
+  for (const row of sorted) {
+    seen += 1;
+    if (previousAccuracy === null || row.accuracyBps !== previousAccuracy) {
+      rank = seen;
+      previousAccuracy = row.accuracyBps;
+    }
+    ranked.push({ ...row, rank });
+  }
+  return ranked;
 }
 
+interface WeekTotals {
+  correctPicks: number;
+  maxPicksPerUser: number;
+  rosterSize: number;
+  submittedPicks: number;
+  voidPicks: number;
+}
+
+/**
+ * League standings: the denominator is the whole roster, every week.
+ *
+ * `rosterSize x maxPicksPerUser - pushes` counts every pick the league COULD
+ * have made, including those of members who never opened the app. That is the
+ * rule -- an unsubmitted pick scores the same as a wrong one -- and it is why
+ * these totals cannot be derived by summing the individual standings, which
+ * only know about users who actually picked.
+ */
+function computeLeagueStandings(
+  rows: readonly PickMetricRow[],
+): ComputedStanding[] {
+  const byWeek = new Map<string, WeekTotals & { leagueId: string }>();
+  for (const row of rows) {
+    const existing = byWeek.get(row.pick_week_id) ?? {
+      correctPicks: 0,
+      leagueId: row.league_id,
+      maxPicksPerUser: integer(row.max_picks_per_user),
+      rosterSize: integer(row.roster_size),
+      submittedPicks: 0,
+      voidPicks: 0,
+    };
+    existing.correctPicks += integer(row.correct_picks);
+    existing.submittedPicks += integer(row.submitted_picks);
+    existing.voidPicks += integer(row.void_picks);
+    byWeek.set(row.pick_week_id, existing);
+  }
+
+  const byLeague = new Map<string, Omit<ComputedStanding, "rank">>();
+  for (const week of byWeek.values()) {
+    const score = scorePickWeek({
+      correctPicks: week.correctPicks,
+      maxPicksPerUser: week.maxPicksPerUser,
+      rosterSize: week.rosterSize,
+      // A void pick was submitted but is not scorable, so counting it would
+      // let pushes inflate the participation gate.
+      submittedPicks: week.submittedPicks - week.voidPicks,
+      voidPicks: week.voidPicks,
+    });
+
+    const existing = byLeague.get(week.leagueId) ?? {
+      accuracyBps: 0,
+      correctPicks: 0,
+      eligibleWeeks: 0,
+      kind: "league" as const,
+      leagueId: week.leagueId,
+      scorablePicks: 0,
+      subjectId: week.leagueId,
+      submittedPicks: 0,
+      userId: null,
+      voidPicks: 0,
+      weeksPlayed: 0,
+    };
+    existing.correctPicks += week.correctPicks;
+    existing.scorablePicks += score.scorablePicks;
+    existing.submittedPicks += week.submittedPicks - week.voidPicks;
+    existing.voidPicks += week.voidPicks;
+    existing.weeksPlayed += 1;
+    if (score.isEligibleForWeeklyPrize) {
+      existing.eligibleWeeks += 1;
+    }
+    // Summed counts, not averaged weekly percentages: averaging would weight a
+    // 12-pick week the same as a 120-pick one, letting a league lift its season
+    // score with one strong low-volume week.
+    existing.accuracyBps = percentageBps(
+      existing.correctPicks,
+      existing.scorablePicks,
+    );
+    byLeague.set(week.leagueId, existing);
+  }
+
+  return rankStandings([...byLeague.values()]);
+}
+
+/**
+ * Individual standings: the denominator is the user's own allowance, counted
+ * for each week they SUBMITTED at least one pick.
+ *
+ * This is deliberately asymmetric with the league rule above, and the reason is
+ * a data limitation rather than a design preference. Scoring a user for weeks
+ * they skipped entirely would require knowing who was on the roster in that
+ * week; `members` records only CURRENT membership, so joining it would hand a
+ * mid-season joiner retroactive zeroes for weeks before they existed in the
+ * league -- the same drift `pick_weeks.roster_size` is snapshotted to prevent.
+ *
+ * Within a week they did play, the absolute rule still holds: the denominator
+ * is the full allowance, so picks they left unsubmitted still count against
+ * them. Only wholly skipped weeks are excluded.
+ */
 function computeIndividualStandings(
-  rows: readonly UserLeagueMetricRow[],
+  rows: readonly PickMetricRow[],
 ): ComputedStanding[] {
   const byUser = new Map<string, Omit<ComputedStanding, "rank">>();
 
   for (const row of rows) {
     const userId = row.user_id;
+    // Null user rows exist so the league denominator can count empty weeks.
+    // They name no player, so they contribute nothing here.
+    if (userId === null) continue;
+
+    const voidPicks = integer(row.void_picks);
     const existing = byUser.get(userId) ?? {
-      currentBalanceCents: 0,
+      accuracyBps: 0,
+      correctPicks: 0,
+      eligibleWeeks: 0,
       kind: "individual" as const,
       leagueId: null,
-      netPnlCents: 0,
-      pushVoidSlipCount: 0,
-      roiBps: 0,
-      settledSlipCount: 0,
+      scorablePicks: 0,
       subjectId: userId,
-      totalReturnCents: 0,
-      totalStakeCents: 0,
+      submittedPicks: 0,
       userId,
+      voidPicks: 0,
       weeksPlayed: 0,
-      weeksSurvived: 0,
-      winRateBps: 0,
-      wonSlipCount: 0,
     };
 
-    existing.currentBalanceCents += integer(row.current_balance_cents);
-    existing.netPnlCents += integer(row.net_pnl_cents);
-    existing.pushVoidSlipCount += integer(row.push_void_slip_count);
-    existing.settledSlipCount += integer(row.settled_slip_count);
-    existing.totalReturnCents += integer(row.total_return_cents);
-    existing.totalStakeCents += integer(row.total_stake_cents);
-    existing.weeksPlayed += integer(row.weeks_played);
-    existing.weeksSurvived += integer(row.weeks_survived);
-    existing.wonSlipCount += integer(row.won_slip_count);
-    existing.roiBps = percentageBps(
-      existing.totalReturnCents - existing.totalStakeCents,
-      existing.totalStakeCents,
-    );
-    existing.winRateBps = percentageBps(
-      existing.wonSlipCount,
-      existing.settledSlipCount,
+    const allowance = integer(row.max_picks_per_user);
+    const submitted = integer(row.submitted_picks) - voidPicks;
+    existing.correctPicks += integer(row.correct_picks);
+    // Pushes void: they leave the denominator rather than counting as wrong.
+    existing.scorablePicks += Math.max(allowance - voidPicks, 0);
+    existing.submittedPicks += submitted;
+    existing.voidPicks += voidPicks;
+    existing.weeksPlayed += 1;
+    if (
+      allowance - voidPicks > 0 &&
+      submitted / (allowance - voidPicks) >= WEEKLY_PARTICIPATION_FLOOR
+    ) {
+      existing.eligibleWeeks += 1;
+    }
+    existing.accuracyBps = percentageBps(
+      existing.correctPicks,
+      existing.scorablePicks,
     );
 
     byUser.set(userId, existing);
   }
 
   return rankStandings([...byUser.values()]);
-}
-
-function computeLeagueStandings(
-  rows: readonly UserLeagueMetricRow[],
-): ComputedStanding[] {
-  const byLeague = new Map<
-    string,
-    Omit<ComputedStanding, "rank"> & {
-      memberCount: number;
-      totalCurrentBalanceCents: number;
-      totalNetPnlCents: number;
-    }
-  >();
-
-  for (const row of rows) {
-    const leagueId = row.league_id;
-    const existing = byLeague.get(leagueId) ?? {
-      currentBalanceCents: 0,
-      kind: "league" as const,
-      leagueId,
-      memberCount: 0,
-      netPnlCents: 0,
-      pushVoidSlipCount: 0,
-      roiBps: 0,
-      settledSlipCount: 0,
-      subjectId: leagueId,
-      totalCurrentBalanceCents: 0,
-      totalNetPnlCents: 0,
-      totalReturnCents: 0,
-      totalStakeCents: 0,
-      userId: null,
-      weeksPlayed: 0,
-      weeksSurvived: 0,
-      winRateBps: 0,
-      wonSlipCount: 0,
-    };
-
-    existing.memberCount += 1;
-    existing.totalCurrentBalanceCents += integer(row.current_balance_cents);
-    existing.totalNetPnlCents += integer(row.net_pnl_cents);
-    existing.pushVoidSlipCount += integer(row.push_void_slip_count);
-    existing.settledSlipCount += integer(row.settled_slip_count);
-    existing.totalReturnCents += integer(row.total_return_cents);
-    existing.totalStakeCents += integer(row.total_stake_cents);
-    existing.weeksPlayed += integer(row.weeks_played);
-    existing.weeksSurvived += integer(row.weeks_survived);
-    existing.wonSlipCount += integer(row.won_slip_count);
-    existing.currentBalanceCents = Math.round(
-      existing.totalCurrentBalanceCents / existing.memberCount,
-    );
-    existing.netPnlCents = Math.round(
-      existing.totalNetPnlCents / existing.memberCount,
-    );
-    existing.roiBps = percentageBps(
-      existing.totalReturnCents - existing.totalStakeCents,
-      existing.totalStakeCents,
-    );
-    existing.winRateBps = percentageBps(
-      existing.wonSlipCount,
-      existing.settledSlipCount,
-    );
-
-    byLeague.set(leagueId, existing);
-  }
-
-  return rankStandings(
-    [...byLeague.values()].map(({ memberCount, ...row }) => row),
-  );
 }
 
 export async function ensureArenaSeason(
@@ -657,7 +621,7 @@ export async function computeArenaStandings(
   season: ArenaSeason;
 }> {
   const season = await requireArenaSeason(db, input.seasonId);
-  const rows = await loadUserLeagueMetrics(db, season);
+  const rows = await loadPickMetrics(db, season);
   return {
     individualStandings: computeIndividualStandings(rows),
     leagueStandings: computeLeagueStandings(rows),
@@ -707,26 +671,22 @@ export async function rebuildArenaStandings(
           const previousRank =
             previousRankBySubject.get(`${row.kind}:${row.subjectId}`) ?? null;
           return {
+            accuracyBps: row.accuracyBps,
             computedAt,
-            currentBalanceCents: row.currentBalanceCents,
+            correctPicks: row.correctPicks,
+            eligibleWeeks: row.eligibleWeeks,
             kind: row.kind,
             leagueId: row.leagueId,
-            netPnlCents: row.netPnlCents,
             previousRank,
-            pushVoidSlipCount: row.pushVoidSlipCount,
             rank: row.rank,
             rankDelta: previousRank === null ? 0 : previousRank - row.rank,
-            roiBps: row.roiBps,
+            scorablePicks: row.scorablePicks,
             seasonId: input.seasonId,
-            settledSlipCount: row.settledSlipCount,
             subjectId: row.subjectId,
-            totalReturnCents: row.totalReturnCents,
-            totalStakeCents: row.totalStakeCents,
+            submittedPicks: row.submittedPicks,
             userId: row.userId,
+            voidPicks: row.voidPicks,
             weeksPlayed: row.weeksPlayed,
-            weeksSurvived: row.weeksSurvived,
-            winRateBps: row.winRateBps,
-            wonSlipCount: row.wonSlipCount,
           };
         }),
       )
@@ -822,9 +782,9 @@ export function extractArenaStandingSwingSignals(
   return result.materializedRows
     .filter((row) => row.previousRank !== null && row.rankDelta !== 0)
     .map((row) => ({
+      accuracyBps: row.accuracyBps,
       kind: row.kind,
       leagueId: row.leagueId,
-      netPnlCents: row.netPnlCents,
       newRank: row.rank,
       oldRank: row.previousRank as number,
       rankDelta: row.rankDelta,
@@ -849,25 +809,21 @@ async function standingsForKind(
   const limit = boundedLimit(input.limit);
   const rows = await db
     .select({
-      currentBalanceCents: arenaStandings.currentBalanceCents,
+      accuracyBps: arenaStandings.accuracyBps,
+      correctPicks: arenaStandings.correctPicks,
+      eligibleWeeks: arenaStandings.eligibleWeeks,
       kind: arenaStandings.kind,
       leagueName: leagues.name,
-      netPnlCents: arenaStandings.netPnlCents,
       previousRank: arenaStandings.previousRank,
-      pushVoidSlipCount: arenaStandings.pushVoidSlipCount,
       rank: arenaStandings.rank,
       rankDelta: arenaStandings.rankDelta,
-      roiBps: arenaStandings.roiBps,
-      settledSlipCount: arenaStandings.settledSlipCount,
+      scorablePicks: arenaStandings.scorablePicks,
       subjectId: arenaStandings.subjectId,
-      totalReturnCents: arenaStandings.totalReturnCents,
-      totalStakeCents: arenaStandings.totalStakeCents,
+      submittedPicks: arenaStandings.submittedPicks,
       userDisplayName: users.displayName,
       userEmail: users.email,
+      voidPicks: arenaStandings.voidPicks,
       weeksPlayed: arenaStandings.weeksPlayed,
-      weeksSurvived: arenaStandings.weeksSurvived,
-      winRateBps: arenaStandings.winRateBps,
-      wonSlipCount: arenaStandings.wonSlipCount,
     })
     .from(arenaStandings)
     .leftJoin(leagues, eq(leagues.id, arenaStandings.leagueId))
@@ -879,25 +835,21 @@ async function standingsForKind(
     .limit(limit);
 
   return rows.map((row) => ({
-    currentBalanceCents: row.currentBalanceCents,
+    accuracyBps: row.accuracyBps,
+    correctPicks: row.correctPicks,
     displayName:
       kind === "league"
         ? (row.leagueName ?? "Unknown league")
         : (row.userDisplayName ?? row.userEmail ?? "Unknown player"),
+    eligibleWeeks: row.eligibleWeeks,
     id: row.subjectId,
-    netPnlCents: row.netPnlCents,
     previousRank: row.previousRank,
-    pushVoidSlipCount: row.pushVoidSlipCount,
     rank: row.rank,
     rankDelta: row.rankDelta,
-    roiBps: row.roiBps,
-    settledSlipCount: row.settledSlipCount,
-    totalReturnCents: row.totalReturnCents,
-    totalStakeCents: row.totalStakeCents,
+    scorablePicks: row.scorablePicks,
+    submittedPicks: row.submittedPicks,
+    voidPicks: row.voidPicks,
     weeksPlayed: row.weeksPlayed,
-    weeksSurvived: row.weeksSurvived,
-    winRateBps: row.winRateBps,
-    wonSlipCount: row.wonSlipCount,
   }));
 }
 
@@ -909,9 +861,9 @@ async function movementForSeason(
   const limit = boundedMovementLimit(input.limit);
   const rows = await db
     .select({
+      accuracyBps: arenaStandings.accuracyBps,
       kind: arenaStandings.kind,
       leagueName: leagues.name,
-      netPnlCents: arenaStandings.netPnlCents,
       previousRank: arenaStandings.previousRank,
       rank: arenaStandings.rank,
       rankDelta: arenaStandings.rankDelta,
@@ -935,13 +887,13 @@ async function movementForSeason(
   const movers = rows
     .filter((row) => row.previousRank !== null)
     .map((row) => ({
+      accuracyBps: row.accuracyBps,
       displayName:
         row.kind === "league"
           ? (row.leagueName ?? "Unknown league")
           : (row.userDisplayName ?? row.userEmail ?? "Unknown player"),
       id: row.subjectId,
       kind: row.kind,
-      netPnlCents: row.netPnlCents,
       previousRank: row.previousRank as number,
       rank: row.rank,
       rankDelta: row.rankDelta,
@@ -963,25 +915,24 @@ function leagueRivalOptions(
   rows: readonly ArenaLeaderboardRow[],
 ): ArenaLeagueRivalOption[] {
   return rows.map((row) => ({
+    accuracyBps: row.accuracyBps,
     displayName: row.displayName,
     id: row.id,
-    netPnlCents: row.netPnlCents,
     rank: row.rank,
   }));
 }
 
 function headToHeadLeague(row: ArenaLeaderboardRow): ArenaHeadToHeadLeague {
   return {
-    currentBalanceCents: row.currentBalanceCents,
+    accuracyBps: row.accuracyBps,
+    correctPicks: row.correctPicks,
     displayName: row.displayName,
+    eligibleWeeks: row.eligibleWeeks,
     id: row.id,
-    netPnlCents: row.netPnlCents,
     rank: row.rank,
     rankDelta: row.rankDelta,
-    roiBps: row.roiBps,
+    scorablePicks: row.scorablePicks,
     weeksPlayed: row.weeksPlayed,
-    weeksSurvived: row.weeksSurvived,
-    winRateBps: row.winRateBps,
   };
 }
 
@@ -1014,14 +965,14 @@ function buildHeadToHead(
 
   const anchorLeague = headToHeadLeague(anchor);
   const rivalLeague = headToHeadLeague(rival);
-  const gap = anchor.netPnlCents - rival.netPnlCents;
+  const gap = anchor.accuracyBps - rival.accuracyBps;
   const leader = gap > 0 ? anchorLeague : gap < 0 ? rivalLeague : null;
 
   return {
     anchor: anchorLeague,
     comparison: gap > 0 ? "leading" : gap < 0 ? "trailing" : "tied",
     leader,
-    marginCents: Math.abs(gap),
+    marginBps: Math.abs(gap),
     rankGap: Math.abs(anchor.rank - rival.rank),
     rival: rivalLeague,
   };

@@ -35,6 +35,17 @@ export interface SettleBettingEventInput {
 
 export interface SettleBettingEventResult {
   bettingEventId: string;
+  /**
+   * The graded result this settlement was computed from, or null when nothing
+   * was gradable.
+   *
+   * Exposed so the Pick 'em grader can reuse it instead of asking the results
+   * provider a second time. A second fetch costs a paid API call and can
+   * legitimately return a DIFFERENT score if the provider corrects a box score
+   * between the two calls -- which would settle slips and picks against
+   * disagreeing versions of the same game.
+   */
+  eventResult: EventResult | null;
   finalizedSlips: number;
   gradedLegs: number;
   leagueId: string;
@@ -627,6 +638,7 @@ export async function settleBettingEvent({
     return {
       bettingEventId: input.bettingEventId,
       finalizedSlips: 0,
+      eventResult: null,
       gradedLegs: 0,
       leagueId: input.leagueId,
       ledgerEntries: [],
@@ -653,6 +665,7 @@ export async function settleBettingEvent({
     return {
       bettingEventId: event.id,
       finalizedSlips: 0,
+      eventResult: result,
       gradedLegs: 0,
       leagueId: input.leagueId,
       ledgerEntries: [],
@@ -683,6 +696,7 @@ export async function settleBettingEvent({
 
     return {
       bettingEventId: event.id,
+      eventResult: result,
       finalizedSlips: processed.finalizedSlips,
       gradedLegs: graded.gradedLegs,
       leagueId: input.leagueId,

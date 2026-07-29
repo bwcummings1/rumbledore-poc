@@ -55,33 +55,36 @@ import {
 } from "@/navigation/scope";
 import { ArenaRealtimeRefresh } from "@/realtime/client";
 
-const ARENA_BANKROLL_FLOOR_CENTS = 100_000;
 const AS_OF_STALE_MS = 1000 * 60 * 60 * 24;
+/**
+ * Coin-flip accuracy, in basis points.
+ *
+ * Accuracy is unsigned and bounded, unlike the paper P&L this board used to
+ * show, so "is this good?" has no zero-crossing to read it off. 50% is the
+ * only non-arbitrary reference point: below it a league is doing worse than
+ * guessing. Every positive/negative tone on the board is measured from here.
+ */
+const COIN_FLIP_BPS = 5_000;
 
-function formatPaperMoney(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    maximumFractionDigits: 0,
-    signDisplay: "exceptZero",
-    style: "currency",
-  }).format(value / 100);
-}
-
-function formatPaperAmount(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    maximumFractionDigits: 0,
-    style: "currency",
-  }).format(value / 100);
-}
-
-function formatPercentBps(value: number): string {
+function formatAccuracy(value: number): string {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 1,
     minimumFractionDigits: 0,
-    signDisplay: "exceptZero",
     style: "percent",
   }).format(value / 10_000);
+}
+
+/** For gaps and margins, where the sign carries meaning. */
+function formatAccuracyGap(value: number): string {
+  return `${new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 1,
+    signDisplay: "exceptZero",
+  }).format(value / 100)} pts`;
+}
+
+/** Accuracy relative to the coin flip: 6250 -> "+12.5 pts". */
+function accuracyEdgeBps(value: number): number {
+  return value - COIN_FLIP_BPS;
 }
 
 function formatDate(value: string): string {
@@ -221,18 +224,15 @@ function asOfStatus(
 
 function comparisonCopy(headToHead: ArenaHeadToHead): string {
   if (headToHead.comparison === "tied") {
-    return "Dead even on average paper P&L";
+    return "Dead even on pick accuracy";
   }
 
+  const margin = formatAccuracyGap(headToHead.marginBps);
   if (headToHead.comparison === "leading") {
-    return `${headToHead.anchor.displayName} leads by ${formatPaperAmount(
-      headToHead.marginCents,
-    )}`;
+    return `${headToHead.anchor.displayName} leads by ${margin}`;
   }
 
-  return `${headToHead.rival.displayName} leads by ${formatPaperAmount(
-    headToHead.marginCents,
-  )}`;
+  return `${headToHead.rival.displayName} leads by ${margin}`;
 }
 
 function MovementIcon({ value }: { value: number }) {
@@ -245,8 +245,9 @@ function MovementIcon({ value }: { value: number }) {
   return <Minus className="size-3.5" aria-hidden="true" />;
 }
 
-function currentBalanceDelta(row: ArenaLeaderboardRow): number {
-  return row.currentBalanceCents - ARENA_BANKROLL_FLOOR_CENTS;
+/** How far above or below a coin flip this row is scoring. */
+function accuracyDelta(row: ArenaLeaderboardRow): number {
+  return accuracyEdgeBps(row.accuracyBps);
 }
 
 function leaderboardBumpSpec(
@@ -292,60 +293,60 @@ function leaderboardBumpSpec(
   };
 }
 
-function pnlDistributionSpec(
+function accuracyDistributionSpec(
   rows: readonly ArenaLeaderboardRow[],
 ): AUSPEXChartSpec {
-  const sortedRows = [...rows].sort((a, b) => b.netPnlCents - a.netPnlCents);
+  const sortedRows = [...rows].sort((a, b) => b.accuracyBps - a.accuracyBps);
 
   return {
-    ariaLabel: "Arena net paper profit distribution by league",
+    ariaLabel: "Arena pick accuracy distribution by league",
     caption:
-      "Only aggregate league paper P&L is shown here; raw slips stay inside each league.",
+      "Only each league's aggregate accuracy is shown; individual picks stay inside their league.",
     data: sortedRows.map((row) => ({
       label: row.displayName,
-      meta: formatPaperMoney(row.netPnlCents),
-      tone: chartTone(row.netPnlCents),
-      value: Math.round(row.netPnlCents / 100),
+      meta: formatAccuracy(row.accuracyBps),
+      tone: chartTone(accuracyEdgeBps(row.accuracyBps)),
+      value: row.accuracyBps / 100,
     })),
     kind: "histogram",
     state: sortedRows.length > 0 ? "ready" : "empty",
-    statusNote: "aggregate dollars",
-    title: "Net P&L spread",
+    statusNote: "percent correct",
+    title: "Accuracy spread",
   };
 }
 
-function roiBarsSpec(rows: readonly ArenaLeaderboardRow[]): AUSPEXChartSpec {
-  const sortedRows = [...rows].sort((a, b) => b.roiBps - a.roiBps).slice(0, 8);
+function volumeBarsSpec(rows: readonly ArenaLeaderboardRow[]): AUSPEXChartSpec {
+  const sortedRows = [...rows]
+    .sort((a, b) => b.scorablePicks - a.scorablePicks)
+    .slice(0, 8);
 
   return {
-    ariaLabel: "Arena league ROI leaders",
+    ariaLabel: "Arena league scorable pick volume",
     caption:
-      "ROI keeps the league table deterministic after net paper P&L, balance, and win rate tie-breaks.",
+      "The denominator each league is scored against, including picks nobody submitted -- the tie-break after accuracy.",
     data: sortedRows.map((row) => ({
       label: row.displayName,
-      meta: formatPercentBps(row.roiBps),
-      tone: chartTone(row.roiBps),
-      value: row.roiBps / 100,
+      meta: `${row.correctPicks}/${row.scorablePicks}`,
+      tone: chartTone(accuracyEdgeBps(row.accuracyBps)),
+      value: row.scorablePicks,
     })),
     kind: "hbars",
     state: sortedRows.length > 0 ? "ready" : "empty",
-    statusNote: "basis points",
-    title: "ROI ladder",
+    statusNote: "scorable picks",
+    title: "Volume ladder",
   };
 }
 
 function headToHeadBulletSpec(
   headToHead: ArenaHeadToHead | null,
 ): AUSPEXChartSpec {
-  const marginDollars = headToHead
-    ? Math.round(headToHead.marginCents / 100)
-    : 0;
+  const marginPoints = headToHead ? headToHead.marginBps / 100 : 0;
   const signedMargin =
-    headToHead?.comparison === "trailing" ? -marginDollars : marginDollars;
+    headToHead?.comparison === "trailing" ? -marginPoints : marginPoints;
   const domain = Math.max(Math.abs(signedMargin), 1);
 
   return {
-    ariaLabel: "League head-to-head paper profit margin",
+    ariaLabel: "League head-to-head accuracy margin",
     caption: headToHead
       ? `${headToHead.anchor.displayName} versus ${headToHead.rival.displayName}; center is dead even.`
       : "The duel chart appears after two leagues have standings.",
@@ -365,7 +366,7 @@ function headToHeadBulletSpec(
     kind: "bullet",
     state: headToHead ? "ready" : "empty",
     statusNote: headToHead
-      ? formatPaperAmount(headToHead.marginCents)
+      ? formatAccuracyGap(headToHead.marginBps)
       : "waiting",
     title: "Duel margin",
   };
@@ -392,7 +393,7 @@ function leaderboardMobileRow(
         ) : null}
       </span>
     ),
-    meta: `${row.wonSlipCount}/${row.settledSlipCount} wins · ${row.weeksSurvived}/${row.weeksPlayed} weeks`,
+    meta: `${row.correctPicks}/${row.scorablePicks} correct · ${row.eligibleWeeks}/${row.weeksPlayed} weeks`,
     selected: isHighlighted,
     title: row.displayName,
   };
@@ -411,23 +412,23 @@ function leaderboardKVItems(
     },
     {
       label: netLabel,
-      tone: metricTone(row.netPnlCents),
-      value: formatPaperMoney(row.netPnlCents),
+      tone: metricTone(accuracyEdgeBps(row.accuracyBps)),
+      value: formatAccuracy(row.accuracyBps),
     },
     {
-      label: "ROI",
-      tone: metricTone(row.roiBps),
-      value: formatPercentBps(row.roiBps),
+      label: "Correct",
+      tone: "muted",
+      value: `${row.correctPicks}/${row.scorablePicks}`,
     },
     {
-      label: "Win rate",
-      tone: metricTone(row.winRateBps),
-      value: formatPercentBps(row.winRateBps),
+      label: "Submitted",
+      tone: "muted",
+      value: `${row.submittedPicks}`,
     },
     {
-      label: "Current balance",
-      tone: "money",
-      value: formatPaperAmount(row.currentBalanceCents),
+      label: "Eligible weeks",
+      tone: "muted",
+      value: `${row.eligibleWeeks}/${row.weeksPlayed}`,
     },
   ];
 }
@@ -618,7 +619,7 @@ function RivalryPanel({
         <Edge
           eyebrow="Margin"
           tone={edgeTone(
-            headToHead.anchor.netPnlCents - headToHead.rival.netPnlCents,
+            headToHead.anchor.accuracyBps - headToHead.rival.accuracyBps,
           )}
           value={comparisonCopy(headToHead)}
         />
@@ -626,15 +627,15 @@ function RivalryPanel({
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <StatTile
-          caption="aggregate net vs. floor"
-          label="Focus P&L"
+          caption="correct over scorable"
+          label="Focus accuracy"
           tone="amber"
           value={
             <CountUpValue
-              formatValue={(value) => formatPaperMoney(Number(value))}
-              label={`${headToHead.anchor.displayName} aggregate paper P&L`}
+              formatValue={(value) => formatAccuracy(Number(value))}
+              label={`${headToHead.anchor.displayName} pick accuracy`}
               tone="value"
-              value={headToHead.anchor.netPnlCents}
+              value={headToHead.anchor.accuracyBps}
             />
           }
         />
@@ -644,23 +645,23 @@ function RivalryPanel({
           tone="amber"
           value={
             <CountUpValue
-              formatValue={(value) => formatPaperAmount(Number(value))}
-              label="Head-to-head paper P&L margin"
+              formatValue={(value) => formatAccuracyGap(Number(value))}
+              label="Head-to-head accuracy margin"
               tone="value"
-              value={headToHead.marginCents}
+              value={headToHead.marginBps}
             />
           }
         />
         <StatTile
-          caption="aggregate net vs. floor"
-          label="Rival P&L"
+          caption="correct over scorable"
+          label="Rival accuracy"
           tone="amber"
           value={
             <CountUpValue
-              formatValue={(value) => formatPaperMoney(Number(value))}
-              label={`${headToHead.rival.displayName} aggregate paper P&L`}
+              formatValue={(value) => formatAccuracy(Number(value))}
+              label={`${headToHead.rival.displayName} pick accuracy`}
               tone="value"
-              value={headToHead.rival.netPnlCents}
+              value={headToHead.rival.accuracyBps}
             />
           }
         />
@@ -679,9 +680,9 @@ function RivalryPanel({
         items={[
           { label: "Rank gap", value: headToHead.rankGap },
           {
-            label: "Paper P&L gap",
-            tone: "money",
-            value: formatPaperAmount(headToHead.marginCents),
+            label: "Accuracy gap",
+            tone: "muted",
+            value: formatAccuracyGap(headToHead.marginBps),
           },
           { label: "Leader", value: headToHead.leader?.displayName ?? "Tied" },
         ]}
@@ -760,8 +761,8 @@ function ArenaAnalytics({
           spec={leaderboardBumpSpec(data.leagueStandings, focusedLeagueId)}
         />
         <Chart spec={headToHeadBulletSpec(data.headToHead)} />
-        <Chart spec={pnlDistributionSpec(data.leagueStandings)} />
-        <Chart spec={roiBarsSpec(data.leagueStandings)} />
+        <Chart spec={accuracyDistributionSpec(data.leagueStandings)} />
+        <Chart spec={volumeBarsSpec(data.leagueStandings)} />
       </div>
     </section>
   );
@@ -787,8 +788,8 @@ function HeadToHeadLeagueCard({
           </div>
         </div>
         <Edge
-          tone={edgeTone(league.netPnlCents)}
-          value={formatPaperMoney(league.netPnlCents)}
+          tone={edgeTone(accuracyEdgeBps(league.accuracyBps))}
+          value={formatAccuracy(league.accuracyBps)}
         />
       </div>
       <div className="mt-3 grid gap-3">
@@ -796,14 +797,14 @@ function HeadToHeadLeagueCard({
           className="grid gap-x-4 sm:grid-cols-2 sm:divide-y-0"
           items={[
             {
-              label: "ROI",
-              tone: metricTone(league.roiBps),
-              value: formatPercentBps(league.roiBps),
+              label: "Correct",
+              tone: "muted",
+              value: `${league.correctPicks}/${league.scorablePicks}`,
             },
             {
-              label: "Win rate",
-              tone: metricTone(league.winRateBps),
-              value: formatPercentBps(league.winRateBps),
+              label: "vs. coin flip",
+              tone: metricTone(accuracyEdgeBps(league.accuracyBps)),
+              value: formatAccuracyGap(accuracyEdgeBps(league.accuracyBps)),
             },
             {
               label: "Movement",
@@ -816,21 +817,21 @@ function HeadToHeadLeagueCard({
               ),
             },
             {
-              label: "Balance",
-              tone: "money",
-              value: formatPaperAmount(league.currentBalanceCents),
+              label: "Eligible weeks",
+              tone: "muted",
+              value: `${league.eligibleWeeks}/${league.weeksPlayed}`,
             },
           ]}
         />
         <Progress
-          label={`${league.displayName} win rate`}
+          label={`${league.displayName} pick accuracy`}
           showValue={true}
-          value={league.winRateBps / 100}
+          value={league.accuracyBps / 100}
         />
         <Capacity
-          label="Weeks survived"
+          label="Prize-eligible weeks"
           total={league.weeksPlayed}
-          used={league.weeksSurvived}
+          used={league.eligibleWeeks}
         />
       </div>
     </div>
@@ -883,8 +884,8 @@ function LeaderboardSection({
             <div className="min-w-0">
               <p className="truncate font-medium">{row.displayName}</p>
               <p className="truncate text-xs text-muted-foreground">
-                {row.wonSlipCount}/{row.settledSlipCount} wins ·{" "}
-                {row.weeksSurvived}/{row.weeksPlayed} weeks
+                {row.correctPicks}/{row.scorablePicks} correct ·{" "}
+                {row.eligibleWeeks}/{row.weeksPlayed} weeks
               </p>
             </div>
           </div>
@@ -896,32 +897,37 @@ function LeaderboardSection({
     {
       align: "right",
       cell: (row) => (
-        <SignedValue className="font-semibold" tone={cellTone(row.netPnlCents)}>
-          {formatPaperMoney(row.netPnlCents)}
+        // Accuracy itself is unsigned, so the tone is measured from the coin
+        // flip rather than from zero -- "45%" is a bad score, not a small one.
+        <SignedValue
+          className="font-semibold"
+          tone={cellTone(accuracyEdgeBps(row.accuracyBps))}
+        >
+          {formatAccuracy(row.accuracyBps)}
         </SignedValue>
       ),
       header: netLabel,
-      id: "net",
+      id: "accuracy",
     },
     {
       align: "right",
       cell: (row) => (
-        <SignedValue tone={cellTone(row.roiBps)}>
-          {formatPercentBps(row.roiBps)}
-        </SignedValue>
+        <span className="tabular-nums">
+          {row.correctPicks}/{row.scorablePicks}
+        </span>
       ),
-      header: "ROI",
-      id: "roi",
+      header: "Correct",
+      id: "correct",
     },
     {
       align: "right",
       cell: (row) => (
-        <SignedValue tone={cellTone(row.winRateBps)}>
-          {formatPercentBps(row.winRateBps)}
+        <SignedValue tone={cellTone(accuracyEdgeBps(row.accuracyBps))}>
+          {formatAccuracyGap(accuracyEdgeBps(row.accuracyBps))}
         </SignedValue>
       ),
-      header: "Win rate",
-      id: "win-rate",
+      header: "vs. coin flip",
+      id: "edge",
       priority: "desktop",
     },
   ];
@@ -967,32 +973,32 @@ function ArenaRulesSection() {
       </div>
       <div className="grid gap-3 lg:grid-cols-3">
         <div className="cell p-3">
-          <Tag>Play money only</Tag>
+          <Tag>Bragging rights only</Tag>
           <p className="mt-3 text-sm text-muted-foreground">
-            Arena balances rank paper-betting performance. There are no prizes,
-            deposits, cash-outs, or real-money payouts.
+            The Arena ranks how accurately leagues pick. There are no deposits,
+            cash-outs, or real-money payouts.
           </p>
         </div>
         <div className="cell p-3">
           <Tag>League isolation</Tag>
           <p className="mt-3 text-sm text-muted-foreground">
-            The Arena can show league ranks, P&L, ROI, and movement. Raw slips
-            stay inside their league and user-scoped betting history.
+            The Arena shows league ranks, accuracy, and movement. Which games a
+            league picked stays inside that league.
           </p>
         </div>
         <div className="cell p-3">
-          <Tag>Rolling floor</Tag>
+          <Tag>Absolute denominator</Tag>
           <p className="mt-3 text-sm text-muted-foreground">
-            Rankings come from aggregate bankroll ledgers over the selected
-            Arena season, including the weekly rolling-minimum floor.
+            Accuracy is correct picks over every pick the league could have
+            made. Not picking scores the same as picking wrong.
           </p>
         </div>
       </div>
       <KVList
         className="grid gap-x-4 sm:grid-cols-3 sm:divide-y-0"
         items={[
-          { label: "League ladder", value: "Avg aggregate P&L" },
-          { label: "Individual ladder", value: "Net paper P&L" },
+          { label: "League ladder", value: "Collective accuracy" },
+          { label: "Individual ladder", value: "Personal accuracy" },
           { label: "Movement", value: "Delta vs prior materialization" },
         ]}
       />
@@ -1075,9 +1081,8 @@ export function ArenaLeaderboardView({
               CENTRAL ARENA
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground sm:text-base">
-              League-vs-league and individual paper standings, built from
-              aggregate bankroll ledgers without exposing another league's raw
-              slips.
+              League-vs-league and individual standings, built from collective
+              pick accuracy without exposing which games another league picked.
             </p>
             {data.season ? (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -1146,10 +1151,10 @@ export function ArenaLeaderboardView({
             value={
               topLeague ? (
                 <CountUpValue
-                  formatValue={(value) => formatPaperMoney(Number(value))}
-                  label="Top league net paper P&L"
+                  formatValue={(value) => formatAccuracy(Number(value))}
+                  label="Top league pick accuracy"
                   tone="value"
-                  value={topLeague.netPnlCents}
+                  value={topLeague.accuracyBps}
                 />
               ) : (
                 "--"
@@ -1160,16 +1165,16 @@ export function ArenaLeaderboardView({
             caption={topIndividual?.displayName ?? "No leader yet"}
             delta={
               topIndividual
-                ? formatPaperMoney(currentBalanceDelta(topIndividual))
+                ? formatAccuracyGap(accuracyDelta(topIndividual))
                 : undefined
             }
             label="Top player"
             value={
               topIndividual ? (
                 <CountUpValue
-                  formatValue={(value) => formatPaperMoney(Number(value))}
-                  label="Top player net paper P&L"
-                  value={topIndividual.netPnlCents}
+                  formatValue={(value) => formatAccuracy(Number(value))}
+                  label="Top player pick accuracy"
+                  value={topIndividual.accuracyBps}
                 />
               ) : (
                 "--"
@@ -1183,13 +1188,13 @@ export function ArenaLeaderboardView({
             <LeaderboardSection
               emptyText="No league standings have been materialized yet."
               highlightedRowId={focusedLeagueId}
-              netLabel="Avg P&L"
+              netLabel="Accuracy"
               rows={data.leagueStandings}
               title="League leaderboard"
             />
             <LeaderboardSection
               emptyText="No individual standings have been materialized yet."
-              netLabel="Net P&L"
+              netLabel="Accuracy"
               rows={data.individualStandings}
               title="Individual leaderboard"
             />
@@ -1206,7 +1211,7 @@ export function ArenaLeaderboardView({
             <LeaderboardSection
               emptyText="No league standings have been materialized yet."
               highlightedRowId={focusedLeagueId}
-              netLabel="Avg P&L"
+              netLabel="Accuracy"
               rows={data.leagueStandings}
               title="League leaderboard"
             />
@@ -1241,13 +1246,13 @@ export function ArenaLeaderboardView({
             <LeaderboardSection
               emptyText="No league standings have been materialized yet."
               highlightedRowId={focusedLeagueId}
-              netLabel="Avg P&L"
+              netLabel="Accuracy"
               rows={data.leagueStandings}
               title="Season league standings"
             />
             <LeaderboardSection
               emptyText="No individual standings have been materialized yet."
-              netLabel="Net P&L"
+              netLabel="Accuracy"
               rows={data.individualStandings}
               title="Season individual standings"
             />

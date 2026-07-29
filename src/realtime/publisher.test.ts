@@ -381,7 +381,7 @@ describe("realtime publisher", () => {
         {
           kind: "league",
           leagueId: "league-123",
-          netPnlCents: 2500,
+          accuracyBps: 6_250,
           newRank: 1,
           oldRank: 2,
           rankDelta: 1,
@@ -525,7 +525,7 @@ describe("realtime publisher", () => {
         {
           kind: "individual",
           leagueId: null,
-          netPnlCents: 1200,
+          accuracyBps: 6_250,
           newRank: 3,
           oldRank: 8,
           rankDelta: 5,

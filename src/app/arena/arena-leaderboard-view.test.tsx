@@ -13,114 +13,99 @@ const data: ArenaLeaderboardData = {
   computedAt: "2026-09-09T00:00:00.000Z",
   headToHead: {
     anchor: {
-      currentBalanceCents: 130_000,
+      accuracyBps: 7_500,
+      correctPicks: 30,
       displayName: "Arena League B",
+      eligibleWeeks: 1,
       id: "league-b",
-      netPnlCents: 30_000,
       rank: 1,
       rankDelta: 1,
-      roiBps: 30_000,
+      scorablePicks: 40,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
     },
     comparison: "leading",
     leader: {
-      currentBalanceCents: 130_000,
+      accuracyBps: 7_500,
+      correctPicks: 30,
       displayName: "Arena League B",
+      eligibleWeeks: 1,
       id: "league-b",
-      netPnlCents: 30_000,
       rank: 1,
       rankDelta: 1,
-      roiBps: 30_000,
+      scorablePicks: 40,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
     },
-    marginCents: 10_000,
+    marginBps: 2_500,
     rankGap: 1,
     rival: {
-      currentBalanceCents: 120_000,
+      accuracyBps: 5_000,
+      correctPicks: 20,
       displayName: "Arena League A",
+      eligibleWeeks: 1,
       id: "league-a",
-      netPnlCents: 20_000,
       rank: 2,
       rankDelta: -1,
-      roiBps: 20_000,
+      scorablePicks: 40,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
     },
   },
   individualStandings: [
     {
-      currentBalanceCents: 130_000,
+      accuracyBps: 7_500,
+      correctPicks: 15,
       displayName: "Arena Gamma",
+      eligibleWeeks: 1,
       id: "user-gamma",
-      netPnlCents: 30_000,
       previousRank: 3,
-      pushVoidSlipCount: 0,
       rank: 1,
       rankDelta: 2,
-      roiBps: 30_000,
-      settledSlipCount: 1,
-      totalReturnCents: 40_000,
-      totalStakeCents: 10_000,
+      scorablePicks: 20,
+      submittedPicks: 20,
+      voidPicks: 0,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
-      wonSlipCount: 1,
     },
   ],
   leagueStandings: [
     {
-      currentBalanceCents: 130_000,
+      accuracyBps: 7_500,
+      correctPicks: 30,
       displayName: "Arena League B",
+      eligibleWeeks: 1,
       id: "league-b",
-      netPnlCents: 30_000,
       previousRank: 2,
-      pushVoidSlipCount: 0,
       rank: 1,
       rankDelta: 1,
-      roiBps: 30_000,
-      settledSlipCount: 1,
-      totalReturnCents: 40_000,
-      totalStakeCents: 10_000,
+      scorablePicks: 40,
+      submittedPicks: 40,
+      voidPicks: 0,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
-      wonSlipCount: 1,
     },
     {
-      currentBalanceCents: 120_000,
+      accuracyBps: 5_000,
+      correctPicks: 20,
       displayName: "Arena League A",
+      eligibleWeeks: 1,
       id: "league-a",
-      netPnlCents: 20_000,
       previousRank: 1,
-      pushVoidSlipCount: 0,
       rank: 2,
       rankDelta: -1,
-      roiBps: 20_000,
-      settledSlipCount: 1,
-      totalReturnCents: 30_000,
-      totalStakeCents: 10_000,
+      scorablePicks: 40,
+      submittedPicks: 40,
+      voidPicks: 0,
       weeksPlayed: 1,
-      weeksSurvived: 1,
-      winRateBps: 10_000,
-      wonSlipCount: 1,
     },
   ],
   leagueOptions: [
     {
+      accuracyBps: 7_500,
       displayName: "Arena League B",
       id: "league-b",
-      netPnlCents: 30_000,
       rank: 1,
     },
     {
+      accuracyBps: 5_000,
       displayName: "Arena League A",
       id: "league-a",
-      netPnlCents: 20_000,
       rank: 2,
     },
   ],
@@ -128,10 +113,10 @@ const data: ArenaLeaderboardData = {
     fallers: [],
     risers: [
       {
+        accuracyBps: 7_500,
         displayName: "Arena Gamma",
         id: "user-gamma",
         kind: "individual",
-        netPnlCents: 30_000,
         previousRank: 3,
         rank: 1,
         rankDelta: 2,
@@ -182,7 +167,7 @@ test("arena leaderboard view renders league and individual standings", () => {
   ).toBeDefined();
   expect(
     screen.getByText(
-      /built from aggregate bankroll ledgers without exposing another league's raw slips/i,
+      /built from collective pick accuracy without exposing which games another league picked/i,
     ),
   ).toBeDefined();
   expect(screen.getByText(/As of Sep 9/i)).toBeDefined();
@@ -201,10 +186,12 @@ test("arena leaderboard view renders league and individual standings", () => {
   expect(screen.getAllByText("Arena League B").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Arena League A").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Arena Gamma").length).toBeGreaterThanOrEqual(2);
-  expect(screen.getAllByText("+$300").length).toBeGreaterThanOrEqual(2);
-  expect(screen.getAllByText("+300%").length).toBeGreaterThanOrEqual(2);
+  // 7,500 bps renders as the accuracy itself, and again as its distance from
+  // a coin flip -- 75% is only meaningful next to the 50% baseline.
+  expect(screen.getAllByText("75%").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByText("+25 pts").length).toBeGreaterThanOrEqual(2);
   expect(
-    screen.getAllByText("1/1 wins · 1/1 weeks").length,
+    screen.getAllByText("30/40 correct · 1/1 weeks").length,
   ).toBeGreaterThanOrEqual(2);
   expect(
     within(arenaTabs)
@@ -238,7 +225,7 @@ test("arena matchup section renders rivalry and analytics", () => {
     screen.getByRole("heading", { name: /Arena League B vs/ }),
   ).toBeDefined();
   expect(
-    screen.getAllByText("Arena League B leads by $100").length,
+    screen.getAllByText("Arena League B leads by +25 pts").length,
   ).toBeGreaterThanOrEqual(1);
   expect(
     screen.getByRole("link", { name: /Arena League A/ }).getAttribute("href"),
@@ -260,8 +247,10 @@ test("arena movers section renders rank movement", () => {
   ).toBeDefined();
   expect(screen.getByRole("heading", { name: "Rank race" })).toBeDefined();
   expect(screen.getByRole("heading", { name: "Duel margin" })).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Net P&L spread" })).toBeDefined();
-  expect(screen.getByRole("heading", { name: "ROI ladder" })).toBeDefined();
+  expect(
+    screen.getByRole("heading", { name: "Accuracy spread" }),
+  ).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Volume ladder" })).toBeDefined();
   expect(
     screen.getAllByLabelText(
       "Arena rank movement from prior materialization to now",
@@ -286,7 +275,7 @@ test("arena seasons and rules sections render their own surfaces", () => {
   expect(
     screen.getByRole("heading", { name: "Aggregate bragging rights" }),
   ).toBeDefined();
-  expect(screen.getByText("Play money only")).toBeDefined();
+  expect(screen.getByText("Bragging rights only")).toBeDefined();
   expect(screen.getByText("League isolation")).toBeDefined();
 });
 

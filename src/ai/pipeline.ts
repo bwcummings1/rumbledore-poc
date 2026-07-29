@@ -1505,15 +1505,14 @@ function arenaStandingFromLeaderboardRow(
   row: ArenaLeaderboardRow,
 ): LeagueContextArenaStanding {
   return {
-    currentBalanceCents: row.currentBalanceCents,
+    accuracyBps: row.accuracyBps,
+    correctPicks: row.correctPicks,
     displayName: row.displayName,
+    eligibleWeeks: row.eligibleWeeks,
     id: row.id,
-    netPnlCents: row.netPnlCents,
     rank: row.rank,
     rankDelta: row.rankDelta,
-    roiBps: row.roiBps,
-    weeksSurvived: row.weeksSurvived,
-    winRateBps: row.winRateBps,
+    scorablePicks: row.scorablePicks,
   };
 }
 
@@ -1521,23 +1520,22 @@ function arenaStandingFromHeadToHeadLeague(
   row: ArenaHeadToHeadLeague,
 ): LeagueContextArenaStanding {
   return {
-    currentBalanceCents: row.currentBalanceCents,
+    accuracyBps: row.accuracyBps,
+    correctPicks: row.correctPicks,
     displayName: row.displayName,
+    eligibleWeeks: row.eligibleWeeks,
     id: row.id,
-    netPnlCents: row.netPnlCents,
     rank: row.rank,
     rankDelta: row.rankDelta,
-    roiBps: row.roiBps,
-    weeksSurvived: row.weeksSurvived,
-    winRateBps: row.winRateBps,
+    scorablePicks: row.scorablePicks,
   };
 }
 
 function arenaMoverFromRow(row: ArenaMoverRow): LeagueContextArenaMover {
   return {
+    accuracyBps: row.accuracyBps,
     displayName: row.displayName,
     kind: row.kind,
-    netPnlCents: row.netPnlCents,
     previousRank: row.previousRank,
     rank: row.rank,
     rankDelta: row.rankDelta,
@@ -1564,7 +1562,7 @@ async function loadArenaContext({
         anchor: arenaStandingFromHeadToHeadLeague(data.headToHead.anchor),
         comparison: data.headToHead.comparison,
         leaderDisplayName: data.headToHead.leader?.displayName ?? null,
-        marginCents: data.headToHead.marginCents,
+        marginBps: data.headToHead.marginBps,
         rankGap: data.headToHead.rankGap,
         rival: arenaStandingFromHeadToHeadLeague(data.headToHead.rival),
       }

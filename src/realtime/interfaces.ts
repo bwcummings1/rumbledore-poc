@@ -101,9 +101,10 @@ export interface ArenaLeaderboardUpdatedPayload {
 }
 
 export interface ArenaStandingSwing {
+  /** Accuracy in basis points -- 6250 is 62.5%. */
+  accuracyBps: number;
   kind: "individual" | "league";
   leagueId: string | null;
-  netPnlCents: number;
   newRank: number;
   oldRank: number;
   rankDelta: number;

@@ -2857,17 +2857,20 @@ export const arenaStandings = pgTable(
     rank: integer("rank").notNull(),
     previousRank: integer("previous_rank"),
     rankDelta: integer("rank_delta").notNull().default(0),
-    netPnlCents: integer("net_pnl_cents").notNull(),
-    roiBps: integer("roi_bps").notNull(),
-    currentBalanceCents: integer("current_balance_cents").notNull(),
-    totalStakeCents: integer("total_stake_cents").notNull(),
-    totalReturnCents: integer("total_return_cents").notNull(),
-    settledSlipCount: integer("settled_slip_count").notNull(),
-    wonSlipCount: integer("won_slip_count").notNull(),
-    pushVoidSlipCount: integer("push_void_slip_count").notNull(),
+    // Graded counts and the absolute denominator. `scorablePicks` includes
+    // picks that were never submitted -- not picking scores the same as
+    // picking wrong, which is the rule the whole competition rests on.
+    correctPicks: integer("correct_picks").notNull().default(0),
+    scorablePicks: integer("scorable_picks").notNull().default(0),
+    submittedPicks: integer("submitted_picks").notNull().default(0),
+    // Pushes void: subtracted from the denominator, never counted as wrong.
+    voidPicks: integer("void_picks").notNull().default(0),
+    // Accuracy in basis points. Integer so that a tie compares exactly equal.
+    accuracyBps: integer("accuracy_bps").notNull().default(0),
     weeksPlayed: integer("weeks_played").notNull(),
-    weeksSurvived: integer("weeks_survived").notNull(),
-    winRateBps: integer("win_rate_bps").notNull(),
+    // Weeks that cleared the 90% participation floor. Reported only -- it
+    // gates weekly prizes and never adjusts accuracy.
+    eligibleWeeks: integer("eligible_weeks").notNull().default(0),
     computedAt: timestamp("computed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

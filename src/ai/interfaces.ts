@@ -241,21 +241,23 @@ export interface LeagueContextTrigger {
 }
 
 export interface LeagueContextArenaStanding {
-  currentBalanceCents: number;
+  /** Accuracy in basis points -- 6250 is 62.5%. */
+  accuracyBps: number;
+  correctPicks: number;
   displayName: string;
+  /** Weeks that cleared the 90% participation floor. */
+  eligibleWeeks: number;
   id: string;
-  netPnlCents: number;
   rank: number;
   rankDelta: number;
-  roiBps: number;
-  weeksSurvived: number;
-  winRateBps: number;
+  /** The absolute denominator, including picks nobody submitted. */
+  scorablePicks: number;
 }
 
 export interface LeagueContextArenaMover {
+  accuracyBps: number;
   displayName: string;
   kind: "league" | "individual";
-  netPnlCents: number;
   previousRank: number;
   rank: number;
   rankDelta: number;
@@ -265,7 +267,8 @@ export interface LeagueContextArenaHeadToHead {
   anchor: LeagueContextArenaStanding;
   comparison: "leading" | "tied" | "trailing";
   leaderDisplayName: string | null;
-  marginCents: number;
+  /** Accuracy gap in basis points. */
+  marginBps: number;
   rankGap: number;
   rival: LeagueContextArenaStanding;
 }

@@ -410,9 +410,9 @@ async function publishRolloverRealtimeSignals({
       computedAt: arenaResult.computedAt,
       seasonId: arenaResult.season.id,
       swings: swings.map((swing) => ({
+        accuracyBps: swing.accuracyBps,
         kind: swing.kind,
         leagueId: swing.leagueId,
-        netPnlCents: swing.netPnlCents,
         newRank: swing.newRank,
         oldRank: swing.oldRank,
         rankDelta: swing.rankDelta,
