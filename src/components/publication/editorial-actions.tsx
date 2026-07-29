@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCw, ShieldX } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { onboardingPanelError, postJson } from "@/app/onboarding/client-http";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export function EditorialArticleActions({
   regenerateApiUrl,
   retractApiUrl,
 }: EditorialArticleActionsProps) {
+  const router = useRouter();
   const [pending, setPending] = useState<PendingAction>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function EditorialArticleActions({
     try {
       await postJson(retractApiUrl, { reason: trimmed });
       setNotice("Retraction recorded.");
-      window.location.reload();
+      router.refresh();
     } catch (cause) {
       setError(onboardingPanelError(cause).message);
     } finally {
@@ -62,7 +64,7 @@ export function EditorialArticleActions({
         ...(reason.trim() ? { reason: reason.trim() } : {}),
       });
       setNotice("Regeneration queued through the cast.");
-      window.location.reload();
+      router.refresh();
     } catch (cause) {
       setError(onboardingPanelError(cause).message);
     } finally {

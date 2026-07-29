@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ChangeEvent, ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -35,6 +36,8 @@ function Pagination({
   siblingCount = 1,
   ...props
 }: PaginationProps) {
+  const router = useRouter();
+
   if (pages.length === 0) {
     return null;
   }
@@ -63,7 +66,9 @@ function Pagination({
     }
     onPageChange?.(page.page);
     if (page.href) {
-      window.location.assign(page.href);
+      // Matches the desktop <Link> controls: a client transition instead of a
+      // document load, so paging does not re-download the route bundle.
+      router.push(page.href);
     }
   }
 

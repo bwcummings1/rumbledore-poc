@@ -2,6 +2,7 @@
 
 import { ArrowRight, CheckCircle2, CircleDot } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -60,6 +61,7 @@ export function InviteAcceptPanel({
   isAuthenticated,
   onboardingUrl,
 }: InviteAcceptPanelProps) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
   const [selectedProviderMemberId, setSelectedProviderMemberId] = useState(
@@ -91,7 +93,10 @@ export function InviteAcceptPanel({
       }
 
       const accepted = (await response.json()) as AcceptedInviteResponse;
-      window.location.assign(accepted.leagueUrl);
+      // Accepting adds a league to the viewer's membership, which the shared
+      // layout renders, so refresh the server tree as well as navigating.
+      router.push(accepted.leagueUrl);
+      router.refresh();
     } catch {
       setError("This invite could not be accepted.");
     } finally {
