@@ -21,7 +21,7 @@ import type {
   CentralArticleDraft,
   CentralLlmGenerateRequest,
   CentralLlmGenerateResult,
-  EmbeddingProvider,
+  EmbeddingResult,
   LlmGenerateRequest,
   LlmGenerateResult,
   LlmJudge,
@@ -30,6 +30,7 @@ import type {
   LlmUsageBreakdown,
   NewsItem,
   UsageReportingCentralLlmClient,
+  UsageReportingEmbeddingProvider,
   UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
@@ -39,6 +40,7 @@ import {
   VOYAGE_EMBEDDING_MODEL,
 } from "./model-config";
 import { type AiPersona, renderToneProfileInstructions } from "./personas";
+import { estimateTokenCount } from "./usage-estimation";
 
 export {
   ANTHROPIC_BULK_MODEL,
@@ -831,6 +833,8 @@ export class AnthropicLlmClient
     }
     return {
       draft: parsed.data,
+      model: this.modelForPersona(request.context.journalist.persona),
+      provider: "anthropic",
       usage: usageFromAnthropicResponse(response),
     };
   }
@@ -1183,6 +1187,8 @@ export class OpenAiCompatibleLlmClient
     }
     return {
       draft: parsed.data,
+      model: this.model,
+      provider: "custom",
       usage: openAiCompatibleUsage(payload.usage),
     };
   }
@@ -1275,6 +1281,9 @@ interface VoyageEmbeddingResponse {
   data?: Array<{
     embedding?: unknown;
   }>;
+  usage?: {
+    total_tokens?: unknown;
+  };
 }
 
 export interface VoyageEmbeddingProviderOptions {
@@ -1284,7 +1293,9 @@ export interface VoyageEmbeddingProviderOptions {
   model?: string;
 }
 
-export class VoyageEmbeddingProvider implements EmbeddingProvider {
+export class VoyageEmbeddingProvider
+  implements UsageReportingEmbeddingProvider
+{
   readonly model: string;
   private readonly apiKey: string;
   private readonly endpoint: string;
@@ -1299,6 +1310,10 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
   }
 
   async embed(text: string): Promise<number[]> {
+    return (await this.embedWithUsage(text)).embedding;
+  }
+
+  async embedWithUsage(text: string): Promise<EmbeddingResult> {
     let response: Response;
     try {
       response = await this.fetcher(this.endpoint, {
@@ -1345,6 +1360,26 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
       });
     }
 
-    return embedding;
+    // Voyage bills per input token and reports the count it charged. Fall back
+    // to a local estimate rather than 0 if it is ever absent — a silent 0 is
+    // how the meter under-reads.
+    const reportedTokens = payload.usage?.total_tokens;
+    const estimated =
+      typeof reportedTokens !== "number" || !Number.isFinite(reportedTokens);
+
+    return {
+      embedding,
+      estimated,
+      model: this.model,
+      provider: "voyage",
+      usage: {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: estimated
+          ? estimateTokenCount(text)
+          : (reportedTokens as number),
+        outputTokens: 0,
+      },
+    };
   }
 }

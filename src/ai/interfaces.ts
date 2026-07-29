@@ -628,6 +628,15 @@ export interface CentralLlmGenerateRequest {
 export interface CentralLlmGenerateResult {
   draft: CentralArticleDraft;
   estimated?: boolean;
+  /**
+   * The model and provider that actually served this call. Central content
+   * types are outside the blogger's `AiContentType` routing vocabulary, so the
+   * central meter cannot ask a route resolver to *predict* the model — the
+   * client reports what it used. Omitted means "unknown"; the central pipeline
+   * then records the mock identity, matching `pipeline.ts`'s fallback.
+   */
+  model?: string;
+  provider?: string;
   usage: LlmUsageBreakdown;
 }
 
@@ -752,4 +761,31 @@ export interface WebGrounding {
 export interface EmbeddingProvider {
   model: string;
   embed(text: string): Promise<number[]>;
+}
+
+export interface EmbeddingResult {
+  embedding: number[];
+  /** True when token counts were estimated locally, not reported by the provider. */
+  estimated?: boolean;
+  /**
+   * The model that actually produced this vector. Not the same as the
+   * provider's configured `model` in every case: `GuardedEmbeddingProvider`
+   * falls back to the deterministic mock when the real call fails or the spend
+   * cap is hit, and metering that fallback as a paid Voyage call would
+   * overstate cost.
+   */
+  model: string;
+  /** Omitted means "unattributed"; callers record the mock provider key. */
+  provider?: string;
+  usage: LlmUsageBreakdown;
+}
+
+/**
+ * `embed()` returns a bare vector, so a plain `EmbeddingProvider` gives the
+ * cost meter nothing to record. Providers that can report token usage
+ * implement this; `embedWithUsage()` in `usage-estimation.ts` probes for it
+ * and estimates when it is absent.
+ */
+export interface UsageReportingEmbeddingProvider extends EmbeddingProvider {
+  embedWithUsage(text: string): Promise<EmbeddingResult>;
 }

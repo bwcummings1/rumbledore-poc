@@ -1185,4 +1185,52 @@ describe("VoyageEmbeddingProvider", () => {
       code: "AI_EMBEDDING_RESPONSE_INVALID",
     } satisfies Partial<AppError>);
   });
+
+  it("reports the token count Voyage billed, and estimates only when it is absent", async () => {
+    const withUsage = new VoyageEmbeddingProvider({
+      apiKey: fakeKey(),
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            data: [{ embedding: [0.1, 0.2] }],
+            usage: { total_tokens: 37 },
+          }),
+          { status: 200 },
+        ),
+      model: "voyage-fixture",
+    });
+
+    // Voyage bills per input token and reports what it charged — that number
+    // is what the meter records, and the row is not an estimate.
+    await expect(withUsage.embedWithUsage("league post text")).resolves.toEqual(
+      {
+        embedding: [0.1, 0.2],
+        estimated: false,
+        model: "voyage-fixture",
+        provider: "voyage",
+        usage: {
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+          inputTokens: 37,
+          outputTokens: 0,
+        },
+      },
+    );
+
+    const withoutUsage = new VoyageEmbeddingProvider({
+      apiKey: fakeKey(),
+      fetcher: async () =>
+        new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2] }] }), {
+          status: 200,
+        }),
+      model: "voyage-fixture",
+    });
+
+    // A response with no usage block must still meter something: recording 0
+    // is exactly how the cost meter reads systematically low.
+    const estimatedResult =
+      await withoutUsage.embedWithUsage("sixteen chars!!");
+    expect(estimatedResult.estimated).toBe(true);
+    expect(estimatedResult.usage.inputTokens).toBeGreaterThan(0);
+  });
 });

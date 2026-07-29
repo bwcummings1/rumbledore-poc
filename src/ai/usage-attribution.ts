@@ -1,8 +1,9 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
-import { aiUsageEvents, leagues } from "@/db/schema";
+import { aiUsageEvents, centralAiUsageEvents, leagues } from "@/db/schema";
 import type { FantasyProviderId } from "@/providers";
+import type { CentralColumnContentType } from "./central-columns";
 import {
   type AiContentType,
   CONTENT_TYPE_TEMPLATES,
@@ -26,6 +27,26 @@ export interface RecordAiUsageEventInput {
   readonly leagueId: string;
   readonly metadata?: Record<string, unknown>;
   readonly model: string;
+  readonly persona: AiPersona;
+  readonly provider: string;
+  readonly triggerKey: string;
+  readonly usage: LlmUsageBreakdown;
+}
+
+/**
+ * A central-plane AI call. Central generation is platform overhead, not
+ * league-attributable cost (DD-9), so it carries no `leagueId` and is written
+ * outside `withLeagueContext` — `central_ai_usage_event` has no RLS policy.
+ * `operation` separates LLM generation from embedding calls in the same meter.
+ */
+export interface RecordCentralAiUsageEventInput {
+  readonly columnId: string;
+  readonly contentType: CentralColumnContentType;
+  readonly createdAt?: Date;
+  readonly estimated: boolean;
+  readonly metadata?: Record<string, unknown>;
+  readonly model: string;
+  readonly operation?: string;
   readonly persona: AiPersona;
   readonly provider: string;
   readonly triggerKey: string;
@@ -142,6 +163,14 @@ interface ModelPriceMicrosPerToken {
  * price sheet: opus `claude-opus-4-8` at $5 in / $25 out, haiku `claude-haiku-4-5`
  * at $1 in / $5 out. Cache rows are derived (input x 1.25 and x 0.1).
  *
+ * The `voyage` row is the **voyage-4-lite** rate — $0.02 per MTok, verified
+ * against docs.voyageai.com/docs/pricing on 2026-07-29, matching the pinned
+ * `VOYAGE_EMBEDDING_MODEL`. ⚠ `modelPriceFor` matches on the substring
+ * "voyage", so every Voyage model prices at the lite rate: repointing the
+ * pinned model to `voyage-4` ($0.06) or `voyage-4-large` ($0.12) would
+ * under-report embedding cost by 3x or 6x. The pricing test pins the model
+ * constant alongside the rate so that repoint cannot pass silently.
+ *
  * These feed the AI-tier pricing decision (`PROJECT_CONTEXT.md` §3.2), so a wrong
  * number here misprices the product. Assert against independently-computed dollar
  * amounts in the test — never against these constants, or the test can only prove
@@ -252,6 +281,41 @@ export async function recordAiUsageEvent(
 
   if (!row) {
     throw new Error("AI usage event could not be recorded");
+  }
+  return row;
+}
+
+export async function recordCentralAiUsageEvent(
+  db: Db,
+  input: RecordCentralAiUsageEventInput,
+): Promise<{ id: string }> {
+  const [row] = await db
+    .insert(centralAiUsageEvents)
+    .values({
+      billableUnits: billableUnits(input.usage),
+      cacheCreationInputTokens: nonnegativeInt(
+        input.usage.cacheCreationInputTokens,
+      ),
+      cacheReadInputTokens: nonnegativeInt(input.usage.cacheReadInputTokens),
+      columnId: input.columnId,
+      contentType: input.contentType,
+      costMicrosUsd: estimateCostMicrosUsd(input.model, input.usage),
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      estimated: input.estimated,
+      inputTokens: nonnegativeInt(input.usage.inputTokens),
+      metadata: input.metadata ?? {},
+      model: input.model,
+      ...(input.operation ? { operation: input.operation } : {}),
+      outputTokens: nonnegativeInt(input.usage.outputTokens),
+      persona: input.persona,
+      provider: input.provider,
+      totalTokens: totalTokens(input.usage),
+      triggerKey: input.triggerKey,
+    })
+    .returning({ id: centralAiUsageEvents.id });
+
+  if (!row) {
+    throw new Error("Central AI usage event could not be recorded");
   }
   return row;
 }

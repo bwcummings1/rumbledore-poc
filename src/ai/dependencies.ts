@@ -13,6 +13,7 @@ import { createWebhookDeliverer } from "@/webhooks/dependencies";
 import type {
   BlogDraft,
   EmbeddingProvider,
+  EmbeddingResult,
   LlmClient,
   LlmGenerateRequest,
   LlmGenerateResult,
@@ -22,6 +23,7 @@ import type {
   LlmModelMetadataResolver,
   LlmModelProviderKeyResolver,
   NewsItem,
+  UsageReportingEmbeddingProvider,
   UsageReportingLlmClient,
   WebGrounding,
 } from "./interfaces";
@@ -42,6 +44,7 @@ import {
   type UsageReportingLlmJudge,
   VoyageEmbeddingProvider,
 } from "./real";
+import { embedWithUsage } from "./usage-estimation";
 
 const LLM_MOCK_FALLBACK_CODES = new Set([
   "AI_LLM_GENERATION_FAILED",
@@ -211,7 +214,9 @@ export class GuardedWebGrounding implements WebGrounding {
   }
 }
 
-export class GuardedEmbeddingProvider implements EmbeddingProvider {
+export class GuardedEmbeddingProvider
+  implements UsageReportingEmbeddingProvider
+{
   readonly model: string;
 
   constructor(
@@ -224,18 +229,28 @@ export class GuardedEmbeddingProvider implements EmbeddingProvider {
   }
 
   async embed(text: string): Promise<number[]> {
+    return (await this.embedWithUsage(text)).embedding;
+  }
+
+  /**
+   * Usage travels out of whichever provider actually served the call. On a
+   * spend-cap or error fallback that is the mock, and the returned `model` /
+   * `provider` say so — metering a fallback as a paid Voyage call would
+   * overstate the very cost this meter exists to measure.
+   */
+  async embedWithUsage(text: string): Promise<EmbeddingResult> {
     return runGuardedProviderCall({
       fallbackOnError: (error) =>
         error instanceof AppError &&
         error.code === "AI_EMBEDDING_REQUEST_FAILED",
       guard: this.guard,
       logger: this.logger,
-      mockCall: () => this.mock.embed(text),
+      mockCall: () => embedWithUsage(this.mock, text),
       operation: "embeddings.embed",
       provider: "voyage",
       realCall: async () => ({
         usage: { units: 1 },
-        value: await this.real.embed(text),
+        value: await embedWithUsage(this.real, text),
       }),
     });
   }

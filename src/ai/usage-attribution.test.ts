@@ -6,6 +6,7 @@ import { parseEnv } from "@/core/env/schema";
 import { createDb, type DbHandle } from "@/db/client";
 import { leagues } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
+import { VOYAGE_EMBEDDING_MODEL } from "./model-config";
 import {
   estimateCostMicrosUsd,
   getAiUsageRollupData,
@@ -247,5 +248,39 @@ describe("AI usage attribution", () => {
         outputTokens: 5,
       }),
     ).toBe(35);
+  });
+
+  // The voyage row was Unverified dead weight while nothing recorded embedding
+  // usage. T-005b makes it live, so it gets its own pin.
+  it("prices the pinned Voyage embedding model at its published rate (T-005b)", () => {
+    // `modelPriceFor` matches the substring "voyage", so ONE row prices every
+    // Voyage model. It is the voyage-4-lite rate; voyage-4 is $0.06/MTok and
+    // voyage-4-large $0.12/MTok. Pinning the model constant here means
+    // repointing it to a pricier model fails this test instead of silently
+    // under-reporting cost by 3x or 6x.
+    expect(VOYAGE_EMBEDDING_MODEL).toBe("voyage-4-lite");
+    // voyage-4-lite lists at $0.02 per million input tokens
+    // (docs.voyageai.com/docs/pricing, checked 2026-07-29). One million tokens
+    // must therefore cost $0.02, and $0.02 is 20,000 micros of USD.
+    // The 20,000 is derived from the DOLLAR price, not from the price table —
+    // asserting `1_000_000 * MODEL_PRICE_MICROS_PER_TOKEN.voyage.input` could
+    // only prove the table equals itself (T-004's lesson).
+    expect(
+      estimateCostMicrosUsd(VOYAGE_EMBEDDING_MODEL, {
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        inputTokens: 1_000_000,
+        outputTokens: 0,
+      }),
+    ).toBe(20_000);
+    // Embeddings bill on input only — completion and cache tiers cost nothing.
+    expect(
+      estimateCostMicrosUsd(VOYAGE_EMBEDDING_MODEL, {
+        cacheCreationInputTokens: 1_000_000,
+        cacheReadInputTokens: 1_000_000,
+        inputTokens: 0,
+        outputTokens: 1_000_000,
+      }),
+    ).toBe(0);
   });
 });

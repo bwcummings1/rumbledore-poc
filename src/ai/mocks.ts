@@ -45,7 +45,7 @@ import type {
   CentralLlmClient,
   CentralLlmGenerateRequest,
   CentralLlmGenerateResult,
-  EmbeddingProvider,
+  EmbeddingResult,
   LeagueContextRecord,
   LeagueContextTeam,
   LlmClient,
@@ -55,8 +55,10 @@ import type {
   LlmJudgeRequest,
   LlmJudgeScore,
   NewsItem,
+  UsageReportingEmbeddingProvider,
   WebGrounding,
 } from "./interfaces";
+import { estimateTokenCount } from "./usage-estimation";
 
 function primaryTeam(teams: LeagueContextTeam[]): LeagueContextTeam | null {
   return (
@@ -92,11 +94,6 @@ function cleanSummary(text: string): string {
 
 function includesToken(text: string, token: string): boolean {
   return text.toLocaleLowerCase().includes(token.toLocaleLowerCase());
-}
-
-function estimateTokenCount(text: string): number {
-  const compact = text.replace(/\s+/g, " ").trim();
-  return compact ? Math.max(1, Math.ceil(compact.length / 4)) : 0;
 }
 
 function uniqueJudgeTokens(values: readonly (string | null | undefined)[]) {
@@ -1692,6 +1689,8 @@ export class MockLlmClient implements LlmClient, CentralLlmClient {
     return {
       draft,
       estimated: true,
+      model: this.resolveModelName(),
+      provider: this.resolveModelProviderKey(),
       usage: {
         cacheCreationInputTokens: estimateTokenCount(
           request.prompt.systemPrefix,
@@ -1783,7 +1782,29 @@ export class MockWebGrounding implements WebGrounding {
   }
 }
 
-export class DeterministicEmbeddingProvider implements EmbeddingProvider {
+/** Mock embeddings cost nothing, but the meter still needs a shaped row. */
+function mockEmbeddingUsage(
+  model: string,
+  embedding: number[],
+  text: string,
+): EmbeddingResult {
+  return {
+    embedding,
+    estimated: true,
+    model,
+    provider: "mock",
+    usage: {
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      inputTokens: estimateTokenCount(text),
+      outputTokens: 0,
+    },
+  };
+}
+
+export class DeterministicEmbeddingProvider
+  implements UsageReportingEmbeddingProvider
+{
   readonly model = "mock-hash-embedding-v1";
   private readonly dimensions: number;
 
@@ -1801,9 +1822,15 @@ export class DeterministicEmbeddingProvider implements EmbeddingProvider {
       Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
     return vector.map((value) => Number((value / magnitude).toFixed(8)));
   }
+
+  async embedWithUsage(text: string): Promise<EmbeddingResult> {
+    return mockEmbeddingUsage(this.model, await this.embed(text), text);
+  }
 }
 
-export class ConstantEmbeddingProvider implements EmbeddingProvider {
+export class ConstantEmbeddingProvider
+  implements UsageReportingEmbeddingProvider
+{
   readonly model = "mock-constant-embedding-v1";
   private readonly dimensions: number;
 
@@ -1815,5 +1842,9 @@ export class ConstantEmbeddingProvider implements EmbeddingProvider {
     return Array.from({ length: this.dimensions }, (_, index) =>
       index === 0 ? 1 : 0,
     );
+  }
+
+  async embedWithUsage(text = ""): Promise<EmbeddingResult> {
+    return mockEmbeddingUsage(this.model, await this.embed(text), text);
   }
 }

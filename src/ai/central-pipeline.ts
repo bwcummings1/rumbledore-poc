@@ -46,19 +46,31 @@ import { centralGenerationKey } from "./central-generation-key";
 import { buildCentralEditorialRecall } from "./editorial-recall";
 import { cosineSimilarity } from "./embedding-similarity";
 import type {
+  CentralArticleDraft,
   CentralGenerationContext,
   CentralGenerationNewsEvidence,
   CentralGenerationOddsEvidence,
   CentralLlmClient,
   CentralLlmGenerateRequest,
+  CentralLlmGenerateResult,
   CentralPreGenerationContext,
   EmbeddingProvider,
   PromptParts,
+  UsageReportingCentralLlmClient,
 } from "./interfaces";
 import { DeterministicEmbeddingProvider, MockLlmClient } from "./mocks";
+import { recordCentralAiUsageEvent } from "./usage-attribution";
+import { embedWithUsage, estimateTokenCount } from "./usage-estimation";
 
 const CENTRAL_NEWS_LIMIT = 12;
 const CENTRAL_ODDS_LIMIT = 240;
+/**
+ * Recorded when the central client does not report which model served the
+ * call. Same identity `pipeline.ts` falls back to for the league blogger, so
+ * an unattributed row is recognisable as such in both meters.
+ */
+const CENTRAL_FALLBACK_MODEL = "mock-rumbledore-llm-v1";
+const CENTRAL_FALLBACK_PROVIDER = "mock";
 const CENTRAL_DUPLICATE_LOOKBACK_MS = 30 * 24 * 60 * 60_000;
 const CENTRAL_DUPLICATE_MEMORY_LIMIT = 20;
 export const DEFAULT_CENTRAL_DUPLICATE_THRESHOLD = 0.92;
@@ -599,6 +611,129 @@ export function createMockCentralAiDependencies(
   };
 }
 
+function centralDraftTextForUsage(draft: CentralArticleDraft): string {
+  try {
+    return centralArticleText(draft);
+  } catch {
+    return [draft.title, draft.summary, draft.body]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n");
+  }
+}
+
+async function generateCentralDraftWithUsage(
+  llm: CentralLlmClient,
+  request: CentralLlmGenerateRequest,
+): Promise<CentralLlmGenerateResult> {
+  const usageClient = llm as Partial<UsageReportingCentralLlmClient>;
+  if (usageClient.generateCentralWithUsage) {
+    return usageClient.generateCentralWithUsage(request);
+  }
+
+  const draft = await llm.generateCentral(request);
+  return {
+    draft,
+    estimated: true,
+    usage: {
+      cacheCreationInputTokens: estimateTokenCount(request.prompt.systemPrefix),
+      cacheReadInputTokens: 0,
+      inputTokens: estimateTokenCount(
+        [
+          request.prompt.systemInstructions,
+          request.prompt.volatileContext,
+          request.prompt.userTask,
+          request.duplicateNudge,
+        ]
+          .filter((part): part is string => typeof part === "string")
+          .join("\n"),
+      ),
+      outputTokens: estimateTokenCount(centralDraftTextForUsage(draft)),
+    },
+  };
+}
+
+/**
+ * Generate one central draft and meter it. Recording is **per attempt**, not
+ * per publish: central generation retries once on a near-duplicate, and both
+ * the retry and a draft that is later skipped or rejected have already cost
+ * real money. Central cost is platform overhead, so it lands in
+ * `central_ai_usage_event`, never in the league-scoped `ai_usage_event` (DD-9).
+ */
+async function generateAttributedCentralDraft({
+  createdAt,
+  deps,
+  input,
+  request,
+}: {
+  createdAt: Date;
+  deps: CentralAiGenerationDependencies;
+  input: GenerateCentralColumnInput;
+  request: CentralLlmGenerateRequest;
+}): Promise<CentralArticleDraft> {
+  const result = await generateCentralDraftWithUsage(deps.llm, request);
+  await recordCentralAiUsageEvent(deps.db, {
+    columnId: input.columnId,
+    contentType: request.contentType,
+    createdAt,
+    estimated: result.estimated ?? false,
+    metadata: {
+      attempt: request.attempt,
+      duplicateNudge: Boolean(request.duplicateNudge),
+      season: input.season,
+      week: input.week,
+    },
+    model: result.model ?? CENTRAL_FALLBACK_MODEL,
+    operation: "llm.generate",
+    persona: request.context.journalist.persona,
+    provider: result.provider ?? CENTRAL_FALLBACK_PROVIDER,
+    triggerKey: input.triggerKey,
+    usage: result.usage,
+  });
+  return result.draft;
+}
+
+/**
+ * Embed a central draft and meter the embedding call. Embeddings are a real,
+ * separately-billed line item (Voyage charges per input token) that the meter
+ * previously recorded nothing for; the near-duplicate gate runs one per
+ * attempt, so this is metered per attempt too.
+ */
+async function embedAttributedCentralArticle({
+  articleText,
+  attempt,
+  context,
+  createdAt,
+  deps,
+  input,
+}: {
+  articleText: string;
+  attempt: CentralLlmGenerateRequest["attempt"];
+  context: CentralGenerationContext;
+  createdAt: Date;
+  deps: CentralAiGenerationDependencies;
+  input: GenerateCentralColumnInput;
+}): Promise<number[]> {
+  const result = await embedWithUsage(deps.embeddings, articleText);
+  await recordCentralAiUsageEvent(deps.db, {
+    columnId: input.columnId,
+    contentType: context.column.contentType,
+    createdAt,
+    estimated: result.estimated ?? false,
+    metadata: {
+      attempt,
+      season: input.season,
+      week: input.week,
+    },
+    model: result.model,
+    operation: "embeddings.embed",
+    persona: context.journalist.persona,
+    provider: result.provider ?? CENTRAL_FALLBACK_PROVIDER,
+    triggerKey: input.triggerKey,
+    usage: result.usage,
+  });
+  return result.embedding;
+}
+
 export async function generateCentralColumn({
   deps,
   input,
@@ -657,11 +792,23 @@ export async function generateCentralColumn({
     prompt: buildCentralPromptParts(context),
   };
   let draft = validateCentralArticleDraft(
-    await deps.llm.generateCentral(request),
+    await generateAttributedCentralDraft({
+      createdAt: requestedAt,
+      deps,
+      input,
+      request,
+    }),
     { context },
   );
   let articleText = centralArticleText(draft);
-  let embedding = await deps.embeddings.embed(articleText);
+  let embedding = await embedAttributedCentralArticle({
+    articleText,
+    attempt: 1,
+    context,
+    createdAt: requestedAt,
+    deps,
+    input,
+  });
   let nearestMemories = await loadNearestCentralArticleMemories({
     contentType: context.column.contentType,
     deps,
@@ -681,11 +828,23 @@ export async function generateCentralColumn({
       prompt: buildCentralPromptParts(context),
     };
     draft = validateCentralArticleDraft(
-      await deps.llm.generateCentral(retryRequest),
+      await generateAttributedCentralDraft({
+        createdAt: requestedAt,
+        deps,
+        input,
+        request: retryRequest,
+      }),
       { context },
     );
     articleText = centralArticleText(draft);
-    embedding = await deps.embeddings.embed(articleText);
+    embedding = await embedAttributedCentralArticle({
+      articleText,
+      attempt: 2,
+      context,
+      createdAt: requestedAt,
+      deps,
+      input,
+    });
     nearestMemories = await loadNearestCentralArticleMemories({
       contentType: context.column.contentType,
       deps,
