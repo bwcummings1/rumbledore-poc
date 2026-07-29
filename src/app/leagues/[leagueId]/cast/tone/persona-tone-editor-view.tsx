@@ -119,8 +119,21 @@ function PersonaToneCard({
 }) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(() => formStateForCard(card));
+  const [seededToneVersion, setSeededToneVersion] = useState(card.toneVersion);
   const [preview, setPreview] = useState<PersonaTonePreviewResult | null>(null);
   const [request, setRequest] = useState<RequestState>({ status: "idle" });
+
+  // Saves and rollbacks both bump the server tone version and then `router.refresh()`,
+  // which swaps the `card` prop in place without remounting this component. Without this
+  // reconciliation the textareas keep the pre-refresh text while `card.toneVersion` moves
+  // on, so the optimistic-concurrency token would vouch for content the editor never
+  // showed — the next save would silently overwrite a rollback with the very text that was
+  // rolled back from.
+  if (seededToneVersion !== card.toneVersion) {
+    setSeededToneVersion(card.toneVersion);
+    setForm(formStateForCard(card));
+    setPreview(null);
+  }
   const endpoint = `/api/leagues/${leagueId}/cast/personas/${card.persona}/tone`;
   const fieldId = (name: string) => `${card.persona}-${name}`;
   const profile = useMemo(() => formToneProfile(form), [form]);
@@ -146,7 +159,7 @@ function PersonaToneCard({
     try {
       const response = await fetchWithTimeout(endpoint, {
         body: JSON.stringify({
-          expectedToneVersion: card.toneVersion,
+          expectedToneVersion: seededToneVersion,
           reason: form.reason,
           toneProfile: profile,
         }),

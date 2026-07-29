@@ -131,6 +131,43 @@ describe("LoreVoteWidget", () => {
     ).toBe(true);
   });
 
+  it("adopts a refreshed server snapshot instead of freezing the tally at load", () => {
+    const { rerender } = render(
+      <LoreVoteWidget
+        mode="lore"
+        vote={loreVote}
+        voteApiUrl="/api/lore-vote"
+      />,
+    );
+
+    expect(
+      screen.getByRole("radio", { name: /affirm/i }).hasAttribute("disabled"),
+    ).toBe(false);
+    expect(screen.getAllByText("3").length).toBeGreaterThan(0);
+
+    // The `lore` channel refreshed the RSC payload: more votes landed and the window closed.
+    rerender(
+      <LoreVoteWidget
+        mode="lore"
+        vote={{
+          ...loreVote,
+          affirmNeeded: 0,
+          isOpen: false,
+          passesAtClose: true,
+          quorumMet: true,
+          tally: { ...loreVote.tally, affirm: 9, totalVotes: 11 },
+        }}
+        voteApiUrl="/api/lore-vote"
+      />,
+    );
+
+    expect(screen.getAllByText("9").length).toBeGreaterThan(0);
+    expect(screen.getByText("Voting closed.")).toBeDefined();
+    expect(
+      screen.getByRole("radio", { name: /affirm/i }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("does not announce a poll leader before any option has votes", () => {
     render(
       <LoreVoteWidget

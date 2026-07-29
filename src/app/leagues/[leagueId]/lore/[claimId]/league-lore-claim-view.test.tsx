@@ -276,6 +276,52 @@ describe("LeagueLoreClaimView", () => {
     expect(screen.getByText("Canon under challenge")).toBeDefined();
   });
 
+  it("adopts a realtime-refreshed claim instead of holding the load-time snapshot", () => {
+    const { rerender } = render(<LeagueLoreClaimView data={data} />);
+
+    expect(screen.getByText("Open vote")).toBeDefined();
+    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
+
+    // `router.refresh()` from the lore channel replaces `data` without remounting.
+    rerender(
+      <LeagueLoreClaimView
+        data={{
+          ...data,
+          claim: {
+            ...data.claim,
+            ratifiedAt: "2026-06-16T12:00:00.000Z",
+            ratifiedBy: "vote",
+            status: "canon",
+            vote: {
+              affirmNeeded: 0,
+              currentChoice: null,
+              isOpen: false,
+              passesAtClose: true,
+              quorumMet: true,
+              tally: {
+                abstain: 0,
+                activeMembers: 10,
+                affirm: 7,
+                quorum: 4,
+                quorumRatio: 0.34,
+                reject: 1,
+                totalVotes: 8,
+              },
+              voteClosesAt: "2026-06-22T12:00:00.000Z",
+              voteOpensAt: "2026-06-15T12:00:00.000Z",
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Canon · league decided")).toBeDefined();
+    expect(screen.getAllByText("7").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("radio", { name: /affirm/i }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("does not offer challenge relations for non-canon claims", () => {
     render(<LeagueLoreClaimView data={{ ...data, isSteward: false }} />);
 

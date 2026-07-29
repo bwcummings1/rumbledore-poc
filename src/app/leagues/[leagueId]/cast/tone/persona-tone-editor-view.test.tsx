@@ -62,6 +62,22 @@ const data = {
   },
 } satisfies LeagueToneProfileEditorData;
 
+function dataAtVersion(
+  toneVersion: number,
+  pointOfView: string,
+): LeagueToneProfileEditorData {
+  return {
+    ...data,
+    cards: [
+      {
+        ...data.cards[0],
+        toneProfile: { ...DEFAULT_TONE_PROFILES.narrator, pointOfView },
+        toneVersion,
+      },
+    ],
+  };
+}
+
 test("PersonaToneEditorView renders editable tone controls and preview output", async () => {
   const fetch = vi.fn().mockResolvedValue(
     new Response(
@@ -99,4 +115,54 @@ test("PersonaToneEditorView renders editable tone controls and preview output", 
   expect(
     screen.getByText("tone-editor-marker preview paragraph"),
   ).toBeDefined();
+});
+
+test("PersonaToneEditorView shows the rolled-back tone and saves it, not the reverted draft", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+
+  const { rerender } = render(
+    <PersonaToneEditorView data={dataAtVersion(2, "Live v2 point of view.")} />,
+  );
+
+  const pointOfView = screen.getByLabelText(/^Point of view/);
+  expect(
+    pointOfView instanceof HTMLTextAreaElement ? pointOfView.value : null,
+  ).toBe("Live v2 point of view.");
+
+  fireEvent.click(screen.getByRole("button", { name: "Roll back" }));
+
+  await waitFor(() => {
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  // `router.refresh()` replaces the server payload in place; the component never remounts.
+  rerender(
+    <PersonaToneEditorView
+      data={dataAtVersion(3, "Restored v1 point of view.")}
+    />,
+  );
+
+  const reconciled = screen.getByLabelText(/^Point of view/);
+  expect(
+    reconciled instanceof HTMLTextAreaElement ? reconciled.value : null,
+  ).toBe("Restored v1 point of view.");
+
+  fireEvent.click(screen.getByRole("button", { name: "Save version" }));
+
+  await waitFor(() => {
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  const saveCall = fetch.mock.calls[1] as [string, RequestInit];
+  expect(saveCall[0]).toBe(
+    "/api/leagues/00000000-0000-4000-8000-000000000001/cast/personas/narrator/tone",
+  );
+  const saved = JSON.parse(String(saveCall[1].body)) as {
+    expectedToneVersion: number;
+    toneProfile: { pointOfView: string };
+  };
+  expect(saved.toneProfile.pointOfView).toBe("Restored v1 point of view.");
+  expect(saved.expectedToneVersion).toBe(3);
 });
