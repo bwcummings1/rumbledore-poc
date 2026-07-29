@@ -13,8 +13,20 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: /mobile-.*\.spec\.ts$/,
       use: {
         ...devices["Desktop Chrome"],
+      },
+    },
+    {
+      // Rumbledore is a mobile-first PWA, but every e2e project ran at desktop
+      // width — so the viewport the product is designed for was the one nothing
+      // asserted against. `mobile-*.spec.ts` runs here and only here; a touch
+      // viewport is what makes a tap-target assertion mean anything.
+      name: "mobile",
+      testMatch: /mobile-.*\.spec\.ts$/,
+      use: {
+        ...devices["Pixel 7"],
       },
     },
   ],
