@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { YouAccountData } from "./you-account-view";
 import { YouAccountView } from "./you-account-view";
@@ -39,6 +39,18 @@ const data: YouAccountData = {
       provider: "espn",
       providerLabel: "ESPN",
       role: "commissioner",
+    },
+  ],
+  notificationPreferences: [
+    {
+      channels: {
+        arena: "push",
+        bets: "push",
+        content: "digest",
+        lore: "none",
+      },
+      leagueId: "00000000-0000-4000-8000-000000000001",
+      name: "NHS Alumni Annual",
     },
   ],
   personalAgent: {
@@ -119,12 +131,23 @@ test("you account view renders identity, providers, and installed leagues", () =
   ).toBeDefined();
   expect(screen.getByText("Notification preferences")).toBeDefined();
   expect(screen.getByText("Per-league delivery")).toBeDefined();
-  expect(screen.getByText("Content")).toBeDefined();
-  expect(screen.getByText("Weekly digest")).toBeDefined();
-  expect(screen.getByText("Lore, bets, and Arena")).toBeDefined();
-  expect(screen.getByText("Web Push")).toBeDefined();
-  expect(screen.getByText("Any family")).toBeDefined();
-  expect(screen.getByText("None")).toBeDefined();
+  // The matrix replaced a static three-row description of the defaults with
+  // one control per league per event family, seeded from saved preferences.
+  const matrix = within(
+    screen.getByRole("group", { name: "NHS Alumni Annual" }),
+  );
+  expect((matrix.getByLabelText("Content") as HTMLSelectElement).value).toBe(
+    "digest",
+  );
+  expect((matrix.getByLabelText("Lore") as HTMLSelectElement).value).toBe(
+    "none",
+  );
+  expect((matrix.getByLabelText("Bets") as HTMLSelectElement).value).toBe(
+    "push",
+  );
+  expect((matrix.getByLabelText("Arena") as HTMLSelectElement).value).toBe(
+    "push",
+  );
 });
 
 test("you account view renders provider reconnect CTAs", () => {

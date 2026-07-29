@@ -27,6 +27,7 @@ export {
   getNotificationChannelPreference,
   isDigestNotificationEnabled,
   isPushNotificationEnabled,
+  listNotificationChannelPreferences,
   setNotificationChannelPreference,
   setPushNotificationPreference,
 } from "./preferences";

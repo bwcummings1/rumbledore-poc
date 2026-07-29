@@ -267,6 +267,43 @@ export async function getNotificationChannelPreference(
   });
 }
 
+/**
+ * Every family's channel for one league in a single query.
+ *
+ * `getNotificationChannelPreference` opens its own RLS transaction per family,
+ * so seeding a four-family preference matrix through it would cost four
+ * transactions per league. This reads the league's rows once and fills the
+ * gaps with the per-family defaults, which is what the matrix needs to render
+ * the viewer's real saved state rather than a guess.
+ */
+export async function listNotificationChannelPreferences(
+  db: Db,
+  input: { leagueId: string; userId: string },
+): Promise<Record<NotificationEventFamily, NotificationChannel>> {
+  const saved = await withLeagueContext(db, input.leagueId, async (tx) =>
+    tx
+      .select({
+        channel: pushNotificationPreferences.channel,
+        eventFamily: pushNotificationPreferences.eventFamily,
+      })
+      .from(pushNotificationPreferences)
+      .where(
+        and(
+          eq(pushNotificationPreferences.leagueId, input.leagueId),
+          eq(pushNotificationPreferences.userId, input.userId),
+        ),
+      ),
+  );
+
+  const byFamily = new Map(saved.map((row) => [row.eventFamily, row.channel]));
+  return Object.fromEntries(
+    NOTIFICATION_EVENT_FAMILY_VALUES.map((family) => [
+      family,
+      byFamily.get(family) ?? defaultNotificationChannelForFamily(family),
+    ]),
+  ) as Record<NotificationEventFamily, NotificationChannel>;
+}
+
 export async function isDigestNotificationEnabled(
   db: Db,
   input: {

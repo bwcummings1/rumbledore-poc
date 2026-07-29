@@ -16,6 +16,10 @@ import { cn } from "@/lib/utils";
 import type { LeagueSwitcherViewItem } from "@/navigation";
 import { reconnectActionForProvider } from "@/onboarding/reconnect";
 import type { FantasyProviderId } from "@/providers";
+import {
+  type LeagueNotificationPreference,
+  NotificationPreferenceMatrix,
+} from "./notification-preference-matrix";
 import { SignOutButton } from "./sign-out-button";
 
 export interface YouProviderConnection {
@@ -36,6 +40,7 @@ export interface YouProviderConnection {
 export interface YouAccountData {
   readonly connections: YouProviderConnection[];
   readonly leagues: LeagueSwitcherViewItem[];
+  readonly notificationPreferences: LeagueNotificationPreference[];
   readonly personalAgent: PersonalAgentBriefingResult;
   readonly user: {
     readonly displayName: string;
@@ -355,13 +360,16 @@ export function YouAccountView({ data }: { data: YouAccountData }) {
             the baseline arrival paths. Web Push is an installed-app
             enhancement; on iOS Safari it only works after Add to Home Screen.
           </p>
-          <KVList
-            items={[
-              { label: "Content", value: "Weekly digest" },
-              { label: "Lore, bets, and Arena", value: "Web Push" },
-              { label: "Any family", value: "None" },
-            ]}
-          />
+          {data.notificationPreferences.length > 0 ? (
+            <NotificationPreferenceMatrix
+              leagues={data.notificationPreferences}
+            />
+          ) : (
+            <EmptyState title="No leagues to notify about">
+              Install a league to choose how its content, lore, bets, and Arena
+              alerts reach you.
+            </EmptyState>
+          )}
         </div>
 
         <InstallAffordance />

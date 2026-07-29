@@ -15,6 +15,8 @@ import {
   serializeLeagueSwitcherItem,
 } from "@/navigation";
 import { listLeagueSwitcherItemsForUser } from "@/navigation/league-switcher-data";
+import { listNotificationChannelPreferences } from "@/push";
+import type { LeagueNotificationPreference } from "./notification-preference-matrix";
 import { type YouAccountData, YouAccountView } from "./you-account-view";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +88,18 @@ export default async function YouPage() {
   if (!leagues.ok) {
     throw leagues.error;
   }
+  const notificationPreferences: LeagueNotificationPreference[] =
+    await Promise.all(
+      leagues.value.map(async (league) => ({
+        channels: await listNotificationChannelPreferences(db, {
+          leagueId: league.leagueId,
+          userId: session.value.userId,
+        }),
+        leagueId: league.leagueId,
+        name: league.name,
+      })),
+    );
+
   const personalAgent = await getPersonalAgentBriefing({
     db,
     env: { entitlements: env.entitlements },
@@ -103,6 +117,7 @@ export default async function YouPage() {
       subjectProviderId: credential.subjectProviderId,
     })),
     leagues: leagues.value.map(serializeLeagueSwitcherItem),
+    notificationPreferences,
     personalAgent,
     user,
   };
