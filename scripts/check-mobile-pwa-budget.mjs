@@ -15,6 +15,18 @@ const appPathRoutesManifestPath = path.join(
   "app-path-routes-manifest.json",
 );
 
+/**
+ * The specs/24 ceiling for per-route JS, in KB gzipped, and the only number the
+ * gate trusts.
+ *
+ * `maxRouteJsGzipKb` in the budget file used to be checked only for being `>= 1`
+ * — so the one threshold that measures a regression was the one threshold that
+ * could not fail on one. Raising the budget to 900 satisfied `>= 1`, and every
+ * route then "passed" against 900. The check now has a ceiling, and the measured
+ * comparison below clamps to it so a tampered budget cannot buy headroom.
+ */
+const MAX_ROUTE_JS_GZIP_KB = 300;
+
 function fail(message) {
   console.error(`mobile-pwa-budget: ${message}`);
   process.exitCode = 1;
@@ -41,6 +53,7 @@ function assertThresholds(budget) {
     ["interactionToNextPaintMs", 200, "max"],
     ["minimumTapTargetPx", 44, "min"],
     ["maxRouteJsGzipKb", 1, "min"],
+    ["maxRouteJsGzipKb", MAX_ROUTE_JS_GZIP_KB, "max"],
   ];
 
   for (const [key, limit, direction] of checks) {
@@ -210,7 +223,15 @@ function assertBuiltRouteBudgets(budget) {
   if (!appPathRoutes) {
     return;
   }
-  const maxRouteJsGzipKb = budget.thresholds?.maxRouteJsGzipKb;
+  // Clamped, not read: `assertThresholds` already failed the run if the budget
+  // file asks for more than the ceiling, but `fail()` only sets the exit code
+  // and keeps going — without the clamp the run would go on to print
+  // "route JS gzip sizes OK" against the inflated number.
+  const declared = budget.thresholds?.maxRouteJsGzipKb;
+  const maxRouteJsGzipKb =
+    typeof declared === "number" && Number.isFinite(declared)
+      ? Math.min(declared, MAX_ROUTE_JS_GZIP_KB)
+      : MAX_ROUTE_JS_GZIP_KB;
   const routeReports = [];
 
   for (const route of budget.shellRoutes ?? []) {
