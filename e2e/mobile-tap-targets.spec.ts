@@ -181,11 +181,11 @@ async function undersizedControls(page: Page): Promise<UndersizedControl[]> {
       continue;
     }
 
+    // `.slice()` cannot return null, so a further `??` after it would be dead.
     const label =
       (await control.getAttribute("aria-label")) ??
       (await control.getAttribute("title")) ??
-      ((await control.textContent()) ?? "").trim().slice(0, 60) ??
-      "";
+      ((await control.textContent()) ?? "").trim().slice(0, 60);
     undersized.push({
       height: Math.round(box.height),
       label: label || "(no accessible name)",
