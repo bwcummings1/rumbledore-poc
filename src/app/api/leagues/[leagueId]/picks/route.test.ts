@@ -14,6 +14,13 @@ vi.mock("@/db", () => ({
   getDb: () => mocks.db,
 }));
 
+// The limiter has no Redis in vitest and falls back to an in-memory counter
+// whose state leaks between runs; src/core/rate-limit.test.ts covers the guard
+// itself. Mocked here so these tests assert the route, not the counter.
+vi.mock("@/core/rate-limit", () => ({
+  enforceApiRateLimitOrReject: async () => null,
+}));
+
 vi.mock("@/auth/guards", () => ({
   requireLeagueRole: mocks.requireLeagueRole,
 }));

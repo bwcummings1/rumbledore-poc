@@ -36,6 +36,7 @@ const RATE_LIMITED = new Set([
   "leagues/[leagueId]/lore/claims/[claimId]/votes/route.ts",
   "leagues/[leagueId]/lore/claims/route.ts",
   "leagues/[leagueId]/polls/[pollId]/votes/route.ts",
+  "leagues/[leagueId]/picks/route.ts",
   "leagues/[leagueId]/press/[postId]/reactions/route.ts",
 ]);
 
@@ -48,7 +49,6 @@ const EXEMPT = new Map([
   ["inngest/route.ts", "signed job webhook, not reachable by a browser client"],
   ["admin/entitlements/route.ts", "platform-administrator only"],
   ["leagues/[leagueId]/bet/slips/route.ts", "bounded by the paper bankroll"],
-  ["leagues/[leagueId]/picks/route.ts", "bounded by the weekly pick slate"],
   [
     "leagues/[leagueId]/cast/personas/[persona]/tone/rollback/route.ts",
     "platform-administrator only; no provider call",

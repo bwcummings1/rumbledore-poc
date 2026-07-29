@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireLeagueRole } from "@/auth/guards";
 import { PICK_SELECTIONS, submitPick } from "@/betting/pickem";
 import { recordApiHandler } from "@/core/metrics";
+import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
@@ -33,6 +34,23 @@ async function picksPost(request: Request, context: PicksRouteContext) {
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  // The weekly allowance bounds SUCCESSFUL picks, not attempts. A member can
+  // spam submissions the server will reject -- a stale snapshot, a locked
+  // kickoff, a closed week -- indefinitely, and each one costs a transaction
+  // with an RLS context switch. The cap is well above any honest pick session:
+  // the largest legitimate burst is one submit per staged pick.
+  const limited = await enforceApiRateLimitOrReject({
+    max: 60,
+    message: "Too many pick submissions. Try again shortly.",
+    scope: "league-picks",
+    // Keyed on the session user, never on a header a caller controls.
+    subject: access.value.userId,
+    windowSeconds: 60,
+  });
+  if (limited) {
+    return limited;
   }
 
   const body = await readJsonBody(request, MAX_PICK_BODY_BYTES);
