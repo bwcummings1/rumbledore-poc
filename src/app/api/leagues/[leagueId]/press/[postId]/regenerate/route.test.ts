@@ -112,6 +112,20 @@ describe("POST /api/leagues/[leagueId]/press/[postId]/regenerate", () => {
     });
   });
 
+  it("answers a malformed post id with a 400 instead of a Postgres 500", async () => {
+    mockAdminAccess();
+
+    const response = await POST(request({}), {
+      params: Promise.resolve({ leagueId, postId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_POST_ID" },
+    });
+    expect(regenerateEditorialContentItem).not.toHaveBeenCalled();
+  });
+
   it("returns the rate-limit rejection before spending a generation", async () => {
     mockAdminAccess();
     const { enforceApiRateLimitOrReject } = await import("@/core/rate-limit");

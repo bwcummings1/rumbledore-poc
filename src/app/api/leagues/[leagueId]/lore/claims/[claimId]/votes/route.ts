@@ -2,6 +2,7 @@ import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
 import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { castLoreVote } from "@/lore";
 import { getLoreClaimVoteStatus } from "@/lore/member-experience";
 import { LORE_VOTE_CHOICES, type LoreVoteCastResponse } from "@/lore/member-ui";
@@ -29,6 +30,14 @@ async function loreVotesPost(request: Request, context: LoreVotesRouteContext) {
   const { access, db } = await authorizeLoreMember(request, leagueId);
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidClaimId = uuidParamError(claimId, {
+    code: "INVALID_CLAIM_ID",
+    label: "Lore claim id",
+  });
+  if (invalidClaimId) {
+    return errorJson(invalidClaimId);
   }
 
   const limited = await enforceApiRateLimitOrReject({

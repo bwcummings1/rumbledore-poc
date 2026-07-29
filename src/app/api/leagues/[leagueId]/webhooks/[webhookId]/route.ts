@@ -3,6 +3,7 @@ import { requireLeagueRole } from "@/auth/guards";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
 import {
@@ -56,6 +57,13 @@ function webhookMutationHttpStatus(result: LeagueWebhookMutationResult) {
   return WEBHOOK_MUTATION_HTTP_STATUS[result.status] ?? 200;
 }
 
+function invalidWebhookId(webhookId: string) {
+  return uuidParamError(webhookId, {
+    code: "INVALID_WEBHOOK_ID",
+    label: "Webhook id",
+  });
+}
+
 interface LeagueWebhookRouteContext {
   params: Promise<{ leagueId: string; webhookId: string }>;
 }
@@ -74,6 +82,11 @@ async function leagueWebhookPatch(
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidId = invalidWebhookId(webhookId);
+  if (invalidId) {
+    return errorJson(invalidId);
   }
 
   const body = await readJsonBody(request, MAX_WEBHOOK_BODY_BYTES);
@@ -133,6 +146,11 @@ async function leagueWebhookDelete(
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidId = invalidWebhookId(webhookId);
+  if (invalidId) {
+    return errorJson(invalidId);
   }
 
   try {

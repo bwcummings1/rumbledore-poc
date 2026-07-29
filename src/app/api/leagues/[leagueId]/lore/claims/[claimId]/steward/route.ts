@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { stewardLoreClaim } from "@/lore";
 import { getLoreClaimCard } from "@/lore/member-experience";
 import {
@@ -69,6 +70,14 @@ async function loreStewardPost(
   );
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidClaimId = uuidParamError(claimId, {
+    code: "INVALID_CLAIM_ID",
+    label: "Lore claim id",
+  });
+  if (invalidClaimId) {
+    return errorJson(invalidClaimId);
   }
 
   const body = await readJsonBody(request, MAX_LORE_STEWARD_BODY_BYTES);

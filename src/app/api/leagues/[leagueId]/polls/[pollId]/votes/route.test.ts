@@ -140,6 +140,21 @@ describe("POST /api/leagues/[leagueId]/polls/[pollId]/votes", () => {
     });
   });
 
+  it("answers a malformed poll id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+    mockMembership();
+
+    const response = await POST(request({ optionIdx: 0 }), {
+      params: Promise.resolve({ leagueId, pollId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_POLL_ID" },
+    });
+    expect(castPollVote).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed poll vote payloads before touching membership", async () => {
     mockAccess();
 

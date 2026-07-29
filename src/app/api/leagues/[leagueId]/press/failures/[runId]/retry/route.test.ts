@@ -103,6 +103,20 @@ describe("POST /api/leagues/[leagueId]/press/failures/[runId]/retry", () => {
     });
   });
 
+  it("answers a malformed run id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+
+    const response = await POST(request(), {
+      params: Promise.resolve({ leagueId, runId: "not-a-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_RUN_ID" },
+    });
+    expect(retryGenerationFailureRun).not.toHaveBeenCalled();
+  });
+
   it("rejects non-stewards before creating AI dependencies", async () => {
     mocks.requireLeagueRole.mockResolvedValue({
       error: new AppError({

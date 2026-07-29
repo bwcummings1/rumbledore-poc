@@ -2,6 +2,7 @@ import { z } from "zod";
 import { recordApiHandler } from "@/core/metrics";
 import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { castPollVote } from "@/instigator";
 import { getLorePollVoteStatus } from "@/lore/member-experience";
 import type { LorePollVoteCastResponse } from "@/lore/member-ui";
@@ -29,6 +30,14 @@ async function pollVotesPost(request: Request, context: PollVotesRouteContext) {
   const { access, db } = await authorizeLoreMember(request, leagueId);
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidPollId = uuidParamError(pollId, {
+    code: "INVALID_POLL_ID",
+    label: "Poll id",
+  });
+  if (invalidPollId) {
+    return errorJson(invalidPollId);
   }
 
   const limited = await enforceApiRateLimitOrReject({

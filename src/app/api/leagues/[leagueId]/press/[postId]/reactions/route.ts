@@ -5,6 +5,7 @@ import { setContentReaction } from "@/content/reactions";
 import { recordApiHandler } from "@/core/metrics";
 import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
 
@@ -35,6 +36,14 @@ async function contentReactionPost(
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidPostId = uuidParamError(postId, {
+    code: "INVALID_POST_ID",
+    label: "Post id",
+  });
+  if (invalidPostId) {
+    return errorJson(invalidPostId);
   }
 
   // Generous enough that a member tapping through a feed never notices, tight

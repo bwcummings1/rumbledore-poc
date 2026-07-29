@@ -6,6 +6,7 @@ import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
 import { enforceApiRateLimitOrReject } from "@/core/rate-limit";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
 
@@ -43,6 +44,14 @@ async function editorialRegeneratePost(
         status: 400,
       }),
     );
+  }
+
+  const invalidPostId = uuidParamError(postId, {
+    code: "INVALID_POST_ID",
+    label: "Post id",
+  });
+  if (invalidPostId) {
+    return errorJson(invalidPostId);
   }
 
   // Every accepted request bills a model generation, so the cap is on the

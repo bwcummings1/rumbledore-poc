@@ -4,6 +4,7 @@ import { retractEditorialContentItem } from "@/content/editorial";
 import { getEnv } from "@/core/env";
 import { recordApiHandler } from "@/core/metrics";
 import { AppError, toAppError } from "@/core/result";
+import { uuidParamError } from "@/core/uuid";
 import { getDb } from "@/db";
 import { errorJson, okJson, readJsonBody } from "@/onboarding/http";
 import { createPushNotifier } from "@/push";
@@ -36,6 +37,14 @@ async function editorialRetractPost(
   });
   if (!access.ok) {
     return errorJson(access.error);
+  }
+
+  const invalidPostId = uuidParamError(postId, {
+    code: "INVALID_POST_ID",
+    label: "Post id",
+  });
+  if (invalidPostId) {
+    return errorJson(invalidPostId);
   }
 
   const body = await readJsonBody(request, MAX_EDITORIAL_BODY_BYTES);

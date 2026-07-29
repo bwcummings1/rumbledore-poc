@@ -141,6 +141,21 @@ describe("POST /api/leagues/[leagueId]/lore/claims/[claimId]/votes", () => {
     });
   });
 
+  it("answers a malformed claim id with a 400 instead of a Postgres 500", async () => {
+    mockAccess();
+    mockMembership();
+
+    const response = await POST(request({ choice: "affirm" }), {
+      params: Promise.resolve({ claimId: "not-a-uuid", leagueId }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_CLAIM_ID" },
+    });
+    expect(castLoreVote).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed vote payloads before touching membership", async () => {
     mockAccess();
 
