@@ -308,6 +308,41 @@ Applied to `REPO-ANALYSIS/CLAUDE-Analysis-and-Improvement-2026-07-24-v1.md`:
 
 ---
 
+## 8b. Prize-activation readiness (T-027 — assessment, nothing built)
+
+Checked against HEAD on 2026-07-29. **Nothing here was implemented**; this is
+the gap list the card asks for. Items needing counsel are marked ⚖.
+
+### What the data model already supports
+
+| Requirement | State | Evidence |
+|---|---|---|
+| Entry defined with a snapshotted roster size | **Ready** | `pick_weeks.roster_size` is captured when the week opens and constrained `> 0`, so a league cannot shrink its denominator mid-week by cutting inactive members. |
+| Accuracy computed independently of eligibility | **Ready** | `scorePickWeek` derives `accuracy` from `correctPicks / scorablePicks` and returns `isEligibleForWeeklyPrize` as a separate boolean. Every consumer (arena, standings, desk) counts eligible *weeks*; none feeds eligibility back into a score. Verified by grep, not by assumption. |
+| Ties split evenly | **Ready** | `rankEntries` groups ties and the arena assigns them a shared rank, so a tie is reported as a tie rather than ordered arbitrarily. |
+| Per-week, per-league audit trail of what was picked and when | **Ready** | `picks` carries `submitted_at`, `graded_at`, `locked_line` and `result_detail`, all under FORCE'd RLS. |
+
+### What is missing
+
+| Gap | Severity | Note |
+|---|---|---|
+| `users.geo_state` and `users.phone_verified` exist but are **never written** | **Blocking** | Migration 0079 added the columns; no code populates either. They are storage, not a control. Excluding restricted states and verifying identity both need a collection flow *and* a source of truth before either column means anything. |
+| AMOE (alternate means of entry) | **Blocking** ⚖ | Not designed and deliberately not built (§4). A free-entry path is what keeps a prize out of the consideration prong. |
+| State registration and bonding (NY, FL) | **Blocking** ⚖ | Not started. Threshold-dependent and jurisdiction-specific. |
+| Tax reporting (1099 thresholds, W-9 collection) | **Blocking** ⚖ | No mechanism exists. Winner identity is currently a `users` row with no verified legal name or TIN. |
+| Minimum-roster decision (context §9 P1) | **Open** | Still parked with the maintainer. It changes the denominator, so it must be settled BEFORE a prize runs, not after. |
+| `maxPremiumLeaguesPerUser` is configured but enforced nowhere | **Not blocking** | Found during T-024. Relevant only if entry is tied to a paid tier. |
+
+### The honest summary
+
+The *scoring* side is prize-ready: an entry is well-defined, the score cannot
+be influenced by eligibility, and ties are handled. Everything blocking is
+**compliance and identity**, none of which is a code problem this repo can
+close on its own — every ⚖ item needs counsel before it is designed, not
+after. Activating a prize on the current model would mean paying out to an
+unverified person in an unknown state with no tax trail.
+
+
 ## 9. Parked questions
 
 | ID | Parked | Reopen when |

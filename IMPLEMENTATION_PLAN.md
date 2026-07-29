@@ -880,10 +880,10 @@ load-flake suites — re-run in isolation before blaming your change.
 | T-021 | pending | UIX-116 | S | — | ⛔ approval |
 | T-022 | pending | context §7.2 | S | — | |
 | T-023 | pending | UIX-116 | S | — | ⛔ approval |
-| T-024 | pending | UIX-117 | L | — | |
+| T-024 | **done** | UIX-117 | L | 2026-07-29 | The resolver was already structurally two-axis; nothing PROVED it, and the commercially important case was uncovered — the old independence test used an unrelated user, which cannot show that a member of a premium league must still buy the personal assistant. Four-combination matrix added; falsified by leaking the league axis into the user path. **Two findings left deliberately unchanged**: `maxPremiumLeaguesPerUser` is configured, merged and returned but enforced NOWHERE (needs a billing-ownership model — T-026), and `defaultEntitlementDevOverride` returns true for production while the guard beside it rejects only the EXPLICIT flag, so the silent default walks past it (that flip is T-025, approval-gated). |
 | T-025 | pending | UIX-117 | S | — | ⛔ approval |
 | T-026 | pending | UIX-118 | L | — | ⛔ approval — real money |
-| T-027 | pending | UIX-119 | M | — | Assessment only |
+| T-027 | **done** | UIX-119 | M | 2026-07-29 | Assessment written to `PROJECT_CONTEXT.md` §8b; nothing built, as the card requires. Scoring side is prize-ready and verified by grep rather than assumption: roster size is snapshotted, accuracy never reads eligibility, ties split. Everything blocking is compliance/identity — `geo_state` and `phone_verified` exist but are **never written** by any code, and AMOE, NY/FL registration and tax reporting are all ⚖ counsel-required and undesigned. Activating a prize today would mean paying an unverified person in an unknown state with no tax trail. |
 | T-028 | pending | UIX-115 | L | — | ⛔ approval — sample |
 | T-029 | **done** | UIX-110 | S | 2026-07-28 | Both fences non-escapable via `\uXXXX` escaping of `<`/`>` (nonce rejected — would bust the cached prefix). Falsified per builder: lore 3→1, news 4→1 closing tags. Suite 1,440/0/5. |
 | T-030 | **done** | UIX-110 | S | 2026-07-28 | Judge fenced + instruction-hierarchy guardrail. **Two routes, not one**: `buildEntityTokens` also folds lore title/statement into `entityTokens`, so the card's `real.ts:583-586` fix alone was insufficient — falsification #2 proves it. Lore free text dropped (ctx §7.5: not a citable corpus). |
