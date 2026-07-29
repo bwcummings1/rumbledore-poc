@@ -14,7 +14,6 @@ import {
   WalletCards,
 } from "lucide-react";
 import Link from "next/link";
-import { DEFAULT_BANKROLL_FLOOR_CENTS } from "@/betting/bankroll";
 import {
   type PublicationStory,
   PublicationStoryCard,
@@ -56,7 +55,7 @@ type LeagueHomeSectionId =
   | "press"
   | "this-week"
   | "standings"
-  | "bankroll"
+  | "pickem"
   | "teams"
   | "records"
   | "upcoming";
@@ -811,28 +810,28 @@ function PressTeaserSection({
   );
 }
 
-function BankrollPreviewSection({ leagueId }: { leagueId: string }) {
+function PickemPreviewSection({ leagueId }: { leagueId: string }) {
   return (
     <section className="panel grid gap-4 border-warning/40 bg-warning/10 p-4">
       <div className="flex items-start justify-between gap-3">
         <SectionTitle
           icon={WalletCards}
-          eyebrow="Paper bankroll"
-          title="Bankroll"
+          eyebrow="Weekly picks"
+          title="Pick 'em"
         />
-        <StatusPill tone="warning">play-money</StatusPill>
+        <StatusPill tone="warning">bragging rights</StatusPill>
       </div>
-      <StatTile
-        caption="Weekly rolling floor before open slips."
-        label="Floor"
-        tone="amber"
-        value={formatCents(DEFAULT_BANKROLL_FLOOR_CENTS)}
-      />
       <KVList
         items={[
           {
-            label: "Loop",
-            value: "finish above floor to carry; below floor resets",
+            label: "Scoring",
+            value: "correct picks over every pick the league could have made",
+          },
+          {
+            // The denominator is the whole rule, so it is stated on the way in
+            // rather than discovered after a week of not picking.
+            label: "Skipping",
+            value: "an unsubmitted pick counts the same as a wrong one",
           },
           {
             label: "Desk",
@@ -841,10 +840,9 @@ function BankrollPreviewSection({ leagueId }: { leagueId: string }) {
                 href={`/leagues/${leagueId}/bet`}
                 className="font-medium text-warning underline-offset-4 hover:underline focus-visible:shadow-[var(--focus-ring-shadow)] focus-visible:outline-none"
               >
-                Open Bet
+                Open Pick 'em
               </Link>
             ),
-            tone: "money",
           },
         ]}
       />
@@ -910,9 +908,9 @@ export function LeagueHomeView({
       value: "standings" satisfies LeagueHomeSectionId,
     },
     {
-      label: "Bankroll",
-      panel: <BankrollPreviewSection leagueId={data.league.id} />,
-      value: "bankroll" satisfies LeagueHomeSectionId,
+      label: "Pick 'em",
+      panel: <PickemPreviewSection leagueId={data.league.id} />,
+      value: "pickem" satisfies LeagueHomeSectionId,
     },
     {
       label: "Teams",

@@ -56,8 +56,8 @@ import {
 } from "./functions/content-plan-launch-edition";
 import {
   contentPlanArenaStandingsSwing,
-  contentPlanBetSettled,
   contentPlanLoreCanonized,
+  contentPlanPicksGraded,
   contentPlanPollClosed,
   contentPlanRecordBroken,
   contentPlanTransaction,
@@ -1453,10 +1453,10 @@ describe("content planning", () => {
           env: openEntitlementEnv,
           data: {
             bettingEventId: "event-1",
+            correctPicks: 4,
             leagueId,
-            settlementId: "settle-1",
           },
-          eventName: JOB_EVENTS.betSettled,
+          eventName: JOB_EVENTS.picksGraded,
           nflWeekState: regularQuietState,
         })
       ).planned.map((event) => event.data),
@@ -1465,13 +1465,13 @@ describe("content planning", () => {
         contentType: "awards_superlatives",
         leagueId,
         persona: "trash_talker",
-        triggerKey: "bet-settled:regular:7:settle-1",
+        triggerKey: "picks-graded:regular:7:event-1",
       },
       {
         contentType: "matchup_preview",
         leagueId,
         persona: "betting_advisor",
-        triggerKey: "bet-settled:regular:7:settle-1",
+        triggerKey: "picks-graded:regular:7:event-1",
       },
     ]);
 
@@ -1678,7 +1678,7 @@ describe("content planning", () => {
     const leagueId = randomUUID();
     const fn = createContentPlanTriggerFunction(
       {
-        eventName: JOB_EVENTS.betSettled,
+        eventName: JOB_EVENTS.picksGraded,
         functionId: `${marker}-bet-settled-trigger`,
         name: "Bet settled trigger smoke",
       },
@@ -1690,16 +1690,16 @@ describe("content planning", () => {
         {
           data: {
             bettingEventId: randomUUID(),
+            correctPicks: 3,
             leagueId,
-            settlementId: randomUUID(),
           },
-          name: JOB_EVENTS.betSettled,
+          name: JOB_EVENTS.picksGraded,
         },
       ],
     });
 
     expect(stepRun.result).toMatchObject({
-      eventName: JOB_EVENTS.betSettled,
+      eventName: JOB_EVENTS.picksGraded,
       ok: true,
       planned: expect.arrayContaining([
         expect.objectContaining({
@@ -1776,7 +1776,7 @@ describe("content planning", () => {
     expect(functions).toContain(contentPlanRecordBroken);
     expect(functions).toContain(contentPlanLoreCanonized);
     expect(functions).toContain(contentPlanPollClosed);
-    expect(functions).toContain(contentPlanBetSettled);
+    expect(functions).toContain(contentPlanPicksGraded);
     expect(functions).toContain(contentPlanArenaStandingsSwing);
   });
 });

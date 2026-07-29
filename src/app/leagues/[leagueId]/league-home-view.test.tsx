@@ -213,9 +213,13 @@ test("league home view renders standings, teams, and current matchups", () => {
   expect(screen.getAllByText("Fixture Manager 12").length).toBeGreaterThan(0);
   expect(screen.getAllByText("0-0-0").length).toBeGreaterThan(0);
 
-  fireEvent.click(within(sectionTabs).getByRole("tab", { name: "Bankroll" }));
-  expect(screen.getByRole("heading", { name: "Bankroll" })).toBeDefined();
-  expect(screen.getByText("$10,000")).toBeDefined();
+  fireEvent.click(within(sectionTabs).getByRole("tab", { name: "Pick 'em" }));
+  expect(screen.getByRole("heading", { name: "Pick 'em" })).toBeDefined();
+  // The denominator rule is stated on the league home page, not discovered
+  // after a week of not picking.
+  expect(
+    screen.getByText("an unsubmitted pick counts the same as a wrong one"),
+  ).toBeDefined();
 
   fireEvent.click(within(sectionTabs).getByRole("tab", { name: "Teams" }));
   expect(screen.getByRole("heading", { name: "Teams" })).toBeDefined();

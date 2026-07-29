@@ -8,6 +8,7 @@ import {
   type SpendGuard,
 } from "@/core/spend-guard";
 import type { Db } from "@/db/client";
+import type { ResolveBettingEventDependencies } from "./event-resolution";
 import type { OddsIngestionDependencies } from "./ingestion";
 import type {
   EventResult,
@@ -22,7 +23,6 @@ import type {
 } from "./interfaces";
 import { MockOddsProvider, MockResultsProvider } from "./mocks";
 import { SportsDataIoResultsProvider, TheOddsApiProvider } from "./real";
-import type { BettingSettlementDependencies } from "./settlement";
 
 function isBettingProviderUnavailableError(error: unknown): boolean {
   if (!(error instanceof AppError)) {
@@ -222,11 +222,11 @@ export function createOddsDependencies(
   };
 }
 
-export function createBettingSettlementDependencies(
+export function createResolveBettingEventDependencies(
   db: Db,
   env: Pick<Env, "redisUrl" | "services" | "spendGuard">,
   options: BettingDependencyFactoryOptions = {},
-): BettingSettlementDependencies {
+): ResolveBettingEventDependencies {
   const spendGuard = options.spendGuard ?? createSpendGuard(env);
   const mockResultsProvider = new MockResultsProvider();
 

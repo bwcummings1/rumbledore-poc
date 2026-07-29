@@ -7,8 +7,8 @@ import { AppError } from "@/core/result";
 import { MemorySpendCounterStore, SpendGuard } from "@/core/spend-guard";
 import type { Db } from "@/db/client";
 import {
-  createBettingSettlementDependencies,
   createOddsDependencies,
+  createResolveBettingEventDependencies,
   GuardedOddsProvider,
   GuardedResultsProvider,
 } from "./dependencies";
@@ -160,15 +160,15 @@ describe("createOddsDependencies", () => {
   });
 });
 
-describe("createBettingSettlementDependencies", () => {
+describe("createResolveBettingEventDependencies", () => {
   it("keeps results mocked with zero paid configuration", () => {
-    const deps = createBettingSettlementDependencies({} as Db, parseEnv({}));
+    const deps = createResolveBettingEventDependencies({} as Db, parseEnv({}));
 
     expect(deps.resultsProvider).toBeInstanceOf(MockResultsProvider);
   });
 
   it("selects SportsDataIO when its key is present", () => {
-    const deps = createBettingSettlementDependencies(
+    const deps = createResolveBettingEventDependencies(
       {} as Db,
       parseEnv({ SPORTSDATAIO_API_KEY: fakeKey() }),
     );
@@ -180,7 +180,7 @@ describe("createBettingSettlementDependencies", () => {
   });
 
   it("keeps SportsDataIO mocked when forced even if its key is present", () => {
-    const deps = createBettingSettlementDependencies(
+    const deps = createResolveBettingEventDependencies(
       {} as Db,
       parseEnv({
         MOCK_SPORTSDATAIO: "true",

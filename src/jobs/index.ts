@@ -1,6 +1,5 @@
 import { appPing } from "./functions/app-ping";
-import { bankrollRollover } from "./functions/bankroll-rollover";
-import { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
+import { bettingGradeGameFinal } from "./functions/betting-grade-game-final";
 import { centralContentGenerate } from "./functions/central-content-generate";
 import { centralContentPlanCron } from "./functions/central-content-plan-cron";
 import { contentCorrectionNeeded } from "./functions/content-correction-needed";
@@ -16,8 +15,8 @@ import { contentPlanGameFinal } from "./functions/content-plan-game-final";
 import { contentPlanLaunchEdition } from "./functions/content-plan-launch-edition";
 import {
   contentPlanArenaStandingsSwing,
-  contentPlanBetSettled,
   contentPlanLoreCanonized,
+  contentPlanPicksGraded,
   contentPlanPollClosed,
   contentPlanRecordBroken,
   contentPlanTransaction,
@@ -43,8 +42,7 @@ import { weeklyDigest } from "./functions/weekly-digest";
 export { inngest } from "./client";
 export { JOB_EVENTS } from "./events";
 export { appPing } from "./functions/app-ping";
-export { bankrollRollover } from "./functions/bankroll-rollover";
-export { bettingSettleGameFinal } from "./functions/betting-settle-game-final";
+export { bettingGradeGameFinal } from "./functions/betting-grade-game-final";
 export { centralContentGenerate } from "./functions/central-content-generate";
 export { centralContentPlanCron } from "./functions/central-content-plan-cron";
 export { contentCorrectionNeeded } from "./functions/content-correction-needed";
@@ -60,8 +58,8 @@ export { contentPlanGameFinal } from "./functions/content-plan-game-final";
 export { contentPlanLaunchEdition } from "./functions/content-plan-launch-edition";
 export {
   contentPlanArenaStandingsSwing,
-  contentPlanBetSettled,
   contentPlanLoreCanonized,
+  contentPlanPicksGraded,
   contentPlanPollClosed,
   contentPlanRecordBroken,
   contentPlanTransaction,
@@ -90,7 +88,6 @@ export {
 
 export const functions = [
   appPing,
-  bankrollRollover,
   ingestionTick,
   leagueIngest,
   seasonRolloverCheck,
@@ -111,12 +108,12 @@ export const functions = [
   contentPlanRecordBroken,
   contentPlanLoreCanonized,
   contentPlanPollClosed,
-  contentPlanBetSettled,
+  contentPlanPicksGraded,
   contentPlanArenaStandingsSwing,
   instigationSeed,
   pollClose,
   loreVoteClose,
-  bettingSettleGameFinal,
+  bettingGradeGameFinal,
   newsRefresh,
   oddsPoll,
   payloadDriftCanary,

@@ -29,12 +29,12 @@ import {
 } from "@/sports/nfl-calendar";
 import {
   type ArenaStandingsSwingData,
-  type BetSettledData,
   type ContentGenerateData,
   type GameFinalData,
   JOB_EVENTS,
   type LeagueConnectedData,
   type LoreCanonizedData,
+  type PicksGradedData,
   type PollClosedData,
   type RecordBrokenData,
   type TransactionData,
@@ -58,7 +58,7 @@ export const CONTENT_PLAN_TRIGGER_EVENTS = [
   JOB_EVENTS.recordBroken,
   JOB_EVENTS.loreCanonized,
   JOB_EVENTS.pollClosed,
-  JOB_EVENTS.betSettled,
+  JOB_EVENTS.picksGraded,
   JOB_EVENTS.arenaStandingsSwing,
 ] as const;
 
@@ -149,7 +149,7 @@ const TRIGGER_CANDIDATES: Record<
   ContentPlanTriggerEventName,
   readonly ContentCandidate[]
 > = {
-  [JOB_EVENTS.betSettled]: [
+  [JOB_EVENTS.picksGraded]: [
     { contentType: "awards_superlatives", persona: "trash_talker" },
     { contentType: "matchup_preview", persona: "betting_advisor" },
   ],
@@ -401,7 +401,7 @@ function framedReactiveTriggerKey({
 function contentTriggerKey(
   eventName: ContentPlanTriggerEventName,
   data:
-    | BetSettledData
+    | PicksGradedData
     | ArenaStandingsSwingData
     | LoreCanonizedData
     | PollClosedData
@@ -441,12 +441,15 @@ function contentTriggerKey(
         sourceKey: (data as PollClosedData).pollId,
         weekState,
       });
-    case JOB_EVENTS.betSettled: {
-      const betData = data as BetSettledData;
+    case JOB_EVENTS.picksGraded: {
+      const gradedData = data as PicksGradedData;
       return framedReactiveTriggerKey({
         now,
-        prefix: "bet-settled",
-        sourceKey: betData.settlementId,
+        prefix: "picks-graded",
+        // The finished game, not a generated settlement id. It is stable
+        // across retries, which is what makes the planner deduplicate instead
+        // of writing the same recap twice.
+        sourceKey: gradedData.bettingEventId,
         weekState,
       });
     }
@@ -977,7 +980,7 @@ function planTriggeredContentEvents({
   weekState,
 }: {
   data:
-    | BetSettledData
+    | PicksGradedData
     | ArenaStandingsSwingData
     | LoreCanonizedData
     | PollClosedData
@@ -1017,7 +1020,7 @@ export async function planTriggeredContent({
   now,
 }: {
   data:
-    | BetSettledData
+    | PicksGradedData
     | ArenaStandingsSwingData
     | LoreCanonizedData
     | PollClosedData

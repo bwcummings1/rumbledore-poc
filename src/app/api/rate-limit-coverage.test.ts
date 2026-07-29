@@ -48,7 +48,6 @@ const EXEMPT = new Map([
   ["auth/[...all]/route.ts", "better-auth owns its own throttling"],
   ["inngest/route.ts", "signed job webhook, not reachable by a browser client"],
   ["admin/entitlements/route.ts", "platform-administrator only"],
-  ["leagues/[leagueId]/bet/slips/route.ts", "bounded by the paper bankroll"],
   [
     "leagues/[leagueId]/cast/personas/[persona]/tone/rollback/route.ts",
     "platform-administrator only; no provider call",

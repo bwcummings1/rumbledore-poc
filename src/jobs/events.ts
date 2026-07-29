@@ -28,7 +28,12 @@ export const JOB_EVENTS = {
   loreCanonized: "lore.canonized",
   pollClosed: "poll.closed",
   loreDispute: "lore.dispute",
-  betSettled: "bet.settled",
+  /**
+   * Emitted once per league whose Pick 'em entries were graded for a finished
+   * game. Replaces `bet.settled`, which named a bankroll settlement that no
+   * longer exists.
+   */
+  picksGraded: "picks.graded",
   arenaStandingsSwing: "arena.standings.swing",
 } as const;
 
@@ -204,11 +209,10 @@ export interface PollClosedData {
   pollId: string;
 }
 
-export interface BetSettledData {
-  bettingEventId?: string;
+export interface PicksGradedData {
+  bettingEventId: string;
+  correctPicks: number;
   leagueId: string;
-  settlementId: string;
-  slipId?: string;
 }
 
 export interface ArenaStandingsSwingData {

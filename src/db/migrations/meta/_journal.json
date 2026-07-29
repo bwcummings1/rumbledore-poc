@@ -589,6 +589,13 @@
       "when": 1784505600000,
       "tag": "0083_arena_accuracy_standings",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1784592000000,
+      "tag": "0084_drop_bankroll_engine",
+      "breakpoints": true
     }
   ]
 }

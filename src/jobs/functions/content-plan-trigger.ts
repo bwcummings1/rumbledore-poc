@@ -37,10 +37,9 @@ const triggerDataSchemas = {
     seasonId: idValue,
     swingKey: keyValue,
   }),
-  [JOB_EVENTS.betSettled]: leagueScopedDataSchema.extend({
-    bettingEventId: idValue.optional(),
-    settlementId: idValue,
-    slipId: idValue.optional(),
+  [JOB_EVENTS.picksGraded]: leagueScopedDataSchema.extend({
+    bettingEventId: idValue,
+    correctPicks: z.number().int().min(0),
   }),
   [JOB_EVENTS.loreCanonized]: leagueScopedDataSchema.extend({
     claimId: idValue,
@@ -190,10 +189,10 @@ export const contentPlanPollClosed = createContentPlanTriggerFunction({
   name: "AI content poll-closed planner",
 });
 
-export const contentPlanBetSettled = createContentPlanTriggerFunction({
-  eventName: JOB_EVENTS.betSettled,
-  functionId: "content-plan-bet-settled",
-  name: "AI content bet-settled planner",
+export const contentPlanPicksGraded = createContentPlanTriggerFunction({
+  eventName: JOB_EVENTS.picksGraded,
+  functionId: "content-plan-picks-graded",
+  name: "AI content picks-graded planner",
 });
 
 export const contentPlanArenaStandingsSwing = createContentPlanTriggerFunction({
