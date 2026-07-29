@@ -269,6 +269,16 @@ function checkpointLabel(checkpoint: DataBookCheckpointOption): string {
   return `${label} / ${formatTimestamp(checkpoint.createdAt)}`;
 }
 
+function restoreCheckpointLabel(
+  curation: DataBookCurationState,
+  checkpointId: string | null,
+): string {
+  const checkpoint = curation.checkpoints.find(
+    (candidate) => candidate.id === checkpointId,
+  );
+  return checkpoint ? checkpointLabel(checkpoint) : "the selected checkpoint";
+}
+
 function recomputeCurationSummary(
   state: DataBookCurationState,
 ): DataBookCurationState {
@@ -856,6 +866,67 @@ function CurationDetails({
         ) : null}
       </div>
     </details>
+  );
+}
+
+function ConfirmDestructiveDialog({
+  body,
+  busy,
+  confirmLabel,
+  description,
+  loadingLabel,
+  onCancel,
+  onConfirm,
+  open,
+  title,
+}: {
+  body: string;
+  busy: boolean;
+  confirmLabel: string;
+  description: string;
+  loadingLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  title: string;
+}) {
+  return (
+    <Dialog
+      description={description}
+      footer={
+        <>
+          <Button
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+            variant="ghost"
+          >
+            Cancel
+          </Button>
+          <Button
+            loading={busy}
+            loadingLabel={loadingLabel}
+            onClick={onConfirm}
+            type="button"
+            variant="danger"
+          >
+            {confirmLabel}
+          </Button>
+        </>
+      }
+      loading={busy}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !busy) {
+          onCancel();
+        }
+      }}
+      open={open}
+      title={title}
+    >
+      <div className="cell grid gap-2 p-3 text-sm text-muted-foreground">
+        <p>{body}</p>
+      </div>
+    </Dialog>
   );
 }
 
@@ -2269,6 +2340,9 @@ export function DataBookView({
   );
   const [pushIntent, setPushIntent] = useState<PushIntent | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [restoreIntent, setRestoreIntent] = useState<string | null>(null);
+  const [eraDismissIntent, setEraDismissIntent] =
+    useState<DataBookEraProposal | null>(null);
   const [eraBusyId, setEraBusyId] = useState<string | null>(null);
   const [eraMessage, setEraMessage] = useState<string | null>(null);
   const [eraError, setEraError] = useState<string | null>(null);
@@ -2405,16 +2479,22 @@ export function DataBookView({
     }
   }
 
-  async function restoreCheckpoint() {
-    if (busyAction || !restoreCheckpointId) {
+  async function confirmRestoreCheckpoint() {
+    const checkpointId = restoreIntent;
+    if (busyAction || !checkpointId) {
       return;
     }
+    await restoreCheckpoint(checkpointId);
+    setRestoreIntent(null);
+  }
+
+  async function restoreCheckpoint(checkpointId: string) {
     setBusyAction("restore");
     setCurationError(null);
     setCurationMessage(null);
     try {
       const response = await postJson<CheckpointMutationResponse>(
-        `${checkpointsApiUrl}/${restoreCheckpointId}/restore`,
+        `${checkpointsApiUrl}/${checkpointId}/restore`,
         {
           reason: "Restored checkpoint from Data Book",
         },
@@ -2554,10 +2634,16 @@ export function DataBookView({
     }
   }
 
-  async function dismissEraProposal(proposal: DataBookEraProposal) {
-    if (eraBusyId) {
+  async function confirmEraDismiss() {
+    const proposal = eraDismissIntent;
+    if (eraBusyId || !proposal) {
       return;
     }
+    await dismissEraProposal(proposal);
+    setEraDismissIntent(null);
+  }
+
+  async function dismissEraProposal(proposal: DataBookEraProposal) {
     setEraBusyId(proposal.id);
     setEraError(null);
     setEraMessage(null);
@@ -2629,7 +2715,10 @@ export function DataBookView({
               setPushError(null);
               setPushIntent(intent);
             }}
-            onRestore={restoreCheckpoint}
+            onRestore={() => {
+              setCurationError(null);
+              setRestoreIntent(restoreCheckpointId);
+            }}
             onSeasonModeChange={changeSeasonMode}
             restoreCheckpointId={restoreCheckpointId}
             selectedSeasonState={selectedSeasonState}
@@ -2643,7 +2732,10 @@ export function DataBookView({
               error={eraError}
               message={eraMessage}
               onConfirm={confirmEraProposal}
-              onDismiss={dismissEraProposal}
+              onDismiss={(proposal) => {
+                setEraError(null);
+                setEraDismissIntent(proposal);
+              }}
               proposals={eraProposals}
             />
           ) : null}
@@ -2684,6 +2776,36 @@ export function DataBookView({
           }
         }}
         onConfirm={confirmPush}
+      />
+      <ConfirmDestructiveDialog
+        body="Any unsaved draft edits in the Data Book are discarded. Saved checkpoints and pushed snapshots are unaffected."
+        busy={busyAction === "restore"}
+        confirmLabel="Confirm restore"
+        description={`Restore ${restoreCheckpointLabel(curationState, restoreIntent)} as the active draft state.`}
+        loadingLabel="Restoring checkpoint"
+        onCancel={() => {
+          if (busyAction === null) {
+            setRestoreIntent(null);
+          }
+        }}
+        onConfirm={() => void confirmRestoreCheckpoint()}
+        open={restoreIntent !== null}
+        title="Restore saved checkpoint"
+      />
+      <ConfirmDestructiveDialog
+        body="Dismissing removes the proposal from the Data Book. The underlying seasons are untouched and a fresh proposal can be re-derived from league settings."
+        busy={eraBusyId !== null && eraBusyId === eraDismissIntent?.id}
+        confirmLabel="Confirm dismiss"
+        description={`Dismiss the "${eraDismissIntent?.name ?? "selected"}" era proposal without confirming it.`}
+        loadingLabel="Dismissing era proposal"
+        onCancel={() => {
+          if (eraBusyId === null) {
+            setEraDismissIntent(null);
+          }
+        }}
+        onConfirm={() => void confirmEraDismiss()}
+        open={eraDismissIntent !== null}
+        title="Dismiss era proposal"
       />
     </main>
   );
