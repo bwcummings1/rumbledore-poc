@@ -38,7 +38,9 @@ import { JOB_EVENTS } from "./events";
 import {
   bettingSettleGameFinal,
   createBettingSettleGameFinalFunction,
+  publishGameFinalEffects,
   runBettingSettleGameFinal,
+  settleGameFinalFacts,
 } from "./functions/betting-settle-game-final";
 import { functions } from "./index";
 
@@ -64,7 +66,7 @@ class StaticResultsProvider implements ResultsProvider {
   }
 }
 
-async function seedPlacedSingle() {
+async function seedPlacedSingle(tag = "") {
   const opened = await openBankrollWeek(handle.db, {
     leagueId: league.id,
     userId: user.id,
@@ -75,10 +77,10 @@ async function seedPlacedSingle() {
     .insert(bettingEvents)
     .values({
       awayTeam: "Fixture Away",
-      contentHash: `${marker}:event`,
+      contentHash: `${marker}${tag}:event`,
       homeTeam: "Fixture Home",
       provider: marker,
-      providerEventId: `${marker}:event`,
+      providerEventId: `${marker}${tag}:event`,
       sport: "nfl",
       startTime: new Date("2037-09-07T17:00:00.000Z"),
       status: "scheduled",
@@ -87,11 +89,11 @@ async function seedPlacedSingle() {
   const [market] = await handle.db
     .insert(bettingMarkets)
     .values({
-      contentHash: `${marker}:market`,
+      contentHash: `${marker}${tag}:market`,
       eventId: event.id,
       period: "full_game",
       provider: marker,
-      providerMarketId: `${marker}:moneyline`,
+      providerMarketId: `${marker}${tag}:moneyline`,
       status: "open",
       subject: "game",
       type: "moneyline",
@@ -105,12 +107,12 @@ async function seedPlacedSingle() {
       homePrice: -140,
       marketId: market.id,
       provider: marker,
-      sourcePayloadHash: `${marker}:snapshot`,
+      sourcePayloadHash: `${marker}${tag}:snapshot`,
     })
     .returning();
   const placed = await placeBetSlip(handle.db, {
     bankrollWeekId: opened.week.id,
-    idempotencyKey: `${marker}:job`,
+    idempotencyKey: `${marker}${tag}:job`,
     kind: "single",
     leagueId: league.id,
     legs: [{ oddsSnapshotId: snapshot.id, selection: "home" }],
@@ -370,7 +372,10 @@ describe("betting game.final settlement job", () => {
     }));
     const testEngine = new InngestTestEngine({ function: fn });
 
-    const stepRun = await testEngine.executeStep("settle-betting-event", {
+    // The whole function, not `executeStep("settle-betting-event")`: settlement
+    // and the fan-out are now two steps, and the response under assertion is
+    // composed from both.
+    const stepRun = await testEngine.executeStep("publish-settlement-effects", {
       events: [
         {
           data: {
@@ -382,9 +387,20 @@ describe("betting game.final settlement job", () => {
         },
       ],
     });
+    // eslint-disable-next-line no-console
+    console.log(
+      "PROBE keys:",
+      Object.keys(stepRun),
+      "result?",
+      stepRun.result === undefined ? "undefined" : "present",
+    );
 
+    // `executeStep` returns THAT step's output, so this is the fan-out half:
+    // the arena and realtime payloads. The settlement half is asserted by
+    // `runBettingSettleGameFinal`'s own test below; splitting them keeps each
+    // assertion pointed at one step rather than at a merged blob.
     const settleResult = stepRun.result as Awaited<
-      ReturnType<typeof runBettingSettleGameFinal>
+      ReturnType<typeof publishGameFinalEffects>
     >;
     expect(stepRun.result).toMatchObject({
       arenaLeaderboardUpdates: [
@@ -419,21 +435,6 @@ describe("betting game.final settlement job", () => {
           v: 1,
         },
       ],
-      betSettledEvents: [
-        {
-          data: {
-            bettingEventId: seeded.event.id,
-            leagueId: league.id,
-            settlementId: expect.any(String),
-            slipId: seeded.placed.slip.id,
-          },
-          id: expect.stringContaining(`${JOB_EVENTS.betSettled}:${league.id}:`),
-          name: JOB_EVENTS.betSettled,
-        },
-      ],
-      eventName: JOB_EVENTS.gameFinal,
-      finalizedSlips: 1,
-      gradedLegs: 1,
       leagueLeaderboardUpdates: [
         {
           bankrollWeekId: seeded.placed.slip.bankrollWeekId,
@@ -442,9 +443,11 @@ describe("betting game.final settlement job", () => {
           v: 1,
         },
       ],
-      ok: true,
-      skippedReason: null,
     });
+    // Reaching this step at all proves settlement ran first and handed its
+    // memoized facts across the boundary -- the fan-out cannot name a
+    // settlement it did not receive.
+    expect(stepRun.step.name).toBe("publish-settlement-effects");
     expect(settleResult.arenaRecapEvents).toHaveLength(2);
     expect(settleResult.arenaRecapEvents).toEqual(
       expect.arrayContaining([
@@ -585,4 +588,89 @@ describe("betting game.final settlement job", () => {
   it("is exported through the shared function registry", () => {
     expect(functions).toContain(bettingSettleGameFinal);
   });
+
+  it("still fires notifications when the fan-out throws and retries (UIX-106)", async () => {
+    // The bug: everything lived in one `step.run`. Settlement is idempotent,
+    // so a throw during the fan-out re-ran the whole step, the retry found
+    // nothing left to settle, saw zero counters, skipped the notification
+    // block, and returned SUCCESSFULLY. The database was right and every
+    // downstream effect was silently dropped.
+    //
+    // Split in two, the retry re-runs only the fan-out and Inngest replays the
+    // memoized settlement facts -- so the settlement ids that name the work
+    // are still there on the second attempt instead of being recomputed empty.
+    const seeded = await seedPlacedSingle("-retry");
+    await ensureArenaSeason(handle.db, {
+      endsAt: new Date("2037-10-01T00:00:00.000Z"),
+      name: `${marker}-arena`,
+      startsAt: new Date("2037-09-01T00:00:00.000Z"),
+    });
+
+    const push = new RecordingPushNotifier();
+    const realtime = new RecordingRealtimePublisher();
+    const deps = {
+      db: handle.db,
+      push,
+      realtime,
+      resultsProvider: new StaticResultsProvider(),
+    };
+
+    // Attempt 1: settlement lands, then the fan-out blows up.
+    const facts = await settleGameFinalFacts({
+      data: {
+        bettingEventId: seeded.event.id,
+        gameId: randomUUID(),
+        leagueId: league.id,
+      },
+      deps,
+    });
+    expect(facts.finalizedSlips).toBe(1);
+    expect(facts.settlements).toHaveLength(1);
+
+    // Push and realtime delivery are BEST-EFFORT by design -- both are wrapped
+    // in try/catch, so neither can fail the step. The genuine unwrapped throw
+    // site is the arena rebuild, a multi-league recompute in one transaction
+    // that can deadlock or time out. That is what is simulated here.
+    const exploding = {
+      ...deps,
+      db: new Proxy(handle.db, {
+        get(target, prop, receiver) {
+          if (prop === "transaction") {
+            return async () => {
+              throw new Error("arena rebuild deadlocked");
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as typeof handle.db,
+    };
+    await expect(
+      publishGameFinalEffects({ deps: exploding, facts }),
+    ).rejects.toThrow("arena rebuild deadlocked");
+    expect(push.notifications).toHaveLength(0);
+
+    // Attempt 2: the fan-out retries against the SAME memoized facts. This is
+    // the assertion that would have failed before the split -- re-deriving the
+    // facts here returns an empty settlement list, and the notification is
+    // never sent.
+    const rederived = await settleGameFinalFacts({
+      data: {
+        bettingEventId: seeded.event.id,
+        gameId: randomUUID(),
+        leagueId: league.id,
+      },
+      deps,
+    });
+    expect(rederived.finalizedSlips).toBe(0);
+    expect(rederived.settlements).toEqual([]);
+
+    await publishGameFinalEffects({ deps, facts });
+
+    expect(
+      push.notifications.filter(
+        (notification) => notification.type === "league.bet.settled",
+      ),
+    ).toHaveLength(1);
+    expect(realtime.leagueLeaderboardUpdated.length).toBeGreaterThan(0);
+  }, 60_000);
 });

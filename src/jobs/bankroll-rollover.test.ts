@@ -205,14 +205,20 @@ describe("bankroll rollover job", () => {
       weekStart: date("2040-09-08T00:00:00.000Z"),
     });
 
+    // The arena is scored on graded PICKS now, not on bankroll ledgers, and
+    // this scenario seeds no picks. A bankroll rollover therefore materializes
+    // no standings -- it used to produce one league row and one individual row
+    // from the ledger it had just rolled.
+    //
+    // The rebuild call left in `bankroll-rollover.ts` is now vestigial: it does
+    // an expensive multi-league recompute that a rollover cannot influence.
+    // It is deliberately left in place for T-011 to remove along with the rest
+    // of the bankroll engine, rather than half-dismantled here.
     const arenaRows = await handle.db
       .select()
       .from(arenaStandings)
       .where(eq(arenaStandings.seasonId, arenaSeason.id));
-    expect(arenaRows.map((row) => row.kind).sort()).toEqual([
-      "individual",
-      "league",
-    ]);
+    expect(arenaRows).toEqual([]);
     expect(realtime.leagueLeaderboardUpdated).toEqual([
       expect.objectContaining({
         bankrollWeekId: rolled.nextWeekId,

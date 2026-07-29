@@ -144,9 +144,23 @@ function uniqueValues(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
 
+/**
+ * Takes only the settlement fields it reads, rather than the whole
+ * `SettleBettingEventResult`. The caller passes facts that have crossed a
+ * `step.run` boundary and been through JSON, so the rich row type (with its
+ * Date fields) is no longer available -- and was never needed here.
+ */
 async function loadSettlementNotificationDetails(
   db: Db,
-  input: Pick<SettleBettingEventResult, "leagueId" | "settlements">,
+  input: {
+    leagueId: string;
+    settlements: readonly {
+      id: string;
+      outcome: SettleBettingEventResult["settlements"][number]["outcome"];
+      payoutCents: number;
+      slipId: string;
+    }[];
+  },
 ): Promise<SettlementNotificationDetail[]> {
   const slipIds = input.settlements.map((settlement) => settlement.slipId);
   if (slipIds.length === 0) {
@@ -521,13 +535,44 @@ function planArenaSwingContentEvents({
   );
 }
 
-export async function runBettingSettleGameFinal({
+/**
+ * What settlement and grading changed, in a shape Inngest can memoize.
+ *
+ * This crosses a `step.run` boundary, so it must survive JSON — ids, numbers
+ * and strings only, no Dates and no class instances.
+ */
+export interface GameFinalSettlementFacts {
+  bettingEventId: string;
+  finalizedSlips: number;
+  gradedLegs: number;
+  gradedPicks: { correct: number; incorrect: number; void: number };
+  /** Leagues whose arena standings are now stale. */
+  pickAffectedLeagueIds: string[];
+  leagueId: string;
+  ledgerEntryIds: string[];
+  repricedSlips: number;
+  settlements: {
+    id: string;
+    outcome: SettleBettingEventResult["settlements"][number]["outcome"];
+    payoutCents: number;
+    slipId: string;
+  }[];
+  skippedReason: SettleBettingEventResult["skippedReason"];
+}
+
+/**
+ * Step 1: the database writes. Settles slips, grades picks.
+ *
+ * Both halves are idempotent, which is exactly why this is a step of its own —
+ * see `publishGameFinalEffects`.
+ */
+export async function settleGameFinalFacts({
   data: rawData,
   deps,
 }: {
   data: unknown;
   deps: BettingSettleGameFinalDependencies;
-}): Promise<BettingSettleGameFinalResponse> {
+}): Promise<GameFinalSettlementFacts> {
   const data = parseGameFinalData(rawData);
   const result = await settleBettingEvent({
     deps,
@@ -546,83 +591,10 @@ export async function runBettingSettleGameFinal({
         bettingEventId: result.bettingEventId,
         result: result.eventResult,
       })
-    : {
-        affectedLeagueIds: [] as readonly string[],
-        correct: 0,
-        incorrect: 0,
-        void: 0,
-      };
-
-  let arenaLeaderboardUpdates: ArenaLeaderboardUpdatedPayload[] = [];
-  let arenaRecapEvents: PlannedArenaStandingsSwingEvent[] = [];
-  let arenaSwingSignals: ArenaStandingsSwingPayload[] = [];
-  let leagueLeaderboardUpdates: LeagueLeaderboardUpdatedPayload[] = [];
-
-  // Either engine can move the board, and they move it for different reasons:
-  // settled slips still drive the league bankroll leaderboard, while graded
-  // picks are what the ARENA now ranks on. Gating the whole block on
-  // `finalizedSlips > 0` would mean a game that graded picks but settled no
-  // slips left the arena stale until something else happened to rebuild it.
-  const gradedAnyPicks = pickGrading.affectedLeagueIds.length > 0;
-  if (result.finalizedSlips > 0 || gradedAnyPicks) {
-    const details = await loadSettlementNotificationDetails(deps.db, result);
-    // Bankroll weeks locate the season for slips; the event's own kickoff
-    // locates it for picks, which have no bankroll week to point at.
-    const event = await loadGradableEvent(deps.db, result.bettingEventId);
-    const weekStarts = [
-      ...details.map((detail) => detail.weekStart),
-      ...(gradedAnyPicks && event ? [event.startTime] : []),
-    ];
-    const arenaSeasonIds = await findArenaSeasonIdsForWeekStarts(deps.db, {
-      weekStarts,
-    });
-    const arenaResults = await rebuildAllArenaStandings(deps.db, {
-      seasonIds: arenaSeasonIds,
-    });
-    const realtimeUpdates = await publishSettlementRealtimeSignals({
-      arenaResults,
-      at: new Date().toISOString(),
-      deps,
-      details,
-      leagueId: result.leagueId,
-    });
-    arenaLeaderboardUpdates = realtimeUpdates.arenaLeaderboardUpdates;
-    arenaSwingSignals = realtimeUpdates.arenaSwingSignals;
-    leagueLeaderboardUpdates = realtimeUpdates.leagueLeaderboardUpdates;
-    arenaRecapEvents = planArenaSwingContentEvents({
-      arenaSwingSignals,
-      leagueId: result.leagueId,
-      settlementIds: result.settlements.map((settlement) => settlement.id),
-    });
-    await sendArenaRivalPassedPushNotifications({
-      arenaSwingSignals,
-      deps,
-    });
-    await sendSettlementPushNotifications({
-      deps,
-      details,
-      leagueId: result.leagueId,
-    });
-  }
-
-  const betSettledEvents = result.settlements.map((settlement) => ({
-    data: {
-      bettingEventId: result.bettingEventId,
-      leagueId: result.leagueId,
-      settlementId: settlement.id,
-      slipId: settlement.slipId,
-    },
-    id: `${JOB_EVENTS.betSettled}:${result.leagueId}:${settlement.id}`,
-    name: JOB_EVENTS.betSettled,
-  }));
+    : { affectedLeagueIds: [], correct: 0, incorrect: 0, void: 0 };
 
   return {
-    arenaLeaderboardUpdates,
-    arenaRecapEvents,
-    arenaSwingSignals,
-    betSettledEvents,
     bettingEventId: result.bettingEventId,
-    eventName: JOB_EVENTS.gameFinal,
     finalizedSlips: result.finalizedSlips,
     gradedLegs: result.gradedLegs,
     gradedPicks: {
@@ -632,11 +604,152 @@ export async function runBettingSettleGameFinal({
     },
     leagueId: result.leagueId,
     ledgerEntryIds: result.ledgerEntries.map((entry) => entry.id),
-    leagueLeaderboardUpdates,
-    ok: true,
+    pickAffectedLeagueIds: [...pickGrading.affectedLeagueIds],
     repricedSlips: result.repricedSlips,
-    settlementIds: result.settlements.map((settlement) => settlement.id),
+    settlements: result.settlements.map((settlement) => ({
+      id: settlement.id,
+      outcome: settlement.outcome,
+      payoutCents: settlement.payoutCents,
+      slipId: settlement.slipId,
+    })),
     skippedReason: result.skippedReason,
+  };
+}
+
+/**
+ * Step 2: everything the settlement should CAUSE — arena rebuild, realtime
+ * signals, push notifications.
+ *
+ * ## Why this is a separate step (UIX-106)
+ *
+ * Settling and grading are both idempotent: a second pass over the same event
+ * finds nothing left to do and reports `finalizedSlips: 0`, no graded picks,
+ * and an empty `settlements` array. When all of this lived in ONE `step.run`,
+ * any throw down here — a push provider hiccup, a realtime timeout — re-ran
+ * the whole step. The retry re-settled nothing, saw zero counters, skipped the
+ * notification block entirely, and returned SUCCESSFULLY. The database was
+ * correct and every downstream effect was silently dropped: no push, no
+ * realtime update, no arena recap. A silent loss, with a green run to match.
+ *
+ * Split in two, a failure here retries only this step, and Inngest replays step
+ * 1's memoized facts — so the settlement ids that name the work are still
+ * there on the second attempt, instead of being recomputed as an empty list.
+ *
+ * Delivery is therefore at-least-once, not exactly-once: if this step throws
+ * after some pushes have gone out, the retry re-sends those. That is the
+ * correct trade — a duplicate notification is a nuisance, a dropped one is a
+ * user who never learns their bet settled.
+ */
+export async function publishGameFinalEffects({
+  deps,
+  facts,
+}: {
+  deps: BettingSettleGameFinalDependencies;
+  facts: GameFinalSettlementFacts;
+}): Promise<{
+  arenaLeaderboardUpdates: ArenaLeaderboardUpdatedPayload[];
+  arenaRecapEvents: PlannedArenaStandingsSwingEvent[];
+  arenaSwingSignals: ArenaStandingsSwingPayload[];
+  leagueLeaderboardUpdates: LeagueLeaderboardUpdatedPayload[];
+}> {
+  const empty = {
+    arenaLeaderboardUpdates: [] as ArenaLeaderboardUpdatedPayload[],
+    arenaRecapEvents: [] as PlannedArenaStandingsSwingEvent[],
+    arenaSwingSignals: [] as ArenaStandingsSwingPayload[],
+    leagueLeaderboardUpdates: [] as LeagueLeaderboardUpdatedPayload[],
+  };
+
+  // Either engine can move the board, and they move it for different reasons:
+  // settled slips still drive the league bankroll leaderboard, while graded
+  // picks are what the ARENA now ranks on. Gating on `finalizedSlips > 0`
+  // alone would leave the arena stale after a game that graded picks but
+  // settled no slips.
+  const gradedAnyPicks = facts.pickAffectedLeagueIds.length > 0;
+  if (facts.finalizedSlips === 0 && !gradedAnyPicks) {
+    return empty;
+  }
+
+  const details = await loadSettlementNotificationDetails(deps.db, {
+    leagueId: facts.leagueId,
+    settlements: facts.settlements,
+  });
+  // Bankroll weeks locate the season for slips; the event's own kickoff
+  // locates it for picks, which have no bankroll week to point at.
+  const event = await loadGradableEvent(deps.db, facts.bettingEventId);
+  const weekStarts = [
+    ...details.map((detail) => detail.weekStart),
+    ...(gradedAnyPicks && event ? [event.startTime] : []),
+  ];
+  const arenaSeasonIds = await findArenaSeasonIdsForWeekStarts(deps.db, {
+    weekStarts,
+  });
+  const arenaResults = await rebuildAllArenaStandings(deps.db, {
+    seasonIds: arenaSeasonIds,
+  });
+  const realtimeUpdates = await publishSettlementRealtimeSignals({
+    arenaResults,
+    at: new Date().toISOString(),
+    deps,
+    details,
+    leagueId: facts.leagueId,
+  });
+  const arenaRecapEvents = planArenaSwingContentEvents({
+    arenaSwingSignals: realtimeUpdates.arenaSwingSignals,
+    leagueId: facts.leagueId,
+    settlementIds: facts.settlements.map((settlement) => settlement.id),
+  });
+  await sendArenaRivalPassedPushNotifications({
+    arenaSwingSignals: realtimeUpdates.arenaSwingSignals,
+    deps,
+  });
+  await sendSettlementPushNotifications({
+    deps,
+    details,
+    leagueId: facts.leagueId,
+  });
+
+  return { ...realtimeUpdates, arenaRecapEvents };
+}
+
+function betSettledEventsFor(
+  facts: GameFinalSettlementFacts,
+): PlannedBetSettledEvent[] {
+  return facts.settlements.map((settlement) => ({
+    data: {
+      bettingEventId: facts.bettingEventId,
+      leagueId: facts.leagueId,
+      settlementId: settlement.id,
+      slipId: settlement.slipId,
+    },
+    id: `${JOB_EVENTS.betSettled}:${facts.leagueId}:${settlement.id}`,
+    name: JOB_EVENTS.betSettled,
+  }));
+}
+
+export async function runBettingSettleGameFinal({
+  data: rawData,
+  deps,
+}: {
+  data: unknown;
+  deps: BettingSettleGameFinalDependencies;
+}): Promise<BettingSettleGameFinalResponse> {
+  const facts = await settleGameFinalFacts({ data: rawData, deps });
+  const effects = await publishGameFinalEffects({ deps, facts });
+
+  return {
+    ...effects,
+    betSettledEvents: betSettledEventsFor(facts),
+    bettingEventId: facts.bettingEventId,
+    eventName: JOB_EVENTS.gameFinal,
+    finalizedSlips: facts.finalizedSlips,
+    gradedLegs: facts.gradedLegs,
+    gradedPicks: facts.gradedPicks,
+    leagueId: facts.leagueId,
+    ledgerEntryIds: facts.ledgerEntryIds,
+    ok: true,
+    repricedSlips: facts.repricedSlips,
+    settlementIds: facts.settlements.map((settlement) => settlement.id),
+    skippedReason: facts.skippedReason,
   };
 }
 
@@ -658,9 +771,32 @@ export function createBettingSettleGameFinalFunction(
     async ({ event, step }): Promise<BettingSettleGameFinalResponse> =>
       recordJobRun("betting-settle-game-final", async () => {
         const deps = await resolveDeps();
-        const result = await step.run("settle-betting-event", () =>
-          runBettingSettleGameFinal({ data: event.data, deps }),
+        // TWO steps, deliberately. Collapsing them back into one re-introduces
+        // UIX-106: a throw during the fan-out would re-run settlement, which
+        // is idempotent, so the retry would find nothing to settle and skip
+        // every downstream effect while reporting success. See
+        // `publishGameFinalEffects`.
+        const facts = await step.run("settle-betting-event", () =>
+          settleGameFinalFacts({ data: event.data, deps }),
         );
+        const effects = await step.run("publish-settlement-effects", () =>
+          publishGameFinalEffects({ deps, facts }),
+        );
+        const result: BettingSettleGameFinalResponse = {
+          ...effects,
+          betSettledEvents: betSettledEventsFor(facts),
+          bettingEventId: facts.bettingEventId,
+          eventName: JOB_EVENTS.gameFinal,
+          finalizedSlips: facts.finalizedSlips,
+          gradedLegs: facts.gradedLegs,
+          gradedPicks: facts.gradedPicks,
+          leagueId: facts.leagueId,
+          ledgerEntryIds: facts.ledgerEntryIds,
+          ok: true,
+          repricedSlips: facts.repricedSlips,
+          settlementIds: facts.settlements.map((settlement) => settlement.id),
+          skippedReason: facts.skippedReason,
+        };
         if (result.betSettledEvents.length > 0) {
           await step.sendEvent(
             "send-bet-settled-events",
