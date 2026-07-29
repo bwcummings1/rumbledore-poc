@@ -10,6 +10,12 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { PublicationArticleViewData } from "@/news/article";
 import { PublicationArticleView } from "./article-view";
 
+// EditorialArticleActions refreshes the route with the app router instead of
+// reloading the document, so rendering the managed-post controls needs a router.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const clipboardWrite = vi.fn(async () => undefined);
 
 Object.assign(navigator, {
