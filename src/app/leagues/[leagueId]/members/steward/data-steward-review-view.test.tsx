@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { DataCurationSummary } from "./curation-data";
@@ -418,6 +419,8 @@ test("commissioners can submit curation edits, era confirms, and handoff actions
   });
 
   fireEvent.click(screen.getByRole("button", { name: "Hand off" }));
+  expect(screen.getByRole("dialog")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm handoff" }));
 
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledWith(
@@ -431,4 +434,41 @@ test("commissioners can submit curation edits, era confirms, and handoff actions
       }),
     );
   });
+});
+
+test("dismissing the handoff dialog does not hand off the commissioner seat", async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async () => {
+      return new Response(JSON.stringify({ entries: [] }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      });
+    });
+
+  render(
+    <DataStewardReviewView
+      curation={curationSummary}
+      initialSummary={initialSummary}
+      league={league}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Hand off" }));
+
+  const dialog = screen.getByRole("dialog");
+  expect(
+    within(dialog).getByText(/Transfer commissioner authority to/),
+  ).toBeDefined();
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes("/commissioner/handoff"),
+    ),
+  ).toHaveLength(0);
+  // The handoff form stays available so a cancel is not a dead end.
+  expect(screen.getByRole("button", { name: "Hand off" })).toBeDefined();
 });
