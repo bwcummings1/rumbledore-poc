@@ -116,8 +116,8 @@ function CommandPalette({
     setQuery("");
 
     if (item.href && !item.onSelect && !onSelect) {
-      // Client transition: a document load here would throw away the palette's
-      // own state and re-download the bundle for an in-app destination.
+      // Route on the client. A document load here would throw away the
+      // palette's own state and re-download the bundle for an in-app target.
       router.push(item.href);
     }
   }
