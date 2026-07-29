@@ -201,6 +201,56 @@ describe("resolveEntitlement", () => {
     });
   });
 
+  it("resolves the two axes independently across all four combinations", async () => {
+    // The product sells two things: a league's AI subscription and a personal
+    // assistant. Neither implies the other, and the case that matters
+    // commercially is the third row — a member of a fully paid-up premium
+    // league still has to buy the personal assistant separately. The existing
+    // independence test checked an UNRELATED user, which cannot prove that.
+    const matrix = [
+      { league: false, user: false },
+      { league: false, user: true },
+      { league: true, user: false },
+      { league: true, user: true },
+    ] as const;
+
+    for (const [index, combination] of matrix.entries()) {
+      const member = await seedUser(`matrix-user-${index}`);
+      const league = await seedLeague(`matrix-league-${index}`);
+      if (combination.league) {
+        await handle.db
+          .insert(leagueEntitlements)
+          .values({ leagueId: league.id, tier: "premium" });
+      }
+      if (combination.user) {
+        await handle.db
+          .insert(userEntitlements)
+          .values({ tier: "individual", userId: member.id });
+      }
+
+      const leagueCapability = await resolveEntitlement({
+        capability: "ai.cast.generate",
+        db: handle.db,
+        env: resolverEnv(),
+        leagueId: league.id,
+      });
+      const userCapability = await resolveEntitlement({
+        capability: "ai.individual.agent",
+        db: handle.db,
+        env: resolverEnv(),
+        userId: member.id,
+      });
+
+      expect({
+        leagueAllowed: leagueCapability.allowed,
+        userAllowed: userCapability.allowed,
+      }).toEqual({
+        leagueAllowed: combination.league,
+        userAllowed: combination.user,
+      });
+    }
+  });
+
   it("treats expired and suspended rows as denied effective free or none", async () => {
     const now = new Date("2026-06-15T12:00:00.000Z");
     const expiredLeague = await seedLeague("expired-league");
