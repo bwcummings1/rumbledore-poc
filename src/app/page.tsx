@@ -2,7 +2,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/auth/guards";
 import { getDb } from "@/db";
-import { getYourLeaguesLandingData } from "@/home/your-leagues";
+import {
+  getYourLeaguesLandingData,
+  userHasAnyLeague,
+} from "@/home/your-leagues";
 import {
   LoggedOutLanding,
   YourLeaguesLandingView,
@@ -16,12 +19,16 @@ export default async function Home() {
     return <LoggedOutLanding />;
   }
 
-  const data = await getYourLeaguesLandingData(getDb(), {
-    userId: session.value.userId,
-  });
-  if (data.leagues.length > 0) {
+  // Ask the cheap question first. A user with leagues is redirected and never
+  // sees this payload, so building it before the check meant every signed-in
+  // visit to `/` paid for a landing page nobody rendered.
+  const db = getDb();
+  if (await userHasAnyLeague(db, { userId: session.value.userId })) {
     redirect("/news");
   }
 
+  const data = await getYourLeaguesLandingData(db, {
+    userId: session.value.userId,
+  });
   return <YourLeaguesLandingView data={data} />;
 }

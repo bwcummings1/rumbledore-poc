@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { contentItemIsPublished } from "@/content/lifecycle";
 import type { Db } from "@/db/client";
 import { withLeagueContext } from "@/db/rls";
@@ -131,45 +131,100 @@ function hubItemFromRow(row: CentralNewsRow): CentralNewsHubItem {
   };
 }
 
+/**
+ * Loads hub candidates with a query count that does not grow with the corpus.
+ *
+ * ## Why two queries rather than one
+ *
+ * The front is ranked by `publicationRankScore`, which is recency PLUS
+ * editorial importance — an older story with importance 100 is meant to lead
+ * over a hundred fresh minor ones, and there is a test that says so. A single
+ * newest-first window cannot honour that: the important story is old, so it
+ * falls outside the window and is never even considered.
+ *
+ * The previous code solved it by paging through the ENTIRE published corpus on
+ * every request — correct ranking, but a query count and a row count that both
+ * grew without bound. At a thousand articles that is ten round trips and a
+ * thousand rows serialized to render thirty.
+ *
+ * So: take the newest N, take the N most important, and merge. Both are single
+ * bounded queries, so the cost is flat, and a story can now reach the front by
+ * either route — which is exactly what the rank function says should happen.
+ *
+ * `editorialImportance` lives in a jsonb blob, so the prominence query sorts on
+ * an expression Postgres cannot serve from an index today. It is still ONE
+ * bounded statement rather than N, which is the part that was pathological.
+ * Materialising that column is worth doing if the corpus gets large.
+ */
 async function getCentralNewsRows(
   db: Db,
-  input: { candidateLimit: number; scanAllCandidates: boolean },
+  input: { candidateLimit: number; sectionId?: string | null },
 ): Promise<CentralNewsRow[]> {
-  const rows: CentralNewsRow[] = [];
-  const pageLimit = input.scanAllCandidates ? MAX_LIMIT : input.candidateLimit;
-  let offset = 0;
+  const columns = {
+    id: contentItems.id,
+    metadata: contentItems.metadata,
+    publishedAt: contentItems.publishedAt,
+    source: contentItems.source,
+    sourceUrl: contentItems.sourceUrl,
+    summary: contentItems.summary,
+    title: contentItems.title,
+  };
+  const published = and(
+    isNull(contentItems.leagueId),
+    eq(contentItems.kind, "news"),
+    contentItemIsPublished(),
+  );
 
-  while (true) {
-    const page = await db
-      .select({
-        id: contentItems.id,
-        metadata: contentItems.metadata,
-        publishedAt: contentItems.publishedAt,
-        source: contentItems.source,
-        sourceUrl: contentItems.sourceUrl,
-        summary: contentItems.summary,
-        title: contentItems.title,
-      })
+  // A third bounded route for the active section. Sections are usually
+  // declared in metadata, so this finds a sparse section's older stories
+  // exactly, rather than hoping they fall inside the recency window.
+  //
+  // It does NOT replace the JS filter below: `resolveCentralPublicationSection`
+  // can also INFER a section from a story's title and summary, and no WHERE
+  // clause can reproduce that. So this query widens the candidate pool with
+  // the rows SQL can identify, and the JS filter still decides membership.
+  const sectionQuery = input.sectionId
+    ? db
+        .select(columns)
+        .from(contentItems)
+        .where(
+          and(
+            published,
+            sql`${contentItems.metadata} ->> 'section' = ${input.sectionId}`,
+          ),
+        )
+        .orderBy(desc(contentItems.publishedAt))
+        .limit(input.candidateLimit)
+    : null;
+
+  const [recent, prominent, sectioned] = await Promise.all([
+    db
+      .select(columns)
       .from(contentItems)
-      .where(
-        and(
-          isNull(contentItems.leagueId),
-          eq(contentItems.kind, "news"),
-          contentItemIsPublished(),
-        ),
-      )
+      .where(published)
       .orderBy(desc(contentItems.publishedAt), desc(contentItems.createdAt))
-      .limit(pageLimit)
-      .offset(offset);
+      .limit(input.candidateLimit),
+    db
+      .select(columns)
+      .from(contentItems)
+      .where(published)
+      .orderBy(
+        desc(
+          sql`coalesce((${contentItems.metadata} ->> 'editorialImportance')::numeric, 0)`,
+        ),
+        desc(contentItems.publishedAt),
+      )
+      .limit(input.candidateLimit),
+    sectionQuery ?? Promise.resolve([] as CentralNewsRow[]),
+  ]);
 
-    rows.push(...page);
-
-    if (!input.scanAllCandidates || page.length < pageLimit) {
-      return rows;
-    }
-
-    offset += page.length;
+  // Merged by id: a story that is both recent and important appears in both
+  // result sets and must be ranked once, not twice.
+  const byId = new Map<string, CentralNewsRow>();
+  for (const row of [...recent, ...prominent, ...sectioned]) {
+    byId.set(row.id, row);
   }
+  return [...byId.values()];
 }
 
 export async function getCentralNewsHubData(
@@ -187,9 +242,12 @@ export async function getCentralNewsHubData(
     CENTRAL_PUBLICATION_SECTIONS.find(
       (section) => section.id === input.sectionId,
     ) ?? null;
+  // A filter throws most candidates away, so it needs a wider net to fill the
+  // same page. Both cases are still a fixed, bounded number of rows.
+  const filtered = Boolean(activeSection || input.tag?.trim());
   const rows = await getCentralNewsRows(db, {
-    candidateLimit: MAX_LIMIT,
-    scanAllCandidates: true,
+    candidateLimit: filtered ? MAX_LIMIT : Math.min(limit * 3, MAX_LIMIT),
+    sectionId: activeSection?.id ?? null,
   });
 
   return {

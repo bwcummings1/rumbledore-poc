@@ -17,7 +17,7 @@ import {
   users,
 } from "@/db/schema";
 import { migrateSerialized } from "@/db/test-support";
-import { getYourLeaguesLandingData } from "./your-leagues";
+import { getYourLeaguesLandingData, userHasAnyLeague } from "./your-leagues";
 
 const marker = `yourleagues-${randomUUID()}`;
 const now = new Date("2026-06-14T12:00:00.000Z");
@@ -348,4 +348,37 @@ describe("getYourLeaguesLandingData", () => {
       getYourLeaguesLandingData(handle.db, { userId: emptyUserId }),
     ).resolves.toEqual({ leagues: [] });
   });
+
+  it("answers the membership question in one query (T-033)", async () => {
+    // `/` redirects a user who has leagues straight to `/news`, so it asks
+    // this instead of building a landing payload it will discard. That payload
+    // costs four queries plus one league-scoped query per league; this is one.
+    const counted = createDb(parseEnv(process.env).databaseUrl);
+    const original = counted.pool.query.bind(counted.pool);
+    let count = 0;
+    // biome-ignore lint/suspicious/noExplicitAny: pg's query() is overloaded.
+    counted.pool.query = ((...args: any[]) => {
+      count += 1;
+      // biome-ignore lint/suspicious/noExplicitAny: forwarding the overloads.
+      return (original as any)(...args);
+    }) as typeof counted.pool.query;
+
+    try {
+      expect(await userHasAnyLeague(counted.db, { userId })).toBe(true);
+      expect(count).toBe(1);
+
+      count = 0;
+      expect(await userHasAnyLeague(counted.db, { userId: emptyUserId })).toBe(
+        false,
+      );
+      expect(count).toBe(1);
+
+      // And the full payload really is the expensive path being skipped.
+      count = 0;
+      await getYourLeaguesLandingData(counted.db, { userId });
+      expect(count).toBeGreaterThan(1);
+    } finally {
+      await counted.pool.end();
+    }
+  }, 60_000);
 });

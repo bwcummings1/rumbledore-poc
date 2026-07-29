@@ -9,6 +9,7 @@ import {
   fantasyTeams,
   leagueMemberIdentityClaims,
   leagues,
+  members,
   onboardingDiscoveredLeagues,
   providerCredentials,
 } from "@/db/schema";
@@ -101,6 +102,28 @@ type DiscoveredLeagueRow = Pick<
   typeof onboardingDiscoveredLeagues.$inferSelect,
   "provider" | "providerLeagueId" | "season" | "teamName"
 >;
+
+/**
+ * Whether this user belongs to any league at all.
+ *
+ * One indexed lookup, existence only. `/` calls this BEFORE
+ * `getYourLeaguesLandingData` because a user who has leagues is redirected to
+ * `/news` immediately — and the full landing payload costs four queries plus
+ * one league-scoped query PER LEAGUE, every one of which was being built and
+ * then thrown away on the redirect. That is the common case: nearly every
+ * signed-in visitor to `/` has a league.
+ */
+export async function userHasAnyLeague(
+  db: Db,
+  input: { userId: string },
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(eq(members.userId, input.userId))
+    .limit(1);
+  return row !== undefined;
+}
 
 export async function getYourLeaguesLandingData(
   db: Db,

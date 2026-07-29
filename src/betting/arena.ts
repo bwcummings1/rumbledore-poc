@@ -990,12 +990,16 @@ export async function getArenaLeaderboardData(
   } = {},
 ): Promise<ArenaLeaderboardData> {
   const now = input.now ? requireDate(input.now, "now") : new Date();
-  const allSeasons = await loadArenaSeasons(db);
+  // Independent of each other, so they overlap. `latestComputedAtBySeason`
+  // does not depend on which season is selected — it summarises all of them.
+  const [allSeasons, computedAtBySeason] = await Promise.all([
+    loadArenaSeasons(db),
+    latestComputedAtBySeason(db),
+  ]);
   const season = input.seasonId
     ? (allSeasons.find((candidate) => candidate.id === input.seasonId) ??
       (await requireArenaSeason(db, input.seasonId)))
     : defaultArenaSeason(allSeasons, now);
-  const computedAtBySeason = await latestComputedAtBySeason(db);
   const seasons = allSeasons.map((candidate) =>
     seasonSummary(candidate, {
       computedAt: computedAtBySeason.get(candidate.id) ?? null,
@@ -1017,17 +1021,20 @@ export async function getArenaLeaderboardData(
     };
   }
 
-  const leagueStandings = await standingsForKind(db, season.id, "league", {
-    limit: input.limit,
-  });
-  const allLeagueStandings = await standingsForKind(db, season.id, "league", {
-    limit: MAX_LIMIT,
-  });
-  const individualStandings = await standingsForKind(
-    db,
-    season.id,
-    "individual",
-    { limit: input.limit },
+  // ONE league query, not two. The board needs the full ladder for the rival
+  // picker and head-to-head, and a shorter slice for display; since both read
+  // in rank order the short one is always a prefix of the long one, so the
+  // second round trip only ever re-fetched rows it already had.
+  //
+  // The two remaining queries are independent, so they run concurrently rather
+  // than as a waterfall — this is the central arena page, hit by every league.
+  const [allLeagueStandings, individualStandings] = await Promise.all([
+    standingsForKind(db, season.id, "league", { limit: MAX_LIMIT }),
+    standingsForKind(db, season.id, "individual", { limit: input.limit }),
+  ]);
+  const leagueStandings = allLeagueStandings.slice(
+    0,
+    boundedLimit(input.limit),
   );
 
   return {

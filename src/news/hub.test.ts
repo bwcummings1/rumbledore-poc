@@ -13,6 +13,33 @@ import { upsertLeagueFeedReference } from "./league-feed";
 const marker = `newshub-${randomUUID()}`;
 let handle: DbHandle;
 
+/**
+ * A separate pool that counts statements.
+ *
+ * Wraps `pool.query` rather than drizzle so it counts what actually reaches
+ * Postgres — the point of the assertion is round trips, and a drizzle-level
+ * counter would miss anything the driver splits or adds.
+ */
+function countingHandle() {
+  const counted = createDb(parseEnv(process.env).databaseUrl);
+  const original = counted.pool.query.bind(counted.pool);
+  let count = 0;
+  // biome-ignore lint/suspicious/noExplicitAny: pg's query() is heavily overloaded.
+  counted.pool.query = ((...args: any[]) => {
+    count += 1;
+    // biome-ignore lint/suspicious/noExplicitAny: forwarding the same overloads.
+    return (original as any)(...args);
+  }) as typeof counted.pool.query;
+  return {
+    db: counted.db,
+    end: () => counted.pool.end(),
+    queries: () => count,
+    reset: () => {
+      count = 0;
+    },
+  };
+}
+
 beforeAll(async () => {
   handle = createDb(parseEnv(process.env).databaseUrl);
   try {
@@ -523,4 +550,44 @@ describe("central news hub", () => {
     });
     expect(outsiderData.forYourLeague).toBeNull();
   });
+
+  it("serves a 1,000-item corpus at a flat query cost (T-033)", async () => {
+    // The hub used to page through the ENTIRE published corpus on every
+    // request, so its query count grew with the archive: ten round trips at a
+    // thousand articles, and more every week. This asserts the count is a
+    // constant, which is the property that stops it degrading over a season.
+    await handle.db.insert(contentItems).values(
+      Array.from({ length: 1_000 }, (_, index) => ({
+        body: `Flat cost body ${index}.`,
+        contentHash: `${marker}-flat-${index}-hash`,
+        dedupKey: `${marker}-flat-${index}`,
+        kind: "news" as const,
+        leagueId: null,
+        publishedAt: new Date(Date.UTC(2026, 4, 1, 0, 0, index)),
+        source: "Flat Wire",
+        sourceUrl: `https://news.example.com/${marker}/flat-${index}`,
+        summary: `Flat cost summary ${index}.`,
+        title: `Flat cost story ${index}`,
+      })),
+    );
+
+    const counted = countingHandle();
+    try {
+      const data = await getCentralNewsHubData(counted.db, { limit: 30 });
+      expect(data.items.length).toBeGreaterThan(0);
+      // Two bounded candidate queries — newest, and most important. No
+      // section filter is active, so the third route does not run.
+      expect(counted.queries()).toBe(2);
+
+      counted.reset();
+      await getCentralNewsHubData(counted.db, {
+        limit: 30,
+        sectionId: "injuries",
+      });
+      // The section adds exactly one more bounded query, not a page-walk.
+      expect(counted.queries()).toBe(3);
+    } finally {
+      await counted.end();
+    }
+  }, 120_000);
 });
