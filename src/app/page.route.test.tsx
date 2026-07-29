@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   getYourLeaguesLandingData: vi.fn(),
   headers: vi.fn(),
+  userHasAnyLeague: vi.fn(),
   redirect: vi.fn((href: string): never => {
     throw new Error(`redirect:${href}`);
   }),
@@ -30,6 +31,7 @@ vi.mock("@/db", () => ({
 
 vi.mock("@/home/your-leagues", () => ({
   getYourLeaguesLandingData: mocks.getYourLeaguesLandingData,
+  userHasAnyLeague: mocks.userHasAnyLeague,
 }));
 
 beforeEach(() => {
@@ -54,6 +56,7 @@ describe("Home route", () => {
         name: "Your fantasy league becomes the show",
       }),
     ).toBeDefined();
+    expect(mocks.userHasAnyLeague).not.toHaveBeenCalled();
     expect(mocks.getYourLeaguesLandingData).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
@@ -63,6 +66,7 @@ describe("Home route", () => {
       ok: true,
       value: { session: { user: { id: "user-1" } }, userId: "user-1" },
     });
+    mocks.userHasAnyLeague.mockResolvedValue(false);
     mocks.getYourLeaguesLandingData.mockResolvedValue({ leagues: [] });
 
     render(await Home());
@@ -85,12 +89,13 @@ describe("Home route", () => {
       ok: true,
       value: { session: { user: { id: "user-1" } }, userId: "user-1" },
     });
-    mocks.getYourLeaguesLandingData.mockResolvedValue({
-      leagues: [{ leagueId: "league-1" }],
-    });
+    mocks.userHasAnyLeague.mockResolvedValue(true);
 
     await expect(Home()).rejects.toThrow("redirect:/news");
 
     expect(mocks.redirect).toHaveBeenCalledWith("/news");
+    // The whole point of the short-circuit: the expensive landing payload is
+    // never built for a user who is about to be redirected away from it.
+    expect(mocks.getYourLeaguesLandingData).not.toHaveBeenCalled();
   });
 });
