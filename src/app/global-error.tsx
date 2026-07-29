@@ -2,17 +2,19 @@
 
 import { useEffect } from "react";
 import { logger } from "@/core/logging";
-import { PWA_BACKGROUND_HEX } from "@/lib/pwa";
+import { GLOBAL_ERROR_FALLBACK } from "@/lib/pwa";
 
 /**
  * The last boundary. It catches errors thrown by the root layout itself, which
- * means it REPLACES that layout: no `<html>`, no theme cookie, no
- * `ThemeTokenStyle`, no stylesheet guaranteed to have loaded.
+ * means it REPLACES that layout: no `<html>`, no `<body>`, and none of the token
+ * setup that layout performs — so every `panel` and `text-ink-2` here would
+ * resolve against undefined custom properties and render as unstyled text.
  *
- * So this file styles itself inline instead of reaching for the design tokens.
- * A boundary that renders unstyled because the layout that defines its tokens is
- * the thing that just crashed is not a fallback — and this is the one screen
- * that has no second chance.
+ * It therefore styles itself from `GLOBAL_ERROR_FALLBACK` rather than from the
+ * design tokens. Rendering `ThemeTokenStyle` instead would ship the token-CSS
+ * generator to every client on every route to style a screen almost nobody sees
+ * — measurably so: it pushed a route past the 300KB gzip budget on its own.
+ * This boundary is a lifeboat, and a lifeboat carries its own supplies.
  *
  * As everywhere else, no message and no stack reach the page; only the digest,
  * which Next.js also wrote to the server log.
@@ -35,8 +37,8 @@ export default function GlobalError({
       <body
         style={{
           alignItems: "center",
-          backgroundColor: PWA_BACKGROUND_HEX,
-          color: "#e7e9f2",
+          backgroundColor: GLOBAL_ERROR_FALLBACK.background,
+          color: GLOBAL_ERROR_FALLBACK.text,
           display: "flex",
           fontFamily:
             "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
@@ -48,7 +50,7 @@ export default function GlobalError({
       >
         <main
           style={{
-            border: "1px solid #262a3d",
+            border: `1px solid ${GLOBAL_ERROR_FALLBACK.border}`,
             borderRadius: "0.75rem",
             maxWidth: "28rem",
             padding: "2rem",
@@ -58,7 +60,7 @@ export default function GlobalError({
         >
           <p
             style={{
-              color: "#ff6b6b",
+              color: GLOBAL_ERROR_FALLBACK.accent,
               fontSize: "0.6875rem",
               letterSpacing: "0.12em",
               margin: 0,
@@ -78,7 +80,7 @@ export default function GlobalError({
           </h1>
           <p
             style={{
-              color: "#9aa0b8",
+              color: GLOBAL_ERROR_FALLBACK.muted,
               fontSize: "0.875rem",
               lineHeight: 1.6,
               margin: "0.5rem 0 0",
@@ -90,13 +92,15 @@ export default function GlobalError({
           <button
             onClick={reset}
             style={{
-              background: "#2f6df6",
+              background: GLOBAL_ERROR_FALLBACK.buttonBackground,
               border: "none",
               borderRadius: "0.5rem",
-              color: "#ffffff",
+              color: GLOBAL_ERROR_FALLBACK.buttonText,
               cursor: "pointer",
               fontSize: "0.875rem",
               marginTop: "1.5rem",
+              // The mobile budget's 44px tap-target floor, which this screen
+              // must honour even though no stylesheet is guaranteed here.
               minHeight: "2.75rem",
               padding: "0.625rem 1.25rem",
             }}
@@ -107,7 +111,7 @@ export default function GlobalError({
           {digest ? (
             <p
               style={{
-                color: "#6b7192",
+                color: GLOBAL_ERROR_FALLBACK.subtle,
                 fontSize: "0.75rem",
                 margin: "1rem 0 0",
               }}

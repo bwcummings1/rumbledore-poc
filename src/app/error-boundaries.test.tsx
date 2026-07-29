@@ -114,13 +114,22 @@ describe("App Router error boundaries", () => {
     }
   });
 
-  it("renders the global fallback without depending on the root layout", () => {
-    // It replaces the layout that defines the theme tokens, so it must not reach
-    // for a token-driven class that would render as unstyled text.
+  it("keeps the global fallback self-contained", () => {
+    // It replaces the root layout, so it must supply its own document shell and
+    // must not style itself from tokens that layout is the one to define — a
+    // `className` here renders as unstyled text.
     const source = readFileSync(path.join(appRoot, "global-error.tsx"), "utf8");
 
     expect(source).toContain("<html");
     expect(source).toContain("<body");
     expect(source).not.toContain("className=");
+  });
+
+  it("meets the mobile tap-target floor in the global fallback", () => {
+    // No stylesheet is guaranteed here, so the 44px floor the rest of the app
+    // gets from `.btn` has to be written out.
+    const source = readFileSync(path.join(appRoot, "global-error.tsx"), "utf8");
+
+    expect(source).toContain('minHeight: "2.75rem"');
   });
 });
