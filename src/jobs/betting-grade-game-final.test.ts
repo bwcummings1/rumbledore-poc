@@ -239,11 +239,7 @@ describe("betting game.final grading job", () => {
     });
 
     const result = await runBettingGradeGameFinal({
-      data: {
-        bettingEventId: event.id,
-        gameId: randomUUID(),
-        leagueId: league.id,
-      },
+      data: { bettingEventId: event.id, leagueId: league.id },
       deps: deps(),
     });
 
@@ -299,11 +295,7 @@ describe("betting game.final grading job", () => {
     await seedPicks(markets, 2);
 
     const result = await runBettingGradeGameFinal({
-      data: {
-        bettingEventId: event.id,
-        gameId: randomUUID(),
-        leagueId: league.id,
-      },
+      data: { bettingEventId: event.id, leagueId: league.id },
       deps: deps(new PendingResultsProvider()),
     });
 
@@ -336,11 +328,7 @@ describe("betting game.final grading job", () => {
 
     const base = deps();
     const facts = await gradeGameFinalFacts({
-      data: {
-        bettingEventId: event.id,
-        gameId: randomUUID(),
-        leagueId: league.id,
-      },
+      data: { bettingEventId: event.id, leagueId: league.id },
       deps: base,
     });
     expect(facts.pickAffectedLeagueIds).toHaveLength(2);
@@ -368,11 +356,7 @@ describe("betting game.final grading job", () => {
     // Re-deriving the facts on the retry — the pre-split behaviour — yields
     // nothing, because grading already happened.
     const rederived = await gradeGameFinalFacts({
-      data: {
-        bettingEventId: event.id,
-        gameId: randomUUID(),
-        leagueId: league.id,
-      },
+      data: { bettingEventId: event.id, leagueId: league.id },
       deps: base,
     });
     expect(rederived.pickAffectedLeagueIds).toEqual([]);
@@ -401,12 +385,8 @@ describe("betting game.final grading job", () => {
     const stepRun = await testEngine.executeStep("publish-grading-effects", {
       events: [
         {
-          data: {
-            bettingEventId: event.id,
-            gameId: randomUUID(),
-            leagueId: league.id,
-          },
-          name: JOB_EVENTS.gameFinal,
+          data: { bettingEventId: event.id, leagueId: league.id },
+          name: JOB_EVENTS.bettingEventFinal,
         },
       ],
     });
@@ -421,10 +401,13 @@ describe("betting game.final grading job", () => {
     });
   }, 90_000);
 
-  it("rejects invalid game.final payloads without retrying", async () => {
+  it("rejects a payload with no betting event id, without retrying", async () => {
+    // The id is required now: a producer that cannot supply one must fail at
+    // the edge rather than have the grader guess and silently grade nothing,
+    // which is precisely how UIX-101 survived being "fixed".
     await expect(
       runBettingGradeGameFinal({
-        data: { leagueId: "not-a-uuid" },
+        data: { leagueId: randomUUID() },
         deps: deps(),
       }),
     ).rejects.toBeInstanceOf(NonRetriableError);

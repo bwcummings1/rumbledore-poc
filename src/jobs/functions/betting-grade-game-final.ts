@@ -28,7 +28,7 @@ import {
 import { inngest } from "../client";
 import {
   type ArenaStandingsSwingData,
-  type GameFinalData,
+  type BettingEventFinalData,
   JOB_EVENTS,
   type PicksGradedData,
 } from "../events";
@@ -67,7 +67,7 @@ export interface BettingGradeGameFinalResponse {
   arenaRecapEvents: PlannedArenaStandingsSwingEvent[];
   arenaSwingSignals: ArenaStandingsSwingPayload[];
   bettingEventId: string;
-  eventName: typeof JOB_EVENTS.gameFinal;
+  eventName: typeof JOB_EVENTS.bettingEventFinal;
   gradedPicks: { correct: number; incorrect: number; void: number };
   leagueId: string;
   ok: true;
@@ -75,29 +75,33 @@ export interface BettingGradeGameFinalResponse {
   skippedReason: "event_not_found" | "result_not_final" | null;
 }
 
-const gameFinalDataSchema = z.object({
-  bettingEventId: z.uuid().optional(),
-  gameId: z.uuid(),
+/**
+ * `bettingEventId` is REQUIRED and there is no fallback.
+ *
+ * The old schema made it optional and the consumer wrote
+ * `bettingEventId ?? gameId`. That guess is what let UIX-101 survive: the only
+ * live producer supplied a `fantasy_matchups.id` as `gameId`, the grader looked
+ * it up in `betting_event`, found nothing, and reported `event_not_found`
+ * forever. Requiring the id means a producer that cannot supply one fails
+ * loudly at the edge instead of grading nothing in silence.
+ */
+const bettingEventFinalDataSchema = z.object({
+  bettingEventId: z.uuid(),
   leagueId: z.uuid(),
-  milestoneKeys: z.array(z.string().trim().min(1).max(120)).max(12).optional(),
-  sourceContentHash: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/)
-    .optional(),
 });
 
 function toNonRetriable(error: AppError): NonRetriableError {
   return new NonRetriableError(error.message, { cause: error });
 }
 
-function parseGameFinalData(data: unknown): GameFinalData {
-  const parsed = gameFinalDataSchema.safeParse(data);
+function parseGameFinalData(data: unknown): BettingEventFinalData {
+  const parsed = bettingEventFinalDataSchema.safeParse(data);
   if (!parsed.success) {
     throw toNonRetriable(
       new AppError({
         cause: parsed.error,
-        code: "GAME_FINAL_INVALID",
-        message: "Game final payload is invalid",
+        code: "BETTING_EVENT_FINAL_INVALID",
+        message: "Betting event final payload is invalid",
         status: 400,
       }),
     );
@@ -151,7 +155,7 @@ export async function gradeGameFinalFacts({
   const data = parseGameFinalData(rawData);
   const resolution = await resolveBettingEvent({
     deps,
-    input: { bettingEventId: data.bettingEventId ?? data.gameId },
+    input: { bettingEventId: data.bettingEventId },
   });
 
   if (!resolution.resolved || !resolution.result) {
@@ -468,7 +472,7 @@ export async function runBettingGradeGameFinal({
   return {
     ...effects,
     bettingEventId: facts.bettingEventId,
-    eventName: JOB_EVENTS.gameFinal,
+    eventName: JOB_EVENTS.bettingEventFinal,
     gradedPicks: facts.gradedPicks,
     leagueId: facts.leagueId,
     ok: true,
@@ -487,10 +491,9 @@ export function createBettingGradeGameFinalFunction(
       description:
         "Resolves a finished NFL event and grades the Pick 'em entries on it.",
       id: "betting-grade-game-final",
-      idempotency:
-        "event.data.leagueId + ':' + (event.data.bettingEventId || event.data.gameId)",
+      idempotency: "event.data.leagueId + ':' + event.data.bettingEventId",
       name: "Betting game-final grading",
-      triggers: [{ event: JOB_EVENTS.gameFinal }],
+      triggers: [{ event: JOB_EVENTS.bettingEventFinal }],
     },
     async ({ event, step }): Promise<BettingGradeGameFinalResponse> =>
       recordJobRun("betting-grade-game-final", async () => {
@@ -516,7 +519,7 @@ export function createBettingGradeGameFinalFunction(
         return {
           ...effects,
           bettingEventId: facts.bettingEventId,
-          eventName: JOB_EVENTS.gameFinal,
+          eventName: JOB_EVENTS.bettingEventFinal,
           gradedPicks: facts.gradedPicks,
           leagueId: facts.leagueId,
           ok: true,

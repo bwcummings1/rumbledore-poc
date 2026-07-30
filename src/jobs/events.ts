@@ -13,6 +13,19 @@ export const JOB_EVENTS = {
   importRequested: "import.requested",
   bankrollRollover: "bankroll.rollover",
   oddsPoll: "odds.poll",
+  /**
+   * A central betting event is past its settle window and has picks waiting.
+   *
+   * Deliberately NOT `game.final`. That event means "a fantasy matchup went
+   * final" and drives content planning; its payload carries a
+   * `fantasy_matchups.id`. Grading needs a `betting_event.id`, and overloading
+   * one event for both producers is exactly what let UIX-101 survive being
+   * "fixed" — the consumer had to guess with `bettingEventId ?? gameId`, and
+   * the only live producer supplied the wrong one.
+   */
+  bettingEventFinal: "betting.event.final",
+  /** Manual kick of the finished-event poller; it also runs on a cron. */
+  bettingEventPoll: "betting.event.poll",
   newsRefresh: "news.refresh",
   weeklyDigest: "digest.weekly",
   contentGenerate: "content.generate",
@@ -245,4 +258,10 @@ export interface WeeklyDigestData {
 export interface OddsPollData {
   limit?: number;
   sport?: "nfl";
+}
+
+/** Both ids are REQUIRED: there is nothing to fall back to, by design. */
+export interface BettingEventFinalData {
+  bettingEventId: string;
+  leagueId: string;
 }

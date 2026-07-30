@@ -1,4 +1,5 @@
 import { appPing } from "./functions/app-ping";
+import { bettingEventPoll } from "./functions/betting-event-poll";
 import { bettingGradeGameFinal } from "./functions/betting-grade-game-final";
 import { centralContentGenerate } from "./functions/central-content-generate";
 import { centralContentPlanCron } from "./functions/central-content-plan-cron";
@@ -42,6 +43,7 @@ import { weeklyDigest } from "./functions/weekly-digest";
 export { inngest } from "./client";
 export { JOB_EVENTS } from "./events";
 export { appPing } from "./functions/app-ping";
+export { bettingEventPoll } from "./functions/betting-event-poll";
 export { bettingGradeGameFinal } from "./functions/betting-grade-game-final";
 export { centralContentGenerate } from "./functions/central-content-generate";
 export { centralContentPlanCron } from "./functions/central-content-plan-cron";
@@ -113,6 +115,7 @@ export const functions = [
   instigationSeed,
   pollClose,
   loreVoteClose,
+  bettingEventPoll,
   bettingGradeGameFinal,
   newsRefresh,
   oddsPoll,
